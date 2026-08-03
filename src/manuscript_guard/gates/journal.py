@@ -20,10 +20,11 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.sections import measure, split_sections
 
 GATE = "G4"
-PROFILE_DIR = Path(__file__).parent.parent.parent.parent / "profiles" / "journals"
+PROFILE_DIR = SHIPPED_JOURNALS
 STALE_AFTER = timedelta(days=365)
 
 

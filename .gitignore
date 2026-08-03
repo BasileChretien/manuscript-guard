@@ -43,3 +43,8 @@ profiles/reporting/*.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# pytest-cov output
+.coverage
+.coverage.*
+htmlcov/

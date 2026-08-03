@@ -22,10 +22,11 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.paths import SHIPPED_CHECKLISTS
 from manuscript_guard.text.sections import headings
 
 GATE = "G5"
-CHECKLIST_DIR = Path(__file__).parent.parent.parent.parent / "profiles" / "reporting"
+CHECKLIST_DIR = SHIPPED_CHECKLISTS
 COMPLETION_DIR = "reporting"
 
 _NON_REASONS = {"n/a", "na", "-", "none", "no", "not applicable", "n.a.", "nil"}

@@ -41,6 +41,12 @@ Source = "https://github.com/BasileChretien/manuscript-guard"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/manuscript_guard"]
+# The checklist recipes live inside the package rather than at the repository root, so the
+# wheel carries them. They did not, and `manuscript-guard fetch STROBE` — the second command
+# in the README's own walkthrough — answered "no recipe for 'STROBE'" on every installed
+# copy. Only a source checkout worked. Belt and braces: hatchling ignores VCS-ignored files,
+# and .gitignore excludes generated profiles by path from the repository root.
+artifacts = ["src/manuscript_guard/profiles/**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

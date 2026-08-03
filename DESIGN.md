@@ -753,9 +753,123 @@ predecessor:
 Verified end to end: the example's built document audits clean against its own outputs, and
 one digit changed in the reporting odds ratio is reported with its line and context.
 
+## What an adversarial review found, 2026-08-03
+
+Four reviews were run against the finished toolkit — security, Python correctness,
+architecture, and an adversarial one that built a project and attacked it 56 ways. Every
+claim below was reproduced against the code before anything was changed; several other
+claims were rejected on the same test. The defects clustered, and the cluster is worth
+naming, because it is the shape of mistake this kind of tool makes.
+
+**Nine of the eleven fixed defects were a rule matching a shape instead of a value.**
+`conventions.yaml` says in its own header that a pattern must be pinned to specific
+conventional values, "because a rule matching `p < <any number>` would wave through every
+reported p-value." Five rules broke their own file's rule:
+
+| rule | matched | so this passed |
+|---|---|---|
+| `rate-denominator` | `per \d[\d\s,]*` | `12 per 83,214 patients treated` |
+| `age-band` | `\d+\+\s*(?:years?)?` — unit optional | `enrolled 500+ patients` |
+| `categorical-label` | `arm\|cohort\|grade… \d+` | `in the exposed arm 47 hepatic events` |
+| `time-label` | `years?… \d+` | `over the study years 1204 reports` |
+| `author-year-citation` | a whole parenthetical containing a year | `(Smith 2019, n = 412)` |
+
+Each is now bounded to the magnitudes a label can actually have, and the last is marked
+`audit_only`: it exists to read a document citeproc has already rendered, and in manuscript
+source — where citations are `[@key]` and masked — it bought nothing and cost the gate.
+
+**Three defects made the tool report less than it checked, or check less than it claimed.**
+
+- `find_atoms` split on `\S+`, but `mask()` writes NUL to preserve offsets, and NUL is not
+  whitespace. So `3.84[@smith2020]` was one run, the run contained NUL, and the whole run
+  was discarded — the visible 3.84 with it. Any value written hard against a citation, a
+  footnote, inline code or a pandoc attribute was invisible to G2. Two reviewers found this
+  independently.
+- The twelve gates sat behind `if contract_report.ok and load_report.ok`. A project with no
+  results yet — the ordinary state at `design` and `analysis` — failed that condition, so
+  none of them ran, and the run printed `0 failing, 0 warnings`. The stage-policy test
+  asserting that an early project is not buried in failures passed *because nothing was
+  checked*. It now has a companion that asserts G2 and G6 actually ran.
+- YAML front matter was masked whole. Pandoc renders `title` and `abstract` from it, so the
+  most-read part of the paper was outside every check. Rendered keys are now read; `lang`,
+  `zotero` and the rest of the machinery stay masked.
+
+**Two were the same value compared the wrong way.**
+
+- `contains(quote, display)` is a substring test, so a ledger value of `3.4` was accepted
+  against a verbatim quote reading `13.42`. The manuscript could then attribute an ROR of
+  3.4 to a paper reporting 13.42 — a misquotation of a real source, which is worse than an
+  unsourced number because it carries a citation and looks checked. G7 now requires the
+  value as a whole numeric token.
+- `_judge_string_number` matched a figure script's numeric literal to candidate atoms by
+  digit string rather than by position, so `ax.annotate("OR 3", …)  # cf. Table 3` cleared
+  the hardcoded annotation using the comment's structural `Table 3`.
+
+**And three were about the tool's own claims rather than its logic.**
+
+- `--submission` and `--stage submission` gave different verdicts, because G11's severity
+  came from the raw flag while everything else came from the resolved stage. A project
+  declaring `stage: submission` in `paper.yaml` — the natural thing to write when
+  submitting — never had the review gate enforced by `check` at all.
+- `no-digest` was a warning. A fragment with no sidecar is one no emitter wrote, and while
+  this warned, a hand-written `results/national.json` with a fabricated estimate and
+  interval passed `check --submission` cleanly. It is a failure from `analysis` on.
+- `pip install manuscript-guard` shipped no recipes. They lived at the repository root and
+  were resolved as `parents[2]`, which from `site-packages/manuscript_guard/` is
+  `<venv>/Lib`. `manuscript-guard fetch STROBE`, the second command in the README's own
+  walkthrough, answered `no recipe for 'STROBE'` for everyone who installed as documented.
+  Recipes now live inside the package; downloads and generated profiles go to the project,
+  never into `site-packages`.
+
+The R emitter also wrote CRLF on Windows — `writeLines(x, path)` opens a text connection and
+`useBytes = TRUE` does not change that — so an R analysis produced a byte-different fragment
+per platform, and the digest that guarantees the fragment reported `results-edited` on a file
+nobody had touched.
+
+Every one of these has a regression test naming the escape it closes.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
+
+Added by the adversarial review, verified and **not** fixed:
+
+- **Re-signing defeats G1.** Editing `results/*.json` and recomputing the `.sha256` sidecar
+  is invisible, and so is editing the input data and rewriting the declared input hash in
+  the same fragment. The digest detects accident and drift, not a determined author. A real
+  fix needs a signature the author cannot recompute, which means a key, which is a different
+  project.
+- **`script-newer` compares mtimes, so `touch` defeats it.** G1 hashes inputs but only stats
+  the analysis script.
+- **An explicit `display` is not checked against its own value.** `em.value("ror.point",
+  0.9487, display="3.84 (95% CI 2.10 to 7.02)")` publishes a fabricated point estimate and a
+  fabricated interval in one call. Likewise `em.table()` cells are strings and are compared
+  to nothing. The emitter is a trusted channel: it fixes *where* a number is formatted, not
+  that the formatting is honest.
+- **G8 goes quiet exactly when two keys have diverged.** It fires when two quoted keys hold
+  the same value with different displays, so a duplicate is caught while it still agrees and
+  missed once it does not.
+- **Inline code and fenced blocks are masked but render.** `` `3.84` `` appears in the .docx
+  as 3.84 and no gate reads it. Unmasking them would report every `n = 42` in a Methods
+  section, which is the direction that gets a checker switched off — so this is a known
+  trade, not an oversight.
+- **Numbers not written with digits escape the tokeniser**: words ("four thousand"), vulgar
+  fractions (`½`), and non-`Nd` digit forms (`④`).
+- **`p < 0.001` is a convention.** The rule cannot tell a pre-stated alpha from a reported
+  p-value, and it is pinned to the three conventional thresholds, so a fabricated
+  significance claim passes. Pinning to values is right; the ambiguity is real.
+- **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a
+  `why` of "house style" disables G2, and `terms:` needs no justification at all. The gate
+  is a tool for an author who wants it, not a control over one who does not.
+- **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
+  to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
+  code sees green.
+- **A figure whose rendered output has no text layer is checked against nothing.**
+  matplotlib's default SVG settings draw text as paths, so `figures_checked` counts a figure
+  whose annotations were never read. A raster with a vector sibling is skipped, and nothing
+  proves the two were rendered from the same script.
+- **`build --skip-checks` leaves a document behind.** Revert the source afterwards and
+  `check` passes while the stale `.docx` still holds the wrong number.
 
 - **A figure review does not survive a change of plotting library.** The digest normalises
   render timestamps and generated element ids, but not the drawn path data, and a different
@@ -785,7 +899,7 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
 - **No real journal profile is distributed**, and no transcribed checklist text. Recipes
-  for nine checklists are, so a user needs only the official document. Journal profiles have
+  for thirteen checklists are, so a user needs only the official document. Journal profiles have
   no equivalent shortcut yet.
 - **Five licences remain unconfirmed** — RECORD-PE, CONSORT, SPIRIT, PRISMA (both) and
   TRIPOD state no reuse terms on their sites. RECORD is CC BY, STROBE and ARRIVE are CC BY

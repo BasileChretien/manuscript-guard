@@ -99,14 +99,21 @@ ground, and applies to the figure as it now stands — not that it was any good.
 
 ## Design principles
 
-**The guarantees are deterministic code.** No language model is involved in deciding
-whether a manuscript is clean. `manuscript-guard check` runs in CI, offline, and gives the
-same answer every time. A separate Claude Code plugin helps with drafting and review, but
-it never decides.
+**The guarantees are deterministic code.** No model output is trusted as evidence about the
+text. `manuscript-guard check` runs in CI, offline, and gives the same answer every time.
+A separate Claude Code plugin helps with drafting and review, but it never decides.
+
+Two gates are a partial exception, and it is deliberate rather than accidental: G10 and G11
+read a *recorded* review, and a review record classifies its own findings by severity. A
+finding recorded as `fail` fails the run; the same observation recorded as `info` does not.
+The record is the contract — a model may write one, and a person signs it. Nothing else in
+the toolkit asks a model anything.
 
 **Formatting is fixed where the number is computed.** `display` is set at emit time, so one
 quantity cannot be rounded two ways in two sections. Cross-artefact consistency is a
-property of the design rather than something checked afterwards.
+property of the design rather than something checked afterwards. Note the limit: the emitter
+fixes *where* a number is formatted, not that an explicitly supplied `display` matches the
+value it is attached to.
 
 **Numbers from the literature are verified, not trusted.** Each ledger entry stores the
 value, the verbatim sentence that states it, and the source that sentence came from. The
@@ -135,7 +142,9 @@ manuscript-guard transcribe STROBE   # builds the profile locally
 `fetch` downloads to your machine from the publisher's own address, printing the licence
 first; nothing is redistributed by this project. The document is checksummed against the
 recipe, so a revised checklist stops the build rather than producing a plausible wrong
-transcription. See [ATTRIBUTION.md](ATTRIBUTION.md) for each guideline's licence as read on
+transcription. Both commands write into `profiles/reporting/` in the project you are
+standing in — pass `--root` to choose somewhere else. The recipes themselves ship inside the
+package, and a recipe of the same name in your project overrides the shipped one. See [ATTRIBUTION.md](ATTRIBUTION.md) for each guideline's licence as read on
 2026-08-03 — one of them is non-commercial, and several state no reuse licence at all.
 
 Recipes ship for thirteen checklists: STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT 2025,
@@ -317,7 +326,13 @@ manuscript-guard stages                  # what binds where
 due yet is printed as `INFO` with `[not due until drafting]`, counted, and summarised at the
 end. Nothing is skipped, because a check that quietly stopped looking would be worse than no
 check. And a finding this policy does not know about fails at every stage — a new gate has
-to opt in to being deferred.
+to opt in to being deferred. A gate that *crashes* reports `gate-errored`, which is in no
+deferral list and so fails everywhere: a checker that could not check is not a pass.
+
+The stage is declared in `paper.yaml`, not detected. Writing `stage: analysis` genuinely
+does demote the drafting findings, so it is an opt-out for anyone who wants one — which is
+the point, since the tool is for an author who wants it. What it is not is a hiding place:
+every deferred finding is printed and counted.
 
 ## Getting started
 

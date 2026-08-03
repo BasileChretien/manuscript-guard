@@ -19,10 +19,11 @@ profile is generated locally, identical to everyone else's.
 from __future__ import annotations
 
 import re
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+from manuscript_guard.safexml import open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
@@ -96,8 +97,12 @@ def cell_text(cell: ET.Element) -> str:
 
 
 def read_tables(path: Path) -> list[list[list[str]]]:
-    """Every table in a .docx, as rows of cell strings."""
-    root = ET.fromstring(zipfile.ZipFile(path).read("word/document.xml"))
+    """Every table in a .docx, as rows of cell strings.
+
+    Parsed through `safexml`: these documents are downloaded from guideline websites, so
+    they are size-capped and refused if a part declares a DTD.
+    """
+    root = read_part(open_archive(path), "word/document.xml", what=path.name)
     tables: list[list[list[str]]] = []
     for table in root.iter(W + "tbl"):
         rows = []
@@ -117,7 +122,7 @@ def document_text(path: Path) -> str:
     formatting or spell-check state changes, often mid-word, so joining runs with a space
     turns "study's" into "study 's" and makes a correct transcription look wrong.
     """
-    root = ET.fromstring(zipfile.ZipFile(path).read("word/document.xml"))
+    root = read_part(open_archive(path), "word/document.xml", what=path.name)
     paragraphs = []
     for para in root.iter(W + "p"):
         chunk = "".join(t.text or "" for t in para.iter(W + "t"))

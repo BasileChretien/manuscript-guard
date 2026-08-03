@@ -28,10 +28,22 @@ from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
 
+# Pinned to an immutable commit and verified by content hash.
+#
+# pandoc executes a lua filter with os and io available, so this file is code running on the
+# author's machine. Fetching it from a mutable branch means whatever that branch holds on the
+# day of the build. The rest of this toolkit already refuses to use a downloaded document
+# that does not match a recorded hash — see reporting/fetch.py — and there is no reason the
+# one download that is *executed* should be the exception.
+#
+# To move to a newer filter: change both constants together, having read the diff.
+LUA_COMMIT = "736265327bf5673d495730a3884dafe84f450788"
 LUA_URL = (
-    "https://raw.githubusercontent.com/retorquere/zotero-better-bibtex/master/"
+    f"https://raw.githubusercontent.com/retorquere/zotero-better-bibtex/{LUA_COMMIT}/"
     "site/content/exporting/zotero.lua"
 )
+LUA_SHA256 = "a9ccec3de37954ad3b66c67c2d05e41a4c7ad3a99a4cfd99e184cebb822faf02"
+LUA_MAX_BYTES = 2 * 1024 * 1024
 
 LIVE = "live"
 OFFLINE = "offline"
@@ -61,20 +73,41 @@ def ensure_zotero_lua(cache_dir: Path) -> Path:
     Not vendored: it belongs to Better BibTeX and tracks its behaviour, so pinning a copy
     here would mean shipping a stale one. Cached under build/, which is gitignored.
     """
+    import hashlib
+
     path = cache_dir / "zotero.lua"
-    if path.exists() and path.stat().st_size > 1000:
+    if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == LUA_SHA256:
         return path
+
     cache_dir.mkdir(parents=True, exist_ok=True)
+    print(
+        f"manuscript-guard: downloading Better BibTeX's pandoc filter from\n"
+        f"  {LUA_URL}\n"
+        f"  pandoc executes this file. It is pinned to a commit and verified against a "
+        f"recorded hash.",
+    )
     try:
-        with urllib.request.urlopen(LUA_URL, timeout=60) as response:
-            data = response.read()
+        request = urllib.request.Request(LUA_URL, headers={"User-Agent": "manuscript-guard"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = response.read(LUA_MAX_BYTES + 1)
     except (urllib.error.URLError, OSError) as exc:
         raise BuildError(
             f"could not fetch zotero.lua ({exc}). Build with --offline, or place the file "
             f"at {path}"
         ) from exc
-    if b"function" not in data:
-        raise BuildError(f"what came back from {LUA_URL} is not a lua filter")
+
+    if len(data) > LUA_MAX_BYTES:
+        raise BuildError(f"{LUA_URL} returned more than {LUA_MAX_BYTES // 1024} KB; refusing")
+
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != LUA_SHA256:
+        raise BuildError(
+            f"zotero.lua does not match its recorded hash.\n"
+            f"  expected {LUA_SHA256}\n  got      {digest}\n"
+            f"pandoc executes this file, so it is not run unverified. If Better BibTeX has "
+            f"published a new filter, read the diff and update LUA_COMMIT and LUA_SHA256 "
+            f"together."
+        )
     path.write_bytes(data)
     return path
 

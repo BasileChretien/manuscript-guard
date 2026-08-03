@@ -45,8 +45,12 @@ FORBIDDEN = (
 # defeats prefix matching, which is exactly how a submission slipped past the guard in the
 # project that preceded this one.
 SUBMISSION_MARKERS = re.compile(
-    r"manuscript-guard\s+submit|--submission\b|\bsubmission[/\\]|"
-    r"\bzip\b.*submission|\bscp\b.*\.docx|\bmail\b.*\.docx",
+    # The two unambiguous ones: asking for a submission pack, or asking for submission
+    # standards.
+    r"manuscript-guard\s+submit\b|--submission\b|"
+    # Moving a submission somewhere: an action verb near the pack or a built document.
+    r"\b(?:zip|tar|scp|rsync|cp|copy|mv|move|curl|wget|mail|sendmail|git\s+push)\b"
+    r"[^\n]{0,120}?(?:\bsubmission\b|\.docx\b)",
     re.IGNORECASE,
 )
 

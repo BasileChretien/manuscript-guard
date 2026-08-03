@@ -21,9 +21,10 @@ be published. Insertions are kept and deletions dropped, which is what the reade
 from __future__ import annotations
 
 import re
-import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
@@ -43,8 +44,7 @@ def _in_deletion(node: ET.Element, parents: dict) -> bool:
     return False
 
 
-def _part_text(xml: bytes) -> str:
-    root = ET.fromstring(xml)
+def _part_text(root: ET.Element) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
     pieces: list[str] = []
 
@@ -63,11 +63,15 @@ def _part_text(xml: bytes) -> str:
 
 
 def read_docx(path: Path) -> str:
-    """Visible text of a .docx with tracked changes accepted, tables kept separable."""
+    """Visible text of a .docx with tracked changes accepted, tables kept separable.
+
+    The document may have come from a collaborator, so it is parsed through `safexml`:
+    size-capped, compression-ratio-checked, and refused outright if a part declares a DTD.
+    """
     try:
-        archive = zipfile.ZipFile(path)
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise NotADocx(f"{path.name}: not a readable .docx ({exc})") from exc
+        archive = open_archive(path)
+    except UnsafeDocument as exc:
+        raise NotADocx(str(exc)) from exc
 
     names = set(archive.namelist())
     if "word/document.xml" not in names:
@@ -77,9 +81,9 @@ def read_docx(path: Path) -> str:
     for part in PARTS:
         if part in names:
             try:
-                out.append(_part_text(archive.read(part)))
-            except ET.ParseError as exc:
-                raise NotADocx(f"{path.name}: {part} is malformed ({exc})") from exc
+                out.append(_part_text(read_part(archive, part, what=f"{path.name}:{part}")))
+            except UnsafeDocument as exc:
+                raise NotADocx(str(exc)) from exc
 
     text = "\n".join(out)
     # Collapse runs of spaces but keep line structure, so findings can cite a line.

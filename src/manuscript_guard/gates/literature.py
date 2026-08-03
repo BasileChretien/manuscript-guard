@@ -40,7 +40,7 @@ GATE = "G7"
 # Japanese given name, and this toolkit is written at a Japanese university. Refusing a real
 # co-author's signature is a worse failure than the one the entry was guarding against: the
 # names it would have caught ("AI", "AI assistant") are covered by the standalone forms
-# below, and anyone setting out to sign as a model can write "B. Chrétien" regardless. The
+# below, and anyone setting out to sign as a model can write any name at all. The
 # list is a guard against the careless case, not the determined one, and it should not
 # insult people to do that job.
 _MODEL_NAME = re.compile(

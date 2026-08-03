@@ -22,11 +22,22 @@ decide:
 
 - **Why this journal for this paper.** Scope and readership, in a sentence that refers to
   the manuscript in front of you rather than to the journal's own blurb.
-- **What it will cost.** Article-processing charge, and whether the institution has an
-  agreement that waives it. This decides more submissions than anyone admits.
+- **What it will cost.** Article-processing charge, and whether it is waived or discounted
+  for **this paper's authors**. This decides more submissions than anyone admits.
 - **What it will take.** Rough time to first decision, and the format the reformatting job
   implies — a structured abstract, a hard word limit, a required checklist.
 - **The honest risk.** Where you think it is a reach, say so.
+
+**Read the affiliations out of `authors.yaml` before saying anything about cost.** Every
+project has different ones, and a transformative agreement or waiver belongs to an
+institution, a country, or a funder — never to a journal in the abstract. Check the ones
+this paper actually lists, and say which author's affiliation the waiver would run through,
+since it is usually the corresponding or submitting author's that counts. Where an
+institution's agreements are not published, say you could not confirm it rather than
+implying a price either way; getting this wrong costs real money.
+
+The same applies to waivers for authors in low- and middle-income countries, which several
+publishers offer automatically and many authors do not know about.
 
 Rank them and say which you would send first and why. Then let the author choose: they know
 things you do not — a reviewer conflict, a grant reporting requirement, a co-author's

@@ -1,11 +1,11 @@
 schema: manuscript-guard/authors/1
 
 affiliations:
-  - id: ngy
-    text: "Department of International Medical Education, Nagoya University Graduate School of Medicine, Nagoya, Japan"
+  - id: uni
+    text: "Department of Clinical Pharmacology, Example University Graduate School of Medicine, Springfield, Japan"
     country: Japan
-  - id: caen
-    text: "Regional Pharmacovigilance Centre, Department of Pharmacology, CHU de Caen Normandie, Caen, France"
+  - id: chu
+    text: "Regional Pharmacovigilance Centre, Department of Pharmacology, Hopital Universitaire d Exemple, Villeneuve, France"
     country: France
 
 authors:
@@ -14,7 +14,7 @@ authors:
     degrees: [PharmD, MSc]
     orcid: 0000-0002-1825-0097
     email: ada.example@invalid.example
-    affiliations: [ngy]
+    affiliations: [uni]
     corresponding: true
     equal_contribution: false
     credit:
@@ -27,7 +27,7 @@ authors:
     family: Sample
     degrees: [MD, PhD]
     orcid: 0000-0001-5109-3700
-    affiliations: [caen]
+    affiliations: [chu]
     corresponding: false
     equal_contribution: false
     credit:

@@ -44,7 +44,7 @@ def codes(report) -> set[str]:
 def test_the_title_page_carries_what_the_manuscript_leaves_out(project: Path) -> None:
     page = title_page(load_project(project)[0])
     assert "Ada Example, PharmD, MSc" in page
-    assert "Nagoya University" in page
+    assert "Example University" in page
     assert "0000-0002-1825-0097" in page
     assert "ada.example@invalid.example" in page
     assert "Word count" in page

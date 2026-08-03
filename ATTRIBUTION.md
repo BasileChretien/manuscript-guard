@@ -21,9 +21,15 @@ in them, and citing the guideline you followed remains your responsibility as an
 Sites read 2026-08-03. **These are notes, not legal advice.** Confirm the terms yourself
 before relying on them, particularly before redistributing anything.
 
-Five of these said "unconfirmed" in an earlier pass, meaning nobody had opened the page. The
-pages have now been read and the relevant sentence quoted, which is a different and much
+Five of these said "unconfirmed" in an earlier pass, meaning nobody had opened the page. All
+five have now been read and the relevant sentence quoted, which is a different and much
 smaller claim than "we have decided this is fine".
+
+The one that mattered most turned out to be the one that reads least like a problem. TRIPOD
+is a **free article under ordinary copyright**, not an openly licensed one — and an earlier
+note recording it as merely "unconfirmed" would have let a reader assume it was like the
+others. Free to read is not free to redistribute, and the distinction is invisible unless
+someone looks for it.
 
 | Guideline | Licence as found | Where |
 |---|---|---|
@@ -35,7 +41,7 @@ smaller claim than "we have decided this is fine".
 | CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
 | SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
 | READUS-PV | **CC BY-NC** — non-commercial. Cannot be redistributed from an MIT repository | Europe PMC |
-| TRIPOD 2015 | **Still unconfirmed.** The site states only *"Copyright 2020 - Julius Centrum"*, with no terms page and no licence link. The 2015 statement was published simultaneously in several journals, but bmj.com and acpjournals.org both return HTTP 403 to an automated request, so their terms could not be read. Not guessed | tripod-statement.org |
+| TRIPOD 2015 | **All rights reserved — free to read, not openly licensed.** The site states only *"Copyright 2020 - Julius Centrum"*. The statement itself carries *"© BMJ Publishing Group Ltd 2014"*, is marked a free article, has no Creative Commons licence and is not deposited in PMC; the explanation and elaboration is *"freely available only on www.annals.org"* with copyright held by *Annals of Internal Medicine*. Free to read is not free to redistribute | tripod-statement.org, PMID 25569120 |
 
 CONSORT and SPIRIT are worth quoting rather than summarising, because the permission is
 explicit and the condition is the operative part:

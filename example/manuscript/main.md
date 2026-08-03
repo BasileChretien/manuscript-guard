@@ -1,0 +1,86 @@
+---
+title: "Reporting of hepatic injury with example-drug: a disproportionality analysis of a synthetic spontaneous reporting database"
+---
+
+# Abstract
+
+**Background.** Drug-induced hepatic injury is a common reason for regulatory action.
+**Methods.** Disproportionality analysis of a synthetic spontaneous reporting database
+covering {{results.cohort.period_start}} to {{results.cohort.period_end}}, comparing
+reports of hepatic injury for example-drug against all other drugs.
+**Results.** Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described
+hepatic injury with example-drug. The reporting odds ratio was {{results.ror.point}}
+(95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}).
+**Conclusions.** Reporting of hepatic injury is disproportionate for example-drug in these
+synthetic data. Disproportionality is not incidence and cannot establish risk.
+
+# Introduction
+
+Drug-induced hepatic injury remains among the commonest reasons for regulatory action on a
+marketed medicine. In a national cohort, the crude incidence was
+{{lit.background.reported_incidence}} per 100 000 person-years
+[@fictionalHepaticCohort2021], and a disproportionality signal has been reported for the
+drug class as a whole (ROR {{lit.background.class_ror}}) [@fictionalClassSignal2019]. The
+national agency estimated that {{lit.agency.withdrawn_estimate}} patients had been exposed
+by the end of its last published review.
+
+Whether the signal extends to example-drug specifically has not been examined.
+
+# Methods
+
+We analysed a synthetic spontaneous reporting database covering
+{{results.cohort.period_start}} to {{results.cohort.period_end}}, a period of
+{{results.cohort.n_years}} years. Reports were included without restriction on age or sex.
+
+The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
+injury with all other reported events, for example-drug against all other drugs in the
+database. Confidence intervals were derived from the standard error of the log odds ratio
+and are reported as 95% confidence intervals throughout. A two-sided p < 0.05 was taken as
+the threshold for statistical significance. Analyses followed STROBE and RECORD-PE.
+
+# Results
+
+The database contained {{results.cohort.n_reports}} reports, of which
+{{results.cohort.n_drug_reports}} named example-drug. Hepatic injury was reported in
+{{results.case.n_cases}} of these; {{results.case.n_serious}} were flagged as serious
+({{results.case.pct_serious}}%). Baseline characteristics are shown in Table 1.
+
+{{table.baseline}}
+
+Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
+ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
+{{results.ror.ci_high}}). The estimate is shown in Figure 1.
+
+{{figure.forest}}
+
+# Discussion
+
+The reporting odds ratio observed here exceeds the class-level estimate of
+{{lit.background.class_ror}} reported previously [@fictionalClassSignal2019], although the
+two are not directly comparable: that analysis pooled the class and drew on a different
+reporting period.
+
+Disproportionality is not incidence, and nothing in these data supports a rate. The cohort
+incidence of {{lit.background.reported_incidence}} per 100 000 person-years
+[@fictionalHepaticCohort2021] is the only population-level figure available, and it
+predates the marketing of example-drug.
+
+Several limitations follow from the design. Spontaneous reports are subject to notoriety
+bias, and the denominator is unknown. Grade 3 and higher events cannot be distinguished
+from milder ones in these data. The exposure figure of
+{{lit.agency.withdrawn_estimate}} patients rests on a printed agency report that is no
+longer publicly available, and is recorded as an author attestation rather than a stored
+source.
+
+# Data availability
+
+The synthetic dataset, the code that generates it and the analysis that reads it are all in
+this repository. No real patient data were used, and no ethical approval was required.
+
+# Funding
+
+This work received no funding.
+
+# Competing interests
+
+None declared.

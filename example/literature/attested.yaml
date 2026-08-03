@@ -1,0 +1,18 @@
+schema: manuscript-guard/attested/1
+
+# The one value in this example that rests on a person having read something the toolkit
+# could not store. Keeping these in their own file is the point: a reader can see the whole
+# set at a glance instead of hunting for a depth field among hundreds of ledger rows.
+
+entries:
+  - key: agency.withdrawn_estimate
+    value: 41200
+    display: "41 200"
+    unit: "exposed patients"
+    source: "Fictional National Agency, annual pharmacovigilance report 2019, print edition"
+    locator: "Table 14, p. 88"
+    statement: >-
+      Read from the printed report held in the hospital library. The agency withdrew the
+      PDF in 2021 and no archived copy could be located, so no source file could be stored.
+    attested_by: "Ada Example"
+    attested_on: 2026-08-03

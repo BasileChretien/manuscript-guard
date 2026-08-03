@@ -1,0 +1,54 @@
+schema: manuscript-guard/journal/1
+
+# INVENTED FOR THE WORKED EXAMPLE. There is no such journal, and these are not any real
+# journal's guidelines.
+#
+# No real journal profile ships with manuscript-guard. Author guidelines change without
+# announcement, and a profile compiled into the tool would be wrong eventually and
+# silently. The journal-profile skill reads the journal's own instructions page and writes
+# the profile, stamped with the date it was read; the gate warns when that date is over a
+# year old.
+
+name: "Journal of Demonstrative Pharmacoepidemiology"
+publisher: "Nobody"
+source_url: "https://example.invalid/demo-journal/instructions"
+retrieved_on: 2026-08-03
+retrieved_by: "invented for the manuscript-guard example"
+article_type: "Original research"
+english_variant: en-GB
+
+limits:
+  abstract_words: 300
+  main_text_words: 3500
+  references: 50
+  figures: 4
+  tables: 4
+
+structure:
+  required_sections:
+    - Introduction
+    - Methods
+    - Results
+    - Discussion
+
+required_statements:
+  - id: data-availability
+    pattern: '(?im)^#+\s*data availability'
+    why: "The journal requires a data availability statement in every research article."
+  - id: funding
+    pattern: '(?im)^#+\s*funding'
+    why: "Funding must be declared, including when there was none."
+  - id: competing-interests
+    pattern: '(?im)^#+\s*(competing|conflicts? of) interest'
+    why: "All authors must declare competing interests."
+
+references:
+  style_name: "Vancouver"
+  numbered: true
+
+reporting_guidelines:
+  - DEMO-OBS
+
+notes:
+  - "Invented. Do not submit anything anywhere on the strength of this file."
+  - "A real profile records the things a build cannot check: cover letter contents, suggested reviewers, submission portal quirks."

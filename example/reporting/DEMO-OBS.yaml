@@ -1,0 +1,39 @@
+schema: manuscript-guard/reporting-completion/1
+guideline: DEMO-OBS
+
+# Written by `manuscript-guard checklist`, then answered. Journals ask for this file at
+# submission; producing it while writing rather than the night before is the only way a
+# reporting checklist does what it is for, which is to surface what is missing while there
+# is still time to add it.
+
+items:
+  - id: '1'
+    where: Abstract
+    note: Study design
+  - id: '2'
+    where: Introduction
+    note: Rationale
+  - id: '3'
+    where: Methods
+    note: Data source
+  - id: '4'
+    where: Methods
+    note: Measure of association
+  - id: '5'
+    where: Methods
+    note: Statistical methods
+  - id: '6'
+    where: Results
+    note: Participants
+  - id: '7'
+    where: Results
+    note: Main results
+  - id: '8'
+    where: Discussion
+    note: Limitations
+  - id: '9'
+    where: Discussion
+    note: Interpretation
+  - id: '10'
+    where: Funding
+    note: Funding

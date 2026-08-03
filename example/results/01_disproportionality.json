@@ -1,0 +1,152 @@
+{
+  "schema": "manuscript-guard/results/1",
+  "provenance": {
+    "generated_by": "analysis/01_disproportionality.py",
+    "generated_at": "2026-08-03T06:29:01+00:00",
+    "tool": {
+      "name": "manuscript-guard",
+      "version": "0.1.0"
+    },
+    "vcs": {},
+    "inputs": [
+      {
+        "path": "data/reports.csv",
+        "sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
+        "bytes": 172822
+      }
+    ],
+    "session": {
+      "language": "Python",
+      "version": "3.12.3",
+      "platform": "Windows-11-10.0.26200-SP0"
+    }
+  },
+  "values": {
+    "cohort.n_reports": {
+      "value": 4000,
+      "display": "4000"
+    },
+    "cohort.n_drug_reports": {
+      "value": 426,
+      "display": "426"
+    },
+    "cohort.period_start": {
+      "value": 2015,
+      "display": "2015"
+    },
+    "cohort.period_end": {
+      "value": 2024,
+      "display": "2024"
+    },
+    "cohort.n_years": {
+      "value": 10,
+      "display": "10"
+    },
+    "case.n_cases": {
+      "value": 77,
+      "display": "77"
+    },
+    "case.n_serious": {
+      "value": 28,
+      "display": "28"
+    },
+    "case.pct_serious": {
+      "value": 36.36363636363637,
+      "display": "36.4",
+      "digits": 1,
+      "unit": "%"
+    },
+    "ror.point": {
+      "value": 3.843972469205093,
+      "display": "3.84",
+      "digits": 2
+    },
+    "ror.ci_low": {
+      "value": 2.887625907453547,
+      "display": "2.89",
+      "digits": 2
+    },
+    "ror.ci_high": {
+      "value": 5.117049374666756,
+      "display": "5.12",
+      "digits": 2
+    },
+    "table2x2.a": {
+      "value": 77,
+      "display": "77",
+      "quoted": false
+    },
+    "table2x2.b": {
+      "value": 349,
+      "display": "349",
+      "quoted": false
+    },
+    "table2x2.c": {
+      "value": 194,
+      "display": "194",
+      "quoted": false
+    },
+    "table2x2.d": {
+      "value": 3380,
+      "display": "3380",
+      "quoted": false
+    }
+  },
+  "tables": {
+    "baseline": {
+      "columns": [
+        "Characteristic",
+        "example-drug",
+        "All other drugs"
+      ],
+      "rows": [
+        [
+          "Reports",
+          "426",
+          "3574"
+        ],
+        [
+          "Hepatic injury",
+          "77",
+          "194"
+        ],
+        [
+          "Age 18-44",
+          "92 (21.6)",
+          "884 (24.7)"
+        ],
+        [
+          "Age 45-64",
+          "116 (27.2)",
+          "866 (24.2)"
+        ],
+        [
+          "Age 65-74",
+          "103 (24.2)",
+          "938 (26.2)"
+        ],
+        [
+          "Age 75+",
+          "115 (27.0)",
+          "886 (24.8)"
+        ],
+        [
+          "Female",
+          "226 (53.1)",
+          "1737 (48.6)"
+        ],
+        [
+          "Serious",
+          "160 (37.6)",
+          "1356 (37.9)"
+        ]
+      ],
+      "caption": "Reports by drug group. Values are n (%) unless stated.",
+      "align": [
+        "left",
+        "right",
+        "right"
+      ]
+    }
+  }
+}

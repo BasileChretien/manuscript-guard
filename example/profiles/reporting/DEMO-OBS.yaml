@@ -1,0 +1,76 @@
+schema: manuscript-guard/reporting/1
+
+# INVENTED FOR THE WORKED EXAMPLE. This is not a real reporting guideline and must not be
+# used for a real submission.
+#
+# No official checklist ships with manuscript-guard, on purpose. Writing STROBE's or
+# CONSORT's item text from memory would put approximately-correct wording inside a toolkit
+# whose entire argument is that approximately-correct is not good enough — and a checklist
+# with subtly wrong items produces confident coverage of the wrong things.
+#
+# Real checklists are retrieved: the reporting-checklist skill downloads the guideline's
+# own document, stores it under profiles/reporting/sources/, and transcribes the items from
+# it, so the transcription can be checked against the original the same way a literature
+# quote can.
+#
+# This file exists only so the example exercises the gate end to end.
+
+name: DEMO-OBS
+long_name: "Demonstration checklist for observational studies (invented)"
+version: "0.1 (example only)"
+source_url: "https://example.invalid/demo-obs"
+retrieved_on: 2026-08-03
+retrieved_by: "invented for the manuscript-guard example"
+applies_to: "Nothing. This checklist is fictional."
+licence: "MIT, as part of manuscript-guard"
+
+items:
+  - id: "1"
+    section: Title and abstract
+    topic: Study design
+    text: "State the study design in the title or the abstract."
+
+  - id: "2"
+    section: Introduction
+    topic: Rationale
+    text: "Explain the scientific background and rationale for the investigation."
+
+  - id: "3"
+    section: Methods
+    topic: Data source
+    text: "Describe the data source, including the period covered and how records were selected."
+
+  - id: "4"
+    section: Methods
+    topic: Measure of association
+    text: "State the measure of association used and how its confidence interval was derived."
+
+  - id: "5"
+    section: Methods
+    topic: Statistical methods
+    text: "Describe all statistical methods, including the significance threshold chosen in advance."
+
+  - id: "6"
+    section: Results
+    topic: Participants
+    text: "Report the number of records at each stage, and the number analysed."
+
+  - id: "7"
+    section: Results
+    topic: Main results
+    text: "Give the estimate and its precision. Report the denominators used."
+
+  - id: "8"
+    section: Discussion
+    topic: Limitations
+    text: "Discuss limitations, including sources of bias arising from the data source."
+
+  - id: "9"
+    section: Discussion
+    topic: Interpretation
+    text: "Give a cautious interpretation, considering what the design cannot establish."
+
+  - id: "10"
+    section: Other information
+    topic: Funding
+    text: "State the source of funding and the role of the funder."

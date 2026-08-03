@@ -1,0 +1,13 @@
+FICTIONAL SOURCE — invented for the manuscript-guard worked example.
+This describes no real study and must not be cited.
+
+Title:   A disproportionality signal for a fictional drug class
+Authors: Fictional C, Fictional D
+Journal: Imaginary Drug Safety Reports, 2019
+Citekey: fictionalClassSignal2019
+Depth:   abstract only (the full text could not be obtained)
+
+Abstract, Results
+-----------------
+A signal was detected for the class as a whole (ROR 2.6, 95% CI 2.1-3.2). The signal was
+driven by reports from a small number of countries.

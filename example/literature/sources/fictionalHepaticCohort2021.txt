@@ -1,0 +1,13 @@
+FICTIONAL SOURCE — invented for the manuscript-guard worked example.
+This describes no real study and must not be cited.
+
+Title:   Hepatic injury in a fictional national cohort, 2010-2019
+Authors: Fictional A, Fictional B
+Journal: Journal of Imaginary Pharmacoepidemiology, 2021
+Citekey: fictionalHepaticCohort2021
+Depth:   full text (this file stands in for the PDF)
+
+Results, paragraph 2
+--------------------
+The crude incidence of drug-induced hepatic injury was 14 per 100 000 person-years.
+Incidence rose with age and did not differ meaningfully by sex.

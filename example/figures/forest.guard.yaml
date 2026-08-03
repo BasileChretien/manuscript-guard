@@ -1,0 +1,19 @@
+schema: manuscript-guard/figure-guard/1
+
+# Numbers drawn in forest.svg that are not results: the axis scale.
+#
+# Declaring them here rather than loosening the gate keeps the exemption small, attached to
+# one figure, and visible to anyone reviewing the repository. If a tick label ever changes,
+# this file has to change with it.
+
+allow:
+  - value: "0.5"
+    why: x-axis tick
+  - value: "1"
+    why: x-axis tick, and the line of no effect
+  - value: "2"
+    why: x-axis tick
+  - value: "5"
+    why: x-axis tick
+  - value: "10"
+    why: x-axis tick

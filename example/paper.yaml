@@ -1,0 +1,28 @@
+schema: manuscript-guard/paper/1
+title: "Reporting of hepatic injury with example-drug: a disproportionality analysis of a synthetic spontaneous reporting database"
+short_title: "Hepatic injury with example-drug"
+english_variant: en-GB
+
+keywords:
+  - pharmacovigilance
+  - disproportionality
+  - hepatotoxicity
+
+# Both of these are invented and live in this project's own profiles/ directory. No real
+# journal profile or reporting checklist ships with manuscript-guard: guidelines change
+# without announcement, and item text written from memory would be exactly the kind of
+# approximately-correct content this toolkit exists to prevent. Real ones are retrieved by
+# the journal-profile and reporting-checklist skills, stamped with their source and the
+# date they were read.
+target_journal: demo-journal
+
+reporting_guideline:
+  - DEMO-OBS
+
+conventions:
+  - pattern: '(?i)\bhalf[- ]normal\b'
+    why: Phrase contains no digits; present only to show the extension point.
+    added_on: 2026-08-03
+
+terms:
+  - example-drug-2

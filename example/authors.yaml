@@ -1,0 +1,37 @@
+schema: manuscript-guard/authors/1
+
+affiliations:
+  - id: ngy
+    text: "Department of International Medical Education, Nagoya University Graduate School of Medicine, Nagoya, Japan"
+    country: Japan
+  - id: caen
+    text: "Regional Pharmacovigilance Centre, Department of Pharmacology, CHU de Caen Normandie, Caen, France"
+    country: France
+
+authors:
+  - given: Ada
+    family: Example
+    degrees: [PharmD, MSc]
+    orcid: 0000-0002-1825-0097
+    email: ada.example@invalid.example
+    affiliations: [ngy]
+    corresponding: true
+    equal_contribution: false
+    credit:
+      - Conceptualization
+      - Formal analysis
+      - Writing – original draft
+    competing_interests: "None declared."
+
+  - given: Blaise
+    family: Sample
+    degrees: [MD, PhD]
+    orcid: 0000-0001-5109-3700
+    affiliations: [caen]
+    corresponding: false
+    equal_contribution: false
+    credit:
+      - Methodology
+      - Supervision
+      - Writing – review & editing
+    competing_interests: "None declared."

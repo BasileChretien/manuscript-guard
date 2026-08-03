@@ -27,7 +27,7 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
-from manuscript_guard.contracts.values import DisplayError, derive_display
+from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
 
 SCHEMA = "manuscript-guard/results/1"
 
@@ -38,6 +38,10 @@ _NUMERIC_TEXT = re.compile(r"^\s*[-+−]?[\d,  ]*\d(?:[.,]\d+)?\s*%?\s*$")
 
 # Numbers inside a composite cell such as "3.84 (2.10 to 7.02)". Each must be traceable.
 _NUMBER_IN_TEXT = re.compile(r"\d[\d,  ]*(?:\.\d+)?")
+
+# The heading chain claimed for table text. A table is not a Methods section and not a figure
+# legend, so `methods_only` rules must not apply to what is written in one.
+TABLE_SECTION = ("Table",)
 
 
 @dataclass(frozen=True)
@@ -189,6 +193,7 @@ class Emitter:
         quoted: bool = True,
         note: str | None = None,
         same_as: str | None = None,
+        label: bool = False,
     ) -> None:
         """Record one value. Raises immediately on a duplicate key or unformattable float.
 
@@ -204,7 +209,11 @@ class Emitter:
         # self-describing: a figure script in any language reads one field and gets the
         # same string the prose will show. Failing here also puts the error in front of the
         # person who can fix it, while they are running the analysis.
+        if isinstance(value, str):
+            check_string_value(key, value, label=label)
         spec: dict = {"value": value, "display": derive_display(key, value, display, digits)}
+        if label:
+            spec["label"] = True
         if digits is not None:
             spec["digits"] = digits
         if unit is not None:
@@ -359,19 +368,37 @@ class Emitter:
         classifier = self._classifier()
 
         for key, spec in self._tables.items():
-            for row, cells in enumerate(spec["rows"]):
-                for column, cell in enumerate(cells):
-                    for atom in find_atoms(cell, mask(cell)):
-                        if atom.text in known or atom.text.replace(",", "") in known:
-                            continue
-                        if classifier.classify(atom).kind != UNCLASSIFIED:
-                            continue
-                        raise DisplayError(
-                            f"table {key!r} row {row} column {column}: {atom.text!r} in "
-                            f"{cell!r} is not a value this analysis emitted. Build the cell "
-                            f"with `em.cell(...)` so the emitter formats it, or emit "
-                            f"{atom.text} as a value of its own"
-                        )
+            # Captions and column headers are part of the table and are rendered with it, and
+            # neither was looked at: a caption reading "the reporting odds ratio of 12.34
+            # (95% CI 8.00 to 19.00)" and a header reading "Hepatic injury (n = 9999)" both
+            # went into the document unchecked, and survived a re-signed-fragment edit
+            # because `verify` did not compare them either.
+            places = [(f"caption of table {key!r}", spec.get("caption") or "")]
+            places += [
+                (f"table {key!r} column {column} header", text)
+                for column, text in enumerate(spec["columns"])
+            ]
+            places += [
+                (f"table {key!r} row {row} column {column}", cell)
+                for row, cells in enumerate(spec["rows"])
+                for column, cell in enumerate(cells)
+            ]
+
+            for where, cell in places:
+                for atom in find_atoms(cell, mask(cell)):
+                    if atom.text in known or atom.text.replace(",", "") in known:
+                        continue
+                    # A results table is not a figure legend. Classifying with no section at
+                    # all let every `methods_only` rule apply, so `p < 0.001` typed straight
+                    # into a cell was accepted as a pre-specified threshold — in the one
+                    # place a *reported* p-value is most likely to be written.
+                    if classifier.classify(atom, TABLE_SECTION).kind != UNCLASSIFIED:
+                        continue
+                    raise DisplayError(
+                        f"{where}: {atom.text!r} in {cell!r} is not a value this analysis "
+                        f"emitted. Build it with `em.cell(...)` so the emitter formats it, "
+                        f"or emit {atom.text} as a value of its own"
+                    )
 
     def _classifier(self):
         """The project's classifier when there is a project, the shipped one otherwise."""

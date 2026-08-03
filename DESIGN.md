@@ -858,9 +858,77 @@ nobody had touched.
 
 Every one of these has a regression test naming the escape it closes.
 
+## Round two, 2026-08-03
+
+A second adversarial pass, run against the machinery the first round produced. Three
+reviewers again; every claim reproduced before anything changed. The pattern this time was
+narrower and more uncomfortable than the first: **most of what broke was a consequence of a
+fix, not of the original code.**
+
+- Fenced code stopped being masked, because it renders. `#` is a comment character. So an
+  ordinary `# Methods` comment in a Python listing became a level-1 heading, popped the real
+  `## Methods`, and made everything after it — including the Results — read as Methods. A
+  fabricated `p < 0.001` in the Results was then accepted as the pre-specified alpha. An
+  HTML comment did the same thing while being invisible in the rendered document. Heading
+  detection now runs over text with fences and comments blanked.
+- `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
+  a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
+  every threshold rule beneath it. Anchored at both ends now.
+- Table cells were classified with no section at all, which meant every `methods_only` rule
+  applied — in the one place a *reported* p-value is most likely to be typed.
+- `display=` was checked against its value, so the same fabrication moved one line across
+  and went out as a **string value**: `em.value("ror.headline", "12.34 (95% CI 8.00 to
+  19.00)")` published an estimate and an interval through an ordinary binding, with every
+  gate green. String values now have to be labels or be traceable.
+- The display check itself computed its tolerance from the mantissa and ignored the
+  exponent, so for any small magnitude it was a no-op: a value of 1.2e-6 accepted a display
+  of "1e-2".
+
+Two more were original, and both are the same shape as the citation bug the first round
+missed:
+
+- **Numbers in a citation suffix rendered but were masked.** The mask covered the whole
+  bracket, so `[@smith2019, which reported an ROR of 9.99 (95% CI 7.10 to 14.02)]` printed
+  every number and no gate read any of them. This is ordinary pandoc usage, and it is the
+  worst case in the whole design — a fabricated value carrying a citation. The mask now
+  covers the citation *key*; a `citation-locator` rule handles the `p. 33` that legitimately
+  lives in a bracket.
+- **Table captions and column headers were checked by nothing** — not by the emitter, not by
+  `verify`. Both render with the table.
+
+And `verify` had three of its own, of which one was serious enough to invalidate the
+command: see its module docstring for what it now does and does not prove, and the Known
+gaps below for what remains.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
+
+- **`verify` cannot hide from the code it runs.** The two easy tells are gone — no
+  environment variable, no `manuscript-guard-verify-` in the scratch path — but a script can
+  still notice it is running under the system temp directory. An analysis written to deceive
+  its own toolkit defeats this; an author who edited a results file does not.
+- **A figure render manifest is a drift detector, not a proof.** `<name>.render.json` sits
+  beside the figures it vouches for and is writable by whoever holds the checkout: retouch
+  the raster *and* rewrite its digest and G3 skips it again, exactly as a `.sha256` can be
+  recomputed. It catches the ordinary case — a raster re-rendered on its own and left beside
+  a fresh vector — which is how the wrong figure actually reaches a journal. There is no
+  `verify` equivalent for figures, because re-rendering is not reproducible across
+  plotting-library versions.
+- **A figure review covers the vector, not the raster that ships.** `content_sha256` is
+  over the file G10 could read; the .docx embeds the raster.
+- **The composite-cell rule is set membership.** A cell of "ROR 5.12 (95% CI 3.84 to 2.89)"
+  passes if 5.12, 3.84 and 2.89 are all emitted values, whatever they mean — the point
+  estimate and both bounds can be transposed. `em.cell()` composes cells correctly; nothing
+  forces its use.
+- **Setext headings are not recognised.** A manuscript written with `Methods\n-------` has
+  no sections at all as far as G2, G4 and the reporting gate are concerned. Pandoc renders
+  them.
+- **G2 is loud on Methods prose containing code.** Unmasking fenced blocks means a
+  legitimate `## Statistical analysis` section quoting `1.96`, a seed, or a package version
+  produces failures, and there is no `software-version` structural rule. The documented exit
+  is `conventions:`, which is the mechanism most likely to make G2 vacuous — so this is a
+  real cost of a real fix, not a clean win.
 
 Added by the adversarial review, verified and **not** fixed:
 

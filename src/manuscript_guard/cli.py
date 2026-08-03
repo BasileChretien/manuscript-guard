@@ -281,6 +281,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     print(f"manuscript-guard verify — {project.root}")
     print(render(result, project.root))
+    if result.verified_nothing:
+        # 2 is "could not run", which is exactly what this is. Exiting 0 here would make a
+        # run that re-ran nothing indistinguishable, to CI, from one that reproduced
+        # everything.
+        print("\nNothing was re-run, so nothing was verified.", file=sys.stderr)
+        return 2
     return 0 if result.ok else 1
 
 

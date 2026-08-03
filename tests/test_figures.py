@@ -218,6 +218,42 @@ def test_a_raster_is_only_skipped_when_the_pairing_is_recorded(project: Path) ->
     assert "figure-render-unproven" in codes_found
 
 
+def test_a_stale_manifest_after_the_script_changed_is_refused(project: Path) -> None:
+    """One of the three things the manifest genuinely catches. See render.same_render."""
+    from manuscript_guard.render import same_render
+
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8")
+    figures = project / "figures"
+    assert not same_render(figures / "forest.png", figures / "forest.svg")
+
+
+def test_rewriting_the_manifest_defeats_it_and_that_is_documented(project: Path) -> None:
+    """Recorded as a test because the limit is easy to forget and easy to overclaim.
+
+    The manifest, the figures and the script are all writable by whoever holds the checkout,
+    so a determined author edits both the raster and the digest that vouches for it. This is
+    a drift detector of the same strength as a `.sha256` sidecar, defeated the same way.
+    `verify` answers that for results by re-running the analysis; nothing does for figures,
+    because re-rendering is not reproducible across plotting-library versions.
+    """
+    import hashlib
+    import json
+
+    from manuscript_guard.render import same_render
+
+    figures = project / "figures"
+    png, svg = figures / "forest.png", figures / "forest.svg"
+    png.write_bytes(png.read_bytes() + b"retouched")
+    assert not same_render(png, svg), "the edit alone is caught"
+
+    manifest = figures / "forest.render.json"
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document["outputs"]["forest.png"] = hashlib.sha256(png.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    assert same_render(png, svg), "editing the manifest too is not caught, by design"
+
+
 def test_a_recorded_pairing_is_accepted(project: Path) -> None:
     from manuscript_guard.contracts import load_namespace, load_project
     from manuscript_guard.gates import check_figures

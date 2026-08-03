@@ -119,14 +119,58 @@ def test_an_analysis_that_cannot_run_is_reported_not_passed(project: Path) -> No
 
 
 def test_a_language_with_no_runner_is_skipped_out_loud(project: Path, monkeypatch) -> None:
+    """Skipping must not read as passing, in the exit code as well as in the report.
+
+    This test used to assert `result.ok` on the grounds that nothing was checked so nothing
+    failed, and that the report says so in words. The words were true and the exit code was
+    not: `all([])` is True, so an R project on a machine without Rscript exited 0, and CI
+    reads the exit code. That is the same "not checked looks like checked" failure this
+    command was built to close one level down.
+    """
     from manuscript_guard import verify as module
 
     monkeypatch.setattr(module, "RUNNERS", {})
     loaded, _ = load_project(project)
     result = module.verify(loaded)
     assert result.skipped
-    assert result.ok, "nothing was checked, so nothing failed — and the report says so"
+    assert result.verified_nothing
+    assert not result.ok
     assert "not verified" in module.render(result, project)
+
+
+def test_only_naming_no_fragment_is_an_error(project: Path) -> None:
+    """A typo, or a fragment renamed in a CI script, made verify permanently green."""
+    loaded, _ = load_project(project)
+    with pytest.raises(VerifyError, match="names no fragment"):
+        verify(loaded, only=["nosuchfragment"])
+
+
+def test_only_records_what_it_excluded(project: Path) -> None:
+    """`--only` skipped the others with a bare `continue`, before the disclaimer.
+
+    So `verify --only x` reported `fragments_skipped=0` while ignoring a fabricated
+    fragment sitting beside it, and said "17/17 values reproduced" — which was true of x and
+    silent about everything else.
+    """
+    import json
+
+    other = project / "results" / "national.json"
+    other.write_text(
+        json.dumps(
+            {
+                "schema": "manuscript-guard/results/1",
+                "provenance": {"generated_by": "analysis/01_disproportionality.py"},
+                "values": {"national.ror": {"value": 3.84, "display": "3.84"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    loaded, _ = load_project(project)
+    result = verify(loaded, only=["01_disproportionality"])
+    assert any(name == "national.json" for name, _why in result.skipped)
+    assert "not verified" in __import__(
+        "manuscript_guard.verify", fromlist=["render"]
+    ).render(result, project)
 
 
 def test_a_project_with_no_results_says_so(tmp_path: Path) -> None:

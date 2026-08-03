@@ -54,8 +54,19 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),
     ("link-target", re.compile(r"\]\([^)\n]*\)")),
     ("footnote", re.compile(r"\[\^[^\]\n]+\]")),
-    # Citation keys, bracketed and narrative. Better BibTeX keys routinely end in a year.
-    ("citation", re.compile(r"\[-?@[^\]\n]+\]")),
+    # Citation KEYS, not whole citation brackets. Better BibTeX keys routinely end in a year,
+    # so the key itself must go; everything else in the bracket must stay.
+    #
+    # This used to mask `\[-?@[^\]\n]+\]` — the entire bracket — and pandoc renders a
+    # citation's prefix and suffix. So
+    #
+    #     [@smith2019, which reported an ROR of 9.99 (95% CI 7.10 to 14.02)]
+    #
+    # printed all four numbers in the .docx and no gate read any of them: a fabricated value
+    # carrying a citation, which DESIGN calls worse than an unsourced one because it looks
+    # checked. Ordinary pandoc usage, too — `[@key, p. 33]` is how anyone writes a locator —
+    # so an honest author got no warning either way. The prefix form `[see 42; @key]` was
+    # already read, because the old pattern was anchored at `[@`; the asymmetry was accidental.
     ("citation-bare", re.compile(r"(?<![\w`])-?@[A-Za-z][\w:.#$%&+?<>~/-]*")),
     ("pandoc-attr", re.compile(r"\{[.#][^}\n]*\}")),
 )

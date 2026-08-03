@@ -63,6 +63,15 @@ structural:
     # is now required, which is what the `why` above always claimed.
     pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?|months?|weeks?|days?)\b'
 
+  - id: citation-locator
+    why: >-
+      A page, chapter or figure locator inside a citation bracket. Citation *keys* are
+      masked; the rest of the bracket is read, because pandoc renders it - which is how a
+      fabricated interval once travelled into the document inside a citation suffix. A
+      locator is the one thing legitimately written there, so it is named rather than
+      masked with everything else.
+    pattern: '(?i)\b(?:pp?|chap|ch|sec|s|fig|figs|vol|no|para|paras|art|tab)\.\s*\d+(?:\s*[-\u2013\u2014]\s*\d+)?'
+
   - id: table-alignment-row
     why: Markdown table separator rows.
     pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'

@@ -107,6 +107,78 @@ def test_a_comparator_display_is_refused_when_it_is_untrue(
         emitter(scratch).value("p", value, display=display)
 
 
+@pytest.mark.parametrize(
+    "value", ["12.34 (95% CI 8.00 to 19.00)", "9999", "ROR 5.12", "42 cases"]
+)
+def test_a_string_value_may_not_smuggle_a_number(scratch: Path, value: str) -> None:
+    """A string value is its own display, and nothing looked inside it.
+
+    So the hole closed on the `display=` route stayed open one line away: one call published
+    a fabricated estimate and a fabricated interval, quoted through an ordinary binding,
+    with every gate green. `_cell` already refused a numeric string in a table for exactly
+    this reason; `value()` did not.
+    """
+    with pytest.raises(DisplayError, match="no gate can trace"):
+        emitter(scratch).value("ror.headline", value)
+
+
+@pytest.mark.parametrize("value", ["2015-2024", "2019", "CYP2C19", "Cohort A", "no events"])
+def test_a_genuine_label_still_passes(scratch: Path, value: str) -> None:
+    """Periods, years and names carry digits and are not measurements.
+
+    Accepted without a flag, because making every study period declare itself would teach
+    authors to set the flag everywhere, which is the same as not having it.
+    """
+    em = emitter(scratch)
+    em.value("k", value)
+    assert em.document()["values"]["k"]["display"] == value
+
+
+def test_label_is_the_deliberate_escape(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("k", "12.34 (95% CI 8.00 to 19.00)", label=True)
+    assert em.document()["values"]["k"]["label"] is True
+
+
+# ---------------------------------------------------------------- table furniture
+
+
+def test_a_caption_is_checked_like_a_cell(scratch: Path) -> None:
+    """Captions and column headers render with the table and were checked by nothing."""
+    em = emitter(scratch)
+    em.table(
+        "t",
+        ["Group", "n"],
+        [["Exposed", 77]],
+        caption="Underlying the reporting odds ratio of 12.34 (95% CI 8.00 to 19.00).",
+    )
+    with pytest.raises(DisplayError, match="caption"):
+        em.document()
+
+
+def test_a_column_header_is_checked_like_a_cell(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.table("t", ["Group", "Hepatic injury (n = 9999)"], [["Exposed", 77]])
+    with pytest.raises(DisplayError, match="column 1 header"):
+        em.document()
+
+
+def test_a_caption_built_from_emitted_values_passes(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("ror.point", 3.8439, digits=2)
+    em.table("t", ["Group", "n"], [["Exposed", 77]], caption="Reporting odds ratio 3.84.")
+    assert em.document()["tables"]["t"]["caption"] == "Reporting odds ratio 3.84."
+
+
+def test_a_p_value_typed_into_a_cell_is_not_a_threshold(scratch: Path) -> None:
+    """Cells were classified with no section, so every methods_only rule applied —
+    in the one place a *reported* p-value is most likely to be written."""
+    em = emitter(scratch)
+    em.table("t", ["Outcome", "p"], [["Hepatic", "p < 0.001"]])
+    with pytest.raises(DisplayError, match="not a value this analysis emitted"):
+        em.document()
+
+
 # ---------------------------------------------------------------- same_as
 
 

@@ -272,6 +272,87 @@ def test_a_threshold_is_a_convention_in_methods_and_a_finding_elsewhere() -> Non
     assert found[("Discussion", "0.05")] == UNCLASSIFIED
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # The suffix renders. A fabricated interval travelled into the .docx inside one,
+        # carrying a citation — which DESIGN calls worse than an unsourced number.
+        ("Shown [@key2019, which reported an ROR of 9.99 in 41 200 reports] here.",
+         ["9.99", "41", "200"]),
+        ("Suppressed [-@key2019, 9204 events] here.", ["9204"]),
+        # The prefix was already read; the asymmetry was an accident of anchoring at `[@`.
+        ("See [see 9203 reports; @key2019] here.", ["9203"]),
+        # The key itself must still go: Better BibTeX keys routinely end in a year.
+        ("A plain claim [@smith2020hepatic].", []),
+        ("As @smith2020hepatic showed.", []),
+    ],
+)
+def test_a_citation_masks_its_key_not_its_whole_bracket(text: str, expected: list) -> None:
+    assert atoms_of(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text", ["As shown [@key2019, p. 33].", "Reported [@other2020, pp. 12-19]."]
+)
+def test_a_citation_locator_is_structural(text: str) -> None:
+    """Reading the bracket means meeting the one thing legitimately written in it."""
+    classifier = Classifier.load()
+    found = find_atoms(text, mask(text))
+    assert found
+    assert all(classifier.classify(a).kind == STRUCTURAL for a in found)
+
+
+FENCE = "`" * 3
+SPOOFS = {
+    "fenced code comment": (
+        f"## Methods\n\nAlpha set.\n\n{FENCE}python\n# Methods\nx = 1\n{FENCE}\n\n"
+        "## Results\n\nSignificant (p < 0.05).\n"
+    ),
+    "html comment": "## Results\n\n<!--\n## Methods\n-->\n\nSignificant (p < 0.05).\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(SPOOFS))
+def test_a_heading_cannot_be_forged_from_code_or_a_comment(name: str) -> None:
+    """`#` is a comment character, and headings are found by scanning for it.
+
+    Once fenced code stopped being masked — correctly, since it renders — an ordinary
+    Python comment became a level-1 heading, which *popped* the real `## Methods` so that
+    `## Results` nested underneath it. `is_methods` looks at the whole chain, so a threshold
+    in the Results was accepted as the alpha chosen in advance. No attacker needed. The HTML
+    comment version is worse: invisible in the rendered document.
+    """
+    from manuscript_guard.text.sections import section_chain
+
+    text = SPOOFS[name]
+    classifier = Classifier.load()
+    atom = next(a for a in find_atoms(text, mask(text)) if a.text == "0.05")
+    chain = section_chain(text, atom.start)
+    assert "Methods" not in chain
+    assert classifier.classify(atom, chain).kind == UNCLASSIFIED
+
+
+@pytest.mark.parametrize(
+    "heading", ["Protocol deviations", "Design of the sub-study", "Methods used by others"]
+)
+def test_a_heading_that_merely_starts_like_methods_is_not_methods(heading: str) -> None:
+    """The match ended in `\\b`, so it was a prefix match: an ordinary Results subsection
+    called "Protocol deviations" re-admitted every threshold rule underneath it."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods((heading,))
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["Methods", "Materials and Methods", "2. Methods", "Statistical analysis", "Study design"],
+)
+def test_a_real_methods_heading_still_is_one(heading: str) -> None:
+    from manuscript_guard.classify import is_methods
+
+    assert is_methods((heading,))
+
+
 def test_a_caller_with_no_sections_keeps_every_rule() -> None:
     """Figure text and the audit have no headings, and a `p < 0.05` in a legend is a
     legend convention. Passing no section must not silently tighten those callers."""

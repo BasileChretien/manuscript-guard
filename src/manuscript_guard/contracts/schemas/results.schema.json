@@ -74,6 +74,10 @@
           "description": "Whether this value is expected to appear in a deliverable. Set false to declare an intermediate deliberately, which exempts it from coverage checking. Coverage exists to catch values silently dropped from the manuscript, so opting out must be explicit."
         },
         "note": { "type": "string" },
+        "label": {
+          "type": "boolean",
+          "description": "This string value is a name or a period, not a measurement. A string value is its own display and nothing checked what was inside it, so `em.value(\"ror.headline\", \"12.34 (95% CI 8.00 to 19.00)\")` published a fabricated estimate and interval through an ordinary binding. Digit-bearing strings are still wanted - a genotype, a study period - so this is an opt-in rather than a ban."
+        },
         "same_as": {
           "type": "string",
           "description": "Another key this value is the same quantity as. G8 notices two keys holding the same number and goes quiet the moment they diverge, which is when it matters; nothing else in this file records that two keys were meant to agree. A declaration rather than an inference, because the question is about intent: ror.point, ror.ci_low and ror.ci_high share everything a heuristic could see and are supposed to differ."

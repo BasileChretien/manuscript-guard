@@ -166,9 +166,17 @@ class Classifier:
 
 # Where a method may be described. The analysis plan counts: it is the same statement made
 # before the fact, and G12 reads it as one.
+# Whole heading, not a prefix. `\b` at the end made this a prefix match, so an ordinary
+# Results subsection called "Protocol deviations" or "Design of the sub-study" counted as
+# Methods and re-admitted every threshold rule underneath it. Anchored at both ends now: a
+# heading either is one of these or it is not, and an unusual one means binding the value,
+# which is the direction to fail in.
 METHODS_SECTIONS = re.compile(
-    r"^\s*(?:materials\s+and\s+)?(?:methods|methodology|statistical\s+analysis|"
-    r"analysis\s+plan|study\s+design|design|protocol)\b",
+    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*)?"  # numbered headings: "2. Methods"
+    r"(?:materials\s+and\s+methods|methods\s+and\s+materials|methods|methodology|"
+    r"statistical\s+(?:analysis|analyses|methods)|analysis\s+plan|statistical\s+plan|"
+    r"study\s+design|design|protocol|sensitivity\s+analys[ei]s)"
+    r"\s*$",
     re.IGNORECASE,
 )
 

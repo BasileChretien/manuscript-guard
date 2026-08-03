@@ -73,6 +73,57 @@ def derive_display(key: str, value: object, display: str | None, digits: int | N
     raise DisplayError(f"{key}: values of type {type(value).__name__} need an explicit `display`")
 
 
+# A string value is its own display, and nothing checked what was in it. So the hole closed
+# on the `display=` route stayed wide open one line away:
+#
+#     em.value("ror.headline", "12.34 (95% CI 8.00 to 19.00)")
+#
+# published a fabricated estimate and a fabricated interval, quoted through an ordinary
+# binding, with every gate green. `_cell` already refused a numeric string in a table for
+# exactly this reason; `value()` did not.
+#
+# Strings carrying digits are still wanted — "2015-2024" is a study period, "CYP2C19" a
+# genotype — so the rule is an opt-in rather than a ban: say it is a label and it is one.
+_LABELLIKE = re.compile(
+    r"^\s*(?:"
+    r"(?:19|20)\d{2}\s*[-–—/]\s*(?:19|20)?\d{2}"  # a period: 2015-2024, 2015-24
+    r"|(?:19|20)\d{2}"  # a single year
+    r")\s*$"
+)
+
+
+def check_string_value(key: str, value: str, *, label: bool) -> None:
+    """Refuse a string value that carries an unexplained number.
+
+    `label=True` is the author saying "this is a name or a period, not a measurement".
+    Obvious period and year forms are accepted without it, because making every study period
+    carry a flag would teach authors to set the flag everywhere, which is the same as not
+    having it.
+    """
+    if label or not any(ch.isdigit() for ch in value):
+        return
+    if _LABELLIKE.match(value):
+        return
+
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+    loose = [
+        atom.text
+        for atom in find_atoms(value, mask(value))
+        if classifier.classify(atom, ("Value",)).kind == UNCLASSIFIED
+    ]
+    if loose:
+        raise DisplayError(
+            f"{key}: the string value {value!r} carries {', '.join(repr(t) for t in loose)}, "
+            f"which no gate can trace. Emit each number as its own value so it can be quoted "
+            f"and checked, or pass `label=True` if this really is a name rather than a "
+            f"measurement"
+        )
+
+
 # Digits, one optional decimal part, optional exponent — with thousands separators and a
 # leading sign allowed, and a unit or a percent sign allowed to trail. Anything else in a
 # display string means it is not a rendering of this number.
@@ -142,10 +193,17 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
             )
         return
 
-    # The display is a rounding, so it need only agree to its own precision. Half a unit in
-    # the last place shown, with a little slack for binary representation.
+    # The display is a rounding, so it need only agree to its own precision: half a unit in
+    # the last place *shown*, with a little slack for binary representation.
+    #
+    # "In the last place shown" has to account for the exponent. Computing it from the
+    # mantissa alone gave a fixed ~0.005 absolute tolerance however small the number was, so
+    # for anything with a negative exponent the check stopped meaning anything: a value of
+    # 1.2e-6 accepted a display of "9.99e-6", of "1e-2", and even of "-9e-6". Large values
+    # were fine only because the relative term dominates there.
+    exponent = int(match.group("exp") or 0)
     decimals = len(text.partition(".")[2].split("e")[0])
-    tolerance = 0.5 * (10**-decimals) + abs(float(value)) * 1e-9
+    tolerance = 0.5 * (10 ** (exponent - decimals)) + abs(float(value)) * 1e-9
     if abs(shown - float(value)) > tolerance:
         raise DisplayError(
             f"{key}: display {display!r} reads as {shown!r}, but the value is {value!r}. "

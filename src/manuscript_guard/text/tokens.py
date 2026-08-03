@@ -37,7 +37,10 @@ _ATOM = re.compile(r"[^\s\x00]+")
 # Backticks are delimiters like any other now that inline code is read rather than masked:
 # `3.84` is the value 3.84 wrapped in punctuation, and must compare equal to it.
 _LEAD = "([{<\"'“‘«¡¿*_~|>#+`"
-_TRAIL = ")]}>\"'”’»,;:!?*_~|.…`"
+# `[` trails now that citation *keys* are masked rather than whole brackets: `3.84[@key]`
+# leaves the digits hard against an opening bracket, and an atom of `3.84[` matches no
+# results display and reads badly in a finding.
+_TRAIL = ")]}>\"'”’»,;:!?*_~|.…`["
 
 
 @dataclass(frozen=True)

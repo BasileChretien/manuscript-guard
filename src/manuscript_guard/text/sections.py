@@ -59,6 +59,38 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _scannable(text: str) -> str:
+    """`text` with code fences and HTML comments blanked, offsets preserved.
+
+    Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
+    Python, R, shell and YAML. Once fenced code stopped being masked — correctly, because it
+    renders — an ordinary comment inside a listing became a heading:
+
+        ## Methods
+        ```python
+        # Methods          <- level 1, so it *pops* the real level-2 Methods
+        ```
+        ## Results
+        The excess was significant (p < 0.001).   <- nests under the fake heading
+
+    `is_methods` looks at the whole enclosing chain, so a threshold in the Results was
+    accepted as the alpha chosen in advance. No attacker required: that is a comment
+    character in a code block. An HTML comment does the same thing while being invisible in
+    the rendered document, which is worse.
+
+    Blanked rather than removed, because callers index back into the original text.
+    Newlines are kept so line numbers and `^` anchors still line up.
+    """
+
+    def blank(match: re.Match[str]) -> str:
+        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
+
+    return _HTML_COMMENT.sub(blank, _FENCED_CODE.sub(blank, text))
+
+
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
     """Every heading enclosing `offset`, outermost first.
 
@@ -72,7 +104,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     it is a finding.
     """
     stack: list[tuple[int, str]] = []
-    for match in HEADING.finditer(text):
+    for match in HEADING.finditer(_scannable(text)):
         if match.start() > offset:
             break
         level = len(match.group("hashes"))
@@ -84,7 +116,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
 
 def split_sections(text: str) -> list[Section]:
     """Top-level structure. Subsections stay inside their parent's body."""
-    matches = list(HEADING.finditer(text))
+    matches = list(HEADING.finditer(_scannable(text)))
     if not matches:
         return [Section(title="", level=0, body=text, line=1)]
 
@@ -107,7 +139,7 @@ def split_sections(text: str) -> list[Section]:
 
 
 def headings(text: str) -> list[str]:
-    return [m.group("title").strip() for m in HEADING.finditer(text)]
+    return [m.group("title").strip() for m in HEADING.finditer(_scannable(text))]
 
 
 def count_words(text: str) -> int:

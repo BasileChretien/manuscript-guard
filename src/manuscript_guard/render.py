@@ -82,7 +82,27 @@ def read(figure: Path) -> dict | None:
 
 
 def same_render(raster: Path, vector: Path) -> bool:
-    """Whether the manifest says these two came from one run, and both still match it."""
+    """Whether the manifest says these two came from one run, and everything still matches.
+
+    Be clear about what this proves, because it is less than it looks. The manifest, the
+    figures and the script all sit in the same directory and are all writable by whoever
+    holds the checkout. Retouch the PNG *and* rewrite its digest here and this returns True
+    again — tested, it does. This is a drift detector of exactly the same strength as a
+    `.sha256` sidecar, and it is defeated the same way; see "re-signing defeats G1" in
+    DESIGN. `verify` is the answer to that problem for results, by re-running the analysis.
+    There is no equivalent for figures, because re-rendering is not reproducible across
+    plotting-library versions — the reason a figure review goes stale on a different
+    machine, already recorded as a known gap.
+
+    What it does catch, which is the ordinary case rather than the adversarial one:
+
+    * a raster re-rendered or edited on its own, with the manifest left behind — the stale
+      PNG beside a fresh SVG, which is how the wrong figure actually reaches a journal;
+    * a manifest that has gone stale because the script changed after it was written;
+    * a manifest copied from another figure, naming outputs or a script that do not match.
+
+    The script digest is checked for the second and third of those, not the first.
+    """
     document = read(raster)
     if document is None:
         return False
@@ -93,7 +113,13 @@ def same_render(raster: Path, vector: Path) -> bool:
         recorded = outputs.get(path.name)
         if not recorded or not path.exists() or sha256_of(path) != recorded:
             return False
-    return True
+
+    named = document.get("rendered_by")
+    recorded_script = document.get("rendered_by_sha256")
+    if not named or not recorded_script:
+        return False
+    script = raster.with_name(str(named))
+    return script.exists() and sha256_of(script) == recorded_script
 
 
 __all__ = ["SCHEMA", "SUFFIX", "manifest_path", "read", "record", "same_render"]

@@ -1,7 +1,8 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **Phases 1 to 6 built and tested**; phases 7 and 8 not
-started. 234 tests pass, including the corruption harness described below.
+Status: design agreed 2026-08-03. **Phases 1 to 7 built and tested**; phase 8 partly done
+through the worked example. 255 tests pass, including the corruption harness described
+below.
 
 ## What this is
 
@@ -197,7 +198,8 @@ survive every check.
 6. ~~**Writing quality.**~~ **Done** apart from the pre-analysis design gate. AI-writing
    lint (G6) derived from the Wikipedia essay, methods-drift detection (G9), and skills for
    both.
-7. **Review panels.** Round one, revision, blinded round two, reconciliation.
+7. ~~**Review panels.**~~ **Done.** Recorded panels, review records as the contract, a
+   blinded second round, and severity that depends on whether a submission is being built.
 8. **Example and public documentation.**
 
 Phases 1 and 2 carry the guarantee; everything after is additive.
@@ -565,6 +567,49 @@ The lock can also carry parameters that must appear in the prose — the signifi
 threshold, the software version. Presence, not correctness, but those are exactly what a
 reviewer queries and exactly what is left behind when an analysis is redone.
 
+## Review panels: the record is the contract
+
+Every other gate checks a property of the text. G11 checks that somebody competent
+disagreed with it, or failed to, on the record.
+
+The unit is a **review record**, not an agent. A model can produce one in minutes, a
+co-author can write one by hand, and the gate treats them identically — which is what keeps
+the toolkit usable by someone who has never run an agent. Agents are one way to fill the
+records, not the mechanism.
+
+Two choices carry most of the value:
+
+**The panel is written down, with reasons.** A panel's composition decides what it can see;
+three methodologists will not notice that the clinical framing is wrong. Recording who was
+asked and why makes the gaps visible while there is still time to fill them. Composition is
+derived per paper from the design, the reporting guideline and the target journal.
+
+**The second panel is blinded by default.** A second round that reads the first round's
+findings inherits its sense of what matters, and the errors worth catching in round two are
+exactly the ones round one was not looking for. An unblinded later round warns.
+
+**Severity depends on what is being built.** An author mid-draft must be able to produce a
+document to read, so ordinary builds warn. `--submission` raises every review warning to a
+failure: the version that goes to a journal should not carry unanswered major findings.
+That flag is the only place in the toolkit where a gate's severity is contextual, and it
+exists because the alternative — blocking every build on a complete two-round review — would
+make the gate something to switch off.
+
+**An override is a legitimate answer.** A major finding needs a resolution saying what was
+done, or an `overridden` saying why it was not. Recording the reason turns it from an
+oversight into a decision, and it is the thing you want when a real reviewer asks the same
+question. Silence is the only unacceptable answer.
+
+Editing the manuscript changes its digest and marks the reviews stale, which is correct: a
+review of the old Results is not a review of the new ones.
+
+The worked example carries a real two-round panel. Round one found that the paper had no
+case definition, no mention of duplicate records, and no contingency table for a result that
+was a single ratio; all three were fixed, and the manuscript is better for it. Round two,
+blinded and differently composed, found the remaining soft spots. Two findings are recorded
+as deliberate overrides rather than fixed, because the honest answer was that the synthetic
+data do not support what the reviewer wanted.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -597,6 +642,14 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   TRIPOD state no reuse terms on their sites. RECORD is CC BY, STROBE and ARRIVE are CC BY
   through their statement papers, and READUS-PV is CC BY-NC. See
   [ATTRIBUTION.md](ATTRIBUTION.md).
+- **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
+  satisfies every check. The gate verifies that a panel existed, reported, and answered its
+  major findings; the quality of the reading is beyond it, and the skill says so.
+- **A model reviewing its own draft is worth less than a fresh reader.** The skill warns
+  about agreeableness, which is the likely failure, but nothing enforces independence.
+- **`--submission` is the only contextual severity in the toolkit.** It is a small
+  inconsistency, accepted because blocking every draft build on a complete two-round review
+  would make G11 something to switch off.
 - **The pre-analysis design gate is not built.** It was the remaining piece of phase 6:
   a warning when analysis code exists with no agreed analysis plan behind it.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that

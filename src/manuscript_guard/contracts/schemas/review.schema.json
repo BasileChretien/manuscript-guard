@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/review/1",
+  "title": "manuscript-guard review record",
+  "description": "One reviewer's read of the manuscript. The record is the contract: a model can produce it quickly, a co-author can write one by hand, and the gate treats both identically. What the gate enforces is that the review exists, covers the reviewer's remit, applies to the manuscript as it now stands, and that its major findings were answered. Whether the review was any good is beyond it.",
+  "type": "object",
+  "required": ["schema", "round", "reviewer", "reviewed_by", "reviewed_on", "manuscript_sha256", "verdict"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/review/1" },
+    "round": { "type": "integer", "minimum": 1 },
+    "reviewer": {
+      "type": "string",
+      "description": "The id from the panel file."
+    },
+    "reviewed_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier or person's name. A review is attributable or it is not a review."
+    },
+    "reviewed_on": { "type": "string", "format": "date" },
+    "manuscript_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The manuscript this review applies to. A rewritten Results section invalidates a review of the old one."
+    },
+    "verdict": {
+      "enum": ["pass", "minor-revision", "major-revision", "reject"],
+      "description": "The reviewer's overall judgement, in the vocabulary a journal uses."
+    },
+    "summary": {
+      "type": "string",
+      "description": "What the paper claims and whether the evidence supports it, in the reviewer's own words."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "finding"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": {
+            "enum": ["major", "minor", "comment"],
+            "description": "major blocks a submission build until it is resolved or overridden."
+          },
+          "where": { "type": "string" },
+          "finding": { "type": "string", "minLength": 1 },
+          "resolution": {
+            "type": "string",
+            "description": "What was done. An empty resolution on a major finding is an open finding."
+          },
+          "resolved_on": { "type": "string", "format": "date" },
+          "overridden": {
+            "type": "string",
+            "description": "Why this finding is being left unaddressed. A reason, recorded, is a legitimate answer to a reviewer; silence is not."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,268 @@
+"""G11 — the manuscript has been read by people qualified to object to it.
+
+Every other gate checks a property of the text. This one checks that somebody competent
+disagreed with it, or failed to, on the record.
+
+The same bargain as the figure review and the literature attestation, and it is worth being
+explicit about the limit before describing the mechanism: **this cannot tell you a review
+was any good.** It verifies that a panel was assembled and written down, that each member
+produced a record covering their remit, that the records apply to the manuscript as it now
+stands, and that every major finding was answered — resolved, or overridden with a reason.
+A reviewer who writes "looks fine" satisfies the gate and helps nobody.
+
+Two design points carry most of the value.
+
+**The panel is recorded, not improvised.** A panel's composition decides what it can see;
+three methodologists will not notice that the clinical framing is wrong. Writing down who
+was asked and why makes the gaps visible while there is still time to fill them.
+
+**The second panel is blinded by default.** A second round that reads the first round's
+report inherits its blind spots, which is the one thing a second panel exists to avoid.
+
+Severity depends on what is being built. An author mid-draft should be able to produce a
+document to read; the version that goes to a journal should not have unanswered major
+findings. So the gate warns during ordinary work and fails for a submission build.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from pathlib import Path
+
+from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts.project import Project
+from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
+from manuscript_guard.gates.numbers import source_files
+
+GATE = "G11"
+REVIEW_DIR = "review"
+DEFAULT_ROUNDS_REQUIRED = 2
+
+
+def manuscript_digest(project: Project) -> str:
+    """A digest of the manuscript source, so a review can be tied to what it read."""
+    digest = hashlib.sha256()
+    for path in source_files(project.path("manuscript")):
+        digest.update(path.name.encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def review_root(project: Project) -> Path:
+    return project.root / REVIEW_DIR
+
+
+def panel_path(project: Project, round_number: int) -> Path:
+    return review_root(project) / f"panel-{round_number}.yaml"
+
+
+def round_dir(project: Project, round_number: int) -> Path:
+    return review_root(project) / f"round-{round_number}"
+
+
+def panels(project: Project) -> list[tuple[int, Path]]:
+    root = review_root(project)
+    if not root.exists():
+        return []
+    found = []
+    for path in sorted(root.glob("panel-*.yaml")):
+        try:
+            number = int(path.stem.split("-", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        found.append((number, path))
+    return sorted(found)
+
+
+@dataclass(frozen=True)
+class Open:
+    reviewer: str
+    finding_id: str
+    text: str
+
+
+def rounds_required(project: Project) -> int:
+    return int(project.paper.get("review", {}).get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
+
+
+def check_review(project: Project, *, submission: bool = False) -> Report:
+    """`submission` raises every warning here to a failure."""
+    severity = FAIL if submission else WARN
+    found = panels(project)
+    required = rounds_required(project)
+
+    if not found:
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="no-review",
+                    severity=FAIL if submission else INFO,
+                    message=f"nobody has reviewed this manuscript ({required} round(s) expected)",
+                    hint="the review-panel skill assembles a panel and records it; "
+                    "`manuscript-guard review --open` writes the file",
+                ),
+            ),
+            {"review_rounds": 0},
+        )
+
+    report = Report()
+    current = manuscript_digest(project)
+    complete_rounds = 0
+    open_major: list[Open] = []
+
+    for number, path in found:
+        document = read_structured(path)
+        schema_report = validate(document, "panel", path, gate=GATE)
+        report = report.merge(schema_report)
+        if not schema_report.ok or not isinstance(document, dict):
+            continue
+
+        round_report, complete, unresolved = _check_round(
+            project, number, document, current, severity
+        )
+        report = report.merge(round_report)
+        complete_rounds += int(complete)
+        open_major.extend(unresolved)
+
+    if complete_rounds < required:
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="rounds-outstanding",
+                severity=severity,
+                message=f"{complete_rounds} of {required} review round(s) complete",
+                hint="set review.rounds_required in paper.yaml if this paper needs fewer",
+            )
+        )
+
+    if len(found) > 1:
+        report = report.merge(_check_blinding(project, found, severity))
+
+    for item in open_major:
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="open-major-finding",
+                severity=severity,
+                message=f"{item.reviewer} {item.finding_id}: {item.text[:120]}",
+                hint="record what was done in `resolution`, or why it was not in `overridden`",
+            )
+        )
+
+    return report.with_counts(
+        review_rounds=len(found),
+        review_rounds_complete=complete_rounds,
+        review_open_major=len(open_major),
+    )
+
+
+def _check_round(
+    project: Project, number: int, panel: dict, current: str, severity: str
+) -> tuple[Report, bool, list[Open]]:
+    report = Report()
+    directory = round_dir(project, number)
+    unresolved: list[Open] = []
+    complete = True
+
+    for reviewer in panel["reviewers"]:
+        path = directory / f"{reviewer['id']}.yaml"
+        if not path.exists():
+            complete = False
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="review-missing",
+                    severity=severity,
+                    message=f"round {number}: {reviewer['id']} has not reported",
+                    path=path,
+                    context=reviewer["remit"][:140],
+                )
+            )
+            continue
+
+        document = read_structured(path)
+        schema_report = validate(document, "review", path, gate=GATE)
+        report = report.merge(schema_report)
+        if not schema_report.ok or not isinstance(document, dict):
+            complete = False
+            continue
+
+        if document["manuscript_sha256"] != current:
+            complete = False
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="review-stale",
+                    severity=severity,
+                    message=f"round {number}: {reviewer['id']} reviewed an earlier manuscript",
+                    path=path,
+                    context=f"reviewed {document['reviewed_on']} by {document['reviewed_by']}",
+                    hint="the text has changed since; re-review, or accept that the finding "
+                    "list describes a version nobody will read",
+                )
+            )
+
+        for finding in document.get("findings", []):
+            if finding["severity"] != "major":
+                continue
+            answered = str(finding.get("resolution", "")).strip() or str(
+                finding.get("overridden", "")
+            ).strip()
+            if not answered:
+                unresolved.append(
+                    Open(reviewer=reviewer["id"], finding_id=finding["id"], text=finding["finding"])
+                )
+
+    return report, complete, unresolved
+
+
+def _check_blinding(project: Project, found: list[tuple[int, Path]], severity: str) -> Report:
+    """A later panel that read the earlier findings is not an independent look."""
+    report = Report()
+    for number, path in found[1:]:
+        document = read_structured(path)
+        if isinstance(document, dict) and not document.get("blinded", False):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="round-not-blinded",
+                    severity=WARN if severity == WARN else severity,
+                    message=f"round {number} was not blinded to the earlier rounds",
+                    path=path,
+                    hint="a second panel that reads the first panel's report inherits its "
+                    "blind spots, which is the one thing a second panel is for",
+                )
+            )
+    return report
+
+
+def open_panel(
+    project: Project,
+    round_number: int,
+    reviewers: list[dict],
+    *,
+    blinded: bool | None = None,
+) -> Path:
+    """Write a panel file and the empty round directory."""
+    from datetime import date
+
+    import yaml
+
+    path = panel_path(project, round_number)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    round_dir(project, round_number).mkdir(parents=True, exist_ok=True)
+
+    document = {
+        "schema": "manuscript-guard/panel/1",
+        "round": round_number,
+        "opened_on": date.today().isoformat(),
+        "manuscript_sha256": manuscript_digest(project),
+        "blinded": (round_number > 1) if blinded is None else blinded,
+        "reviewers": reviewers,
+    }
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+    return path

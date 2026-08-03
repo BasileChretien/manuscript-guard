@@ -78,6 +78,11 @@ Currently implemented:
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote |
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it |
+| G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
+
+`manuscript-guard check --submission` holds the manuscript to submission standards:
+unanswered review findings become failures rather than warnings, so you can keep building
+drafts to read while the version you send anywhere has to be clean.
 | G10 | every figure has a current review by someone who looked at it |
 
 Figures get three checks rather than one. The rendered output is read for numeric text; the

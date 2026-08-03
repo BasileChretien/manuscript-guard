@@ -23,6 +23,18 @@
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",
       "items": { "type": "string", "minLength": 1 }
     },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rounds_required": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "Complete review rounds expected before a submission build. Two by default: the second panel is blinded to the first, because a panel that reads the earlier findings inherits their blind spots."
+        }
+      }
+    },
     "paths": {
       "type": "object",
       "additionalProperties": false,

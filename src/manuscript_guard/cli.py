@@ -28,8 +28,11 @@ from manuscript_guard.gates import (
     check_methods,
     check_numbers,
     check_reporting,
+    check_review,
     check_writing,
     content_digest,
+    manuscript_digest,
+    panels,
     reconcile,
     scaffold_completion,
     source_files,
@@ -41,12 +44,18 @@ from manuscript_guard.text.placeholders import substitute
 from manuscript_guard.text.tokens import find_atoms
 
 
-def _run_gates(start: Path) -> tuple[Report, object]:
+def _run_gates(start: Path, *, submission: bool = False) -> tuple[Report, object]:
+    """Run every gate. `submission` raises the review gate's warnings to failures.
+
+    Only G11 varies. An author mid-draft should be able to build a document to read; the
+    version that goes to a journal should not carry unanswered major review findings.
+    """
     project, contract_report = load_project(start)
     namespace, results, literature, load_report = load_namespace(project)
 
     reports = [contract_report, load_report]
     if contract_report.ok and load_report.ok:
+        reports.append(check_review(project, submission=submission))
         reports.append(check_freshness(project, results))
         reports.append(check_numbers(project, namespace, results, literature))
         reports.append(check_figures(project, results))
@@ -61,8 +70,28 @@ def _run_gates(start: Path) -> tuple[Report, object]:
     return merge_all(reports), project
 
 
+def cmd_review(args: argparse.Namespace) -> int:
+    """Show where the review stands, and the digest a review record must carry."""
+    project, _ = load_project(args.path)
+    digest = manuscript_digest(project)
+    if args.digest:
+        print(digest)
+        return 0
+
+    print(f"manuscript digest: {digest}")
+    found = panels(project)
+    if not found:
+        print("no review panels. The review-panel skill assembles one.")
+    else:
+        for number, path in found:
+            print(f"  round {number}: {path.name}")
+    report = check_review(project, submission=args.submission)
+    print(report.render(project.root))
+    return 0 if report.ok else 1
+
+
 def cmd_check(args: argparse.Namespace) -> int:
-    report, project = _run_gates(args.path)
+    report, project = _run_gates(args.path, submission=args.submission)
     if args.json:
         print(report.to_json())
     else:
@@ -127,7 +156,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     document, not a list of unfinished bindings. It is a flag rather than the default,
     so that the version you send anyone has passed.
     """
-    report, project = _run_gates(args.path)
+    report, project = _run_gates(args.path, submission=args.submission)
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
@@ -342,7 +371,18 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", help="run every gate")
     check.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     check.add_argument("--json", action="store_true", help="machine-readable output")
+    check.add_argument(
+        "--submission",
+        action="store_true",
+        help="hold the manuscript to submission standards: unanswered review findings fail",
+    )
     check.set_defaults(func=cmd_check)
+
+    review = sub.add_parser("review", help="show where the review stands")
+    review.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    review.add_argument("--digest", action="store_true", help="print the manuscript digest only")
+    review.add_argument("--submission", action="store_true")
+    review.set_defaults(func=cmd_review)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)
@@ -362,6 +402,11 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--csl", type=Path, help="citation style, for offline builds")
     build.add_argument("-o", "--output", type=Path)
     build.add_argument("--skip-checks", action="store_true", help="build even if gates fail")
+    build.add_argument(
+        "--submission",
+        action="store_true",
+        help="the version you send anywhere: unanswered review findings fail the build",
+    )
     build.set_defaults(func=cmd_build)
 
     syncbib = sub.add_parser("sync-bib", help="rewrite references.bib from Zotero")

@@ -1,0 +1,62 @@
+schema: manuscript-guard/review/1
+round: 1
+reviewer: pharmacoepidemiologist
+reviewed_by: claude-opus-5
+reviewed_on: 2026-08-03
+manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
+verdict: minor-revision
+
+summary: >-
+  The paper reports a disproportionality signal for hepatic injury with example-drug in a
+  synthetic reporting database and, to its credit, says repeatedly that disproportionality
+  is not incidence. The design supports the claim as narrowly stated. My concerns were about
+  what a reader would have to take on trust: how a case was defined, and whether duplicate
+  records could inflate the count.
+
+findings:
+  - id: r1-pe-01
+    severity: major
+    where: Methods
+    finding: >-
+      No case definition. "Hepatic injury" is used throughout without saying which terms
+      constitute a case. In real reporting data the choice between a narrow preferred-term
+      list and a Standardised MedDRA Query changes the numerator substantially, and a
+      reader cannot judge the estimate without knowing which was used.
+    resolution: >-
+      Methods now state that hepatic injury is the single event term emitted by the data
+      generator, and that real work would need an explicit case definition whose choice
+      would change the counts. The limitation is named rather than papered over.
+    resolved_on: 2026-08-03
+
+  - id: r1-pe-02
+    severity: major
+    where: Methods
+    finding: >-
+      Duplicate reports are not mentioned. Spontaneous databases contain the same case
+      submitted by a patient, a physician and a manufacturer, and counting all three
+      inflates the numerator for whichever drug is most reported.
+    resolution: >-
+      Methods now state that records carry unique identifiers and the generator emits no
+      duplicates, so no de-duplication was applied, and that a real database would require
+      one. The absence is attributed to the synthetic data rather than passed over.
+    resolved_on: 2026-08-03
+
+  - id: r1-pe-03
+    severity: minor
+    where: Discussion
+    finding: >-
+      Notoriety bias is named but not connected to this drug. If example-drug were recently
+      marketed or subject to a regulatory communication, reporting would rise for reasons
+      unrelated to risk. Worth one sentence saying whether that applies.
+    overridden: >-
+      The generator has no marketing timeline, so there is nothing truthful to say about
+      notoriety for this drug specifically. Adding a sentence would be inventing context
+      the data do not contain.
+    resolved_on: 2026-08-03
+
+  - id: r1-pe-04
+    severity: comment
+    where: Discussion
+    finding: >-
+      The comparison with the class-level estimate is handled well: the text says plainly
+      that the two are not directly comparable and why. Worth keeping in revision.

@@ -1,0 +1,37 @@
+schema: manuscript-guard/panel/1
+round: 1
+opened_on: 2026-08-03
+manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
+blinded: false
+
+rationale: >-
+  paper.yaml declares a disproportionality analysis of spontaneous reports and names
+  DEMO-OBS as the reporting guideline, so the panel is built around the three ways this
+  design fails: the case definition, the estimator, and the gap between what
+  disproportionality measures and what a reader will take it to mean. The checklist auditor
+  is on the panel because the journal requires the completed checklist at submission and
+  answering it afterwards defeats its purpose.
+
+reviewers:
+  - id: pharmacoepidemiologist
+    role: Pharmacoepidemiologist
+    remit: >-
+      Whether the design can answer the question asked. Case and exposure definitions,
+      denominators, the difference between disproportionate reporting and risk, and the
+      biases specific to spontaneous reporting.
+    why: The paper's central claim is a disproportionality signal.
+
+  - id: biostatistician
+    role: Biostatistician
+    remit: >-
+      Whether the estimator is right and stated fully enough to reproduce. Interval
+      construction, small-cell behaviour, multiplicity, and whether the reader can
+      reconstruct the estimate from what is reported.
+    why: A ratio measure with an interval is the whole result.
+
+  - id: checklist-auditor
+    role: Reporting-guideline auditor
+    remit: >-
+      Whether each DEMO-OBS item is genuinely addressed in the text, rather than answered
+      in the completion file by pointing at a section that does not cover it.
+    why: The journal requires the completed checklist at submission.

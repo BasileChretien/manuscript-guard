@@ -20,6 +20,12 @@ from manuscript_guard.gates.reporting import (
     check_reporting,
     scaffold_completion,
 )
+from manuscript_guard.gates.review import (
+    check_review,
+    manuscript_digest,
+    open_panel,
+    panels,
+)
 from manuscript_guard.gates.writing import check_writing
 
 GATES = {
@@ -33,6 +39,7 @@ GATES = {
     "G8": "cross-artefact consistency",
     "G9": "the Methods still describe the code",
     "G10": "figures have a current review",
+    "G11": "the manuscript has been reviewed by a recorded panel",
 }
 
 __all__ = [
@@ -50,7 +57,11 @@ __all__ = [
     "check_numbers",
     "reconcile",
     "check_reporting",
+    "check_review",
     "check_writing",
+    "manuscript_digest",
+    "open_panel",
+    "panels",
     "scaffold_completion",
     "content_digest",
     "review_path",

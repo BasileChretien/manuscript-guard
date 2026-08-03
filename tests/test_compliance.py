@@ -68,7 +68,7 @@ def test_the_abstract_and_references_are_counted_apart(project: Path) -> None:
     counts = measure(text)
     assert counts.abstract_words > 0
     assert counts.main_text_words > counts.abstract_words
-    assert counts.tables == 1
+    assert counts.tables == 2  # baseline characteristics and the 2 x 2
     assert counts.figures == 1
 
 

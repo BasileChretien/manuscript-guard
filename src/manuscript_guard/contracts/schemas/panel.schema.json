@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/panel/1",
+  "title": "manuscript-guard review panel",
+  "description": "Who reviewed a manuscript in one round, and why they were chosen. Recorded rather than decided on the fly, because the composition of a panel determines what it can see: a panel of three methodologists will not notice that the clinical framing is wrong. Writing down who was asked, and the reason, makes the gaps visible while there is still time to fill them.",
+  "type": "object",
+  "required": ["schema", "round", "opened_on", "reviewers"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/panel/1" },
+    "round": { "type": "integer", "minimum": 1 },
+    "opened_on": { "type": "string", "format": "date" },
+    "manuscript_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The manuscript as it stood when the round opened."
+    },
+    "blinded": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether these reviewers were kept from the earlier rounds' findings. A second panel that reads the first panel's report inherits its blind spots, which is the one thing a second panel exists to avoid."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why this panel, for this paper and this journal."
+    },
+    "reviewers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "remit"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Names the review file: review/round-<n>/<id>.yaml"
+          },
+          "role": { "type": "string" },
+          "remit": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What this reviewer is responsible for noticing. Two reviewers with the same remit are one reviewer."
+          },
+          "why": {
+            "type": "string",
+            "description": "What about this paper or journal called for this reviewer."
+          }
+        }
+      }
+    }
+  }
+}

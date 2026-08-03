@@ -31,6 +31,13 @@ Whether the signal extends to example-drug specifically has not been examined.
 We analysed a synthetic spontaneous reporting database covering
 {{results.cohort.period_start}} to {{results.cohort.period_end}}, a period of
 {{results.cohort.n_years}} years. Reports were included without restriction on age or sex.
+Each record carries a unique report identifier and the generator emits no duplicates, so no
+de-duplication step was applied; a real database would require one, and its absence here is
+a property of the synthetic data rather than a design choice.
+
+Hepatic injury is the single event term used by the data generator. Real work would need a
+case definition — a MedDRA Standardised Query or an explicit preferred-term list — and the
+choice of definition would change the counts.
 
 The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
 injury with all other reported events, for example-drug against all other drugs in the
@@ -49,7 +56,10 @@ The database contained {{results.cohort.n_reports}} reports, of which
 
 Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
-{{results.ror.ci_high}}). The estimate is shown in Figure 1.
+{{results.ror.ci_high}}). The estimate is shown in Figure 1, and the counts it was computed
+from in Table 2, so a reader can reconstruct it.
+
+{{table.two_by_two}}
 
 {{figure.forest}}
 

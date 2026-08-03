@@ -1,0 +1,44 @@
+schema: manuscript-guard/review/1
+round: 2
+reviewer: clinical-reader
+reviewed_by: claude-opus-5
+reviewed_on: 2026-08-03
+manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
+verdict: minor-revision
+
+summary: >-
+  Reading this as a prescriber would: the paper is unusually careful about not overstating
+  itself. "Disproportionality is not incidence, and nothing in these data supports a rate"
+  is the sentence I would want and it is there. What a clinical reader still cannot tell is
+  how serious the reported cases were, which is the first thing they would ask.
+
+findings:
+  - id: r2-cr-01
+    severity: minor
+    where: Results
+    finding: >-
+      Seriousness is counted and reported as a proportion, but nothing says what "serious"
+      means here. In pharmacovigilance it is a regulatory category — death, hospitalisation,
+      life-threatening, disability — not a clinical judgement, and a clinician reading the
+      percentage will assume the latter.
+    resolution: >-
+      Left for the same reason as the case definition: the generator emits a bare
+      serious/not-serious flag with no regulatory criteria behind it, so defining the term
+      would describe something the data do not contain. Named here so the gap is on record
+      rather than invisible.
+    resolved_on: 2026-08-03
+
+  - id: r2-cr-02
+    severity: comment
+    where: Discussion
+    finding: >-
+      The limitations paragraph is placed where a hurried reader will actually meet it,
+      immediately after the interpretation rather than in a final paragraph nobody reaches.
+      Worth preserving through revision.
+
+  - id: r2-cr-03
+    severity: comment
+    where: Discussion
+    finding: >-
+      Stating plainly that the exposure figure rests on an author attestation, rather than
+      quietly citing it, is the right call. A reader can weight it accordingly.

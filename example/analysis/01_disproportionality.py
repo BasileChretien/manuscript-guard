@@ -67,6 +67,16 @@ def main() -> None:
     drug = [r for r in rows if r["drug"] == DRUG]
     other = [r for r in rows if r["drug"] != DRUG]
     em.table(
+        "two_by_two",
+        columns=["", "Hepatic injury", "Other events"],
+        align=["left", "right", "right"],
+        rows=[
+            ["example-drug", str(a), str(b)],
+            ["All other drugs", str(c), str(d)],
+        ],
+        caption="Contingency table underlying the reporting odds ratio.",
+    )
+    em.table(
         "baseline",
         columns=["Characteristic", "example-drug", "All other drugs"],
         align=["left", "right", "right"],

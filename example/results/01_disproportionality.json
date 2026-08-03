@@ -2,12 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_at": "2026-08-03T06:29:01+00:00",
+    "generated_at": "2026-08-03T06:55:28+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
-    "vcs": {},
+    "vcs": {
+      "sha": "e6a8cca6d28a3ce6cd69c11195d0aef7d80810d1",
+      "dirty": true,
+      "branch": "main"
+    },
     "inputs": [
       {
         "path": "data/reports.csv",
@@ -93,6 +97,31 @@
     }
   },
   "tables": {
+    "two_by_two": {
+      "columns": [
+        "",
+        "Hepatic injury",
+        "Other events"
+      ],
+      "rows": [
+        [
+          "example-drug",
+          "77",
+          "349"
+        ],
+        [
+          "All other drugs",
+          "194",
+          "3380"
+        ]
+      ],
+      "caption": "Contingency table underlying the reporting odds ratio.",
+      "align": [
+        "left",
+        "right",
+        "right"
+      ]
+    },
     "baseline": {
       "columns": [
         "Characteristic",

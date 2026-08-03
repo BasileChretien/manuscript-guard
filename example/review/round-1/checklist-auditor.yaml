@@ -1,0 +1,42 @@
+schema: manuscript-guard/review/1
+round: 1
+reviewer: checklist-auditor
+reviewed_by: claude-opus-5
+reviewed_on: 2026-08-03
+manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
+verdict: pass
+
+summary: >-
+  All ten DEMO-OBS items are answered in reporting/DEMO-OBS.yaml, each pointing at a heading
+  that exists, and I checked the sections rather than the pointers. Two items were thin when
+  I started and are now covered.
+
+findings:
+  - id: r1-ca-01
+    severity: major
+    where: Methods, against DEMO-OBS item 3
+    finding: >-
+      Item 3 asks for the data source including the period covered and how records were
+      selected. The period was given; record selection was not described at all, so the
+      completion file pointed at a section that did not answer the item.
+    resolution: >-
+      Methods now describe inclusion without age or sex restriction, the identifier-based
+      uniqueness of records, and the event term used. Item 3 is genuinely covered.
+    resolved_on: 2026-08-03
+
+  - id: r1-ca-02
+    severity: minor
+    where: Results, against DEMO-OBS item 7
+    finding: >-
+      Item 7 asks for the estimate, its precision, and the denominators used. The estimate
+      and interval were present; the denominators were not until the contingency table was
+      added.
+    resolution: Table 2 supplies the denominators.
+    resolved_on: 2026-08-03
+
+  - id: r1-ca-03
+    severity: comment
+    where: reporting/DEMO-OBS.yaml
+    finding: >-
+      Item 10 points at "Funding", which exists and states there was none. Correct: a
+      funding statement saying there was no funding is an answer, not a blank.

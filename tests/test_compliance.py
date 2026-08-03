@@ -17,6 +17,29 @@ from manuscript_guard.gates import check_journal, check_reporting, scaffold_comp
 from manuscript_guard.text.sections import count_words, headings, measure, split_sections
 
 JOURNAL = Path("profiles") / "journals" / "demo-journal.yaml"
+
+
+def test_the_shipped_template_is_a_valid_profile() -> None:
+    """The template is the first thing an author edits, so it must not start out broken.
+
+    It also has to keep validating as the schema changes, which is the whole reason this is
+    a test rather than a promise in the documentation.
+    """
+    from manuscript_guard.contracts._schema import read_structured, validate
+    from manuscript_guard.paths import SHIPPED_JOURNALS
+
+    path = SHIPPED_JOURNALS / "TEMPLATE.yaml"
+    report = validate(read_structured(path), "journal", path)
+    assert report.ok, report.render()
+
+
+def test_the_template_is_not_offered_as_a_journal(project: Path) -> None:
+    """It names no journal. Listing it as one invites `target_journal: TEMPLATE`."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.journal import available_profiles
+
+    loaded, _ = load_project(project)
+    assert "TEMPLATE" not in available_profiles(loaded)
 CHECKLIST = Path("reporting") / "DEMO-OBS.yaml"
 
 

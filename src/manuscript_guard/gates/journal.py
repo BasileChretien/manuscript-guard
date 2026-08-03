@@ -37,12 +37,16 @@ def profile_path(project: Project, slug: str) -> Path | None:
     return shipped if shipped.exists() else None
 
 
+TEMPLATE = "TEMPLATE"
+
+
 def available_profiles(project: Project) -> list[str]:
+    """Journals a project could target. Excludes the template, which names no journal."""
     found = set()
     for directory in (project.root / "profiles" / "journals", PROFILE_DIR):
         if directory.exists():
             found.update(p.stem for p in directory.glob("*.yaml"))
-    return sorted(found)
+    return sorted(found - {TEMPLATE})
 
 
 def check_journal(project: Project) -> Report:

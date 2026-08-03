@@ -220,6 +220,47 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if (report.unmatched and args.strict) else 0
 
 
+def cmd_journal(args: argparse.Namespace) -> int:
+    """Show the journal profiles available, or copy the annotated template into a project."""
+    from manuscript_guard.gates.journal import available_profiles
+    from manuscript_guard.paths import SHIPPED_JOURNALS
+
+    project, contract_report = load_project(args.path)
+    if not contract_report.ok:
+        print(contract_report.render(project.root))
+        return 2
+
+    if args.template:
+        source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
+        target = project.root / "profiles" / "journals" / f"{args.template}.yaml"
+        if target.exists():
+            print(f"{target} already exists; not overwriting", file=sys.stderr)
+            return 2
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+        print(f"created {target}")
+        print(
+            "\nFill it by reading the journal's own instructions page — the comments say what\n"
+            "each field means and what to do when the page is silent. The answer to that last\n"
+            "question is always to delete the line: an absent limit is not checked, and a\n"
+            "guessed one is worse than none.\n"
+            f"\nThen set `target_journal: {args.template}` in paper.yaml."
+        )
+        return 0
+
+    chosen = project.target_journal
+    print(f"target_journal: {chosen or '(none chosen)'}")
+    found = available_profiles(project)
+    print(f"profiles available: {', '.join(found) if found else 'none'}")
+    if not found:
+        print(
+            "\nNone ship with the toolkit, on purpose: author guidelines change without\n"
+            "announcement, so a rule compiled in would eventually be wrong and wrong silently.\n"
+            "Start one with `manuscript-guard journal --template <slug>`."
+        )
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Re-run the analysis and check it still produces the recorded results.
 
@@ -658,6 +699,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="verify only these fragments, by stem (e.g. 01_disproportionality)",
     )
     verify.set_defaults(func=cmd_verify)
+
+    journal = sub.add_parser(
+        "journal",
+        help="list journal profiles, or start one from the annotated template",
+        description="No journal profile ships with the toolkit, deliberately: author "
+        "guidelines change without announcement, so a rule compiled in would eventually be "
+        "wrong and would be wrong silently. Every profile is read from the journal's own "
+        "page and stamped with the date it was read.",
+    )
+    journal.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    journal.add_argument(
+        "--template",
+        metavar="SLUG",
+        help="copy the annotated template to profiles/journals/<SLUG>.yaml",
+    )
+    journal.set_defaults(func=cmd_journal)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

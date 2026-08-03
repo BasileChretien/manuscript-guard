@@ -980,9 +980,16 @@ Closed since, and why each mattered:
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
-- **No real journal profile is distributed**, and no transcribed checklist text. Recipes
-  for thirteen checklists are, so a user needs only the official document. Journal profiles have
-  no equivalent shortcut yet.
+- **No real journal profile is distributed**, and no transcribed checklist text. Recipes for
+  thirteen checklists are, so a user needs only the official document. Journals get a
+  different answer, and deliberately: an annotated template
+  (`manuscript-guard journal --template <slug>`) plus the `journal-profile` skill, which
+  chooses the journal *with* the author and then reads that journal's own guidelines page to
+  fill it. Shipping profiles for named journals was considered and rejected — author
+  guidelines change without announcement, so a distributed profile would eventually be wrong
+  and would be wrong silently, which is the failure mode this whole toolkit exists to
+  prevent. Every field in the template says what to do when the page is silent, and the
+  answer is always to delete the line.
 - **Five licences remain unconfirmed** — RECORD-PE, CONSORT, SPIRIT, PRISMA (both) and
   TRIPOD state no reuse terms on their sites. RECORD is CC BY, STROBE and ARRIVE are CC BY
   through their statement papers, and READUS-PV is CC BY-NC. See

@@ -1,0 +1,206 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────
+# Journal profile — a journal's author guidelines, distilled into something a build can check.
+#
+# Copy this to `profiles/journals/<slug>.yaml` in your project, then fill it **by reading the
+# journal's own instructions page**, never from memory and never from another journal that
+# looks similar. `manuscript-guard journal <name>` will do the reading and the drafting for
+# you; you still confirm it, because the gate is only as good as this file.
+#
+# THE ONE RULE: omit anything the journal does not state.
+#
+# An absent limit is not checked. A guessed limit is worse than none, because it produces a
+# failure the author learns to override — and the next time it fires, on a real breach, they
+# override it again. Every field below says what to do when the page is silent, and the
+# answer is always "delete the line".
+#
+# Guidelines change without announcement, so `source_url` and `retrieved_on` are required:
+# a profile with no provenance is a rumour. G4 warns when one is more than a year old.
+# ─────────────────────────────────────────────────────────────────────────────────────────
+
+schema: manuscript-guard/journal/1
+
+# ── Identity ─────────────────────────────────────────────────────────────────────────────
+
+# The journal as it prints its own name. Used in the submission pack and the covering letter.
+name: "REPLACE — the journal as it prints its own name"
+
+# Optional. Useful because publishers impose house rules the journal page may not repeat —
+# Elsevier's declaration-of-interest wording, Springer's data-availability statement.
+publisher: "REPLACE, or delete this line"
+
+# REQUIRED. The instructions-for-authors page itself, not the journal's home page. If the
+# guidelines are split across several pages, record the one this profile mostly came from and
+# list the others under `notes`.
+source_url: "REPLACE — the instructions-for-authors page"
+
+# REQUIRED. The date the page was read, ISO format. Not the date the file was created.
+retrieved_on: 2026-01-01
+
+# Who or what read it. `manuscript-guard journal` writes its own name here; a person filling
+# this in by hand should write theirs, so a reader knows which to trust.
+retrieved_by: "REPLACE — who or what read the page"
+
+# Limits almost always differ by article type — an original article, a brief report and a
+# letter have different ceilings at the same journal. ONE PROFILE DESCRIBES ONE TYPE. If you
+# submit two types to the same journal, write two profiles.
+article_type: "Original research"
+
+# en-GB, en-US, or either. Set this ONLY when the journal insists; it overrides the project's
+# own choice, and a wrong value here rewrites the author's spelling for no reason. Most
+# journals accept either provided you are consistent — in that case write `either`, or delete
+# the line and let the project decide.
+english_variant: either
+
+# ── Limits ───────────────────────────────────────────────────────────────────────────────
+#
+# Numbers only, and only the ones the journal states. Delete every line you cannot point at a
+# sentence for.
+#
+# A note on what "words" means: journals rarely say. manuscript-guard counts prose after
+# removing citations, tables, figure captions, code and Markdown syntax, and counts the
+# abstract and references separately. That rule is printed with the count, so a disagreement
+# with the journal's own counter is visible rather than mysterious. Where a journal defines
+# its count differently, say so under `notes` rather than adjusting the limit to compensate.
+
+limits:
+  # The abstract's own limit. Very commonly stated; usually 250 or 300.
+  abstract_words: 250
+
+  # The body: introduction through discussion. Excludes abstract, references, tables and
+  # figure legends unless the journal says otherwise.
+  main_text_words: 3000
+
+  # Use INSTEAD of main_text_words when the journal gives one figure covering everything.
+  # Setting both means the manuscript must satisfy both, which is rarely what a journal meant.
+  # total_words: 4000
+
+  # Some journals cap the title, usually in characters including spaces.
+  # title_characters: 120
+
+  # Maximum number of references. Frequently stated for brief reports and letters.
+  references: 40
+
+  # Figures and tables, when limited separately.
+  figures: 5
+  tables: 4
+
+  # Use INSTEAD of figures/tables when the journal limits them together ("no more than 6
+  # display items"). Do not set all three.
+  # display_items: 6
+
+  # Maximum keywords. Journals that ask for "3-6 keywords" state a maximum of 6.
+  keywords: 6
+
+  # Rare, but some journals cap the author list before a group-authorship form is required.
+  # authors: 12
+
+# ── Structure ────────────────────────────────────────────────────────────────────────────
+
+structure:
+  # Top-level headings the manuscript must contain, matched case-insensitively. Use the
+  # journal's own words. Only list what is genuinely required: many journals describe a
+  # conventional structure without mandating it, and a required section that is merely
+  # conventional turns G4 into noise.
+  required_sections:
+    - Introduction
+    - Methods
+    - Results
+    - Discussion
+
+  # true when the abstract must carry headings, false when it must be a single paragraph.
+  # Delete the line when the journal does not say.
+  abstract_structured: true
+
+  # The headings the structured abstract must use, in the journal's own words and order.
+  # Only meaningful when abstract_structured is true.
+  abstract_headings:
+    - Background
+    - Methods
+    - Results
+    - Conclusions
+
+# ── Required statements ──────────────────────────────────────────────────────────────────
+#
+# Declarations the journal will not process a submission without. Each is found by matching a
+# regular expression against the manuscript, so the pattern should be loose enough to survive
+# ordinary rephrasing and tight enough not to match a passing mention.
+#
+# Write the pattern to match a HEADING where the journal expects a section, and a PHRASE where
+# it expects a sentence. Prefer alternation over cleverness: `(?i)^#+\s*(data availability|
+# availability of data)` reads better in six months than a single dense expression.
+#
+# `why` is not decoration. It is what an author sees when the check fires, and "the journal
+# requires this" is not a reason anyone can act on. Say what the journal asks for.
+
+required_statements:
+  - id: ethics
+    pattern: '(?i)^#+\s*(ethic(s|al)\b|institutional review|irb\b)'
+    why: >-
+      An ethics statement naming the approving committee and the approval number, or stating
+      why approval was not required.
+
+  - id: funding
+    pattern: '(?i)^#+\s*(funding|financial support|grant)'
+    why: Funding sources, or an explicit statement that the work received none.
+
+  - id: competing-interests
+    pattern: '(?i)^#+\s*(competing interest|conflict of interest|declaration of interest)'
+    why: >-
+      Competing interests for every author, or an explicit statement that there are none.
+      Most journals require the declaration even when it is empty.
+
+  - id: data-availability
+    pattern: '(?i)^#+\s*(data availability|availability of data)'
+    why: >-
+      Where the data are, and on what terms. Required by most journals now, and the one
+      most often forgotten because it did not exist a few years ago.
+
+  # Add the journal's own. Common ones worth checking for on the page:
+  #   author contributions (CRediT), patient consent, clinical trial registration number,
+  #   reporting-guideline statement, use of AI in writing, data sharing plan.
+
+# ── References ───────────────────────────────────────────────────────────────────────────
+
+references:
+  # A CSL style name resolvable by pandoc, used for offline builds. The Zotero style
+  # repository (zotero.org/styles) is the usual source and often lists the journal by name.
+  # Delete when you cannot find a matching style; the build then uses the project default and
+  # says so, which is better than formatting to the wrong journal's rules.
+  csl: ""            # e.g. "vancouver"; delete the line if no style matches
+
+  # The style as the journal names it, for a human reading this file: "Vancouver",
+  # "AMA 11th edition", "Harvard".
+  style_name: "REPLACE, e.g. Vancouver"
+
+  # true for numbered citations [1], false for author-date (Smith 2019).
+  numbered: true
+
+# ── Reporting guidelines ─────────────────────────────────────────────────────────────────
+#
+# Checklists the journal requires, by the names manuscript-guard knows:
+#   STROBE  RECORD  RECORD-PE  CONSORT  SPIRIT  PRISMA-2020  PRISMA-2020-abstracts
+#   TRIPOD-development  TRIPOD-validation  TRIPOD-development-validation
+#   ARRIVE-2.0  READUS-PV  READUS-PV-abstracts
+#
+# This feeds G5, which then requires a completed checklist. List only what the journal
+# actually mandates for this article type — many journals "encourage" a checklist, and an
+# encouragement recorded as a requirement produces a failure the author cannot honestly fix.
+
+reporting_guidelines:
+  - STROBE
+
+# ── Notes ────────────────────────────────────────────────────────────────────────────────
+#
+# Everything the journal requires that no gate can check. This is not a leftovers bin: it is
+# the part of the guidelines that will otherwise be discovered at 23:00 on the day of
+# submission. Write it as instructions to yourself, not as a summary of the page.
+#
+# Worth capturing: covering-letter contents; suggested and opposed reviewers; title-page
+# rules that differ from the manuscript; blinding requirements; figure resolution and file
+# formats; supplementary-file naming; word counts the journal defines differently; portal
+# quirks; anything the page says about AI use in preparing the manuscript.
+
+notes:
+  - "Covering letter: state the study's contribution and confirm the work is unpublished."
+  - "Figures: 300 dpi minimum; TIFF or EPS preferred over PNG."
+  - "Title page uploaded separately from the manuscript file."

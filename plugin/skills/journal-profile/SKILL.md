@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Read a journal's instructions for authors and write a machine-checkable profile of its limits, required sections and required statements. Use when a target journal is chosen, when check reports journal-profile-missing or journal-profile-stale, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing or journal-profile-stale, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check
@@ -14,20 +14,59 @@ without announcement, so a rule compiled into the tool would eventually be wrong
 be wrong *silently*. Every profile is read from the journal's own page and stamped with the
 date; the gate warns once that date is a year old.
 
-## 1. Read the instructions
+## 1. Choose the journal with the author, not for them
 
-Open the journal's instructions-for-authors page with the Chrome tools. Find the section
-for the **article type being submitted** — original research, review and short report
-usually have different limits, and one profile describes one type.
+Do this before reading any guidelines, and do it as a conversation. Propose a shortlist —
+typically three to five — and for each one give the author what they actually need to
+decide:
+
+- **Why this journal for this paper.** Scope and readership, in a sentence that refers to
+  the manuscript in front of you rather than to the journal's own blurb.
+- **What it will cost.** Article-processing charge, and whether the institution has an
+  agreement that waives it. This decides more submissions than anyone admits.
+- **What it will take.** Rough time to first decision, and the format the reformatting job
+  implies — a structured abstract, a hard word limit, a required checklist.
+- **The honest risk.** Where you think it is a reach, say so.
+
+Rank them and say which you would send first and why. Then let the author choose: they know
+things you do not — a reviewer conflict, a grant reporting requirement, a co-author's
+history with an editor. Record the shortlist and the decision in the project, because the
+second choice matters again after a rejection.
+
+Search the journal's current pages rather than relying on memory. Scope statements, charges
+and turnaround times all move, and a recommendation built on a stale impression wastes the
+author's time in a way that is invisible until it has.
+
+## 2. Read the instructions
+
+Open the chosen journal's instructions-for-authors page. Find the section for the **article
+type being submitted** — original research, review and short report usually have different
+limits, and one profile describes one type.
 
 Read the page. Do not fill the profile in from what you know about the journal, and do not
 carry a limit over from a sister journal at the same publisher. If the page does not state
 a limit, leave it out: an absent limit is not checked, and a guessed one is worse than
 none because it produces confident failures about a rule that does not exist.
 
-## 2. Write the profile
+Note what the page does *not* say, too. A journal that is silent on data availability is
+not a journal that forbids the statement, and the difference belongs in `notes`.
 
-`profiles/journals/<slug>.yaml` in the project — project profiles override anything shipped.
+## 3. Fill the template
+
+```bash
+manuscript-guard journal --template drug-safety
+```
+
+That copies an annotated template to `profiles/journals/drug-safety.yaml`. Every field
+carries a comment saying what it means, where on a typical guidelines page to find it, and
+what to do when the page is silent — the answer to the last being always to delete the line.
+Fill it in against the page, delete what the journal does not state, and delete the comments
+you no longer need.
+
+Project profiles override anything shipped, so this is also how you correct a profile that
+has gone stale.
+
+The shape it ends up as:
 
 ```yaml
 schema: manuscript-guard/journal/1
@@ -71,7 +110,7 @@ notes:
 reviewers, portal quirks. It is not a dumping ground; it is the list you will otherwise
 rediscover at 23:00 on the deadline.
 
-## 3. Point the project at it
+## 4. Point the project at it
 
 ```yaml
 # paper.yaml

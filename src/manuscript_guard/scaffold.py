@@ -15,6 +15,17 @@ schema: manuscript-guard/paper/1
 title: "{title}"
 english_variant: en-GB
 
+# Where the work has got to. Move it along as you go; `manuscript-guard stages` lists what
+# each one starts to enforce. Written here rather than left to the default, because the
+# default is `drafting` — so a project on its first day was held to drafting standards, which
+# is the wall of red the stage ladder exists to prevent.
+#   design           the analysis plan; no analysis or manuscript yet
+#   analysis         writing and running the analysis
+#   drafting         writing the manuscript against results that exist
+#   internal-review  draft complete; panels, checklists and the journal's rules apply
+#   submission       the version you send anywhere
+stage: design
+
 # Set once you have chosen a journal; enables the journal gate.
 # target_journal: drug-safety
 

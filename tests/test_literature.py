@@ -132,6 +132,29 @@ def test_model_names_are_recognised_in_several_forms(project: Path, name: str) -
     assert "attestation-not-human" in codes(chain_report(project))
 
 
+@pytest.mark.parametrize(
+    "name", ["Ai Tanaka", "Aiko Sato", "Mai Nakamura", "Alain Dubois", "Raina Aikens"]
+)
+def test_a_real_name_is_not_mistaken_for_a_model(name: str) -> None:
+    """`ai\\b` was on the deny-list, so `attested_by: "Ai Tanaka"` was refused.
+
+    Ai is a common Japanese given name, and this toolkit is written at a Japanese
+    university. Refusing a co-author's signature is a worse failure than the one the entry
+    guarded against — the acronym is now matched case-sensitively, because AI is a machine
+    and Ai is a person.
+    """
+    from manuscript_guard.gates.literature import _MODEL_NAME
+
+    assert not _MODEL_NAME.search(name)
+
+
+@pytest.mark.parametrize("name", ["AI", "A.I.", "an AI assistant", "a bot", "Claude", "GPT-4"])
+def test_a_model_is_still_recognised(name: str) -> None:
+    from manuscript_guard.gates.literature import _MODEL_NAME
+
+    assert _MODEL_NAME.search(name)
+
+
 def test_a_person_may_sign_an_attestation(project: Path) -> None:
     def mutate(document):
         document["entries"][0]["attested_by"] = "Basile Chrétien"

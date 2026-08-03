@@ -347,10 +347,21 @@ def cmd_submit(args: argparse.Namespace) -> int:
     if document is None:
         mode = OFFLINE if args.offline else LIVE
         try:
-            document = build_document(project, assembled, mode=mode, csl=args.csl).output
+            built = build_document(project, assembled, mode=mode, csl=args.csl)
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
+        # `build` prints this report and `submit` used to drop it, so `submit` verified
+        # strictly less than an ordinary build. The finding it discarded was
+        # `no-live-citations` — the case where the Zotero filter failed quietly and every
+        # citation in the pack is dead text that vanishes when someone hits Refresh in Word.
+        # That is the least acceptable place to be the quieter command.
+        if built.report.findings:
+            print(built.report.render(project.root))
+        if not built.report.ok:
+            print("\nThe document did not build cleanly. The pack is not assembled.")
+            return 1
+        document = built.output
 
     try:
         pack = assemble_pack(project, document)

@@ -35,9 +35,21 @@ from manuscript_guard.literature.sources import (
 GATE = "G7"
 
 # A model may draft an attestation for a person to sign; it may not be the signatory.
+#
+# `ai\b` used to be on this list, and it refuses `attested_by: "Ai Tanaka"` — a common
+# Japanese given name, and this toolkit is written at a Japanese university. Refusing a real
+# co-author's signature is a worse failure than the one the entry was guarding against: the
+# names it would have caught ("AI", "AI assistant") are covered by the standalone forms
+# below, and anyone setting out to sign as a model can write "B. Chrétien" regardless. The
+# list is a guard against the careless case, not the determined one, and it should not
+# insult people to do that job.
 _MODEL_NAME = re.compile(
-    r"\b(claude|gpt|chatgpt|o[1-4]\b|gemini|llama|mistral|copilot|assistant|"
-    r"anthropic|openai|deepseek|qwen|grok|ai\b|bot\b|llm\b)",
+    r"\b(claude|gpt|chatgpt|o[1-4]\b|gemini|llama|mistral|copilot|"
+    r"anthropic|openai|deepseek|qwen|grok|llm)\b"
+    # Standalone words only: "an AI", "a bot", "assistant". Never as part of a name.
+    r"|(?<![\w-])(?:bot|assistant|artificial\s+intelligence)(?![\w-])"
+    # The acronym is case-sensitive, which is the whole point: AI is a machine, Ai is a name.
+    r"|(?-i:(?<![\w-])A\.?I\.?(?![\w.-]))",
     re.IGNORECASE,
 )
 

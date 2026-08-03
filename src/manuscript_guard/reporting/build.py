@@ -94,7 +94,21 @@ def build_profile(
         "retrieved_by": meta.get("retrieved_by", "manuscript-guard transcribe"),
         "applies_to": meta.get("applies_to", ""),
         "licence": meta["licence"],
-        "verification": meta.get("verification", "every item verified verbatim in the source"),
+        # What actually happened, not what was hoped for. This was a constant string saying
+        # "every item verified verbatim in the source", written whether or not verify()
+        # came back clean — so a profile with eleven unverified items was byte-identical in
+        # its own account of itself to one with none. The failure was printed to stdout and
+        # then lost. Two different guarantees must not look the same on disk; that is the
+        # reason this field exists at all.
+        "verification": meta.get("verification")
+        or (
+            "every item verified verbatim in the source"
+            if not unverified
+            else f"{len(unverified)} of {len(items)} items NOT found verbatim in the source "
+            f"({', '.join(unverified[:12])}"
+            + (", …" if len(unverified) > 12 else "")
+            + ") — treat this profile as unverified"
+        ),
         "items": [
             {
                 "id": item.id,

@@ -40,3 +40,22 @@ def test_a_fresh_project_reads_as_a_todo_list(tmp_path: Path) -> None:
     # Optional fields the author has not filled in must not generate failures of their own.
     assert not any("orcid" in m or "email" in m or "credit" in m for m in messages)
     assert len(report.failures) == 3
+
+
+def test_a_fresh_project_starts_at_design_and_passes_there(tmp_path: Path) -> None:
+    """The scaffold wrote no `stage:`, so a new project fell to the `drafting` default.
+
+    A project on its first day was held to the standards of one with a finished draft, which
+    is precisely the wall of red the stage ladder was built to prevent — and reaching the
+    documented experience needed a `--stage` flag the author had no reason to know about.
+    """
+    root = tmp_path / "paper"
+    init_project(root, title="A fresh project")
+    assert "stage: design" in (root / "paper.yaml").read_text(encoding="utf-8")
+
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, chosen, deferred = _run_gates(root)
+    assert chosen == "design"
+    assert report.ok, report.render(root)
+    assert deferred, "the outstanding work is still listed, just not yet due"

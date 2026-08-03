@@ -1,0 +1,25 @@
+# Normalise line endings, and check them out as LF everywhere.
+#
+# This is not cosmetic here. Several of the toolkit's guarantees are byte-level: the
+# .sha256 sidecar beside each results fragment, the analysis digests in methods.lock, the
+# manuscript digest a review record is tied to. With the default behaviour Git stores LF and
+# hands Windows CRLF, so the same commit hashes differently on different machines and every
+# one of those checks reports a change nobody made. CI failed exactly that way on Ubuntu and
+# macOS while passing on the machine the digests were computed on.
+#
+# eol=lf makes the working copy match the repository on every platform, so a digest computed
+# anywhere is valid everywhere.
+* text=auto eol=lf
+
+# Binary: never touch these.
+*.docx binary
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.tif  binary
+*.tiff binary
+*.eps  binary
+*.xlsx binary
+*.zip  binary
+*.RData binary

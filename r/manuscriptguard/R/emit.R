@@ -52,6 +52,23 @@ mg_display <- function(key, value, display, digits) {
   stop(key, ": values of this type need an explicit `display`", call. = FALSE)
 }
 
+#' Write text with LF endings on every platform
+#'
+#' `writeLines(x, path)` opens a *text* connection, and on Windows a text connection
+#' translates every newline to CRLF. `useBytes = TRUE` does not prevent it — that argument
+#' is about encoding, not line endings. So the same analysis run on Windows and on Linux
+#' produced byte-different results fragments, and since the guarantee here is a byte digest
+#' over the file, a fragment written on one and checked out on the other reported
+#' `results-edited` for a file nobody had touched. A binary connection writes what it is
+#' given. This matches `newline="\n"` on every writer in the Python package.
+#' @noRd
+mg_write_lf <- function(text, path) {
+  con <- file(path, open = "wb")
+  on.exit(close(con), add = TRUE)
+  writeLines(text, con, sep = "\n", useBytes = TRUE)
+  invisible(path)
+}
+
 mg_git <- function(root, args) {
   out <- tryCatch(
     suppressWarnings(system2("git", c("-C", shQuote(root), args), stdout = TRUE, stderr = FALSE)),
@@ -175,12 +192,12 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       values = state$values
     )
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
-    writeLines(as.character(json), path, useBytes = TRUE)
+    mg_write_lf(as.character(json), path)
 
     # The sidecar digest, byte-identical in intent to the Python emitter's: hash the file
     # you just wrote, so a later hand-edit cannot pass unnoticed.
     checksum <- digest::digest(file = path, algo = "sha256")
-    writeLines(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"), useBytes = TRUE)
+    mg_write_lf(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"))
     invisible(path)
   }
 

@@ -91,3 +91,16 @@ def test_r_fragment_loads_and_formats_like_python(r_project: Path) -> None:
 def test_r_writes_a_usable_digest_sidecar(r_project: Path) -> None:
     fragment = r_project / "results" / "01_r.json"
     assert read_digest(fragment) == sha256_of(fragment)
+
+
+def test_r_writes_lf_endings_like_the_python_emitter(r_project: Path) -> None:
+    """`writeLines(x, path)` opens a text connection, which is CRLF on Windows.
+
+    `useBytes = TRUE` does not change that — it concerns encoding, not line endings. So an
+    R analysis on Windows produced a byte-different fragment from the same analysis on
+    Linux, and because the guarantee is a byte digest over the file, a co-author checking
+    it out on the other platform saw `results-edited` on a file nobody had touched.
+    """
+    for name in ("01_r.json", "01_r.json.sha256"):
+        raw = (r_project / "results" / name).read_bytes()
+        assert b"\r\n" not in raw, name

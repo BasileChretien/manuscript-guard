@@ -1,0 +1,26 @@
+schema: manuscript-guard/recipe/1
+
+# RECORD-PE extends RECORD, which extends STROBE. This profile holds only the RECORD-PE
+# items; list STROBE, RECORD and RECORD-PE together in paper.yaml.
+#
+# The document has no topic column — column 0 is the item number and the section names are
+# single-cell rows — so topics fall back to the section heading. Extension items sit in
+# column 3 and carry their own identifier ("4.a: ..."), with an em dash where the item does
+# not apply.
+
+meta:
+  name: RECORD-PE
+  long_name: "RECORD for PharmacoEpidemiological research"
+  applies_to: "Pharmacoepidemiological studies using routinely collected health data. Use alongside STROBE and RECORD."
+  source_url: "https://www.record-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — the RECORD family states CC BY, but RECORD-PE was published separately (The BMJ, 2018) and its own terms have not been read.
+  licence_url: https://www.record-statement.org/
+  download_url: http://www.record-statement.org/Files/checklist-pe/RECORD-PE%20Checklist.docx
+  sha256: 17d4655f266591a3ad31c6c9ac6f9607c14c890fca8235389d6913c409acebcb
+
+document: RECORD-PE Checklist.docx
+text_column: 3
+named_id: true

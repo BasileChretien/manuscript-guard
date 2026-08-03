@@ -1,0 +1,20 @@
+schema: manuscript-guard/recipe/1
+
+meta:
+  name: SPIRIT-2025
+  long_name: "Standard Protocol Items: Recommendations for Interventional Trials"
+  version: "2025"
+  applies_to: "Clinical trial protocols"
+  source_url: "https://www.spirit-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — no licence on consort-spirit.org; a terms-of-use page exists and has not been read.
+  licence_url: https://www.consort-spirit.org/terms-of-use
+  download_url: https://www.consort-spirit.org/_files/ugd/b5740e_667c45b02102408ab983c9704525597b.docx?dn=SPIRIT%202025%20editable%20checklist.docx
+  sha256: 9159179d53b65f2615135c554e661d40259eedb2d61318c890617f4a49bd1f2d
+
+document: SPIRIT 2025 editable checklist.docx
+topic_column: 0
+id_column: 1
+text_column: 2

@@ -1,0 +1,23 @@
+schema: manuscript-guard/recipe/1
+
+# This variant carries an extra column marking whether each item applies to development
+# (D), validation (V) or both, so the checklist item text sits one column further right.
+
+meta:
+  name: TRIPOD-development-validation
+  long_name: "TRIPOD checklist for prediction model development and validation"
+  version: "2015"
+  applies_to: "Studies both developing and validating a prediction model"
+  source_url: "https://www.tripod-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — tripod-statement.org states only 'Copyright 2020 - Julius Centrum'.
+  licence_url: https://www.tripod-statement.org/
+  download_url: https://www.tripod-statement.org/wp-content/uploads/2020/01/Tripod-Checklist-Prediction-Model-Development-and-Validation-Word.docx
+  sha256: 1a775fa0e42eac38f91471add2b553c405d8c3d287fb87b99bb0ed1cd2415b97
+
+document: Tripod-Checklist-Prediction-Model-Development-and-Validation-Word.docx
+topic_column: 0
+id_column: 1
+text_column: 3

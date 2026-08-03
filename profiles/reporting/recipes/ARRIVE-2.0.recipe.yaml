@@ -1,0 +1,33 @@
+schema: manuscript-guard/recipe/1
+
+# ARRIVE 2.0 offers no Word checklist. Both sets — the Essential 10 and the Recommended Set
+# — are printed side by side on page 2 of the guidelines PDF, so this recipe uses the
+# column reader rather than the table reader: the page is cut at the boundary between the
+# two sets, and each half is parsed on its own visual grid.
+#
+# This path is more fragile than reading a .docx table, and its verification is weaker: the
+# items are checked against the same de-columnised text they were built from, which catches
+# a mis-assembled item but not a mis-cut column. Prefer a Word checklist wherever one
+# exists.
+
+meta:
+  name: ARRIVE-2.0
+  long_name: "Animal Research: Reporting of In Vivo Experiments"
+  version: "2.0"
+  applies_to: "Studies reporting in vivo animal experiments"
+  source_url: "https://arriveguidelines.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY — the ARRIVE 2.0 explanation and elaboration was published in PLOS Biology under CC-BY. The checklist's own terms are not separately stated.
+  licence_url: https://arriveguidelines.org/arrive-guidelines
+  download_url: https://arriveguidelines.org/sites/arrive/files/documents/ARRIVE%20guidelines%202.0%20-%20English.pdf
+  sha256: 64a8f03f02496eac7eed4ba2b587ad8b9365670b946eb167bc68da5703d6c604
+
+document: ARRIVE guidelines 2.0 - English.pdf
+format: pdf-columns
+pages: [2]
+column_split: 121
+
+# Unused by the column reader, but the recipe schema expects a text column.
+text_column: 0

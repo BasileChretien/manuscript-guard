@@ -1,0 +1,26 @@
+schema: manuscript-guard/recipe/1
+
+# RECORD extends STROBE. This profile holds only the RECORD-specific items; a project using
+# RECORD lists both STROBE and RECORD in paper.yaml, so both sets are checked.
+#
+# The document interleaves the two: column 2 repeats the STROBE recommendation, column 4
+# carries the extension item, which names itself ("RECORD 1.1: ..."). named_id reads the
+# identifier out of the text and drops the prefix.
+
+meta:
+  name: RECORD
+  long_name: "REporting of studies Conducted using Observational Routinely-collected health Data"
+  applies_to: "Studies using routinely collected health data. Use alongside STROBE."
+  source_url: "https://www.record-statement.org/checklist.php"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY — stated on record-statement.org: 'The explanatory document and checklist are protected on a Creative Common Attribution (CC BY) license.'
+  licence_url: https://www.record-statement.org/checklist.php
+  download_url: http://www.record-statement.org/Files/checklist/RECORD%20Checklist.docx
+  sha256: 451fb94f87f4e266abf6018bf1ca7204730ecf30d257fd7edbd2e1a0d711a53c
+
+document: RECORD Checklist.docx
+topic_column: 0
+text_column: 4
+named_id: true

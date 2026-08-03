@@ -1,0 +1,20 @@
+schema: manuscript-guard/recipe/1
+
+meta:
+  name: TRIPOD-validation
+  long_name: "TRIPOD checklist for prediction model validation"
+  version: "2015"
+  applies_to: "Studies validating an existing prediction model"
+  source_url: "https://www.tripod-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — tripod-statement.org states only 'Copyright 2020 - Julius Centrum'.
+  licence_url: https://www.tripod-statement.org/
+  download_url: https://www.tripod-statement.org/wp-content/uploads/2020/01/Tripod-Checklist-Prediction-Model-Validation-Word.docx
+  sha256: e24213e230e2aabf21be8e56f3d39e5ab0befc65ce88bc0a58500fead2413784
+
+document: Tripod-Checklist-Prediction-Model-Validation-Word.docx
+topic_column: 0
+id_column: 1
+text_column: 2

@@ -1,0 +1,20 @@
+schema: manuscript-guard/recipe/1
+
+meta:
+  name: PRISMA-2020
+  long_name: "Preferred Reporting Items for Systematic reviews and Meta-Analyses"
+  version: "2020"
+  applies_to: "Systematic reviews, with or without meta-analysis"
+  source_url: "https://www.prisma-statement.org/prisma-2020-checklist"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — prisma-statement.org states only 'Copyright (c) 2024-2026 the PRISMA Executive'. The PRISMA 2020 statement papers are open access; their terms have not been read.
+  licence_url: https://www.prisma-statement.org/
+  download_url: https://www.prisma-statement.org/s/PRISMA_2020_checklist-k3f4.docx
+  sha256: fba382ec9fa4b5594697444c3ee555f805c86a3d1093d4633f25a7653ad60e5e
+
+document: PRISMA_2020_checklist.docx
+topic_column: 0
+id_column: 1
+text_column: 2

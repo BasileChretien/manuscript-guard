@@ -1,0 +1,21 @@
+schema: manuscript-guard/recipe/1
+
+meta:
+  name: PRISMA-2020-abstracts
+  long_name: "PRISMA 2020 for Abstracts"
+  version: "2020"
+  applies_to: "Abstracts of systematic reviews"
+  source_url: "https://www.prisma-statement.org/prisma-2020-checklist"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    UNCONFIRMED — see the PRISMA-2020 recipe.
+  licence_url: https://www.prisma-statement.org/
+  # As PRISMA-2020: the /s/ link returns an HTML page. Save it by hand.
+  download_url: https://www.prisma-statement.org/s/PRISMA_2020_abstract_checklist-pgx2.docx
+  sha256: 4ec17f0b1fba60abba353c86b568fc3c31c9146ab32e46c45a8dec329ff2f7d3
+
+document: PRISMA_2020_abstract_checklist.docx
+topic_column: 0
+id_column: 1
+text_column: 2

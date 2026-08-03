@@ -1,0 +1,19 @@
+schema: manuscript-guard/recipe/1
+
+meta:
+  name: READUS-PV-abstracts
+  long_name: "READUS-PV for Abstracts"
+  applies_to: "Abstracts of disproportionality analyses"
+  source_url: "https://readus-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY-NC — see the READUS-PV recipe. NON-COMMERCIAL.
+  licence_url: https://www.ebi.ac.uk/europepmc/
+  download_url: https://readus-statement.org/wp-content/uploads/2024/03/readus-checklist-for-abstract.docx
+  sha256: 2207702fd16f22a178785d055ead92733b321ad9e7ed2570e5e66781ac191e71
+
+document: readus-checklist-for-abstract.docx
+topic_column: 0
+id_column: 1
+text_column: 2

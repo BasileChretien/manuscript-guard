@@ -1,0 +1,29 @@
+schema: manuscript-guard/recipe/1
+
+# How to read the STROBE items out of the official checklist document.
+#
+# The recipe rather than the transcribed text is what this repository ships. Running
+# `manuscript-guard transcribe` against your own copy of the official document produces
+# the profile locally, identical to everyone else's, and every item is verified to appear
+# in the document before the profile is written.
+
+meta:
+  name: STROBE
+  long_name: "Strengthening the Reporting of Observational Studies in Epidemiology"
+  version: "v4 (combined, as published in PLoS Medicine)"
+  applies_to: "Cohort, case-control and cross-sectional studies"
+  source_url: "https://www.strobe-statement.org/checklists/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY 4.0 — the STROBE statement carrying this checklist was published in PLoS Medicine under the Creative Commons Attribution License. The STROBE website itself states only 'Copyright (c) STROBE'.
+  licence_url: https://pmc.ncbi.nlm.nih.gov/articles/PMC2020495/
+  download_url: https://www.strobe-statement.org/download/strobe-checklist-wide-cohort-case-control-and-cross-sectional-studies-combined-doc
+  sha256: e1ceb763627c1a162eece448db6f0df8a4446ff03990e44e0514a14545cb5801
+
+document: STROBE-checklist-v4-combined-PlosMedicine.docx
+topic_column: 0
+id_column: 1
+text_column: 2
+carry_id: true
+subitem_letters: true

@@ -1,0 +1,24 @@
+schema: manuscript-guard/recipe/1
+
+# READUS-PV is the guideline written specifically for disproportionality analyses of
+# individual case safety reports, which is what a signal-detection study in
+# pharmacovigilance actually is. For that design it is more directly applicable than STROBE,
+# and the two are complementary rather than alternatives.
+
+meta:
+  name: READUS-PV
+  long_name: "REporting of A Disproportionality analysis for drUg Safety signal detection using individual case safety reports in PharmacoVigilance"
+  applies_to: "Disproportionality analyses of spontaneous reporting databases"
+  source_url: "https://readus-statement.org/"
+  retrieved_on: 2026-08-03
+  retrieved_by: "downloaded by the author"
+  licence: >-
+    CC BY-NC — Europe PMC records the READUS-PV explanation and elaboration (Fusaroli et al., Drug Safety 2024) as 'cc by-nc'. NON-COMMERCIAL: this cannot be redistributed from an MIT repository.
+  licence_url: https://www.ebi.ac.uk/europepmc/
+  download_url: https://readus-statement.org/wp-content/uploads/2024/03/readus-checklist.docx
+  sha256: c244f2aab6eef37ceeb66f4002cc3bcbf881784f51e66210b07ad63b27d13b7f
+
+document: readus-checklist.docx
+topic_column: 0
+id_column: 1
+text_column: 2

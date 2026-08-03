@@ -187,5 +187,5 @@ def sync_bib(project: Project) -> tuple[Path, int]:
     text = export(citekeys)
     path = project.path("literature") / BIB_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="\n")
     return path, len(citekeys)

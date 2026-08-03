@@ -194,6 +194,8 @@ def reconcile(project: Project, *, parameters: dict | None = None) -> tuple[Path
         "# is that a person looked.\n\n"
     )
     path.write_text(
-        header + yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        header + yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+        newline="\n",
     )
     return path, len(current)

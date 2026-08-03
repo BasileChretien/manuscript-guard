@@ -186,7 +186,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     for path in source_files(manuscript_dir):
         target = out_dir / path.relative_to(manuscript_dir)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(substitute(path.read_text(encoding="utf-8"), rendered), encoding="utf-8")
+        target.write_text(
+            substitute(path.read_text(encoding="utf-8"), rendered),
+            encoding="utf-8",
+            newline="\n",
+        )
         count += 1
     print(f"rendered {count} file{'' if count == 1 else 's'} to {out_dir}")
     return 0
@@ -398,7 +402,9 @@ def cmd_fetch(args: argparse.Namespace) -> int:
             document = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
             document.setdefault("meta", {})["download_url"] = args.url
             recipe_path.write_text(
-                yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+                yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+                newline="\n",
             )
             print("    recorded download_url in the recipe")
 

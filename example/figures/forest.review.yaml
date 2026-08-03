@@ -1,75 +1,52 @@
 schema: manuscript-guard/figure-review/1
-
-# Recorded after looking at the rendered figure, not at its source. The first review of
-# this figure returned `concerns`: the manuscript claimed Figure 1 showed the estimate
-# "against the comparators" and the figure had one row. No other gate noticed, because
-# every number in the figure was correct — the sentence was what was wrong.
-
 figure: forest.svg
 content_sha256: 593aa0abc901a74b919acc3ae2e87b83ad013f1c27828e5f5b7f5afa51bfde43
 reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
 caption_checked_against: manuscript/main.md
 verdict: pass
-
 checks:
-  - id: values-match-results
-    ok: true
-    note: >-
-      Reads "3.84 (95% CI 2.89 to 5.12)", matching ror.point, ror.ci_low and ror.ci_high.
-      The marker sits between the 2 and 5 ticks and closer to 5, which is where 3.84
-      belongs on a log axis; the whiskers end just right of 2 and just past 5.
-
-  - id: axes-labelled-and-scaled
-    ok: true
-    note: >-
-      x-axis reads "Reporting odds ratio (log scale)", so the transformation is stated
-      rather than inferred. Ticks at 0.5, 1, 2, 5, 10 are evenly spaced in log units, and
-      the axis spans both sides of the null rather than being truncated at it.
-
-  - id: caption-agrees
-    ok: true
-    note: >-
-      The manuscript now says only "The estimate is shown in Figure 1", which is what the
-      figure shows. The earlier claim about comparators has been removed.
-
-  - id: legend-and-marks-explained
-    ok: true
-    note: >-
-      Three marks, all accounted for: the filled circle is the point estimate, the
-      horizontal bar the interval, and the dashed vertical rule is now labelled "no
-      association". No legend is needed for a single series.
-
-  - id: no-unexplained-number
-    ok: true
-    note: >-
-      Visible numbers are the five axis ticks, the estimate and its two interval bounds.
-      Nothing else appears.
-
-  - id: scale-not-misleading
-    ok: true
-    note: >-
-      A log axis is the right encoding for a ratio and is symmetric about the null, so the
-      visual distance from 1 is not exaggerated. The interval excludes 1 and is drawn
-      clearly to the right of it, which matches the claim in the text.
-
-  - id: readable-and-accessible
-    ok: true
-    note: >-
-      Black and grey on white; nothing is carried by colour alone, so it survives greyscale
-      printing and the common forms of colour blindness. Text is legible at the 6.5 inch
-      width the script sets.
-
+- id: values-match-results
+  ok: true
+  note: Reads "3.84 (95% CI 2.89 to 5.12)", matching ror.point, ror.ci_low and ror.ci_high.
+    The marker sits between the 2 and 5 ticks and closer to 5, which is where 3.84
+    belongs on a log axis; the whiskers end just right of 2 and just past 5.
+- id: axes-labelled-and-scaled
+  ok: true
+  note: x-axis reads "Reporting odds ratio (log scale)", so the transformation is
+    stated rather than inferred. Ticks at 0.5, 1, 2, 5, 10 are evenly spaced in log
+    units, and the axis spans both sides of the null rather than being truncated at
+    it.
+- id: caption-agrees
+  ok: true
+  note: The manuscript now says only "The estimate is shown in Figure 1", which is
+    what the figure shows. The earlier claim about comparators has been removed.
+- id: legend-and-marks-explained
+  ok: true
+  note: 'Three marks, all accounted for: the filled circle is the point estimate,
+    the horizontal bar the interval, and the dashed vertical rule is now labelled
+    "no association". No legend is needed for a single series.'
+- id: no-unexplained-number
+  ok: true
+  note: Visible numbers are the five axis ticks, the estimate and its two interval
+    bounds. Nothing else appears.
+- id: scale-not-misleading
+  ok: true
+  note: A log axis is the right encoding for a ratio and is symmetric about the null,
+    so the visual distance from 1 is not exaggerated. The interval excludes 1 and
+    is drawn clearly to the right of it, which matches the claim in the text.
+- id: readable-and-accessible
+  ok: true
+  note: Black and grey on white; nothing is carried by colour alone, so it survives
+    greyscale printing and the common forms of colour blindness. Text is legible at
+    the 6.5 inch width the script sets.
 findings:
-  - severity: warn
-    message: >-
-      The "no association" label is centred on the null line, so the dashed rule runs
-      through the word. Offsetting the label sideways would read more cleanly.
-    where: forest.svg, below the null line
-
-  - severity: warn
-    message: >-
-      The annotation reaches the right edge of the canvas. It is not clipped at this size,
-      but there is no margin left, and a journal reflowing the figure to a single column
-      may cut it. Consider placing it inside the axes.
-    where: forest.svg, annotation at the right
+- severity: warn
+  message: The "no association" label is centred on the null line, so the dashed rule
+    runs through the word. Offsetting the label sideways would read more cleanly.
+  where: forest.svg, below the null line
+- severity: warn
+  message: The annotation reaches the right edge of the canvas. It is not clipped
+    at this size, but there is no margin left, and a journal reflowing the figure
+    to a single column may cut it. Consider placing it inside the axes.
+  where: forest.svg, annotation at the right

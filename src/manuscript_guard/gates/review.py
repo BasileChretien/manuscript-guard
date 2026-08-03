@@ -263,6 +263,8 @@ def open_panel(
         "reviewers": reviewers,
     }
     path.write_text(
-        yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+        newline="\n",
     )
     return path

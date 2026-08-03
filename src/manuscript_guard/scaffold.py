@@ -170,11 +170,11 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
         if path.exists():
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(template.format(title=title), encoding="utf-8")
+        path.write_text(template.format(title=title), encoding="utf-8", newline="\n")
         created.append(path)
 
     keep = root / "results" / ".gitkeep"
     if not keep.exists():
-        keep.write_text("", encoding="utf-8")
+        keep.write_text("", encoding="utf-8", newline="\n")
 
     return created

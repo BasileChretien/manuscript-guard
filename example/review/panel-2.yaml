@@ -3,30 +3,25 @@ round: 2
 opened_on: 2026-08-03
 manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
 blinded: true
+rationale: 'Deliberately not the same panel. Round one was built around the study
+  design, and a second pass by the same remits would mostly confirm itself. These
+  two read the manuscript as a reader will meet it — an editor deciding whether to
+  send it out, and a clinician deciding what to do differently — neither of whom has
+  seen the first panel''s report.
 
-rationale: >-
-  Deliberately not the same panel. Round one was built around the study design, and a second
-  pass by the same remits would mostly confirm itself. These two read the manuscript as a
-  reader will meet it — an editor deciding whether to send it out, and a clinician deciding
-  what to do differently — neither of whom has seen the first panel's report.
-
-  Blinded, which is the point. A second panel that reads the first panel's findings inherits
-  the first panel's sense of what matters, and the errors worth catching in round two are
-  the ones round one was not looking for.
-
+  Blinded, which is the point. A second panel that reads the first panel''s findings
+  inherits the first panel''s sense of what matters, and the errors worth catching
+  in round two are the ones round one was not looking for.'
 reviewers:
-  - id: desk-editor
-    role: Journal editor triaging for desk rejection
-    remit: >-
-      Whether this would survive triage: scope, whether the abstract's claim matches the
-      paper's, length against the journal's limits, and whether the required declarations
-      are present and say something.
-    why: Desk rejection is the most common outcome and the cheapest to avoid.
-
-  - id: clinical-reader
-    role: Clinical pharmacologist
-    remit: >-
-      What a practising reader would take away, and whether that is what the data support.
-      Over-reading of the estimate, missing clinical context, and whether the limitations
-      are stated where a hurried reader will meet them.
-    why: The event is a clinical one and the paper will be read by clinicians.
+- id: desk-editor
+  role: Journal editor triaging for desk rejection
+  remit: 'Whether this would survive triage: scope, whether the abstract''s claim
+    matches the paper''s, length against the journal''s limits, and whether the required
+    declarations are present and say something.'
+  why: Desk rejection is the most common outcome and the cheapest to avoid.
+- id: clinical-reader
+  role: Clinical pharmacologist
+  remit: What a practising reader would take away, and whether that is what the data
+    support. Over-reading of the estimate, missing clinical context, and whether the
+    limitations are stated where a hurried reader will meet them.
+  why: The event is a clinical one and the paper will be read by clinicians.

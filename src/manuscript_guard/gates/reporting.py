@@ -242,5 +242,6 @@ def scaffold_completion(project: Project, name: str) -> tuple[Path, int, int]:
             allow_unicode=True,
         ),
         encoding="utf-8",
+        newline="\n",
     )
     return path, len(items), added

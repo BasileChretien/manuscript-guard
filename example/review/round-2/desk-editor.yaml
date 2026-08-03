@@ -5,32 +5,25 @@ reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
 manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
 verdict: minor-revision
-
-summary: >-
-  Comfortably within the journal's limits, correctly structured, and all three required
-  declarations are present and say something rather than being placeholders. It would pass
-  triage. The abstract's conclusion is the one place where the paper claims slightly more
-  than the title admits.
-
+summary: Comfortably within the journal's limits, correctly structured, and all three
+  required declarations are present and say something rather than being placeholders.
+  It would pass triage. The abstract's conclusion is the one place where the paper
+  claims slightly more than the title admits.
 findings:
-  - id: r2-de-01
-    severity: minor
-    where: Abstract, Conclusions
-    finding: >-
-      The conclusion says reporting is disproportionate "in these synthetic data", which is
-      accurate, but a reader skimming the abstract could still carry away a drug-safety
-      finding about a real medicine. The title says synthetic; the conclusion could say so
-      more plainly than in a subordinate phrase.
-    overridden: >-
-      Left. The word "synthetic" appears in the title, twice in the abstract and again in
-      the Methods; making the point a fourth time would read as anxiety rather than
-      caution. Recorded so the judgement is visible rather than an oversight.
-    resolved_on: 2026-08-03
-
-  - id: r2-de-02
-    severity: comment
-    where: Whole manuscript
-    finding: >-
-      Main text is well under the 3500-word limit, with two display items against a limit of
-      four each. There is room for the reviewer-requested additions that usually follow, and
-      that is worth having rather than spending now.
+- id: r2-de-01
+  severity: minor
+  where: Abstract, Conclusions
+  finding: The conclusion says reporting is disproportionate "in these synthetic data",
+    which is accurate, but a reader skimming the abstract could still carry away a
+    drug-safety finding about a real medicine. The title says synthetic; the conclusion
+    could say so more plainly than in a subordinate phrase.
+  overridden: Left. The word "synthetic" appears in the title, twice in the abstract
+    and again in the Methods; making the point a fourth time would read as anxiety
+    rather than caution. Recorded so the judgement is visible rather than an oversight.
+  resolved_on: 2026-08-03
+- id: r2-de-02
+  severity: comment
+  where: Whole manuscript
+  finding: Main text is well under the 3500-word limit, with two display items against
+    a limit of four each. There is room for the reviewer-requested additions that
+    usually follow, and that is worth having rather than spending now.

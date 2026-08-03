@@ -58,7 +58,7 @@ def write_digest(fragment: Path) -> Path:
     """
     digest = sha256_of(fragment)
     path = fragment.with_name(fragment.name + DIGEST_SUFFIX)
-    path.write_text(f"{digest}  {fragment.name}\n", encoding="utf-8")
+    path.write_text(f"{digest}  {fragment.name}\n", encoding="utf-8", newline="\n")
     return path
 
 
@@ -228,7 +228,7 @@ class Emitter:
             path = root / path
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(self.document(), indent=2, ensure_ascii=False, sort_keys=False)
-        path.write_text(payload + "\n", encoding="utf-8")
+        path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
         return path
 

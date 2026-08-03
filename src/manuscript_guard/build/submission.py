@@ -241,7 +241,7 @@ def assemble_pack(project: Project, document: Path) -> Pack:
         ("declarations.md", declarations(project)),
     ):
         target = directory / name
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="\n")
         files.append(target)
 
     checklists = project.root / "reporting"
@@ -293,6 +293,8 @@ def _write_manifest(project: Project, directory: Path, files: list[Path]) -> Pat
         "# answer to \"which version did the journal get\" is a list of checksums.\n\n"
     )
     path.write_text(
-        header + yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        header + yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+        newline="\n",
     )
     return path

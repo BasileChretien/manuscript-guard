@@ -5,43 +5,34 @@ reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
 manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
 verdict: minor-revision
-
-summary: >-
-  A single reporting odds ratio with a Wald interval on the log scale. The estimator suits
-  the design and the cell counts are large enough that the normal approximation holds. My
-  main objection was that the reader was asked to accept the ratio without being shown the
-  four numbers it comes from.
-
+summary: A single reporting odds ratio with a Wald interval on the log scale. The
+  estimator suits the design and the cell counts are large enough that the normal
+  approximation holds. My main objection was that the reader was asked to accept the
+  ratio without being shown the four numbers it comes from.
 findings:
-  - id: r1-bs-01
-    severity: major
-    where: Results
-    finding: >-
-      The contingency table is not reported. The reporting odds ratio and its interval are
-      given, but not the four cell counts, so a reader cannot recompute the estimate or see
-      how much of it rests on a small cell. For a paper whose entire result is one ratio,
-      that is the table that matters most.
-    resolution: >-
-      Table 2 now reports the 2 x 2 counts, emitted from the analysis rather than typed,
-      and the Results text points the reader at it explicitly for reconstruction.
-    resolved_on: 2026-08-03
-
-  - id: r1-bs-02
-    severity: minor
-    where: Methods
-    finding: >-
-      Interval construction is described as "the standard error of the log odds ratio"
-      without naming it. Say Wald, and say what would be done if a cell were zero, since
-      that is where the method fails and a reader of a disproportionality paper will ask.
-    overridden: >-
-      Left as is. No cell is close to zero in these data, and specifying continuity
-      correction behaviour that the code does not implement would describe an analysis that
-      was not run. Recorded here so the omission is deliberate and visible.
-    resolved_on: 2026-08-03
-
-  - id: r1-bs-03
-    severity: comment
-    where: Methods
-    finding: >-
-      One comparison, so no multiplicity adjustment is needed and none is claimed. Correct
-      as it stands; worth noting because reviewers often ask for one reflexively.
+- id: r1-bs-01
+  severity: major
+  where: Results
+  finding: The contingency table is not reported. The reporting odds ratio and its
+    interval are given, but not the four cell counts, so a reader cannot recompute
+    the estimate or see how much of it rests on a small cell. For a paper whose entire
+    result is one ratio, that is the table that matters most.
+  resolution: Table 2 now reports the 2 x 2 counts, emitted from the analysis rather
+    than typed, and the Results text points the reader at it explicitly for reconstruction.
+  resolved_on: 2026-08-03
+- id: r1-bs-02
+  severity: minor
+  where: Methods
+  finding: Interval construction is described as "the standard error of the log odds
+    ratio" without naming it. Say Wald, and say what would be done if a cell were
+    zero, since that is where the method fails and a reader of a disproportionality
+    paper will ask.
+  overridden: Left as is. No cell is close to zero in these data, and specifying continuity
+    correction behaviour that the code does not implement would describe an analysis
+    that was not run. Recorded here so the omission is deliberate and visible.
+  resolved_on: 2026-08-03
+- id: r1-bs-03
+  severity: comment
+  where: Methods
+  finding: One comparison, so no multiplicity adjustment is needed and none is claimed.
+    Correct as it stands; worth noting because reviewers often ask for one reflexively.

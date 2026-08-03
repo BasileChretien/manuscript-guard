@@ -119,5 +119,6 @@ def build_profile(
     path.write_text(
         header + yaml.safe_dump(profile, sort_keys=False, allow_unicode=True, width=100),
         encoding="utf-8",
+        newline="\n",
     )
     return path, len(items), unverified

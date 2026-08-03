@@ -118,7 +118,9 @@ def build_document(
     if not main:
         raise BuildError("no manuscript/main.md to build")
     body = "\n\n".join(a.text for a in main + rest)
-    source.write_text(_front_matter(project) + body, encoding="utf-8")
+    source.write_text(
+        _front_matter(project) + body, encoding="utf-8", newline="\n"
+    )
 
     output = output or build_dir / "manuscript.docx"
     command = [pandoc(), "--standalone", str(source), "-o", str(output)]

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+renv/library/
+renv/staging/
+
+# Manuscript build artefacts (always regenerated; never a source of truth)
+**/build/
+*.docx
+*.pdf
+!profiles/**/*.pdf
+
+# Official guideline documents, downloaded for transcription. Not committed: each carries
+# its own licence, and several are CC BY-NC-SA, which cannot be redistributed from an MIT
+# repository. The transcribed YAML records the source URL and licence so anyone can fetch
+# the original and check the transcription.
+profiles/reporting/sources/
+
+# Generated checklist profiles. Produced locally by `manuscript-guard transcribe` from your
+# own copy of each official document, so everyone gets an identical profile without the
+# repository redistributing text it may not have the right to. The recipes ARE committed.
+profiles/reporting/*.yaml
+
+# OS
+.DS_Store
+Thumbs.db

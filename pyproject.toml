@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "manuscript-guard"
+version = "0.1.0"
+description = "Make every number in a scientific manuscript traceable to its source."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Basile Chrétien" }]
+keywords = ["reproducibility", "manuscript", "provenance", "zotero", "pandoc", "science"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Text Processing :: Markup :: Markdown",
+]
+dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.5"]
+
+[project.scripts]
+manuscript-guard = "manuscript_guard.cli:main"
+mguard = "manuscript_guard.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/basilechretien/manuscript-guard"
+Source = "https://github.com/basilechretien/manuscript-guard"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/manuscript_guard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

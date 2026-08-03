@@ -119,6 +119,30 @@ def contains(haystack: str, needle: str) -> bool:
     return normalise(needle).lower() in normalise(haystack).lower()
 
 
+def states_value(quote: str, display: str) -> bool:
+    """Whether the quote states this value, as a whole number rather than as characters.
+
+    `contains` is the right test for prose — a sentence either appears in the source or it
+    does not. It is the wrong test for a value, because a short number is a substring of a
+    longer one. A ledger entry of `3.4` was accepted against the verbatim quote
+
+        "the reporting odds ratio for hepatic events was 13.42 (95% CI 9.10 to 19.80)"
+
+    since "3.4" sits inside "13.42". Both checks passed and the manuscript went on to
+    attribute an ROR of 3.4 to a paper reporting 13.42 — a misquotation of a real source,
+    which is worse than an unsourced number because it looks checked. Digits adjacent to
+    the match on either side, and a decimal separator or comma before it, now disqualify it.
+    """
+    text = normalise(quote).lower()
+    value = normalise(display).lower()
+    if not value:
+        return False
+    if not any(ch.isdigit() for ch in value):
+        return value in text
+    edged = re.compile(r"(?<![0-9.,])" + re.escape(value) + r"(?![0-9])")
+    return edged.search(text) is not None
+
+
 def filed_name(citekey: str, suffix: str) -> str:
     """The name a stored source should have: keyed to the citation, not to the download."""
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", citekey)

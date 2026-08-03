@@ -6,6 +6,14 @@ from manuscript_guard.literature.sources import (
     filed_name,
     normalise,
     read_source,
+    states_value,
 )
 
-__all__ = ["UnreadableSource", "contains", "filed_name", "normalise", "read_source"]
+__all__ = [
+    "UnreadableSource",
+    "contains",
+    "filed_name",
+    "normalise",
+    "read_source",
+    "states_value",
+]

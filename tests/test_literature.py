@@ -14,7 +14,13 @@ import yaml
 
 from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.gates import check_literature_chain
-from manuscript_guard.literature import UnreadableSource, contains, normalise, read_source
+from manuscript_guard.literature import (
+    UnreadableSource,
+    contains,
+    normalise,
+    read_source,
+    states_value,
+)
 
 LEDGER = Path("literature") / "ledger.yaml"
 ATTESTED = Path("literature") / "attested.yaml"
@@ -169,6 +175,27 @@ def test_typographic_differences_do_not_break_a_true_quote(stored: str, quoted: 
 
 def test_a_genuinely_different_quote_is_not_forgiven() -> None:
     assert not contains("The prevalence was 12.4%.", "The prevalence was 12.5%.")
+
+
+QUOTE = "the reporting odds ratio for hepatic events was 13.42 (95% CI 9.10 to 19.80)"
+
+
+@pytest.mark.parametrize("display", ["3.4", "13.4", "9.1", "1", "3.42"])
+def test_a_value_hiding_inside_a_longer_number_is_not_stated_by_the_quote(display: str) -> None:
+    """`contains` is a substring test, which is right for prose and wrong for a value.
+
+    A ledger entry of 3.4 passed against this quote because "3.4" sits inside "13.42".
+    Both literature checks went green and the manuscript attributed an ROR of 3.4 to a
+    paper reporting 13.42 — a misquotation of a real source, which is worse than an
+    unsourced number because it carries a citation and looks checked.
+    """
+    assert contains(QUOTE, display), "the substring really is there; that is the problem"
+    assert not states_value(QUOTE, display)
+
+
+@pytest.mark.parametrize("display", ["13.42", "9.10", "19.80", "95%"])
+def test_a_value_the_quote_really_states_still_passes(display: str) -> None:
+    assert states_value(QUOTE, display)
 
 
 def test_html_sources_are_read_as_text(tmp_path: Path) -> None:

@@ -25,7 +25,12 @@ import re
 from manuscript_guard.contracts.literature import ABSTRACT_ONLY, ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.literature.sources import UnreadableSource, contains, read_source
+from manuscript_guard.literature.sources import (
+    UnreadableSource,
+    contains,
+    read_source,
+    states_value,
+)
 
 GATE = "G7"
 
@@ -89,7 +94,7 @@ def check_literature_chain(project: Project, literature: Literature) -> Report:
             )
             continue
 
-        if not contains(quote, value.display):
+        if not states_value(quote, value.display):
             report = report.with_findings(
                 Finding(
                     gate=GATE,

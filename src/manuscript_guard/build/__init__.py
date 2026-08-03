@@ -14,7 +14,6 @@ from manuscript_guard.build.document import (
     build_document,
     ensure_zotero_lua,
 )
-
 from manuscript_guard.build.submission import (
     Pack,
     SubmissionError,

@@ -17,13 +17,23 @@ structural:
     why: Supplement identifiers of the form S1, S2.
     pattern: '\bS\d+[A-Za-z]?\b'
 
+  # Both of these rules read `<keyword> <digits>`, and a rule that spans an atom accepts it,
+  # so an unbounded `\d+` handed the gate any number that happened to follow one of these
+  # words. "In the exposed arm 47 hepatic events", "over the study years 1204 reports" and
+  # "the pooled cohort 3841 reports" all filed the count as a category label — ordinary
+  # English word order, needing only a missing comma. The magnitudes are now bounded to what
+  # a label can actually be, which is the same correction `age-band` and `rate-denominator`
+  # needed: name the values, do not match a shape.
   - id: categorical-label
     why: An ordinal category naming a class of thing, not a measurement of it.
-    pattern: '(?i)\b(?:phase|grade|stage|type|class|line|round|wave|tier|level|version|arm|group|cohort|model|scenario|quartile|quintile|tertile|decile)\s*[≥≤<>]?\s*\d+[A-Za-z]?\b'
+    # 0-20. There is no grade 47 and no arm 3841; past twenty it is a count, not a class.
+    pattern: '(?i)\b(?:phase|grade|stage|type|class|line|round|wave|tier|level|version|arm|group|cohort|model|scenario|quartile|quintile|tertile|decile)\s*[≥≤<>]?\s*(?:\d|1\d|20)[A-Za-z]?\b'
 
   - id: time-label
     why: A named timepoint or window, e.g. day 30, 30-day, week 12.
-    pattern: '(?i)\b(?:day|week|month|year|hour|minute|visit|cycle)s?\s*[-–]?\s*\d+\b|\b\d+\s*[-–]\s*(?:day|week|month|year|hour|minute)\b'
+    # Up to three digits: day 365 is a real window, year 1204 is not. Four digits would also
+    # re-admit the bare year that this toolkit insists on treating as data.
+    pattern: '(?i)\b(?:day|week|month|year|hour|minute|visit|cycle)s?\s*[-–]?\s*\d{1,3}\b|\b\d{1,3}\s*[-–]\s*(?:day|week|month|year|hour|minute)\b'
 
   - id: ordered-list-marker
     why: Markdown list numbering.
@@ -34,6 +44,11 @@ structural:
     pattern: '^#{1,6}\s+\d+(?:\.\d+)*[.)]?\s'
 
   - id: author-year-citation
+    # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom
+    # accepts it, so in manuscript source this would file every number sharing a bracket
+    # with a year — "(Smith 2019, n = 412)" — as structural. Source citations are [@key]
+    # and already masked, so the rule is pure cost there.
+    audit_only: true
     why: >-
       A rendered author-year citation. In manuscript source a citation is [@key] and gets
       masked, but a built document has already been through citeproc, so auditing an
@@ -43,7 +58,10 @@ structural:
 
   - id: age-band
     why: An age or duration band is a category label, not a measured value.
-    pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?)?\b'
+    # The last branch used to end `(?:years?)?` — optional, so a bare `<digits>+` anywhere
+    # matched it and `The trial enrolled 500+ patients` was filed as an age band. The unit
+    # is now required, which is what the `why` above always claimed.
+    pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?|months?|weeks?|days?)\b'
 
   - id: table-alignment-row
     why: Markdown table separator rows.

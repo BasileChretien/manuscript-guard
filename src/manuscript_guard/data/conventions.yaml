@@ -38,7 +38,11 @@ conventions:
 
   - id: rate-denominator
     why: A per-N denominator is a conventional unit of expression; the rate itself is the result and must be bound.
-    pattern: '(?i)\bper\s+\d[\d\s,  ]*\s*(?:person|people|patient|inhabitant|resident|prescription|user|exposure|treatment|admission|birth|population|report)'
+    # Pinned to the canonical powers of ten, per this file own rule that a pattern names the
+    # conventional values rather than a shape. Written as \d[\d\s,]* it matched any digit run,
+    # so "12 per 83,214 patients treated" waved the cohort size - a genuine, unbound result -
+    # straight through the gate that carries the core invariant.
+    pattern: '(?i)\bper\s+(?:1[,\s  ]?000[,\s  ]?000|100[,\s  ]?000|10[,\s  ]?000|1[,\s  ]?000|100)\s*(?:person|people|patient|inhabitant|resident|prescription|user|exposure|treatment|admission|birth|population|report)'
 
   - id: two-by-two
     why: A 2 x 2 table is the name of a structure.

@@ -181,7 +181,9 @@ def audit(
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
 ) -> AuditReport:
-    classifier = classifier or Classifier.load()
+    # `rendered=True`: an existing paper has been through citeproc, so its citations are
+    # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
+    classifier = classifier or Classifier.load(rendered=True)
     values, used = load_backing(backing)
     report = AuditReport(backing_values=values, backing_files=tuple(used))
 

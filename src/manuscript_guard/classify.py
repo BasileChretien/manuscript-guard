@@ -38,6 +38,13 @@ class Rule:
     why: str
     pattern: re.Pattern[str]
     kind: str
+    # A rule that exists only to read a *rendered* document. `audit` meets citations that
+    # citeproc has already turned into "(Smith and Jones 2019)"; manuscript source writes
+    # them `[@key]` and masks them, so the same rule there buys nothing and costs a great
+    # deal — it spans a whole parenthetical, and `_rule_covers` accepts any atom inside a
+    # span, so `(Smith 2019, n = 412)` would file 412 as structural. Kept out of the gate
+    # that carries the invariant, and out of `explain`, which describes that gate.
+    audit_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,7 +61,13 @@ class Verdict:
 def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
     document = yaml.safe_load((DATA_DIR / filename).read_text(encoding="utf-8"))
     return tuple(
-        Rule(id=item["id"], why=item["why"], pattern=re.compile(item["pattern"]), kind=kind)
+        Rule(
+            id=item["id"],
+            why=item["why"],
+            pattern=re.compile(item["pattern"]),
+            kind=kind,
+            audit_only=bool(item.get("audit_only", False)),
+        )
         for item in document[section]
     )
 
@@ -79,8 +92,18 @@ class Classifier:
         cls,
         extra_conventions: tuple[dict, ...] = (),
         extra_terms: tuple[str, ...] = (),
+        *,
+        rendered: bool = False,
     ) -> Classifier:
+        """Build a classifier. `rendered=True` for text citeproc has already been through.
+
+        The default is deliberately the strict one: a rule needed only to read a built
+        document must not quietly widen the gate that reads the source.
+        """
         conventions, structural, terms = _shipped()
+        if not rendered:
+            conventions = tuple(r for r in conventions if not r.audit_only)
+            structural = tuple(r for r in structural if not r.audit_only)
         project_rules = tuple(
             Rule(
                 id=f"project:{item.get('id', item['pattern'][:24])}",

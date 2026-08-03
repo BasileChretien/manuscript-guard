@@ -122,12 +122,20 @@ def _check_digest(path: Path) -> Report:
             (
                 Finding(
                     gate=GATE,
+                    # A failure, not a warning. A fragment with no sidecar is a file nobody
+                    # can show was written by an analysis, and the emitter always writes
+                    # one — so its absence means the file was made some other way. Hand-write
+                    # `results/national.json` with a headline estimate and a confidence
+                    # interval the analysis never produced, omit the sidecar, and while this
+                    # was a warning the whole thing passed `check --submission` cleanly.
+                    # Deferred to `analysis` by the stage policy, since at `design` there is
+                    # no analysis to have written anything.
                     code="no-digest",
-                    severity=WARN,
-                    message=f"{path.name} has no {DIGEST_SUFFIX} sidecar, so hand-editing "
-                    f"it cannot be detected",
+                    message=f"{path.name} has no {DIGEST_SUFFIX} sidecar, so nothing shows an "
+                    f"analysis wrote it",
                     path=path,
-                    hint="re-run the analysis with a current manuscript-guard to write one",
+                    hint="re-run the analysis through emit(); a fragment written by hand "
+                    "cannot be a result",
                 ),
             )
         )

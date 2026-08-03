@@ -53,6 +53,7 @@ BINDS_AT = {
     "script-missing": ANALYSIS,
     "script-newer": ANALYSIS,
     "results-edited": ANALYSIS,
+    "no-digest": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,

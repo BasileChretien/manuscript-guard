@@ -173,6 +173,47 @@ def test_an_early_project_is_not_buried_in_failures(tmp_path: Path) -> None:
     assert not report.ok, "by drafting, the same things are due"
 
 
+def test_the_gates_run_even_when_there_are_no_results_yet(tmp_path: Path) -> None:
+    """This test exists because the one above used to pass for the wrong reason.
+
+    The gates sat behind `if contract_report.ok and load_report.ok`. A project with no
+    results — the ordinary state at design and analysis, and precisely what the test above
+    builds — failed that condition, so none of the twelve ran. The loading failures were
+    then demoted by the stage policy and the run printed "0 failing, 0 warnings" over a
+    manuscript that had never been looked at. Passing quietly and passing because nothing
+    was checked are different answers, and only one of them is true.
+    """
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "fresh"
+    init_project(root, title="Something new")
+    (root / "manuscript" / "main.md").write_text(
+        "# Introduction\n\nDelving into it, the odds ratio was 7.77 across 12345 reports.\n",
+        encoding="utf-8",
+    )
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=DESIGN)
+    codes = {f.code for f in report.findings}
+    assert "unclassified-number" in codes, "G2 did not run"
+    assert "ai-phrasing" in codes, "G6 did not run"
+    assert report.ok, "and none of it is due yet, so the run still passes"
+
+
+def test_a_gate_that_crashes_is_reported_rather_than_dropped(project: Path, monkeypatch) -> None:
+    """A gate that raised used to take every gate after it out of the run with it."""
+    from manuscript_guard import cli
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "check_writing", explode)
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    assert not report.ok
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert "RuntimeError: boom" in failure.message
+
+
 def test_a_deferred_finding_still_appears_in_the_output(tmp_path: Path) -> None:
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.scaffold import init_project
@@ -204,3 +245,27 @@ def test_review_findings_do_not_block_a_draft_but_do_block_submission(project: P
     assert report.ok
     report, _project, _chosen, _deferred = _run_gates(project, submission=True)
     assert not report.ok
+
+
+def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) -> None:
+    """G11's severity was set from the raw `--submission` flag, not from the resolved stage.
+
+    So `--submission` failed, `--stage submission` passed, and a paper.yaml declaring
+    `stage: submission` — what an author naturally writes when submitting — never had the
+    review gate enforced by `check` at all. Three spellings of one thing, two answers.
+    """
+    from manuscript_guard.cli import _run_gates
+
+    shutil.rmtree(project / "review")
+    path = project / "paper.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["stage"] = SUBMISSION
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    by_flag, _p, _s, _d = _run_gates(project, submission=True)
+    by_stage, _p, _s, _d = _run_gates(project, stage=SUBMISSION)
+    by_declaration, _p, _s, _d = _run_gates(project)
+
+    assert not by_flag.ok
+    assert not by_stage.ok
+    assert not by_declaration.ok

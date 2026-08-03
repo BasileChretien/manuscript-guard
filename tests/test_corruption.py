@@ -126,6 +126,39 @@ def test_hand_edited_results_file_is_caught(project: Path) -> None:
     assert "results-edited" in codes(gate_report(project))
 
 
+def test_a_hand_written_results_fragment_is_caught(project: Path) -> None:
+    """The sidecar's absence is the finding, and it has to be a failure.
+
+    While `no-digest` was a warning, an entire fabricated result passed. Write
+    `results/national.json` by hand with a headline estimate and a confidence interval no
+    analysis ever produced, omit the sidecar because no emitter wrote one, bind the values
+    in the manuscript — and `check --submission` came back clean. Nothing else in the
+    toolkit looks at a fragment's authorship, so this warning was the only thing between a
+    typed number and a cited result.
+    """
+    fabricated = project / "results" / "national.json"
+    fabricated.write_text(
+        json.dumps(
+            {
+                "schema": "manuscript-guard/results/1",
+                "provenance": {
+                    "generated_by": "analysis/01_disproportionality.py",
+                    "generated_at": "2026-01-01T00:00:00+00:00",
+                    "inputs": [],
+                },
+                "values": {
+                    "national.ror": {"value": 3.84, "display": "3.84", "quoted": True},
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert "no-digest" in codes(report)
+    assert any(f.code == "no-digest" for f in report.failures), "a warning let this through"
+
+
 def test_changed_input_data_is_caught(project: Path) -> None:
     data = project / "data" / "reports.csv"
     extra = "R99999,2024,example-drug,rash,N,F,75+\n"

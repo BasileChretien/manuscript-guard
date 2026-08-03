@@ -42,6 +42,7 @@ from manuscript_guard.gates import (
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
+    SUBMISSION,
     apply_stage,
     resolve_stage,
     summarise_deferred,
@@ -60,29 +61,75 @@ def _run_gates(
     Every gate always runs. What the stage changes is which findings *fail*: someone still
     writing the analysis is told about the unreviewed figures, but not stopped by them.
     Nothing is skipped, and the caller reports what was deferred.
+
+    Two things here used to be wrong, and both made the tool claim more than it checked.
+
+    The gates were behind `if contract_report.ok and load_report.ok`. A project with no
+    results yet — the ordinary state at `design` and `analysis` — failed that condition, so
+    none of the twelve gates ran, the loading failures were demoted by the stage policy,
+    and the run printed "0 failing, 0 warnings". A manuscript full of unbound numbers and
+    model artefacts passed in silence. Now every gate runs, `load_results` and
+    `load_literature` return empty-but-usable objects on failure, and a gate that raises is
+    reported as `gate-errored` rather than quietly dropped.
+
+    And the stage was resolved *after* `check_review` had already been handed the raw
+    `--submission` flag, which is the only thing that sets G11's severity. `--submission`
+    and `--stage submission` therefore gave different verdicts on the same project, and a
+    project declaring `stage: submission` in paper.yaml — the natural thing to write once
+    you are submitting — never had the review gate enforced at all. The stage is resolved
+    first now, and the flag derived from it.
     """
     project, contract_report = load_project(start)
     namespace, results, literature, load_report = load_namespace(project)
 
-    reports = [contract_report, load_report]
-    if contract_report.ok and load_report.ok:
-        reports.append(check_review(project, submission=submission))
-        reports.append(check_freshness(project, results))
-        reports.append(check_numbers(project, namespace, results, literature))
-        reports.append(check_figures(project, results))
-        reports.append(check_figure_reviews(project, content_digest))
-        reports.append(check_citations(project, literature))
-        reports.append(check_literature_chain(project, literature))
-        reports.append(check_journal(project))
-        reports.append(check_reporting(project))
-        reports.append(check_writing(project))
-        reports.append(check_methods(project))
-        reports.append(check_design(project))
-        reports.append(check_consistency(results))
-
     chosen = resolve_stage(project, stage, submission)
+    at_submission = chosen == SUBMISSION
+
+    reports = [contract_report, load_report]
+    for name, gate in (
+        ("G11", lambda: check_review(project, submission=at_submission)),
+        ("G1", lambda: check_freshness(project, results)),
+        ("G2", lambda: check_numbers(project, namespace, results, literature)),
+        ("G3", lambda: check_figures(project, results)),
+        ("G10", lambda: check_figure_reviews(project, content_digest)),
+        ("G7", lambda: check_citations(project, literature)),
+        ("G5", lambda: check_literature_chain(project, literature)),
+        ("G4", lambda: check_journal(project)),
+        ("G8r", lambda: check_reporting(project)),
+        ("G6", lambda: check_writing(project)),
+        ("G9", lambda: check_methods(project)),
+        ("G12", lambda: check_design(project)),
+        ("G8", lambda: check_consistency(results)),
+    ):
+        reports.append(_guarded(name, gate))
+
     report, deferred = apply_stage(merge_all(reports), chosen)
     return report, project, chosen, deferred
+
+
+def _guarded(name: str, gate) -> Report:
+    """Run one gate; turn a crash into a finding rather than a silent absence.
+
+    A gate that raised used to take the whole set down with it. Reporting the crash keeps
+    the promise that every gate runs — and `gate-errored` is in no stage's deferral list,
+    so it fails everywhere. A checker that could not check is not a pass.
+    """
+    from manuscript_guard.findings import Finding
+
+    try:
+        return gate()
+    except Exception as exc:  # noqa: BLE001 - any gate failure must be visible, not fatal
+        return Report(
+            (
+                Finding(
+                    gate=name,
+                    code="gate-errored",
+                    message=f"{name} could not run: {type(exc).__name__}: {exc}",
+                    hint="this is a bug in manuscript-guard, or a file it could not read; "
+                    "the manuscript has not been checked by this gate",
+                ),
+            )
+        )
 
 
 def cmd_review(args: argparse.Namespace) -> int:
@@ -368,12 +415,22 @@ def cmd_methods(args: argparse.Namespace) -> int:
     return 0
 
 
-def _recipe_paths(root: Path, name: str | None) -> list[Path]:
-    directory = root / "profiles" / "reporting" / "recipes"
-    paths = sorted(directory.glob("*.recipe.yaml"))
+def _recipe_paths(workspace: Path, name: str | None) -> list[Path]:
+    """Recipes shipped with the package, plus any the project has written itself.
+
+    A project's own recipe wins, the way its own journal and checklist profiles already do:
+    a guideline can be revised, or extended locally, without waiting for a release.
+    """
+    from manuscript_guard.paths import SHIPPED_RECIPES
+
+    by_name: dict[str, Path] = {}
+    for directory in (SHIPPED_RECIPES, workspace / "profiles" / "reporting" / "recipes"):
+        if directory.exists():
+            for path in sorted(directory.glob("*.recipe.yaml")):
+                by_name[path.name.split(".recipe")[0]] = path
     if name:
-        paths = [p for p in paths if p.name.split(".recipe")[0] == name]
-    return paths
+        return [by_name[name]] if name in by_name else []
+    return [by_name[key] for key in sorted(by_name)]
 
 
 def cmd_fetch(args: argparse.Namespace) -> int:
@@ -385,10 +442,11 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     """
     import yaml
 
+    from manuscript_guard.paths import workspace as find_workspace
     from manuscript_guard.reporting import RecipeError, load_recipe
     from manuscript_guard.reporting.fetch import FetchError, fetch_document, licence_notice
 
-    root = args.root or Path(__file__).resolve().parents[2]
+    root = find_workspace(args.root)
     sources = root / "profiles" / "reporting" / "sources"
     paths = _recipe_paths(root, args.guideline)
     if not paths:
@@ -454,20 +512,17 @@ def cmd_fetch(args: argparse.Namespace) -> int:
 
 def cmd_transcribe(args: argparse.Namespace) -> int:
     """Generate checklist profiles from official documents, via recipes."""
+    from manuscript_guard.paths import workspace as find_workspace
     from manuscript_guard.reporting import RecipeError, build_profile
 
-    root = args.root or Path(__file__).resolve().parents[2]
-    recipes_dir = root / "profiles" / "reporting" / "recipes"
+    root = find_workspace(args.root)
     sources_dir = root / "profiles" / "reporting" / "sources"
     out_dir = root / "profiles" / "reporting"
 
-    names = [args.guideline] if args.guideline else None
-    recipes = sorted(recipes_dir.glob("*.recipe.yaml"))
-    if names:
-        recipes = [p for p in recipes if p.name.split(".recipe")[0] in names]
-        if not recipes:
-            print(f"no recipe for {args.guideline!r} in {recipes_dir}", file=sys.stderr)
-            return 2
+    recipes = _recipe_paths(root, args.guideline)
+    if not recipes:
+        print(f"no recipe for {args.guideline!r}", file=sys.stderr)
+        return 2
 
     failed = 0
     for recipe in recipes:

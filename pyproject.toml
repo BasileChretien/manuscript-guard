@@ -24,7 +24,9 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 [project.optional-dependencies]
 # ruff is pinned exactly. An unpinned linter means CI can start failing on a commit that
 # changed nothing, which teaches everyone to ignore CI.
-dev = ["pytest>=7.0", "ruff==0.16.1"]
+# matplotlib is not a dependency of the toolkit. It is here because the test suite builds
+# the worked example, and the example's figure script draws with it.
+dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7"]
 
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"

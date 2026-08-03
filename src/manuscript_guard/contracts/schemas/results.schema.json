@@ -84,6 +84,11 @@
           "type": "string",
           "description": "Project-relative path of the script that wrote this fragment."
         },
+        "generated_by_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Digest of that script as it stood when it wrote this fragment. G1 compares it rather than modification times, because an mtime is set by `touch`: editing the analysis and stamping the fragment forward used to hide the change entirely. Optional, so a fragment written before this field existed still validates; G1 falls back to the mtime comparison for those."
+        },
         "generated_at": { "type": "string", "format": "date-time" },
         "tool": {
           "type": "object",

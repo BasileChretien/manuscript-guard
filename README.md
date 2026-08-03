@@ -41,10 +41,17 @@ Then:
 
 ```bash
 manuscript-guard check                 # every gate
+manuscript-guard verify                # re-run the analysis; do the numbers still come out?
 manuscript-guard build                 # the .docx, with live Zotero citations
 manuscript-guard check --submission    # submission standards
 manuscript-guard submit                # the whole pack, ready to upload
 ```
+
+`check` asks whether anything has been *disturbed*, and that is a question about digests —
+which can be recomputed. `verify` asks a different question: it re-runs your analysis into a
+scratch copy and compares the fragments value by value. A digest can be forged; a result
+cannot be forged into existence. It is a separate command because it executes your code,
+which a gate must never do, and because it takes as long as the analysis does.
 
 `build` regenerates the .docx from Markdown every time. With Zotero open it writes **live
 Zotero citation fields** — real `ADDIN ZOTERO_ITEM` fields that Word's plugin adopts, so

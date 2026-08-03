@@ -864,27 +864,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
 Added by the adversarial review, verified and **not** fixed:
 
-- **Re-signing defeats G1.** Editing `results/*.json` and recomputing the `.sha256` sidecar
-  is invisible, and so is editing the input data and rewriting the declared input hash in
-  the same fragment. The digest detects accident and drift, not a determined author. A real
-  fix needs a signature the author cannot recompute, which means a key, which is a different
-  project.
-- **`script-newer` compares mtimes, so `touch` defeats it.** G1 hashes inputs but only stats
-  the analysis script.
-- **An explicit `display` is not checked against its own value.** `em.value("ror.point",
-  0.9487, display="3.84 (95% CI 2.10 to 7.02)")` publishes a fabricated point estimate and a
-  fabricated interval in one call. Likewise `em.table()` cells are strings and are compared
-  to nothing. The emitter is a trusted channel: it fixes *where* a number is formatted, not
-  that the formatting is honest.
+- **Re-signing still defeats G1**, and always will: the digest and the file it protects are
+  both writable by whoever holds the checkout. What changed is that G1 is no longer the only
+  answer. `manuscript-guard verify` re-runs the analysis into a scratch copy and compares
+  the fragments value by value, and a result cannot be forged into existence the way a
+  digest can be recomputed. It is a separate command because it executes the project's own
+  code, which a gate must never do. It cannot make a non-deterministic analysis agree with
+  itself; it reports the disagreement and says to set a seed.
 - **G8 goes quiet exactly when two keys have diverged.** It fires when two quoted keys hold
   the same value with different displays, so a duplicate is caught while it still agrees and
-  missed once it does not.
-- **Inline code and fenced blocks are masked but render.** `` `3.84` `` appears in the .docx
-  as 3.84 and no gate reads it. Unmasking them would report every `n = 42` in a Methods
-  section, which is the direction that gets a checker switched off — so this is a known
-  trade, not an oversight.
-- **Numbers not written with digits escape the tokeniser**: words ("four thousand"), vulgar
-  fractions (`½`), and non-`Nd` digit forms (`④`).
+  missed once it does not. Detecting that two keys *should* have agreed would need the
+  author to declare them as one quantity, which is a design not yet chosen.
+- **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
+  read. Vulgar fractions and enclosed digits now are. Number words are left alone on
+  purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
+  a rule that flags them is a rule that gets the gate switched off.
 - **`p < 0.001` is a convention.** The rule cannot tell a pre-stated alpha from a reported
   p-value, and it is pinned to the three conventional thresholds, so a fabricated
   significance claim passes. Pinning to values is right; the ambiguity is real.
@@ -894,12 +888,41 @@ Added by the adversarial review, verified and **not** fixed:
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
-- **A figure whose rendered output has no text layer is checked against nothing.**
-  matplotlib's default SVG settings draw text as paths, so `figures_checked` counts a figure
-  whose annotations were never read. A raster with a vector sibling is skipped, and nothing
-  proves the two were rendered from the same script.
 - **`build --skip-checks` leaves a document behind.** Revert the source afterwards and
   `check` passes while the stale `.docx` still holds the wrong number.
+
+Closed since, and why each mattered:
+
+- **The emitter had no invariants.** `display` was returned verbatim, so one call could
+  publish a fabricated estimate *and* a fabricated interval; table cells were `str()`-ed and
+  compared to nothing, so "tables are emitted, not written" was satisfied by calling the
+  emitter while the numbers stayed typed. A display must now render its own value, and a
+  numeric cell must be a number. A composite cell — "3.84 (2.10 to 7.02)" — stays a string,
+  but every *claim* in it must be a value the analysis published, with the manuscript's own
+  classifier deciding what counts as a claim so "Age 18-44" is a label in a table for the
+  reason it is one in a sentence. `em.cell("{} ({})", n, (pct, 1))` covers "n (%)", because
+  an f-string reaches `table()` indistinguishable from a typed string and the API has to be
+  the thing that tells them apart. Both rules are mirrored in the R emitter: the fragment is
+  a cross-language contract, and a rule enforced on one side is one an author steps around
+  by switching language.
+- **`script-newer` compared mtimes, and `touch` sets those.** The fragment now records the
+  analysis script's digest. Fragments written before the field existed fall back to the
+  mtime test, so an older project degrades rather than breaking.
+- **Inline code and fenced blocks were masked but render.** Both are read now. The argument
+  for masking them — not nagging a Methods section about `n = 42` — turned out to be an
+  argument about READMEs: G2 reads `manuscript/` only. Word counting keeps its own answer,
+  since "what would a journal count?" and "where is a digit not a claim?" are different
+  questions that were sharing one mask.
+- **A figure with no text layer was counted as checked.** matplotlib draws text as outlines
+  unless `svg.fonttype` is `'none'`, so an SVG full of annotations read as empty — and
+  because a figure yielding no atoms is also not "drawing numbers", the script's results
+  check dropped from FAIL to WARN at the same time. Both halves, one setting. An empty text
+  layer now fails, and a figure that could not be read no longer softens its script's check.
+- **A raster beside a vector was skipped on the strength of its filename.** Render both
+  honestly, re-render only the PNG from elsewhere, and the retouched figure went into the
+  .docx while G3 read the correct SVG. `manuscript_guard.render.record()` writes a manifest
+  of what one run produced, and the raster is skipped only when the manifest says the two
+  came out together and both still match their digests.
 
 - **A figure review does not survive a change of plotting library.** The digest normalises
   render timestamps and generated element ids, but not the drawn path data, and a different

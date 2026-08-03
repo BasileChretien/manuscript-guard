@@ -17,6 +17,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from manuscript_guard.render import record  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "results" / "01_disproportionality.json"
 OUT = Path(__file__).with_suffix(".svg")
@@ -82,6 +84,11 @@ def main() -> None:
     # actually looks at. Both are the same figure, so they share one review record.
     fig.savefig(OUT.with_suffix(".png"), format="png", dpi=300)
     plt.close(fig)
+    # Record what this run produced. G3 reads the vector's text layer and skips the raster
+    # standing behind it; without this the pairing is an assumption about filenames, and
+    # re-rendering only the PNG from somewhere else puts a retouched figure in the .docx
+    # while the SVG the gate inspected still shows the right number.
+    record(__file__, OUT, OUT.with_suffix(".png"))
     print(f"wrote {OUT}")
 
 

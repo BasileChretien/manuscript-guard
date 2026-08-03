@@ -28,6 +28,10 @@ class Fragment:
     inputs: tuple[dict, ...]
     vcs: dict
     session: dict
+    # Digest of the analysis script as it stood when it wrote this fragment. Optional
+    # because fragments written before the field existed do not carry it; G1 falls back to
+    # comparing modification times for those, which is what it always did.
+    generated_by_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 inputs=tuple(prov.get("inputs", ())),
                 vcs=prov.get("vcs", {}),
                 session=prov.get("session", {}),
+                generated_by_sha256=prov.get("generated_by_sha256"),
             )
         )
 

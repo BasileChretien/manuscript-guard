@@ -93,6 +93,43 @@ def test_r_writes_a_usable_digest_sidecar(r_project: Path) -> None:
     assert read_digest(fragment) == sha256_of(fragment)
 
 
+DISPLAY_CHECK = """
+source("%(emit)s")
+cases <- list(
+  list("ror", 0.9487, "3.84 (95%% CI 2.10 to 7.02)", FALSE),
+  list("ror", 0.9487, "3.84", FALSE),
+  list("n", 41200, "99999", FALSE),
+  list("ror", 0.9487, "0.95", TRUE),
+  list("n", 41200, "41,200", TRUE),
+  list("pct", 12.4, "12.4%%", TRUE),
+  list("lab", "2015-2024", "2015-2024", TRUE),
+  list("r", 3.4211, "3.42", TRUE)
+)
+for (c in cases) {
+  ok <- tryCatch({ mg_check_display(c[[1]], c[[2]], c[[3]]); TRUE }, error = function(e) FALSE)
+  if (!identical(ok, c[[4]])) {
+    cat("MISMATCH:", c[[1]], c[[3]], "expected", c[[4]], "got", ok, "\\n")
+    quit(status = 1)
+  }
+}
+cat("AGREED\\n")
+"""
+
+
+def test_r_and_python_agree_on_what_a_display_may_be(tmp_path: Path) -> None:
+    """The results fragment is a cross-language contract.
+
+    A rule enforced on one side only is a rule an author steps around by switching language,
+    so the display check added to the Python emitter had to be mirrored in R — and the two
+    have to keep agreeing. These are the same cases `tests/test_emit.py` asserts for Python.
+    """
+    script = tmp_path / "display.R"
+    script.write_text(DISPLAY_CHECK % {"emit": EMIT_R.as_posix()}, encoding="utf-8")
+    out = subprocess.run([RSCRIPT, "--vanilla", str(script)], capture_output=True, text=True)
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    assert "AGREED" in out.stdout
+
+
 def test_r_writes_lf_endings_like_the_python_emitter(r_project: Path) -> None:
     """`writeLines(x, path)` opens a text connection, which is CRLF on Windows.
 

@@ -74,17 +74,30 @@ def check_freshness(project: Project, results: Results) -> Report:
                     hint="results with no reproducible origin cannot back a claim",
                 )
             )
-        elif script_path.stat().st_mtime > stamp:
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="script-newer",
-                    message=f"{fragment.generated_by} was modified after it wrote "
-                    f"{fragment.path.name}",
-                    path=script_path,
-                    hint=f"re-run {fragment.generated_by}",
-                )
+        else:
+            # By digest when the fragment records one, by mtime otherwise. The mtime test
+            # was the only test, and `touch` defeats it: edit the analysis, stamp the
+            # fragment forward, and the change was invisible. G1's own docstring says
+            # hashes are used "because timestamps lie" — which was true of the inputs and
+            # not of the code that read them. Fragments written before this field existed
+            # still get the old test, so an older project degrades rather than breaking.
+            declared = fragment.generated_by_sha256
+            changed = (
+                sha256_of(script_path) != declared
+                if declared
+                else script_path.stat().st_mtime > stamp
             )
+            if changed:
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="script-newer",
+                        message=f"{fragment.generated_by} has changed since it wrote "
+                        f"{fragment.path.name}",
+                        path=script_path,
+                        hint=f"re-run {fragment.generated_by}",
+                    )
+                )
 
     if results.fragments and analysis_dir.exists():
         newest_fragment = max(f.path.stat().st_mtime for f in results.fragments)

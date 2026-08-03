@@ -172,10 +172,27 @@ def test_deleted_input_data_is_caught(project: Path) -> None:
 
 
 def test_modified_analysis_script_is_caught(project: Path) -> None:
+    """By content, not by clock.
+
+    This used to bump the mtime and nothing else, and pass — which is also how the check
+    was defeated: edit the script for real, then stamp the fragment forward with `touch`,
+    and G1 saw an analysis older than its results. It now compares the script's digest
+    against the one recorded when the fragment was written. `tests/test_verify.py` holds
+    the other half: a touched fragment no longer hides a genuine edit.
+    """
     script = project / "analysis" / "01_disproportionality.py"
+    script.write_text(script.read_text(encoding="utf-8") + "\n# edited\n", encoding="utf-8")
     later = time.time() + 10
     os.utime(script, (later, later))
     assert "script-newer" in codes(gate_report(project))
+
+
+def test_touching_a_script_without_changing_it_is_not_a_change(project: Path) -> None:
+    """Re-running a formatter or checking the file out again is not an edit."""
+    script = project / "analysis" / "01_disproportionality.py"
+    later = time.time() + 10
+    os.utime(script, (later, later))
+    assert "script-newer" not in codes(gate_report(project))
 
 
 def test_typo_in_a_binding_is_caught(project: Path) -> None:

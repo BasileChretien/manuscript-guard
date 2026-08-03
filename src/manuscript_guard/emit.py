@@ -292,6 +292,12 @@ class Emitter:
 
         return {
             "generated_by": str(Path(self.script).relative_to(root)).replace("\\", "/"),
+            # The script's own digest. G1 compared modification times to decide whether an
+            # analysis had changed since it last wrote — and an mtime is set by `touch`, so
+            # editing the script and stamping the fragment forward made the edit invisible.
+            # G1's own docstring says hashes are used "because timestamps lie"; that was
+            # true of the inputs and not of the code that read them.
+            "generated_by_sha256": sha256_of(Path(self.script)),
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "tool": {"name": "manuscript-guard", "version": __version__},
             "vcs": vcs,

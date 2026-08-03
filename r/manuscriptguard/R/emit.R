@@ -19,6 +19,58 @@ mg_find_root <- function(start = getwd()) {
   }
 }
 
+#' Check that an explicit display is a rendering of its own value
+#'
+#' Mirrors `_check_display_matches` in the Python emitter, and must keep mirroring it: the
+#' results fragment is a cross-language contract, and a rule enforced on one side only is a
+#' rule an author can step around by switching language.
+#'
+#' Nothing used to compare the two, so one call could publish a fabricated estimate and a
+#' fabricated interval at once. Only numbers are checked; a string value is its own display,
+#' and a label such as "2015-2024" is a value rather than a rounding of one.
+#' @noRd
+mg_check_display <- function(key, value, display) {
+  if (is.logical(value) || !is.numeric(value)) {
+    return(invisible(NULL))
+  }
+  # digits, optional decimals, optional exponent, optional unit carrying no digits of its
+  # own. Without that last condition "(95% CI 2.10 to 7.02)" parses as the unit of 3.84.
+  pattern <- paste0(
+    "^\\s*([-+−]?)((?:\\d{1,3}(?:[,   ]\\d{3})+(?:\\.\\d+)?)|(?:\\d+(?:\\.\\d+)?))",
+    "(?:[eE]([-+]?\\d+))?\\s*(%|[^\\s\\d][^\\d]*?)?\\s*$"
+  )
+  parts <- regmatches(display, regexec(pattern, display, perl = TRUE))[[1]]
+  if (length(parts) == 0) {
+    stop(
+      key, ": display '", display, "' is not a rendering of ", format(value),
+      ". A display carries one number, optionally with a unit - an interval or a sentence ",
+      "belongs in separate keys, so each part can be quoted and checked on its own",
+      call. = FALSE
+    )
+  }
+
+  text <- gsub("[,   ]", "", parts[3])
+  if (identical(parts[2], "-") || identical(parts[2], "−")) {
+    text <- paste0("-", text)
+  }
+  if (nzchar(parts[4])) {
+    text <- paste0(text, "e", parts[4])
+  }
+
+  shown <- as.numeric(text)
+  decimals <- if (grepl("\\.", text)) nchar(sub("^[^.]*\\.", "", sub("e.*$", "", text))) else 0
+  tolerance <- 0.5 * (10^-decimals) + abs(value) * 1e-9
+  if (abs(shown - value) > tolerance) {
+    stop(
+      key, ": display '", display, "' reads as ", format(shown), ", but the value is ",
+      format(value), ". Round it with `digits` rather than writing the number twice; if the ",
+      "display is in different units, emit the value in those units and name them with `unit`",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 #' Display string for a value
 #'
 #' Mirrors the Python emitter exactly, with one concession to R: a double holding a whole
@@ -28,7 +80,9 @@ mg_find_root <- function(start = getwd()) {
 #' @noRd
 mg_display <- function(key, value, display, digits) {
   if (!is.null(display)) {
-    return(as.character(display))
+    display <- as.character(display)
+    mg_check_display(key, value, display)
+    return(display)
   }
   if (is.logical(value)) {
     return(if (isTRUE(value)) "TRUE" else "FALSE")
@@ -167,6 +221,9 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
     provenance <- list(
       generated_by = relative(script_path),
+      # Mirrors the Python emitter. G1 compares this rather than modification times,
+      # because an mtime is set by `touch`.
+      generated_by_sha256 = digest::digest(file = script_path, algo = "sha256"),
       generated_at = stamp,
       tool = list(name = "manuscriptguard", version = "0.1.0"),
       inputs = input_records,

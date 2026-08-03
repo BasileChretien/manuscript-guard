@@ -151,6 +151,56 @@ def test_docstrings_and_comments_are_not_figure_text(tmp_path: Path) -> None:
     assert check_figure_source(script, Classifier.load()).ok
 
 
+def test_a_vector_figure_with_no_text_layer_fails(project: Path) -> None:
+    """matplotlib's default `svg.fonttype` is 'path', which draws every label as outlines.
+
+    An SVG full of annotations then reads as empty: `figures_checked` counted it, and a
+    figure nobody had read looked read. It defeated both halves of G3 at once, because a
+    figure yielding no atoms is also not "drawing numbers", so its script's results check
+    dropped from a failure to a warning.
+    """
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates import check_figures
+
+    (project / "figures" / "forest.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><path d="M 0 0 L 1 1"/></svg>',
+        encoding="utf-8",
+    )
+    loaded, _ = load_project(project)
+    _ns, results, _lit, _r = load_namespace(loaded)
+    report = check_figures(loaded, results)
+    assert "figure-no-text-layer" in {f.code for f in report.failures}
+
+
+def test_a_raster_is_only_skipped_when_the_pairing_is_recorded(project: Path) -> None:
+    """Re-render only the PNG from somewhere else and the retouched figure ships.
+
+    Verified end to end during an adversarial review: the PNG embedded in the .docx had the
+    retouched digest while the SVG that G3 inspected still showed the correct value. The
+    sibling rule was an assumption about filenames.
+    """
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates import check_figures
+
+    png = project / "figures" / "forest.png"
+    png.write_bytes(png.read_bytes() + b"retouched")
+
+    loaded, _ = load_project(project)
+    _ns, results, _lit, _r = load_namespace(loaded)
+    codes_found = {f.code for f in check_figures(loaded, results).findings}
+    assert "figure-render-unproven" in codes_found
+
+
+def test_a_recorded_pairing_is_accepted(project: Path) -> None:
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates import check_figures
+
+    loaded, _ = load_project(project)
+    _ns, results, _lit, _r = load_namespace(loaded)
+    codes_found = {f.code for f in check_figures(loaded, results).findings}
+    assert "figure-render-unproven" not in codes_found, "the example records its own render"
+
+
 @pytest.mark.parametrize(
     "snippet",
     [

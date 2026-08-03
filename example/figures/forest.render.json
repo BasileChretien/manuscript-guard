@@ -1,0 +1,9 @@
+{
+  "schema": "manuscript-guard/render/1",
+  "rendered_by": "forest.py",
+  "rendered_by_sha256": "e6b76e5972d9aa05b4867eb042ed838b601b1ec55e322f609c5ff7e83dc9d180",
+  "outputs": {
+    "forest.png": "6c474fec63295e2ac9067eb17f79754ad42d78fb00d9a410c53575c85bc419b7",
+    "forest.svg": "44bec14a809a2276be252345428779c21749ef1b1046c261c2e4181939c00d30"
+  }
+}

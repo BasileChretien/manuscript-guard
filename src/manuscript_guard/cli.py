@@ -220,6 +220,29 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if (report.unmatched and args.strict) else 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    """Re-run the analysis and check it still produces the recorded results.
+
+    Separate from `check` on purpose: it executes the project's own code, which a gate must
+    never do, and it takes as long as the analysis does.
+    """
+    from manuscript_guard.verify import VerifyError, render, verify
+
+    project, contract_report = load_project(args.path)
+    if not contract_report.ok:
+        print(contract_report.render(project.root))
+        return 2
+    try:
+        result = verify(project, only=args.only)
+    except VerifyError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"manuscript-guard verify — {project.root}")
+    print(render(result, project.root))
+    return 0 if result.ok else 1
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -605,6 +628,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit.add_argument("--strict", action="store_true", help="exit 1 if anything is unmatched")
     audit.set_defaults(func=cmd_audit)
+
+    verify = sub.add_parser(
+        "verify",
+        help="re-run the analysis and check it still produces the recorded results",
+        description="Runs the project's analysis scripts into a scratch copy and compares "
+        "the fragments value by value. This is the check a recomputed .sha256 cannot pass: "
+        "a digest can be forged, a result cannot be forged into existence. Separate from "
+        "`check` because it executes your code, and because it is slow.",
+    )
+    verify.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    verify.add_argument(
+        "--only",
+        nargs="+",
+        metavar="FRAGMENT",
+        help="verify only these fragments, by stem (e.g. 01_disproportionality)",
+    )
+    verify.set_defaults(func=cmd_verify)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

@@ -33,8 +33,6 @@ def verdict_of(text: str) -> str:
     "text",
     [
         "---\nyear: 2019\n---\n\nBody.",
-        "Some `code with 42` inline.",
-        "```\nx <- 42\n```\n",
         "<!-- a note about 42 -->",
         "See <https://example.org/10.1000/abc123>.",
         "A claim [@smith2020hepatic].",
@@ -51,6 +49,47 @@ def test_masked_regions_yield_no_atoms(text: str) -> None:
 def test_prose_around_a_masked_region_is_still_read() -> None:
     """The dangerous failure is over-masking, so check the neighbours survive."""
     assert atoms_of("We found 37 cases [@smith2020] in 2019.") == ["37", "2019"]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Some `code with 42` inline.", ["42"]),
+        ("The odds ratio was `3.84`.", ["3.84"]),
+        ("```\nx <- 42\n```\n", ["42"]),
+        ("Result:\n\n```\nROR 3.84\n```\n", ["3.84"]),
+    ],
+)
+def test_code_renders_so_code_is_read(text: str, expected: list) -> None:
+    """Both of these were masked, and both appear in the built .docx.
+
+    `3.84` in backticks prints as 3.84, and a fenced block is a visible display element, so
+    a number could be published simply by wrapping it in punctuation. The argument for
+    masking code — not nagging a Methods section about `n = 42` — turns out to be an
+    argument about READMEs: G2 reads `manuscript/` only, and a paper that really does list
+    code can say so in `conventions:` with a reason.
+
+    Word counting still excludes code. That question is "what would a journal count?", not
+    "where is a digit not a claim?", and the two were sharing one answer.
+    """
+    assert atoms_of(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("About ½ of the cohort was female.", ["½"]),
+        ("Groups ④ and ⑧ were pooled.", ["④", "⑧"]),
+        # Superscripts stay out: these are units and names, not claims.
+        ("The area was 12 m² and R² was high.", ["12"]),
+        ("A phase Ⅲ trial.", []),
+    ],
+)
+def test_numbers_that_are_not_ascii_digits(text: str, expected: list) -> None:
+    """`\\d` is Unicode Nd, so a vulgar fraction or a circled digit had no digit in it at
+    all and the whole atom was dropped. Superscripts and Roman numerals stay excluded on
+    purpose — admitting them reports every square metre and every phase Ⅲ trial."""
+    assert atoms_of(text) == expected
 
 
 @pytest.mark.parametrize(

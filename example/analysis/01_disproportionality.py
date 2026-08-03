@@ -19,9 +19,15 @@ DRUG = "example-drug"
 EVENT = "hepatic injury"
 
 
-def _pct(subset: list[dict], field: str, level: str) -> str:
+def _pct(em: Emitter, subset: list[dict], field: str, level: str):
+    """An "n (%)" cell, composed by the emitter rather than by an f-string.
+
+    An f-string here would produce exactly the same characters, and that is the point: by
+    the time `table()` sees a string it cannot tell a computed cell from a typed one. Handing
+    over the numbers is what makes the cell traceable.
+    """
     n = sum(1 for r in subset if r[field] == level)
-    return f"{n} ({100 * n / len(subset):.1f})"
+    return em.cell("{} ({})", n, (100 * n / len(subset), 1))
 
 
 def main() -> None:
@@ -39,7 +45,9 @@ def main() -> None:
     high = math.exp(math.log(ror) + 1.96 * se)
 
     years = sorted({int(r["year"]) for r in rows})
-    serious = sum(1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT and r["serious"] == "Y")
+    serious = sum(
+        1 for r in rows if r["drug"] == DRUG and r["event"] == EVENT and r["serious"] == "Y"
+    )
 
     em = Emitter(__file__, inputs=[DATA])
     em.value("cohort.n_reports", len(rows))
@@ -71,8 +79,8 @@ def main() -> None:
         columns=["", "Hepatic injury", "Other events"],
         align=["left", "right", "right"],
         rows=[
-            ["example-drug", str(a), str(b)],
-            ["All other drugs", str(c), str(d)],
+            ["example-drug", a, b],
+            ["All other drugs", c, d],
         ],
         caption="Contingency table underlying the reporting odds ratio.",
     )
@@ -81,14 +89,18 @@ def main() -> None:
         columns=["Characteristic", "example-drug", "All other drugs"],
         align=["left", "right", "right"],
         rows=[
-            ["Reports", str(len(drug)), str(len(other))],
-            ["Hepatic injury", str(a), str(c)],
+            ["Reports", len(drug), len(other)],
+            ["Hepatic injury", a, c],
             *[
-                [f"Age {group}", _pct(drug, "age_group", group), _pct(other, "age_group", group)]
+                [
+                    f"Age {group}",
+                    _pct(em, drug, "age_group", group),
+                    _pct(em, other, "age_group", group),
+                ]
                 for group in ("18-44", "45-64", "65-74", "75+")
             ],
-            ["Female", _pct(drug, "sex", "F"), _pct(other, "sex", "F")],
-            ["Serious", _pct(drug, "serious", "Y"), _pct(other, "serious", "Y")],
+            ["Female", _pct(em, drug, "sex", "F"), _pct(em, other, "sex", "F")],
+            ["Serious", _pct(em, drug, "serious", "Y"), _pct(em, other, "serious", "Y")],
         ],
         caption="Reports by drug group. Values are n (%) unless stated.",
     )

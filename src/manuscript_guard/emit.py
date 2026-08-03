@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -29,6 +30,67 @@ from manuscript_guard.contracts.project import find_root
 from manuscript_guard.contracts.values import DisplayError, derive_display
 
 SCHEMA = "manuscript-guard/results/1"
+
+# A cell that is a number written as text. This is the shape that used to slip through:
+# str() accepted it, nothing compared it to anything, and a hand-typed table number was
+# indistinguishable from a computed one.
+_NUMERIC_TEXT = re.compile(r"^\s*[-+−]?[\d,  ]*\d(?:[.,]\d+)?\s*%?\s*$")
+
+# Numbers inside a composite cell such as "3.84 (2.10 to 7.02)". Each must be traceable.
+_NUMBER_IN_TEXT = re.compile(r"\d[\d,  ]*(?:\.\d+)?")
+
+
+@dataclass(frozen=True)
+class Composed:
+    """A cell built from several numbers, formatted by the emitter rather than the script.
+
+    `"77 (12.3)"` and `f"{n} ({pct:.1f})"` are the same string by the time `table()` sees
+    them, so no check can tell a computed cell from a typed one. The difference has to be
+    made at the API: hand over the numbers and a template, and the emitter does the
+    formatting — which is the same reason `display` is resolved at emit time rather than
+    read time. Build one with `Emitter.cell()`.
+    """
+
+    template: str
+    parts: tuple[tuple[object, int | None], ...]
+
+    def render(self, where: str) -> tuple[str, list[str]]:
+        shown = [derive_display(where, value, None, digits) for value, digits in self.parts]
+        return self.template.format(*shown), shown
+
+
+def _cell(
+    key: str, row: int, column: int, cell: object, digits: int | dict | None, computed: set[str]
+) -> str:
+    """Format one table cell, refusing a number that was typed rather than computed."""
+    where = f"table {key!r} row {row} column {column}"
+
+    if isinstance(cell, Composed):
+        text, parts = cell.render(where)
+        computed.update(parts)
+        return text
+    if isinstance(cell, bool):
+        return str(cell)
+    if isinstance(cell, (int, float)):
+        wanted = digits.get(column) if isinstance(digits, dict) else digits
+        try:
+            shown = derive_display(where, cell, None, wanted)
+        except DisplayError as exc:
+            raise DisplayError(
+                f"{exc}. Pass `digits=` to table() — an int for every column, or a "
+                f"{{column: digits}} mapping"
+            ) from exc
+        computed.add(shown)
+        return shown
+    if isinstance(cell, str):
+        if _NUMERIC_TEXT.match(cell) and any(ch.isdigit() for ch in cell):
+            raise DisplayError(
+                f"{where}: {cell!r} is a number written as text. Pass the number itself so "
+                f"it is formatted here and traceable to this analysis; a numeric string is "
+                f"typed by hand and compared to nothing"
+            )
+        return cell
+    raise DisplayError(f"{where}: cells must be numbers or text, not {type(cell).__name__}")
 
 
 def sha256_of(path: Path) -> str:
@@ -92,10 +154,29 @@ class Emitter:
     root: Path | None = None
     _values: dict[str, dict] = field(default_factory=dict, init=False)
     _tables: dict[str, dict] = field(default_factory=dict, init=False)
+    # Display strings this emitter formatted itself, inside a Composed cell. They are
+    # traceable for the same reason an emitted value is: the emitter did the rounding.
+    _computed: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
         self.root = Path(self.root).resolve() if self.root else find_root(self.script.parent)
+
+    @staticmethod
+    def cell(template: str, *parts: object) -> Composed:
+        """A table cell composed from numbers, e.g. the ubiquitous "n (%)".
+
+            em.cell("{} ({})", n, (100 * n / total, 1))
+
+        Each part is a number, or a `(number, digits)` pair when it needs rounding — the
+        same rule as `value()`, because it is the same rule. Use this rather than an
+        f-string: a formatted string arrives here indistinguishable from a typed one, so
+        the emitter has to be the thing that formats it.
+        """
+        pairs = tuple(
+            (part[0], part[1]) if isinstance(part, tuple) else (part, None) for part in parts
+        )
+        return Composed(template=template, parts=pairs)
 
     def value(
         self,
@@ -135,12 +216,20 @@ class Emitter:
         caption: str | None = None,
         align: list[str] | None = None,
         quoted: bool = True,
+        digits: int | dict[int, int] | None = None,
     ) -> None:
-        """Record a table. Cells are strings, formatted here rather than in the manuscript.
+        """Record a table. Cells are formatted here rather than in the manuscript.
 
         Tables are emitted rather than written because a hand-typed table is the single
         most reliable place for a stale number to survive: it is long, it is boring to
         re-read, and nobody diffs it.
+
+        A numeric cell must be a number, and it is formatted by the same rules as
+        `value()` — pass a float and you must say how to round it. What is refused is a
+        *numeric string*: `"9999"` typed into a cell was previously passed through `str()`
+        and compared to nothing at all, so "tables are emitted, not written" was satisfied
+        by *calling* the emitter while the numbers were still typed by hand. Text cells
+        (labels, group names, "n/a") are unaffected.
         """
         if key in self._tables:
             raise ValueError(f"table {key!r} emitted twice by {self.script}")
@@ -150,7 +239,16 @@ class Emitter:
                 raise ValueError(
                     f"table {key!r}: row {index} has {len(row)} cells, header has {width}"
                 )
-        spec: dict = {"columns": list(columns), "rows": [[str(c) for c in row] for row in rows]}
+        spec: dict = {
+            "columns": list(columns),
+            "rows": [
+                [
+                    _cell(key, index, column, cell, digits, self._computed)
+                    for column, cell in enumerate(row)
+                ]
+                for index, row in enumerate(rows)
+            ],
+        }
         if caption is not None:
             spec["caption"] = caption
         if align is not None:
@@ -206,6 +304,7 @@ class Emitter:
         }
 
     def document(self) -> dict:
+        self._check_composite_cells()
         document = {
             "schema": SCHEMA,
             "provenance": self._provenance(),
@@ -214,6 +313,59 @@ class Emitter:
         if self._tables:
             document["tables"] = dict(self._tables)
         return document
+
+    def _check_composite_cells(self) -> None:
+        """Every *claim* inside a text cell must be a value this analysis emitted.
+
+        `table()` refuses a bare numeric string, but a composite one — "3.84 (2.10 to 7.02)"
+        — is how a confidence interval is actually written in a results table, and demanding
+        three emitted values and a compose step for every row is the friction that gets a
+        tool abandoned. So the cell stays a string, and the numbers in it must be numbers
+        this fragment published. A typed interval fails; a composed one passes.
+
+        Which numbers count as claims is decided by the same classifier the manuscript uses,
+        because a table cell is not a different kind of writing: "Age 18-44" and "Grade 3"
+        are labels in a table for exactly the reason they are labels in a sentence, and a
+        rule that made an author emit `18` as a result would be answered by not using
+        tables. One definition of a claim, applied everywhere.
+
+        Checked here rather than in `table()` because it needs every value, and a table may
+        legitimately be emitted before the values it quotes.
+        """
+        from manuscript_guard.classify import UNCLASSIFIED
+        from manuscript_guard.text.masking import mask
+        from manuscript_guard.text.tokens import find_atoms
+
+        known = {spec["display"] for spec in self._values.values()} | self._computed
+        known |= {shown.replace(",", "") for shown in known}
+        classifier = self._classifier()
+
+        for key, spec in self._tables.items():
+            for row, cells in enumerate(spec["rows"]):
+                for column, cell in enumerate(cells):
+                    for atom in find_atoms(cell, mask(cell)):
+                        if atom.text in known or atom.text.replace(",", "") in known:
+                            continue
+                        if classifier.classify(atom).kind != UNCLASSIFIED:
+                            continue
+                        raise DisplayError(
+                            f"table {key!r} row {row} column {column}: {atom.text!r} in "
+                            f"{cell!r} is not a value this analysis emitted. Build the cell "
+                            f"with `em.cell(...)` so the emitter formats it, or emit "
+                            f"{atom.text} as a value of its own"
+                        )
+
+    def _classifier(self):
+        """The project's classifier when there is a project, the shipped one otherwise."""
+        from manuscript_guard.classify import Classifier
+
+        try:
+            from manuscript_guard.contracts import load_project
+
+            project, _report = load_project(self.root)
+            return Classifier.load(project.extra_conventions, project.extra_terms)
+        except Exception:  # noqa: BLE001 - a half-configured project must not stop an analysis
+            return Classifier.load()
 
     def write(self, path: str | Path | None = None) -> Path:
         """Write the fragment. Defaults to results/<script stem>.json."""

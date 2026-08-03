@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.masking import mask
+from manuscript_guard.text.masking import FRONTMATTER, mask
 
 HEADING = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -30,6 +30,16 @@ _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IG
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _TABLE_CAPTION = re.compile(r"^\s*:\s+.+$", re.MULTILINE)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+
+# Code, stripped here rather than borrowed from `mask()`. The two were sharing one answer to
+# two different questions — "where is a digit not a claim?" and "what would a journal count?"
+# — and the answers have now diverged: inline code and fenced blocks render, so G2 reads
+# them, while a journal counting body prose does not count a code listing. Sharing the mask
+# meant widening the gate silently changed every word count in the toolkit.
+_FENCED_CODE = re.compile(
+    r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.DOTALL | re.MULTILINE
+)
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
 _MD_SYNTAX = re.compile(r"[*_`~>#\[\]|]")
 
 
@@ -79,7 +89,14 @@ def headings(text: str) -> list[str]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    stripped = mask(text)  # removes citations, code, URLs, frontmatter, placeholders
+    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
+    # of it because pandoc renders them, but a journal counts those against their own limits,
+    # not against the body.
+    opening = FRONTMATTER.match(text)
+    stripped = text[opening.end() :] if opening else text
+    stripped = _FENCED_CODE.sub(" ", stripped)
+    stripped = _INLINE_CODE.sub(" ", stripped)
+    stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
     stripped = _IMAGE.sub(" ", stripped)
     stripped = _TABLE_ROW.sub(" ", stripped)

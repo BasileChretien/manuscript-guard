@@ -241,13 +241,35 @@ def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
 
 
 def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
+    """One quantity, two keys, two roundings — 3.84 in one place and 3.8 in another.
+
+    Both displays are honest renderings of the value, which is what makes this the case G8
+    exists for: nothing is false, and the paper still contradicts itself.
+    """
     fragment = next((project / "results").glob("*.json"))
     document = json.loads(fragment.read_text(encoding="utf-8"))
     document["values"]["ror.duplicate"] = dict(document["values"]["ror.point"])
-    document["values"]["ror.duplicate"]["display"] = "3.4"
+    document["values"]["ror.duplicate"]["display"] = "3.8"
+    document["values"]["ror.duplicate"]["digits"] = 1
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)  # the edit is legitimate here; we are testing G8, not G1
     assert "divergent-display" in codes(gate_report(project))
+
+
+def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
+    """A bonus from checking displays at emit time: the read path checks them too.
+
+    Re-signing the sidecar hides a hand-edit from G1, but the edited fragment still has to
+    be a coherent one. Changing a display to a number the value does not round to now fails
+    on load, so the easiest form of the re-signing attack — retype the display, recompute
+    the digest — no longer works.
+    """
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["ror.point"]["display"] = "9.99"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "no-display" in codes(gate_report(project))
 
 
 @pytest.mark.parametrize(

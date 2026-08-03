@@ -40,12 +40,15 @@ _KEY_LINE = re.compile(
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
 # that is partly machinery and partly prose.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    (
-        "fenced-code",
-        re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.DOTALL | re.MULTILINE),
-    ),
+    # Inline code and fenced blocks are NOT masked, though they once were. Both render:
+    # `3.84` in backticks appears in the .docx as 3.84, and a fenced block is a visible
+    # display element. Masking them meant a number could be published by wrapping it in
+    # punctuation. The usual argument for masking code — that a Methods section describing
+    # `p.adjust()` should not be nagged about `n = 42` — turns out to be an argument about
+    # READMEs rather than manuscripts: G2 reads `manuscript/` only, and a paper that
+    # genuinely lists code can declare it in `conventions:` with a reason, which is the
+    # visible, per-project escape this toolkit prefers to a silent global one.
     ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
-    ("inline-code", re.compile(r"`[^`\n]+`")),
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),

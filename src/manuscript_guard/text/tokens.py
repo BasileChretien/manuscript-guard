@@ -11,7 +11,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-DIGIT = re.compile(r"\d")
+# `\d` is Unicode Nd, which is the right default and misses two families of character that
+# render as numbers and read as numbers. A manuscript writing "½ of the cohort" or "④ events"
+# said something numeric that no gate saw, because no Nd digit was present anywhere in the
+# atom. Both families are listed explicitly rather than taken as the whole of Unicode N:
+#
+#   Superscripts are deliberately excluded. `m²`, `cm³`, `R²` and `χ²` are units and names,
+#   not claims, and admitting them would report every square metre in the paper. `10⁶` is
+#   already caught by its `10`.
+#   Roman numerals (Nl) are excluded for the same reason: "phase Ⅲ" is a label.
+_FRACTIONS = "¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞↉"
+_ENCLOSED = "①-⒛⓪⓵-⓾❶-➓"
+DIGIT = re.compile(f"[\\d{_FRACTIONS}{_ENCLOSED}]")
 # An atom is bounded by whitespace *or* by a masked region. Both boundaries matter, and the
 # second one is easy to get wrong: `mask()` preserves offsets by writing NUL, which is not
 # whitespace, so a run of `\S+` reaches straight through a mask boundary. Written that way,
@@ -23,8 +34,10 @@ DIGIT = re.compile(r"\d")
 _ATOM = re.compile(r"[^\s\x00]+")
 
 # Trimmed from either end. Percent, degree and prime are kept: they belong to the value.
-_LEAD = "([{<\"'“‘«¡¿*_~|>#+"
-_TRAIL = ")]}>\"'”’»,;:!?*_~|.…"
+# Backticks are delimiters like any other now that inline code is read rather than masked:
+# `3.84` is the value 3.84 wrapped in punctuation, and must compare equal to it.
+_LEAD = "([{<\"'“‘«¡¿*_~|>#+`"
+_TRAIL = ")]}>\"'”’»,;:!?*_~|.…`"
 
 
 @dataclass(frozen=True)

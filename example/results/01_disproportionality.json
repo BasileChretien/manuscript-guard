@@ -2,13 +2,13 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_at": "2026-08-03T08:26:48+00:00",
+    "generated_at": "2026-08-03T11:05:49+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
     "vcs": {
-      "sha": "807294e7d80a6f0f308c3e15b28120e1f4b860f2",
+      "sha": "511d6fe0f9a96bf4508108855859369465320a91",
       "dirty": true,
       "branch": "main"
     },

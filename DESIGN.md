@@ -721,6 +721,12 @@ wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **A figure review does not survive a change of plotting library.** The digest normalises
+  render timestamps and generated element ids, but not the drawn path data, and a different
+  matplotlib or font stack produces different paths for the same figure. CI found this: the
+  committed review of the example read as stale on Ubuntu and macOS. Arguably correct — the
+  bytes did change — but it means a review cannot be shared across machines with different
+  rendering stacks, only re-stamped after re-rendering.
 - **Raster figures cannot be inspected for numeric text.** Reported as a warning, and
   silent when a vector export of the same figure exists beside them.
 - **G10 verifies that a review happened, not that it was right.** A review recorded without

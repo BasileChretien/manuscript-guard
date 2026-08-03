@@ -22,7 +22,9 @@ classifiers = [
 dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.5"]
+# ruff is pinned exactly. An unpinned linter means CI can start failing on a commit that
+# changed nothing, which teaches everyone to ignore CI.
+dev = ["pytest>=7.0", "ruff==0.16.1"]
 
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"
@@ -47,3 +49,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+# Stated rather than inferred. Whether a src-layout package counts as first-party depends
+# on how ruff resolves the project root, and it resolved differently on CI than locally:
+# the same files passed here and failed there, with the import block sorted two ways.
+known-first-party = ["manuscript_guard"]

@@ -33,6 +33,18 @@ structural:
     why: Markdown heading numbering.
     pattern: '^#{1,6}\s+\d+(?:\.\d+)*[.)]?\s'
 
+  - id: author-year-citation
+    why: >-
+      A rendered author-year citation. In manuscript source a citation is [@key] and gets
+      masked, but a built document has already been through citeproc, so auditing an
+      existing paper meets "(Smith and Jones 2019)" as ordinary text. Without this every
+      citation in the paper is reported as an unexplained number.
+    pattern: '\((?:[^()]{0,80}?[A-Za-z][^()]{0,80}?)?\b(?:19|20)\d{2}[a-z]?(?:[;,]\s*[^()]{0,60})?\)|\b[A-Z][A-Za-z''-]+\s+(?:et al\.?|and\s+[A-Z][A-Za-z''-]+)\s*,?\s*\(?(?:19|20)\d{2}[a-z]?\)?'
+
+  - id: age-band
+    why: An age or duration band is a category label, not a measured value.
+    pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?)?\b'
+
   - id: table-alignment-row
     why: Markdown table separator rows.
     pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'

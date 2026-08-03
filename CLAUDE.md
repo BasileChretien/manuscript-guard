@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # 356 tests, ~90 s (R and Zotero tests skip if absent)
+pytest -q                    # 376 tests, ~70 s (R and Zotero tests skip if absent)
 ruff check src tests
 ```
 

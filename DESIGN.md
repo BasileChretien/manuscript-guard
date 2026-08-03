@@ -717,6 +717,42 @@ that were working go with it.
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 
+## Auditing existing papers, and saying what the audit is worth
+
+`check` works because manuscript source contains bindings: a results-derived number cannot
+be written as a literal, so nothing passes by coincidence. An existing paper has no
+bindings. Every number is a literal, and the only available question is the weak one — does
+this number appear anywhere in the outputs?
+
+That is precisely the set-membership check this project's predecessor was built on, and
+which was measured and found near-vacuous: with the analysis outputs as the backing set,
+100% of integers up to 100 and 97% up to 1000 already matched, and of fifteen deliberately
+corrupted headline numbers it detected none while reporting success.
+
+So `manuscript-guard audit` reports two things, and the second is not optional: the numbers
+matching nothing, **and what a match is worth in this particular project**, computed from
+the backing set the user actually supplied. On the worked example, pointed at the raw data,
+it reports 100% chance-match on every integer and says a match means almost nothing. Pointed
+at the analysis outputs, 24%. A clean report cannot be mistaken for a clean paper.
+
+Making it usable on real documents needed four things, three of them lessons from the
+predecessor:
+
+- **Table cells kept apart.** Word stores a row with no separator between cells, so a naive
+  read turns `39 | 20 | 26 | 16` into 39,202,616 and silently skips every table. A wrong
+  count in Table 1 survived every check for exactly that reason.
+- **Tracked changes resolved.** A document under review holds both the old text and the new;
+  reading it raw reports corrections as errors and misses what will be published.
+- **The bibliography dropped.** Recognised by heading where there is one and by entry shape
+  where there is not, because citeproc appends a reference list with no heading to cut at.
+  Otherwise every volume number and page range is reported.
+- **Rendered citations classified.** In source a citation is `[@key]` and gets masked; in a
+  built document it has already become "(Smith and Jones 2019)", and without a rule for that
+  every citation in the paper is an unexplained number.
+
+Verified end to end: the example's built document audits clean against its own outputs, and
+one digit changed in the reporting odds ratio is reported with its line and context.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -768,6 +804,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   silent.
 - **The plugin is installed by symlink, not from a marketplace.** No marketplace manifest
   exists yet, so installation is a manual link into a skills directory.
+- **The audit cannot tell where a number should be, only whether it exists somewhere.** A
+  value correct in the abstract and wrong in the Results passes, as does a number matching
+  a coincidental value in an unrelated output. It is triage for existing work, not a
+  guarantee.
+- **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
+  and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
+  ones are not distinguishable from a sentence break.
 - **The stage is declared, not detected.** Nothing stops a project sitting at `analysis`
   for ever and never being held to anything. Detecting the stage from what exists was
   considered and rejected as too surprising, but the honest consequence is that the ladder

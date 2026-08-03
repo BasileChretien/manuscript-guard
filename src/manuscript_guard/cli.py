@@ -132,6 +132,47 @@ def cmd_hook(args: argparse.Namespace) -> int:
     return dispatch(args.event)
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Check an existing paper's numbers against existing outputs.
+
+    For papers that were never written with this toolkit. Weaker than `check` by nature,
+    and the report says how much weaker, measured against the outputs supplied.
+    """
+    from manuscript_guard.audit import (
+        FIGURE_SUFFIXES,
+        PAPER_SUFFIXES,
+        audit,
+        measure_discrimination,
+        render,
+    )
+
+    def expand(given: list[Path], suffixes: set[str]) -> list[Path]:
+        found: list[Path] = []
+        for path in given:
+            if path.is_dir():
+                found += [
+                    p
+                    for p in sorted(path.rglob("*"))
+                    if p.is_file() and p.suffix.lower() in suffixes
+                ]
+            elif path.is_file():
+                found.append(path)
+        return found
+
+    papers = expand(args.paper, PAPER_SUFFIXES)
+    figures = expand(args.figures or [], FIGURE_SUFFIXES)
+    if not papers and not figures:
+        print("nothing to audit: no .docx or .md found in what you gave me", file=sys.stderr)
+        return 2
+    if not args.against:
+        print("--against is required: point it at the analysis outputs", file=sys.stderr)
+        return 2
+
+    report = audit(papers, args.against, figures=figures)
+    print(render(report, measure_discrimination(report.backing_values), Path.cwd()))
+    return 1 if (report.unmatched and args.strict) else 0
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -477,6 +518,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="shorthand for --stage submission: everything binds",
     )
     check.set_defaults(func=cmd_check)
+
+    audit = sub.add_parser(
+        "audit",
+        help="check an existing paper's numbers against existing outputs",
+        description="For papers not written with this toolkit. Give it the manuscript, the "
+        "supplements and the figures, and the analysis outputs to check them against.",
+    )
+    audit.add_argument("paper", nargs="+", type=Path, help=".docx/.md files, or directories")
+    audit.add_argument(
+        "--against",
+        nargs="+",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="analysis outputs: .json, .csv, .tsv, .txt, or directories of them",
+    )
+    audit.add_argument(
+        "--figures", nargs="+", type=Path, help="SVG or PDF figures to audit as well"
+    )
+    audit.add_argument("--strict", action="store_true", help="exit 1 if anything is unmatched")
+    audit.set_defaults(func=cmd_audit)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

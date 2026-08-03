@@ -5,10 +5,15 @@ __pycache__/
 venv/
 *.egg-info/
 dist/
-build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# setuptools output, at the repository root only. NOT a bare `build/`: that matches any
+# directory of that name at any depth, and it silently excluded the whole of
+# src/manuscript_guard/build/ from the repository. Everything passed locally, where the
+# files exist on disk, and CI failed on every platform with ModuleNotFoundError.
+/build/
 
 # R
 .Rhistory
@@ -17,8 +22,9 @@ build/
 renv/library/
 renv/staging/
 
-# Manuscript build artefacts (always regenerated; never a source of truth)
-**/build/
+# Manuscript build artefacts (always regenerated; never a source of truth). Named
+# explicitly for the same reason as above.
+example/build/
 *.docx
 *.pdf
 !profiles/**/*.pdf

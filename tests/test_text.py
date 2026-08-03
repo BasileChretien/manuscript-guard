@@ -228,6 +228,58 @@ def test_the_abstract_in_front_matter_is_checked_like_any_other_prose() -> None:
     assert atoms_of(text) == ["3.84-fold", "3.84", "41200"]
 
 
+METHODS_AND_RESULTS = """# Paper
+
+## Methods
+
+Significance was set at p < 0.05 throughout, with power of 80%.
+
+### Sensitivity analyses
+
+A stricter p < 0.01 was applied here.
+
+## Results
+
+The association was significant (p < 0.001).
+
+## Discussion
+
+This remained true at p < 0.05.
+"""
+
+
+def test_a_threshold_is_a_convention_in_methods_and_a_finding_elsewhere() -> None:
+    """`p < 0.05` means two different things and has the same characters both times.
+
+    Where the paper describes its own method it is the alpha the author chose in advance.
+    In the Results it is a finding — and as a convention everywhere, a significance claim
+    the analysis never produced walked straight past the gate. A Methods *subsection*
+    counts: `### Sensitivity analyses` is still Methods, which is why the section is read
+    as a chain of enclosing headings rather than as the nearest one.
+    """
+    from manuscript_guard.text.sections import section_chain
+
+    classifier = Classifier.load()
+    found = {}
+    for atom in find_atoms(METHODS_AND_RESULTS, mask(METHODS_AND_RESULTS)):
+        chain = section_chain(METHODS_AND_RESULTS, atom.start)
+        found[(chain[-1], atom.text)] = classifier.classify(atom, chain).kind
+
+    assert found[("Methods", "0.05")] == CONVENTION
+    assert found[("Methods", "80%")] == CONVENTION
+    assert found[("Sensitivity analyses", "0.01")] == CONVENTION
+    assert found[("Results", "0.001")] == UNCLASSIFIED
+    assert found[("Discussion", "0.05")] == UNCLASSIFIED
+
+
+def test_a_caller_with_no_sections_keeps_every_rule() -> None:
+    """Figure text and the audit have no headings, and a `p < 0.05` in a legend is a
+    legend convention. Passing no section must not silently tighten those callers."""
+    text = "Marked * where p < 0.05."
+    atom = find_atoms(text, mask(text))[0]
+    assert Classifier.load().classify(atom).kind == CONVENTION
+
+
 def test_a_citation_rule_needed_only_for_rendered_text_stays_out_of_the_gate() -> None:
     """`author-year-citation` spans a whole parenthetical, and a span accepts every atom in
     it, so in manuscript source `(Smith 2019, n = 412)` filed 412 as structural. Source

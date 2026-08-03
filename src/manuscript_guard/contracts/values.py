@@ -30,6 +30,11 @@ class Value:
     unit: str | None = None
     quoted: bool = True
     detail: dict | None = None
+    # Another key this one is the same quantity as. G8 catches two keys holding the *same*
+    # value with different displays, and goes quiet once they have actually diverged —
+    # which is when it matters. Nothing in the file recorded that two keys were meant to
+    # agree, so this is the author saying so.
+    same_as: str | None = None
 
     @property
     def namespace(self) -> str:
@@ -73,6 +78,10 @@ def derive_display(key: str, value: object, display: str | None, digits: int | N
 # display string means it is not a rendering of this number.
 _NUMERIC_DISPLAY = re.compile(
     r"""^\s*
+    # A comparator, because a rounded p-value is written "<0.001" and that is the honest
+    # rendering of a number too small to state. The value must still be on the stated side
+    # of it, which `_check_display_matches` enforces separately.
+    (?P<compare><|>|≤|≥|<=|>=)?\s*
     (?P<sign>[-+−])?
     (?P<number>\d{1,3}(?:[,    ]\d{3})+(?:\.\d+)?
               |\d+(?:\.\d+)?)
@@ -120,6 +129,19 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
         text = f"{text}e{match.group('exp')}"
 
     shown = float(text)
+    compare = match.group("compare")
+    if compare:
+        # "<0.001" is true of any value below 0.001 and false of 0.4. Checking the direction
+        # rather than the distance is the whole content of a comparator display.
+        below = compare in ("<", "<=", "≤")
+        satisfied = float(value) <= shown if below else float(value) >= shown
+        if not satisfied:
+            raise DisplayError(
+                f"{key}: display {display!r} says the value is "
+                f"{'below' if below else 'above'} {shown!r}, but it is {value!r}"
+            )
+        return
+
     # The display is a rounding, so it need only agree to its own precision. Half a unit in
     # the last place shown, with a little slack for binary representation.
     decimals = len(text.partition(".")[2].split("e")[0])

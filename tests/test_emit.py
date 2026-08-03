@@ -84,6 +84,81 @@ def test_an_honest_display_is_accepted(scratch: Path, value: object, display: st
     assert em.document()["values"]["k"]["display"] == display
 
 
+@pytest.mark.parametrize(
+    ("value", "display"),
+    [(0.0000004, "<0.001"), (0.0000004, "< 0.001"), (1200, ">1000"), (0.04, "≤0.05")],
+)
+def test_a_comparator_display_is_accepted_when_the_value_is_on_that_side(
+    scratch: Path, value: float, display: str
+) -> None:
+    """A rounded p-value is written "<0.001", and that is the honest rendering of a number
+    too small to state. Needed once thresholds stopped being conventions outside Methods:
+    a reported p-value must be bound, so it must be emittable."""
+    em = emitter(scratch)
+    em.value("p", value, display=display)
+    assert em.document()["values"]["p"]["display"] == display
+
+
+@pytest.mark.parametrize(("value", "display"), [(0.4, "<0.001"), (900, ">1000")])
+def test_a_comparator_display_is_refused_when_it_is_untrue(
+    scratch: Path, value: float, display: str
+) -> None:
+    with pytest.raises(DisplayError):
+        emitter(scratch).value("p", value, display=display)
+
+
+# ---------------------------------------------------------------- same_as
+
+
+def test_two_keys_declared_the_same_must_agree(scratch: Path) -> None:
+    """G8 notices two keys while they still hold the same number, and goes quiet the moment
+    they diverge — which is when it matters. Nothing recorded that they were meant to agree.
+    """
+    from manuscript_guard.contracts import load_results
+    from manuscript_guard.gates import check_consistency
+
+    em = emitter(scratch)
+    em.value("ror.point", 0.9487, digits=2)
+    em.value("ror.abstract", 3.8439, digits=2, same_as="ror.point")
+    em.write()
+
+    results, _report = load_results(scratch / "results")
+    codes = {f.code for f in check_consistency(results).failures}
+    assert "declared-same-but-differs" in codes
+
+
+def test_two_keys_declared_the_same_and_agreeing_pass(scratch: Path) -> None:
+    from manuscript_guard.contracts import load_results
+    from manuscript_guard.gates import check_consistency
+
+    em = emitter(scratch)
+    em.value("ror.point", 3.8439, digits=2)
+    em.value("ror.abstract", 3.8439, digits=2, same_as="ror.point")
+    em.write()
+
+    results, _report = load_results(scratch / "results")
+    assert check_consistency(results).ok
+
+
+def test_a_declaration_pointing_at_nothing_is_reported(scratch: Path) -> None:
+    """A declaration that resolves to no key checks nothing, and looks like it checks."""
+    from manuscript_guard.contracts import load_results
+    from manuscript_guard.gates import check_consistency
+
+    em = emitter(scratch)
+    em.value("ror.abstract", 3.8439, digits=2, same_as="ror.typo")
+    em.write()
+
+    results, _report = load_results(scratch / "results")
+    codes = {f.code for f in check_consistency(results).failures}
+    assert "same-as-unresolved" in codes
+
+
+def test_a_key_cannot_declare_itself(scratch: Path) -> None:
+    with pytest.raises(ValueError, match="same_as itself"):
+        emitter(scratch).value("ror.point", 1.0, digits=2, same_as="ror.point")
+
+
 # ---------------------------------------------------------------- tables
 
 

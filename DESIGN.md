@@ -871,17 +871,10 @@ Added by the adversarial review, verified and **not** fixed:
   digest can be recomputed. It is a separate command because it executes the project's own
   code, which a gate must never do. It cannot make a non-deterministic analysis agree with
   itself; it reports the disagreement and says to set a seed.
-- **G8 goes quiet exactly when two keys have diverged.** It fires when two quoted keys hold
-  the same value with different displays, so a duplicate is caught while it still agrees and
-  missed once it does not. Detecting that two keys *should* have agreed would need the
-  author to declare them as one quantity, which is a design not yet chosen.
 - **Numbers written as words escape the tokeniser.** "four thousand and twenty-one" is not
   read. Vulgar fractions and enclosed digits now are. Number words are left alone on
   purpose: "one of the two arms", "a single centre" and "two-tailed" are ordinary prose, and
   a rule that flags them is a rule that gets the gate switched off.
-- **`p < 0.001` is a convention.** The rule cannot tell a pre-stated alpha from a reported
-  p-value, and it is pinned to the three conventional thresholds, so a fabricated
-  significance claim passes. Pinning to values is right; the ambiguity is real.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a
   `why` of "house style" disables G2, and `terms:` needs no justification at all. The gate
   is a tool for an author who wants it, not a control over one who does not — so this stays.
@@ -894,6 +887,25 @@ Added by the adversarial review, verified and **not** fixed:
   code sees green.
 Closed since, and why each mattered:
 
+- **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
+  the same value with different displays, so a duplicate was caught while it still agreed
+  and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
+  at 3.84 and nothing said a word. `same_as` records the author's intent, and G8 fails when
+  a declared pair disagrees. A declaration rather than an inference, because the question
+  *is* about intent: `ror.point`, `ror.ci_low` and `ror.ci_high` share everything a
+  heuristic could see and are supposed to differ. The limit is honest — it protects the
+  pairs someone thought to declare — but a declared pair cannot drift in silence.
+- **`p < 0.05` was a convention everywhere.** The same characters mean two things: where a
+  paper describes its own method it is the alpha chosen in advance, and in the Results it is
+  a finding. A significance claim the analysis never produced therefore passed the gate that
+  carries the invariant. A rule can now be marked `methods_only`, and G2 reads the chain of
+  headings enclosing each number — a chain rather than the nearest heading, because
+  `### Sensitivity analyses` under `## Methods` is still Methods. Only G2 passes a section:
+  a figure legend has no Methods section to sit in and its `p < 0.05` is a legend
+  convention, so figure text and the audit keep every rule. One entailment: a display may
+  now carry a comparator, since a reported p-value has to be emittable and "<0.001" is the
+  honest rendering of a number too small to state. The value must be on the stated side of
+  it — `display="<0.001"` on a value of 0.4 is refused.
 - **`build --skip-checks` left a document that could pass for a checked one.** Revert the
   source afterwards and `check` passes while the stale `.docx` still holds the wrong
   number — the check and the artefact disagreeing silently, with nothing on disk recording

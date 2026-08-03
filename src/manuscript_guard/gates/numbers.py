@@ -21,6 +21,7 @@ from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.sections import section_chain
 from manuscript_guard.text.tokens import find_atoms
 
 GATE = "G2"
@@ -98,7 +99,10 @@ def check_numbers(
 
         for atom in find_atoms(text, mask(text)):
             totals["atoms"] += 1
-            verdict = classifier.classify(atom)
+            # Where the number sits decides what some rules mean. `p < 0.05` under Methods
+            # is the threshold the author chose in advance; the same characters in Results
+            # are a finding, and were passing as a convention.
+            verdict = classifier.classify(atom, section_chain(text, atom.start))
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):

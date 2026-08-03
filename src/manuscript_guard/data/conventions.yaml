@@ -14,10 +14,17 @@ schema: manuscript-guard/conventions/1
 conventions:
   - id: significance-threshold
     why: A pre-specified alpha level is a design choice stated by convention, not a result.
+    # Methods only. The same characters mean two different things: "p < 0.05" where the
+    # paper describes its own method is the threshold the author chose in advance, and
+    # "p < 0.001" in the Results is a finding. As a convention everywhere, a significance
+    # claim the analysis never produced walked past the gate. Bind a reported p-value like
+    # any other result; `display="<0.001"` is accepted for one too small to state.
+    methods_only: true
     pattern: '(?i)\bp[\s-]*(?:value)?\s*[<≤]\s*0?\.(?:0001|001|01|05)\b'
 
   - id: alpha-level
     why: Same as the significance threshold, written as alpha.
+    methods_only: true
     pattern: '(?i)(?:\balpha\b|α)\s*(?:level)?\s*(?:was|of|[=:])\s*0?\.(?:0001|001|01|05)\b'
 
   - id: confidence-level
@@ -30,6 +37,8 @@ conventions:
 
   - id: target-power
     why: A conventional target power stated in a sample-size paragraph.
+    # A sample-size paragraph is Methods. Observed power reported afterwards is a result.
+    methods_only: true
     pattern: '(?i)\b(?:statistical\s+)?power\s*(?:of|at|=|:)?\s*(?:0\.(?:8|9|80|90)|80|90)\s*%?'
 
   - id: percentile-labels

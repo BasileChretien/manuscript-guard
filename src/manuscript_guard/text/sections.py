@@ -59,6 +59,29 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
+def section_chain(text: str, offset: int) -> tuple[str, ...]:
+    """Every heading enclosing `offset`, outermost first.
+
+    A chain rather than the nearest heading, because the nearest one is often a subsection
+    whose own title says nothing: `### Sensitivity analyses` under `## Methods` is still
+    Methods, and answering with just "Sensitivity analyses" would make a threshold stated
+    there look like a reported result.
+
+    Used by G2 to ask where a number sits, since two rules mean different things in
+    different places: `p < 0.05` in Methods is the alpha the author chose, and in Results
+    it is a finding.
+    """
+    stack: list[tuple[int, str]] = []
+    for match in HEADING.finditer(text):
+        if match.start() > offset:
+            break
+        level = len(match.group("hashes"))
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        stack.append((level, match.group("title").strip()))
+    return tuple(title for _level, title in stack)
+
+
 def split_sections(text: str) -> list[Section]:
     """Top-level structure. Subsections stay inside their parent's body."""
     matches = list(HEADING.finditer(text))

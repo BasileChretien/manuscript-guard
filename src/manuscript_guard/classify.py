@@ -16,6 +16,7 @@ checking is not: nothing can pass by coincidence, because passing is not about t
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -45,6 +46,13 @@ class Rule:
     # span, so `(Smith 2019, n = 412)` would file 412 as structural. Kept out of the gate
     # that carries the invariant, and out of `explain`, which describes that gate.
     audit_only: bool = False
+    # A rule that only holds where the manuscript is describing its own method. `p < 0.05`
+    # in a Methods section is a threshold the author chose in advance — a convention. The
+    # same characters in Results are a *finding*, and were being waved through: a
+    # significance claim the analysis never produced passed the gate that carries the
+    # invariant. The rule cannot tell them apart by their text, because they have the same
+    # text; it can tell them apart by where they are.
+    methods_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,6 +75,7 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
             pattern=re.compile(item["pattern"]),
             kind=kind,
             audit_only=bool(item.get("audit_only", False)),
+            methods_only=bool(item.get("methods_only", False)),
         )
         for item in document[section]
     )
@@ -135,17 +144,42 @@ class Classifier:
         merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def classify(self, atom: Atom) -> Verdict:
+    def classify(self, atom: Atom, section: Sequence[str] | None = None) -> Verdict:
+        """Judge one atom. `section` is the chain of headings enclosing it, when known.
+
+        Only G2 passes a section, because only G2 is reading a manuscript with headings. A
+        caller that passes nothing gets every rule, which is the behaviour figure text and
+        the audit had before `methods_only` existed and still need: a figure legend has no
+        Methods section to sit in, and a `p < 0.05` in one is a legend convention.
+        """
         matched = _terms_covering(atom.text, self.terms)
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched))
         for rule in self.structural:
-            if _rule_covers(rule, atom):
+            if _applies(rule, section) and _rule_covers(rule, atom):
                 return Verdict(STRUCTURAL, rule=rule.id, detail=rule.why)
         for rule in self.conventions:
-            if _rule_covers(rule, atom):
+            if _applies(rule, section) and _rule_covers(rule, atom):
                 return Verdict(CONVENTION, rule=rule.id, detail=rule.why)
         return Verdict(UNCLASSIFIED)
+
+
+# Where a method may be described. The analysis plan counts: it is the same statement made
+# before the fact, and G12 reads it as one.
+METHODS_SECTIONS = re.compile(
+    r"^\s*(?:materials\s+and\s+)?(?:methods|methodology|statistical\s+analysis|"
+    r"analysis\s+plan|study\s+design|design|protocol)\b",
+    re.IGNORECASE,
+)
+
+
+def is_methods(section: Sequence[str] | None) -> bool:
+    """True when any enclosing heading is a Methods-like one."""
+    return bool(section) and any(METHODS_SECTIONS.match(title) for title in section)
+
+
+def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
+    return not rule.methods_only or section is None or is_methods(section)
 
 
 def _rule_covers(rule: Rule, atom: Atom) -> bool:

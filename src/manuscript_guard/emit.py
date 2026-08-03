@@ -188,8 +188,16 @@ class Emitter:
         unit: str | None = None,
         quoted: bool = True,
         note: str | None = None,
+        same_as: str | None = None,
     ) -> None:
-        """Record one value. Raises immediately on a duplicate key or unformattable float."""
+        """Record one value. Raises immediately on a duplicate key or unformattable float.
+
+        `same_as` names another key this one is the same quantity as, and G8 then fails if
+        the two ever disagree. Worth using whenever a number has to appear under a second
+        key — a headline figure repeated for an abstract, a value recomputed by a second
+        script. G8 otherwise notices two keys only while they still *agree*, and goes quiet
+        at the moment they diverge.
+        """
         if key in self._values:
             raise ValueError(f"{key!r} emitted twice by {self.script}")
         # Resolve the display string here rather than at read time, so the fragment is
@@ -205,6 +213,10 @@ class Emitter:
             spec["quoted"] = False
         if note is not None:
             spec["note"] = note
+        if same_as is not None:
+            if same_as == key:
+                raise ValueError(f"{key!r} declares same_as itself")
+            spec["same_as"] = same_as
         self._values[key] = spec
 
     def table(

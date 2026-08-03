@@ -154,6 +154,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 source=path,
                 unit=spec.get("unit"),
                 quoted=spec.get("quoted", True),
+                same_as=spec.get("same_as"),
             )
 
         for key, spec in document.get("tables", {}).items():

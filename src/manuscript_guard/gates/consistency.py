@@ -60,4 +60,66 @@ def check_consistency(results: Results) -> Report:
             )
         )
 
+    report = report.merge(_check_declared_pairs(results))
     return report.with_counts(value_collisions=collisions)
+
+
+def _check_declared_pairs(results: Results) -> Report:
+    """Keys the author declared to be one quantity, which must therefore agree.
+
+    Everything above works by coincidence of value: two keys are noticed because they
+    happen to hold the same number. That fires while a duplicate still agrees and goes
+    silent the moment it stops — which is precisely when it has become a problem. A paper
+    could carry `ror.point` at 0.95 and `ror.abstract` at 3.84 and nothing would say a word,
+    because nothing in the results file recorded that the two were meant to be the same
+    thing.
+
+    `same_as` records it. It is a declaration rather than an inference because the question
+    is about intent: `ror.point`, `ror.ci_low` and `ror.ci_high` share everything a
+    heuristic could see and are supposed to differ. The limit is honest — this protects the
+    pairs someone thought to declare — but a declared pair cannot drift in silence.
+    """
+    report = Report()
+    declared = 0
+    for key, value in results.values.items():
+        if not value.same_as:
+            continue
+        declared += 1
+        other = results.values.get(value.same_as)
+        if other is None:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="same-as-unresolved",
+                    message=f"{key} declares same_as {value.same_as!r}, which no analysis emits",
+                    path=value.source,
+                    hint="a declaration pointing at nothing checks nothing; fix the key or "
+                    "remove the declaration",
+                )
+            )
+            continue
+        if value.value != other.value:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="declared-same-but-differs",
+                    message=f"{key} is declared the same quantity as {value.same_as}, but they "
+                    f"hold {value.value!r} and {other.value!r}",
+                    path=value.source,
+                    context=f"displays: {value.display} and {other.display}",
+                    hint="emit the quantity once and quote the one key; two keys for one "
+                    "number is how an abstract comes to disagree with its own results",
+                )
+            )
+        elif value.display != other.display:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="declared-same-but-displayed-differently",
+                    message=f"{key} and {value.same_as} are the same quantity but are written "
+                    f"{value.display!r} and {other.display!r}",
+                    path=value.source,
+                    hint="pick one display, or round both with the same `digits`",
+                )
+            )
+    return report.with_counts(declared_pairs=declared)

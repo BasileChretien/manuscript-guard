@@ -51,6 +51,10 @@ class CodeNumber:
     line_text: str
     in_string: bool
     names: tuple[str, ...] = field(default=())
+    # Offset of this literal within `line_text`. Needed because a line can hold several
+    # numbers sharing a digit string, and a checker that matches them by text rather than
+    # by position judges the wrong one.
+    col: int = 0
 
     @property
     def context(self) -> str:
@@ -119,12 +123,13 @@ def lex(text: str, language: str) -> list[Token]:
     return tokens
 
 
-def _line_of(text: str, offset: int) -> tuple[int, str]:
+def _line_of(text: str, offset: int) -> tuple[int, str, int]:
+    """Line number, the line itself, and the offset of `offset` within it."""
     start = text.rfind("\n", 0, offset) + 1
     end = text.find("\n", offset)
     if end == -1:
         end = len(text)
-    return text.count("\n", 0, offset) + 1, text[start:end]
+    return text.count("\n", 0, offset) + 1, text[start:end], offset - start
 
 
 def numbers_in(text: str, language: str) -> list[CodeNumber]:
@@ -149,7 +154,7 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
         if token.kind == "string":
             for match in _NUMBER.finditer(token.text):
                 offset = token.start + match.start()
-                line, line_text = _line_of(text, offset)
+                line, line_text, col = _line_of(text, offset)
                 found.append(
                     CodeNumber(
                         text=match.group(0),
@@ -159,12 +164,13 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
                         line_text=line_text,
                         in_string=True,
                         names=_names(stack, target),
+                        col=col,
                     )
                 )
             continue
 
         if token.kind == "number":
-            line, line_text = _line_of(text, token.start)
+            line, line_text, col = _line_of(text, token.start)
             found.append(
                 CodeNumber(
                     text=token.text,
@@ -174,6 +180,7 @@ def numbers_in(text: str, language: str) -> list[CodeNumber]:
                     line_text=line_text,
                     in_string=False,
                     names=_names(stack, target),
+                    col=col,
                 )
             )
             continue

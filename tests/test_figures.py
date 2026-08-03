@@ -151,6 +151,28 @@ def test_docstrings_and_comments_are_not_figure_text(tmp_path: Path) -> None:
     assert check_figure_source(script, Classifier.load()).ok
 
 
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        'ax.annotate("OR 3", xy=(1, 2))  # cf. Table 3 for the full comparison',
+        'ax.set_title("77 reports")  # matches Figure 77 in the appendix',
+        'plt.text(0, 0, "3.84 overall")  # grade 3.84 is not a thing, but shares digits',
+    ],
+)
+def test_an_unrelated_digit_elsewhere_on_the_line_cannot_excuse_a_claim(
+    tmp_path: Path, snippet: str
+) -> None:
+    """Candidates used to be matched to the literal by *text*, so any same-line atom
+    sharing the digit string could clear it — a trailing `# cf. Table 3` classified as
+    structural and the hardcoded `"OR 3"` beside it went unreported. Judged by position
+    now, so what is in the comment cannot speak for what is in the string."""
+    script = tmp_path / "fig.py"
+    script.write_text(snippet + "\n", encoding="utf-8")
+    report = check_figure_source(script, Classifier.load())
+    assert not report.ok, snippet
+    assert "figure-source-text-number" in {f.code for f in report.failures}
+
+
 # ---------------------------------------------------------------- the code lexer
 
 

@@ -196,17 +196,29 @@ def _judge_string_number(number: CodeNumber, classifier: Classifier) -> str | No
     The string's content is run through the prose classifier, because a string in a figure
     script is usually an axis title, a legend entry or an annotation, and the rules that
     govern those in the manuscript should govern them here too.
+
+    Everything here is decided by *position* in the line, never by matching the digit
+    string. Matched by text, a line like
+
+        ax.annotate("OR 3", xy=(1, 2))  # cf. Table 3 for the full comparison
+
+    offered two candidates containing "3", and the trailing comment's "Table 3" classified
+    as structural — which cleared the hardcoded annotation. Any unrelated digit anywhere on
+    the line could excuse a real claim.
     """
     fragment = number.line_text
     if _MACHINERY.search(fragment):
         # Machinery may sit on the same line as a claim, so only forgive the exact span.
         for match in _MACHINERY.finditer(fragment):
-            if number.text in match.group(0):
+            if match.start() <= number.col < match.end():
                 return None
-    atoms = [a for a in find_atoms(fragment, mask(fragment)) if number.text in a.text]
-    if not atoms:
+    covering = [
+        a for a in find_atoms(fragment, mask(fragment)) if a.start <= number.col < a.end
+    ]
+    if not covering:
+        # The literal sits inside something masking removed — a DOI, a URL, inline code.
+        # Those are not claims, and reporting them is how a figure gate gets switched off.
         return None
-    for atom in atoms:
-        if classifier.classify(atom).kind != UNCLASSIFIED:
-            return None
-    return "unclassified"
+    if all(classifier.classify(atom).kind == UNCLASSIFIED for atom in covering):
+        return "unclassified"
+    return None

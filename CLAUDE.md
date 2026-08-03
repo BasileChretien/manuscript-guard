@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # 376 tests, ~70 s (R and Zotero tests skip if absent)
+pytest -q                    # 451 tests, ~50 s (R and Zotero tests skip if absent)
 ruff check src tests
 ```
 
@@ -83,4 +83,10 @@ Verified 2026-08-03 on the author's machine.
 - Zotero must be **running** for the live-citation build; the build needs an offline mode
   for when it is not.
 - pandoc is at `C:\Users\Basile\AppData\Local\Pandoc\pandoc.exe`, version 3.9.0.2.
+- **`jq` is not installed.** `gh ... --json x --jq '...'` works (gh has jq built in), and so
+  does `--template`, but piping to a standalone `jq` fails silently inside a loop — a CI
+  watcher written that way reports nothing and looks like a pending build.
+- **`gh run view <id>` needs the id as a plain integer.** Reading it out of `--json
+  databaseId` through anything that formats numbers turns it into `3.08e+10` and gets a 404;
+  `--jq '.[0].databaseId'` returns it intact.
 - Multiple R versions are installed; use the newest unless a project pins one via renv.

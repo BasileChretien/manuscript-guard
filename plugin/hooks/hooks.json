@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "manuscript-guard-hook guard-write",
+            "timeout": 15,
+            "statusMessage": "Checking the file is not machine-written"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "manuscript-guard-hook guard-submission",
+            "timeout": 120,
+            "statusMessage": "Holding the manuscript to submission standards"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "manuscript-guard-hook after-edit",
+            "timeout": 20,
+            "statusMessage": "Classifying the numbers just written"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "manuscript-guard-hook session-start",
+            "timeout": 60,
+            "statusMessage": "Reading where the manuscript stands"
+          }
+        ]
+      }
+    ]
+  }
+}

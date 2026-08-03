@@ -125,6 +125,13 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_hook(args: argparse.Namespace) -> int:
+    """Handle a Claude Code hook event. Reads the event JSON on stdin."""
+    from manuscript_guard.hooks import dispatch
+
+    return dispatch(args.event)
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -467,6 +474,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
+
+    hook = sub.add_parser("hook", help="handle a Claude Code hook event (reads stdin)")
+    hook.add_argument(
+        "event",
+        choices=("guard-write", "after-edit", "guard-submission", "session-start"),
+    )
+    hook.set_defaults(func=cmd_hook)
 
     review = sub.add_parser("review", help="show where the review stands")
     review.add_argument("path", nargs="?", type=Path, default=Path.cwd())

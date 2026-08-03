@@ -215,6 +215,47 @@ Nothing is fetched during installation. Reporting checklists are downloaded on r
 `manuscript-guard fetch`, never as an install side effect — see
 [ATTRIBUTION.md](ATTRIBUTION.md) for why.
 
+### The Claude Code plugin (optional)
+
+The pip package is the whole guarantee and needs nothing else. The plugin adds the parts
+that need judgement — drafting, literature verification, figure review, review panels — plus
+hooks that catch mistakes at the moment they are made.
+
+Install it by linking the `plugin/` directory into your skills directory:
+
+```bash
+# personal, available in every project
+ln -s /path/to/manuscript-guard/plugin ~/.claude/skills/manuscript-guard
+```
+
+```powershell
+# Windows
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\manuscript-guard" `
+         -Target "C:\path\to\manuscript-guard\plugin"
+```
+
+Restart Claude Code, or run `/reload-plugins`. It loads as `manuscript-guard@skills-dir`.
+
+**Seven skills**: `manuscript-writing`, `methods-writer`, `literature-verify`,
+`figure-review`, `journal-profile`, `reporting-checklist`, `review-panel`, `submission-pack`.
+
+**Four hooks**, and what each is for:
+
+| Hook | What it does |
+|---|---|
+| before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it |
+| after a write | Classifies the numbers in the manuscript file just saved, and names any bound to nothing — feedback while you are still in the paragraph |
+| after editing analysis | Says the results are now stale and the Methods may no longer describe the code |
+| before a submission-shaped shell command | Runs the submission check and blocks if it fails |
+
+The submission guard matches against the **whole command string** rather than a prefix rule,
+because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard submit` both
+defeat prefix matching. That is not hypothetical: it is how a submission slipped past the
+guard in the project this one learned from.
+
+A hook never breaks a session. Anything unexpected exits silently, because a guard that
+crashes on a half-configured project gets removed, taking the guards that worked with it.
+
 ## You do not have to satisfy every gate on day one
 
 A checker that demands everything from the first day is a checker that gets switched off on

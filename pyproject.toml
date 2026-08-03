@@ -27,6 +27,9 @@ dev = ["pytest>=7.0", "ruff>=0.5"]
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"
 mguard = "manuscript_guard.cli:main"
+# Separate from the CLI on purpose: the Bash guard fires on every shell command, and the
+# hook module imports nothing heavy until it knows it has work to do.
+manuscript-guard-hook = "manuscript_guard.hooks:main"
 
 [project.urls]
 Homepage = "https://github.com/basilechretien/manuscript-guard"

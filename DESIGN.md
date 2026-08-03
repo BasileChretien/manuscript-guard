@@ -683,6 +683,40 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## The plugin: skills for judgement, hooks for the moment of the mistake
+
+The original brief asked for skills **and hooks**. The skills came first and the hooks were
+outstanding for seven phases, which was the wrong order: a skill helps when you remember to
+invoke it, and a hook helps when you do not.
+
+Four hooks, chosen because each catches something at the only moment it is cheap to catch:
+
+- **Before a write**, refuse edits to `results/`, `build/` and generated checklist profiles.
+  This is the direct mechanical form of "the latest results are always used": the file
+  cannot be hand-edited, so it cannot drift from the analysis that wrote it. G1 detects the
+  edit afterwards; the hook prevents it.
+- **After a write**, classify the numbers in the manuscript file just saved. The same check
+  G2 performs, but while the author is still in the paragraph rather than at the next build.
+- **After editing an analysis file**, say the results are stale and the Methods may no
+  longer describe the code.
+- **Before a submission-shaped shell command**, run the submission check and block on
+  failure.
+
+That last one carries a specific lesson. It matches the **whole command string**, with no
+permission-rule prefix filter, because `cd example && manuscript-guard submit` and
+`FOO=1 manuscript-guard submit` both defeat a prefix rule — which is precisely how a
+submission build slipped past the equivalent guard in the predecessor project. The cost is
+that the hook fires on every Bash call, so it has its own console script
+(`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
+the no-op path against roughly 400 ms through the full CLI.
+
+**A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
+A guard that crashes on a half-configured project gets removed by the author, and the guards
+that were working go with it.
+
+**A hook blocks only what is unambiguous.** Writing a machine-written results file is always
+wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -723,6 +757,11 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **`--submission` is the only contextual severity in the toolkit.** It is a small
   inconsistency, accepted because blocking every draft build on a complete two-round review
   would make G11 something to switch off.
+- **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
+  editor does not share, they silently do nothing — which is the safe direction, but it is
+  silent.
+- **The plugin is installed by symlink, not from a marketplace.** No marketplace manifest
+  exists yet, so installation is a manual link into a skills directory.
 - **The stage is declared, not detected.** Nothing stops a project sitting at `analysis`
   for ever and never being held to anything. Detecting the stage from what exists was
   considered and rejected as too surprising, but the honest consequence is that the ladder

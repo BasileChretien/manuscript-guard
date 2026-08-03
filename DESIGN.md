@@ -80,9 +80,10 @@ These were tested, not assumed, and they determine the architecture.
   Document Preferences, and the file is not reported as corrupt.
   **Consequence: Markdown is the permanent source of truth and the .docx is a disposable
   build artifact.** No surgical patching, no md/docx drift.
-- Two chores remain in the build pipeline: no `ZOTERO_PREF` or `ZOTERO_BIBL` field is
+- One chore remains in the build pipeline: no `ZOTERO_PREF` or `ZOTERO_BIBL` field is
   emitted, so document preferences and bibliography insertion are manual unless we inject
-  them; and narrative `@key` citations produced no field while bracketed `[@key]` did.
+  them. (Narrative `@key` citations also produced no field at the time of this note; that
+  was fixed with `author-in-text: true` — see "The build" below.)
 - **Zotero's local API (`/api/`) is disabled** on this machine — returns
   `403 Local API is not enabled`. Not needed: **Better BibTeX's JSON-RPC works** and
   returns CSL-JSON including citation keys.
@@ -103,19 +104,29 @@ manuscript-guard/
   src/manuscript_guard/
     contracts/     # schemas for results, ledger, authors, paper
     gates/         # one module per gate; deterministic, no LLM
+                   #   includes journal.py and reporting.py: the guideline checkers
     build/         # md -> docx/pdf, zotero.lua, CSL, tables, figures
     zotero/        # BBT JSON-RPC client, citation-key pinning checks
-    journal/       # guideline profile loader and checker
+    literature/    # stored sources, quote and value verification
+    reporting/     # recipe-driven checklist transcription
+    text/          # masking, tokenising, placeholders, docx and code readers
+    data/          # the shipped convention, structural and term rules
+    profiles/      # shipped, read-only: checklist recipes, journal profiles
+    paths.py       # what is shipped vs what a project writes; see the note below
   r/manuscriptguard/   # emit() -> results.json with provenance
   plugin/
     skills/  agents/  hooks/  commands/
-  profiles/
-    journals/      # distilled author guidelines, one per journal
-    reporting/     # STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD, ARRIVE
-    csl/
+  profiles/        # the *workspace*, not shipped data: downloaded guideline documents
+    reporting/     #   and the profiles transcribed from them. Gitignored.
   example/         # synthetic pharmacovigilance study: demo and test fixture
   tests/
 ```
+
+The two `profiles/` directories are not a duplication. Shipped and read-only data travels
+inside the package so a wheel carries it; documents a user downloads and profiles built from
+them are written into the project being worked on, never into `site-packages`. Keeping both
+in one root-level directory is what made `manuscript-guard fetch` fail on every installed
+copy — see the note under "What an adversarial review found".
 
 ### What it scaffolds into a paper project
 
@@ -156,6 +167,12 @@ All deterministic, all runnable in CI without Claude.
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
 | G9 | Methods drift | analysis code changed since the Methods text was last reconciled |
 | G10 | Figure review | a figure has no current review, or its review raised concerns |
+| G11 | Panel review | no review round, a stale review, or an unanswered major finding |
+| G12 | Methods appropriateness | the analysis plan does not answer the question asked |
+
+Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
+is in no stage's deferral list and so fails everywhere, because a checker that could not
+check is not a pass.
 
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
@@ -294,10 +311,23 @@ describing the figure the author meant to make. Every number can trace to the re
 the picture can still mislead.
 
 So the reading is delegated to a model or a person, and `figures/<name>.review.yaml`
-records it: who reviewed it, when, seven required checks each with a note, findings, and a
-verdict. G10 enforces what can be enforced mechanically — that a review exists, covered all
-seven checks, and applies to the figure as it now stands. **It cannot verify that the review
-was any good.** Same bargain as `literature/attested.yaml`.
+records it: who reviewed it, when, seven required checks, findings, and a verdict. G10
+enforces what can be enforced mechanically — that a review exists, covered all seven checks,
+and applies to the figure as it now stands. **It cannot verify that the review was any
+good.** Same bargain as `literature/attested.yaml`.
+
+Two details worth stating plainly, because both were overstated here before.
+
+A per-check `note` is *optional* in the schema, though the schema's own description explains
+why it should not be ("a check marked ok with no note is indistinguishable from a check
+nobody performed"). It is left optional deliberately — requiring prose produces prose — but
+it means the record can be thinner than this paragraph once implied.
+
+And G10 does more than check that the record exists: it reads each finding's own `severity`
+and applies it, so a finding recorded as `fail` fails the run and the same observation
+recorded as `info` does not. G11 does the same with `severity: major`. That is what "the
+record is the contract" means, and it is the one place a model's output can change a
+verdict — worth naming, since the README's deterministic-code claim is otherwise absolute.
 
 Two normalisations make review currency workable. Render timestamps and randomly generated
 element ids are excluded from the digest, so re-rendering an unchanged figure keeps its
@@ -910,9 +940,15 @@ Added by the adversarial review, verified and **not** fixed:
   major findings; the quality of the reading is beyond it, and the skill says so.
 - **A model reviewing its own draft is worth less than a fresh reader.** The skill warns
   about agreeableness, which is the likely failure, but nothing enforces independence.
-- **`--submission` is the only contextual severity in the toolkit.** It is a small
-  inconsistency, accepted because blocking every draft build on a complete two-round review
-  would make G11 something to switch off.
+- **Submission is the only severity that depends on how the tool was invoked.** It is a
+  small inconsistency, accepted because blocking every draft build on a complete two-round
+  review would make G11 something to switch off. Severities that depend on the *data* are
+  ordinary and several exist: `figure-script-ignores-results`, `duplicate-quantity`,
+  `pinning-unchecked`. One of those is environmental rather than declared, and that part is
+  a defect rather than a design: `figure-script-ignores-results` falls from FAIL to WARN on
+  a machine without `pdftotext`, because the machinery that decides whether the figure draws
+  numbers needs to read the rendered figure first. A script that ignores the results and
+  types numbers anyway therefore only warns on such a machine.
 - **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
   editor does not share, they silently do nothing — which is the safe direction, but it is
   silent.

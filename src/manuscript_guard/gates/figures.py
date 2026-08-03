@@ -19,8 +19,6 @@ a figure this gate cannot read is a figure nobody has checked.
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -268,16 +266,16 @@ def _extract_text(path: Path) -> str | None:
             node.text for node in _svg_content_nodes(root) if node.text and node.text.strip()
         )
 
-    if shutil.which("pdftotext") is None:
-        return None
+    # The same poppler-then-pypdf chain the literature reader uses. This had only the
+    # poppler half, which was wrong twice on a machine with pypdf and no pdftotext: the
+    # figure was reported `figure-unreadable` while the project's literature PDFs read
+    # fine, and — less visibly — `figure-script-ignores-results` quietly fell from FAIL to
+    # WARN, because deciding that a script "draws numbers" requires having read the
+    # rendered figure first. A script that ignores the results and types numbers anyway
+    # only warned there.
+    from manuscript_guard.literature.sources import UnreadableSource, _read_pdf
+
     try:
-        out = subprocess.run(
-            ["pdftotext", "-layout", str(path), "-"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
+        return _read_pdf(path)
+    except UnreadableSource:
         return None
-    return out.stdout if out.returncode == 0 else None

@@ -117,6 +117,49 @@ def test_a_file_outside_any_project_is_ignored(tmp_path: Path, capsys) -> None:
     assert run("guard-write", {"tool_input": {"file_path": str(loose)}}, capsys) is None
 
 
+def test_a_recipe_stays_editable(project: Path, capsys) -> None:
+    """The denial message for a transcribed profile says to edit the recipe and re-run.
+
+    The rule that produced that message denied `profiles/reporting/**.yaml` — which includes
+    `profiles/reporting/recipes/*.recipe.yaml`, the exact file it was sending you to.
+    """
+    recipe = project / "profiles" / "reporting" / "recipes" / "LOCAL.recipe.yaml"
+    recipe.parent.mkdir(parents=True, exist_ok=True)
+    recipe.touch()
+    assert run("guard-write", {"tool_input": {"file_path": str(recipe)}}, capsys) is None
+
+
+def test_a_notebook_edit_is_guarded_too(project: Path, capsys) -> None:
+    """hooks.json registers NotebookEdit, and that tool sends `notebook_path`.
+
+    The handler read only `file_path`, so it returned None every time and the matcher was
+    dead: a notebook could write straight into results/.
+    """
+    target = project / "results" / "hand.json"
+    target.touch()
+    result = run("guard-write", {"tool_input": {"notebook_path": str(target)}}, capsys)
+    assert decision(result) == "deny"
+
+
+def test_the_guard_follows_a_relocated_results_directory(project: Path, capsys) -> None:
+    """`paths:` in paper.yaml can move results/, and the guard read the literal name."""
+    import yaml
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["paths"] = {"results": "outputs"}
+    paper.write_text(
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+    (project / "outputs").mkdir(exist_ok=True)
+    target = project / "outputs" / "01_disproportionality.json"
+    target.touch()
+
+    result = run("guard-write", {"tool_input": {"file_path": str(target)}}, capsys)
+    assert decision(result) == "deny"
+    assert "machine-written" in reason(result)
+
+
 # ---------------------------------------------------------------- after an edit
 
 

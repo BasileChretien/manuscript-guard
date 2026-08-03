@@ -228,7 +228,14 @@ def _check_blinding(project: Project, found: list[tuple[int, Path]], severity: s
                 Finding(
                     gate=GATE,
                     code="round-not-blinded",
-                    severity=WARN if severity == WARN else severity,
+                    # Always a warning, including under --submission. Written as
+                    # `WARN if severity == WARN else severity` this was a tautology equal to
+                    # `severity`, so it became a failure at submission — while DESIGN says,
+                    # and still says, that an unblinded later round warns. Keeping it a
+                    # warning is also the safer incentive: refusing to submit over it would
+                    # be answered by not recording the second round at all, and a recorded
+                    # unblinded review is worth more than an unrecorded one.
+                    severity=WARN,
                     message=f"round {number} was not blinded to the earlier rounds",
                     path=path,
                     hint="a second panel that reads the first panel's report inherits its "

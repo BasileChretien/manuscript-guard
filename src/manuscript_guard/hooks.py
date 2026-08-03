@@ -40,6 +40,11 @@ FORBIDDEN = (
     ),
 )
 
+# Exempt from the rule above. Without this, the guard denies edits to
+# `profiles/reporting/recipes/*.recipe.yaml` — the exact file its own denial message tells
+# you to go and edit.
+ALLOWED = ("profiles/reporting/recipes/",)
+
 # Commands that mean a manuscript is about to leave the building. Matched against the whole
 # command string rather than by a prefix rule: a leading env-var assignment or `cd x &&`
 # defeats prefix matching, which is exactly how a submission slipped past the guard in the
@@ -84,8 +89,23 @@ def _context(event: str, text: str) -> int:
 
 
 def _edited_path(payload: dict) -> Path | None:
-    target = payload.get("tool_input", {}).get("file_path")
+    """The file a Write/Edit/NotebookEdit is about to touch.
+
+    `notebook_path` is here because hooks.json registers NotebookEdit and that tool does not
+    send `file_path` — so the matcher was live and the handler always returned None,
+    making the notebook branch of the write guard dead.
+    """
+    tool_input = payload.get("tool_input", {})
+    target = tool_input.get("file_path") or tool_input.get("notebook_path")
     return Path(target) if target else None
+
+
+def _project_path(root: Path, name: str) -> Path:
+    """Where this project keeps `name`, honouring a `paths:` override in paper.yaml."""
+    from manuscript_guard.contracts import load_project
+
+    project, _report = load_project(root)
+    return project.path(name)
 
 
 def _relative_to_project(path: Path) -> tuple[Path, str] | None:
@@ -113,7 +133,21 @@ def guard_write(payload: dict) -> int:
     found = _relative_to_project(path)
     if found is None:
         return 0
-    _root, relative = found
+    root, relative = found
+
+    if any(relative.startswith(prefix) for prefix in ALLOWED):
+        return 0
+
+    # `results/` and `build/` are the defaults, but `paths:` in paper.yaml can move either,
+    # and a guard that reads the literal names silently stops guarding when it does. G1
+    # still catches the edit afterwards; preventing it is this hook's whole job.
+    for name in ("results", "build"):
+        try:
+            configured = str(_project_path(root, name).relative_to(root)).replace("\\", "/")
+        except (ValueError, OSError):
+            continue
+        if configured and configured != name:
+            relative = relative.replace(f"{configured}/", f"{name}/", 1)
 
     for prefix, suffix, why in FORBIDDEN:
         if relative.startswith(prefix) and relative.endswith(suffix):

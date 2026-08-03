@@ -128,9 +128,14 @@ def _phrases(rules: Rules, path: Path, prose: str, totals: dict) -> Report:
     report = Report()
     for rule in rules.phrases:
         for seen, match in enumerate(re.finditer(rule["pattern"], prose)):
+            # Counted before the cap, reported after it. The count is the whole point of
+            # this gate — G6 measures rate, not presence — and breaking out of the loop
+            # before incrementing made `writing_phrases` stop at four however often a
+            # phrase actually appeared, which understates exactly the papers it should
+            # flag hardest.
             totals["phrases"] += 1
             if seen >= 3:  # a few examples make the point; a list of forty does not
-                break
+                continue
             report = report.with_findings(
                 Finding(
                     gate=GATE,

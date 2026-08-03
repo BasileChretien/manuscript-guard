@@ -18,7 +18,7 @@ from manuscript_guard.contracts.literature import Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.tokens import find_atoms
@@ -54,8 +54,12 @@ def check_numbers(
     report = Report()
     referenced: set[str] = set()
     totals = dict.fromkeys(
-        ("files", "atoms", "placeholders", "term", "structural", "convention"), 0
+        ("files", "atoms", "placeholders", "term", "structural", "convention", "project"), 0
     )
+    # What the project's own allowlist accounted for, and which entries did it. Reported
+    # every run: `conventions:` and `terms:` are self-service on purpose, but a project that
+    # exempts half its numbers should not read exactly like one that exempts none.
+    by_project: dict[str, int] = {}
 
     for path in source_files(project.path("manuscript")):
         totals["files"] += 1
@@ -97,6 +101,10 @@ def check_numbers(
             verdict = classifier.classify(atom)
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
+                if classifier.is_project_exemption(verdict):
+                    totals["project"] += 1
+                    label = verdict.rule if verdict.rule != "terms" else f"terms: {verdict.detail}"
+                    by_project[label] = by_project.get(label, 0) + 1
                 continue
             in_table = atom.line_text.lstrip().startswith("|")
             report = report.with_findings(
@@ -123,6 +131,24 @@ def check_numbers(
                 )
             )
 
+    if by_project:
+        listed = "; ".join(
+            f"{rule} ({count})" for rule, count in sorted(by_project.items(), key=lambda i: -i[1])
+        )
+        share = totals["project"] / totals["atoms"] if totals["atoms"] else 0
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="project-exemption",
+                severity=WARN if share >= 0.25 else INFO,
+                message=f"{totals['project']} of {totals['atoms']} numbers were accepted by "
+                f"this project's own `conventions:` or `terms:`, not by the shipped rules — "
+                f"{listed}",
+                hint="that is what those settings are for, but a large share means the gate "
+                "is mostly agreeing with the project about itself; worth a look in review",
+            )
+        )
+
     report = report.merge(_coverage(results, literature, referenced))
     return report.with_counts(
         source_files=totals["files"],
@@ -131,6 +157,7 @@ def check_numbers(
         atoms_term=totals["term"],
         atoms_structural=totals["structural"],
         atoms_convention=totals["convention"],
+        atoms_project_exempt=totals["project"],
     )
 
 

@@ -884,7 +884,11 @@ Added by the adversarial review, verified and **not** fixed:
   significance claim passes. Pinning to values is right; the ambiguity is real.
 - **`conventions:` and `terms:` in `paper.yaml` are self-service.** A pattern of `\d+` with a
   `why` of "house style" disables G2, and `terms:` needs no justification at all. The gate
-  is a tool for an author who wants it, not a control over one who does not.
+  is a tool for an author who wants it, not a control over one who does not — so this stays.
+  What has changed is that it is no longer *invisible*: every run reports how many numbers
+  the project's own rules accounted for, and which rules did it, as `project-exemption`
+  (a warning past a quarter of the numbers in the manuscript). Self-service and silent are
+  different things, and only the first was intended.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

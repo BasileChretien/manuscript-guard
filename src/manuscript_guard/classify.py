@@ -86,6 +86,24 @@ class Classifier:
     conventions: tuple[Rule, ...]
     structural: tuple[Rule, ...]
     terms: tuple[str, ...]
+    # Terms this project added, kept apart from the shipped list so a run can say how much
+    # of its own clean bill of health it owes to its own allowlist.
+    project_terms: frozenset[str] = frozenset()
+
+    def is_project_exemption(self, verdict: Verdict) -> bool:
+        """Whether this atom was accepted by something the project itself declared.
+
+        `conventions:` and `terms:` in paper.yaml are self-service, deliberately — the gate
+        is a tool for an author who wants it, not a control over one who does not. What is
+        not deliberate is their being invisible: a project could exempt half its numbers
+        and the run would read exactly like one that exempted none.
+        """
+        if verdict.rule and verdict.rule.startswith("project:"):
+            return True
+        if verdict.rule == "terms" and verdict.detail:
+            used = {part.strip() for part in verdict.detail.split(",")}
+            return bool(used & self.project_terms)
+        return False
 
     @classmethod
     def load(
@@ -113,10 +131,9 @@ class Classifier:
             )
             for item in extra_conventions
         )
-        merged_terms = tuple(
-            sorted({*terms, *(str(t).lower() for t in extra_terms)}, key=len, reverse=True)
-        )
-        return cls(conventions + project_rules, structural, merged_terms)
+        project_terms = frozenset(str(t).lower() for t in extra_terms)
+        merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
+        return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
     def classify(self, atom: Atom) -> Verdict:
         matched = _terms_covering(atom.text, self.terms)

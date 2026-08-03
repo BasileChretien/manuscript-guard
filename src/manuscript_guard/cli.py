@@ -20,6 +20,7 @@ from manuscript_guard.findings import Report, merge_all
 from manuscript_guard.gates import (
     check_citations,
     check_consistency,
+    check_design,
     check_figure_reviews,
     check_figures,
     check_freshness,
@@ -66,6 +67,7 @@ def _run_gates(start: Path, *, submission: bool = False) -> tuple[Report, object
         reports.append(check_reporting(project))
         reports.append(check_writing(project))
         reports.append(check_methods(project))
+        reports.append(check_design(project))
         reports.append(check_consistency(results))
     return merge_all(reports), project
 
@@ -183,6 +185,49 @@ def cmd_build(args: argparse.Namespace) -> int:
     fields = result.report.counts.get("zotero_fields")
     if fields:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
+    return 0
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    """Assemble everything a journal asks for, once the submission check passes."""
+    from manuscript_guard.build import SubmissionError, assemble_pack
+
+    report, project = _run_gates(args.path, submission=True)
+    if not report.ok and not args.skip_checks:
+        print(report.render(project.root))
+        print(
+            f"\n{len(report.failures)} failing. A submission pack is the version you send "
+            f"anywhere, so it is not assembled while anything is outstanding.\n"
+            f"Use --skip-checks only to see what the pack would contain."
+        )
+        return 1
+
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, assemble_report = assemble(project, namespace, results)
+    if not assemble_report.ok:
+        print(assemble_report.render(project.root))
+        return 1
+
+    document = args.document
+    if document is None:
+        mode = OFFLINE if args.offline else LIVE
+        try:
+            document = build_document(project, assembled, mode=mode, csl=args.csl).output
+        except BuildError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        pack = assemble_pack(project, document)
+    except SubmissionError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"submission pack: {pack.directory}")
+    for path in pack.files:
+        print(f"  {path.relative_to(pack.directory)}")
+    print(f"  {pack.manifest.name}")
+    print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     return 0
 
 
@@ -417,6 +462,14 @@ def build_parser() -> argparse.ArgumentParser:
     checklist.add_argument("guideline", nargs="?", help="e.g. STROBE; defaults to paper.yaml")
     checklist.add_argument("--path", type=Path, default=Path.cwd())
     checklist.set_defaults(func=cmd_checklist)
+
+    submit = sub.add_parser("submit", help="assemble the submission pack")
+    submit.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    submit.add_argument("--offline", action="store_true")
+    submit.add_argument("--csl", type=Path)
+    submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
+    submit.add_argument("--skip-checks", action="store_true")
+    submit.set_defaults(func=cmd_submit)
 
     methods = sub.add_parser("methods", help="check or record Methods-to-code reconciliation")
     methods.add_argument("path", nargs="?", type=Path, default=Path.cwd())

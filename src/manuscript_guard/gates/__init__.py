@@ -7,6 +7,7 @@ git hook and a CI job without any of the three disagreeing about the verdict.
 
 from manuscript_guard.gates.citations import check_citations, sync_bib
 from manuscript_guard.gates.consistency import check_consistency
+from manuscript_guard.gates.design import check_design
 from manuscript_guard.gates.figure_review import check_figure_reviews, review_path
 from manuscript_guard.gates.figure_source import check_figure_source
 from manuscript_guard.gates.figures import check_figures, content_digest
@@ -40,12 +41,14 @@ GATES = {
     "G9": "the Methods still describe the code",
     "G10": "figures have a current review",
     "G11": "the manuscript has been reviewed by a recorded panel",
+    "G12": "there was an analysis plan before there was an analysis",
 }
 
 __all__ = [
     "GATES",
     "check_citations",
     "check_consistency",
+    "check_design",
     "check_figure_reviews",
     "check_figure_source",
     "check_figures",

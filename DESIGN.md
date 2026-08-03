@@ -1,8 +1,8 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **Phases 1 to 7 built and tested**; phase 8 partly done
-through the worked example. 255 tests pass, including the corruption harness described
-below.
+Status: design agreed 2026-08-03. **All eight phases built and tested.** 277 tests pass,
+including the corruption harness described below. What remains is listed under Known gaps,
+and none of it is load-bearing.
 
 ## What this is
 
@@ -200,7 +200,8 @@ survive every check.
    both.
 7. ~~**Review panels.**~~ **Done.** Recorded panels, review records as the contract, a
    blinded second round, and severity that depends on whether a submission is being built.
-8. **Example and public documentation.**
+8. ~~**Example and public documentation.**~~ **Done.** The submission pack, the
+   pre-analysis design gate carried over from phase 6, and the worked example throughout.
 
 Phases 1 and 2 carry the guarantee; everything after is additive.
 
@@ -610,6 +611,43 @@ blinded and differently composed, found the remaining soft spots. Two findings a
 as deliberate overrides rather than fixed, because the honest answer was that the synthetic
 data do not support what the reviewer wanted.
 
+## The submission pack writes nothing twice
+
+Everything a journal asks for except the covering letter is already recorded in the project.
+`authors.yaml` becomes the title page, the CRediT statement and the declarations; the
+reporting completion file is copied as it stands; the build produces the document. Nothing
+is transcribed, so the title page cannot list an author who left two revisions ago and the
+funding statement cannot contradict the acknowledgements.
+
+Two places where the generator says something rather than papering over it. An author with
+no CRediT roles produces a statement saying so, because most journals now require them. An
+author whose `competing_interests` field is empty is listed as having made **no
+declaration** — an empty field is not a declaration of none, and journals ask per author.
+
+The manifest records every file with its sha256, because six months later "which version
+did the journal actually get" has no reliable answer otherwise.
+
+The pack refuses to assemble while `check --submission` fails. That is what the check is
+for.
+
+The covering letter is deliberately not generated. It is the one part addressed to a
+particular editor about a particular paper at a particular moment, and a generated one reads
+exactly like a generated one.
+
+## The design gate warns and never blocks
+
+Writing down what you intended before you did it is the strongest single thing available for
+the credibility of a result — not because deviating is wrong, but because a deviation that
+was declared is a decision, and one nobody recorded is indistinguishable from having tried
+several things and reported the best.
+
+Blocking would be the stronger discipline and would be unworkable. Exploratory work is real
+work, and a gate that prevents you writing code until a plan is agreed is a gate that gets
+bypassed on the first afternoon it costs something. So G12 warns: when analysis code exists
+with no plan behind it, and when a plan's section is a heading with nothing under it. A
+"Deviations from the plan" heading followed by nothing is the common case, and naming it is
+most of the value.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -650,8 +688,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **`--submission` is the only contextual severity in the toolkit.** It is a small
   inconsistency, accepted because blocking every draft build on a complete two-round review
   would make G11 something to switch off.
-- **The pre-analysis design gate is not built.** It was the remaining piece of phase 6:
-  a warning when analysis code exists with no agreed analysis plan behind it.
+- **The design gate cannot tell when a plan was written.** It checks that one exists and
+  says something; it has no way to know the plan predates the analysis, which is the whole
+  point of a plan. Only a timestamped external record — a registry, a signed commit — could,
+  and that is out of scope.
+- **The submission pack does not convert figures to a journal's required format.** It
+  copies what was rendered. A journal wanting 300 dpi TIFF gets whatever the figure script
+  produced.
 - **G6 detects habits, not authorship**, and must never be described otherwise. Prose that
   avoids the listed constructions passes whoever or whatever wrote it.
 - **G6's thresholds are judgement, not measurement.** Six flagged words per 1000 was chosen

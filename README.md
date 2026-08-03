@@ -10,9 +10,10 @@ anything else has to be justified. Change the analysis, rebuild, and the manuscr
 supplements and figures follow. A stale number is a build failure, not a discovery made by
 a reviewer.
 
-> **Status: early.** The contracts, the number gate and the document build work and are
-> tested. The literature tooling, journal compliance, the AI-writing lint and the review
-> panels are not written yet. See [DESIGN.md](DESIGN.md) for the plan.
+> **Status: usable, not yet battle-tested.** All twelve gates, the document build, the
+> literature tooling, the checklist transcriber, the review panels and the submission pack
+> work and are tested against a worked example. No real paper has been written with it yet.
+> [DESIGN.md](DESIGN.md) records the reasoning and an honest list of what it cannot do.
 
 ## How it works
 
@@ -39,8 +40,10 @@ em.write()
 Then:
 
 ```bash
-manuscript-guard check
-manuscript-guard build
+manuscript-guard check                 # every gate
+manuscript-guard build                 # the .docx, with live Zotero citations
+manuscript-guard check --submission    # submission standards
+manuscript-guard submit                # the whole pack, ready to upload
 ```
 
 `build` regenerates the .docx from Markdown every time. With Zotero open it writes **live
@@ -79,6 +82,8 @@ Currently implemented:
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it |
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
+
+| G12 | there was an analysis plan, and its sections say something |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building

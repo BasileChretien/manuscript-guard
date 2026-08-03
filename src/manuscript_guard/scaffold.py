@@ -113,8 +113,39 @@ Numbers in `manuscript/` are bindings into `results/` (written by the analysis) 
 `literature/` (extracted from sources). Nothing is typed by hand, so nothing goes stale.
 """
 
+PLAN = """\
+# Analysis plan
+
+Agreed <date>, before the analysis was written.
+
+Write down what you intend to do before you do it. Not because deviating is wrong — most
+real analyses deviate — but because a deviation that was declared is a decision, and one
+nobody recorded is indistinguishable from having tried several things and reported the best.
+
+## Research question
+
+## Design
+
+## Population and data source
+
+## Exposure
+
+## Outcome
+
+## Analysis
+
+## Sample size
+
+## Sensitivity analyses
+
+## Deviations from the plan
+
+None so far.
+"""
+
 _FILES = {
     "paper.yaml": PAPER,
+    "design/plan.md": PLAN,
     "authors.yaml": AUTHORS,
     "literature/ledger.yaml": LEDGER,
     "literature/attested.yaml": ATTESTED,
@@ -123,7 +154,7 @@ _FILES = {
     "README.md": README,
 }
 
-_DIRS = ("analysis", "results", "literature/sources", "figures", "build")
+_DIRS = ("analysis", "results", "literature/sources", "figures", "review", "build")
 
 
 def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:

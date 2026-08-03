@@ -1,0 +1,179 @@
+schema: manuscript-guard/plot-params/1
+
+# Where a number in a figure script is presentation rather than a claim.
+#
+# A number qualifies when any enclosing named argument or function in its context chain
+# appears below. `scale_y_log10(breaks = c(0.5, 1, 2))` gives the 0.5 the chain
+# c > breaks > scale_y_log10, and `breaks` settles it.
+#
+# Two omissions are deliberate. `x`, `y`, `xend` and `yend` are NOT here: allowing bare
+# coordinates would allow `data.frame(x = c(1, 2, 3))`, which is data typed into a figure
+# script. Neither are `n` or `digits`. When a figure genuinely needs one of those, the
+# per-figure sidecar is the place to say so, with a reason.
+
+parameters:
+  # Canvas and output
+  - width
+  - height
+  - dpi
+  - res
+  - units
+  - scale
+  - pointsize
+  - bg
+  - onefile
+  - compression
+  # Marks
+  - size
+  - alpha
+  - linewidth
+  - lwd
+  - lty
+  - linetype
+  - stroke
+  - shape
+  - pch
+  - cex
+  - radius
+  - arrow
+  - fill
+  - colour
+  - color
+  # Text placement
+  - hjust
+  - vjust
+  - angle
+  - lineheight
+  - nudge_x
+  - nudge_y
+  - label.size
+  - label.padding
+  - base_size
+  - base_line_size
+  - base_rect_size
+  - family
+  - face
+  # Scales and axes
+  - breaks
+  - minor_breaks
+  - n.breaks
+  - labels
+  - limits
+  - expand
+  - trans
+  - oob
+  - guide
+  - sec.axis
+  - begin
+  - end
+  - direction
+  - option
+  - values
+  - range
+  # Layout
+  - nrow
+  - ncol
+  - ncols
+  - nrows
+  - byrow
+  - widths
+  - heights
+  - margin
+  - margins
+  - panel.spacing
+  - plot.margin
+  - legend.position
+  - legend.key.size
+  - strip.position
+  - space
+  - just
+  # Binning and smoothing, which shape the picture rather than assert a value
+  - bins
+  - binwidth
+  - adjust
+  - span
+  - level
+  - seed
+
+# Enclosing functions whose numeric arguments are presentation by construction.
+# Regular expressions, matched against the whole function name.
+function_patterns:
+  - '^(?:theme|element|scale|coord|position|guide|guides|facet|annotation)_'
+  - '^(?:geom|stat)_'
+  - '^(?:gg)?save$'
+  - '^(?:png|pdf|svg|jpeg|tiff|cairo_pdf|dev\.off|dev\.new)$'
+  - '^(?:unit|rel|margin|arrow|expansion|alpha)$'
+  - '^(?:rgb|hsv|hcl|gray|grey|col2rgb|adjustcolor)$'
+  - '^(?:par|layout|grid\.)'
+  - '^(?:plt|ax|fig|axes)\.'
+  - '^(?:subplots|set_size_inches|tight_layout|savefig|figure)$'
+
+# Functions whose string arguments are the axis scale rather than an assertion.
+#
+# Exempting these in the source is not a hole: the same tick labels appear in the rendered
+# output, where they must still be declared in the figure's `allow:` sidecar. Checking them
+# in both places would mean declaring the same axis twice, and duplicated friction is how
+# an escape hatch turns into a habit of switching gates off.
+#
+# Note what is deliberately absent: annotate, text, title, label and their relatives. A
+# string drawn as an annotation is exactly where a hardcoded result hides.
+tick_label_functions:
+  - set_xticklabels
+  - set_yticklabels
+  - set_ticklabels
+  - xticks
+  - yticks
+  - ax.set_xticklabels
+  - ax.set_yticklabels
+  - scale_x_discrete
+  - scale_y_discrete
+  - scale_x_continuous
+  - scale_y_continuous
+  - scale_x_log10
+  - scale_y_log10
+
+# Parameters whose string values are machinery, never text drawn on the figure. Without
+# this, `encoding="utf-8"` reads as an annotation containing the number 8.
+machinery_parameters:
+  - encoding
+  - fileEncoding
+  - sep
+  - delimiter
+  - quote
+  - quotechar
+  - comment
+  - mode
+  - file
+  - filename
+  - fname
+  - path
+  - dir
+  - format
+  - fmt
+  - dtype
+  - engine
+  - sheet
+  - sheet_name
+  - header
+  - skiprows
+  - na
+  - na_strings
+  - locale
+  - tz
+  - url
+  - font
+  - fontfamily
+  - svg.fonttype
+  - backend
+
+# Enclosing functions that mark a number as data rather than presentation, reported with a
+# more specific message than the generic one. Typing a data frame into a figure script is
+# a particular and recognisable mistake.
+data_constructors:
+  - data.frame
+  - tibble
+  - data_table
+  - data.table
+  - DataFrame
+  - Series
+  - array

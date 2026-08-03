@@ -32,7 +32,7 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 
-USER_AGENT = f"manuscript-guard/{__version__} (+https://github.com/basilechretien/manuscript-guard)"
+USER_AGENT = f"manuscript-guard/{__version__} (+https://github.com/BasileChretien/manuscript-guard)"
 TIMEOUT = 120
 MAX_BYTES = 40 * 1024 * 1024
 

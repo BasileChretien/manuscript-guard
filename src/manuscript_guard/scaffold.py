@@ -105,7 +105,7 @@ __pycache__/
 README = """\
 # {title}
 
-Checked by [manuscript-guard](https://github.com/basilechretien/manuscript-guard).
+Checked by [manuscript-guard](https://github.com/BasileChretien/manuscript-guard).
 
     manuscript-guard check
 

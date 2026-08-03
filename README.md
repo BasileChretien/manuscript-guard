@@ -81,14 +81,13 @@ Currently implemented:
 | G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote |
 | G8 | one quantity is not emitted twice under two names |
 | G9 | the analysis has not changed since the Methods were last read against it |
+| G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
-
 | G12 | there was an analysis plan, and its sections say something |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building
 drafts to read while the version you send anywhere has to be clean.
-| G10 | every figure has a current review by someone who looked at it |
 
 Figures get three checks rather than one. The rendered output is read for numeric text; the
 script is checked too, because a script that reads the results and *also* types one
@@ -171,14 +170,14 @@ language. Emitters exist for Python and R; anything that can write JSON can take
 Not on PyPI yet, so install from the repository:
 
 ```bash
-git clone https://github.com/basilechretien/manuscript-guard
+git clone https://github.com/BasileChretien/manuscript-guard
 pip install ./manuscript-guard
 ```
 
 Or without cloning:
 
 ```bash
-pip install git+https://github.com/basilechretien/manuscript-guard
+pip install git+https://github.com/BasileChretien/manuscript-guard
 ```
 
 `pipx install ./manuscript-guard` works too, and is the better choice if you want the

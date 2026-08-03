@@ -32,8 +32,8 @@ mguard = "manuscript_guard.cli:main"
 manuscript-guard-hook = "manuscript_guard.hooks:main"
 
 [project.urls]
-Homepage = "https://github.com/basilechretien/manuscript-guard"
-Source = "https://github.com/basilechretien/manuscript-guard"
+Homepage = "https://github.com/BasileChretien/manuscript-guard"
+Source = "https://github.com/BasileChretien/manuscript-guard"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/manuscript_guard"]

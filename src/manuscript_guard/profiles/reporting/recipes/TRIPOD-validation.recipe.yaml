@@ -9,7 +9,7 @@ meta:
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-
-    UNCONFIRMED — tripod-statement.org states only 'Copyright 2020 - Julius Centrum'.
+    UNCONFIRMED — tripod-statement.org states only 'Copyright 2020 - Julius Centrum', with no terms page and no licence link (read 2026-08-03). The 2015 statement appeared in several journals simultaneously, but bmj.com and acpjournals.org return HTTP 403 to automated requests, so their terms could not be read. Not guessed.
   licence_url: https://www.tripod-statement.org/
   download_url: https://www.tripod-statement.org/wp-content/uploads/2020/01/Tripod-Checklist-Prediction-Model-Validation-Word.docx
   sha256: e24213e230e2aabf21be8e56f3d39e5ab0befc65ce88bc0a58500fead2413784

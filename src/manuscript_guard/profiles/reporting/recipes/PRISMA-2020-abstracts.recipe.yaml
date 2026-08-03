@@ -9,7 +9,7 @@ meta:
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-
-    UNCONFIRMED — see the PRISMA-2020 recipe.
+    CC BY 4.0 via the statement paper — see the PRISMA-2020 recipe.
   licence_url: https://www.prisma-statement.org/
   # As PRISMA-2020: the /s/ link returns an HTML page. Save it by hand.
   download_url: https://www.prisma-statement.org/s/PRISMA_2020_abstract_checklist-pgx2.docx

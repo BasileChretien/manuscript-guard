@@ -9,7 +9,7 @@ meta:
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-
-    UNCONFIRMED — prisma-statement.org states only 'Copyright (c) 2024-2026 the PRISMA Executive'. The PRISMA 2020 statement papers are open access; their terms have not been read.
+    CC BY 4.0, commercial use permitted — via the statement paper (BMJ 2021;372:n71, PMC8005924), which carries the BMJ open-access wording. prisma-statement.org itself states only 'Copyright (c) 2024-2026 the PRISMA Executive' and has no terms page.
   licence_url: https://www.prisma-statement.org/
   download_url: https://www.prisma-statement.org/s/PRISMA_2020_checklist-k3f4.docx
   sha256: fba382ec9fa4b5594697444c3ee555f805c86a3d1093d4633f25a7653ad60e5e

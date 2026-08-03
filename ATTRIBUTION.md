@@ -18,22 +18,44 @@ in them, and citing the guideline you followed remains your responsibility as an
 
 ## Licence findings
 
-Read on 2026-08-03. **These are notes, not legal advice.** Confirm the terms yourself before
-relying on them, particularly before redistributing anything.
+Sites read 2026-08-03. **These are notes, not legal advice.** Confirm the terms yourself
+before relying on them, particularly before redistributing anything.
+
+Five of these said "unconfirmed" in an earlier pass, meaning nobody had opened the page. The
+pages have now been read and the relevant sentence quoted, which is a different and much
+smaller claim than "we have decided this is fine".
 
 | Guideline | Licence as found | Where |
 |---|---|---|
-| RECORD | **CC BY**, stated explicitly | record-statement.org |
+| RECORD | **CC BY**, stated explicitly: *"The explanatory document and checklist are protected on a Creative Common Attribution (CC BY) license."* | record-statement.org/checklist.php |
+| RECORD-PE | **CC BY 4.0**, commercial use permitted. The site's CC BY notice does not say whether it reaches the PE extension, but the RECORD-PE paper itself carries the BMJ open-access statement: *"an Open Access article distributed in accordance with the terms of the Creative Commons Attribution (CC BY 4.0) license, which permits others to distribute, remix, adapt and build upon this work, for commercial use, provided the original work is properly cited."* | PMC6234471 (*The BMJ* 2018;363:k3532) |
 | STROBE | **CC BY** — the statement carrying this checklist was published in *PLoS Medicine* under the Creative Commons Attribution License. The STROBE site itself states only a bare copyright | strobe-statement.org, PMC2020495 |
+| PRISMA 2020 | **CC BY 4.0**, commercial use permitted, via the statement paper — same BMJ open-access wording as RECORD-PE. The site itself states only *"Copyright © 2024-2026 the PRISMA Executive"* and has no terms page (`/terms` is a 404) | PMC8005924 (*BMJ* 2021;372:n71) |
 | ARRIVE 2.0 | **CC BY** for the explanation and elaboration (*PLOS Biology*). The checklist's own terms are not separately stated | arriveguidelines.org |
+| CONSORT 2025 | **Download and copying explicitly permitted**, with a condition and a restriction, quoted in full below | consort-spirit.org/terms-of-use |
+| SPIRIT 2025 | As CONSORT — same site, same terms page | consort-spirit.org/terms-of-use |
 | READUS-PV | **CC BY-NC** — non-commercial. Cannot be redistributed from an MIT repository | Europe PMC |
-| RECORD-PE | Unconfirmed. The RECORD family states CC BY, but RECORD-PE was published separately (*The BMJ*, 2018) | record-statement.org |
-| CONSORT 2025 | Unconfirmed. No licence on the site; a terms-of-use page exists | consort-spirit.org |
-| SPIRIT 2025 | Unconfirmed. As CONSORT | consort-spirit.org |
-| PRISMA 2020 | Unconfirmed. Site states only "Copyright © 2024-2026 the PRISMA Executive" | prisma-statement.org |
-| TRIPOD 2015 | Unconfirmed. Site states only "Copyright 2020 - Julius Centrum" | tripod-statement.org |
+| TRIPOD 2015 | **Still unconfirmed.** The site states only *"Copyright 2020 - Julius Centrum"*, with no terms page and no licence link. The 2015 statement was published simultaneously in several journals, but bmj.com and acpjournals.org both return HTTP 403 to an automated request, so their terms could not be read. Not guessed | tripod-statement.org |
 
-Each recipe under `profiles/reporting/recipes/` carries the same finding, and
+CONSORT and SPIRIT are worth quoting rather than summarising, because the permission is
+explicit and the condition is the operative part:
+
+> The materials contained in the site may be downloaded or copied provided that ALL copies
+> retain the copyright and any other proprietary notices contained on the materials.
+
+and:
+
+> No material may be modified, edited or taken out of context such that its use creates a
+> false or misleading statement or impression as to the positions, statements or actions of
+> the SPIRIT–CONSORT Group.
+
+What this toolkit does sits inside both. The download is the user's own, made from the
+publisher's address on request. The generated profile records `source_url`, `licence` and
+`source_file`, so the notices travel with it. And the transcription is verified item by item
+against the document's own text — a profile that drifted from the source is a build failure,
+which is close to the opposite of taking material out of context.
+
+Each recipe under `profiles/reporting/recipes/` carries its own finding, and
 `manuscript-guard fetch` prints it before downloading anything, so the terms are seen rather
 than buried in a file nobody opens.
 

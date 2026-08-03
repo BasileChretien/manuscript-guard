@@ -16,7 +16,7 @@ meta:
   retrieved_on: 2026-08-03
   retrieved_by: "downloaded by the author"
   licence: >-
-    UNCONFIRMED — the RECORD family states CC BY, but RECORD-PE was published separately (The BMJ, 2018) and its own terms have not been read.
+    CC BY 4.0, commercial use permitted — the RECORD-PE paper (The BMJ 2018;363:k3532, PMC6234471) carries the BMJ open-access statement. record-statement.org's own CC BY notice does not say whether it reaches the PE extension; the paper settles it.
   licence_url: https://www.record-statement.org/
   download_url: http://www.record-statement.org/Files/checklist-pe/RECORD-PE%20Checklist.docx
   sha256: 17d4655f266591a3ad31c6c9ac6f9607c14c890fca8235389d6913c409acebcb

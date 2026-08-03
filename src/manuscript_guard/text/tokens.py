@@ -12,7 +12,15 @@ import re
 from dataclasses import dataclass
 
 DIGIT = re.compile(r"\d")
-_ATOM = re.compile(r"\S+")
+# An atom is bounded by whitespace *or* by a masked region. Both boundaries matter, and the
+# second one is easy to get wrong: `mask()` preserves offsets by writing NUL, which is not
+# whitespace, so a run of `\S+` reaches straight through a mask boundary. Written that way,
+# `3.84[@smith2020]` is one atom, that atom contains NUL, and the whole run — the visible
+# 3.84 included — was discarded before it was ever classified. Any value written hard against
+# a citation, a footnote marker, inline code or a pandoc attribute disappeared from the gate
+# that carries the core invariant. Splitting at the mask boundary instead keeps the claim and
+# drops only the masked part, which is what masking was always supposed to mean.
+_ATOM = re.compile(r"[^\s\x00]+")
 
 # Trimmed from either end. Percent, degree and prime are kept: they belong to the value.
 _LEAD = "([{<\"'“‘«¡¿*_~|>#+"
@@ -59,7 +67,7 @@ def find_atoms(original: str, masked: str) -> list[Atom]:
     atoms: list[Atom] = []
     for match in _ATOM.finditer(masked):
         raw = match.group(0)
-        if "\x00" in raw or not DIGIT.search(raw):
+        if not DIGIT.search(raw):
             continue
         text, start = _trim(raw, match.start())
         if not text or not DIGIT.search(text):

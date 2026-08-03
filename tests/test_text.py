@@ -53,6 +53,28 @@ def test_prose_around_a_masked_region_is_still_read() -> None:
     assert atoms_of("We found 37 cases [@smith2020] in 2019.") == ["37", "2019"]
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("The ROR was 3.84[@smith2020].", ["3.84"]),
+        ("The response rate reached 68%[^1] in the arm.", ["68%"]),
+        ("(95% CI 2.10–7.04)[@ref]", ["95%", "2.10–7.04"]),
+        ("A total of 41 200[^1] reports.", ["41", "200"]),
+        ("Significance was p=0.03{.highlight} throughout.", ["p=0.03"]),
+        ("The value {{results.ror.point}} held.", []),
+    ],
+)
+def test_a_number_written_hard_against_a_mask_is_still_read(text: str, expected: list) -> None:
+    """The version of this test that used spaces passed while the gate was blind.
+
+    `mask()` writes NUL to preserve offsets, and NUL is not whitespace, so a tokeniser
+    splitting on `\\S+` read `3.84[@smith2020]` as one run, saw a NUL in it, and threw the
+    whole run away — the visible 3.84 with it. Every one of these cases produced *zero*
+    atoms, which is the gate going silent on an ordinary way of writing a citation.
+    """
+    assert atoms_of(text) == expected
+
+
 def test_a_year_in_prose_is_not_exempt() -> None:
     """A study period is data and belongs in results, so a bare year must be reported."""
     assert verdict_of("Recruitment ran until 2019.") == UNCLASSIFIED
@@ -103,6 +125,79 @@ def test_classification(text: str, expected: str) -> None:
 @pytest.mark.parametrize("text", ["p < 0.37", "p < 0.5", "an 89% CI", "power of 63%"])
 def test_conventions_are_pinned_to_conventional_values(text: str) -> None:
     assert verdict_of(f"We report {text} here.") == UNCLASSIFIED
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # `per <digits>` was a shape, not a set of conventional values, so a cohort size
+        # written this way was exempted from the gate entirely.
+        "The rate was 12 per 83,214 patients treated.",
+        "Observed in 4 per 617 exposures.",
+        # `<digits>+` matched with the unit optional, so any rounded count was an age band.
+        "The trial enrolled 500+ patients across ten centres.",
+        "Response was seen in 45+ mg dosing groups.",
+        # `<keyword> <digits>` with an unbounded `\d+`: ordinary English word order, needing
+        # only a missing comma, filed the count as a category or a timepoint.
+        "In the exposed arm 47 hepatic events occurred.",
+        "In the pooled cohort 3841 reports were assessed.",
+        "Over the study years 1204 reports were received.",
+    ],
+)
+def test_a_widened_rule_does_not_wave_a_real_number_through(text: str) -> None:
+    """Each of these classified as convention or structural, and none is either."""
+    classifier = Classifier.load()
+    found = find_atoms(text, mask(text))
+    assert found
+    assert all(classifier.classify(a).kind == UNCLASSIFIED for a in found), [
+        (a.text, classifier.classify(a).rule) for a in found
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Rates per 100,000 person-years.",
+        "Per 1 000 patients treated.",
+        "Adults aged 65+ years.",
+        "Grade 3 events were rare.",
+        "A phase 2 trial of the same agent.",
+        "Assessed at day 365 of follow-up.",
+        "Randomised to arm 2 of the study.",
+    ],
+)
+def test_narrowing_those_rules_kept_the_cases_they_exist_for(text: str) -> None:
+    assert verdict_of(text) in (CONVENTION, STRUCTURAL)
+
+
+def test_the_abstract_in_front_matter_is_checked_like_any_other_prose() -> None:
+    """Front matter was masked whole, so pandoc rendered a title and an abstract that no
+    gate had read. The abstract is the most-read part of a paper, and a fabricated ROR and
+    cohort size sitting in it were invisible. Machinery in the same block stays masked."""
+    text = (
+        "---\n"
+        'title: "A 3.84-fold excess"\n'
+        "lang: en-GB\n"
+        "zotero:\n"
+        "  client: zotero\n"
+        "abstract: |\n"
+        "  ROR 3.84 across 41200 reports.\n"
+        "---\n"
+        "\n"
+        "Body.\n"
+    )
+    assert atoms_of(text) == ["3.84-fold", "3.84", "41200"]
+
+
+def test_a_citation_rule_needed_only_for_rendered_text_stays_out_of_the_gate() -> None:
+    """`author-year-citation` spans a whole parenthetical, and a span accepts every atom in
+    it, so in manuscript source `(Smith 2019, n = 412)` filed 412 as structural. Source
+    citations are `[@key]` and already masked, so the rule belongs to `audit` alone."""
+    text = "In a cohort study (Smith 2019, n = 412) the effect held."
+    atoms = find_atoms(text, mask(text))
+    assert [Classifier.load().classify(a).kind for a in atoms] == [UNCLASSIFIED, UNCLASSIFIED]
+    rendered = Classifier.load(rendered=True)
+    assert [rendered.classify(a).kind for a in atoms] == [STRUCTURAL, STRUCTURAL]
 
 
 def test_project_terms_extend_the_shipped_list() -> None:

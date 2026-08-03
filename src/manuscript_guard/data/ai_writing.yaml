@@ -1,0 +1,190 @@
+schema: manuscript-guard/ai-writing/1
+
+# Signs that prose was written by a language model, adapted for scientific manuscripts.
+#
+# Derived from the English Wikipedia essay "Signs of AI writing", read 2026-08-03:
+# https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+#
+# Three things had to change on the way from Wikipedia to a journal article.
+#
+# Much of the source is Wikipedia-specific — wikitext, categories, edit summaries — and is
+# dropped. What remains is vocabulary, sentence shape, formatting and tone.
+#
+# Most of the flagged words are ordinary scientific English. "Robust" describes a standard
+# error, "significant" has a technical meaning, "key" and "highlight" are unremarkable once.
+# Flagging each occurrence would produce a gate that has to be switched off to finish a
+# paper, so those are measured as a RATE and reported only above a threshold. Six
+# "crucial"s in four hundred words is a tell; one is a word.
+#
+# And a manuscript can be checked for something an encyclopedia cannot: vague attribution
+# is only vague when no citation follows it. "Studies have shown" beside [@smith2020] is
+# just prose.
+
+# Unambiguous. These are model output artefacts and have no innocent reading.
+artefacts:
+  - id: chatgpt-markers
+    pattern: 'contentReference|oaicite|oai_citation|turn\d+(?:search|view)\d+|attributableIndex'
+    why: ChatGPT citation markup left in the text
+  - id: gemini-markers
+    pattern: '\[cite:\s*\d+\]|\[span_\d+\]\(start_span\)'
+    why: Gemini citation markup left in the text
+  - id: grok-markers
+    pattern: 'grok_card|grok_render_citation_card_json'
+    why: Grok markup left in the text
+  - id: perplexity-markers
+    pattern: 'ppl-ai-file-upload|attached_file'
+    why: Perplexity markup left in the text
+  - id: writing-fence
+    pattern: ':::writing'
+    why: A model's internal fence left in the text
+  - id: placeholder
+    pattern: '(?i)\[(?:insert|add|your)\s[^\]]{0,40}\]|\bTODO\b|\bTBD\b|\bXXX\b|\[placeholder\]'
+    why: Unfilled placeholder text
+  - id: knowledge-cutoff
+    pattern: "(?i)\\b(?:as of my (?:last )?(?:knowledge|training)|my training data|I don't have access to)\\b"
+    why: A model disclaiming its own limits, left in the manuscript
+  - id: assistant-voice
+    pattern: '(?i)^\s*(?:certainly|sure|of course|here(?:''s| is) (?:the|a|an)\b)'
+    why: Chat-assistant register, left in the manuscript
+
+# Constructions worth a second look wherever they appear. Warnings, not failures: each has
+# a defensible use, and an author who disagrees should be able to say so and move on.
+phrases:
+  - id: delve
+    pattern: '(?i)\bdelv(?:e|es|ed|ing)\s+into\b'
+    why: Near-absent from human scientific writing and near-ubiquitous in generated text
+  - id: tapestry-landscape
+    pattern: '(?i)\b(?:rich|complex|intricate|vibrant|evolving)\s+(?:tapestry|landscape|mosaic)\b'
+    why: Metaphor with no content
+  - id: testament
+    pattern: '(?i)\b(?:is|stands as|serves as)\s+a\s+(?:testament|reminder|hallmark)\s+to\b'
+    why: Editorialising; states significance rather than a finding
+  - id: negative-parallelism
+    pattern: '(?i)\bnot\s+(?:just|only|merely|simply)\b[^.;:]{2,80}?\bbut\s+(?:also\s+)?'
+    why: "\"Not just X but Y\" is a cadence tell, and usually says less than X and Y alone"
+  - id: it-is-not-it-is
+    pattern: "(?i)\\bit(?:'s| is)\\s+not\\s+[^.;:]{2,50}?,\\s*it(?:'s| is)\\b"
+    why: Rhetorical inversion; rare in scientific prose
+  - id: importance-tail
+    pattern: '(?i),\s+(?:highlighting|underscoring|emphasi[sz]ing|showcasing|reflecting|symboli[sz]ing|demonstrating)\s+(?:the|its|their|a)\b'
+    why: An "-ing" tail asserting significance instead of reporting a result
+  - id: important-to-note
+    pattern: '(?i)\bit\s+is\s+(?:important|worth|crucial|essential)\s+to\s+(?:note|mention|highlight|emphasi[sz]e)\b'
+    why: Says nothing; delete the phrase and the sentence keeps its meaning
+  - id: despite-challenges
+    pattern: '(?i)\bdespite\s+(?:these|its|the)\s+(?:challenges|limitations|shortcomings)\b'
+    why: Part of the formulaic conclusion the source essay describes
+  - id: plays-a-role
+    pattern: '(?i)\bplays?\s+an?\s+(?:crucial|pivotal|vital|key|significant|important)\s+role\b'
+    why: Asserts importance without stating a mechanism or an estimate
+  - id: paves-the-way
+    pattern: '(?i)\b(?:pav(?:e|es|ing)\s+the\s+way|set(?:s|ting)?\s+the\s+stage|open(?:s|ing)?\s+(?:up\s+)?new\s+avenues)\b'
+    why: Puffery about consequences
+  - id: in-the-realm
+    pattern: '(?i)\bin\s+the\s+(?:realm|world|landscape|arena)\s+of\b'
+    why: Filler opening
+  - id: ever-evolving
+    pattern: '(?i)\b(?:ever[- ]evolving|rapidly evolving|fast[- ]paced)\b'
+    why: Puffery
+
+# Attribution with nothing behind it. Reported only when no citation appears nearby, which
+# is the difference between a manuscript and an encyclopedia: here the fix is a reference.
+vague_attribution:
+  - id: studies-have-shown
+    pattern: '(?i)\b(?:studies|research|evidence|data)\s+(?:has|have)\s+(?:shown|demonstrated|suggested|indicated)\b'
+  - id: experts-argue
+    pattern: '(?i)\b(?:experts|researchers|scholars|observers|critics|some\s+authors)\s+(?:argue|suggest|believe|contend|note|have\s+cited)\b'
+  - id: widely-regarded
+    pattern: '(?i)\b(?:is|are)\s+(?:widely|generally|commonly)\s+(?:regarded|considered|accepted|believed|recognised|recognized)\b'
+  - id: growing-body
+    pattern: '(?i)\ba\s+growing\s+body\s+of\s+(?:evidence|literature|research)\b'
+  - id: it-is-known
+    pattern: '(?i)\bit\s+is\s+(?:well[- ])?(?:known|established|documented)\s+that\b'
+
+# Words that are ordinary once and a tell in quantity. Rates are per 1000 words of prose.
+density:
+  - id: ai-vocabulary
+    per_1000: 6
+    why: >-
+      Individually unremarkable, collectively the strongest lexical signal in the source
+      essay. A high rate suggests prose that was generated rather than written.
+    terms:
+      - additionally
+      - crucial
+      - crucially
+      - pivotal
+      - vital
+      - robust
+      - comprehensive
+      - intricate
+      - intricacies
+      - meticulous
+      - meticulously
+      - underscore
+      - underscores
+      - underscoring
+      - highlight
+      - highlights
+      - highlighting
+      - showcase
+      - showcases
+      - showcasing
+      - foster
+      - fosters
+      - fostering
+      - enhance
+      - enhances
+      - enhancing
+      - garner
+      - garnered
+      - bolster
+      - bolstered
+      - leverage
+      - leveraging
+      - interplay
+      - nuanced
+      - multifaceted
+      - holistic
+      - seamless
+      - seamlessly
+      - noteworthy
+      - profound
+      - compelling
+      - invaluable
+      - paramount
+    # Technical senses that should not count towards the rate.
+    exempt:
+      - '(?i)\brobust(?:ness)?\s+(?:standard\s+error|variance|estimator|regression|check|analysis|analyses)\b'
+      - '(?i)\bsandwich\s+robust\b'
+      - '(?i)\bcomprehensive\s+(?:cohort|search\s+strategy)\b'
+
+  - id: em-dash
+    per_1000: 4
+    pattern: '—'
+    why: >-
+      Em dashes are legitimate punctuation and heavily overused by models. A high rate is
+      worth a look; a few are fine.
+
+  - id: boldface
+    per_1000: 8
+    pattern: '\*\*[^*\n]+\*\*'
+    why: Emphasis scattered through prose rather than reserved for structure
+    exempt:
+      # A structured abstract's labels are bold by requirement, not by habit. Journals
+      # specify them, so counting them would flag the journal's own house style.
+      - '(?m)^\s*\*\*[A-Z][\w /-]{2,28}[.:]\*\*'
+
+  - id: rule-of-three
+    per_1000: 3
+    pattern: '(?i)\b\w+,\s+\w+,\s+and\s+\w+\b'
+    why: >-
+      Three-item lists are normal; a high rate is the cadence the source essay describes.
+
+# Sentence-shape checks that need a whole sentence rather than a pattern.
+structure:
+  - id: copula-avoidance
+    verbs: [serves as, stands as, functions as, operates as, boasts, represents a]
+    per_1000: 2
+    why: >-
+      Replacing "is" with "serves as" throughout is a documented tell. Occasionally these
+      are the right verb.

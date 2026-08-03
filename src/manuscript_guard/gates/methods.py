@@ -32,11 +32,11 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.emit import sha256_of
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.paths import SOURCE_SUFFIXES
 from manuscript_guard.text.sections import split_sections
 
 GATE = "G9"
 LOCK = "methods.lock"
-SOURCE_SUFFIXES = {".r", ".rmd", ".qmd", ".py", ".ipynb", ".sql", ".jl", ".do", ".sas"}
 
 _METHODS_HEADING = re.compile(r"^\s*(?:materials and )?methods\b", re.IGNORECASE)
 

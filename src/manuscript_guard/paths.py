@@ -22,6 +22,18 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).parent
 
+# What counts as an analysis source file. One definition, because it was three: G1's
+# freshness scan, G9's methods ledger and G12 (which reads G9's) each spelled out the same
+# nine suffixes, and G3 a different five. Adding `.stan` or `.m` to one and not the others
+# would make the gates disagree about what an analysis is, with no test to notice.
+SOURCE_SUFFIXES = frozenset(
+    {".r", ".rmd", ".qmd", ".py", ".ipynb", ".sql", ".jl", ".do", ".sas"}
+)
+
+# The subset that can also draw a figure. Narrower on purpose: a figure is produced by a
+# plotting script, not by a SQL query.
+FIGURE_SCRIPT_SUFFIXES = frozenset({".r", ".rmd", ".qmd", ".py", ".jl"})
+
 SHIPPED = PACKAGE / "profiles"
 SHIPPED_RECIPES = SHIPPED / "reporting" / "recipes"
 SHIPPED_CHECKLISTS = SHIPPED / "reporting"
@@ -48,7 +60,9 @@ def workspace(explicit: Path | None = None, start: Path | None = None) -> Path:
 
 
 __all__ = [
+    "FIGURE_SCRIPT_SUFFIXES",
     "PACKAGE",
+    "SOURCE_SUFFIXES",
     "SHIPPED",
     "SHIPPED_CHECKLISTS",
     "SHIPPED_JOURNALS",

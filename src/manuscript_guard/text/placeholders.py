@@ -20,7 +20,13 @@ PLACEHOLDER = re.compile(
 )
 # Anything with the shape of a placeholder. Used to catch typos that the strict pattern
 # would otherwise skip in silence, which is the worst possible outcome for a binding.
-LOOSE = re.compile(r"\{\{[^}\n]*\}\}")
+#
+# The closing brace is optional because a missing one is the typo most worth catching:
+# `{{results.ror.point}` required `}}` to be recognised at all, so it was neither a binding
+# nor "malformed" — it travelled all the way into the built document as literal text, in
+# the place where a number was supposed to be. A stray `{{` on its own line is left alone;
+# this needs the namespace-and-key shape before it will call anything a placeholder.
+LOOSE = re.compile(r"\{\{\s*[a-z]+\.[^}\n]*\}{1,2}|\{\{[^}\n]*\}\}")
 
 
 @dataclass(frozen=True)

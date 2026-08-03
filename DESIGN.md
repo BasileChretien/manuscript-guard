@@ -888,10 +888,23 @@ Added by the adversarial review, verified and **not** fixed:
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
-- **`build --skip-checks` leaves a document behind.** Revert the source afterwards and
-  `check` passes while the stale `.docx` still holds the wrong number.
-
 Closed since, and why each mattered:
+
+- **`build --skip-checks` left a document that could pass for a checked one.** Revert the
+  source afterwards and `check` passes while the stale `.docx` still holds the wrong
+  number — the check and the artefact disagreeing silently, with nothing on disk recording
+  which was skipped. An unchecked build is now written as `manuscript.UNCHECKED.docx`, and
+  a submission pack assembled with `--skip-checks` says so in its own `MANIFEST.yaml`,
+  which is the file whose entire purpose is to be the thing you can tell from.
+- **Sidecar exemptions took a value with no reason.** `why` was optional in the code and
+  mandatory in every message these gates print, so `- value: '1'` on its own exempted a
+  number with no argument recorded anywhere. An entry without a reason is now ignored
+  rather than honoured: an exemption nobody justified is one nobody can review.
+- **`{{results.x}` was neither a binding nor malformed.** The loose pattern required `}}`,
+  so a single missing brace travelled into the built document as literal text, in the place
+  where a number was supposed to be. One typo, worst available outcome.
+- **A `.jl` figure script produced an empty report**, which reads as "checked and clean".
+  The lexer has no Julia entry; it now says the source was not read.
 
 - **The emitter had no invariants.** `display` was returned verbatim, so one call could
   publish a fabricated estimate *and* a fabricated interval; table cells were `str()`-ed and

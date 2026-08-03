@@ -21,9 +21,11 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.emit import DIGEST_SUFFIX, read_digest, sha256_of
 from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.paths import SOURCE_SUFFIXES
 
 GATE = "G1"
-SOURCE_SUFFIXES = {".r", ".rmd", ".qmd", ".py", ".ipynb", ".sql", ".jl", ".do", ".sas"}
+
+__all__ = ["SOURCE_SUFFIXES", "check_freshness"]
 
 
 def check_freshness(project: Project, results: Results) -> Report:

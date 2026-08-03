@@ -254,6 +254,22 @@ def test_parse_finds_bindings_and_flags_malformed() -> None:
     assert {raw for raw, _o, _l in bad} == {"{{oops}}", "{{Results.D}}"}
 
 
+def test_a_missing_closing_brace_is_malformed_not_invisible() -> None:
+    """`{{results.x}` needed `}}` to be recognised at all.
+
+    So it was neither a binding nor malformed: it travelled into the built document as
+    literal text, in the place where a number was supposed to be. That is the worst outcome
+    available for a binding, and it needed one typo.
+    """
+    good, bad = parse("The ratio was {{results.ror.point} in the cohort.")
+    assert good == []
+    assert [raw for raw, _o, _l in bad] == ["{{results.ror.point}"]
+
+
+def test_an_ordinary_brace_is_not_mistaken_for_a_binding() -> None:
+    assert parse("A set { 1, 2 } and a stray {{ here.") == ([], [])
+
+
 def test_block_namespaces_are_recognised_but_not_values() -> None:
     good, _ = parse("{{table.baseline}} {{figure.forest}}")
     assert [p.ref for p in good] == ["table.baseline", "figure.forest"]

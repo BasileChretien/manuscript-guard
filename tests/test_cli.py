@@ -117,11 +117,42 @@ def test_build_refuses_while_a_gate_fails(project: Path) -> None:
 
 
 @needs_pandoc
-def test_build_skip_checks_builds_anyway(project: Path) -> None:
+def test_build_skip_checks_builds_under_a_name_that_says_so(project: Path, capsys) -> None:
+    """An unchecked build must not be able to pass for a checked one.
+
+    Left as `manuscript.docx` it is the file a co-author opens and a journal receives —
+    and reverting the source afterwards makes `check` pass while the stale document still
+    holds the wrong number, with nothing on disk recording which one was skipped.
+    """
     path = project / "manuscript" / "main.md"
     path.write_text(path.read_text(encoding="utf-8") + "\n\n99999 loose.\n", encoding="utf-8")
     assert run("build", str(project), "--offline", "--skip-checks") == 0
+    assert (project / "build" / "manuscript.UNCHECKED.docx").exists()
+    assert not (project / "build" / "manuscript.docx").exists()
+    assert "UNCHECKED" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_clean_build_keeps_the_plain_name(project: Path) -> None:
+    assert run("build", str(project), "--offline") == 0
     assert (project / "build" / "manuscript.docx").exists()
+
+
+@needs_pandoc
+def test_an_overridden_submission_pack_records_that_in_its_manifest(project: Path) -> None:
+    """The pack was byte-indistinguishable from one that passed. Six months later nobody
+    can tell, and the manifest's whole purpose is to be the thing you can tell from."""
+    shutil.rmtree(project / "review")
+    assert run("submit", str(project), "--offline", "--skip-checks") == 0
+    manifest = (project / "build" / "submission" / "MANIFEST.yaml").read_text(encoding="utf-8")
+    assert "SKIPPED" in manifest
+
+
+@needs_pandoc
+def test_a_checked_submission_pack_says_so(project: Path) -> None:
+    assert run("submit", str(project), "--offline") == 0
+    manifest = (project / "build" / "submission" / "MANIFEST.yaml").read_text(encoding="utf-8")
+    assert "checks: passed" in manifest
 
 
 # ---------------------------------------------------------------- audit

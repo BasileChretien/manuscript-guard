@@ -27,12 +27,13 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.figure_source import check_figure_source
+from manuscript_guard.paths import FIGURE_SCRIPT_SUFFIXES
 from manuscript_guard.render import same_render
 from manuscript_guard.text.tokens import find_atoms
 
 GATE = "G3"
 
-SCRIPT_SUFFIXES = {".r", ".rmd", ".qmd", ".py", ".jl"}
+SCRIPT_SUFFIXES = FIGURE_SCRIPT_SUFFIXES
 TEXT_FORMATS = {".svg", ".pdf"}
 OPAQUE_FORMATS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".gif", ".webp", ".eps"}
 
@@ -246,13 +247,35 @@ def _sidecar_allowlist(figure: Path) -> frozenset[str]:
     those are declared in a sidecar next to the figure, with a reason, so the exemption is
     small, explicit and visible in review.
     """
+    sidecar = figure.with_name(f"{figure.stem}.guard.yaml")
+    return frozenset(entry for entry, _why in _declared(sidecar, "allow"))
+
+
+def _declared(sidecar: Path, section: str) -> list[tuple[str, str]]:
+    """`(value, why)` pairs from a `.guard.yaml`, refusing any entry with no reason.
+
+    Every hint in this gate and both module docstrings say a declaration carries a reason.
+    `why` was optional in the code, so `- value: '1'` on its own exempted a number with no
+    argument recorded anywhere — which is the shape of allowlist the whole design is
+    written against. An entry without one is ignored rather than honoured: an exemption
+    nobody justified is an exemption nobody can review.
+    """
     import yaml
 
-    sidecar = figure.with_name(f"{figure.stem}.guard.yaml")
     if not sidecar.exists():
-        return frozenset()
-    document = yaml.safe_load(sidecar.read_text(encoding="utf-8")) or {}
-    return frozenset(str(item["value"]) for item in document.get("allow", []) if "value" in item)
+        return []
+    try:
+        document = yaml.safe_load(sidecar.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return []
+    out = []
+    for item in document.get(section, []) or []:
+        if not isinstance(item, dict) or "value" not in item:
+            continue
+        why = str(item.get("why", "")).strip()
+        if why:
+            out.append((str(item["value"]), why))
+    return out
 
 
 SVG_NS = "{http://www.w3.org/2000/svg}"

@@ -329,15 +329,26 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
 
     mode = OFFLINE if args.offline else LIVE
+    # An unchecked build gets a name that says so. Left as `manuscript.docx` it is the file
+    # a co-author opens and a journal receives, and reverting the source afterwards makes
+    # `check` pass while the stale document still holds the wrong number — the check and the
+    # artefact disagreeing, silently, with nothing on disk recording which one was skipped.
+    output = args.output
+    if output is None and not report.ok:
+        output = project.path("build") / "manuscript.UNCHECKED.docx"
+
     try:
-        result = build_document(
-            project, assembled, mode=mode, csl=args.csl, output=args.output
-        )
+        result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
     except BuildError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
     print(f"built {result.output} ({result.mode})")
+    if not report.ok:
+        print(
+            f"{len(report.failures)} check(s) were failing, so this is named UNCHECKED. "
+            f"Fix them and rebuild before sending it anywhere."
+        )
     if result.report.findings:
         print(result.report.render(project.root))
     fields = result.report.counts.get("zotero_fields")
@@ -387,12 +398,14 @@ def cmd_submit(args: argparse.Namespace) -> int:
         document = built.output
 
     try:
-        pack = assemble_pack(project, document)
+        pack = assemble_pack(project, document, checked=report.ok)
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
     print(f"submission pack: {pack.directory}")
+    if not report.ok:
+        print(f"  assembled with --skip-checks; {pack.manifest.name} records that.")
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")

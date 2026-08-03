@@ -221,8 +221,15 @@ def declarations(project: Project) -> str:
     return "\n".join(lines)
 
 
-def assemble_pack(project: Project, document: Path) -> Pack:
-    """Copy or generate every part of the submission into build/submission/."""
+def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
+    """Copy or generate every part of the submission into build/submission/.
+
+    `checked=False` records in the manifest that the submission check was overridden. A
+    pack assembled with `--skip-checks` was previously byte-indistinguishable from one that
+    passed — same files, same checksums, nothing anywhere saying which it was. Six months
+    later nobody can tell, and the manifest's whole purpose is to be the thing you can tell
+    from.
+    """
     directory = project.path("build") / "submission"
     if directory.exists():
         shutil.rmtree(directory)
@@ -261,11 +268,13 @@ def assemble_pack(project: Project, document: Path) -> Pack:
                 shutil.copy2(path, target)
                 files.append(target)
 
-    manifest = _write_manifest(project, directory, files)
+    manifest = _write_manifest(project, directory, files, checked=checked)
     return Pack(directory=directory, files=tuple(files), manifest=manifest)
 
 
-def _write_manifest(project: Project, directory: Path, files: list[Path]) -> Path:
+def _write_manifest(
+    project: Project, directory: Path, files: list[Path], *, checked: bool = True
+) -> Path:
     from manuscript_guard.gates.review import manuscript_digest
 
     entries = []
@@ -284,6 +293,13 @@ def _write_manifest(project: Project, directory: Path, files: list[Path]) -> Pat
         "title": project.paper.get("title", ""),
         "journal": project.target_journal or "(none chosen)",
         "assembled_on": date.today().isoformat(),
+        "checks": (
+            "passed"
+            if checked
+            else "SKIPPED — assembled with --skip-checks while the submission check "
+            "was failing. Do not send this without re-running `manuscript-guard "
+            "check --submission`."
+        ),
         "manuscript_sha256": manuscript_digest(project),
         "files": entries,
     }

@@ -151,6 +151,33 @@ def test_docstrings_and_comments_are_not_figure_text(tmp_path: Path) -> None:
     assert check_figure_source(script, Classifier.load()).ok
 
 
+def test_a_declaration_without_a_reason_is_ignored(tmp_path: Path) -> None:
+    """`why` was optional in the code and mandatory in every message this gate prints.
+
+    So a bare `- value: '1'` exempted a number with no argument recorded anywhere, which is
+    the shape of allowlist the whole design is written against.
+    """
+    script = tmp_path / "fig.py"
+    script.write_text('ax.set_title("ROR 3.84")\n', encoding="utf-8")
+
+    (tmp_path / "fig.guard.yaml").write_text("allow_source:\n  - value: '3.84'\n", encoding="utf-8")
+    assert not check_figure_source(script, Classifier.load()).ok, "no reason, no exemption"
+
+    (tmp_path / "fig.guard.yaml").write_text(
+        "allow_source:\n  - value: '3.84'\n    why: the fixed reference value from the protocol\n",
+        encoding="utf-8",
+    )
+    assert check_figure_source(script, Classifier.load()).ok
+
+
+def test_a_script_in_a_language_with_no_lexer_says_it_was_not_read(tmp_path: Path) -> None:
+    """An empty report reads as "checked and clean". `.jl` was getting one."""
+    script = tmp_path / "fig.jl"
+    script.write_text('annotate!("ROR 3.84")\n', encoding="utf-8")
+    report = check_figure_source(script, Classifier.load())
+    assert "figure-source-unread" in {f.code for f in report.findings}
+
+
 def test_a_vector_figure_with_no_text_layer_fails(project: Path) -> None:
     """matplotlib's default `svg.fonttype` is 'path', which draws every label as outlines.
 

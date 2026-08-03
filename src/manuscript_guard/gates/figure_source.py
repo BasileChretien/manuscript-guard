@@ -29,7 +29,7 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.findings import Finding, Report
+from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.text.code import CodeNumber, language_of, numbers_in
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.tokens import find_atoms
@@ -98,22 +98,39 @@ def load_vocabulary() -> PlotVocabulary:
 
 
 def source_allowlist(script: Path) -> dict[str, str]:
-    """Declared exemptions for this script, from `<stem>.guard.yaml`."""
+    """Declared exemptions for this script, from `<stem>.guard.yaml`.
+
+    An entry with no `why` is ignored. The reason was optional in the code and mandatory in
+    every message this gate prints, so a bare `- value: '1'` exempted a number with no
+    argument recorded anywhere — the shape of allowlist the design exists to avoid.
+    """
+    from manuscript_guard.gates.figures import _declared
+
     sidecar = script.with_name(f"{script.stem}.guard.yaml")
-    if not sidecar.exists():
-        return {}
-    document = yaml.safe_load(sidecar.read_text(encoding="utf-8")) or {}
-    return {
-        str(item["value"]): item.get("why", "")
-        for item in document.get("allow_source", [])
-        if "value" in item
-    }
+    return dict(_declared(sidecar, "allow_source"))
 
 
 def check_figure_source(script: Path, classifier: Classifier) -> Report:
     language = language_of(script.suffix)
     if language is None:
-        return Report()
+        # `.jl` is a figure script as far as G3 is concerned, but the lexer has no Julia
+        # entry, so this returned an empty report — indistinguishable, in the output, from
+        # a script that was read and found clean. Saying so is the difference between
+        # "checked" and "nobody looked".
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="figure-source-unread",
+                    severity=WARN,
+                    message=f"{script.name} is a figure script, but its source cannot be read "
+                    f"for hardcoded numbers: no lexer for {script.suffix}",
+                    path=script,
+                    hint="the figure's rendered text is still checked; the script itself is "
+                    "not, so read it yourself before trusting it",
+                ),
+            )
+        )
 
     text = script.read_text(encoding="utf-8", errors="replace")
     vocabulary = load_vocabulary()

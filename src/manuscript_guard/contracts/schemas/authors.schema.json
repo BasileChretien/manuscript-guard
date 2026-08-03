@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/authors/1",
+  "title": "manuscript-guard author block",
+  "description": "One validated file that fills the title page, the declarations section and the submission form. Structured rather than prose because journals want more than name and affiliation, and because a missing ORCID or CRediT role should be a build failure rather than something noticed at 23:00 on the submission deadline.",
+  "type": "object",
+  "required": ["schema", "affiliations", "authors"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/authors/1" },
+    "affiliations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+          "text": { "type": "string", "minLength": 1 },
+          "country": { "type": "string" }
+        }
+      }
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/author" }
+    },
+    "equal_contribution_note": {
+      "type": "string",
+      "description": "Sentence printed for the equal-contribution group, e.g. 'A.B. and C.D. contributed equally to this work.'"
+    }
+  },
+  "$defs": {
+    "author": {
+      "type": "object",
+      "required": ["given", "family", "affiliations", "corresponding", "equal_contribution"],
+      "additionalProperties": false,
+      "properties": {
+        "given": { "type": "string", "minLength": 1 },
+        "family": { "type": "string", "minLength": 1 },
+        "degrees": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. ['PharmD', 'MSc', 'MPH']"
+        },
+        "orcid": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{4}-\\d{4}-\\d{3}[\\dX]$",
+          "description": "Bare identifier without the https://orcid.org/ prefix."
+        },
+        "email": { "type": "string", "format": "email" },
+        "affiliations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Affiliation ids, in the order they should be printed."
+        },
+        "corresponding": { "type": "boolean" },
+        "equal_contribution": {
+          "type": ["boolean", "string"],
+          "description": "true or false, or a group label when a paper has more than one equal-contribution group (e.g. 'first', 'last')."
+        },
+        "credit": {
+          "type": "array",
+          "description": "CRediT taxonomy roles. Required by a growing number of journals.",
+          "items": {
+            "enum": [
+              "Conceptualization",
+              "Data curation",
+              "Formal analysis",
+              "Funding acquisition",
+              "Investigation",
+              "Methodology",
+              "Project administration",
+              "Resources",
+              "Software",
+              "Supervision",
+              "Validation",
+              "Visualization",
+              "Writing – original draft",
+              "Writing – review & editing"
+            ]
+          }
+        },
+        "funding": { "type": "array", "items": { "type": "string" } },
+        "competing_interests": {
+          "type": "string",
+          "description": "Free text, or the project's declared none-statement. Empty is not the same as 'none' and is treated as unfilled."
+        }
+      }
+    }
+  }
+}

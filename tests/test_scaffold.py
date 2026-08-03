@@ -1,0 +1,42 @@
+"""A fresh project must fail for the right reasons, and only those."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from manuscript_guard.contracts import load_namespace, load_project
+from manuscript_guard.findings import merge_all
+from manuscript_guard.scaffold import init_project
+
+
+def test_init_creates_the_layout(tmp_path: Path) -> None:
+    created = init_project(tmp_path / "paper", title="A fresh project")
+    names = {p.name for p in created}
+    assert {"paper.yaml", "authors.yaml", "ledger.yaml", "attested.yaml", "main.md"} <= names
+    for directory in ("analysis", "results", "literature/sources", "figures"):
+        assert (tmp_path / "paper" / directory).is_dir()
+
+
+def test_init_is_idempotent(tmp_path: Path) -> None:
+    init_project(tmp_path / "paper")
+    (tmp_path / "paper" / "paper.yaml").write_text("edited by hand\n", encoding="utf-8")
+    assert init_project(tmp_path / "paper") == []
+    assert (tmp_path / "paper" / "paper.yaml").read_text(encoding="utf-8") == "edited by hand\n"
+
+
+def test_a_fresh_project_reads_as_a_todo_list(tmp_path: Path) -> None:
+    """It should fail, but every failure must be real work rather than placeholder noise."""
+    root = tmp_path / "paper"
+    init_project(root, title="A fresh project")
+
+    project, contract_report = load_project(root)
+    _namespace, _results, _literature, load_report = load_namespace(project)
+    report = merge_all([contract_report, load_report])
+
+    assert not report.ok
+    messages = [f.message for f in report.failures]
+    assert any("no results fragments" in m for m in messages)
+    assert sum("authors/0/given" in m or "authors/0/family" in m for m in messages) == 2
+    # Optional fields the author has not filled in must not generate failures of their own.
+    assert not any("orcid" in m or "email" in m or "credit" in m for m in messages)
+    assert len(report.failures) == 3

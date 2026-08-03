@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/reporting-completion/1",
+  "title": "manuscript-guard completed reporting checklist",
+  "description": "Where each checklist item is addressed in this manuscript. Journals ask for this file at submission; producing it as a build artefact rather than the night before means the gaps surface while there is still time to fix them, which is the only reason a reporting checklist is worth anything.",
+  "type": "object",
+  "required": ["schema", "guideline", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/reporting-completion/1" },
+    "guideline": { "type": "string", "minLength": 1 },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "where": {
+            "type": "string",
+            "description": "Section, and page or heading, where the item is addressed. Checked against the manuscript's actual headings."
+          },
+          "not_applicable": {
+            "type": "string",
+            "description": "Why this item does not apply. A reason, not a tick: 'no interventions were assigned' rather than 'n/a'."
+          },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

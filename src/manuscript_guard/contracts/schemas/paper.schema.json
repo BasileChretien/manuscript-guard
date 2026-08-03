@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/paper/1",
+  "title": "manuscript-guard project configuration",
+  "type": "object",
+  "required": ["schema", "title", "english_variant"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/paper/1" },
+    "title": { "type": "string", "minLength": 1 },
+    "short_title": { "type": "string" },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "english_variant": {
+      "enum": ["en-GB", "en-US"],
+      "description": "The author's choice, which a journal profile may override."
+    },
+    "target_journal": {
+      "type": "string",
+      "description": "Name of a profile under profiles/journals/. Absent means no journal chosen yet, which disables the journal gate rather than failing it."
+    },
+    "reporting_guideline": {
+      "type": "array",
+      "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Overrides for the default layout. Every path is project-relative.",
+      "properties": {
+        "analysis": { "type": "string", "default": "analysis" },
+        "results": { "type": "string", "default": "results" },
+        "literature": { "type": "string", "default": "literature" },
+        "manuscript": { "type": "string", "default": "manuscript" },
+        "figures": { "type": "string", "default": "figures" },
+        "build": { "type": "string", "default": "build" }
+      }
+    },
+    "conventions": {
+      "type": "array",
+      "description": "Project-specific additions to the shipped convention allowlist. Each needs a justification, because an allowlist that grows without argument eventually swallows the numbers it was meant to police.",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "pattern": { "type": "string", "description": "Python regular expression." },
+          "why": { "type": "string", "minLength": 1 },
+          "added_on": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "terms": {
+      "type": "array",
+      "description": "Project-specific tokens that contain digits but are names, not claims: CYP3A4, SARS-CoV-2, HbA1c.",
+      "items": { "type": "string" }
+    }
+  }
+}

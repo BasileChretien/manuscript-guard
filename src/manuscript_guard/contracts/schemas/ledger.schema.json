@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/ledger/1",
+  "title": "manuscript-guard literature ledger",
+  "description": "Numbers taken from the literature, each bound to a stored source. Values the author verified from a source the toolkit could not retrieve do NOT belong here; they belong in attested.yaml, so that the set resting on human attestation stays separately auditable.",
+  "type": "object",
+  "required": ["schema", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/ledger/1" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["key", "value", "citekey", "depth", "source_file", "locator", "quote"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
+          "description": "Referenced in prose as {{lit.<key>}}."
+        },
+        "value": { "type": ["number", "string", "boolean", "array"] },
+        "display": { "type": "string" },
+        "digits": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "unit": { "type": "string" },
+        "citekey": {
+          "type": "string",
+          "description": "Better BibTeX citation key, pinned. An unpinned key can mutate when metadata changes and silently break a build that was green yesterday."
+        },
+        "depth": {
+          "enum": ["full-text", "abstract-only"],
+          "description": "abstract-only is reported but never fails a build; it exists so a reviewer can see which figures rest on an abstract."
+        },
+        "source_file": {
+          "type": "string",
+          "description": "Path relative to literature/, e.g. sources/smith2020Prevalence.pdf."
+        },
+        "locator": {
+          "type": "string",
+          "description": "Where in the source, e.g. 'Table 2, p. 415'. Precise enough for someone else to check without reading the whole paper."
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Verbatim text containing the value. This is the evidence; a ledger entry without it is an assertion."
+        },
+        "verified_on": { "type": "string", "format": "date" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

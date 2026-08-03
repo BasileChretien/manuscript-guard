@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/results/1",
+  "title": "manuscript-guard results fragment",
+  "description": "One analysis script's contribution to the project's results. Machine-written only. A project may contain many fragments; they are merged, and a key defined twice is an error rather than a last-one-wins.",
+  "type": "object",
+  "required": ["schema", "provenance", "values"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/results/1" },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "values": {
+      "type": "object",
+      "description": "Flat dotted keys. Nesting is deliberately not supported: a flat namespace makes a key in prose and a key in code the same string.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
+      "additionalProperties": { "$ref": "#/$defs/value" }
+    },
+    "tables": {
+      "type": "object",
+      "description": "Tables emitted by the analysis and referenced as {{table.<key>}}. Cells are strings already in their display form, for the same reason values carry `display`: the rounding is decided once, where the number was computed.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/table" }
+    }
+  },
+  "$defs": {
+    "table": {
+      "type": "object",
+      "required": ["columns", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "caption": { "type": "string" },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "align": {
+          "type": "array",
+          "items": { "enum": ["left", "right", "center"] }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "quoted": { "type": "boolean", "default": true }
+      }
+    },
+    "value": {
+      "type": "object",
+      "required": ["value"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "description": "The machine value. Comparisons and figures use this.",
+          "type": ["number", "string", "boolean", "array", "null"]
+        },
+        "display": {
+          "type": "string",
+          "description": "Exactly how the value is written in prose. Set at emit time so the same quantity cannot be rounded two different ways in two places; this is what makes cross-artefact consistency free rather than checked."
+        },
+        "digits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12,
+          "description": "Decimal places, used to derive `display` when it is not given. A float with neither `display` nor `digits` is rejected: leaving the rounding implicit is how two sections come to disagree."
+        },
+        "unit": { "type": "string" },
+        "quoted": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this value is expected to appear in a deliverable. Set false to declare an intermediate deliberately, which exempts it from coverage checking. Coverage exists to catch values silently dropped from the manuscript, so opting out must be explicit."
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["generated_by", "generated_at"],
+      "properties": {
+        "generated_by": {
+          "type": "string",
+          "description": "Project-relative path of the script that wrote this fragment."
+        },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "tool": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        },
+        "vcs": {
+          "type": "object",
+          "properties": {
+            "sha": { "type": "string" },
+            "branch": { "type": "string" },
+            "dirty": { "type": "boolean" }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "description": "Every data file read. Hashes are what let the freshness gate notice that data changed even when nothing was touched afterwards.",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "bytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "session": {
+          "type": "object",
+          "description": "Enough of the computing environment to reconstruct it.",
+          "properties": {
+            "language": { "type": "string" },
+            "version": { "type": "string" },
+            "platform": { "type": "string" },
+            "packages": { "type": "object" }
+          }
+        }
+      }
+    }
+  }
+}

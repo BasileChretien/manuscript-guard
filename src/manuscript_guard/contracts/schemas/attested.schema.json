@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/attested/1",
+  "title": "manuscript-guard author-attested values",
+  "description": "Values the author read in a source the toolkit could not retrieve and store. These are deliberately kept in a separate file from the ledger so that the set of numbers resting on a human's word, rather than on a stored artefact, can be reviewed at a glance by a co-author, a reviewer, or the author months later. Entries feed the same {{lit.<key>}} namespace as the ledger.",
+  "type": "object",
+  "required": ["schema", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/attested/1" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["key", "value", "source", "locator", "statement", "attested_by", "attested_on"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$" },
+        "value": { "type": ["number", "string", "boolean", "array"] },
+        "display": { "type": "string" },
+        "digits": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "unit": { "type": "string" },
+        "citekey": {
+          "type": "string",
+          "description": "Optional: present when the work is in Zotero even though its text could not be stored."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What was read, in enough detail to be found again: full reference, database and query, personal communication, regulatory document number."
+        },
+        "locator": { "type": "string", "minLength": 1 },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The attester's own words: what they saw and why it could not be stored. This is the record that a human personally checked the value."
+        },
+        "attested_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the person taking responsibility for the value."
+        },
+        "attested_on": { "type": "string", "format": "date" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

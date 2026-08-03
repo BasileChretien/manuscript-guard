@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/figure-review/1",
+  "title": "manuscript-guard figure review record",
+  "description": "The record of someone having looked at a rendered figure and checked it against the results and the manuscript. No automated check can read a figure the way a reader does: it cannot see that the axis is truncated, that the legend contradicts the caption, or that two panels use different scales. So the reading is done by a model or a person, and what the gate enforces is that the reading happened, covered the required ground, and applies to the figure as it stands now. The gate verifies currency and coverage. It cannot verify that the review was any good.",
+  "type": "object",
+  "required": ["schema", "figure", "content_sha256", "reviewed_by", "reviewed_on", "verdict", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/figure-review/1" },
+    "figure": {
+      "type": "string",
+      "description": "File name of the reviewed figure, e.g. forest.svg."
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Digest of the figure's content with render metadata excluded, so that re-rendering an unchanged figure does not invalidate its review while a real change does."
+    },
+    "reviewed_by": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Model identifier or person's name. A review is attributable or it is not a review."
+    },
+    "reviewed_on": { "type": "string", "format": "date" },
+    "verdict": {
+      "enum": ["pass", "concerns"],
+      "description": "concerns fails the build, and the findings list says why."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "ok"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "note": {
+            "type": "string",
+            "description": "What was actually seen. A check marked ok with no note is indistinguishable from a check nobody performed."
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "enum": ["fail", "warn", "info"] },
+          "message": { "type": "string", "minLength": 1 },
+          "where": { "type": "string" }
+        }
+      }
+    },
+    "caption_checked_against": {
+      "type": "string",
+      "description": "Manuscript file whose caption was compared with the figure."
+    }
+  }
+}

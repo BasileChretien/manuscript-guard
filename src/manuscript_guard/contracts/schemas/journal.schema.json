@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/journal/1",
+  "title": "manuscript-guard journal profile",
+  "description": "A journal's author guidelines, distilled into something a build can check. Every profile records where it came from and when, because author guidelines change without announcement and a profile with no provenance is a rumour. Profiles are written by reading the journal's own instructions, never from memory.",
+  "type": "object",
+  "required": ["schema", "name", "source_url", "retrieved_on"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/journal/1" },
+    "name": { "type": "string", "minLength": 1 },
+    "publisher": { "type": "string" },
+    "source_url": {
+      "type": "string",
+      "description": "The instructions-for-authors page this was distilled from."
+    },
+    "retrieved_on": { "type": "string", "format": "date" },
+    "retrieved_by": { "type": "string" },
+    "article_type": {
+      "type": "string",
+      "description": "Limits usually differ by type; one profile describes one type."
+    },
+    "english_variant": {
+      "enum": ["en-GB", "en-US", "either"],
+      "description": "Overrides the project's choice when the journal insists."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Omit anything the journal does not state. An absent limit is not checked; a guessed one is worse than none.",
+      "properties": {
+        "abstract_words": { "type": "integer", "minimum": 1 },
+        "main_text_words": { "type": "integer", "minimum": 1 },
+        "total_words": { "type": "integer", "minimum": 1 },
+        "title_characters": { "type": "integer", "minimum": 1 },
+        "references": { "type": "integer", "minimum": 1 },
+        "figures": { "type": "integer", "minimum": 0 },
+        "tables": { "type": "integer", "minimum": 0 },
+        "display_items": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Combined figures and tables, when the journal limits them together."
+        },
+        "keywords": { "type": "integer", "minimum": 1 },
+        "authors": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_sections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Matched case-insensitively against top-level headings."
+        },
+        "abstract_structured": { "type": "boolean" },
+        "abstract_headings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "required_statements": {
+      "type": "array",
+      "description": "Declarations the journal requires. Each is found by matching a heading or a phrase.",
+      "items": {
+        "type": "object",
+        "required": ["id", "pattern"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "pattern": { "type": "string", "description": "Python regular expression." },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "csl": { "type": "string", "description": "CSL style name or file, for offline builds." },
+        "style_name": { "type": "string" },
+        "numbered": { "type": "boolean" }
+      }
+    },
+    "reporting_guidelines": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Checklists the journal requires. Feeds the reporting gate."
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Requirements that cannot be checked mechanically but must not be forgotten: cover letter contents, suggested reviewers, submission portal quirks."
+    }
+  }
+}

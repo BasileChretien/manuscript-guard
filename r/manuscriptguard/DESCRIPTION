@@ -1,0 +1,16 @@
+Package: manuscriptguard
+Title: Emit Analysis Results for manuscript-guard
+Version: 0.1.0
+Authors@R: person("Basile", "Chrétien", role = c("aut", "cre"),
+    email = "chretien.basile.jean.bernard.u4@s.mail.nagoya-u.ac.jp",
+    comment = c(ORCID = "0000-0002-7483-2489"))
+Description: Writes the results fragment that a manuscript-guard project reads, together
+    with the provenance needed to tell whether it is still current: the script that
+    produced it, hashes of every input file, the git commit, and the session. The
+    manuscript quotes these values by key, so a number can never be carried across by
+    hand.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports: jsonlite, digest
+Suggests: testthat (>= 3.0.0)
+RoxygenNote: 7.3.2

@@ -1,0 +1,4 @@
+export(mg_emitter)
+export(mg_find_root)
+importFrom(digest, digest)
+importFrom(jsonlite, toJSON)

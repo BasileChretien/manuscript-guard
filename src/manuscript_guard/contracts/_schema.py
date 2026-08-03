@@ -62,8 +62,15 @@ def read_structured(path: Path) -> Any:
         raise ContractError(f"{path}: cannot parse: {exc}") from exc
 
 
-def validate(document: Any, schema_name: str, path: Path, gate: str = "G0") -> Report:
-    """Validate a parsed document, returning one finding per schema violation."""
+def validate(
+    document: Any, schema_name: str, path: Path, gate: str = "G0", code: str = "schema-violation"
+) -> Report:
+    """Validate a parsed document, returning one finding per schema violation.
+
+    `code` exists so a contract that is merely unfinished can be told apart from one that is
+    malformed. A freshly scaffolded authors.yaml is a to-do list, and failing a build over it
+    on day one teaches the author to stop running the check.
+    """
     validator = Draft202012Validator(load_schema(schema_name))
     findings = []
     for error in sorted(validator.iter_errors(document), key=lambda e: list(e.absolute_path)):
@@ -71,7 +78,7 @@ def validate(document: Any, schema_name: str, path: Path, gate: str = "G0") -> R
         findings.append(
             Finding(
                 gate=gate,
-                code="schema-violation",
+                code=code,
                 message=f"{where}: {error.message}",
                 path=path,
                 hint=f"see the {schema_name} schema",

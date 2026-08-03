@@ -23,6 +23,11 @@
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",
       "items": { "type": "string", "minLength": 1 }
     },
+    "stage": {
+      "enum": ["design", "analysis", "drafting", "internal-review", "submission"],
+      "description": "How far along the work is. Every gate runs at every stage; the stage decides which findings fail rather than being reported as not yet due. A checker that demands everything from the first day is a checker that gets switched off on the second. Defaults to drafting.",
+      "default": "drafting"
+    },
     "review": {
       "type": "object",
       "additionalProperties": false,

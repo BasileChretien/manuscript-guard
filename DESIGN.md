@@ -648,6 +648,41 @@ with no plan behind it, and when a plan's section is a heading with nothing unde
 "Deviations from the plan" heading followed by nothing is the common case, and naming it is
 most of the value.
 
+## Stages: not every gate binds on day one
+
+The first version of `check` ran all twelve gates unconditionally, which meant that someone
+still writing their analysis was told the figures were unreviewed, no journal had been
+chosen and the reporting checklist was empty. All true, none useful, and collectively the
+strongest possible argument for not running the check again.
+
+Each finding now declares the stage at which it starts to fail: `design`, `analysis`,
+`drafting`, `internal-review`, `submission`. The stage comes from `paper.yaml` or from
+`--stage`; `--submission` is shorthand for the last one.
+
+Three rules keep this from becoming a way to hide problems.
+
+**Every gate runs at every stage.** Only severity changes. A deferred finding is printed as
+`INFO`, tagged `[not due until drafting]`, counted, and summarised at the end as *"3 findings
+not due yet … They are listed above as INFO, not hidden."* A check that quietly stopped
+looking would be worse than no check.
+
+**Unlisted codes bind immediately.** A finding the policy does not know about fails at every
+stage, so adding a gate cannot accidentally make it optional. The author of a gate has to
+decide, in `policy.py`, when it should start to matter.
+
+**Deferred means INFO, not WARN.** A warning is something to look at now; these are things
+that are not yet due. Mixing them would drown the warnings that matter.
+
+Writing the policy exposed two mistakes in my own placement. Results were bound at
+`analysis`, which is wrong — results appear at the *end* of the analysis stage, not its
+start — and an unfinished `authors.yaml` was being reported as a malformed contract when it
+is a to-do list. The second needed a distinct finding code so that a genuinely broken
+authors file and a merely unfinished one could be told apart.
+
+The effect is that `manuscript-guard init` followed by a first analysis script now reports
+zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
+and the same items fail from `drafting` onwards.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -688,6 +723,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **`--submission` is the only contextual severity in the toolkit.** It is a small
   inconsistency, accepted because blocking every draft build on a complete two-round review
   would make G11 something to switch off.
+- **The stage is declared, not detected.** Nothing stops a project sitting at `analysis`
+  for ever and never being held to anything. Detecting the stage from what exists was
+  considered and rejected as too surprising, but the honest consequence is that the ladder
+  is a convenience, not an enforcement.
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,

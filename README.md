@@ -168,9 +168,78 @@ language. Emitters exist for Python and R; anything that can write JSON can take
 
 ## Installation
 
+Not on PyPI yet, so install from the repository:
+
 ```bash
-pip install manuscript-guard
+git clone https://github.com/basilechretien/manuscript-guard
+pip install ./manuscript-guard
 ```
+
+Or without cloning:
+
+```bash
+pip install git+https://github.com/basilechretien/manuscript-guard
+```
+
+`pipx install ./manuscript-guard` works too, and is the better choice if you want the
+command available everywhere without touching a project's environment.
+
+Check it:
+
+```bash
+manuscript-guard --version
+manuscript-guard stages
+```
+
+To work on the toolkit itself, install it editable with the test dependencies:
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
+
+### What else you need, and when
+
+Only Python 3.10+ and two small libraries are required. Everything below is needed for one
+particular thing, and the tool tells you which when you reach it.
+
+| | Needed for | Without it |
+|---|---|---|
+| **pandoc** | `build`, `submit` | The gates all still run; you cannot produce a .docx |
+| **Zotero + Better BibTeX** | live citation fields, `sync-bib` | Builds fall back to the committed `references.bib`; citation-key pinning goes unchecked |
+| **poppler** (`pdftotext`) or **pypdf** | reading PDF sources and PDF figures | Those sources are reported as unverifiable rather than passed |
+| **R** (+ `jsonlite`, `digest`) | emitting results from R | Only if your analysis is in R; the Python emitter needs nothing extra |
+| **matplotlib** | the worked example's figure | Only for the example |
+
+Nothing is fetched during installation. Reporting checklists are downloaded on request by
+`manuscript-guard fetch`, never as an install side effect — see
+[ATTRIBUTION.md](ATTRIBUTION.md) for why.
+
+## You do not have to satisfy every gate on day one
+
+A checker that demands everything from the first day is a checker that gets switched off on
+the second. So each finding declares the **stage at which it starts to matter**:
+
+| Stage | What you are doing |
+|---|---|
+| `design` | writing the analysis plan |
+| `analysis` | writing and running the analysis; the manuscript can wait |
+| `drafting` | writing the manuscript against results that exist |
+| `internal-review` | draft complete; panels, checklists and the journal's rules apply |
+| `submission` | the version you send anywhere |
+
+Set `stage:` in `paper.yaml`, or pass `--stage` for a single run:
+
+```bash
+manuscript-guard check --stage analysis
+manuscript-guard stages                  # what binds where
+```
+
+**Every gate still runs at every stage.** Only the severity changes: a finding that is not
+due yet is printed as `INFO` with `[not due until drafting]`, counted, and summarised at the
+end. Nothing is skipped, because a check that quietly stopped looking would be worse than no
+check. And a finding this policy does not know about fails at every stage — a new gate has
+to opt in to being deferred.
 
 ## Getting started
 

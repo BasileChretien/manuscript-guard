@@ -39,17 +39,27 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
+from manuscript_guard.policy import (
+    DESCRIPTIONS,
+    STAGES,
+    apply_stage,
+    resolve_stage,
+    summarise_deferred,
+)
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
 from manuscript_guard.text.tokens import find_atoms
 
 
-def _run_gates(start: Path, *, submission: bool = False) -> tuple[Report, object]:
-    """Run every gate. `submission` raises the review gate's warnings to failures.
+def _run_gates(
+    start: Path, *, submission: bool = False, stage: str | None = None
+) -> tuple[Report, object, str, dict]:
+    """Run every gate, then apply the stage policy.
 
-    Only G11 varies. An author mid-draft should be able to build a document to read; the
-    version that goes to a journal should not carry unanswered major review findings.
+    Every gate always runs. What the stage changes is which findings *fail*: someone still
+    writing the analysis is told about the unreviewed figures, but not stopped by them.
+    Nothing is skipped, and the caller reports what was deferred.
     """
     project, contract_report = load_project(start)
     namespace, results, literature, load_report = load_namespace(project)
@@ -69,7 +79,10 @@ def _run_gates(start: Path, *, submission: bool = False) -> tuple[Report, object
         reports.append(check_methods(project))
         reports.append(check_design(project))
         reports.append(check_consistency(results))
-    return merge_all(reports), project
+
+    chosen = resolve_stage(project, stage, submission)
+    report, deferred = apply_stage(merge_all(reports), chosen)
+    return report, project, chosen, deferred
 
 
 def cmd_review(args: argparse.Namespace) -> int:
@@ -93,17 +106,38 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    report, project = _run_gates(args.path, submission=args.submission)
+    report, project, stage, deferred = _run_gates(
+        args.path, submission=args.submission, stage=args.stage
+    )
     if args.json:
         print(report.to_json())
     else:
         print(f"manuscript-guard {__version__} — {project.root}")
+        print(f"stage: {stage} ({DESCRIPTIONS[stage]})")
         print(report.render(project.root))
         print(
             f"\n{len(report.failures)} failing, {len(report.warnings)} warning"
             f"{'' if len(report.warnings) == 1 else 's'}"
         )
+        note = summarise_deferred(deferred)
+        if note:
+            print(note)
     return 0 if report.ok else 1
+
+
+def cmd_stages(args: argparse.Namespace) -> int:
+    """What each stage means, and what starts to bind at it."""
+    from manuscript_guard.policy import BINDS_AT
+
+    for stage in STAGES:
+        codes = sorted(code for code, at in BINDS_AT.items() if at == stage)
+        print(f"{stage}\n  {DESCRIPTIONS[stage]}")
+        if codes:
+            print(f"  starts to fail: {', '.join(codes)}")
+        print()
+    print("Anything not listed fails at every stage: a gate has to opt in to being")
+    print("deferred, so adding one cannot accidentally make it optional.")
+    return 0
 
 
 def cmd_explain(args: argparse.Namespace) -> int:
@@ -158,7 +192,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     document, not a list of unfinished bindings. It is a flag rather than the default,
     so that the version you send anyone has passed.
     """
-    report, project = _run_gates(args.path, submission=args.submission)
+    report, project, _stage, _deferred = _run_gates(
+        args.path, submission=args.submission, stage=getattr(args, "stage", None)
+    )
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
@@ -192,7 +228,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
     """Assemble everything a journal asks for, once the submission check passes."""
     from manuscript_guard.build import SubmissionError, assemble_pack
 
-    report, project = _run_gates(args.path, submission=True)
+    report, project, _stage, _deferred = _run_gates(args.path, submission=True)
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(
@@ -417,11 +453,20 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     check.add_argument("--json", action="store_true", help="machine-readable output")
     check.add_argument(
+        "--stage",
+        choices=STAGES,
+        help="how far along you are; overrides `stage` in paper.yaml. Findings that do not "
+        "bind yet are reported as INFO rather than failing",
+    )
+    check.add_argument(
         "--submission",
         action="store_true",
-        help="hold the manuscript to submission standards: unanswered review findings fail",
+        help="shorthand for --stage submission: everything binds",
     )
     check.set_defaults(func=cmd_check)
+
+    stages = sub.add_parser("stages", help="what each stage means and what binds at it")
+    stages.set_defaults(func=cmd_stages)
 
     review = sub.add_parser("review", help="show where the review stands")
     review.add_argument("path", nargs="?", type=Path, default=Path.cwd())
@@ -447,6 +492,7 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--csl", type=Path, help="citation style, for offline builds")
     build.add_argument("-o", "--output", type=Path)
     build.add_argument("--skip-checks", action="store_true", help="build even if gates fail")
+    build.add_argument("--stage", choices=STAGES, help="how far along you are")
     build.add_argument(
         "--submission",
         action="store_true",

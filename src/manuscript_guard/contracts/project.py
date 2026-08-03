@@ -79,6 +79,8 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)
     if authors is not None:
-        reports.append(validate(authors, "authors", authors_path))
+        # A distinct code, because an unfinished author block is a to-do rather than a
+        # broken contract, and the stage policy defers it until the manuscript exists.
+        reports.append(validate(authors, "authors", authors_path, code="authors-incomplete"))
 
     return Project(root, paper, authors), merge_all(reports)

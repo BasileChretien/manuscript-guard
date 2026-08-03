@@ -1,0 +1,203 @@
+schema: manuscript-guard/terms/1
+
+# Tokens that contain digits but are names: genes, receptors, pathogens, coding systems,
+# scales, drugs. A term matches when it accounts for every digit in the atom, so
+# "COVID-19-related" is covered by covid-19 while "CYP3A4/7" is not covered by cyp3a4 and
+# will be reported until 3a7 is added too. Erring towards reporting is deliberate.
+#
+# Projects extend this through `terms:` in paper.yaml.
+
+terms:
+  # Pathogens and infections
+  - covid-19
+  - sars-cov-2
+  - sars-cov
+  - mers-cov
+  - h1n1
+  - h3n2
+  - h5n1
+  - hiv-1
+  - hiv-2
+  - hhv-6
+  - hpv-16
+  - hpv-18
+
+  # Cytochromes and transporters
+  - cyp1a2
+  - cyp2b6
+  - cyp2c8
+  - cyp2c9
+  - cyp2c19
+  - cyp2d6
+  - cyp2e1
+  - cyp3a4
+  - cyp3a5
+  - ugt1a1
+  - abcb1
+  - abcg2
+  - slco1b1
+  - oatp1b1
+  - oct2
+  - mate1
+
+  # Receptors, cytokines, immune targets
+  - pd-1
+  - pd-l1
+  - ctla-4
+  - il-1
+  - il-1β
+  - il-2
+  - il-6
+  - il-10
+  - il-17
+  - il-23
+  - tnf-α
+  - tgf-β1
+  - cd4
+  - cd8
+  - cd20
+  - cd19
+  - her2
+  - vegfr2
+  - egfr
+  - alk1
+  - 5-ht
+  - 5-ht2a
+  - 5-ht3
+  - h1
+  - h2
+  - d2
+  - m1
+  - m3
+  - beta-2
+  - β2
+  - alpha-1
+  - α1
+
+  # Genes and proteins
+  - brca1
+  - brca2
+  - tp53
+  - kras
+  - nras
+  - braf
+  - pik3ca
+  - mthfr
+  - apoe4
+  - park2
+  - nf1
+  - nf2
+
+  # Enzymes, targets, pathways
+  - sglt2
+  - glp-1
+  - gip
+  - dpp-4
+  - hmg-coa
+  - cox-1
+  - cox-2
+  - ace2
+  - at1
+  - pcsk9
+  - parp1
+  - mtor
+  - jak1
+  - jak2
+  - jak3
+  - tyk2
+
+  # Vitamins, drugs and compounds
+  - b12
+  - b6
+  - b1
+  - d3
+  - k1
+  - k2
+  - q10
+  - 5-fu
+  - 6-mp
+  - 5-asa
+  - 17β-estradiol
+  - 25-hydroxyvitamin
+  - 1,25-dihydroxyvitamin
+  - omega-3
+  - omega-6
+
+  # Coding systems, classifications, standards
+  - icd-9
+  - icd-10
+  - icd-11
+  - icd-o-3
+  - ctcae
+  - meddra
+  - atc
+  - snomed-ct
+  - loinc
+  - hl7
+  - fhir
+  - cdisc
+  - who-art
+  - mesh
+  - orpha
+  - omim
+
+  # Clinical scales and measures
+  - hba1c
+  - hbo2
+  - spo2
+  - fio2
+  - paco2
+  - pao2
+  - fev1
+  - fvc1
+  - t1dm
+  - t2dm
+  - ckd-epi
+  - mdrd
+  - egfr
+  - gfr
+  - nyha
+  - ecog
+  - mmse
+  - moca
+  - gcs
+  - phq-9
+  - gad-7
+  - sf-36
+  - eq-5d
+  - eq-5d-5l
+  - eq-5d-3l
+  - hads
+  - madrs
+  - panss
+  - updrs
+  - basdai
+  - das28
+  - sledai
+  - apri
+  - fib-4
+  - child-pugh
+  - meld
+
+  # Statistics and software
+  - r2
+  - chi2
+  - χ2
+  - log2
+  - log10
+  - type-i
+  - type-ii
+  - sas-9
+  - spss-29
+  - stata-18
+
+  # Regulatory and reporting
+  - ich-e2b
+  - e2b
+  - gcp-e6
+  - iso-9001
+  - iso-13485
+  - iso-14155
+  - cioms-i
+  - strobe
+  - record-pe

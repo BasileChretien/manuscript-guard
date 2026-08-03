@@ -1,0 +1,49 @@
+schema: manuscript-guard/conventions/1
+
+# Numbers that are conventions of scientific writing rather than findings.
+#
+# This list is deliberately narrow, and every pattern is pinned to the specific
+# conventional values rather than to a shape. A rule matching "p < <any number>" would
+# wave through every reported p-value in the paper, which is the opposite of the point:
+# a p-value you obtained is a result and belongs in results.json. Only the threshold you
+# chose in advance is a convention.
+#
+# Projects extend this through `conventions:` in paper.yaml, where each addition requires
+# a written justification.
+
+conventions:
+  - id: significance-threshold
+    why: A pre-specified alpha level is a design choice stated by convention, not a result.
+    pattern: '(?i)\bp[\s-]*(?:value)?\s*[<≤]\s*0?\.(?:0001|001|01|05)\b'
+
+  - id: alpha-level
+    why: Same as the significance threshold, written as alpha.
+    pattern: '(?i)(?:\balpha\b|α)\s*(?:level)?\s*(?:was|of|[=:])\s*0?\.(?:0001|001|01|05)\b'
+
+  - id: confidence-level
+    why: The confidence level of an interval is conventional; its bounds are results and must be bound.
+    pattern: '(?i)\b(?:9[059]|99\.9)\s*%\s*(?:two[\s-]sided\s+)?(?:CI\b|confidence\s+interval|credible\s+interval|CrI\b)'
+
+  - id: confidence-level-trailing
+    why: The same convention with the level written after the interval.
+    pattern: '(?i)\b(?:CI|confidence\s+interval|credible\s+interval)s?\s*(?:set\s+)?(?:of|at)\s*(?:9[059]|99\.9)\s*%'
+
+  - id: target-power
+    why: A conventional target power stated in a sample-size paragraph.
+    pattern: '(?i)\b(?:statistical\s+)?power\s*(?:of|at|=|:)?\s*(?:0\.(?:8|9|80|90)|80|90)\s*%?'
+
+  - id: percentile-labels
+    why: Named distribution points are labels, not measured values.
+    pattern: '(?i)\b(?:2\.5|25|50|75|97\.5)th\s+percentile|\bQ[13]\b|\bP(?:25|50|75)\b'
+
+  - id: rate-denominator
+    why: A per-N denominator is a conventional unit of expression; the rate itself is the result and must be bound.
+    pattern: '(?i)\bper\s+\d[\d\s,  ]*\s*(?:person|people|patient|inhabitant|resident|prescription|user|exposure|treatment|admission|birth|population|report)'
+
+  - id: two-by-two
+    why: A 2 x 2 table is the name of a structure.
+    pattern: '(?i)\b2\s*[×x]\s*2\b'
+
+  - id: iso-8601
+    why: Naming a standard, not stating a value.
+    pattern: '(?i)\bISO[\s-]?8601\b'

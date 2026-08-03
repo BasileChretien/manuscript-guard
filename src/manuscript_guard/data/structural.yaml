@@ -1,0 +1,38 @@
+schema: manuscript-guard/structural/1
+
+# Numbers that point at something rather than measure something: cross-references,
+# categorical labels and list markers.
+#
+# Each pattern is matched against the whole line, and an atom counts as structural only
+# when the match covers it. That is what distinguishes "grade 3" from the "12" in
+# "grade 3 events occurred in 12 patients" — the first is a label, the second is a result
+# and must be bound.
+
+structural:
+  - id: cross-reference
+    why: A pointer to a table, figure or section.
+    pattern: '(?i)\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|box|panel|equation|eq\.?|section|chapter|step|item|supplementary\s+(?:table|figure|file|material|method)s?|supplement|additional\s+file)\s*[-–]?\s*S?\d+[A-Za-z]?\b'
+
+  - id: supplement-tag
+    why: Supplement identifiers of the form S1, S2.
+    pattern: '\bS\d+[A-Za-z]?\b'
+
+  - id: categorical-label
+    why: An ordinal category naming a class of thing, not a measurement of it.
+    pattern: '(?i)\b(?:phase|grade|stage|type|class|line|round|wave|tier|level|version|arm|group|cohort|model|scenario|quartile|quintile|tertile|decile)\s*[≥≤<>]?\s*\d+[A-Za-z]?\b'
+
+  - id: time-label
+    why: A named timepoint or window, e.g. day 30, 30-day, week 12.
+    pattern: '(?i)\b(?:day|week|month|year|hour|minute|visit|cycle)s?\s*[-–]?\s*\d+\b|\b\d+\s*[-–]\s*(?:day|week|month|year|hour|minute)\b'
+
+  - id: ordered-list-marker
+    why: Markdown list numbering.
+    pattern: '^\s{0,3}\d+[.)]\s'
+
+  - id: numbered-heading
+    why: Markdown heading numbering.
+    pattern: '^#{1,6}\s+\d+(?:\.\d+)*[.)]?\s'
+
+  - id: table-alignment-row
+    why: Markdown table separator rows.
+    pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'

@@ -1,0 +1,199 @@
+"""G2 — every number in the manuscript source is accounted for, in both directions.
+
+Forward: no numeric atom in any source file may be unclassified. A results-derived number
+cannot appear as a literal, because in source it must be a `{{results.key}}` placeholder.
+
+Backward: every results value declared as quoted must actually be referenced somewhere. A
+registry that binds a handful of numbers and reports "all clear" is worse than no registry,
+because it converts an unexamined manuscript into a confident one. Coverage is therefore
+part of the gate rather than a footnote in its output.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.contracts.literature import Literature
+from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.results import Results
+from manuscript_guard.contracts.values import Value
+from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.text.masking import mask
+from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.tokens import find_atoms
+
+GATE = "G2"
+SOURCE_GLOB = "*.md"
+
+
+def source_files(manuscript_dir: Path) -> list[Path]:
+    """Every Markdown source, skipping directories whose name starts with `_` or `.`.
+
+    The underscore convention gives an author somewhere to keep notes and abandoned drafts
+    without either polluting the report or being silently exempted from it: the rule is
+    visible in the directory name.
+    """
+    if not manuscript_dir.exists():
+        return []
+    out = []
+    for path in sorted(manuscript_dir.rglob(SOURCE_GLOB)):
+        if any(part.startswith((".", "_")) for part in path.relative_to(manuscript_dir).parts):
+            continue
+        out.append(path)
+    return out
+
+
+def check_numbers(
+    project: Project,
+    namespace: dict[str, Value],
+    results: Results,
+    literature: Literature,
+) -> Report:
+    classifier = Classifier.load(project.extra_conventions, project.extra_terms)
+    report = Report()
+    referenced: set[str] = set()
+    totals = dict.fromkeys(
+        ("files", "atoms", "placeholders", "term", "structural", "convention"), 0
+    )
+
+    for path in source_files(project.path("manuscript")):
+        totals["files"] += 1
+        text = path.read_text(encoding="utf-8")
+
+        placeholders, malformed = parse(text)
+        totals["placeholders"] += len(placeholders)
+
+        for raw, _offset, line in malformed:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="malformed-placeholder",
+                    message=f"{raw} is not a valid binding and will be printed literally",
+                    path=path,
+                    line=line,
+                    hint="the form is {{results.key}}, {{lit.key}}, {{table.key}} "
+                    "or {{figure.key}}",
+                )
+            )
+
+        for placeholder in placeholders:
+            referenced.add(placeholder.ref)
+            if placeholder.is_value and placeholder.ref not in namespace:
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="unresolved-binding",
+                        message=f"{placeholder.raw} refers to a key that does not exist",
+                        path=path,
+                        line=placeholder.line,
+                        col=placeholder.col,
+                        hint=_nearest_hint(placeholder.ref, namespace),
+                    )
+                )
+
+        for atom in find_atoms(text, mask(text)):
+            totals["atoms"] += 1
+            verdict = classifier.classify(atom)
+            if verdict.kind != UNCLASSIFIED:
+                totals[verdict.kind] += 1
+                continue
+            in_table = atom.line_text.lstrip().startswith("|")
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="hand-authored-table" if in_table else "unclassified-number",
+                    message=(
+                        f"{atom.text!r} in a hand-written table row"
+                        if in_table
+                        else f"{atom.text!r} is not bound to any source"
+                    ),
+                    path=path,
+                    line=atom.line,
+                    col=atom.col,
+                    context=atom.line_text.strip()[:160],
+                    hint=(
+                        "tables are generated from results; replace the table with "
+                        "{{table.<key>}} and emit it from the analysis"
+                        if in_table
+                        else "bind it with {{results.<key>}} or {{lit.<key>}}; if it is a "
+                        "writing convention, add it to `conventions:` in paper.yaml with a "
+                        "justification"
+                    ),
+                )
+            )
+
+    report = report.merge(_coverage(results, literature, referenced))
+    return report.with_counts(
+        source_files=totals["files"],
+        numeric_atoms=totals["atoms"],
+        bindings=totals["placeholders"],
+        atoms_term=totals["term"],
+        atoms_structural=totals["structural"],
+        atoms_convention=totals["convention"],
+    )
+
+
+def _coverage(results: Results, literature: Literature, referenced: set[str]) -> Report:
+    """Direction two: declared values that nothing quotes."""
+    report = Report()
+    unquoted = sorted(k for k in results.quoted_keys if f"results.{k}" not in referenced)
+    for key in unquoted:
+        value = results.values[key]
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="unquoted-result",
+                message=f"results key {key!r} is declared as quoted but nothing references it",
+                path=value.source,
+                hint=(
+                    "reference it as {{results." + key + "}}, or mark it quoted=false in the "
+                    "analysis to declare it an intermediate"
+                ),
+            )
+        )
+
+    unplaced = sorted(k for k in results.quoted_tables if f"table.{k}" not in referenced)
+    for key in unplaced:
+        table = results.tables[key]
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="unplaced-table",
+                message=f"table {key!r} is emitted but no source file places it",
+                path=table.source,
+                hint="write {{table." + key + "}} where it belongs, or emit it with "
+                "quoted=False if it is working output",
+            )
+        )
+
+    unused = sorted(k for k in literature.values if f"lit.{k}" not in referenced)
+    for key in unused:
+        value = literature.values[key]
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="unused-literature",
+                severity=WARN,
+                message=f"literature key {key!r} is never quoted",
+                path=value.source,
+                hint="remove the entry, or quote it",
+            )
+        )
+
+    return report.with_counts(
+        results_quoted=len(results.quoted_keys),
+        results_uncovered=len(unquoted),
+        tables_unplaced=len(unplaced),
+        literature_unused=len(unused),
+    )
+
+
+def _nearest_hint(ref: str, namespace: dict[str, Value]) -> str:
+    """Suggest the closest existing key, which is almost always a typo fix."""
+    import difflib
+
+    close = difflib.get_close_matches(ref, namespace.keys(), n=3, cutoff=0.6)
+    if close:
+        return "did you mean " + ", ".join("{{" + c + "}}" for c in close) + "?"
+    return "check the key exists in results/ or literature/"

@@ -37,27 +37,51 @@ a property of the synthetic data rather than a design choice.
 
 Hepatic injury is the single event term used by the data generator. Real work would need a
 case definition — a MedDRA Standardised Query or an explicit preferred-term list — and the
-choice of definition would change the counts.
+choice of definition would change the counts. The terms actually used are published in
+Table 1, emitted from the lists the analysis filtered on rather than retyped, which is what
+RECORD 6.1 asks for and what makes a case definition checkable.
+
+{{table.outcome_codes}}
 
 The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
 injury with all other reported events, for example-drug against all other drugs in the
 database. Confidence intervals were derived from the standard error of the log odds ratio
-and are reported as 95% confidence intervals throughout. A two-sided p < 0.05 was taken as
-the threshold for statistical significance. Analyses followed STROBE and RECORD-PE.
+and are reported as 95% confidence intervals throughout, two-sided at an alpha of 0.05.
+A signal was defined by the classical criterion: at least 3 cases together with a lower
+bound of the confidence interval of the reporting odds ratio above 1. No p-value threshold
+was used as a decision rule, which is not how a disproportionality analysis reaches its
+conclusion.
+
+Reporting follows the checklist declared in `paper.yaml`.
+
+<!--
+That checklist is a demonstration profile, not a published guideline, which is why no
+guideline is named in the prose above. A real study of spontaneous reports would name
+READUS-PV — the guideline for disproportionality analyses, for which this repository ships
+a transcription recipe — declare it in `reporting_guideline:`, and complete its checklist.
+G5 reconciles the two: name a guideline in the text without declaring it and the run says
+so. An adherence claim nothing checks is exactly the untraceable assertion this toolkit
+exists to remove, and it is a claim about the paper's own conduct.
+
+An earlier version of this file said "Analyses followed STROBE and RECORD-PE" while
+declaring neither — and RECORD-PE, which is for routinely collected health data, is the
+wrong guideline for a spontaneous-report study altogether. Nothing caught it, because
+nothing read the sentence. This comment and that gate are the same fix.
+-->
 
 # Results
 
 The database contained {{results.cohort.n_reports}} reports, of which
 {{results.cohort.n_drug_reports}} named example-drug. Hepatic injury was reported in
 {{results.case.n_cases}} of these; {{results.case.n_serious}} were flagged as serious
-({{results.case.pct_serious}}%). Baseline characteristics are shown in Table 1.
+({{results.case.pct_serious}}%). Baseline characteristics are shown in Table 2.
 
 {{table.baseline}}
 
 Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
 {{results.ror.ci_high}}). The estimate is shown in Figure 1, and the counts it was computed
-from in Table 2, so a reader can reconstruct it.
+from in Table 3, so a reader can reconstruct it.
 
 {{table.two_by_two}}
 

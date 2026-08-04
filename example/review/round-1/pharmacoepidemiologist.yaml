@@ -3,7 +3,7 @@ round: 1
 reviewer: pharmacoepidemiologist
 reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
-manuscript_sha256: f2b91b072f1d41c81a5224f001a4318f5f39eb39bf1454ce2736900b3824f389
+manuscript_sha256: 2f5f33925d345ed4302054c3f395f53174da679f9b6b6ef8300687d841911e61
 verdict: minor-revision
 summary: 'The paper reports a disproportionality signal for hepatic injury with example-drug
   in a synthetic reporting database and, to its credit, says repeatedly that disproportionality

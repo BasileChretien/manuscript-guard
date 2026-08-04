@@ -2,14 +2,14 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "0ddcf04f6d011adc3da0c028253409cf54bc5871c214ae39208d3053fadc7bf7",
-    "generated_at": "2026-08-04T01:06:53+00:00",
+    "generated_by_sha256": "1a45bf43e69c21b191c308181d3884f564ecaab7656260a57f217d401a6b020a",
+    "generated_at": "2026-08-04T07:33:05+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
     "vcs": {
-      "sha": "624ae9523279e414b4b0277f87155f015b15d3d8",
+      "sha": "e386540f9d37c0fac0e39852266c3365312a709d",
       "dirty": true,
       "branch": "main"
     },
@@ -121,6 +121,40 @@
         "left",
         "right",
         "right"
+      ],
+      "composed": [
+        {
+          "column": 1,
+          "template": "{}",
+          "row": 0,
+          "parts": [
+            "77"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{}",
+          "row": 0,
+          "parts": [
+            "349"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{}",
+          "row": 1,
+          "parts": [
+            "194"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{}",
+          "row": 1,
+          "parts": [
+            "3380"
+          ]
+        }
       ]
     },
     "baseline": {
@@ -176,7 +210,201 @@
         "left",
         "right",
         "right"
+      ],
+      "composed": [
+        {
+          "column": 1,
+          "template": "{}",
+          "row": 0,
+          "parts": [
+            "426"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{}",
+          "row": 0,
+          "parts": [
+            "3574"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{}",
+          "row": 1,
+          "parts": [
+            "77"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{}",
+          "row": 1,
+          "parts": [
+            "194"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 2,
+          "parts": [
+            "92",
+            "21.6"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 2,
+          "parts": [
+            "884",
+            "24.7"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 3,
+          "parts": [
+            "116",
+            "27.2"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 3,
+          "parts": [
+            "866",
+            "24.2"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 4,
+          "parts": [
+            "103",
+            "24.2"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 4,
+          "parts": [
+            "938",
+            "26.2"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 5,
+          "parts": [
+            "115",
+            "27.0"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 5,
+          "parts": [
+            "886",
+            "24.8"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 6,
+          "parts": [
+            "226",
+            "53.1"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 6,
+          "parts": [
+            "1737",
+            "48.6"
+          ]
+        },
+        {
+          "column": 1,
+          "template": "{} ({})",
+          "row": 7,
+          "parts": [
+            "160",
+            "37.6"
+          ]
+        },
+        {
+          "column": 2,
+          "template": "{} ({})",
+          "row": 7,
+          "parts": [
+            "1356",
+            "37.9"
+          ]
+        }
+      ]
+    },
+    "outcome_codes": {
+      "columns": [
+        "Concept",
+        "Coding system",
+        "Codes"
+      ],
+      "rows": [
+        [
+          "Hepatic injury",
+          "Event term (synthetic)",
+          "hepatic injury"
+        ],
+        [
+          "Example drug",
+          "Drug name (synthetic)",
+          "example-drug"
+        ]
+      ],
+      "caption": "Terms used to identify the exposure and the outcome.",
+      "composed": [
+        {
+          "column": 2,
+          "template": "",
+          "row": 0,
+          "codes": true
+        },
+        {
+          "column": 2,
+          "template": "",
+          "row": 1,
+          "codes": true
+        }
       ]
     }
+  },
+  "code_lists": {
+    "outcome_codes": [
+      {
+        "concept": "Hepatic injury",
+        "system": "Event term (synthetic)",
+        "codes": [
+          "hepatic injury"
+        ]
+      },
+      {
+        "concept": "Example drug",
+        "system": "Drug name (synthetic)",
+        "codes": [
+          "example-drug"
+        ]
+      }
+    ]
   }
 }

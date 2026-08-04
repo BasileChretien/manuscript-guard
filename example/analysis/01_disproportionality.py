@@ -105,6 +105,29 @@ def main() -> None:
         caption="Reports by drug group. Values are n (%) unless stated.",
     )
 
+    # The code lists the analysis selected on, published as RECORD 6.1 requires and as
+    # READUS-PV expects for a case definition. Handed over as lists rather than as a typed
+    # string: the emitter joins them, so the printed table is its output and the same
+    # definition is available to the code that filtered on it. These are the terms this
+    # synthetic generator uses; a real study would list a Standardised MedDRA Query or an
+    # explicit preferred-term list here, and that list *is* the case definition.
+    em.code_list(
+        "outcome_codes",
+        [
+            {
+                "concept": "Hepatic injury",
+                "system": "Event term (synthetic)",
+                "codes": ["hepatic injury"],
+            },
+            {
+                "concept": "Example drug",
+                "system": "Drug name (synthetic)",
+                "codes": ["example-drug"],
+            },
+        ],
+        caption="Terms used to identify the exposure and the outcome.",
+    )
+
     path = em.write()
     print(f"wrote {path}")
 

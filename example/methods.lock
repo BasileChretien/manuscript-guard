@@ -4,8 +4,8 @@
 # is that a person looked.
 
 schema: manuscript-guard/methods-lock/1
-reconciled_on: '2026-08-03'
+reconciled_on: '2026-08-04'
 parameters: {}
 analysis:
   analysis/00_simulate.py: 1597ab87090780aebfb9560def1d5e7c9d46c6c90aecc824ebd0ecd84383e299
-  analysis/01_disproportionality.py: 0ddcf04f6d011adc3da0c028253409cf54bc5871c214ae39208d3053fadc7bf7
+  analysis/01_disproportionality.py: 1a45bf43e69c21b191c308181d3884f564ecaab7656260a57f217d401a6b020a

@@ -16,6 +16,7 @@ is worse than none, because it produces confident coverage of the wrong things.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_structured, validate
@@ -23,6 +24,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_CHECKLISTS
+from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import headings
 
 GATE = "G5"
@@ -52,12 +54,78 @@ def completion_path(project: Project, name: str) -> Path:
     return project.root / COMPLETION_DIR / f"{name}.yaml"
 
 
+#: Reporting guidelines a manuscript might claim adherence to in prose. Named rather than
+#: pattern-matched, for the same reason the classifier's rules are: a shape would catch
+#: every capitalised acronym in the paper.
+CLAIMABLE = (
+    "STROBE", "RECORD-PE", "RECORD", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE",
+    "READUS-PV", "READUS", "MOOSE", "SQUIRE", "STARD", "COREQ", "SRQR", "CHEERS", "ENTREQ",
+)
+
+#: Words that turn a mention of a guideline into a claim of having followed it.
+_CLAIMING = re.compile(
+    r"(?i)\b(?:follow\w*|adher\w*|accord\w*|conform\w*|complian\w*|compliant|prepared|"
+    r"reported|written|guided|checklist|statement)\b"
+)
+
+_NAMED = re.compile(r"(?i)\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
+
+#: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
+#: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the
+#: first, because the match consumed the text the second one needed.
+_SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]|\n|$)")
+
+
+def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
+    """A guideline the manuscript says it followed must be one the project completed.
+
+    The worked example said "Analyses followed STROBE and RECORD-PE" while declaring a
+    different profile entirely — and RECORD-PE was the wrong guideline for its design. No
+    gate reconciled the sentence with the checklist, so a reader who went looking for the
+    RECORD-PE items would find none. An adherence claim nothing checks is exactly the
+    untraceable assertion this toolkit exists to remove, and it is a claim about the paper's
+    own conduct, which makes it worse than an unbound number.
+    """
+    report = Report()
+    named: dict[str, Path] = {}
+    for path in source_files(project.path("manuscript")):
+        # Masked, so a claim inside an HTML comment or a code block does not count. A
+        # comment reaches no document, and an author explaining a guideline in a note to
+        # themselves is not claiming to have followed it.
+        text = mask(path.read_text(encoding="utf-8"))
+        for sentence in _SENTENCE.finditer(text):
+            said = sentence.group(0)
+            if not _CLAIMING.search(said):
+                continue
+            for name in _NAMED.findall(said):
+                named.setdefault(name.upper(), path)
+
+    for name, path in sorted(named.items()):
+        if any(name == entry or name in entry or entry in name for entry in declared):
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="guideline-claimed-not-declared",
+                severity=WARN,
+                message=f"the manuscript says it followed {name}, which is not in "
+                f"`reporting_guideline:`",
+                path=path,
+                hint=f"declare {name} and complete its checklist, or drop the sentence; a "
+                f"reader will look for those items",
+            )
+        )
+    return report
+
+
 def check_reporting(project: Project) -> Report:
     wanted = project.reporting_guidelines
+    declared = {str(name).upper() for name in wanted}
+    claims = _claimed_in_prose(project, declared)
     if not wanted:
-        return Report(counts={"checklists": 0})
+        return claims.with_counts(checklists=0)
 
-    report = Report()
+    report = claims
     complete = 0
     manuscript = "\n\n".join(
         p.read_text(encoding="utf-8") for p in source_files(project.path("manuscript"))

@@ -91,7 +91,7 @@ def test_the_abstract_and_references_are_counted_apart(project: Path) -> None:
     counts = measure(text)
     assert counts.abstract_words > 0
     assert counts.main_text_words > counts.abstract_words
-    assert counts.tables == 2  # baseline characteristics and the 2 x 2
+    assert counts.tables == 3  # the code list, the 2 x 2, and baseline characteristics
     assert counts.figures == 1
 
 
@@ -264,3 +264,53 @@ def test_scaffolding_adds_only_new_items(project: Path) -> None:
     project_obj, _ = load_project(project)
     _path, _total, added = scaffold_completion(project_obj, "DEMO-OBS")
     assert added == 1
+
+
+# ------------------------------------------- a guideline claimed in prose but never declared
+
+
+def test_a_guideline_claimed_in_prose_must_be_declared(project: Path) -> None:
+    """The worked example said "Analyses followed STROBE and RECORD-PE" while declaring
+    neither — and RECORD-PE, which is for routinely collected health data, was the wrong
+    guideline for a spontaneous-report study altogether. Nothing caught it, because nothing
+    read the sentence. A reader who went looking for those items would find none.
+    """
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_reporting
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nAnalyses followed STROBE and RECORD-PE.\n",
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    report = check_reporting(projekt)
+    claimed = " ".join(
+        f.message for f in report.findings if f.code == "guideline-claimed-not-declared"
+    )
+    assert "STROBE" in claimed and "RECORD-PE" in claimed, claimed
+
+
+def test_a_guideline_named_in_a_comment_is_not_a_claim(project: Path) -> None:
+    """A comment reaches no document, and explaining a guideline is not following it."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_reporting
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n<!-- A real study would follow READUS-PV. -->\n",
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    codes = {f.code for f in check_reporting(projekt).findings}
+    assert "guideline-claimed-not-declared" not in codes
+
+
+def test_the_example_claims_no_guideline_it_has_not_completed(project: Path) -> None:
+    """The template every new user copies must model the behaviour the gate asks for."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_reporting
+
+    projekt, _ = load_project(project)
+    codes = {f.code for f in check_reporting(projekt).findings}
+    assert "guideline-claimed-not-declared" not in codes

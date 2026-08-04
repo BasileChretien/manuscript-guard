@@ -48,10 +48,37 @@ class Placeholder:
         return self.namespace in VALUE_NAMESPACES
 
 
+_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+
+def _without_comments(text: str) -> str:
+    """The same text with HTML comments blanked, offsets and line breaks intact.
+
+    Pandoc deletes an HTML comment, so a binding inside one is never rendered and never
+    substituted — and requiring it to resolve made an ordinary editing habit fail the gate.
+    Commenting out a draft paragraph and then removing the key it quoted reported
+    `unresolved-binding` against text that reaches no document. The project's own `init`
+    scaffold hit this on its first run: its guidance names `{{results.some_key}}` to explain
+    the syntax, and the explanation failed the check it was explaining.
+
+    Blanked rather than removed so every offset, line and column still refers to the file
+    the author is looking at.
+    """
+    if "<!--" not in text:
+        return text
+    out = list(text)
+    for match in _COMMENT.finditer(text):
+        for index in range(match.start(), match.end()):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
 def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:
     """Return well-formed placeholders and the malformed ones, with positions."""
     good: list[Placeholder] = []
     spans: set[tuple[int, int]] = set()
+    text = _without_comments(text)
     for match in PLACEHOLDER.finditer(text):
         namespace = match.group("ns")
         if namespace not in NAMESPACES:

@@ -59,3 +59,22 @@ def test_a_fresh_project_starts_at_design_and_passes_there(tmp_path: Path) -> No
     assert chosen == "design"
     assert report.ok, report.render(root)
     assert deferred, "the outstanding work is still listed, just not yet due"
+
+
+def test_a_scaffolded_project_passes_its_own_number_gate(tmp_path: Path) -> None:
+    """The first thing a new user sees must not fail the rule it is explaining.
+
+    The guidance paragraph named `p < 0.05` as an example of a convention and quoted two
+    bindings to show the syntax. All three were read as manuscript text: the p-value is a
+    convention only in Methods, and the two example keys do not exist. It is an HTML comment
+    now, which also stops it reaching the built document if the author forgets to delete it.
+    """
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "fresh"
+    root.mkdir()
+    init_project(root, title="T")
+    report, _project, _stage, _deferred = _run_gates(root, stage="drafting")
+    numbers = [f for f in report.findings if f.gate == "G2"]
+    assert not numbers, "\n".join(f.message for f in numbers)

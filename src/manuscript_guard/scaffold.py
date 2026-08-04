@@ -95,10 +95,18 @@ title: "{title}"
 
 # Introduction
 
-Write here. Any number you quote must be a binding: `{{{{results.some_key}}}}` for something
-your analysis computed, or `{{{{lit.some_key}}}}` for something taken from the literature.
+<!--
+Write here. Any number you quote must be a binding: {{{{results.some_key}}}} for something
+your analysis computed, or {{{{lit.some_key}}}} for something taken from the literature.
 A bare number in this file is a defect unless it is a recognised convention such as
 p < 0.05, or a pointer such as Table 1.
+
+An HTML comment for two reasons. It does not reach the built document, so scaffolding left
+in place cannot be published by an author who forgot it was there — and it is masked, so
+this paragraph's own "p < 0.05" does not trip the gate it is describing. That example is a
+convention only where the manuscript describes its own method; here in the Introduction it
+would be a reported finding, and reporting one means binding it.
+-->
 
 # Methods
 

@@ -544,3 +544,42 @@ def test_classifying_is_linear_in_the_number_of_atoms() -> None:
     small = measure(2000)
     large = measure(4000)
     assert large < small * 4 + 0.5, f"2000 atoms {small:.2f}s, 4000 atoms {large:.2f}s"
+
+
+# ------------------------------------------------------ bindings inside an HTML comment
+
+
+def test_a_binding_in_a_comment_need_not_resolve() -> None:
+    """Pandoc deletes an HTML comment, so what is inside one reaches no document.
+
+    Requiring it to resolve made an ordinary editing habit fail the gate: comment out a
+    draft paragraph, remove the key it quoted, and `unresolved-binding` was reported against
+    text nobody will ever read.
+    """
+    from manuscript_guard.text.placeholders import parse
+
+    found, malformed = parse("<!-- {{results.gone}} -->\n\nThe value is {{results.here}}.\n")
+    assert [p.ref for p in found] == ["results.here"]
+    assert not malformed
+
+
+def test_a_comment_does_not_shift_the_line_numbers_after_it() -> None:
+    """Blanked, not removed: every offset still refers to the file the author is reading."""
+    from manuscript_guard.text.placeholders import parse
+
+    found, _ = parse("<!--\na\nb\n-->\n{{results.here}}\n")
+    assert [p.line for p in found] == [5]
+
+
+def test_substitution_leaves_a_commented_binding_alone() -> None:
+    from manuscript_guard.text.placeholders import substitute
+
+    text = "<!-- {{results.x}} -->\n{{results.x}}\n"
+    assert substitute(text, {"results.x": "42"}) == "<!-- {{results.x}} -->\n42\n"
+
+
+def test_a_malformed_binding_in_a_comment_is_not_reported() -> None:
+    from manuscript_guard.text.placeholders import parse
+
+    _found, malformed = parse("<!-- {{results.}} -->\n")
+    assert not malformed

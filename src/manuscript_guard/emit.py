@@ -28,6 +28,7 @@ from pathlib import Path
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
 from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
+from manuscript_guard.tables import HEADER_ROW, TABLE_SECTION, problems_in
 
 SCHEMA = "manuscript-guard/results/1"
 
@@ -39,9 +40,7 @@ _NUMERIC_TEXT = re.compile(r"^\s*[-+−]?[\d,  ]*\d(?:[.,]\d+)?\s*%?\s*$")
 # Numbers inside a composite cell such as "3.84 (2.10 to 7.02)". Each must be traceable.
 _NUMBER_IN_TEXT = re.compile(r"\d[\d,  ]*(?:\.\d+)?")
 
-# The heading chain claimed for table text. A table is not a Methods section and not a figure
-# legend, so `methods_only` rules must not apply to what is written in one.
-TABLE_SECTION = ("Table",)
+__all__ = ["TABLE_SECTION", "Composed", "Emitter", "read_digest", "sha256_of", "write_digest"]
 
 
 @dataclass(frozen=True)
@@ -114,6 +113,7 @@ def _cell(
     computed: set[str],
     composed: set[tuple[str, int, int]],
     literals: dict[tuple[str, int, int], str],
+    parts_by_cell: dict[tuple[str, int, int], list[str]],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
     where = f"table {key!r} row {row} column {column}"
@@ -123,10 +123,12 @@ def _cell(
         computed.update(parts)
         composed.add((key, row, column))
         literals[(key, row, column)] = cell.literal
+        parts_by_cell[(key, row, column)] = list(parts)
         return text
     if isinstance(cell, Verbatim):
         composed.add((key, row, column))
         literals[(key, row, column)] = ""
+        parts_by_cell[(key, row, column)] = []
         return cell.text
     if isinstance(cell, bool):
         return str(cell)
@@ -140,6 +142,14 @@ def _cell(
                 f"{{column: digits}} mapping"
             ) from exc
         computed.add(shown)
+        # Recorded like a composed cell, because that is what it is: a number the emitter
+        # formatted. Only the emitter knew that, so a fragment's plain numeric cells were
+        # indistinguishable from typed ones the moment the check moved off the emitter —
+        # and the alternative, letting the gate accept any cell that is a single number,
+        # would wave through a 9999 typed straight into the file.
+        composed.add((key, row, column))
+        literals[(key, row, column)] = ""
+        parts_by_cell[(key, row, column)] = [shown]
         return shown
     if isinstance(cell, str):
         if _NUMERIC_TEXT.match(cell) and any(ch.isdigit() for ch in cell):
@@ -226,6 +236,10 @@ class Emitter:
     # emitter formatted is exempt from the emitted-value check; what the script typed
     # around it is not.
     _literals: dict[tuple[str, int, int], str] = field(default_factory=dict, init=False)
+    # The rendered parts of each composed cell, so the fragment can publish them. Once the
+    # cell check reads a fragment rather than this object, the parts are the only record
+    # that the numbers inside a composed template were formatted here.
+    _parts: dict[tuple[str, int, int], list[str]] = field(default_factory=dict, init=False)
     # Code lists as data, beside the table that prints them: RECORD 6.1 asks for the list,
     # and a list is more useful to a reader and to a later check than its rendering.
     _code_lists: dict[str, list[dict]] = field(default_factory=dict, init=False)
@@ -336,14 +350,17 @@ class Emitter:
             # way to write an ordinary table header at all. Passing a `Composed` used to
             # fail with "'Composed' object is not iterable" three frames away.
             "columns": [
-                _cell(key, -2, column, text, None, self._computed, self._composed, self._literals)
+                _cell(
+                    key, HEADER_ROW, column, text, None, self._computed, self._composed,
+                    self._literals, self._parts,
+                )
                 for column, text in enumerate(columns)
             ],
             "rows": [
                 [
                     _cell(
                         key, index, column, cell, digits, self._computed, self._composed,
-                        self._literals,
+                        self._literals, self._parts,
                     )
                     for column, cell in enumerate(row)
                 ]
@@ -471,13 +488,37 @@ class Emitter:
             "values": dict(self._values),
         }
         if self._tables:
-            document["tables"] = dict(self._tables)
+            document["tables"] = {
+                key: {**spec, **self._composition_of(key)} for key, spec in self._tables.items()
+            }
         if self._code_lists:
             # Beside the table that prints them, not instead of it. The table is what
             # RECORD 6.1 asks the reader for; the list is what a later check, or the next
             # study reusing the definition, actually wants.
             document["code_lists"] = dict(self._code_lists)
         return document
+
+    def _composition_of(self, key: str) -> dict:
+        """The `composed` block for one table, as the fragment publishes it.
+
+        Without this the check could never move off the emitter: a composed cell and a typed
+        one are the same characters by the time anyone reads the file. The literal is the
+        part of the template the script typed, and the parts are the displays the emitter
+        derived — the only record, once the emitter object is gone, that the numbers inside
+        the template were formatted here rather than keyed in.
+        """
+        entries = []
+        for (table, row, column), literal in sorted(self._literals.items()):
+            if table != key:
+                continue
+            entry: dict = {"column": column, "literal": literal}
+            if row != HEADER_ROW:
+                entry["row"] = row
+            parts = self._parts.get((table, row, column))
+            if parts:
+                entry["parts"] = list(parts)
+            entries.append(entry)
+        return {"composed": entries} if entries else {}
 
     def _check_composite_cells(self) -> None:
         """Every *claim* inside a text cell must be a value this analysis emitted.
@@ -488,95 +529,22 @@ class Emitter:
         tool abandoned. So the cell stays a string, and the numbers in it must be numbers
         this fragment published. A typed interval fails; a composed one passes.
 
-        Which numbers count as claims is decided by the same classifier the manuscript uses,
-        because a table cell is not a different kind of writing: "Age 18-44" and "Grade 3"
-        are labels in a table for exactly the reason they are labels in a sentence, and a
-        rule that made an author emit `18` as a result would be answered by not using
-        tables. One definition of a claim, applied everywhere.
+        The rule itself lives in `tables.py`, because G2 applies the same one to whatever is
+        on disk. Here it raises, naming the call that was just made; there it reports,
+        naming a file. One implementation either way: this check has been the only thing
+        standing behind "tables are emitted, not written", and it was reachable only from
+        the Python emitter.
 
-        Checked here rather than in `table()` because it needs every value, and a table may
-        legitimately be emitted before the values it quotes.
+        Checked at write time rather than in `table()` because it needs every value, and a
+        table may legitimately be emitted before the values it quotes.
         """
-        from manuscript_guard.classify import UNCLASSIFIED
-        from manuscript_guard.text.masking import mask
-        from manuscript_guard.text.tokens import find_atoms
-
         known = {spec["display"] for spec in self._values.values()} | self._computed
         known |= {shown.replace(",", "") for shown in known}
         classifier = self._classifier()
-
         for key, spec in self._tables.items():
-            # Captions and column headers are part of the table and are rendered with it, and
-            # neither was looked at: a caption reading "the reporting odds ratio of 12.34
-            # (95% CI 8.00 to 19.00)" and a header reading "Hepatic injury (n = 9999)" both
-            # went into the document unchecked, and survived a re-signed-fragment edit
-            # because `verify` did not compare them either.
-            places = [(f"caption of table {key!r}", spec.get("caption") or "", -1, -1)]
-            places += [
-                (f"table {key!r} column {column} header", text, -2, column)
-                for column, text in enumerate(spec["columns"])
-            ]
-            places += [
-                (f"table {key!r} row {row} column {column}", cell, row, column)
-                for row, cells in enumerate(spec["rows"])
-                for column, cell in enumerate(cells)
-            ]
-
-            for where, cell, row, column in places:
-                # A cell the emitter composed is checked on its template, not its result.
-                #
-                # Every part of a composed cell went through `derive_display`, so the
-                # numbers in it are traceable by construction — but the rendered text is
-                # not, because a template can glue them into something the tokenizer reads
-                # as one atom. `em.cell("{}/{}", 77, 412)` renders `77/412`, which is not
-                # "77" and not "412", so the commonest cell format in medicine could not be
-                # emitted at all: n/N was rejected as a number this analysis never produced.
-                #
-                # What still has to be checked is the literal part of the template, since
-                # that is the part the script typed. `em.cell("{} (n = 412)", 77)` would
-                # otherwise smuggle a count in under the exemption.
-                if (key, row, column) in self._composed:
-                    cell = self._literals.get((key, row, column), "")
-
-                # Two or more claims in one cell must have been composed, not typed.
-                #
-                # Membership of the emitted set is not enough on its own: it says each
-                # number came from this analysis, and nothing about which is which. So
-                # "ROR 5.12 (95% CI 3.84 to 2.89)" passed when 5.12, 3.84 and 2.89 were all
-                # emitted — a point estimate and both bounds, transposed. That is precisely
-                # the coincidental-match weakness this design claims not to have.
-                #
-                # One number is left as a set-membership check: a lone "77" that equals an
-                # emitted display has nowhere to be transposed to, and demanding `em.cell()`
-                # for every single-value cell would be friction with nothing behind it.
-                claims = [
-                    atom
-                    for atom in find_atoms(cell, mask(cell))
-                    if classifier.classify(atom, TABLE_SECTION).kind == UNCLASSIFIED
-                ]
-                if len(claims) > 1 and (key, row, column) not in self._composed:
-                    raise DisplayError(
-                        f"{where}: {cell!r} carries several numbers that were typed rather "
-                        f"than composed. Each being an emitted value says nothing about "
-                        f"which is which — a point estimate and its bounds can be "
-                        f"transposed and still pass. Build it with `em.cell(...)`: "
-                        f'em.cell("{{}} ({{}} to {{}})", point, low, high)'
-                    )
-
-                for atom in find_atoms(cell, mask(cell)):
-                    if atom.text in known or atom.text.replace(",", "") in known:
-                        continue
-                    # A results table is not a figure legend. Classifying with no section at
-                    # all let every `methods_only` rule apply, so `p < 0.001` typed straight
-                    # into a cell was accepted as a pre-specified threshold — in the one
-                    # place a *reported* p-value is most likely to be written.
-                    if classifier.classify(atom, TABLE_SECTION).kind != UNCLASSIFIED:
-                        continue
-                    raise DisplayError(
-                        f"{where}: {atom.text!r} in {cell!r} is not a value this analysis "
-                        f"emitted. Build it with `em.cell(...)` so the emitter formats it, "
-                        f"or emit {atom.text} as a value of its own"
-                    )
+            merged = {**spec, **self._composition_of(key)}
+            for problem in problems_in(key, merged, known, classifier):
+                raise DisplayError(f"{problem.where}: {problem.message}")
 
     def _classifier(self):
         """The project's classifier when there is a project, the shipped one otherwise."""

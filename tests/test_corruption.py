@@ -332,3 +332,79 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
         encoding="utf-8",
     )
     assert "unclassified-number" in codes(gate_report(project))
+
+
+# ------------------------------------- the table rule, applied to the file rather than the API
+
+
+def test_a_number_typed_into_a_fragment_table_is_caught(project: Path) -> None:
+    """"Tables are emitted, not written" was enforced only inside the Python emitter.
+
+    So it held for exactly as long as Python was the only language that could emit a table,
+    and it never held at all for a fragment someone edited afterwards: re-sign the file and
+    the cell was never looked at again. G2 now applies the same rule to what is on disk.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = "9999"
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes
+
+
+def test_a_transposed_interval_typed_into_a_fragment_is_caught(project: Path) -> None:
+    """The multi-claim rule too: every number emitted, in the wrong order."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = "3.84 (5.12 to 2.89)"
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "typed-composite-cell" in codes
+
+
+def test_claiming_a_cell_was_composed_does_not_launder_it(project: Path) -> None:
+    """The exemption records what the emitter formatted; the literal is still checked.
+
+    Otherwise the `composed` block would be a way to write anything into a table by adding
+    one entry to the fragment beside it.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = "9999"
+    document["tables"][key]["composed"] = [
+        {"row": 0, "column": 2, "literal": "9999", "parts": []}
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes

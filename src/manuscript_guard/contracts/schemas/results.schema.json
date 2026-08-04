@@ -68,7 +68,33 @@
             "items": { "type": "string" }
           }
         },
-        "quoted": { "type": "boolean", "default": true }
+        "quoted": { "type": "boolean", "default": true },
+        "composed": {
+          "type": "array",
+          "description": "Which cells the emitter built from numbers rather than receiving as text, and what it built them from. A composed cell and a typed one are the same characters by the time anyone reads this file, so without this record the rule that every number in a table was published by the analysis can only be enforced inside the emitter that wrote it — which makes it a rule an author steps around by switching language. With it, G2 applies the same rule to any fragment.",
+          "items": {
+            "type": "object",
+            "required": ["column", "literal"],
+            "additionalProperties": false,
+            "properties": {
+              "row": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Index into `rows`. Omitted for a column header."
+              },
+              "column": { "type": "integer", "minimum": 0 },
+              "literal": {
+                "type": "string",
+                "description": "The template with its placeholders removed: the part the script typed, which is checked like any other text. Without it, `\"{} (n = 412)\"` would smuggle a count in under the exemption."
+              },
+              "parts": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "The displays the emitter derived for this cell. The only record, once the emitter is gone, that the numbers inside the template were formatted here rather than keyed in."
+              }
+            }
+          }
+        }
       }
     },
     "value": {

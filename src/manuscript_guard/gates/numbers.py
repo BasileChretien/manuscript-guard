@@ -169,6 +169,7 @@ def check_numbers(
         report = report.merge(_fenced_code(path, text, classifier, headings))
 
     report = report.merge(_paper_yaml_prose(project, classifier))
+    report = report.merge(_emitted_tables(results, classifier))
 
     if by_project:
         listed = "; ".join(
@@ -343,6 +344,53 @@ def _hint_for(atom) -> str:
             "it is a result like any other"
         )
     return _GENERIC_HINT
+
+
+def _emitted_tables(results: Results, classifier: Classifier) -> Report:
+    """The same rule the emitter applies, applied to what is actually on disk.
+
+    "Tables are emitted, not written" rested entirely on a check inside the Python emitter,
+    which held for exactly as long as Python was the only language that could emit a table.
+    A rule enforced in one emitter is a rule an author steps around by switching language,
+    and the results fragment is meant to be a cross-language contract — so the check has to
+    be answerable from the fragment.
+
+    It also turns the guarantee from trusted into verified. A fragment written by hand, or
+    re-signed after an edit, or produced by an emitter nobody here has seen, is judged the
+    same way as one this package wrote a second ago.
+    """
+    from manuscript_guard.tables import problems_in
+
+    report = Report()
+    if not results.tables:
+        return report
+
+    known = {value.display for value in results.values.values()}
+    for table in results.tables.values():
+        for entry in table.composed:
+            known.update(str(part) for part in (entry.get("parts") or ()))
+    known.discard("")
+    known |= {shown.replace(",", "") for shown in known}
+
+    for key, table in results.tables.items():
+        spec = {
+            "columns": list(table.columns),
+            "rows": [list(row) for row in table.rows],
+            "caption": table.caption,
+            "composed": list(table.composed),
+        }
+        for problem in problems_in(key, spec, known, classifier):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code=problem.code,
+                    message=f"{problem.where}: {problem.message}",
+                    path=table.source,
+                    hint="emit the table from the analysis rather than editing the fragment; "
+                    "a cell nothing published is a number with no origin",
+                )
+            )
+    return report
 
 
 def _coverage(results: Results, literature: Literature, referenced: set[str]) -> Report:

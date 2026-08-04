@@ -43,6 +43,11 @@ class Table:
     align: tuple[str, ...]
     quoted: bool
     source: Path
+    # Which cells the emitter composed, and the literal text of each template. Carried so
+    # G2 can apply the emitter's own cell rule to a fragment whoever wrote it — the rule
+    # used to be reachable only from inside the Python emitter, which made it a rule an
+    # author stepped around by switching language.
+    composed: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -183,6 +188,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 align=tuple(spec.get("align") or ["left"] * len(columns)),
                 quoted=spec.get("quoted", True),
                 source=path,
+                composed=tuple(spec.get("composed") or ()),
             )
 
     merged = merge_all(reports).with_counts(

@@ -139,6 +139,27 @@ def test_a_clean_build_keeps_the_plain_name(project: Path) -> None:
 
 
 @needs_pandoc
+def test_a_built_document_that_no_longer_matches_its_source_is_reported(project: Path) -> None:
+    """Nothing linked the .docx to the manuscript it came from.
+
+    So editing the source and forgetting to rebuild left every gate green over a document
+    still holding the old number — and that document is the file a co-author opens and a
+    journal receives. Not due until internal review, because a stale build while drafting
+    is normal: you rebuild when you need it.
+    """
+    assert run("build", str(project), "--offline") == 0
+    assert run("check", str(project), "--stage", "internal-review") == 0
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nA later thought.\n", encoding="utf-8")
+
+    assert run("check", str(project), "--stage", "drafting") == 0, "not due yet while drafting"
+    assert run("check", str(project), "--stage", "internal-review") == 1
+    assert run("build", str(project), "--offline") == 0
+    assert run("check", str(project), "--stage", "internal-review") == 0
+
+
+@needs_pandoc
 def test_an_overridden_submission_pack_records_that_in_its_manifest(project: Path) -> None:
     """The pack was byte-indistinguishable from one that passed. Six months later nobody
     can tell, and the manifest's whole purpose is to be the thing you can tell from."""

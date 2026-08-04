@@ -1,6 +1,6 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **All eight phases built and tested.** 558 tests pass,
+Status: design agreed 2026-08-03. **All eight phases built and tested.** 564 tests pass,
 including the corruption harness described below and the regression tests from two
 adversarial rounds. What remains is listed under Known gaps.
 
@@ -909,6 +909,10 @@ gaps below for what remains.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **A fenced block tagged with a language the lexer does not know is not read.** Only
+  Python and R have lexers, so a ```stata or ```sql listing is reported as unread rather
+  than checked. Saying so is the point; it is still a hole an author could tag their way
+  into.
 - **`verify` cannot hide from the code it runs.** The two easy tells are gone — no
   environment variable, no `manuscript-guard-verify-` in the scratch path — but a script can
   still notice it is running under the system temp directory. An analysis written to deceive
@@ -920,20 +924,6 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a fresh vector — which is how the wrong figure actually reaches a journal. There is no
   `verify` equivalent for figures, because re-rendering is not reproducible across
   plotting-library versions.
-- **A figure review covers the vector, not the raster that ships.** `content_sha256` is
-  over the file G10 could read; the .docx embeds the raster.
-- **The composite-cell rule is set membership.** A cell of "ROR 5.12 (95% CI 3.84 to 2.89)"
-  passes if 5.12, 3.84 and 2.89 are all emitted values, whatever they mean — the point
-  estimate and both bounds can be transposed. `em.cell()` composes cells correctly; nothing
-  forces its use.
-- **Setext headings are not recognised.** A manuscript written with `Methods\n-------` has
-  no sections at all as far as G2, G4 and the reporting gate are concerned. Pandoc renders
-  them.
-- **G2 is loud on Methods prose containing code.** Unmasking fenced blocks means a
-  legitimate `## Statistical analysis` section quoting `1.96`, a seed, or a package version
-  produces failures, and there is no `software-version` structural rule. The documented exit
-  is `conventions:`, which is the mechanism most likely to make G2 vacuous — so this is a
-  real cost of a real fix, not a clean win.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -1039,9 +1029,6 @@ Closed since, and why each mattered:
   looking is worse than none, because it makes an unexamined figure look examined.
 - **Changing the digest algorithm invalidates every stored review.** There is no version
   field on `content_sha256` yet.
-- **Nothing checks that the built .docx matches the source it was built from.** A stale
-  `build/manuscript.docx` sitting beside changed sources is not reported; rebuilding is
-  cheap, but the gap is real.
 - **The offline build applies no journal style unless `--csl` is given.** Journal profiles
   arrive in phase 5.
 - **Supplements are concatenated into one document.** Separate files per additional file,

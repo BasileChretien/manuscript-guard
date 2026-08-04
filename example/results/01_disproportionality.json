@@ -3,13 +3,13 @@
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
     "generated_by_sha256": "0ddcf04f6d011adc3da0c028253409cf54bc5871c214ae39208d3053fadc7bf7",
-    "generated_at": "2026-08-03T14:05:54+00:00",
+    "generated_at": "2026-08-04T01:06:53+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
     "vcs": {
-      "sha": "e74c0918a05c3c79b5f89f5a7035b3f80b296a38",
+      "sha": "624ae9523279e414b4b0277f87155f015b15d3d8",
       "dirty": true,
       "branch": "main"
     },

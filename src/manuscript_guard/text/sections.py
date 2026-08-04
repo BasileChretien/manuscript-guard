@@ -22,7 +22,25 @@ from dataclasses import dataclass
 
 from manuscript_guard.text.masking import FRONTMATTER, mask
 
-HEADING = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
+_ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
+
+# Setext: a line of text underlined with `=` (level 1) or `-` (level 2). Pandoc renders
+# these, and nothing here saw them — so a manuscript written in that style had no sections
+# at all as far as G2, G4 and the reporting gate were concerned: no required-section check,
+# no abstract, and every `methods_only` rule silently inapplicable.
+#
+# The underline is `=+` or `-{3,}`. Three dashes rather than one, because a shorter run is
+# more often a stray than a heading, and because `---` closing YAML front matter would
+# otherwise turn its last line into a heading — which is why `_scannable` blanks the front
+# matter before any of this runs.
+_SETEXT = re.compile(
+    r"^(?P<title>(?![ \t]*$)(?![ \t]*[-=]+[ \t]*$)(?![ \t]*[#>|])[^\n]+)\n"
+    r"(?P<under>=+|-{3,})[ \t]*$",
+    re.MULTILINE,
+)
+
+# Kept as the ATX pattern for callers that only ever meant `#` headings.
+HEADING = _ATX
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
@@ -88,7 +106,33 @@ def _scannable(text: str) -> str:
     def blank(match: re.Match[str]) -> str:
         return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
 
-    return _HTML_COMMENT.sub(blank, _FENCED_CODE.sub(blank, text))
+    out = _HTML_COMMENT.sub(blank, _FENCED_CODE.sub(blank, text))
+    # Front matter too, now that setext headings are recognised: its closing `---` sits
+    # directly under a YAML line, which would otherwise read as `key: value` underlined —
+    # a level-2 heading conjured out of the document's own delimiter.
+    opening = FRONTMATTER.match(out)
+    return blank(opening) + out[opening.end() :] if opening else out
+
+
+@dataclass(frozen=True)
+class _Found:
+    start: int
+    level: int
+    title: str
+
+
+def _headings_in(text: str) -> list[_Found]:
+    """Every heading, ATX and setext, in document order."""
+    scannable = _scannable(text)
+    found = [
+        _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
+        for m in _ATX.finditer(scannable)
+    ]
+    found += [
+        _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
+        for m in _SETEXT.finditer(scannable)
+    ]
+    return sorted(found, key=lambda f: f.start)
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -104,42 +148,45 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     it is a finding.
     """
     stack: list[tuple[int, str]] = []
-    for match in HEADING.finditer(_scannable(text)):
-        if match.start() > offset:
+    for found in _headings_in(text):
+        if found.start > offset:
             break
-        level = len(match.group("hashes"))
-        while stack and stack[-1][0] >= level:
+        while stack and stack[-1][0] >= found.level:
             stack.pop()
-        stack.append((level, match.group("title").strip()))
+        stack.append((found.level, found.title))
     return tuple(title for _level, title in stack)
 
 
 def split_sections(text: str) -> list[Section]:
     """Top-level structure. Subsections stay inside their parent's body."""
-    matches = list(HEADING.finditer(_scannable(text)))
+    matches = _headings_in(text)
     if not matches:
         return [Section(title="", level=0, body=text, line=1)]
 
     sections: list[Section] = []
-    preamble = text[: matches[0].start()].strip()
+    preamble = text[: matches[0].start].strip()
     if preamble:
         sections.append(Section(title="", level=0, body=preamble, line=1))
 
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+    for index, found in enumerate(matches):
+        end = matches[index + 1].start if index + 1 < len(matches) else len(text)
+        # Past the heading itself: the `#` line, or the title plus its underline.
+        body_from = text.find("\n", found.start)
+        if body_from != -1 and found.level and text[found.start] != "#":
+            body_from = text.find("\n", body_from + 1)
         sections.append(
             Section(
-                title=match.group("title").strip(),
-                level=len(match.group("hashes")),
-                body=text[match.end() : end],
-                line=text.count("\n", 0, match.start()) + 1,
+                title=found.title,
+                level=found.level,
+                body=text[(body_from if body_from != -1 else found.start) : end],
+                line=text.count("\n", 0, found.start) + 1,
             )
         )
     return sections
 
 
 def headings(text: str) -> list[str]:
-    return [m.group("title").strip() for m in HEADING.finditer(_scannable(text))]
+    return [found.title for found in _headings_in(text)]
 
 
 def count_words(text: str) -> int:

@@ -53,26 +53,49 @@ def test_prose_around_a_masked_region_is_still_read() -> None:
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [
-        ("Some `code with 42` inline.", ["42"]),
-        ("The odds ratio was `3.84`.", ["3.84"]),
-        ("```\nx <- 42\n```\n", ["42"]),
-        ("Result:\n\n```\nROR 3.84\n```\n", ["3.84"]),
-    ],
+    [("Some `code with 42` inline.", ["42"]), ("The odds ratio was `3.84`.", ["3.84"])],
 )
-def test_code_renders_so_code_is_read(text: str, expected: list) -> None:
-    """Both of these were masked, and both appear in the built .docx.
+def test_inline_code_renders_so_it_is_read_as_prose(text: str, expected: list) -> None:
+    """`3.84` in backticks prints as 3.84, and inline code is a word in a sentence.
 
-    `3.84` in backticks prints as 3.84, and a fenced block is a visible display element, so
-    a number could be published simply by wrapping it in punctuation. The argument for
-    masking code — not nagging a Methods section about `n = 42` — turns out to be an
-    argument about READMEs: G2 reads `manuscript/` only, and a paper that really does list
-    code can say so in `conventions:` with a reason.
+    Masking it meant a number could be published by wrapping it in punctuation. Fenced
+    blocks are a different case — see the fenced-block tests — because a listing's loop
+    bounds and indices are code, not claims, and reading them as prose put eleven failures
+    on one honest Methods section.
 
-    Word counting still excludes code. That question is "what would a journal count?", not
+    Word counting still excludes both. That question is "what would a journal count?", not
     "where is a digit not a claim?", and the two were sharing one answer.
     """
     assert atoms_of(text) == expected
+
+
+FENCE = "`" * 3
+
+
+def test_a_fenced_block_is_not_read_as_prose() -> None:
+    """Its numbers are code, and the prose classifier has no business judging them."""
+    assert atoms_of(f"Result:\n\n{FENCE}\nROR 3.84\n{FENCE}\n") == []
+
+
+@pytest.mark.parametrize(
+    ("body", "language", "codes"),
+    [
+        # A listing's own machinery: a seed, an index, a z-multiplier. Silent.
+        ("set.seed(20240115)\nci <- exp(log(r) + c(-1, 1) * 1.96 * se)\n", "r", set()),
+        # A number the listing *prints* is a claim, because that is text in the document.
+        ('print("ROR 3.84 (95% CI 2.10 to 7.04)")\n', "python", {"code-block-text-number"}),
+        # A language with no lexer is said to be unread rather than passed over.
+        ("some untagged 4242 block\n", "", {"code-block-unread"}),
+    ],
+)
+def test_a_fenced_block_is_judged_as_code(body: str, language: str, codes: set) -> None:
+    from pathlib import Path
+
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = f"## Statistical analysis\n\n{FENCE}{language}\n{body}{FENCE}\n"
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert {f.code for f in report.findings} == codes
 
 
 @pytest.mark.parametrize(

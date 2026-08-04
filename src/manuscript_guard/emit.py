@@ -64,7 +64,13 @@ class Composed:
 
 
 def _cell(
-    key: str, row: int, column: int, cell: object, digits: int | dict | None, computed: set[str]
+    key: str,
+    row: int,
+    column: int,
+    cell: object,
+    digits: int | dict | None,
+    computed: set[str],
+    composed: set[str],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
     where = f"table {key!r} row {row} column {column}"
@@ -72,6 +78,7 @@ def _cell(
     if isinstance(cell, Composed):
         text, parts = cell.render(where)
         computed.update(parts)
+        composed.add(text)
         return text
     if isinstance(cell, bool):
         return str(cell)
@@ -161,6 +168,10 @@ class Emitter:
     # Display strings this emitter formatted itself, inside a Composed cell. They are
     # traceable for the same reason an emitted value is: the emitter did the rounding.
     _computed: set[str] = field(default_factory=set, init=False)
+    # Cell texts the emitter itself composed, via `cell()`. A typed string and a composed
+    # one are the same characters by the time they are checked; only this records which
+    # was which.
+    _composed: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -264,7 +275,7 @@ class Emitter:
             "columns": list(columns),
             "rows": [
                 [
-                    _cell(key, index, column, cell, digits, self._computed)
+                    _cell(key, index, column, cell, digits, self._computed, self._composed)
                     for column, cell in enumerate(row)
                 ]
                 for index, row in enumerate(rows)
@@ -385,6 +396,31 @@ class Emitter:
             ]
 
             for where, cell in places:
+                # Two or more claims in one cell must have been composed, not typed.
+                #
+                # Membership of the emitted set is not enough on its own: it says each
+                # number came from this analysis, and nothing about which is which. So
+                # "ROR 5.12 (95% CI 3.84 to 2.89)" passed when 5.12, 3.84 and 2.89 were all
+                # emitted — a point estimate and both bounds, transposed. That is precisely
+                # the coincidental-match weakness this design claims not to have.
+                #
+                # One number is left as a set-membership check: a lone "77" that equals an
+                # emitted display has nowhere to be transposed to, and demanding `em.cell()`
+                # for every single-value cell would be friction with nothing behind it.
+                claims = [
+                    atom
+                    for atom in find_atoms(cell, mask(cell))
+                    if classifier.classify(atom, TABLE_SECTION).kind == UNCLASSIFIED
+                ]
+                if len(claims) > 1 and cell not in self._composed:
+                    raise DisplayError(
+                        f"{where}: {cell!r} carries several numbers that were typed rather "
+                        f"than composed. Each being an emitted value says nothing about "
+                        f"which is which — a point estimate and its bounds can be "
+                        f"transposed and still pass. Build it with `em.cell(...)`: "
+                        f'em.cell("{{}} ({{}} to {{}})", point, low, high)'
+                    )
+
                 for atom in find_atoms(cell, mask(cell)):
                     if atom.text in known or atom.text.replace(",", "") in known:
                         continue

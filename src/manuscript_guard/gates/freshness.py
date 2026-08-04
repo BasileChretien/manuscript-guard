@@ -124,9 +124,50 @@ def check_freshness(project: Project, results: Results) -> Report:
                     )
                 )
 
+    report = report.merge(_check_built_document(project))
     return report.with_counts(
         fragments_checked=len(results.fragments), inputs_checked=checked_inputs
     )
+
+
+def _check_built_document(project: Project) -> Report:
+    """Is the .docx on disk the one this manuscript would produce?
+
+    Nothing checked. A stale `build/manuscript.docx` beside changed sources passed silently,
+    and that is the file a co-author opens and a journal receives — edit the manuscript,
+    forget to rebuild, and every gate stays green over a document holding the old number.
+    Rebuilding is cheap; knowing you need to is the part that was missing.
+
+    Only checked when a document exists and carries the stamp `build` writes beside it, so
+    a project that has never built, or built with an older version, is not nagged.
+    """
+    from manuscript_guard.build.document import SOURCE_STAMP
+    from manuscript_guard.gates.review import manuscript_digest
+
+    report = Report()
+    build_dir = project.path("build")
+    if not build_dir.exists():
+        return report
+
+    for document in sorted(build_dir.glob("*.docx")):
+        stamp = document.with_name(document.name + SOURCE_STAMP)
+        if not stamp.exists():
+            continue
+        recorded = stamp.read_text(encoding="utf-8").split()[0].strip()
+        if recorded == manuscript_digest(project):
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="document-stale",
+                message=f"{document.name} was built from a different manuscript than the one "
+                f"on disk",
+                path=document,
+                hint="rebuild with `manuscript-guard build`; this is the file a co-author "
+                "opens, and it currently disagrees with the source every gate just passed",
+            )
+        )
+    return report
 
 
 def _check_digest(path: Path) -> Report:

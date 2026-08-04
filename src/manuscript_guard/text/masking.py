@@ -40,14 +40,22 @@ _KEY_LINE = re.compile(
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
 # that is partly machinery and partly prose.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    # Inline code and fenced blocks are NOT masked, though they once were. Both render:
-    # `3.84` in backticks appears in the .docx as 3.84, and a fenced block is a visible
-    # display element. Masking them meant a number could be published by wrapping it in
-    # punctuation. The usual argument for masking code — that a Methods section describing
-    # `p.adjust()` should not be nagged about `n = 42` — turns out to be an argument about
-    # READMEs rather than manuscripts: G2 reads `manuscript/` only, and a paper that
-    # genuinely lists code can declare it in `conventions:` with a reason, which is the
-    # visible, per-project escape this toolkit prefers to a silent global one.
+    # A fenced block is masked *here* and read by a different reader. Inline code is not
+    # masked at all.
+    #
+    # Both render, so neither may go unchecked: `3.84` in backticks prints as 3.84. But they
+    # are not the same kind of text. Inline code is a word in a sentence, and the prose rules
+    # are the right ones for it. A fenced block is a *listing*, and judging its contents as
+    # prose produced eleven failures on one honest Methods section — `1.96`, `sqrt(1/a`,
+    # `set.seed(20240115`, a package version — which is the pressure that drives an author to
+    # `conventions:`, the one mechanism that makes G2 vacuous. So G2 masks fenced blocks and
+    # `check_numbers` runs the *code* checker over them instead, the same one G3 uses on
+    # figure scripts: a number inside a string literal in the listing is still a claim, a
+    # loop bound is not.
+    (
+        "fenced-code",
+        re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.DOTALL | re.MULTILINE),
+    ),
     ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),

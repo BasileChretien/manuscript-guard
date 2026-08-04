@@ -218,6 +218,22 @@ def test_a_raster_is_only_skipped_when_the_pairing_is_recorded(project: Path) ->
     assert "figure-render-unproven" in codes_found
 
 
+def test_the_review_digest_covers_every_format_of_the_figure(project: Path) -> None:
+    """G10 digested the vector, because that is the file it can read.
+
+    The .docx embeds the raster, so the picture that actually ships was under no review
+    currency at all: replace the PNG and the review stayed green. Reviewing one file and
+    shipping another is the whole of that gap.
+    """
+    from manuscript_guard.gates.figures import content_digest
+
+    figures = project / "figures"
+    before = content_digest(figures / "forest.svg")
+    png = figures / "forest.png"
+    png.write_bytes(png.read_bytes() + b"retouched")
+    assert content_digest(figures / "forest.svg") != before
+
+
 def test_a_stale_manifest_after_the_script_changed_is_refused(project: Path) -> None:
     """One of the three things the manifest genuinely catches. See render.same_render."""
     from manuscript_guard.render import same_render

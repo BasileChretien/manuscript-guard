@@ -11,6 +11,7 @@ part of the gate rather than a footnote in its output.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
@@ -135,6 +136,8 @@ def check_numbers(
                 )
             )
 
+        report = report.merge(_fenced_code(path, text, classifier))
+
     if by_project:
         listed = "; ".join(
             f"{rule} ({count})" for rule, count in sorted(by_project.items(), key=lambda i: -i[1])
@@ -163,6 +166,47 @@ def check_numbers(
         atoms_convention=totals["convention"],
         atoms_project_exempt=totals["project"],
     )
+
+
+_FENCE = re.compile(
+    r"^[ \t]*(?P<tick>`{3,}|~{3,})(?P<lang>[^\n]*)\n(?P<body>.*?)^[ \t]*(?P=tick)[ \t]*$",
+    re.DOTALL | re.MULTILINE,
+)
+
+
+def _fenced_code(path: Path, text: str, classifier: Classifier) -> Report:
+    """Numbers inside a fenced block, judged as code rather than as prose.
+
+    A listing renders, so it cannot go unchecked — but its numbers are code. Read as prose
+    they produced eleven failures on one honest `## Statistical analysis` section: a `1.96`,
+    a seed, a slice index, a package version. That is friction on correct writing, which is
+    how a gate comes to be switched off, and the documented escape is `conventions:` — the
+    one mechanism that makes G2 vacuous.
+
+    So the same reader G3 uses on figure scripts runs here. A number in a string literal is
+    a claim, because that is text the listing prints; a loop bound, an index or an argument
+    is not. A block whose language the lexer does not know is left alone and said to be
+    left alone, rather than passed over in silence.
+    """
+    from manuscript_guard.gates.figure_source import judge_code_numbers
+
+    report = Report()
+    for match in _FENCE.finditer(text):
+        tag = match.group("lang").strip()
+        language = tag.split()[0].lower() if tag else ""
+        line = text.count("\n", 0, match.start()) + 1
+        report = report.merge(
+            judge_code_numbers(
+                match.group("body"),
+                language,
+                path=path,
+                line_offset=text.count("\n", 0, match.start("body")),
+                gate=GATE,
+                classifier=classifier,
+                what=f"fenced block at line {line}",
+            )
+        )
+    return report
 
 
 def _coverage(results: Results, literature: Literature, referenced: set[str]) -> Report:

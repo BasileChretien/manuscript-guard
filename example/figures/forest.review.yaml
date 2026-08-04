@@ -1,6 +1,6 @@
 schema: manuscript-guard/figure-review/1
 figure: forest.svg
-content_sha256: 593aa0abc901a74b919acc3ae2e87b83ad013f1c27828e5f5b7f5afa51bfde43
+content_sha256: 2948e18c5539da867189c1752117d0a008691fca3525856e02f10fa506053cb1
 reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
 caption_checked_against: manuscript/main.md

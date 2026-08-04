@@ -63,6 +63,18 @@ structural:
     # is now required, which is what the `why` above always claimed.
     pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?|months?|weeks?|days?)\b'
 
+  - id: software-version
+    why: >-
+      A software version names a thing, it does not measure one. Methods sections are
+      required to state them - STROBE and READUS-PV both ask - and G2 was failing the very
+      sentence the methods ledger exists to make an author write.
+    # Named or shaped, never a bare `\d+\.\d+`. The first draft of this rule matched any
+    # two-part decimal and promptly classified an odds ratio of 3.84 and a z of 1.96 as
+    # software versions - the same shape-not-value mistake five other rules had to be
+    # corrected for. Three or more components is essentially never a measurement; two
+    # components need either an explicit `v` or a named piece of software in front.
+    pattern: '(?i)\b\d+\.\d+(?:[.\-][A-Za-z0-9]+)+\b|\bv(?:er(?:sion)?)?\.?\s*\d+\.\d+[A-Za-z0-9.\-]*|\b(?:R|Python|Julia|SAS|Stata|SPSS|MATLAB|Excel|pandoc|Zotero|Word|pandas|numpy|scipy|statsmodels|scikit-learn|ggplot2|dplyr|tidyverse|epitools|jsonlite|matplotlib|lme4|survival|meta|metafor)\s+\d+\.\d+[A-Za-z0-9.\-]*'
+
   - id: citation-locator
     why: >-
       A page, chapter or figure locator inside a citation bracket. Citation *keys* are

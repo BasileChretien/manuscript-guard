@@ -271,22 +271,54 @@ def test_a_label_containing_digits_is_not_a_claim(scratch: Path) -> None:
     assert em.document()["tables"]["t"]["rows"][0][0] == "Age 18-44"
 
 
-def test_a_typed_interval_in_a_cell_is_refused(scratch: Path) -> None:
+def test_a_cell_with_a_number_this_analysis_never_emitted_is_refused(scratch: Path) -> None:
+    """Caught at `table()` for a bare numeral, at `document()` for one inside a phrase."""
     em = emitter(scratch)
     em.value("ror", 3.8439, digits=2)
-    em.table("t", ["Outcome", "ROR (95% CI)"], [["Hepatic", "3.84 (2.10 to 7.02)"]])
+    em.table("t", ["Outcome", "ROR"], [["Hepatic", "about 9.99"]])
     with pytest.raises(DisplayError, match="not a value this analysis emitted"):
         em.document()
 
 
-def test_an_interval_composed_from_emitted_values_is_accepted(scratch: Path) -> None:
-    """The cell stays a string; the numbers in it have to be numbers this analysis published."""
+def test_several_typed_numbers_in_one_cell_are_refused_even_when_all_are_emitted(
+    scratch: Path,
+) -> None:
+    """Set membership says each number came from the analysis, not which is which.
+
+    So `ROR 5.12 (95% CI 3.84 to 2.89)` passed with the point estimate and both bounds
+    transposed — every one of them a real emitted value, in the wrong place. That is exactly
+    the coincidental-match weakness this design claims not to have.
+    """
+    em = emitter(scratch)
+    em.value("ror.point", 5.12, digits=2)
+    em.value("ror.low", 3.84, digits=2)
+    em.value("ror.high", 2.89, digits=2)
+    em.table("t", ["Outcome", "ROR (95% CI)"], [["Hepatic", "ROR 5.12 (95% CI 3.84 to 2.89)"]])
+    with pytest.raises(DisplayError, match="typed rather than composed"):
+        em.document()
+
+
+def test_the_same_interval_composed_is_accepted(scratch: Path) -> None:
+    """Identical characters; the difference is that the emitter placed each number."""
     em = emitter(scratch)
     em.value("ror.point", 3.8439, digits=2)
     em.value("ror.low", 2.1043, digits=2)
     em.value("ror.high", 7.0211, digits=2)
-    em.table("t", ["Outcome", "ROR (95% CI)"], [["Hepatic", "3.84 (2.10 to 7.02)"]])
+    em.table(
+        "t",
+        ["Outcome", "ROR (95% CI)"],
+        [["Hepatic", em.cell("{} ({} to {})", (3.8439, 2), (2.1043, 2), (7.0211, 2))]],
+    )
     assert em.document()["tables"]["t"]["rows"][0][1] == "3.84 (2.10 to 7.02)"
+
+
+def test_one_emitted_number_in_a_cell_still_passes(scratch: Path) -> None:
+    """A lone value has nowhere to be transposed to, so demanding em.cell() would be
+    friction with nothing behind it."""
+    em = emitter(scratch)
+    em.value("n.cases", 77)
+    em.table("t", ["Group", "n"], [["Exposed", 77]])
+    assert em.document()["tables"]["t"]["rows"][0][1] == "77"
 
 
 def test_a_composed_cell_is_formatted_by_the_emitter(scratch: Path) -> None:

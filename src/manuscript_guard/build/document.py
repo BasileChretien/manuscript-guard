@@ -17,6 +17,7 @@ cannot go stale: nothing is ever carried across by hand, so there is nothing to 
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import subprocess
 import urllib.error
@@ -186,7 +187,28 @@ def build_document(
         )
     if mode == LIVE:
         report = report.merge(_verify_live_fields(output))
+    _stamp_source(project, output)
     return BuildResult(output=output, mode=mode, report=report)
+
+
+SOURCE_STAMP = ".source.sha256"
+
+
+def _stamp_source(project, output: Path) -> None:
+    """Record which manuscript this document was built from.
+
+    Nothing linked the two, so a `build/manuscript.docx` sitting beside changed sources was
+    not reported by anything: edit the manuscript, do not rebuild, and `check` passes over a
+    document that still holds the old number. It is the .docx a co-author opens and a
+    journal receives, which makes it the worst file in the project to leave unexamined.
+    """
+    from manuscript_guard.gates.review import manuscript_digest
+
+    # A build that produced the document must not fail over its receipt.
+    with contextlib.suppress(OSError):
+        output.with_name(output.name + SOURCE_STAMP).write_text(
+            f"{manuscript_digest(project)}  {output.name}\n", encoding="utf-8", newline="\n"
+        )
 
 
 def _verify_live_fields(docx: Path) -> Report:

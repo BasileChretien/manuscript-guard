@@ -30,7 +30,12 @@ import yaml
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.text.code import CodeNumber, language_of, numbers_in
+from manuscript_guard.text.code import (
+    CodeNumber,
+    language_of,
+    language_of_tag,
+    numbers_in,
+)
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.tokens import find_atoms
 
@@ -108,6 +113,69 @@ def source_allowlist(script: Path) -> dict[str, str]:
 
     sidecar = script.with_name(f"{script.stem}.guard.yaml")
     return dict(_declared(sidecar, "allow_source"))
+
+
+def judge_code_numbers(
+    body: str,
+    language: str,
+    *,
+    path: Path,
+    line_offset: int,
+    gate: str,
+    classifier: Classifier,
+    what: str,
+) -> Report:
+    """Numbers in a code listing embedded in prose, judged as code.
+
+    Narrower than `check_figure_source`, deliberately. A figure script is checked for
+    hardcoded *data* as well, because its job is to draw the results and typing them in
+    defeats that. A listing in a manuscript is quoted code: its loop bounds, indices and
+    arguments are part of what is being shown, and reporting them is friction on correct
+    writing. What still matters is a number inside a **string literal** — that is text the
+    listing prints, and printing a result is publishing it.
+
+    A language the lexer does not know is reported as unread rather than passed over, for
+    the same reason a `.jl` figure script is.
+    """
+    known = language_of_tag(language) if language else None
+    if known is None:
+        if not any(ch.isdigit() for ch in body):
+            return Report()
+        return Report(
+            (
+                Finding(
+                    gate=gate,
+                    code="code-block-unread",
+                    severity=WARN,
+                    message=f"{what} contains numbers but its language "
+                    f"({language or 'unspecified'}) has no lexer, so they were not judged",
+                    path=path,
+                    line=line_offset + 1,
+                    hint="tag the fence with a language the toolkit reads (python, r), or "
+                    "check the block yourself — it renders in the document",
+                ),
+            )
+        )
+
+    report = Report()
+    for number in numbers_in(body, known):
+        if not number.in_string:
+            continue
+        if _judge_string_number(number, classifier) is None:
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=gate,
+                code="code-block-text-number",
+                message=f"{number.text!r} is written into text that this code prints",
+                path=path,
+                line=line_offset + number.line,
+                context=number.line_text.strip()[:160],
+                hint="a listing may show code; a number it prints is a claim like any "
+                "other, so bind it or take it out of the example",
+            )
+        )
+    return report
 
 
 def check_figure_source(script: Path, classifier: Classifier) -> Report:

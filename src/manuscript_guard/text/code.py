@@ -228,3 +228,18 @@ def _names(stack: list[list[str | None]], target: str | None) -> tuple[str, ...]
 
 def language_of(suffix: str) -> str | None:
     return LANGUAGE_BY_SUFFIX.get(suffix.lower())
+
+
+# What an author writes after the opening fence. Separate from the suffix table because a
+# fence is tagged by language name, not by file extension: ```python, not ```.py.
+LANGUAGE_BY_TAG = {
+    "python": PYTHON,
+    "py": PYTHON,
+    "python3": PYTHON,
+    "r": R,
+    "rscript": R,
+}
+
+
+def language_of_tag(tag: str) -> str | None:
+    return LANGUAGE_BY_TAG.get(tag.strip().lower())

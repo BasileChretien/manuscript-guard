@@ -60,6 +60,7 @@ BINDS_AT = {
     "no-results": DRAFTING,
     "authors-incomplete": DRAFTING,
     "unclassified-number": DRAFTING,
+    "code-block-text-number": DRAFTING,
     "hand-authored-table": DRAFTING,
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,
@@ -102,6 +103,9 @@ BINDS_AT = {
     "checklist-item-unanswered": INTERNAL_REVIEW,
     "checklist-non-reason": INTERNAL_REVIEW,
     "methods-drift": INTERNAL_REVIEW,
+    # A stale build is normal while drafting — you rebuild when you need the document. It
+    # stops being normal once the draft is something other people read.
+    "document-stale": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

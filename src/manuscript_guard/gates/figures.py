@@ -323,7 +323,30 @@ def content_digest(figure: Path) -> str:
     Used by the review gate to tell "this figure changed" from "this figure was rendered
     again". Two things have to be normalised away first: the render timestamp that
     plotting libraries stamp into the metadata, and their randomly generated element ids.
+
+    Covers **every rendered format of the figure**, not just the one the reviewer looked at.
+    G10 used to digest the vector alone, because that is the file it can read — but the
+    .docx embeds the raster, so the picture that actually ships was under no review
+    currency at all: replace the PNG and the review stayed green. Reviewing the SVG and
+    shipping a different PNG is the whole of that gap.
     """
+    import hashlib
+
+    siblings = sorted(
+        path
+        for path in figure.parent.glob(f"{figure.stem}.*")
+        if path.suffix.lower() in TEXT_FORMATS | OPAQUE_FORMATS
+    )
+    if len(siblings) > 1:
+        combined = hashlib.sha256()
+        for path in siblings:
+            combined.update(path.name.encode("utf-8"))
+            combined.update(_one_digest(path).encode("ascii"))
+        return combined.hexdigest()
+    return _one_digest(figure)
+
+
+def _one_digest(figure: Path) -> str:
     import hashlib
 
     if figure.suffix.lower() == ".svg":

@@ -49,6 +49,17 @@ Get the digest the record must carry:
 manuscript-guard review --digest
 ```
 
+If the manuscript is split across several files, record instead which of them this reviewer
+read, so a later edit elsewhere does not void their work:
+
+```bash
+manuscript-guard review --files
+```
+
+Paste the block, then delete the lines for files outside the remit. List honestly: a round
+stays incomplete while some manuscript file is on nobody's list, so trimming the map moves
+work to another reviewer rather than making it disappear.
+
 Write `review/round-<n>/<reviewer-id>.yaml`. Severity means something:
 
 - **major** — blocks a submission build until answered. The paper's claim does not follow,
@@ -68,7 +79,7 @@ was not. **An override is a legitimate answer to a reviewer; silence is not.** R
 reason is what makes it a decision rather than an oversight, and it is the thing you will
 want when a real reviewer asks the same question.
 
-Changing the manuscript changes its digest, which marks the reviews stale — correctly. Once
+Changing a file a reviewer read marks their review stale — correctly. Once
 the round's findings are addressed, re-review against the new text and update the records.
 
 ## 4. The second panel is blinded

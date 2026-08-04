@@ -49,6 +49,40 @@ def manuscript_digest(project: Project) -> str:
     return digest.hexdigest()
 
 
+def file_digests(project: Project) -> dict[str, str]:
+    """One digest per manuscript file, so a record can say what it actually read."""
+    return {
+        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source_files(project.path("manuscript"))
+    }
+
+
+def stale_files(recorded: dict, project: Project) -> list[str]:
+    """Of the files a record says it read, which have changed or gone.
+
+    `manuscript_digest` hashes every byte of every file, and `review-stale` is a hard
+    failure at submission — so removing one comma from the Discussion invalidated both
+    completed panel rounds, including the biostatistician's read of the Methods.
+    Copy-editing is the last thing anyone does to a paper, which put the harshest failure
+    in the toolkit at the worst possible moment.
+
+    So a record may list the files it read, and is judged on those alone. That is scoping,
+    not leniency: it only holds because `review-uncovered` separately refuses to call a
+    round complete while some manuscript file is in nobody's list. Without that companion
+    check this would be a way to review one file and pass.
+
+    Empty when the record lists nothing — an older record falls back to the
+    whole-manuscript comparison its writer intended, rather than being silently treated as
+    current.
+    """
+    if not isinstance(recorded, dict) or not recorded:
+        return []
+    current = file_digests(project)
+    return sorted(
+        name for name, digest in recorded.items() if current.get(name) != digest
+    )
+
+
 def document_digest(project: Project) -> str:
     """Everything that decides what a built document says: the prose *and* the results.
 
@@ -194,6 +228,11 @@ def _check_round(
     directory = round_dir(project, number)
     unresolved: list[Open] = []
     complete = True
+    # A record that lists no files read the whole manuscript, so one of those settles
+    # coverage for the round. Otherwise coverage is the union of what the records listed.
+    covered: set[str] = set()
+    read_everything = False
+    records = 0
 
     for reviewer in panel["reviewers"]:
         path = directory / f"{reviewer['id']}.yaml"
@@ -218,14 +257,30 @@ def _check_round(
             complete = False
             continue
 
-        if document["manuscript_sha256"] != current:
+        # Per file when the record says which files it read, whole-manuscript otherwise.
+        # Hashing every byte of every file meant one comma in the Discussion voided both
+        # completed rounds — and `review-stale` is a hard failure at submission, so the
+        # harshest check in the toolkit fired at the moment an author is copy-editing.
+        records += 1
+        read = document.get("file_sha256")
+        if isinstance(read, dict) and read:
+            changed = stale_files(read, project)
+            outdated = bool(changed)
+            covered |= set(read)
+        else:
+            changed = []
+            outdated = document["manuscript_sha256"] != current
+            read_everything = True
+        if outdated:
             complete = False
+            named = f" ({', '.join(changed)})" if changed else ""
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="review-stale",
                     severity=severity,
-                    message=f"round {number}: {reviewer['id']} reviewed an earlier manuscript",
+                    message=f"round {number}: {reviewer['id']} reviewed an earlier "
+                    f"manuscript{named}",
                     path=path,
                     context=f"reviewed {document['reviewed_on']} by {document['reviewed_by']}",
                     hint="the text has changed since; re-review, or accept that the finding "
@@ -243,6 +298,26 @@ def _check_round(
                 unresolved.append(
                     Open(reviewer=reviewer["id"], finding_id=finding["id"], text=finding["finding"])
                 )
+
+    # What makes per-file scoping honest. A record listing the files it read is judged on
+    # those alone, which is only defensible while every manuscript file is on somebody's
+    # list — otherwise "reviewed" would mean "reviewed the Methods", and a Discussion added
+    # after the round would sail through as reviewed by people who never saw it.
+    if records and not read_everything:
+        uncovered = sorted(set(file_digests(project)) - covered)
+        if uncovered:
+            complete = False
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="review-uncovered",
+                    severity=severity,
+                    message=f"round {number}: no reviewer read {', '.join(uncovered)}",
+                    path=directory,
+                    hint="add the file to the `file_sha256` map of whoever read it, or give "
+                    "the round a reviewer whose remit covers it",
+                )
+            )
 
     return report, complete, unresolved
 

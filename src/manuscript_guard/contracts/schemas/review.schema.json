@@ -24,6 +24,12 @@
       "pattern": "^[0-9a-f]{64}$",
       "description": "The manuscript this review applies to. A rewritten Results section invalidates a review of the old one."
     },
+    "file_sha256": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[^/\\\\]+\\.md$" },
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+      "description": "The manuscript files this reviewer actually read, each with its digest, from `manuscript-guard review --files`. Judging a record on these alone means editing the Discussion no longer voids a review of the Methods - and `review-stale` is a hard failure at submission, so hashing every file together put the harshest check in the toolkit at the moment an author is copy-editing. Listing fewer files is scoping, not an escape: a round is incomplete while any manuscript file is in nobody's list. Omit the key to mean the whole manuscript, which is how records written before this existed are read."
+    },
     "verdict": {
       "enum": ["pass", "minor-revision", "major-revision", "reject"],
       "description": "The reviewer's overall judgement, in the vocabulary a journal uses."

@@ -220,3 +220,103 @@ def test_the_digest_changes_with_the_manuscript_and_not_otherwise(project: Path)
     path = project / "manuscript" / "main.md"
     path.write_text(path.read_text(encoding="utf-8") + "x", encoding="utf-8")
     assert manuscript_digest(projekt) != before
+
+
+# ------------------------------------------------ what a review says it read (file_sha256)
+
+
+def scope_reviews(root: Path, files: dict[str, str] | None = None, *, only: str = "") -> None:
+    """Give every review record in the project a `file_sha256` map."""
+    from manuscript_guard.gates.review import file_digests
+
+    digests = file_digests(load_project(root)[0]) if files is None else files
+    for path in sorted((root / "review").rglob("*.yaml")):
+        if only and path.stem != only:
+            continue
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict) or document.get("schema", "").endswith("panel/1"):
+            continue
+        document["file_sha256"] = dict(digests)
+        path.write_text(
+            yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+        )
+
+
+def split_manuscript(root: Path) -> tuple[Path, Path]:
+    """Two files where the example has one, so scoping has something to scope."""
+    main = root / "manuscript" / "main.md"
+    discussion = root / "manuscript" / "zz-discussion.md"
+    discussion.write_text(
+        "# Discussion\n\nThe finding is, on the whole, consistent with the literature.\n",
+        encoding="utf-8",
+    )
+    return main, discussion
+
+
+def test_editing_one_file_does_not_void_a_review_of_another(project: Path) -> None:
+    """`review-stale` is a hard failure at submission, and it fired on a comma.
+
+    `manuscript_digest` hashes every byte of every manuscript file together, so a typo fixed
+    in the Discussion invalidated both completed panel rounds — including the
+    biostatistician's read of the Methods. Copy-editing is the last thing anyone does to a
+    paper, which put the harshest check in the toolkit at the worst possible moment.
+    """
+    main, discussion = split_manuscript(project)
+    scope_reviews(project)
+    assert "review-stale" not in codes(report_for(project, submission=True))
+
+    scope_reviews(project, only="biostatistician", files=_digests_of(project, main))
+    discussion.write_text(discussion.read_text(encoding="utf-8").replace(",", ""), encoding="utf-8")
+
+    report = report_for(project, submission=True)
+    stale = [f for f in report.findings if f.code == "review-stale"]
+    assert stale, "reviewers who read the Discussion are stale"
+    assert all("zz-discussion.md" in f.message for f in stale), "and it says which file moved"
+    assert not any("biostatistician" in f.message for f in stale), (
+        "the reviewer who only read the Methods is untouched"
+    )
+
+
+def test_a_reviewer_is_stale_when_the_file_they_read_changes(project: Path) -> None:
+    main, _discussion = split_manuscript(project)
+    scope_reviews(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n\nA later thought.\n", encoding="utf-8")
+    report = report_for(project, submission=True)
+    assert "review-stale" in failures(report)
+    assert all("main.md" in f.message for f in report.failures if f.code == "review-stale")
+
+
+def test_a_file_nobody_read_leaves_the_round_incomplete(project: Path) -> None:
+    """The hole that scoping would open, closed in the same change.
+
+    Judging a record on the files it lists is only defensible while every manuscript file is
+    on somebody's list. Otherwise a round of reviewers who each read the Methods would
+    report complete over a Discussion none of them saw.
+    """
+    main, _discussion = split_manuscript(project)
+    scope_reviews(project, files=_digests_of(project, main))
+    report = report_for(project, submission=True)
+    assert "review-uncovered" in failures(report)
+    assert any("zz-discussion.md" in f.message for f in report.failures)
+    assert report.counts["review_rounds_complete"] == 0
+
+
+def test_a_record_that_lists_nothing_still_means_the_whole_manuscript(project: Path) -> None:
+    """An older record falls back to what its writer intended, not to being current."""
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nA later thought.\n", encoding="utf-8")
+    assert "review-stale" in codes(report_for(project, submission=True))
+    assert "review-uncovered" not in codes(report_for(project, submission=True))
+
+
+def test_one_unscoped_record_covers_the_round(project: Path) -> None:
+    """A reviewer who read everything answers the coverage question for everyone."""
+    main, _discussion = split_manuscript(project)
+    scope_reviews(project, files=_digests_of(project, main), only="biostatistician")
+    assert "review-uncovered" not in codes(report_for(project, submission=True))
+
+
+def _digests_of(root: Path, *files: Path) -> dict[str, str]:
+    import hashlib
+
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}

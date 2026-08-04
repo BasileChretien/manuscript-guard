@@ -140,6 +140,15 @@ def cmd_review(args: argparse.Namespace) -> int:
     if args.digest:
         print(digest)
         return 0
+    if args.files:
+        # Paste-ready, because a reviewer who has to assemble this by hand will instead
+        # omit it and go back to having a typo void their review.
+        from manuscript_guard.gates.review import file_digests
+
+        print("file_sha256:")
+        for name, value in sorted(file_digests(project).items()):
+            print(f"  {name}: {value}")
+        return 0
 
     print(f"manuscript digest: {digest}")
     found = panels(project)
@@ -742,6 +751,11 @@ def build_parser() -> argparse.ArgumentParser:
     review = sub.add_parser("review", help="show where the review stands")
     review.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     review.add_argument("--digest", action="store_true", help="print the manuscript digest only")
+    review.add_argument(
+        "--files",
+        action="store_true",
+        help="print the per-file digests a review record lists as what it read",
+    )
     review.add_argument("--submission", action="store_true")
     review.set_defaults(func=cmd_review)
 

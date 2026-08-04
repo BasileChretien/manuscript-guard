@@ -319,6 +319,17 @@ def test_review_prints_the_digest_a_record_must_carry(project: Path, capsys) -> 
     assert len(digest) == 64 and all(c in "0123456789abcdef" for c in digest)
 
 
+def test_review_files_prints_a_paste_ready_block(project: Path, capsys) -> None:
+    """A reviewer who has to assemble this by hand will omit it instead."""
+    import yaml
+
+    assert run("review", str(project), "--files") == 0
+    block = yaml.safe_load(capsys.readouterr().out)
+    assert set(block) == {"file_sha256"}
+    assert set(block["file_sha256"]) == {"main.md"}
+    assert all(len(v) == 64 for v in block["file_sha256"].values())
+
+
 def test_checklist_scaffolds_and_is_idempotent(project: Path, capsys) -> None:
     assert run("checklist", "DEMO-OBS", "--path", str(project)) == 0
     assert "all already present" in capsys.readouterr().out

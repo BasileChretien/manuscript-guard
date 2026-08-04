@@ -172,7 +172,7 @@ All deterministic, all runnable in CI without Claude.
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
 | G9 | Methods drift | analysis code changed since the Methods text was last reconciled |
 | G10 | Figure review | a figure has no current review, or its review raised concerns |
-| G11 | Panel review | no review round, a stale review, or an unanswered major finding |
+| G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
@@ -636,8 +636,21 @@ done, or an `overridden` saying why it was not. Recording the reason turns it fr
 oversight into a decision, and it is the thing you want when a real reviewer asks the same
 question. Silence is the only unacceptable answer.
 
-Editing the manuscript changes its digest and marks the reviews stale, which is correct: a
-review of the old Results is not a review of the new ones.
+Editing the manuscript marks the reviews stale, which is correct: a review of the old
+Results is not a review of the new ones. **What it marks stale is scoped to what each
+reviewer read.** The first version hashed every byte of every manuscript file together, so
+fixing a typo in the Discussion voided both completed rounds, including the
+biostatistician's read of the Methods — and since `review-stale` is a hard failure at
+submission, the harshest check in the toolkit fired at the moment an author is copy-editing.
+A record may now carry `file_sha256`, the files it actually read, from `manuscript-guard
+review --files`; it goes stale when one of those moves, and the finding names the file. A
+record without the key means the whole manuscript, so older records keep the behaviour their
+writer intended.
+
+That scoping is only honest because of its companion, `review-uncovered`: a round is
+incomplete while some manuscript file is on nobody's list. Without it, trimming the map
+would have been a way to review the Methods and pass — the same fix-opens-the-next-hole
+pattern that three review rounds kept finding, so the two landed together.
 
 The worked example carries a real two-round panel. Round one found that the paper had no
 case definition, no mention of duplicate records, and no contingency table for a result that

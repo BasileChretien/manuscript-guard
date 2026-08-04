@@ -332,10 +332,20 @@ def content_digest(figure: Path) -> str:
     """
     import hashlib
 
+    # Matched by comparing stems, not by globbing one. `Path.glob` reads its argument as a
+    # pattern, and a stem is a filename: `panel[a].svg` made the glob match nothing at all —
+    # not even the figure itself — so the raster sibling was silently dropped and replacing
+    # it changed no digest. That is the gap this function was widened to close, reopened by
+    # a bracket, which is an ordinary thing to put in a filename.
+    #
+    # `is_file()` because a FIFO in `figures/` blocks a read forever on Linux and macOS, and
+    # nothing in the gate runner bounds wall-clock time.
     siblings = sorted(
         path
-        for path in figure.parent.glob(f"{figure.stem}.*")
-        if path.suffix.lower() in TEXT_FORMATS | OPAQUE_FORMATS
+        for path in figure.parent.iterdir()
+        if path.stem == figure.stem
+        and path.suffix.lower() in TEXT_FORMATS | OPAQUE_FORMATS
+        and path.is_file()
     )
     if len(siblings) > 1:
         combined = hashlib.sha256()

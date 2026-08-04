@@ -135,6 +135,30 @@ def _headings_in(text: str) -> list[_Found]:
     return sorted(found, key=lambda f: f.start)
 
 
+def heading_index(text: str) -> list[_Found]:
+    """Every heading, computed once so a caller can ask about many offsets cheaply.
+
+    `section_chain` rescans the whole document — blanking fences, HTML comments and front
+    matter, then running two heading patterns over it. G2 called it once per atom, which is
+    quadratic: a paragraph written on one long line with 20,000 numbers spent three minutes
+    re-deriving the same heading list 20,000 times. The scan is unavoidable; doing it per
+    file rather than per number is not.
+    """
+    return _headings_in(text)
+
+
+def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
+    """The enclosing heading chain at `offset`, from a precomputed index."""
+    stack: list[tuple[int, str]] = []
+    for found in index:
+        if found.start > offset:
+            break
+        while stack and stack[-1][0] >= found.level:
+            stack.pop()
+        stack.append((found.level, found.title))
+    return tuple(title for _level, title in stack)
+
+
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
     """Every heading enclosing `offset`, outermost first.
 
@@ -147,14 +171,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     different places: `p < 0.05` in Methods is the alpha the author chose, and in Results
     it is a finding.
     """
-    stack: list[tuple[int, str]] = []
-    for found in _headings_in(text):
-        if found.start > offset:
-            break
-        while stack and stack[-1][0] >= found.level:
-            stack.pop()
-        stack.append((found.level, found.title))
-    return tuple(title for _level, title in stack)
+    return chain_at(_headings_in(text), offset)
 
 
 def split_sections(text: str) -> list[Section]:

@@ -22,11 +22,20 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import section_chain
+from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 GATE = "G2"
 SOURCE_GLOB = "*.md"
+
+# Unbound numbers reported per file before the rest are counted rather than listed.
+#
+# Nobody reads twenty thousand findings, and building them was quadratic — each one copied
+# the whole findings tuple, so a file of 20,000 loose numbers took 72 seconds inside a
+# command that is supposed to be safe to run on a manuscript someone sent you. Capping is
+# also the honest shape: the count is still exact and the overflow says so, which is the
+# same rule the AI-writing lint follows for a repeated phrase.
+PER_FILE_CAP = 50
 
 
 def source_files(manuscript_dir: Path) -> list[Path]:
@@ -66,6 +75,8 @@ def check_numbers(
     for path in source_files(project.path("manuscript")):
         totals["files"] += 1
         text = path.read_text(encoding="utf-8")
+        loose = 0
+        headings = heading_index(text)
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -103,13 +114,16 @@ def check_numbers(
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
-            verdict = classifier.classify(atom, section_chain(text, atom.start))
+            verdict = classifier.classify(atom, chain_at(headings, atom.start))
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):
                     totals["project"] += 1
                     label = verdict.rule if verdict.rule != "terms" else f"terms: {verdict.detail}"
                     by_project[label] = by_project.get(label, 0) + 1
+                continue
+            loose += 1
+            if loose > PER_FILE_CAP:
                 continue
             in_table = atom.line_text.lstrip().startswith("|")
             report = report.with_findings(
@@ -133,6 +147,20 @@ def check_numbers(
                         "writing convention, add it to `conventions:` in paper.yaml with a "
                         "justification"
                     ),
+                )
+            )
+
+        if loose > PER_FILE_CAP:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="unclassified-number",
+                    message=f"{loose - PER_FILE_CAP} further unbound number(s) in "
+                    f"{path.name}, not listed individually",
+                    path=path,
+                    hint="the first "
+                    f"{PER_FILE_CAP} are above; a file in this state usually needs its "
+                    "numbers bound in bulk rather than one finding at a time",
                 )
             )
 

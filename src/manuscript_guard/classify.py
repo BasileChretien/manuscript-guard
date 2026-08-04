@@ -191,9 +191,16 @@ def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
 
 
 def _rule_covers(rule: Rule, atom: Atom) -> bool:
-    """True when the rule matches a span of the line that contains the whole atom."""
-    start, end = atom.in_line
-    for match in rule.pattern.finditer(atom.line_text):
+    """True when the rule matches a span of the surrounding text containing the whole atom.
+
+    Matched against `atom.window` — a bounded slice with line breaks flattened — rather than
+    against the atom's own line. Matching a line made every convention depend on where the
+    author's editor wrapped: `a 95% confidence interval` classified and `a 95%\nconfidence
+    interval` did not, in a repository whose every manuscript is hard-wrapped. It also cost
+    one full-line scan per atom per rule, which is quadratic on a long line.
+    """
+    start, end = atom.in_window
+    for match in rule.pattern.finditer(atom.window):
         if match.start() <= start and match.end() >= end:
             return True
     return False

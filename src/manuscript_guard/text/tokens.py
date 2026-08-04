@@ -33,6 +33,10 @@ DIGIT = re.compile(f"[\\d{_FRACTIONS}{_ENCLOSED}]")
 # drops only the masked part, which is what masking was always supposed to mean.
 _ATOM = re.compile(r"[^\s\x00]+")
 
+# Characters of context kept either side of an atom for rule matching. Generous enough for
+# the longest shipped pattern and its keyword; small enough that cost is linear in the text.
+WINDOW = 160
+
 # Trimmed from either end. Percent, degree and prime are kept: they belong to the value.
 # Backticks are delimiters like any other now that inline code is read rather than masked:
 # `3.84` is the value 3.84 wrapped in punctuation, and must compare equal to it.
@@ -52,13 +56,50 @@ class Atom:
     end: int
     line: int
     col: int
-    line_text: str
     line_start: int
+    line_end: int
+    # The document this atom came from, held by reference. `line_text` and `window` used to
+    # be materialised strings on every atom, which meant one copy of the enclosing line per
+    # number: a paragraph written on a single 80 KB line with 20,000 numbers copied 1.6 GB
+    # of substrings before any rule ran. Slices on demand instead.
+    source: str = ""
+
+    @property
+    def line_text(self) -> str:
+        return self.source[self.line_start : self.line_end]
+
+    @property
+    def window_start(self) -> int:
+        return max(0, self.start - WINDOW)
+
+    @property
+    def window(self) -> str:
+        """A bounded slice of surrounding text with line breaks flattened to spaces.
+
+        Rules are matched against this rather than against the atom's own line, for two
+        reasons, and the first is the one that matters.
+
+        Matching a line meant a rule broke wherever the author's editor happened to wrap:
+        "a 95% confidence interval" classified, and the identical phrase split as
+        "a 95%\nconfidence interval" did not. Every manuscript here is hard-wrapped, so
+        roughly one convention in ten failed for a reason invisible in the error message —
+        which makes the gate look random rather than strict, and that is how an author
+        learns to stop reading it.
+
+        The second is cost: a rule ran against the entire line once per atom, so a long
+        line was quadratic. A paragraph written on one 80 KB line took minutes.
+        """
+        end = self.end + WINDOW
+        return self.source[self.window_start : end].replace("\r", " ").replace("\n", " ")
 
     @property
     def in_line(self) -> tuple[int, int]:
         """Span of this atom within its own line."""
         return self.start - self.line_start, self.end - self.line_start
+
+    @property
+    def in_window(self) -> tuple[int, int]:
+        return self.start - self.window_start, self.end - self.window_start
 
 
 def _trim(text: str, start: int) -> tuple[str, int]:
@@ -81,6 +122,13 @@ def find_atoms(original: str, masked: str) -> list[Atom]:
         raise ValueError("masked text must be the same length as the original")
 
     atoms: list[Atom] = []
+    # Line numbers counted incrementally. `original.count("\n", 0, start)` per atom is a
+    # full scan per number, so a document with many numbers was quadratic in its own length
+    # — 20,000 atoms in an 80 KB file meant 1.6 billion character comparisons just to
+    # number the lines. Atoms arrive in document order, so only the gap needs counting.
+    seen_upto = 0
+    seen_lines = 0
+
     for match in _ATOM.finditer(masked):
         raw = match.group(0)
         if not DIGIT.search(raw):
@@ -89,18 +137,21 @@ def find_atoms(original: str, masked: str) -> list[Atom]:
         if not text or not DIGIT.search(text):
             continue
         end = start + len(text)
+        seen_lines += original.count("\n", seen_upto, start)
+        seen_upto = start
         line_start = original.rfind("\n", 0, start) + 1
-        line_end = original.find("\n", start)
-        line_text = original[line_start : len(original) if line_end == -1 else line_end]
+        found_end = original.find("\n", start)
+        line_end = len(original) if found_end == -1 else found_end
         atoms.append(
             Atom(
                 text=text,
                 start=start,
                 end=end,
-                line=original.count("\n", 0, start) + 1,
+                line=seen_lines + 1,
                 col=start - line_start + 1,
-                line_text=line_text,
                 line_start=line_start,
+                line_end=line_end,
+                source=original,
             )
         )
     return atoms

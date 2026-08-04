@@ -123,18 +123,26 @@ def annotate(
     classifier: Classifier,
     *,
     counter: list[int],
+    results=None,
+    project=None,
 ) -> tuple[str, list[Mark]]:
-    """Substitute bindings and wrap every number in a highlight and a link.
+    """Substitute every binding and wrap every number in a highlight and a link.
 
     Returns the annotated markdown and the marks in document order. `counter` is a
     single-element list used to keep anchor numbers unique across files, which is the least
     ceremony that still guarantees it.
+
+    Tables and figures are substituted here too. The first version annotated the source and
+    substituted only *value* bindings, so `{{table.baseline}}` was printed literally and the
+    annotated copy contained no tables and no figures at all — an audit document missing the
+    artefacts most likely to carry a stale number.
     """
     placeholders, _malformed = parse(text)
     headings = heading_index(text)
     scan = classifier.scan(text)
 
     spans: list[tuple[int, int, Mark]] = []
+    marks_from_tables: list[Mark] = []
     for placeholder in placeholders:
         if not placeholder.is_value:
             continue
@@ -149,6 +157,35 @@ def annotate(
                 _value_mark(_ANCHOR.format(n=counter[0]), placeholder.ref, value),
             )
         )
+
+    for placeholder in placeholders:
+        if placeholder.is_value or results is None:
+            continue
+        if placeholder.namespace == "table":
+            table = results.tables.get(placeholder.key)
+            if table is None:
+                continue
+            counter[0] += 1
+            rendered, table_marks = _annotated_table(table, placeholder.key, counter)
+            spans.append(
+                (placeholder.start, placeholder.end, Mark("", "", rendered, "", ""))
+            )
+            marks_from_tables.extend(table_marks)
+        elif placeholder.namespace == "figure" and project is not None:
+            from manuscript_guard.build.assemble import find_figure
+
+            figure = find_figure(project, placeholder.key)
+            if figure is None:
+                continue
+            raster = (figure.with_suffix(ext) for ext in (".png", ".jpg"))
+            shown = next((path for path in raster if path.exists()), figure)
+            spans.append(
+                (
+                    placeholder.start,
+                    placeholder.end,
+                    Mark("", "", f"![]({shown.resolve().as_posix()})", "", ""),
+                )
+            )
 
     for atom in find_atoms(text, mask(text)):
         verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
@@ -174,11 +211,54 @@ def annotate(
         if start < cursor:  # overlapping; keep the first, which is the binding
             continue
         out.append(text[cursor:start])
-        out.append(_wrap(mark))
-        marks.append(mark)
+        if mark.anchor:
+            out.append(_wrap(mark))
+            marks.append(mark)
+        else:
+            # A rendered table or figure: already annotated, or nothing to annotate.
+            out.append(mark.shown)
         cursor = end
     out.append(text[cursor:])
-    return "".join(out), marks
+    return "".join(out), marks + marks_from_tables
+
+
+def _annotated_table(table, key: str, counter: list[int]) -> tuple[str, list[Mark]]:
+    """Render an emitted table with every number in it marked.
+
+    A table's numbers are traced by construction: the analysis emitted the table, and G2
+    re-checks every cell in the fragment against what the analysis published. What the
+    reader gains here is being able to hover a cell and see *which* table it came from,
+    which matters most in the artefact a stale number is likeliest to survive in.
+    """
+    from manuscript_guard.build.assemble import render_table
+
+    rendered = render_table(table)
+    source = table.source.name if table.source else "an analysis"
+    marks: list[Mark] = []
+    out: list[str] = []
+    for line in rendered.split("\n"):
+        # The alignment row is punctuation, and the caption is prose.
+        if set(line.strip()) <= set("|-: ") or line.lstrip().startswith(":"):
+            out.append(line)
+            continue
+        cursor = 0
+        pieces: list[str] = []
+        for atom in find_atoms(line, mask(line)):
+            counter[0] += 1
+            mark = Mark(
+                anchor=_ANCHOR.format(n=counter[0]),
+                tier=TRACED,
+                shown=atom.text,
+                label=f"table.{key}",
+                detail=f"emitted by {source}",
+            )
+            pieces.append(line[cursor : atom.start])
+            pieces.append(_wrap(mark))
+            marks.append(mark)
+            cursor = atom.end
+        pieces.append(line[cursor:])
+        out.append("".join(pieces))
+    return "\n".join(out), marks
 
 
 def _wrap(mark: Mark) -> str:
@@ -345,28 +425,51 @@ def styled_reference(pandoc: str, target: Path) -> Path:
     return target
 
 
-_HYPERLINK = re.compile(r'<w:hyperlink w:anchor="(mg-n\d+)"')
+_HYPERLINK = re.compile(
+    r'<w:hyperlink w:anchor="(mg-n\d+)"([^>]*)>(.*?)</w:hyperlink>', re.DOTALL
+)
+#: `w:rStyle` must come first inside `w:rPr` - OOXML fixes the order of run properties,
+#: and Word drops what it finds out of place. Inserted after it, never before.
+_RPR = re.compile(r"(<w:rPr>)(<w:rStyle[^>]*/>)?")
+_RUN_NO_RPR = re.compile(r"<w:r>(?!<w:rPr>)")
 
 
-def inject_tooltips(document: Path, marks: list[Mark]) -> int:
-    """Add the hover text pandoc will not write.
+def finish(document: Path, marks: list[Mark]) -> int:
+    """Add the hover text and the highlight pandoc will not write.
 
-    Pandoc drops a link title on the way to `.docx` — verified, not assumed — so the
-    tooltips are added afterwards. Keyed on the anchor rather than on the visible text,
-    because two numbers that read the same must not share a provenance.
+    Two separate omissions, both found by opening the file rather than by reading the XML.
+
+    Pandoc drops a link title on the way to `.docx`, so the tooltip has to be added here.
+    And the highlight, applied in markdown as a custom character style wrapping the link,
+    **never reached the page**: OOXML allows one `w:rStyle` per run, pandoc's Link writer
+    puts `Hyperlink` there, and the custom style was silently discarded. Nothing failed —
+    the styles were defined, the document was valid, and every number was simply unmarked.
+    A style that loses a fight with another style is not a mechanism, so the colour is set
+    as direct run formatting instead, where nothing can outrank it.
+
+    Keyed on the anchor rather than on the visible text, because two numbers that read the
+    same must not share a provenance.
     """
-    tips = {mark.anchor: _escape(mark.tooltip) for mark in marks}
+    tips = {mark.anchor: (_escape(mark.tooltip), TIERS[mark.tier][1]) for mark in marks}
     if not tips:
         return 0
     added = 0
 
     def add(match: re.Match[str]) -> str:
         nonlocal added
-        tip = tips.get(match.group(1))
-        if not tip:
+        found = tips.get(match.group(1))
+        if not found:
             return match.group(0)
+        tip, colour = found
         added += 1
-        return f'{match.group(0)} w:tooltip="{tip}"'
+        body = match.group(3)
+        highlight = f'<w:highlight w:val="{colour}"/>'
+        body = _RPR.sub(lambda m: f"{m.group(1)}{m.group(2) or ''}{highlight}", body)
+        body = _RUN_NO_RPR.sub(f"<w:r><w:rPr>{highlight}</w:rPr>", body)
+        return (
+            f'<w:hyperlink w:anchor="{match.group(1)}"{match.group(2)} '
+            f'w:tooltip="{tip}">{body}</w:hyperlink>'
+        )
 
     scratch = document.with_suffix(".tooltips.docx")
     with zipfile.ZipFile(document) as zin, zipfile.ZipFile(

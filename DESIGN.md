@@ -1072,6 +1072,25 @@ document and inferring what each number was would be a second implementation of 
 this number", which is precisely the drift several rounds of review have been spent
 correcting elsewhere.
 
+The first version of this shipped two defects that a passing test suite could not have
+caught, both found by opening the file. **The highlight never reached the page**: it was a
+custom character style wrapping a link, OOXML allows one `w:rStyle` per run, pandoc's Link
+writer puts `Hyperlink` there, and the custom style was silently discarded — styles defined,
+document valid, every number unmarked. And **the annotated copy had no tables and no
+figures**, because it annotated the source and substituted only *value* bindings, so
+`{{table.baseline}}` printed literally. An audit document missing the artefacts a stale
+number is likeliest to survive in is worse than none. The colour is direct run formatting
+now, ordered after `w:rStyle` because Word drops run properties it finds out of place, and
+the tests assert on the bytes rather than on the style definitions — reading the XML for a
+style definition is exactly what missed it.
+
+**Two numbers that read the same never share a provenance.** Marks are built from offsets —
+a binding's span from the placeholder parser, a literal's from the tokenizer — and never by
+matching text, so two keys that happen to render `1` are two marks with two anchors and two
+tooltips. In a paper full of 1s and 2s that is the common case rather than an edge one. The
+same reasoning runs the other way: a literal that happens to equal a published value is
+still coloured red, because in source a results-derived number may not be a literal at all.
+
 And the tooltips are injected into the `.docx` afterwards, because **pandoc drops a link
 title** on the way to Word — verified before the design depended on it, not assumed. They
 are keyed on a per-occurrence anchor rather than on the visible text, because two numbers

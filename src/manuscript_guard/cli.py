@@ -385,7 +385,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         annotate,
         appendix,
         figure_sheet,
-        inject_tooltips,
+        finish,
         legend,
         styled_reference,
     )
@@ -398,7 +398,9 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     marks = []
     for item in assembled:
         source = item.path.read_text(encoding="utf-8") if item.path.exists() else item.text
-        text, found = annotate(source, namespace, classifier, counter=counter)
+        text, found = annotate(
+            source, namespace, classifier, counter=counter, results=results, project=project
+        )
         marked.append(Assembled(path=item.path, text=text))
         marks.extend(found)
 
@@ -413,7 +415,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
     )
-    added = inject_tooltips(result.output, marks)
+    added = finish(result.output, marks)
     print(result.report.render(project.root))
     tiers: dict[str, int] = {}
     for mark in marks:

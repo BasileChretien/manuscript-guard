@@ -20,7 +20,7 @@ from manuscript_guard.annotate import (
     TRACED,
     annotate,
     appendix,
-    inject_tooltips,
+    finish,
     legend,
 )
 from manuscript_guard.classify import Classifier
@@ -126,5 +126,94 @@ def test_the_annotated_copy_is_not_stamped_as_the_manuscript(project: Path) -> N
     assert not annotated.with_name(annotated.name + SOURCE_STAMP).exists()
 
 
-def test_injecting_tooltips_into_a_document_without_links_is_harmless(tmp_path: Path) -> None:
-    assert inject_tooltips(tmp_path / "nothing.docx", []) == 0
+def test_finishing_a_document_with_no_marks_is_harmless(tmp_path: Path) -> None:
+    assert finish(tmp_path / "nothing.docx", []) == 0
+
+
+def test_two_variables_that_display_the_same_get_different_hovers(project: Path) -> None:
+    """The collision question, and the reason marks are built from offsets.
+
+    Nothing here matches on text. A binding's span comes from the placeholder parser and a
+    literal's from the tokenizer, so two keys that happen to render the same string are
+    still two marks with two anchors and two tooltips. Matching on the visible value would
+    have attached one provenance to both, and in a paper full of 1s and 2s that is not an
+    edge case - it is the common case.
+    """
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nCases: {{results.case.n_cases}} and serious: {{results.case.n_serious}}, "
+        "with {{results.case.n_cases}} again.\n",
+        encoding="utf-8",
+    )
+    _text, marks = marked(project)
+
+    quoted = [m for m in marks if m.label.startswith("results.case.n_")]
+    assert len(quoted) >= 3
+    assert len({m.anchor for m in quoted}) == len(quoted), "each occurrence needs its own anchor"
+
+    # The same key quoted twice keeps its identity; two different keys never share one.
+    by_label = {}
+    for mark in quoted:
+        by_label.setdefault(mark.label, set()).add(mark.tooltip)
+    assert all(len(tips) == 1 for tips in by_label.values()), "one key, one provenance"
+    assert len(by_label) >= 2, "the test must exercise two different keys"
+
+
+def test_a_literal_equal_to_an_emitted_value_is_still_a_defect(project: Path) -> None:
+    """The other half of the collision question.
+
+    A typed number that happens to equal a published value is not thereby traced. The
+    annotated copy colours it red, because in source a results-derived number may not be a
+    literal at all - which is exactly why the gate does not compare values.
+    """
+    from manuscript_guard.contracts import load_namespace, load_project
+
+    projekt, _ = load_project(project)
+    namespace, _results, _lit, _r = load_namespace(projekt)
+    display = namespace["results.case.n_cases"].display
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"\n\nA typed {display} here.\n", encoding="utf-8"
+    )
+    _text, marks = marked(project)
+    typed = [m for m in marks if m.shown == display and m.tier == DEFECT]
+    assert typed, "a literal equal to an emitted value must not borrow its provenance"
+
+
+@needs_pandoc
+def test_the_highlight_reaches_the_page(project: Path) -> None:
+    """It did not, and nothing failed.
+
+    The colour was a custom character style wrapping a link. OOXML allows one `w:rStyle`
+    per run, pandoc's Link writer puts `Hyperlink` there, and the custom style was silently
+    discarded - styles defined, document valid, every number unmarked. Asserted on the
+    bytes now, because looking at the XML for the style definition is what missed it.
+    """
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline", "--annotated"]) == 0
+    document = zipfile.ZipFile(project / "build" / "manuscript.annotated.docx").read(
+        "word/document.xml"
+    ).decode("utf-8")
+    assert document.count("<w:highlight") > 10
+    for colour in ("green", "yellow"):
+        assert f'<w:highlight w:val="{colour}"/>' in document
+    # rStyle must come first inside rPr, or Word drops what follows it.
+    assert "<w:highlight" not in document.split("<w:rStyle")[0].split("<w:rPr>")[-1]
+
+
+@needs_pandoc
+def test_the_annotated_copy_contains_the_tables_and_the_figure(project: Path) -> None:
+    """The first version annotated the source and substituted only value bindings, so
+    `{{table.baseline}}` printed literally: an audit document missing the artefacts a stale
+    number is likeliest to survive in."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline", "--annotated"]) == 0
+    archive = zipfile.ZipFile(project / "build" / "manuscript.annotated.docx")
+    document = archive.read("word/document.xml").decode("utf-8")
+    assert "{{table." not in document and "{{figure." not in document
+    assert document.count("<w:tbl>") >= 4
+    assert any(name.startswith("word/media/") for name in archive.namelist())

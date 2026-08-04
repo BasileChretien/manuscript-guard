@@ -1,8 +1,13 @@
 # manuscript-guard — design
 
-Status: design agreed 2026-08-03. **All eight phases built and tested.** 277 tests pass,
-including the corruption harness described below. What remains is listed under Known gaps,
-and none of it is load-bearing.
+Status: design agreed 2026-08-03. **All eight phases built and tested.** 558 tests pass,
+including the corruption harness described below and the regression tests from two
+adversarial rounds. What remains is listed under Known gaps.
+
+That list is load-bearing and has to be kept true. It drifted once — it went on claiming
+five guideline licences were unconfirmed after they had been read, and went on describing
+two defects that had been fixed — which is the same failure the toolkit exists to catch one
+level down. Correct it in the same commit as the code, or it becomes a rumour.
 
 ## What this is
 
@@ -1027,8 +1032,9 @@ Closed since, and why each mattered:
   committed review of the example read as stale on Ubuntu and macOS. Arguably correct — the
   bytes did change — but it means a review cannot be shared across machines with different
   rendering stacks, only re-stamped after re-rendering.
-- **Raster figures cannot be inspected for numeric text.** Reported as a warning, and
-  silent when a vector export of the same figure exists beside them.
+- **Raster figures cannot be inspected for numeric text.** Reported as a warning. No longer
+  silent when a vector export sits beside them: the pairing has to be recorded by
+  `render.record()`, and an unrecorded one is `figure-render-unproven`.
 - **G10 verifies that a review happened, not that it was right.** A review recorded without
   looking is worse than none, because it makes an unexamined figure look examined.
 - **Changing the digest algorithm invalidates every stored review.** There is no version
@@ -1058,10 +1064,12 @@ Closed since, and why each mattered:
   and would be wrong silently, which is the failure mode this whole toolkit exists to
   prevent. Every field in the template says what to do when the page is silent, and the
   answer is always to delete the line.
-- **Five licences remain unconfirmed** — RECORD-PE, CONSORT, SPIRIT, PRISMA (both) and
-  TRIPOD state no reuse terms on their sites. RECORD is CC BY, STROBE and ARRIVE are CC BY
-  through their statement papers, and READUS-PV is CC BY-NC. See
-  [ATTRIBUTION.md](ATTRIBUTION.md).
+- **One licence is all-rights-reserved: TRIPOD.** Free to read, no Creative Commons terms,
+  not deposited in PMC. Everything else is settled: RECORD, STROBE, ARRIVE, PRISMA 2020 and
+  RECORD-PE are CC BY (the last two through their statement papers, not their websites);
+  CONSORT and SPIRIT explicitly permit download and copying with notices retained; READUS-PV
+  is CC BY-NC. Nothing is redistributed either way. See [ATTRIBUTION.md](ATTRIBUTION.md),
+  which quotes the operative sentence for each.
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
@@ -1071,11 +1079,12 @@ Closed since, and why each mattered:
   small inconsistency, accepted because blocking every draft build on a complete two-round
   review would make G11 something to switch off. Severities that depend on the *data* are
   ordinary and several exist: `figure-script-ignores-results`, `duplicate-quantity`,
-  `pinning-unchecked`. One of those is environmental rather than declared, and that part is
-  a defect rather than a design: `figure-script-ignores-results` falls from FAIL to WARN on
-  a machine without `pdftotext`, because the machinery that decides whether the figure draws
-  numbers needs to read the rendered figure first. A script that ignores the results and
-  types numbers anyway therefore only warns on such a machine.
+  `pinning-unchecked`. One of those used to be environmental rather than declared, which was
+  a defect rather than a design: `figure-script-ignores-results` fell from FAIL to WARN on a
+  machine without `pdftotext`, because deciding whether a figure draws numbers means reading
+  the rendered figure first. Closed — a figure that could not be read no longer softens the
+  check on the script behind it, and the PDF reader now has the same poppler-then-pypdf
+  chain the literature reader uses.
 - **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
   editor does not share, they silently do nothing — which is the safe direction, but it is
   silent.
@@ -1088,10 +1097,6 @@ Closed since, and why each mattered:
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
   and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
   ones are not distinguishable from a sentence break.
-- **The stage is declared, not detected.** Nothing stops a project sitting at `analysis`
-  for ever and never being held to anything. Detecting the stage from what exists was
-  considered and rejected as too surprising, but the honest consequence is that the ladder
-  is a convenience, not an enforcement.
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,

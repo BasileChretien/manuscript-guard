@@ -216,6 +216,32 @@ def test_stages_lists_every_stage(capsys) -> None:
     assert "fails at every stage" in out
 
 
+def test_explain_agrees_with_check(project: Path, capsys) -> None:
+    """The debugging command was giving a different answer from the gate it explains.
+
+    `explain` classified with no section, so every `methods_only` rule fired everywhere: a
+    fabricated `p < 0.001` in the Results was reported as a recognised convention while
+    `check` failed it. That answer is the input to deciding whether to add a `conventions:`
+    exemption — the one mechanism that makes G2 vacuous — so being wrong here is worse than
+    being silent.
+    """
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        "# Methods\n\nSignificance was set at p < 0.05.\n\n"
+        "# Results\n\nThe excess was significant (p < 0.001).\n",
+        encoding="utf-8",
+    )
+    assert run("explain", str(path)) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
+
+    methods = next(line for line in lines if " 0.05 " in f" {line} ")
+    results = next(line for line in lines if " 0.001 " in f" {line} ")
+    assert methods.startswith("ok"), "a threshold in Methods is a convention"
+    assert results.startswith("FAIL"), "the same characters in Results are a finding"
+
+    assert run("check", str(project)) == 1
+
+
 def test_explain_shows_the_rule_behind_each_number(project: Path, capsys) -> None:
     assert run("explain", str(project / "manuscript" / "main.md")) == 0
     out = capsys.readouterr().out

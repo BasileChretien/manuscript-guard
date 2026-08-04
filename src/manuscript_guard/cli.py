@@ -50,6 +50,7 @@ from manuscript_guard.policy import (
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
+from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -314,9 +315,15 @@ def cmd_explain(args: argparse.Namespace) -> int:
     project, _ = load_project(args.file.parent)
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     text = args.file.read_text(encoding="utf-8")
+    # The same section chain G2 uses. Without it every `methods_only` rule fired everywhere,
+    # so `explain` reported a fabricated `p < 0.001` in the Results as a recognised
+    # convention while `check` failed it — and this is the command an author reaches for
+    # when a finding surprises them. Its answer was the input to deciding whether to add a
+    # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
+    headings = heading_index(text)
     rows = []
     for atom in find_atoms(text, mask(text)):
-        verdict = classifier.classify(atom)
+        verdict = classifier.classify(atom, chain_at(headings, atom.start))
         rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
     if not rows:
         print("no numeric atoms outside masked regions")

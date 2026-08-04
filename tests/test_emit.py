@@ -298,6 +298,37 @@ def test_several_typed_numbers_in_one_cell_are_refused_even_when_all_are_emitted
         em.document()
 
 
+def test_a_composed_cell_does_not_excuse_a_copy_of_itself(scratch: Path) -> None:
+    """`_composed` was a set of rendered *text*, shared across the whole emitter.
+
+    So a stale copy-paste of group A's interval into group B's row passed the
+    anti-transposition rule — identical characters, and group B's own values never used.
+    Keyed by position now, which is the only thing that distinguishes the cell the emitter
+    built from a cell that merely looks like it.
+    """
+    em = emitter(scratch)
+    for key, value in (
+        ("a.point", 5.12),
+        ("a.low", 3.84),
+        ("a.high", 8.02),
+        ("b.point", 2.01),
+        ("b.low", 1.05),
+        ("b.high", 3.60),
+    ):
+        em.value(key, value, digits=2)
+
+    em.table(
+        "t",
+        ["Group", "ROR (95% CI)"],
+        [
+            ["A", em.cell("{} (95% CI {} to {})", (5.12, 2), (3.84, 2), (8.02, 2))],
+            ["B", "5.12 (95% CI 3.84 to 8.02)"],
+        ],
+    )
+    with pytest.raises(DisplayError, match="typed rather than composed"):
+        em.document()
+
+
 def test_the_same_interval_composed_is_accepted(scratch: Path) -> None:
     """Identical characters; the difference is that the emitter placed each number."""
     em = emitter(scratch)

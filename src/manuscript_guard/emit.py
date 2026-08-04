@@ -70,7 +70,7 @@ def _cell(
     cell: object,
     digits: int | dict | None,
     computed: set[str],
-    composed: set[str],
+    composed: set[tuple[str, int, int]],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
     where = f"table {key!r} row {row} column {column}"
@@ -78,7 +78,7 @@ def _cell(
     if isinstance(cell, Composed):
         text, parts = cell.render(where)
         computed.update(parts)
-        composed.add(text)
+        composed.add((key, row, column))
         return text
     if isinstance(cell, bool):
         return str(cell)
@@ -168,10 +168,12 @@ class Emitter:
     # Display strings this emitter formatted itself, inside a Composed cell. They are
     # traceable for the same reason an emitted value is: the emitter did the rounding.
     _computed: set[str] = field(default_factory=set, init=False)
-    # Cell texts the emitter itself composed, via `cell()`. A typed string and a composed
-    # one are the same characters by the time they are checked; only this records which
-    # was which.
-    _composed: set[str] = field(default_factory=set, init=False)
+    # Which cells the emitter itself composed, via `cell()`, keyed by position rather than
+    # by the text produced. A typed string and a composed one are the same characters by the
+    # time they are checked, so something has to record which was which — and keying on the
+    # text meant the exemption was shared: a stale copy-paste of group A's interval into
+    # group B's row passed, with group B's own values never used.
+    _composed: set[tuple[str, int, int]] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -384,18 +386,18 @@ class Emitter:
             # (95% CI 8.00 to 19.00)" and a header reading "Hepatic injury (n = 9999)" both
             # went into the document unchecked, and survived a re-signed-fragment edit
             # because `verify` did not compare them either.
-            places = [(f"caption of table {key!r}", spec.get("caption") or "")]
+            places = [(f"caption of table {key!r}", spec.get("caption") or "", -1, -1)]
             places += [
-                (f"table {key!r} column {column} header", text)
+                (f"table {key!r} column {column} header", text, -2, column)
                 for column, text in enumerate(spec["columns"])
             ]
             places += [
-                (f"table {key!r} row {row} column {column}", cell)
+                (f"table {key!r} row {row} column {column}", cell, row, column)
                 for row, cells in enumerate(spec["rows"])
                 for column, cell in enumerate(cells)
             ]
 
-            for where, cell in places:
+            for where, cell, row, column in places:
                 # Two or more claims in one cell must have been composed, not typed.
                 #
                 # Membership of the emitted set is not enough on its own: it says each
@@ -412,7 +414,7 @@ class Emitter:
                     for atom in find_atoms(cell, mask(cell))
                     if classifier.classify(atom, TABLE_SECTION).kind == UNCLASSIFIED
                 ]
-                if len(claims) > 1 and cell not in self._composed:
+                if len(claims) > 1 and (key, row, column) not in self._composed:
                     raise DisplayError(
                         f"{where}: {cell!r} carries several numbers that were typed rather "
                         f"than composed. Each being an emitted value says nothing about "

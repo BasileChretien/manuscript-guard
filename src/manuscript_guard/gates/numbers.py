@@ -164,7 +164,7 @@ def check_numbers(
                 )
             )
 
-        report = report.merge(_fenced_code(path, text, classifier))
+        report = report.merge(_fenced_code(path, text, classifier, headings))
 
     report = report.merge(_paper_yaml_prose(project, classifier))
 
@@ -198,7 +198,7 @@ def check_numbers(
     )
 
 
-def _fenced_code(path: Path, text: str, classifier: Classifier) -> Report:
+def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> Report:
     """Numbers inside a fenced block, judged as code rather than as prose.
 
     A listing renders, so it cannot go unchecked — but its numbers are code. Read as prose
@@ -248,6 +248,11 @@ def _fenced_code(path: Path, text: str, classifier: Classifier) -> Report:
                 gate=GATE,
                 classifier=classifier,
                 what=f"fenced block at line {line}",
+                # A listing inside a manuscript sits under real headings, so a `p < 0.001`
+                # printed from one in the Results is a finding. A figure legend has no
+                # heading chain and keeps every rule, which is why this is passed rather
+                # than assumed.
+                section=chain_at(headings, fence.start),
             )
         )
     return report

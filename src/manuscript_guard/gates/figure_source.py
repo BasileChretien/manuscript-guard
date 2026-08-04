@@ -124,6 +124,7 @@ def judge_code_numbers(
     gate: str,
     classifier: Classifier,
     what: str,
+    section=None,
 ) -> Report:
     """Numbers in a code listing embedded in prose, judged as code.
 
@@ -161,7 +162,7 @@ def judge_code_numbers(
     for number in numbers_in(body, known):
         if not number.in_string:
             continue
-        if _judge_string_number(number, classifier) is None:
+        if _judge_string_number(number, classifier, section) is None:
             continue
         report = report.with_findings(
             Finding(
@@ -275,7 +276,7 @@ def check_figure_source(script: Path, classifier: Classifier) -> Report:
     )
 
 
-def _judge_string_number(number: CodeNumber, classifier: Classifier) -> str | None:
+def _judge_string_number(number: CodeNumber, classifier: Classifier, section=None) -> str | None:
     """None when the number in this string is acceptable, otherwise the reason it is not.
 
     The string's content is run through the prose classifier, because a string in a figure
@@ -304,6 +305,6 @@ def _judge_string_number(number: CodeNumber, classifier: Classifier) -> str | No
         # The literal sits inside something masking removed — a DOI, a URL, inline code.
         # Those are not claims, and reporting them is how a figure gate gets switched off.
         return None
-    if all(classifier.classify(atom).kind == UNCLASSIFIED for atom in covering):
+    if all(classifier.classify(atom, section).kind == UNCLASSIFIED for atom in covering):
         return "unclassified"
     return None

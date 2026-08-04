@@ -16,8 +16,9 @@ checking is not: nothing can pass by coincidence, because passing is not about t
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
-from dataclasses import dataclass
+from bisect import bisect_right
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -72,7 +73,7 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
         Rule(
             id=item["id"],
             why=item["why"],
-            pattern=re.compile(item["pattern"]),
+            pattern=re.compile(item["pattern"], re.MULTILINE),
             kind=kind,
             audit_only=bool(item.get("audit_only", False)),
             methods_only=bool(item.get("methods_only", False)),
@@ -98,6 +99,9 @@ class Classifier:
     # Terms this project added, kept apart from the shipped list so a run can say how much
     # of its own clean bill of health it owes to its own allowlist.
     project_terms: frozenset[str] = frozenset()
+    # One-entry scan memo for callers that pass no scan of their own. A dict rather than a
+    # field on a frozen dataclass because its *contents* are what change.
+    _memo: dict = field(default_factory=dict, repr=False, compare=False)
 
     def is_project_exemption(self, verdict: Verdict) -> bool:
         """Whether this atom was accepted by something the project itself declared.
@@ -135,7 +139,7 @@ class Classifier:
             Rule(
                 id=f"project:{item.get('id', item['pattern'][:24])}",
                 why=item["why"],
-                pattern=re.compile(item["pattern"]),
+                pattern=re.compile(item["pattern"], re.MULTILINE),
                 kind=CONVENTION,
             )
             for item in extra_conventions
@@ -144,24 +148,49 @@ class Classifier:
         merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def classify(self, atom: Atom, section: Sequence[str] | None = None) -> Verdict:
+    def scan(self, text: str) -> Scan:
+        """Find every rule's matches in one document, so `classify` is a lookup."""
+        return _scan((*self.structural, *self.conventions), text)
+
+    def classify(
+        self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
+    ) -> Verdict:
         """Judge one atom. `section` is the chain of headings enclosing it, when known.
 
         Only G2 passes a section, because only G2 is reading a manuscript with headings. A
         caller that passes nothing gets every rule, which is the behaviour figure text and
         the audit had before `methods_only` existed and still need: a figure legend has no
         Methods section to sit in, and a `p < 0.05` in one is a legend convention.
+
+        `scan` is the document's rule matches, found once by the caller. Without one this
+        scans `atom.source` and remembers the result for the next atom from the same string,
+        so a caller judging many atoms from one document pays for one scan either way and
+        both paths answer identically — two code paths with different semantics is the bug
+        this file has already had several times.
         """
         matched = _terms_covering(atom.text, self.terms)
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched))
+        if scan is None:
+            scan = self._scan_of(atom.source)
         for rule in self.structural:
-            if _applies(rule, section) and _rule_covers(rule, atom):
+            if _applies(rule, section) and scan.covers(rule.id, atom.start, atom.end):
                 return Verdict(STRUCTURAL, rule=rule.id, detail=rule.why)
         for rule in self.conventions:
-            if _applies(rule, section) and _rule_covers(rule, atom):
+            if _applies(rule, section) and scan.covers(rule.id, atom.start, atom.end):
                 return Verdict(CONVENTION, rule=rule.id, detail=rule.why)
         return Verdict(UNCLASSIFIED)
+
+    def _scan_of(self, text: str) -> Scan:
+        """One-entry memo, keyed by the text itself, for callers that pass no scan."""
+        cached = self._memo.get("text")
+        if cached is not None and cached is text:
+            return self._memo["scan"]
+        found = self.scan(text)
+        self._memo.clear()
+        self._memo["text"] = text
+        self._memo["scan"] = found
+        return found
 
 
 # Where a method may be described. The analysis plan counts: it is the same statement made
@@ -190,20 +219,56 @@ def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
     return not rule.methods_only or section is None or is_methods(section)
 
 
-def _rule_covers(rule: Rule, atom: Atom) -> bool:
-    """True when the rule matches a span of the surrounding text containing the whole atom.
+@dataclass(frozen=True)
+class Scan:
+    """Where every rule matches in one document, found once.
 
-    Matched against `atom.window` — a bounded slice with line breaks flattened — rather than
-    against the atom's own line. Matching a line made every convention depend on where the
-    author's editor wrapped: `a 95% confidence interval` classified and `a 95%\nconfidence
-    interval` did not, in a repository whose every manuscript is hard-wrapped. It also cost
-    one full-line scan per atom per rule, which is quadratic on a long line.
+    The classifier used to match each rule against a bounded window around each atom, which
+    is one regex scan per atom per rule. On a paragraph written as a single line with 8,000
+    numbers in it that is 168,000 scans of 320 characters each, and `check` took 30 seconds
+    inside `_rule_covers` alone. The windows overlap almost entirely, so nearly all of that
+    work was being done again and again on the same characters.
+
+    Scanning the whole document once per rule is the same question asked once. It also
+    removes the reason `^` and `$` were broken: in a window they meant "start of this
+    160-character slice", which is a position 160 characters before the atom and almost
+    never the start of anything. `ordered-list-marker` therefore only ever fired within the
+    first 160 characters of a file, and every numbered list further down a real manuscript
+    was reported as unbound numbers. Scanning the document under `re.MULTILINE` makes the
+    anchors mean what all three anchored rules were written to mean.
     """
-    start, end = atom.in_window
-    for match in rule.pattern.finditer(atom.window):
-        if match.start() <= start and match.end() >= end:
-            return True
-    return False
+
+    #: rule id -> the start offset of each match, in document order.
+    starts: dict[str, list[int]]
+    #: rule id -> the furthest end reached by any match starting at or before the same index.
+    #: A running maximum, so coverage is one binary search rather than a walk: matches are
+    #: sorted by start but not by end, and a long early match can cover an atom that several
+    #: later, shorter matches do not.
+    reach: dict[str, list[int]]
+
+    def covers(self, rule_id: str, start: int, end: int) -> bool:
+        starts = self.starts.get(rule_id)
+        if not starts:
+            return False
+        index = bisect_right(starts, start) - 1
+        return index >= 0 and self.reach[rule_id][index] >= end
+
+
+def _scan(rules: Iterable[Rule], text: str) -> Scan:
+    starts: dict[str, list[int]] = {}
+    reach: dict[str, list[int]] = {}
+    for rule in rules:
+        at: list[int] = []
+        upto: list[int] = []
+        furthest = -1
+        for match in rule.pattern.finditer(text):
+            at.append(match.start())
+            furthest = max(furthest, match.end())
+            upto.append(furthest)
+        if at:
+            starts[rule.id] = at
+            reach[rule.id] = upto
+    return Scan(starts, reach)
 
 
 def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:

@@ -469,3 +469,78 @@ def test_an_ordinary_number_still_gets_the_ordinary_hint() -> None:
     hint = hint_for("The exposed arm held 412 patients.", "412")
     assert "conventions:" in hint
     assert "design parameter" not in hint
+
+
+# ------------------------------------------------- one scan per document, not per atom
+
+
+def test_a_list_marker_past_the_old_window_classifies() -> None:
+    """`ordered-list-marker` only ever fired in the first 160 characters of a file.
+
+    Rules were matched against a window around each atom, so `^` meant "start of this
+    160-character slice" - a position 160 characters before the number, and almost never the
+    start of anything. Every numbered list further down a real manuscript was reported as
+    unbound numbers, by a rule that exists specifically to accept them.
+    """
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = "# Methods\n\n" + ("filler " * 60) + "\n\n1. The first step.\n2. The second.\n"
+    classifier = Classifier.load()
+    scan = classifier.scan(text)
+    markers = [a for a in find_atoms(text, mask(text)) if a.text in {"1.", "1", "2.", "2"}]
+    assert markers, "the list markers must be atoms in the first place"
+    for atom in markers:
+        verdict = classifier.classify(atom, None, scan)
+        assert verdict.kind != UNCLASSIFIED, f"{atom.text!r} at {atom.start} went unclassified"
+        assert verdict.rule == "ordered-list-marker"
+
+
+def test_the_scanned_and_unscanned_paths_agree() -> None:
+    """Two code paths with different semantics is a bug this file has had several times."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = (
+        "# Methods\n\nDrugs were coded to ATC class L01XC and ICD-10 K71.0.\n"
+        "Significance was set at p < 0.05, and see Table 2 for the 412 patients.\n\n"
+        "1. A step.\n\n# Results\n\nThe ROR was 3.84 and the interval excluded 1.\n"
+    )
+    classifier = Classifier.load()
+    scan = classifier.scan(text)
+    for atom in find_atoms(text, mask(text)):
+        with_scan = classifier.classify(atom, None, scan)
+        without = classifier.classify(atom, None)
+        assert with_scan == without, f"{atom.text!r} judged differently by the two paths"
+
+
+def test_classifying_is_linear_in_the_number_of_atoms() -> None:
+    """The regression this replaces: one regex scan per atom per rule.
+
+    A paragraph written as a single line with 8,000 numbers meant 168,000 scans of 320
+    overlapping characters, and `check` spent 30 seconds inside the classifier. Doubling the
+    atom count must not much more than double the time.
+    """
+    import time
+
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+
+    def measure(count: int) -> float:
+        text = "The ratio was " + "1.0 " * count + "overall.\n"
+        atoms = find_atoms(text, mask(text))
+        started = time.perf_counter()
+        scan = classifier.scan(text)
+        for atom in atoms:
+            classifier.classify(atom, None, scan)
+        return time.perf_counter() - started
+
+    measure(500)  # warm the caches
+    small = measure(2000)
+    large = measure(4000)
+    assert large < small * 4 + 0.5, f"2000 atoms {small:.2f}s, 4000 atoms {large:.2f}s"

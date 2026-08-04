@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -157,20 +158,36 @@ def _values_of(document: dict) -> dict[str, object]:
 
 IGNORED_DIRS = ("build", ".git")
 
+#: A Windows directory junction, as `os.lstat` reports it. Read from `stat` where it exists
+#: so the constant is not silently wrong if it ever moves.
+_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+
+
+def _is_junction(path: str) -> bool:
+    """Is this a Windows directory junction?
+
+    Not `os.path.isjunction`, which arrived in Python 3.12 — this project supports 3.10, and
+    a guard that returns early on the oldest supported version is not a guard. The reparse
+    tag it reads has been on `os.lstat` results since 3.8, and is absent on POSIX, where the
+    answer is always no.
+
+    Unreadable is *not* treated as a junction. Skipping what cannot be stat'd would drop a
+    real directory out of the verified copy without saying so, and silent omission is the
+    failure this whole command exists to avoid; `copytree` cannot walk it either, so it
+    raises and the run reports that it could not stage a copy. A junction stats fine — that
+    is the whole point of the tag — so nothing is lost by being strict here.
+    """
+    try:
+        return getattr(os.lstat(path), "st_reparse_tag", 0) == _MOUNT_POINT
+    except OSError:
+        return False
+
 
 def _skip(directory: str, names: list[str]) -> set[str]:
     """What `copytree` must not descend into: the build tree, .git, and any junction."""
-    skipped = {name for name in names if name in IGNORED_DIRS}
-    isjunction = getattr(os.path, "isjunction", None)
-    if isjunction is None:  # pragma: no cover - Python < 3.12
-        return skipped
-    for name in names:
-        try:
-            if isjunction(os.path.join(directory, name)):
-                skipped.add(name)
-        except OSError:
-            skipped.add(name)
-    return skipped
+    return {name for name in names if name in IGNORED_DIRS} | {
+        name for name in names if _is_junction(os.path.join(directory, name))
+    }
 
 
 #: Output kept from a verified script. Enough to diagnose a failure, bounded because this

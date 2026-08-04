@@ -110,12 +110,15 @@ def check_numbers(
                     )
                 )
 
+        # One scan of this file per rule, reused by every atom in it. Matching each rule
+        # against a window around each atom re-read the same characters once per number.
+        scan = classifier.scan(text)
         for atom in find_atoms(text, mask(text)):
             totals["atoms"] += 1
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
-            verdict = classifier.classify(atom, chain_at(headings, atom.start))
+            verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):

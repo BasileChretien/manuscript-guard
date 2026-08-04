@@ -1223,6 +1223,16 @@ Closed since, and why each mattered:
   as an identifier wherever it appears, so a hand-typed ICD-10 list in a table is accepted.
   `code_list()` earns its place by keeping the list as data the analysis selects on, not by
   being the only way to print one. Numeric codes have no such escape.
+- **The classifier scans a whole document once per rule, not a window per atom.** Windows
+  were the earlier design and they cost one regex scan per atom per rule: a paragraph
+  written as a single line with 8,000 numbers meant 168,000 scans of 320 mostly-identical
+  characters, and `check` spent 30 seconds inside the classifier. Scanning once per document
+  also repaired three rules that had never worked: in a window `^` means "start of this
+  160-character slice", so `ordered-list-marker` only fired within the first 160 characters
+  of a file and every numbered list further down a manuscript was reported as unbound
+  numbers. The trade is that a rule may now match a span longer than 160 characters; every
+  shipped pattern is bounded well below that, and where it matters the rule is written not
+  to span at all.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

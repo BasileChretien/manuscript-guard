@@ -157,33 +157,53 @@ def test_a_junction_is_not_followed_when_staging_a_copy(tmp_path: Path) -> None:
 
     `os.path.islink` is False for one, so `copytree` walked straight into it and re-copied
     the tree at every level until the OS gave up - reachable by any unprivileged
-    `mklink /J`, and the comment in verify.py claimed it had been fixed.
+    `mklink /J`, while the comment in verify.py claimed it had been fixed.
+
+    Written against `st_reparse_tag` rather than `os.path.isjunction`, which arrived in
+    Python 3.12: this project supports 3.10, and the first version of the fix returned early
+    there. CI caught it on windows-latest/3.10 - the guard was inert on a third of the
+    supported matrix while DESIGN said junctions were skipped.
     """
     import subprocess
 
     from manuscript_guard.verify import _skip
 
+    if sys.platform != "win32":
+        pytest.skip("a junction is a Windows construct; copytree handles the symlink case")
+
     root = tmp_path / "paper"
     (root / "analysis").mkdir(parents=True)
-    if sys.platform == "win32":
-        made = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(root / "loop"), str(root)],
-            capture_output=True,
-            check=False,
-        )
-        if made.returncode != 0:
-            pytest.skip("could not create a junction")
-    else:
-        (root / "loop").symlink_to(root, target_is_directory=True)
-        pytest.skip("junctions are a Windows construct; the symlink case is copytree's own")
+    made = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(root / "loop"), str(root)],
+        capture_output=True,
+        check=False,
+    )
+    if made.returncode != 0:
+        pytest.skip("could not create a junction")
 
-    assert "loop" in _skip(str(root), [name.name for name in root.iterdir()])
+    assert "loop" in _skip(str(root), [entry.name for entry in root.iterdir()])
+    assert "analysis" not in _skip(str(root), [entry.name for entry in root.iterdir()])
 
 
 def test_the_build_and_git_trees_are_still_skipped(tmp_path: Path) -> None:
     from manuscript_guard.verify import _skip
 
-    assert _skip(str(tmp_path), ["build", ".git", "analysis"]) == {"build", ".git"}
+    for name in ("build", ".git", "analysis", "results"):
+        (tmp_path / name).mkdir()
+    names = [entry.name for entry in tmp_path.iterdir()]
+    assert _skip(str(tmp_path), names) == {"build", ".git"}
+
+
+def test_something_that_cannot_be_stated_is_copied_rather_than_dropped(tmp_path: Path) -> None:
+    """Silent omission is the failure this whole command exists to avoid.
+
+    Treating an unreadable entry as a junction would drop a real directory out of the
+    verified copy without saying so. `copytree` cannot walk it either, so it raises and the
+    run reports that it could not stage a copy — which is the loud failure we want.
+    """
+    from manuscript_guard.verify import _skip
+
+    assert _skip(str(tmp_path), ["does-not-exist"]) == set()
 
 
 def test_a_verified_script_cannot_tell_it_is_being_verified(tmp_path: Path) -> None:

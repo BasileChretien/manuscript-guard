@@ -26,7 +26,8 @@ a reviewer.
 
 > **Status: alpha.** All twelve gates, the document build, the literature tooling, the
 > checklist transcriber, the review panels and the submission pack work and are tested
-> against a worked example — 757 tests, and several rounds of adversarial review whose
+> against a worked example — a test suite that gains a case for every defect found, and
+> several rounds of adversarial review whose
 > findings are recorded in [DESIGN.md](DESIGN.md) along with an honest list of what the
 > toolkit cannot do. That is a long way from "trust it with your paper": the example is
 > synthetic, no real manuscript has gone through it, and every round of review so far has

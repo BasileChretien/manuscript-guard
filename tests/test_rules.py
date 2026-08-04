@@ -104,7 +104,8 @@ def _flatten(kind: str):
         for case in spec.get(kind) or []:
             if case.get("atom") is None:
                 continue
-            out.append(pytest.param(rule_id, case["text"], case["atom"], id=f"{rule_id}:{case['atom']}"))
+            label = f"{rule_id}:{case['atom']}"
+            out.append(pytest.param(rule_id, case["text"], case["atom"], id=label))
     return out
 
 

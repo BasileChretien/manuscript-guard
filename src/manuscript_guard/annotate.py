@@ -192,7 +192,13 @@ def annotate(
         counter[0] += 1
         anchor = _ANCHOR.format(n=counter[0])
         if verdict.kind == UNCLASSIFIED:
-            mark = Mark(anchor, DEFECT, atom.text, "not bound to any source", "")
+            # The hover on a red number carries the way out, not just the verdict. "Not
+            # bound to any source" tells an author what they already know from the colour;
+            # what they need is the sentence that says what to type, which is the same one
+            # the gate prints.
+            from manuscript_guard.gates.numbers import _hint_for
+
+            mark = Mark(anchor, DEFECT, atom.text, "not bound to any source", _hint_for(atom))
         else:
             mark = Mark(
                 anchor,

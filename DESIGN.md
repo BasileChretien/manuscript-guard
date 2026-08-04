@@ -1105,6 +1105,30 @@ decide whether the document a co-author opens is current, and there must be exac
 document. This one is named so it cannot be mailed to a journal by accident, for the same
 reason `manuscript.UNCHECKED.docx` is.
 
+## Getting a number out of the red
+
+`check` says a number is unbound and the annotated copy colours it red. Neither says what to
+type next, and the four routes out are not equally likely: usually the value is already in
+`results/` and the author typed it instead of binding it. `manuscript-guard bind` looks for
+that case, and `--apply` makes the replacement.
+
+**A value match is a suggestion, never evidence.** The gate refuses to accept a number
+because it *matches* one — nothing may pass by coincidence, which is the whole reason a
+results-derived number cannot be a literal at all. Offering a match as a fix is a different
+act entirely: the author accepts it, the literal becomes a binding, and the binding is then
+checked structurally like every other. The comparison decides what to *suggest* and never
+what is true, which is why `bind` can use the value while G2 must not.
+
+Where two published values read the same, the suggestion is refused rather than guessed. The
+worked example makes the case concrete: `77` is both `results.case.n_cases` and
+`results.table2x2.a`, so `bind` lists both and changes nothing. Quietly picking the first
+would write the wrong binding into the manuscript, which is worse than leaving the number
+red — and it is the same collision that makes a lone table cell weaker than a composed one.
+
+Replacement is by offset, never by text. "Replace 1 with a binding" done by search-and-
+replace would be a catastrophe in a paper full of 1s, and structural numbers — Table 8, item
+8 — must be left exactly where they are.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.

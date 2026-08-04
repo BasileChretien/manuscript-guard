@@ -62,6 +62,7 @@ manuscript-guard check                 # every gate
 manuscript-guard verify                # re-run the analysis; do the numbers still come out?
 manuscript-guard build                 # the .docx, with live Zotero citations
 manuscript-guard build --annotated     # the same, every number coloured by what backs it
+manuscript-guard bind                  # every unbound number, and how to give it a source
 manuscript-guard check --submission    # submission standards
 manuscript-guard submit                # the whole pack, ready to upload
 ```

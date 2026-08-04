@@ -164,6 +164,50 @@ def cmd_review(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+
+def cmd_bind(args: argparse.Namespace) -> int:
+    """Show every unbound number and what would give it a source.
+
+    `check` says a number is unbound; the annotated copy colours it red. Neither says what
+    to type next, and usually the answer is that the number is already in `results/` and was
+    typed instead of bound. That case is detected and offered as a replacement.
+    """
+    from manuscript_guard.binding import apply, routes, unbound
+
+    project, _ = load_project(args.path)
+    namespace, _results, _literature, _ = load_namespace(project)
+    items = unbound(project, namespace)
+
+    if not items:
+        print("every number in the manuscript is accounted for.")
+        return 0
+
+    if args.apply:
+        replaced, remaining = apply(items)
+        print(f"replaced {replaced} literal(s) with the binding they match.")
+        if remaining:
+            print(f"{len(remaining)} left, which need a decision:\n")
+        items = remaining
+        if not items:
+            print("Re-run `manuscript-guard check` to confirm.")
+            return 0
+
+    for item in items:
+        where = item.path.relative_to(project.root).as_posix()
+        print(f"\n{where}:{item.line}  {item.text!r}")
+        for route in routes(item):
+            print(f"    {route}")
+        print(f"    hint: {item.hint}")
+
+    certain = sum(1 for item in items if item.certain)
+    if certain and not args.apply:
+        print(
+            f"\n{certain} of {len(items)} match exactly one published value. "
+            f"`manuscript-guard bind --apply` replaces those and leaves the rest."
+        )
+    return 1
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     report, project, stage, deferred = _run_gates(
         args.path, submission=args.submission, stage=args.stage
@@ -819,6 +863,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review.add_argument("--submission", action="store_true")
     review.set_defaults(func=cmd_review)
+
+    bind = sub.add_parser(
+        "bind", help="show every unbound number and how to give it a source"
+    )
+    bind.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    bind.add_argument(
+        "--apply",
+        action="store_true",
+        help="replace the literals that match exactly one published value",
+    )
+    bind.set_defaults(func=cmd_bind)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)

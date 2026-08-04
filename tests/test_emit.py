@@ -395,3 +395,84 @@ def test_provenance_records_the_inputs_it_read(scratch: Path) -> None:
     inputs = document["provenance"]["inputs"]
     assert len(inputs) == 1
     assert inputs[0]["sha256"] == sha256_of(data)
+
+
+# ------------------------------------------------- what an ordinary clinical table needs
+
+
+def write(em: Emitter) -> None:
+    em.write("results/probe.json")
+
+
+def test_n_over_N_can_be_emitted(scratch: Path) -> None:
+    """The commonest cell format in medicine, and it could not be written at all.
+
+    `em.cell("{}/{}", 77, 412)` renders `77/412`, which the tokenizer reads as one atom -
+    neither "77" nor "412" - so the composed cell was rejected as a number the analysis
+    never produced. A cell the emitter composed is now checked on its template instead.
+    """
+    em = emitter(scratch)
+    em.table("t", ["Group", "n/N"], [["Exposed", em.cell("{}/{}", 77, 412)]])
+    write(em)
+
+
+def test_a_p_value_too_small_to_state_goes_in_a_table(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.table("t", ["Group", "p"], [["Exposed", em.cell("{}", (3.2e-7, "<0.001"))]])
+    write(em)
+
+
+def test_a_comparator_display_must_be_true_of_its_value(scratch: Path) -> None:
+    """The display is checked against the number, so it cannot invent a significance."""
+    em = emitter(scratch)
+    with pytest.raises(DisplayError, match="below 0.001, but it is 0.4"):
+        em.table("t", ["Group", "p"], [["Exposed", em.cell("{}", (0.4, "<0.001"))]])
+
+
+def test_a_header_can_carry_a_computed_count(scratch: Path) -> None:
+    """"Exposed (n = 412)" is where a group size is written, and headers were `list[str]`.
+
+    The only way to put the count there was to type it, which the header check then refused
+    - so an ordinary table header could not be written. Passing a `Composed` failed with
+    "'Composed' object is not iterable" three frames away.
+    """
+    em = emitter(scratch)
+    em.table("t", ["Group", em.cell("Exposed (n = {})", 412)], [["a", "b"]])
+    write(em)
+
+
+def test_a_typed_count_in_a_header_is_still_refused(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.table("t", ["Group", "Exposed (n = 412)"], [["a", "b"]])
+    with pytest.raises(DisplayError, match="'412' in 'Exposed"):
+        write(em)
+
+
+def test_a_count_typed_into_a_template_is_refused(scratch: Path) -> None:
+    """The exemption covers what the emitter formatted, not what the script typed round it."""
+    em = emitter(scratch)
+    em.table("t", ["Group", "x"], [["Exposed", em.cell("{} (n = 412)", 77)]])
+    with pytest.raises(DisplayError, match="'412'"):
+        write(em)
+
+
+def test_a_convention_in_a_template_is_allowed(scratch: Path) -> None:
+    """"95% CI" is a conventional level, so the template that carries it passes."""
+    em = emitter(scratch)
+    em.table(
+        "t",
+        ["Group", "ROR"],
+        [["Exposed", em.cell("{} (95% CI {} to {})", (3.84, 2), (2.10, 2), (7.02, 2))]],
+    )
+    write(em)
+
+
+def test_a_transposed_interval_is_still_caught_in_a_typed_cell(scratch: Path) -> None:
+    """The guarantee the composed-cell exemption must not weaken."""
+    em = emitter(scratch)
+    em.value("ror.point", 3.84, digits=2)
+    em.value("ror.low", 2.10, digits=2)
+    em.value("ror.high", 7.02, digits=2)
+    em.table("t", ["Group", "ROR"], [["Exposed", "3.84 (7.02 to 2.10)"]])
+    with pytest.raises(DisplayError, match="typed rather than composed"):
+        write(em)

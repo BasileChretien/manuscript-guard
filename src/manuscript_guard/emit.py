@@ -56,11 +56,40 @@ class Composed:
     """
 
     template: str
-    parts: tuple[tuple[object, int | None], ...]
+    parts: tuple[tuple[object, int | None, str | None], ...]
 
     def render(self, where: str) -> tuple[str, list[str]]:
-        shown = [derive_display(where, value, None, digits) for value, digits in self.parts]
+        shown = [
+            derive_display(where, value, display, digits) for value, digits, display in self.parts
+        ]
         return self.template.format(*shown), shown
+
+    @property
+    def literal(self) -> str:
+        """The template with its placeholders removed: the part nobody computed.
+
+        A composed cell is exempt from the emitted-value check, because the emitter did its
+        formatting — but only the parts went through `derive_display`. The template is
+        whatever the script typed, so `em.cell("{} (n = 412)", 77)` would smuggle 412 into
+        the table under the exemption. The literal text is checked on its own; "95% CI"
+        classifies as a convention and passes, a count does not.
+        """
+        return self.template.replace("{}", " ")
+
+
+def _part(part: object) -> tuple[object, int | None, str | None]:
+    """Normalise one `cell()` argument: a number, `(number, digits)` or `(number, display)`."""
+    if not isinstance(part, tuple):
+        return (part, None, None)
+    if len(part) != 2:
+        raise DisplayError(
+            f"{part!r}: a cell part is a number, a (number, digits) pair, or a "
+            f"(number, display) pair"
+        )
+    value, second = part
+    if isinstance(second, str):
+        return (value, None, second)
+    return (value, second, None)
 
 
 def _cell(
@@ -71,6 +100,7 @@ def _cell(
     digits: int | dict | None,
     computed: set[str],
     composed: set[tuple[str, int, int]],
+    literals: dict[tuple[str, int, int], str],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
     where = f"table {key!r} row {row} column {column}"
@@ -79,6 +109,7 @@ def _cell(
         text, parts = cell.render(where)
         computed.update(parts)
         composed.add((key, row, column))
+        literals[(key, row, column)] = cell.literal
         return text
     if isinstance(cell, bool):
         return str(cell)
@@ -174,6 +205,10 @@ class Emitter:
     # text meant the exemption was shared: a stale copy-paste of group A's interval into
     # group B's row passed, with group B's own values never used.
     _composed: set[tuple[str, int, int]] = field(default_factory=set, init=False)
+    # The literal text of each composed cell's template, keyed the same way. What the
+    # emitter formatted is exempt from the emitted-value check; what the script typed
+    # around it is not.
+    _literals: dict[tuple[str, int, int], str] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -185,15 +220,16 @@ class Emitter:
 
             em.cell("{} ({})", n, (100 * n / total, 1))
 
-        Each part is a number, or a `(number, digits)` pair when it needs rounding — the
-        same rule as `value()`, because it is the same rule. Use this rather than an
-        f-string: a formatted string arrives here indistinguishable from a typed one, so
-        the emitter has to be the thing that formats it.
+        Each part is a number, a `(number, digits)` pair when it needs rounding, or a
+        `(number, display)` pair when the number is not written as itself — the same rules
+        as `value()`, because they are the same rules. `em.cell("{}", (p, "<0.001"))` is how
+        a p-value too small to state goes into a table: the display is checked against the
+        value, so it can only say "below 0.001" of something that is.
+
+        Use this rather than an f-string: a formatted string arrives here indistinguishable
+        from a typed one, so the emitter has to be the thing that formats it.
         """
-        pairs = tuple(
-            (part[0], part[1]) if isinstance(part, tuple) else (part, None) for part in parts
-        )
-        return Composed(template=template, parts=pairs)
+        return Composed(template=template, parts=tuple(_part(p) for p in parts))
 
     def value(
         self,
@@ -274,10 +310,21 @@ class Emitter:
                     f"table {key!r}: row {index} has {len(row)} cells, header has {width}"
                 )
         spec: dict = {
-            "columns": list(columns),
+            # Headers go through `_cell` too. "Exposed (n = 412)" is where a group size is
+            # normally written, and a header was `list[str]`, so the only way to put the
+            # count there was to type it — which the header check then refused, leaving no
+            # way to write an ordinary table header at all. Passing a `Composed` used to
+            # fail with "'Composed' object is not iterable" three frames away.
+            "columns": [
+                _cell(key, -2, column, text, None, self._computed, self._composed, self._literals)
+                for column, text in enumerate(columns)
+            ],
             "rows": [
                 [
-                    _cell(key, index, column, cell, digits, self._computed, self._composed)
+                    _cell(
+                        key, index, column, cell, digits, self._computed, self._composed,
+                        self._literals,
+                    )
                     for column, cell in enumerate(row)
                 ]
                 for index, row in enumerate(rows)
@@ -398,6 +445,21 @@ class Emitter:
             ]
 
             for where, cell, row, column in places:
+                # A cell the emitter composed is checked on its template, not its result.
+                #
+                # Every part of a composed cell went through `derive_display`, so the
+                # numbers in it are traceable by construction — but the rendered text is
+                # not, because a template can glue them into something the tokenizer reads
+                # as one atom. `em.cell("{}/{}", 77, 412)` renders `77/412`, which is not
+                # "77" and not "412", so the commonest cell format in medicine could not be
+                # emitted at all: n/N was rejected as a number this analysis never produced.
+                #
+                # What still has to be checked is the literal part of the template, since
+                # that is the part the script typed. `em.cell("{} (n = 412)", 77)` would
+                # otherwise smuggle a count in under the exemption.
+                if (key, row, column) in self._composed:
+                    cell = self._literals.get((key, row, column), "")
+
                 # Two or more claims in one cell must have been composed, not typed.
                 #
                 # Membership of the emitted set is not enough on its own: it says each

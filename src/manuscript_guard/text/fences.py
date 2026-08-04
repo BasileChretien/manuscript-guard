@@ -85,13 +85,27 @@ def _closes(line: str, char: str, width: int) -> bool:
 def fenced_spans(text: str) -> list[Fence]:
     """Every fenced block, in document order. Linear in the length of the text.
 
-    An unterminated fence runs to the end of the document, which is what pandoc does with
-    it too.
+    An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
+    ``` as literal text and the rest of the document as ordinary paragraphs — verified
+    against pandoc 3.9.0.2 — so treating it as code to the end of the file would mask prose
+    the reader plainly sees. That is the same failure as the longer-closer bug, arrived at
+    from the other side, and `tests/test_pandoc_agreement.py` caught it here.
     """
     found: list[Fence] = []
     offset = 0
     lines = text.splitlines(keepends=True)
     index = 0
+
+    # Openers proven to have no closer, by fence character. Without this the scan is
+    # quadratic again: every unterminated opener reads to the end of the file, and a
+    # document of 8,000 of them took 55 seconds — the very cost the regex was replaced to
+    # avoid, reintroduced by the fix for unterminated fences.
+    #
+    # The shortcut is sound because a closing line of width w closes every opener of width
+    # <= w. So once a width is known to have no closer in the remainder of the document, no
+    # *wider* opener of the same character can have one either, and it can be rejected
+    # without looking.
+    dead: dict[str, int] = {}
 
     while index < len(lines):
         line = lines[index]
@@ -110,7 +124,13 @@ def fenced_spans(text: str) -> list[Fence]:
             index += 1
             continue
 
+        if len(fence) >= dead.get(fence[0], 1 << 30):
+            offset += len(line)
+            index += 1
+            continue
+
         start = offset
+        closed_from = index
         offset += len(line)
         index += 1
         body_start = offset
@@ -122,9 +142,16 @@ def fenced_spans(text: str) -> list[Fence]:
             index += 1
 
         body_end = offset
-        if index < len(lines):  # consume the closing line
-            offset += len(lines[index])
-            index += 1
+        if index >= len(lines):
+            # Ran off the end: no closer, so pandoc does not read this as a code block and
+            # neither do we. Resume from the line *after* the opener so the rest stays prose
+            # — and so this loop terminates, which rewinding to the opener itself did not.
+            dead[fence[0]] = min(dead.get(fence[0], 1 << 30), len(fence))
+            index = closed_from + 1
+            offset = start + len(lines[closed_from])
+            continue
+        offset += len(lines[index])
+        index += 1
 
         found.append(
             Fence(

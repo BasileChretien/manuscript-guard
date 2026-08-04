@@ -30,13 +30,15 @@ _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 # at all as far as G2, G4 and the reporting gate were concerned: no required-section check,
 # no abstract, and every `methods_only` rule silently inapplicable.
 #
-# The underline is `=+` or `-{3,}`. Three dashes rather than one, because a shorter run is
-# more often a stray than a heading, and because `---` closing YAML front matter would
-# otherwise turn its last line into a heading — which is why `_scannable` blanks the front
-# matter before any of this runs.
+# The underline is `=+` or `-+`. One dash is enough for pandoc, and requiring three meant a
+# "Results" heading under `--` was invisible — so Results content inherited the enclosing
+# Methods chain and a fabricated `p < 0.001` passed as the pre-specified alpha. `---` closing
+# YAML front matter would read as an underline too, which is why `_scannable` blanks the
+# front matter before any of this runs, and a thematic break is excluded because setext
+# needs its title on the line immediately above with no blank between.
 _SETEXT = re.compile(
     r"^(?P<title>(?![ \t]*$)(?![ \t]*[-=]+[ \t]*$)(?![ \t]*[#>|])[^\n]+)\n"
-    r"(?P<under>=+|-{3,})[ \t]*$",
+    r"(?P<under>=+|-+)[ \t]*$",
     re.MULTILINE,
 )
 

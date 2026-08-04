@@ -199,6 +199,14 @@ def build_document(
     # document a co-author opens is current, and there must be exactly one such document.
     if reference_doc is None:
         _stamp_source(project, output)
+        # And inside the file, where it can survive being emailed. The sidecar answers
+        # "is my build current"; this answers "which text were these edits made against",
+        # which is the question the moment a co-author sends the document back.
+        with contextlib.suppress(Exception):
+            from manuscript_guard.gates.review import document_digest
+            from manuscript_guard.roundtrip import stamp_into
+
+            stamp_into(output, document_digest(project))
     return BuildResult(output=output, mode=mode, report=report)
 
 

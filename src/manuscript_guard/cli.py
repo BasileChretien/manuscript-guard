@@ -208,6 +208,134 @@ def cmd_bind(args: argparse.Namespace) -> int:
     return 1
 
 
+
+def cmd_import(args: argparse.Namespace) -> int:
+    """Bring a co-author's edits back from Word, without losing the bindings.
+
+    Prose comes back; generated things do not. A paragraph carrying a binding or a citation
+    is reported rather than merged, because splicing returned text into it would replace the
+    binding with whatever the co-author's Word rendered - a checked manuscript quietly
+    becoming an unchecked one that still passes.
+    """
+    import tempfile
+
+    from manuscript_guard.build.document import pandoc
+    from manuscript_guard.gates.review import document_digest
+    from manuscript_guard.roundtrip import (
+        GENERATED,
+        RoundTripError,
+        as_markdown,
+        comments_in,
+        differences,
+        locate,
+        source_paragraphs,
+        stamp_of,
+    )
+
+    project, _ = load_project(args.path)
+    edited = args.document
+    if not edited.exists():
+        print(f"manuscript-guard: {edited} does not exist", file=sys.stderr)
+        return 2
+
+    try:
+        carried = stamp_of(edited)
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+
+    current = document_digest(project)
+    if carried is None:
+        print(
+            f"{edited.name} carries no record of the source it was built from, so there is "
+            f"no way to tell which text these edits were made against. Only a document this "
+            f"tool built can be imported."
+        )
+        return 1
+    if carried != current and not args.force:
+        print(
+            f"{edited.name} was built from a different version of the manuscript than the "
+            f"one on disk. Merging edits made against text that has since changed is how a "
+            f"correction lands on the wrong sentence.\n"
+            f"  Resolve it by hand, or re-send the co-author a current build.\n"
+            f"  --force imports anyway, and you will have to check every hunk."
+        )
+        return 1
+
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, _r = assemble(project, namespace, results)
+
+    with tempfile.TemporaryDirectory() as scratch:
+        reference = Path(scratch) / "reference.docx"
+        build_document(project, assembled, mode=OFFLINE, output=reference)
+        before = as_markdown(pandoc(), reference)
+    after = as_markdown(pandoc(), edited)
+
+    protected = {value.display for value in namespace.values() if value.display}
+    hunks = differences(before, after, protected)
+    comments = comments_in(edited)
+
+    if not hunks and not comments:
+        print("nothing came back: the document matches the manuscript on disk.")
+        return 0
+
+    paragraphs = source_paragraphs(project)
+    applied, reported = [], []
+    for hunk in hunks:
+        found = locate(hunk.before, paragraphs) if hunk.before.strip() else None
+        if hunk.protected or found is None or GENERATED.search(found[1]):
+            reported.append((hunk, found))
+        else:
+            applied.append((hunk, found))
+
+    if args.apply:
+        for hunk, found in applied:
+            path, para = found
+            text = path.read_text(encoding="utf-8")
+            path.write_text(text.replace(para, hunk.after.strip(), 1), encoding="utf-8")
+        print(f"merged {len(applied)} paragraph(s) of prose into the manuscript source.")
+    else:
+        for hunk, found in applied:
+            where = found[0].relative_to(project.root).as_posix()
+            print(f"\nwould merge into {where}:")
+            print(f"    - {hunk.before.strip()[:140]}")
+            print(f"    + {hunk.after.strip()[:140]}")
+
+    for hunk, found in reported:
+        print("\nNOT merged:")
+        print(f"    - {hunk.before.strip()[:140]}")
+        print(f"    + {hunk.after.strip()[:140]}")
+        if hunk.protected:
+            keys = [k for k, v in namespace.items() if v.display == hunk.protected]
+            named = keys[0] if len(keys) == 1 else ", ".join(keys) or "a published value"
+            print(
+                f"    {hunk.protected!r} comes from {named}. Change the analysis, not the "
+                f"document; the manuscript holds a binding there."
+            )
+        elif found is None:
+            print("    could not tell which paragraph this was, so it was left alone.")
+        else:
+            print(
+                "    this paragraph carries a binding or a citation. Apply the wording by "
+                "hand in the .md so the binding survives."
+            )
+
+    for comment in comments:
+        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+    if comments:
+        print(
+            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
+            f"were answered: `manuscript-guard review --open`."
+        )
+
+    if not args.apply and applied:
+        print(
+            f"\n`manuscript-guard import {edited} --apply` merges the "
+            f"{len(applied)} safe one(s)."
+        )
+    return 0 if args.apply else 1
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     report, project, stage, deferred = _run_gates(
         args.path, submission=args.submission, stage=args.stage
@@ -874,6 +1002,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the literals that match exactly one published value",
     )
     bind.set_defaults(func=cmd_bind)
+
+    importer = sub.add_parser(
+        "import", help="bring a co-author's Word edits back into the manuscript source"
+    )
+    importer.add_argument("document", type=Path, help="the edited .docx")
+    importer.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    importer.add_argument("--apply", action="store_true", help="merge the safe hunks")
+    importer.add_argument(
+        "--force", action="store_true", help="import even if it was built from older source"
+    )
+    importer.set_defaults(func=cmd_import)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)

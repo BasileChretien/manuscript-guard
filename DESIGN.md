@@ -1129,6 +1129,43 @@ Replacement is by offset, never by text. "Replace 1 with a binding" done by sear
 replace would be a catastrophe in a paper full of 1s, and structural numbers — Table 8, item
 8 — must be left exactly where they are.
 
+## The round trip carries prose, and refuses everything else
+
+"The document is a build artefact and never edited" is the right rule and, on its own,
+unusable. Co-authors edit in Word — senior ones especially — and "please learn Markdown" is
+not a thing anyone gets to say. So the round trip has to exist, and the only real question
+is what it is allowed to carry.
+
+Converting a built document back shows what is at stake. `{{results.ror.point}}` returns as
+`3.84`, `[@fictionalClassSignal2019]` returns as "(Fictional and Fictional 2021)", and an
+emitted table returns as ordinary text. A naive import would replace every binding with the
+literal it currently renders to — turning a checked manuscript into an unchecked one that
+still *passes*, because the literals match what the analysis said at that moment. It would
+fail silently, months later, the first time the analysis changed. That is worse than having
+no round trip at all.
+
+So prose comes back and generated things do not. A hunk that removes or alters a published
+value is refused and told what it was: "'3.84' comes from results.ror.point. Change the
+analysis, not the document." Rewording *around* a number is fine, because the value survives
+the edit; only a hunk that drops it is refused. Comments become findings to answer, since a
+co-author's comment is the most valuable thing in the returned file.
+
+Three things make it safe rather than clever. Both sides of the diff go through the same
+`docx → markdown` conversion, so what remains is the edit and not pandoc's formatting
+habits. A returned document must carry the digest of the source it was built from — stored
+*inside* the `.docx` as a custom property, because a sidecar cannot survive being emailed —
+and a mismatch is refused as a merge conflict rather than resolved. And a paragraph that
+cannot be located unambiguously in the source is left alone: splicing an edit into the wrong
+paragraph is the failure this command must not have, and a near-tie between two candidates
+is exactly when a guess would be wrong.
+
+**The conservative part, stated plainly.** A paragraph containing a binding or a citation is
+reported rather than merged, even when the edit is pure wording, because splicing returned
+text into it would lose the binding. In a paper where most paragraphs quote a number, that
+is most paragraphs — so this version carries copy-edits to prose and hands everything else
+back as a diff to apply by hand. Doing better means aligning the edit against the binding's
+position rather than the paragraph's, which is a real piece of work and not yet done.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1396,6 +1433,12 @@ Closed since, and why each mattered:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
+- **`import` merges whole paragraphs, and only binding-free ones.** A wording change in a
+  paragraph that quotes a number is reported rather than applied. The safe version of
+  applying it needs sub-paragraph alignment against each binding's position.
+- **A tracked change is accepted, not shown.** The import reads the document as if every
+  revision had been accepted. Rejecting a co-author's change means rejecting it in Word
+  before sending it back.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact

@@ -82,7 +82,8 @@ Verified 2026-08-03 on the author's machine.
   "response ended prematurely"; Python's `urllib` is fine. Reach Zotero from Python only.
 - Zotero must be **running** for the live-citation build; the build needs an offline mode
   for when it is not.
-- pandoc is at `C:\Users\Basile\AppData\Local\Pandoc\pandoc.exe`, version 3.9.0.2.
+- pandoc on Windows installs per-user, at `%LOCALAPPDATA%\Pandoc\pandoc.exe`, and is often
+  not on `PATH`. Verified against 3.9.0.2.
 - **`jq` is not installed.** `gh ... --json x --jq '...'` works (gh has jq built in), and so
   does `--template`, but piping to a standalone `jq` fails silently inside a loop — a CI
   watcher written that way reports nothing and looks like a pending build.

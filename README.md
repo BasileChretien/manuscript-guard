@@ -1,5 +1,16 @@
 # manuscript-guard
 
+> # ⚠️ ALPHA — DO NOT USE FOR REAL WORK YET
+>
+> **This project is published early so it can be read and criticised, not so it can be
+> relied on.** No real paper has been written with it. Interfaces, file formats and gate
+> behaviour will change without notice or migration. Do not point it at a manuscript you
+> care about, and do not treat a passing `check` as evidence about a paper you are
+> submitting.
+>
+> What it is safe to do today: read the code, read [DESIGN.md](DESIGN.md), run the worked
+> example, and tell me where the reasoning is wrong.
+
 Make every number in a scientific manuscript traceable to its source.
 
 A number in a paper comes from one of three places: your results, the literature, or a
@@ -10,10 +21,13 @@ anything else has to be justified. Change the analysis, rebuild, and the manuscr
 supplements and figures follow. A stale number is a build failure, not a discovery made by
 a reviewer.
 
-> **Status: usable, not yet battle-tested.** All twelve gates, the document build, the
-> literature tooling, the checklist transcriber, the review panels and the submission pack
-> work and are tested against a worked example. No real paper has been written with it yet.
-> [DESIGN.md](DESIGN.md) records the reasoning and an honest list of what it cannot do.
+> **Status: alpha.** All twelve gates, the document build, the literature tooling, the
+> checklist transcriber, the review panels and the submission pack work and are tested
+> against a worked example — 757 tests, and several rounds of adversarial review whose
+> findings are recorded in [DESIGN.md](DESIGN.md) along with an honest list of what the
+> toolkit cannot do. That is a long way from "trust it with your paper": the example is
+> synthetic, no real manuscript has gone through it, and every round of review so far has
+> found something the previous round's fix had opened up.
 
 ## How it works
 

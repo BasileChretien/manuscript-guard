@@ -918,6 +918,58 @@ And `verify` had three of its own, of which one was serious enough to invalidate
 command: see its module docstring for what it now does and does not prove, and the Known
 gaps below for what remains.
 
+## A rule names values, not shapes
+
+The classifier's allowlists are the one place where being generous is the same as being
+wrong, and the same mistake has now been made eight times: a rule written to match a
+*shape* rather than to name specific *values*, which then swallows a real measurement.
+`rate-denominator` took any digit run after "per". `age-band` made the unit optional.
+`categorical-label` and `time-label` took any number after a keyword. `author-year-citation`
+spanned a whole parenthetical. `software-version` was narrowed from `\d+\.\d+` — which had
+classified an odds ratio of 3.84 — to "three or more components", and promptly absorbed
+`2.10-7.02`, which is how a confidence interval is written in this field.
+
+Every one of those was caught by a person reading the regex, never by a test, because each
+rule only ever had positive cases. `tests/data/rule_cases.yaml` now carries `accepts` and
+`rejects` for every shipped rule, and `tests/test_rules.py` fails the build if any rule
+lacks a negative case — so a rule cannot be added without someone writing down what it must
+not do. Negative cases are checked against the *whole* rule set rather than their own rule,
+because `2.10-7.02` was absorbed by `software-version`, which nobody would have thought to
+test.
+
+There is one exception to "name the values", and it is worth being precise about why.
+`alphanumeric-identifier` matches a general shape — one to three letters followed by digits
+— and is safe not by enumeration but by construction: **nothing that begins with a letter is
+a quantity.** It covers ICD-10 `K71.0`, ATC `L01XC`, trial registrations `NCT01234567`, and
+the named disproportionality statistics `IC025` and `EB05`, and it cannot absorb a
+measurement because a measurement is not written that way. Rules that match digits get no
+such licence.
+
+A realistic pharmacovigilance Methods section produced 27 findings, 25 of them false: coding
+systems, the null value of a ratio and the published signal criteria all read as unexplained
+numbers. That is the failure mode that gets a gate switched off, and it mattered more than
+any individual rule. What fixed it was four rules — the identifier rule above,
+`coding-system-code`, `ratio-null-value` and `disproportionality-criterion` — each written
+so that the numbers a paper is actually claiming stay unbound. `IC025 > 0` is a criterion;
+`IC025 was 1.42` is a finding. The Methods section now classifies completely and the
+Results section is untouched.
+
+Two of them needed care about *span* rather than value. A rule matching from "ROR" through
+"excluded 1" would also cover the interval in between — `the ROR (1.02 to 3.84) excluded 1`
+— and file both bounds, the actual result, as conventional. `ratio-null-value` therefore
+anchors on the comparison word and stops at the end of the clause, which is also what
+separates "the interval excluded 1" from "the cohort excluded 1 patient": a null value ends
+its clause, a count is followed by what it counts. `coding-system-code` has to reach, since
+real prose writes "coded with MedDRA version 26.1; the preferred term 10019663" — so the
+bridge between the system name and the code is a whitelist of punctuation, version numbers
+and function words. Nothing a measurement can be written as is allowed to sit in it.
+
+Dates needed no rule at all. A date already binds as one unit, which is what a study period
+should do: `em.value("period.start", "2015-01-01", display="1 January 2015")` and
+`{{results.period.start}}`. The reported study period ought to be the data's actual range,
+so making it traceable is the point rather than the friction — but the finding's hint now
+says that, instead of telling an author to bind a year to a result.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -926,10 +978,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   Python and R have lexers, so a ```stata or ```sql listing is reported as unread rather
   than checked. Saying so is the point; it is still a hole an author could tag their way
   into.
-- **`verify` cannot hide from the code it runs.** The two easy tells are gone — no
-  environment variable, no `manuscript-guard-verify-` in the scratch path — but a script can
+- **`verify` cannot hide from the code it runs.** The easy tells are gone — no
+  `MANUSCRIPT_GUARD_VERIFY`, no `manuscript-guard-verify-` in the scratch path, and no
+  `PYTHONDONTWRITEBYTECODE`, which was set for tidiness and was the same backdoor in
+  miniature: readable by the script being checked, absent in an ordinary run, so two lines
+  make an analysis honest under verification and dishonest everywhere else. A script can
   still notice it is running under the system temp directory. An analysis written to deceive
   its own toolkit defeats this; an author who edited a results file does not.
+- **`verify` runs untrusted code, so its own machinery is part of the attack surface.** The
+  child gets its own process group and the whole tree is killed on timeout — an analysis is
+  usually a launcher, and killing the direct child left a grandchild holding the scratch
+  directory open. Its output goes to files and is capped, because with pipes the reader was
+  this process and a grandchild holding one open outlasted the timeout meant to enforce it.
+  Directory junctions are skipped explicitly when staging the copy: `symlinks=True` stops a
+  symlink loop but `os.path.islink` is False for a junction, so `copytree` walked into one
+  and re-copied the tree at every level, reachable by any unprivileged `mklink /J`.
 - **A figure render manifest is a drift detector, not a proof.** `<name>.render.json` sits
   beside the figures it vouches for and is writable by whoever holds the checkout: retouch
   the raster *and* rewrite its digest and G3 skips it again, exactly as a `.sha256` can be
@@ -1007,9 +1070,12 @@ Closed since, and why each mattered:
   classifier deciding what counts as a claim so "Age 18-44" is a label in a table for the
   reason it is one in a sentence. `em.cell("{} ({})", n, (pct, 1))` covers "n (%)", because
   an f-string reaches `table()` indistinguishable from a typed string and the API has to be
-  the thing that tells them apart. Both rules are mirrored in the R emitter: the fragment is
-  a cross-language contract, and a rule enforced on one side is one an author steps around
-  by switching language.
+  the thing that tells them apart. **Neither rule is mirrored in the R emitter, because the
+  R emitter has no `table()` at all** — this paragraph claimed the mirroring as done, which
+  was the wrong kind of wrong in a design document: the fragment is a cross-language
+  contract, so a rule enforced on one side is one an author steps around by switching
+  language. As it stands an R analysis cannot emit a table rather than emitting an
+  unchecked one, which is a gap rather than a hole; it is listed under Known gaps.
 - **`script-newer` compared mtimes, and `touch` sets those.** The fragment now records the
   analysis script's digest. Fragments written before the field existed fall back to the
   mtime test, so an older project degrades rather than breaking.
@@ -1137,6 +1203,35 @@ Closed since, and why each mattered:
 - **No formatting override in bindings.** An abstract wanting a coarser rounding than the
   Results section must emit a second key. Deliberate for now: it makes the second rounding
   a visible decision. Revisit if it proves too rigid in practice.
+- **The R emitter has no `table()`, `cell()` or `code_list()`.** An R analysis can publish
+  values and nothing else, so a project written in R either keeps its tables in Python or
+  writes them by hand — and a hand-written table is what G2 refuses. The fragment is a
+  cross-language contract and this side of it is unfinished.
+- **`em.cell()` launders whatever its parts are.** The emitter checks that each part is a
+  number it formatted and that the template's literal text carries no claim; it cannot
+  check that the numbers are the right ones. `em.cell("{} ({})", low, high)` with the
+  arguments swapped produces a valid, traceable, wrong cell. What the API buys is that the
+  numbers came from this analysis, not that the author assembled them correctly.
+- **A number inside a fenced block that is not a string is not judged.** The code reader
+  looks at string literals, because that is where a hard-coded result hides in a figure
+  script. A bare numeric literal in displayed code is left alone; treating every constant
+  in an example snippet as a claim would make code blocks unusable.
+- **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
+  this section; repeated here because it is the same shape as the two above — the toolkit
+  judges what it can parse and says so, rather than guessing.
+- **A typed list of letter-prefixed codes passes without `code_list()`.** `K71.0` classifies
+  as an identifier wherever it appears, so a hand-typed ICD-10 list in a table is accepted.
+  `code_list()` earns its place by keeping the list as data the analysis selects on, not by
+  being the only way to print one. Numeric codes have no such escape.
+- **A study period, a risk window and a censoring horizon must be emitted like any other
+  number.** There is no separate namespace for design parameters, so they come from the
+  analysis or they fail the gate. That is the intended answer — the reported study period
+  should be the data's actual range — but it is friction, and the finding's hint now says
+  what to do rather than leaving the author to guess.
+- **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
+  the conventional thresholds are. A corrected threshold goes in the project's own
+  `conventions:` with a justification, which is the right amount of ceremony for a value
+  that depends on how many comparisons this particular paper made.
 
 ## Still open
 

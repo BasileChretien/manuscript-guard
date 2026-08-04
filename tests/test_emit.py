@@ -476,3 +476,64 @@ def test_a_transposed_interval_is_still_caught_in_a_typed_cell(scratch: Path) ->
     em.table("t", ["Group", "ROR"], [["Exposed", "3.84 (7.02 to 2.10)"]])
     with pytest.raises(DisplayError, match="typed rather than composed"):
         write(em)
+
+
+# ---------------------------------------------------------- RECORD 6.1 code lists
+
+
+def test_a_code_list_table_can_be_emitted(scratch: Path) -> None:
+    """RECORD 6.1 requires the code lists to be published, and this toolkit forbade it.
+
+    A cell reading "10019663, 10019708" was refused as "a number written as text", and even
+    one code per row the numeric codes would not classify: the system that names them is in
+    the next column and the check reads one cell at a time. A reporting guideline the
+    toolkit ships could not be complied with using the toolkit.
+    """
+    em = emitter(scratch)
+    em.code_list(
+        "outcome_codes",
+        [
+            {"concept": "Hepatic injury", "system": "ICD-10", "codes": ["K71.0", "K71.9"]},
+            {"concept": "Hepatic injury", "system": "MedDRA PT", "codes": ["10019663"]},
+        ],
+        caption="Code lists used to identify the outcome (RECORD 6.1).",
+    )
+    document = em.document()
+    assert document["tables"]["outcome_codes"]["rows"][0][2] == "K71.0, K71.9"
+    assert document["code_lists"]["outcome_codes"][1]["codes"] == ["10019663"]
+    write(em)
+
+
+def test_a_code_list_keeps_the_codes_as_data(scratch: Path) -> None:
+    """The rendered cell is for the reader; the list is for the next check and the next study."""
+    em = emitter(scratch)
+    em.code_list("c", [{"concept": "x", "system": "ICD-10", "codes": ["K71.0", "K71.1"]}])
+    assert em.document()["code_lists"]["c"] == [
+        {"concept": "x", "system": "ICD-10", "codes": ["K71.0", "K71.1"]}
+    ]
+
+
+def test_a_code_list_entry_must_be_complete(scratch: Path) -> None:
+    em = emitter(scratch)
+    with pytest.raises(DisplayError, match="missing codes"):
+        em.code_list("c", [{"concept": "x", "system": "ICD-10"}])
+
+
+def test_an_empty_code_list_is_refused(scratch: Path) -> None:
+    """A concept that matched nothing is a finding, not a formatting choice."""
+    em = emitter(scratch)
+    with pytest.raises(DisplayError, match="no codes"):
+        em.code_list("c", [{"concept": "x", "system": "ICD-10", "codes": []}])
+
+
+def test_a_typed_numeric_code_list_is_still_refused(scratch: Path) -> None:
+    """The exemption belongs to the emitter's own join, not to any string of codes.
+
+    Only numeric codes are caught this way. A typed list of ICD-10 codes passes, because
+    `K71.0` classifies as an identifier wherever it appears and nothing that begins with a
+    letter is a measurement — `code_list()` earns its place by keeping the list as data the
+    analysis can select on, not by being the only way to print one.
+    """
+    em = emitter(scratch)
+    with pytest.raises(DisplayError, match="number written as text"):
+        em.table("c", ["Concept", "System", "Codes"], [["x", "MedDRA", "10019663 10019708"]])

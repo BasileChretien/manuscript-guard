@@ -20,6 +20,29 @@
       "description": "Tables emitted by the analysis and referenced as {{table.<key>}}. Cells are strings already in their display form, for the same reason values carry `display`: the rounding is decided once, where the number was computed.",
       "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/table" }
+    },
+    "code_lists": {
+      "type": "object",
+      "description": "The code lists the analysis selected on, keyed by the table that prints them. RECORD 6.1 requires these to be published; keeping them as data beside the rendered table means the paper prints the list the code actually used, and the next study can reuse the definition rather than retyping it.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "required": ["concept", "system", "codes"],
+          "additionalProperties": false,
+          "properties": {
+            "concept": { "type": "string", "minLength": 1 },
+            "system": { "type": "string", "minLength": 1 },
+            "codes": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {

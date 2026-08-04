@@ -77,6 +77,19 @@ class Composed:
         return self.template.replace("{}", " ")
 
 
+@dataclass(frozen=True)
+class Verbatim:
+    """Text the emitter itself assembled from structured data, not prose from the script.
+
+    The one thing a cell can be that is neither a number nor typed text. `code_list()`
+    builds these by joining a list of codes it was handed, so the cell is emitter output
+    and carries the same exemption as a `Composed` — while a script cannot make one, which
+    is what stops it becoming a way to type anything into a table.
+    """
+
+    text: str
+
+
 def _part(part: object) -> tuple[object, int | None, str | None]:
     """Normalise one `cell()` argument: a number, `(number, digits)` or `(number, display)`."""
     if not isinstance(part, tuple):
@@ -111,6 +124,10 @@ def _cell(
         composed.add((key, row, column))
         literals[(key, row, column)] = cell.literal
         return text
+    if isinstance(cell, Verbatim):
+        composed.add((key, row, column))
+        literals[(key, row, column)] = ""
+        return cell.text
     if isinstance(cell, bool):
         return str(cell)
     if isinstance(cell, (int, float)):
@@ -209,6 +226,9 @@ class Emitter:
     # emitter formatted is exempt from the emitted-value check; what the script typed
     # around it is not.
     _literals: dict[tuple[str, int, int], str] = field(default_factory=dict, init=False)
+    # Code lists as data, beside the table that prints them: RECORD 6.1 asks for the list,
+    # and a list is more useful to a reader and to a later check than its rendering.
+    _code_lists: dict[str, list[dict]] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -340,6 +360,59 @@ class Emitter:
             spec["quoted"] = False
         self._tables[key] = spec
 
+    def code_list(
+        self,
+        key: str,
+        entries: list[dict],
+        *,
+        caption: str | None = None,
+        columns: tuple[str, str, str] = ("Concept", "Coding system", "Codes"),
+    ) -> None:
+        """The table of codes RECORD 6.1 asks for, built from the lists the analysis used.
+
+            em.code_list("outcome_codes", [
+                {"concept": "Hepatic injury", "system": "ICD-10",
+                 "codes": ["K71.0", "K71.1", "K71.9"]},
+                {"concept": "Hepatic injury", "system": "MedDRA PT",
+                 "codes": ["10019663", "10019708"]},
+            ])
+
+        RECORD 6.1 requires the code lists to be published, and this toolkit made that
+        impossible: a cell reading "10019663, 10019708" was refused as "a number written as
+        text", and even spelled out one code per row the numeric codes would not classify,
+        because the system that names them is in the next column and the check reads one
+        cell at a time. A reporting guideline the toolkit ships could not be complied with
+        using the toolkit.
+
+        Passing the codes as a list rather than a string is what makes them traceable: the
+        emitter joins them, so the cell is its output rather than the script's prose, and
+        the same list is available to the analysis that selected on it. A code list is a
+        definition, not a measurement — nothing upstream to check it against — so what is
+        worth guaranteeing is that the paper prints the list the code actually used.
+        """
+        rows: list[list[object]] = []
+        structured = []
+        for index, entry in enumerate(entries):
+            missing = {"concept", "system", "codes"} - set(entry)
+            if missing:
+                raise DisplayError(
+                    f"code list {key!r} entry {index}: missing {', '.join(sorted(missing))}"
+                )
+            codes = [str(code) for code in entry["codes"]]
+            if not codes:
+                raise DisplayError(
+                    f"code list {key!r} entry {index}: no codes. An empty list published as a "
+                    f"definition says the concept matched nothing, which is a finding, not a "
+                    f"formatting choice"
+                )
+            rows.append([str(entry["concept"]), str(entry["system"]), Verbatim(", ".join(codes))])
+            structured.append(
+                {"concept": str(entry["concept"]), "system": str(entry["system"]), "codes": codes}
+            )
+
+        self.table(key, list(columns), rows, caption=caption)
+        self._code_lists[key] = structured
+
     def add_input(self, path: str | Path) -> None:
         self.inputs.append(path)
 
@@ -399,6 +472,11 @@ class Emitter:
         }
         if self._tables:
             document["tables"] = dict(self._tables)
+        if self._code_lists:
+            # Beside the table that prints them, not instead of it. The table is what
+            # RECORD 6.1 asks the reader for; the list is what a later check, or the next
+            # study reusing the definition, actually wants.
+            document["code_lists"] = dict(self._code_lists)
         return document
 
     def _check_composite_cells(self) -> None:

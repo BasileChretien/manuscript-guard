@@ -98,6 +98,16 @@ structural:
     why: Markdown table separator rows.
     pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'
 
+  - id: checklist-item
+    why: >-
+      A reporting-guideline item number points at a published checklist, the same way a
+      cross-reference points at a table. "RECORD 6.1", "STROBE item 14", "CONSORT 3a" are
+      written wherever a paper says which requirement a passage answers - most often in the
+      caption of the table that exists only because the checklist asked for it.
+    # The guideline has to be named immediately before the number, so this cannot reach a
+    # measurement; a count is not preceded by the word STROBE.
+    pattern: '(?i)\b(?:STROBE|RECORD(?:-PE)?|CONSORT|SPIRIT|PRISMA(?:[\s-][A-Za-z]+)?|TRIPOD(?:\+AI)?|ARRIVE|READUS(?:-PV)?|MOOSE|SQUIRE|CARE|STARD|COREQ|SRQR|AGREE|ENTREQ|CHEERS|GRRAS)\b\s*(?:20\d\d)?\s*(?:checklist)?\s*(?:items?|points?|elements?)?\s*(?:no\.?)?\s*\d+[a-z]?(?:\.\d+[a-z]?)?\b'
+
   - id: alphanumeric-identifier
     why: >-
       An identifier that begins with letters and continues with digits names a thing; a

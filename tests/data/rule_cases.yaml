@@ -240,3 +240,16 @@ structural:
       - {text: "ICD-10 codes were found in 412 patients.", atom: "412"}
       - {text: "MedDRA coding was applied and the cohort included 83214 people.", atom: "83214"}
       - {text: "The ATC classification was used for 1204 prescriptions.", atom: "1204"}
+
+  checklist-item:
+    accepts:
+      - {text: "Code lists used to identify the outcome (RECORD 6.1).", atom: "6.1"}
+      # "STROBE item 14" is already a cross-reference; what this rule adds is the form
+      # with no connecting word, which is how the checklists themselves are cited.
+      - {text: "Reported per STROBE 14.", atom: "14"}
+      - {text: "This answers CONSORT 3a.", atom: "3a"}
+      - {text: "Prepared following RECORD-PE 6.1.", atom: "6.1"}
+    rejects:
+      # Naming a guideline does not make the next number an item number.
+      - {text: "The STROBE-compliant cohort held 412 patients.", atom: "412"}
+      - {text: "We followed RECORD; 3841 reports were eligible.", atom: "3841"}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import codecs
+import contextlib
 import sys
 from pathlib import Path
 
@@ -882,9 +883,20 @@ def _survive_the_console() -> None:
     console into mojibake, which is harder to read than `--`, and unlike `errors="replace"`
     this keeps the text meaningful.
     """
+    # De-duplicated and marked. Each call captured the previous `write` and wrapped it
+    # again, so a host calling `main()` in a loop on a legacy console — or this project's
+    # own test suite, which calls it dozens of times — nested wrappers until Python raised
+    # RecursionError, which `main` does not catch. `sys.stdout is sys.stderr` is also the
+    # ordinary case under pytest's capture, and that double-wrapped on a single call.
+    seen: list = []
     for stream in (sys.stdout, sys.stderr):
+        if any(stream is already for already in seen):
+            continue
+        seen.append(stream)
         encoding = getattr(stream, "encoding", None) or "utf-8"
         if codecs.lookup(encoding).name in {"utf-8", "utf-8-sig", "utf-32", "utf-16"}:
+            continue
+        if getattr(stream, "_manuscript_guard_folded", False):
             continue
         write = stream.write
 
@@ -896,6 +908,8 @@ def _survive_the_console() -> None:
             return _write(text)
 
         stream.write = safe  # type: ignore[method-assign]
+        with contextlib.suppress(AttributeError):
+            stream._manuscript_guard_folded = True
 
 
 def main(argv: list[str] | None = None) -> int:

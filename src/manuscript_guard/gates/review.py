@@ -50,10 +50,19 @@ def manuscript_digest(project: Project) -> str:
 
 
 def file_digests(project: Project) -> dict[str, str]:
-    """One digest per manuscript file, so a record can say what it actually read."""
+    """One digest per manuscript file, so a record can say what it actually read.
+
+    Keyed by the path relative to `manuscript/`, not by filename. `source_files` walks
+    subdirectories — that is a documented feature — and keying on `path.name` collapsed two
+    files sharing a name into one dict entry. The loser vanished not only from
+    `file_sha256` but from the set `review-uncovered` subtracts from, so a whole file could
+    be unreviewed while the round reported complete. Splitting a paper into per-section
+    folders, or two co-authors each writing a `results.md`, is enough to trigger it.
+    """
+    root = project.path("manuscript")
     return {
-        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in source_files(project.path("manuscript"))
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in source_files(root)
     }
 
 
@@ -106,9 +115,16 @@ def document_digest(project: Project) -> str:
             digest.update(path.name.encode("utf-8"))
             digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
 
-    ledger = project.path("literature") / "ledger.yaml"
-    if ledger.exists():
-        digest.update(hashlib.sha256(ledger.read_bytes()).hexdigest().encode("ascii"))
+    # The ledger *and* the bibliography. An offline build runs citeproc over
+    # `references.bib`, so the formatted citations — author names, year, title — are baked
+    # into the .docx from that file. Leaving it out meant editing a reference's authors
+    # changed what the document says while the stamp still matched: the same slip this
+    # function was written to close, for the one input it forgot.
+    for name in ("ledger.yaml", "references.bib"):
+        path = project.path("literature") / name
+        if path.exists():
+            digest.update(name.encode("utf-8"))
+            digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
     return digest.hexdigest()
 
 
@@ -181,6 +197,26 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
         report = report.merge(schema_report)
         if not schema_report.ok or not isinstance(document, dict):
             continue
+
+        ids = [reviewer["id"] for reviewer in document["reviewers"]]
+        repeated = sorted({name for name in ids if ids.count(name) > 1})
+        if repeated:
+            # One review file answers every slot sharing its id, so a duplicate let a single
+            # record stand in for two reviewers — and a panel's composition is the whole
+            # point of recording it. "Three methodologists will not notice that the clinical
+            # framing is wrong" is only true if there really were three people.
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="duplicate-reviewer",
+                    severity=severity,
+                    message=f"round {number}: {', '.join(repeated)} appears twice in the "
+                    f"panel, so one record answers both remits",
+                    path=path,
+                    hint="give each reviewer a distinct id; two reviewers with the same "
+                    "remit are one reviewer",
+                )
+            )
 
         round_report, complete, unresolved = _check_round(
             project, number, document, current, severity

@@ -210,9 +210,34 @@ METHODS_SECTIONS = re.compile(
 )
 
 
+# Headings that make everything under them a report of what happened, whatever the
+# subheadings are called. Several names in METHODS_SECTIONS are ambiguous — "Sensitivity
+# analyses", "Design", "Protocol" are all written as Results subsections — and matching
+# `any` heading in the chain meant a Results subsection called "Sensitivity analyses"
+# re-admitted every methods_only rule beneath it. A reported `p < 0.001` there classified
+# as the pre-specified threshold: exactly the failure `methods_only` was built to close,
+# in a subsection that appears in most pharmacoepidemiology papers.
+NOT_METHODS_SECTIONS = re.compile(
+    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*)?"
+    r"(?:results?|findings|discussion|conclusions?|interpretation|introduction|background|"
+    r"abstract|summary|limitations)"
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+
 def is_methods(section: Sequence[str] | None) -> bool:
-    """True when any enclosing heading is a Methods-like one."""
-    return bool(section) and any(METHODS_SECTIONS.match(title) for title in section)
+    """True when the enclosing headings describe the method rather than the findings.
+
+    A Methods-like heading counts only while no ancestor is a section that reports what
+    happened. "Methods > Sensitivity analyses" is Methods; "Results > Sensitivity analyses"
+    is not, and the difference is the whole point of the rule.
+    """
+    if not section:
+        return False
+    if any(NOT_METHODS_SECTIONS.match(title) for title in section):
+        return False
+    return any(METHODS_SECTIONS.match(title) for title in section)
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:

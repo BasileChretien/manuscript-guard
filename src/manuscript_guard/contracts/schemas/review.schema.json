@@ -26,9 +26,9 @@
     },
     "file_sha256": {
       "type": "object",
-      "propertyNames": { "pattern": "^[^/\\\\]+\\.md$" },
+      "propertyNames": { "pattern": "^(?!.*\\.\\.)[^\\\\]+\\.md$" },
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-      "description": "The manuscript files this reviewer actually read, each with its digest, from `manuscript-guard review --files`. Judging a record on these alone means editing the Discussion no longer voids a review of the Methods - and `review-stale` is a hard failure at submission, so hashing every file together put the harshest check in the toolkit at the moment an author is copy-editing. Listing fewer files is scoping, not an escape: a round is incomplete while any manuscript file is in nobody's list. Omit the key to mean the whole manuscript, which is how records written before this existed are read."
+      "description": "The manuscript files this reviewer actually read, each with its digest, from `manuscript-guard review --files`. Keys are paths relative to `manuscript/`, forward-slashed: keying by filename alone collapsed two files sharing a name, and the loser disappeared from the coverage check as well as from this map. Judging a record on these alone means editing the Discussion no longer voids a review of the Methods - and `review-stale` is a hard failure at submission, so hashing every file together put the harshest check in the toolkit at the moment an author is copy-editing. Listing fewer files is scoping, not an escape: a round is incomplete while any manuscript file is in nobody's list. Omit the key to mean the whole manuscript, which is how records written before this existed are read."
     },
     "verdict": {
       "enum": ["pass", "minor-revision", "major-revision", "reject"],

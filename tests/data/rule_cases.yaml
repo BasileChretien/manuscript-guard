@@ -40,6 +40,11 @@ conventions:
 
   confidence-level:
     accepts:
+      # Round four: the plural, and the name the UMC literature uses for the interval that
+      # IC025 is the lower bound of. Both failed while "intervals of 95%" passed.
+      - {text: "Estimates are given with 95% CIs.", atom: "95%"}
+      - {text: "The IC is given with its 95% credibility interval.", atom: "95%"}
+      - {text: "Given with a 95% mid-P exact confidence interval.", atom: "95%"}
       - {text: "Reported with 95% CI.", atom: "95%"}
       - {text: "A 99% confidence interval was used.", atom: "99%"}
       - {text: "The 90% credible interval excluded one.", atom: "90%"}
@@ -96,6 +101,9 @@ conventions:
       - {text: "The lower bound lay above 1 with at least 3 cases.", atom: "1"}
       - {text: "The interval excluded the null value of 1.", atom: "1"}
     rejects:
+      # Round four. `$` under re.MULTILINE meant "end of any line", and every manuscript
+      # here is hard-wrapped, so a genuine count passed wherever an editor wrapped.
+      - {text: "In the analysis that excluded 1\npatient with missing data, results held.", atom: "1"}
       # The bounds either side of the null are the result. A rule reaching back from
       # "excluded" to the ratio it describes would cover them too.
       - {text: "The ROR was 3.84 (2.10 to 7.02) and the interval excluded 1.", atom: "3.84"}
@@ -114,6 +122,9 @@ conventions:
       - {text: "The criterion was a chi-squared >= 4.", atom: "4"}
       - {text: "Signals required at least 3 cases.", atom: "3"}
     rejects:
+      # Round four. The bare `N >= 3` branch named no statistic, so an unrelated inclusion
+      # threshold was filed under the Evans criterion.
+      - {text: "Subgroups with N >= 3 patients per site were analysed separately.", atom: "3"}
       # The values the criteria are applied to. As a shape - statistic, operator, number -
       # this rule would have classified every one of them.
       - {text: "A signal was defined as IC025 above 1.42.", atom: "1.42"}
@@ -154,6 +165,8 @@ structural:
       - {text: "30-day mortality was assessed.", atom: "30-day"}
       - {text: "Assessed at week 12.", atom: "12"}
     rejects:
+      # Round four. Three digits was the round-one bound; one digit fewer walked back in.
+      - {text: "In the first 6 months 214 cases of myocarditis were reported.", atom: "214"}
       - {text: "Over the study years 1204 reports were received.", atom: "1204"}
 
   ordered-list-marker:
@@ -182,6 +195,9 @@ structural:
       - {text: "Adults aged 65+ years were excluded.", atom: "65+"}
       - {text: "The 18-44 years band was largest.", atom: "18-44"}
     rejects:
+      # Round four. A hyphenated day range is a risk window - the design parameter the
+      # analysis selects on - not an age band.
+      - {text: "The risk window was 1-28 days after dispensing.", atom: "1-28"}
       - {text: "The trial enrolled 500+ patients across ten centres.", atom: "500+"}
       - {text: "Response was seen in 45+ mg dosing groups.", atom: "45+"}
 
@@ -234,6 +250,11 @@ structural:
       - {text: "Coded with MedDRA version 26.1; the preferred term 10019663 was used.", atom: "10019663"}
       - {text: "Concepts were taken from SNOMED CT 197315008.", atom: "197315008"}
     rejects:
+      # Round four. The bridge crossed a full stop into the next sentence, and once the
+      # classifier scanned whole documents there was no distance cap left to stop it.
+      - {text: "Events were coded using MedDRA terms. 15320 reports were retrieved.", atom: "15320"}
+      - {text: "The ATC codes were used for 1204 prescriptions.", atom: "1204"}
+      - {text: "Diagnoses were identified from ICD-10 codes from 2011 to 2019.", atom: "2011"}
       # Naming a coding system does not make the next number a code. The bridge between the
       # system name and the code admits only punctuation, a version and function words,
       # because "anything within 120 characters" classifies these.

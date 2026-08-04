@@ -33,7 +33,12 @@ structural:
     why: A named timepoint or window, e.g. day 30, 30-day, week 12.
     # Up to three digits: day 365 is a real window, year 1204 is not. Four digits would also
     # re-admit the bare year that this toolkit insists on treating as data.
-    pattern: '(?i)\b(?:day|week|month|year|hour|minute|visit|cycle)s?\s*[-–]?\s*\d{1,3}\b|\b\d{1,3}\s*[-–]\s*(?:day|week|month|year|hour|minute)\b'
+    # A label, not a count that happens to follow a time word. "In the first 6 months
+    # 214 cases were reported" classified 214 as a timepoint: the round-one fix bounded
+    # this to three digits, and one digit fewer walks straight back in. The lookahead is
+    # what separates "day 30" from "months 214 cases" — a label is not followed by the
+    # thing it would otherwise be counting.
+    pattern: '(?i)\b(?:day|week|month|year|hour|minute|visit|cycle)s?\s*[-–]?\s*\d{1,3}\b(?!\s+(?:[a-z]+\s+){0,2}(?:case|patient|report|event|subject|participant|record|death|admission|prescription|episode|observation|woman|women|child|children|infant)s?\b)|\b\d{1,3}\s*[-–]\s*(?:day|week|month|year|hour|minute)\b'
 
   - id: ordered-list-marker
     why: Markdown list numbering.
@@ -61,7 +66,14 @@ structural:
     # The last branch used to end `(?:years?)?` — optional, so a bare `<digits>+` anywhere
     # matched it and `The trial enrolled 500+ patients` was filed as an age band. The unit
     # is now required, which is what the `why` above always claimed.
-    pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?|weeks?|days?)\b|\b\d+\+\s*(?:years?|months?|weeks?|days?)\b'
+    # The bare-range branch is years and months only. With days and weeks in it, "the
+    # risk window was 1-28 days" classified as an age band — and a risk window is the
+    # design parameter the analysis selects on, not a label. A self-controlled case
+    # series is written entirely in such ranges (0-1 days, 2-14 days, 15-42 days), so
+    # the rule waved through the numbers that define the study while still demanding a
+    # binding for the single-valued form, "28 days". An age cue word still admits the
+    # day range where it really is one: "aged 0-28 days".
+    pattern: '(?i)\b(?:age[ds]?|aged|years?|months?|weeks?)\s*(?:group|band|range)?\s*[:,]?\s*\d+\s*(?:[-–—]\s*\d+|\+)|\b\d+\s*[-–—]\s*\d+\s*(?:years?|months?)\b|\b\d+\+\s*(?:years?|months?|weeks?|days?)\b'
 
   - id: software-version
     why: >-
@@ -128,7 +140,11 @@ structural:
     # one it also claimed `Q1` and `S1`, taking them from `percentile-labels` and
     # `supplement-tag` — the same verdict by a rule that explains it worse, and `explain`
     # exists to tell an author which convention they relied on.
-    pattern: '\b[A-Z]{1,3}\d{2,}(?:[A-Z]{1,2}\d*)*(?:\.\d{1,3})?\b'
+    # Up to ten leading letters. Three was justified as "a longer run is a word", which
+    # does not follow: the safety argument is that nothing beginning with a letter is a
+    # quantity, and that holds at any length. At three it excluded the whole non-US trial
+    # registry namespace — EUPAS100234, ISRCTN12345678, ACTRN12345678901, ChiCTR2000012345.
+    pattern: '\b[A-Z]{1,10}\d{2,}(?:[A-Z]{1,2}\d*)*(?:\.\d{1,3})?\b'
 
   - id: coding-system-code
     why: >-
@@ -137,9 +153,27 @@ structural:
       are indistinguishable from a measurement on shape alone and the system has to be
       named beside them.
     # The bridge between the system name and the code is a whitelist, not a wildcard:
+    # punctuation, a version number, and a closed set of function words. The set may not
+    # contain a word that introduces a quantity — with `for`, `in`, `to`, `from`, `used`
+    # and `were` in it, "the ATC codes were used for 1204 prescriptions" classified the
+    # count, and "ICD-10 codes from 2011 to 2019" classified the whole study period,
+    # which is the one thing DESIGN insists must be bound. Quotes and brackets are in,
+    # Quotes and brackets are deliberately NOT in the bridge. Admitting them let the
+    # rule walk into a quoted number - `MedDRA terms "9999" and 10028606` classified
+    # the 9999 - and they only help with one phrasing, `MedDRA (version 27.0)
+    # preferred terms "myocarditis" (10028606)`, which needs to cross an arbitrary
+    # term name as well and so fails regardless. That phrasing is a known gap: write
+    # `MedDRA preferred term 10028606` and the rule fires.
+    #
+    # A full stop is not in the bridge either, and the gaps are spaces or a single line
+    # break rather than `\s*`. "Events were coded using MedDRA terms. 15320 reports were
+    # retrieved" classified the count in the *next sentence*, and once the classifier
+    # started scanning whole documents there was no distance cap left to stop it: with a
+    # 250-line gap the rule still reached the number. A code sits beside the system that
+    # names it, on the same line or the next one.
     # punctuation, a version number, and a closed set of function words. Real prose puts a
     # clause between them — "coded with MedDRA version 26.1; the preferred term 10019663" —
     # so the rule has to reach, but "anything within 120 characters" would classify the
     # count in "ICD-10 codes were found in 412 patients". Nothing a measurement can be
     # written as is allowed in the bridge, which is what keeps the reach safe.
-    pattern: '(?i)\b(?:LOINC|SNOMED(?:[\s-]?CT)?|MedDRA|RxNorm|NDC|CPT|HCPCS|OPCS|ICD(?:[\s-]?(?:9|10|11))?(?:[\s-]?(?:CM|PCS))?|ATC)\b(?:\s*(?:v(?:er(?:sion)?)?\.?\s*\d+(?:\.\d+)*|[;,.:=]|\b(?:the|a|an|its|their|and|with|coded|code|codes|coding|using|used|use|were|was|are|is|in|to|by|for|of|from|as|term|terms|concept|concepts|class|classes|identifier|identifiers|preferred|lowest|highest|high|level|group|system|organ|query|LLT|PT|HLT|HLGT|SOC|SMQ)\b)){0,14}\s*\d{4,18}(?:-\d)?(?:\s*(?:,|;|and|or|to|through|[-–])\s*\d{4,18}(?:-\d)?){0,20}'
+    pattern: '(?i)\b(?:LOINC|SNOMED(?:[\s-]?CT)?|MedDRA|RxNorm|NDC|CPT|HCPCS|OPCS|ICD(?:[\s-]?(?:9|10|11))?(?:[\s-]?(?:CM|PCS))?|ATC)\b(?:[ \t]*\n?[ \t]*(?:v(?:er(?:sion)?)?\.?[ \t]*\d+(?:\.\d+)*|[;,:=]|\b(?:the|a|an|its|their|and|coded|code|codes|coding|term|terms|concept|concepts|class|classes|identifier|identifiers|preferred|lowest|highest|high|level|group|system|organ|query|following|listed|below|LLT|PT|HLT|HLGT|SOC|SMQ)\b)){0,14}[ \t]*\n?[ \t]*\d{4,18}(?:-\d)?(?:\s*(?:,|;|and|or|to|through|[-–])\s*\d{4,18}(?:-\d)?){0,20}'

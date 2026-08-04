@@ -33,11 +33,17 @@ conventions:
     # margin and for the prediction intervals in a meta-analysis. Still an enumeration of
     # the conventional levels, not `\d+%`, which would classify every percentage in the
     # paper that happened to sit before the letters CI.
-    pattern: '(?i)\b(?:80|9[059]|99\.9)\s*%\s*(?:two[\s-]sided\s+|one[\s-]sided\s+)?(?:CI\b|confidence\s+interval|credible\s+interval|CrI\b|prediction\s+interval)'
+    # `CI\b` broke on the plural, so "95% CIs" — ordinary Results prose — failed while
+    # "intervals of 95%" passed. And `credibility interval` was missing: it is what the
+    # UMC literature calls the interval that IC025 is the lower bound of, so the toolkit
+    # shipped a rule for `IC025 > 0` and then failed the interval it belongs to. The
+    # adjective slot admits the named estimators — mid-P exact, Wald, Wilson score,
+    # profile-likelihood, bootstrap — which are written between the level and the noun.
+    pattern: '(?i)\b(?:80|9[059]|99\.9)\s*%\s*(?:(?:two|one)[\s-]sided\s+)?(?:[A-Za-z][\w-]*\s+){0,3}(?:CIs?\b|CrIs?\b|(?:confidence|credible|credibility|compatibility|prediction)\s+intervals?)'
 
   - id: confidence-level-trailing
     why: The same convention with the level written after the interval.
-    pattern: '(?i)\b(?:CI|confidence\s+interval|credible\s+interval|prediction\s+interval)s?\s*(?:set\s+)?(?:of|at)\s*(?:80|9[059]|99\.9)\s*%'
+    pattern: '(?i)\b(?:CIs?|CrIs?|(?:confidence|credible|credibility|compatibility|prediction)\s+intervals?)\s*(?:set\s+)?(?:of|at)\s*(?:80|9[059]|99\.9)\s*%'
 
   - id: target-power
     why: A conventional target power stated in a sample-size paragraph.
@@ -55,7 +61,7 @@ conventions:
     # conventional values rather than a shape. Written as \d[\d\s,]* it matched any digit run,
     # so "12 per 83,214 patients treated" waved the cohort size - a genuine, unbound result -
     # straight through the gate that carries the core invariant.
-    pattern: '(?i)\bper\s+(?:1[,\s  ]?000[,\s  ]?000|100[,\s  ]?000|10[,\s  ]?000|1[,\s  ]?000|100)\s*(?:person|people|patient|inhabitant|resident|prescription|user|exposure|treatment|admission|birth|population|report)'
+    pattern: '(?i)\bper\s+(?:1[,\s  ]?000[,\s  ]?000|100[,\s  ]?000|10[,\s  ]?000|1[,\s  ]?000|100)\s*(?:[a-z]+[\s-]){0,2}(?:person|people|patient|inhabitant|resident|prescription|user|exposure|treatment|admission|birth|population|report|individual|woman|women|man|men|child|children|infant|dose|DDD|case|subject|participant|year|day|month)'
 
   - id: two-by-two
     why: A 2 x 2 table is the name of a structure.
@@ -76,12 +82,17 @@ conventions:
     # excluded 1" - and file the two bounds, which are the actual result, as conventional.
     # That is the mistake that made `author-year-citation` audit-only.
     #
+    # `\Z`, not `$`. Under re.MULTILINE — which the classifier needs so that `^` means
+    # line — `$` matches at the end of every line, and every manuscript here is
+    # hard-wrapped. "...that excluded 1\npatient with missing data..." then read as the
+    # null value of a ratio because of where an editor happened to wrap, which is a value
+    # passing by coincidence: the one thing this file says cannot happen.
     # The lookahead is what separates "the interval excluded 1" from "the cohort excluded 1
     # patient": a null value ends its clause, a count is followed by what it counts.
     #
     # No branch for the word "unity": it is not a number, so it never becomes an atom and a
     # rule for it would never run. "The null value of 1" does produce one, and is written.
-    pattern: '(?i)\b(?:exclud\w+|cross\w+|straddl\w+|contain\w+|spann\w+|includ\w+|above|below|exceed\w+|(?:greater|less)\s+than|either\s+side\s+of)\s*(?:the\s+)?(?:null\s+value\s+of\s+)?1(?:\.0+)?(?=\s*(?:[.,;:)\]]|$)|\s+(?:with|and|or|but|which|indicating|suggesting|in\s+both|at\s+least)\b)'
+    pattern: '(?i)\b(?:exclud\w+|cross\w+|straddl\w+|contain\w+|spann\w+|includ\w+|above|below|exceed\w+|(?:greater|less)\s+than|either\s+side\s+of)\s*(?:the\s+)?(?:null\s+value\s+of\s+)?1(?:\.0+)?(?=\s*(?:[.,;:)\](\[]|\Z)|\s+(?:[a-z]+ly\s+)?(?:with|and|or|but|which|indicat\w+|suggest\w+|consistent|for|in|across|among|at|throughout|after|before|on|whereas|while|although|though|so|thus|hence|therefore)\b)'
 
   - id: disproportionality-criterion
     why: >-
@@ -89,9 +100,13 @@ conventions:
       the WHO-UMC criterion, EB05 at or above 2 is DuMouchel's, and PRR at or above 2 with
       a chi-squared of 4 and at least 3 cases is Evans'. A paper states which it used; the
       values are not its own findings.
+    # The bare `N >= 3` branch is gone. Unlike every other branch here it named no
+    # statistic, so "subgroups with N >= 3 patients per site" — an unrelated inclusion
+    # threshold — was filed under the Evans criterion. A branch that matches a shape
+    # rather than naming a value does not belong in this file.
     # Methods only, and pinned to the published values rather than to `<statistic> <op>
     # <number>`. As a shape it would have accepted "IC025 was above 1.42", waving through
     # the very result the criterion is applied to - and as a convention everywhere it would
     # have done the same in the Results.
     methods_only: true
-    pattern: '(?i)\b(?:IC0?25|IC)\s*[>≥]=?\s*0(?:\.0+)?\b|\b(?:EB0?5|EBGM|PRR|ROR)\s*[>≥]=?\s*2(?:\.0+)?\b|\b(?:chi[\s-]?squared?|χ2|χ²|X2)\s*[>≥]=?\s*4(?:\.0+)?\b|\b(?:at\s+least|a\s+minimum\s+of|no\s+fewer\s+than)\s+3\s+(?:cases?|reports?|events?)\b|[>≥]=?\s*3\s+(?:cases?|reports?|events?)\b|\bN\s*[>≥]=?\s*3\b'
+    pattern: '(?i)\b(?:IC0?25|IC)\s*[>≥]=?\s*0(?:\.0+)?\b|\b(?:EB0?5|EBGM|PRR|ROR)\s*[>≥]=?\s*2(?:\.0+)?\b|\b(?:chi[\s-]?squared?|χ2|χ²|X2)\s*[>≥]=?\s*4(?:\.0+)?\b|\b(?:at\s+least|a\s+minimum\s+of|no\s+fewer\s+than)\s+3\s+(?:cases?|reports?|events?)\b|[>≥]=?\s*3\s+(?:cases?|reports?|events?)\b'

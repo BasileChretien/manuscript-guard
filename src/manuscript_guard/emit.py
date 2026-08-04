@@ -63,27 +63,21 @@ class Composed:
         ]
         return self.template.format(*shown), shown
 
-    @property
-    def literal(self) -> str:
-        """The template with its placeholders removed: the part nobody computed.
-
-        A composed cell is exempt from the emitted-value check, because the emitter did its
-        formatting — but only the parts went through `derive_display`. The template is
-        whatever the script typed, so `em.cell("{} (n = 412)", 77)` would smuggle 412 into
-        the table under the exemption. The literal text is checked on its own; "95% CI"
-        classifies as a convention and passes, a count does not.
-        """
-        return self.template.replace("{}", " ")
-
 
 @dataclass(frozen=True)
-class Verbatim:
+class _Verbatim:
     """Text the emitter itself assembled from structured data, not prose from the script.
 
     The one thing a cell can be that is neither a number nor typed text. `code_list()`
-    builds these by joining a list of codes it was handed, so the cell is emitter output
-    and carries the same exemption as a `Composed` — while a script cannot make one, which
-    is what stops it becoming a way to type anything into a table.
+    builds these by joining a list of codes it was handed, so the cell is emitter output.
+
+    Underscored, because the previous version said "a script cannot make one, which is what
+    stops it becoming a way to type anything into a table" and that was simply false: it was
+    an ordinary importable dataclass, and `Verbatim("mortality 4281003.55%")` put arbitrary
+    fabricated prose into a table that `check` then passed. The name is not the fix — the
+    fix is that a verbatim cell now records itself as `{}` filled with its own text, so the
+    gate rebuilds it and judges that text like any other. The underscore only stops it
+    looking like API.
     """
 
     text: str
@@ -114,6 +108,7 @@ def _cell(
     composed: set[tuple[str, int, int]],
     literals: dict[tuple[str, int, int], str],
     parts_by_cell: dict[tuple[str, int, int], list[str]],
+    verbatim: set[tuple[str, int, int]],
 ) -> str:
     """Format one table cell, refusing a number that was typed rather than computed."""
     where = f"table {key!r} row {row} column {column}"
@@ -122,13 +117,14 @@ def _cell(
         text, parts = cell.render(where)
         computed.update(parts)
         composed.add((key, row, column))
-        literals[(key, row, column)] = cell.literal
+        literals[(key, row, column)] = cell.template
         parts_by_cell[(key, row, column)] = list(parts)
         return text
-    if isinstance(cell, Verbatim):
+    if isinstance(cell, _Verbatim):
         composed.add((key, row, column))
         literals[(key, row, column)] = ""
         parts_by_cell[(key, row, column)] = []
+        verbatim.add((key, row, column))
         return cell.text
     if isinstance(cell, bool):
         return str(cell)
@@ -148,7 +144,7 @@ def _cell(
         # and the alternative, letting the gate accept any cell that is a single number,
         # would wave through a 9999 typed straight into the file.
         composed.add((key, row, column))
-        literals[(key, row, column)] = ""
+        literals[(key, row, column)] = "{}"
         parts_by_cell[(key, row, column)] = [shown]
         return shown
     if isinstance(cell, str):
@@ -240,6 +236,8 @@ class Emitter:
     # cell check reads a fragment rather than this object, the parts are the only record
     # that the numbers inside a composed template were formatted here.
     _parts: dict[tuple[str, int, int], list[str]] = field(default_factory=dict, init=False)
+    # Cells the emitter joined from a published code list, checked against that list.
+    _verbatim: set[tuple[str, int, int]] = field(default_factory=set, init=False)
     # Code lists as data, beside the table that prints them: RECORD 6.1 asks for the list,
     # and a list is more useful to a reader and to a later check than its rendering.
     _code_lists: dict[str, list[dict]] = field(default_factory=dict, init=False)
@@ -353,6 +351,7 @@ class Emitter:
                 _cell(
                     key, HEADER_ROW, column, text, None, self._computed, self._composed,
                     self._literals, self._parts,
+                    self._verbatim,
                 )
                 for column, text in enumerate(columns)
             ],
@@ -361,6 +360,7 @@ class Emitter:
                     _cell(
                         key, index, column, cell, digits, self._computed, self._composed,
                         self._literals, self._parts,
+                        self._verbatim,
                     )
                     for column, cell in enumerate(row)
                 ]
@@ -422,7 +422,7 @@ class Emitter:
                     f"definition says the concept matched nothing, which is a finding, not a "
                     f"formatting choice"
                 )
-            rows.append([str(entry["concept"]), str(entry["system"]), Verbatim(", ".join(codes))])
+            rows.append([str(entry["concept"]), str(entry["system"]), _Verbatim(", ".join(codes))])
             structured.append(
                 {"concept": str(entry["concept"]), "system": str(entry["system"]), "codes": codes}
             )
@@ -508,15 +508,17 @@ class Emitter:
         the template were formatted here rather than keyed in.
         """
         entries = []
-        for (table, row, column), literal in sorted(self._literals.items()):
+        for (table, row, column), template in sorted(self._literals.items()):
             if table != key:
                 continue
-            entry: dict = {"column": column, "literal": literal}
+            entry: dict = {"column": column, "template": template}
             if row != HEADER_ROW:
                 entry["row"] = row
             parts = self._parts.get((table, row, column))
             if parts:
                 entry["parts"] = list(parts)
+            if (table, row, column) in self._verbatim:
+                entry["codes"] = True
             entries.append(entry)
         return {"composed": entries} if entries else {}
 
@@ -543,7 +545,7 @@ class Emitter:
         classifier = self._classifier()
         for key, spec in self._tables.items():
             merged = {**spec, **self._composition_of(key)}
-            for problem in problems_in(key, merged, known, classifier):
+            for problem in problems_in(key, merged, known, classifier, self._code_lists):
                 raise DisplayError(f"{problem.where}: {problem.message}")
 
     def _classifier(self):

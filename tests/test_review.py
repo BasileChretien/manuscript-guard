@@ -320,3 +320,55 @@ def _digests_of(root: Path, *files: Path) -> dict[str, str]:
     import hashlib
 
     return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+
+
+def test_two_files_with_the_same_name_are_both_covered(project: Path) -> None:
+    """`file_digests` keyed by filename, and `source_files` walks subdirectories.
+
+    Two files sharing a name collapsed into one dict entry. The loser vanished not only
+    from `file_sha256` but from the set `review-uncovered` subtracts from — so a whole
+    file could be unreviewed while the round reported complete.
+    """
+    from manuscript_guard.gates.review import file_digests
+
+    nested = project / "manuscript" / "parts"
+    nested.mkdir()
+    (nested / "main.md").write_text("# Extra\n\nA section nobody reviewed.\n", encoding="utf-8")
+
+    keys = set(file_digests(load_project(project)[0]))
+    assert keys == {"main.md", "parts/main.md"}, keys
+
+    scope_reviews(project, files={"main.md": file_digests(load_project(project)[0])["main.md"]})
+    report = report_for(project, submission=True)
+    assert "review-uncovered" in failures(report)
+    assert any("parts/main.md" in f.message for f in report.failures)
+
+
+def test_a_duplicated_reviewer_id_is_reported(project: Path) -> None:
+    """One review file answers every slot sharing its id, so a duplicate let one record
+    stand in for two reviewers — and a panel's composition is the point of recording it."""
+
+    def mutate(document):
+        document["reviewers"].append(dict(document["reviewers"][0], remit="Something else."))
+
+    edit_yaml(project / PANEL_1, mutate)
+    report = report_for(project, submission=True)
+    assert "duplicate-reviewer" in failures(report)
+
+
+def test_editing_the_bibliography_makes_the_built_document_stale(project: Path) -> None:
+    """An offline build bakes citeproc's output into the .docx from references.bib.
+
+    Leaving that file out of the digest meant editing a reference's authors changed what
+    the document says while the stamp still matched — the same slip `document_digest` was
+    written to close, for the one input it forgot.
+    """
+    from manuscript_guard.gates.review import document_digest
+
+    projekt, _ = load_project(project)
+    bib = project / "literature" / "references.bib"
+    before = document_digest(projekt)
+    bib.write_text(
+        bib.read_text(encoding="utf-8") + "\n@misc{extra, title={X}}\n", encoding="utf-8"
+    )
+    assert document_digest(projekt) != before

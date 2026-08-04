@@ -401,7 +401,63 @@ def test_claiming_a_cell_was_composed_does_not_launder_it(project: Path) -> None
     key = next(iter(document["tables"]))
     document["tables"][key]["rows"][0][2] = "9999"
     document["tables"][key]["composed"] = [
-        {"row": 0, "column": 2, "literal": "9999", "parts": []}
+        {"row": 0, "column": 2, "template": "9999", "parts": []}
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes
+
+
+def test_a_composed_claim_must_rebuild_the_cell_it_is_attached_to(project: Path) -> None:
+    """The exemption has to prove itself, or it is just an assertion in a file.
+
+    Checking the declared template instead of the cell meant an entry claiming an empty
+    template exempted whatever the cell actually said — zero atoms scanned, so a cell
+    reading "True mortality 4281003.55%" passed with nothing reported. The gate now rebuilds
+    the cell from the template and parts and requires the result to match.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = "True mortality 4281003.55% (fabricated)"
+    document["tables"][key]["composed"] = [{"row": 0, "column": 2, "template": "", "parts": []}]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "composition-does-not-match" in codes
+
+
+def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None:
+    """Parts excuse their own cell and nowhere else.
+
+    Folded into one project-wide set, a single entry anywhere — even in a table with no rows
+    — whitelisted its strings everywhere, so a phantom `parts: ["777777"]` made an unrelated,
+    unmarked cell reading "777777" pass.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["poison"] = {
+        "columns": ["x"],
+        "rows": [],
+        "composed": [{"column": 0, "template": "{}", "parts": ["777777"]}],
+    }
+    key = next(k for k in document["tables"] if k != "poison")
+    document["tables"][key]["rows"][0][2] = "777777"
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
     ]
     fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
     write_digest(fragment)

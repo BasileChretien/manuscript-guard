@@ -275,8 +275,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
   format_cell <- function(key, row, column, cell, digits) {
     where <- paste0("table '", key, "' row ", row, " column ", column)
-    record <- function(literal, parts) {
-      entry <- list(column = as.integer(column), literal = literal)
+    record <- function(template, parts) {
+      entry <- list(column = as.integer(column), template = template)
       if (!identical(row, HEADER)) entry$row <- as.integer(row)
       if (length(parts) > 0) entry$parts <- as.list(as.character(parts))
       state$composed[[key]] <- c(state$composed[[key]], list(entry))
@@ -304,11 +304,16 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       # The literal is the template with its placeholders removed: the part the script
       # typed, checked like any other text. Without it, "{} (n = 412)" would smuggle a
       # count into the table under the exemption the composed cell carries.
-      record(paste0(cell$pieces, collapse = " "), shown)
+      record(cell$template, shown)
       return(text)
     }
     if (inherits(cell, "mg_verbatim")) {
-      record("", character())
+      # Recorded as a code-list cell, not as a composed one. Rebuilding it from its own
+      # declared part proves nothing - the part would be the text - so the gate checks it
+      # against the code list published in the same fragment. Matches the Python emitter.
+      entry <- list(column = as.integer(column), template = "", codes = TRUE)
+      if (!identical(row, HEADER)) entry$row <- as.integer(row)
+      state$composed[[key]] <- c(state$composed[[key]], list(entry))
       return(cell$text)
     }
     if (is.logical(cell)) {
@@ -320,7 +325,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       # Recorded like a composed cell, because that is what it is: a number the emitter
       # formatted. Only the emitter knows that, so without the record a plain numeric cell
       # is indistinguishable from a typed one the moment anyone reads the file.
-      record("", shown)
+      record("{}", shown)
       return(shown)
     }
     if (is.character(cell)) {

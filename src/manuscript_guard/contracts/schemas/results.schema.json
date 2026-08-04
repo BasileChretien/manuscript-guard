@@ -74,7 +74,7 @@
           "description": "Which cells the emitter built from numbers rather than receiving as text, and what it built them from. A composed cell and a typed one are the same characters by the time anyone reads this file, so without this record the rule that every number in a table was published by the analysis can only be enforced inside the emitter that wrote it — which makes it a rule an author steps around by switching language. With it, G2 applies the same rule to any fragment.",
           "items": {
             "type": "object",
-            "required": ["column", "literal"],
+            "required": ["column", "template"],
             "additionalProperties": false,
             "properties": {
               "row": {
@@ -83,14 +83,18 @@
                 "description": "Index into `rows`. Omitted for a column header."
               },
               "column": { "type": "integer", "minimum": 0 },
-              "literal": {
+              "template": {
                 "type": "string",
-                "description": "The template with its placeholders removed: the part the script typed, which is checked like any other text. Without it, `\"{} (n = 412)\"` would smuggle a count in under the exemption."
+                "description": "The emitter's template, with `{}` where each part went. The gate rebuilds the cell from this and `parts` and requires the result to equal the text on the page, so a claim of composition has to describe the cell it is attached to. The template's own wording is then checked like any other text: `\"{} (n = 412)\"` would otherwise smuggle a count in under the exemption."
+              },
+              "codes": {
+                "type": "boolean",
+                "description": "This cell is a join of the code list published under `code_lists` for the same table and row, and is checked against it. A code list carries no number the emitter derived, so rebuilding it from a declared part would prove nothing - the part would be the text."
               },
               "parts": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "The displays the emitter derived for this cell. The only record, once the emitter is gone, that the numbers inside the template were formatted here rather than keyed in."
+                "description": "The displays the emitter derived for this cell, in template order. They excuse the numbers in *this* cell and nowhere else: folded into one project-wide set, a single entry anywhere - even in a table with no rows - whitelisted its strings everywhere."
               }
             }
           }

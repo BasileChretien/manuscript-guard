@@ -55,6 +55,9 @@ class Results:
     values: dict[str, Value]
     fragments: tuple[Fragment, ...]
     tables: dict[str, Table] = field(default_factory=dict)
+    # Published code lists, keyed by the table that prints them. G2 checks a code-list cell
+    # against these: it is the only independent anchor such a cell has.
+    code_lists: dict[str, list] = field(default_factory=dict)
 
     def get(self, key: str) -> Value | None:
         return self.values.get(key)
@@ -102,6 +105,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
     owner: dict[str, Path] = {}
     fragments: list[Fragment] = []
     tables: dict[str, Table] = {}
+    code_lists: dict[str, list] = {}
     table_owner: dict[str, Path] = {}
 
     for path in paths:
@@ -180,6 +184,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 continue
             table_owner[key] = path
             columns = tuple(spec["columns"])
+            code_lists.update(document.get("code_lists") or {})
             tables[key] = Table(
                 key=key,
                 columns=columns,
@@ -196,4 +201,4 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
         results_values=len(values),
         results_tables=len(tables),
     )
-    return Results(values, tuple(fragments), tables), merged
+    return Results(values, tuple(fragments), tables, code_lists), merged

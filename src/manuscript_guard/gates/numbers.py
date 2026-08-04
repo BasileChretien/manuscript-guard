@@ -365,10 +365,11 @@ def _emitted_tables(results: Results, classifier: Classifier) -> Report:
     if not results.tables:
         return report
 
+    # Published values only. Folding every composed cell's `parts` into one set let a
+    # single entry anywhere in the project whitelist its strings everywhere, including from
+    # a table with no rows at all. A composed cell's parts excuse that cell alone, and
+    # `tables.rebuilt` is what checks they really produced it.
     known = {value.display for value in results.values.values()}
-    for table in results.tables.values():
-        for entry in table.composed:
-            known.update(str(part) for part in (entry.get("parts") or ()))
     known.discard("")
     known |= {shown.replace(",", "") for shown in known}
 
@@ -379,7 +380,7 @@ def _emitted_tables(results: Results, classifier: Classifier) -> Report:
             "caption": table.caption,
             "composed": list(table.composed),
         }
-        for problem in problems_in(key, spec, known, classifier):
+        for problem in problems_in(key, spec, known, classifier, results.code_lists):
             report = report.with_findings(
                 Finding(
                     gate=GATE,

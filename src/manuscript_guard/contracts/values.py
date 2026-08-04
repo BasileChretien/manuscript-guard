@@ -35,6 +35,13 @@ class Value:
     # which is when it matters. Nothing in the file recorded that two keys were meant to
     # agree, so this is the author saying so.
     same_as: str | None = None
+    # The estimate this value bounds, and which end it is. Three keys that happen to be
+    # named ci_low, ci_high and point are three unrelated numbers as far as any check is
+    # concerned — so `{{results.ror.ci_high}} to {{results.ror.ci_low}}` resolved cleanly
+    # and printed the interval backwards. The table path has refused a typed composite cell
+    # for exactly this reason since round two; prose had no equivalent.
+    bounds: str | None = None
+    bound: str | None = None
 
     @property
     def namespace(self) -> str:

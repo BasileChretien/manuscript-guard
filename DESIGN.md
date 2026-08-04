@@ -1312,13 +1312,14 @@ Closed since, and why each mattered:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
-- **An interval written backwards in prose is not caught.** `{{results.ror.ci_high}} to
-  {{results.ror.ci_low}}` resolves cleanly, every binding is real, and the paper prints
-  "3.84 (95% CI 7.02 to 2.10)". The table path refuses a typed composite cell for exactly
-  this reason — "a point estimate and its bounds can be transposed and still pass" — and
-  prose has no equivalent. For a disproportionality paper that is the one sentence that
-  matters. Closing it needs an interval to be a declared thing rather than three unrelated
-  keys, which is a change to the emitter API and is not made yet.
+- **An interval is only checked in prose when it was emitted as one.** `em.interval()`
+  publishes the estimate and both bounds together, verifies that the bounds bracket the
+  estimate, and records which end each bound is — which is what lets G2 refuse
+  `{{results.ror.ci_high}} to {{results.ror.ci_low}}`, a sentence in which every binding
+  resolves, no literal appears, and the paper prints "3.84 (95% CI 7.02 to 2.10)". Three
+  keys emitted separately with `value()` are still three unrelated numbers, and the order
+  they are quoted in is unchecked. The order is judged per sentence, so a paper may quote
+  one bound alone or two intervals in successive sentences without complaint.
 - **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
   a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
   as Methods was considered and rejected: an abstract states results in the same block, and

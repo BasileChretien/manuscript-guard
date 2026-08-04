@@ -60,9 +60,10 @@ def main() -> None:
     em.value("case.n_serious", serious)
     em.value("case.pct_serious", 100 * serious / a, digits=1, unit="%")
 
-    em.value("ror.point", ror, digits=2)
-    em.value("ror.ci_low", low, digits=2)
-    em.value("ror.ci_high", high, digits=2)
+    # One call, so the three keys are one declared interval rather than three unrelated
+    # numbers. It checks that the bounds bracket the estimate, and records which end each
+    # bound is - which is what lets G2 refuse an interval quoted backwards in prose.
+    em.interval("ror", ror, low, high, digits=2)
 
     em.value("table2x2.a", a, quoted=False)
     em.value("table2x2.b", b, quoted=False)

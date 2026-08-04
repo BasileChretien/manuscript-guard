@@ -275,6 +275,8 @@ class Emitter:
         note: str | None = None,
         same_as: str | None = None,
         label: bool = False,
+        bounds: str | None = None,
+        bound: str | None = None,
     ) -> None:
         """Record one value. Raises immediately on a duplicate key or unformattable float.
 
@@ -307,7 +309,53 @@ class Emitter:
             if same_as == key:
                 raise ValueError(f"{key!r} declares same_as itself")
             spec["same_as"] = same_as
+        if bounds is not None:
+            if bound not in ("low", "high"):
+                raise ValueError(f"{key!r} declares bounds without bound='low' or 'high'")
+            spec["bounds"] = bounds
+            spec["bound"] = bound
         self._values[key] = spec
+
+    def interval(
+        self,
+        key: str,
+        point: float,
+        low: float,
+        high: float,
+        *,
+        digits: int | None = None,
+        unit: str | None = None,
+        quoted: bool = True,
+    ) -> None:
+        """Publish an estimate and its interval as one thing.
+
+            em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+
+        Writes `ror.point`, `ror.ci_low` and `ror.ci_high`, checks that the bounds really do
+        bracket the estimate, and records which end each bound is.
+
+        That last part is the point. Three keys named point, ci_low and ci_high are three
+        unrelated numbers as far as any check is concerned, so
+        `{{results.ror.ci_high}} to {{results.ror.ci_low}}` resolved cleanly, passed every
+        gate, and printed "3.84 (95% CI 7.02 to 2.10)". The table path has refused a typed
+        composite cell since round two because "a point estimate and its bounds can be
+        transposed and still pass"; prose had no equivalent, and for a paper whose result is
+        one ratio and one interval that is the sentence that matters.
+        """
+        if not low <= point <= high:
+            raise DisplayError(
+                f"{key}: the interval does not bracket the estimate — {low!r} to {high!r} "
+                f"around {point!r}. Check the order of the arguments"
+            )
+        self.value(f"{key}.point", point, digits=digits, unit=unit, quoted=quoted)
+        self.value(
+            f"{key}.ci_low", low, digits=digits, unit=unit, quoted=quoted,
+            bounds=f"{key}.point", bound="low",
+        )
+        self.value(
+            f"{key}.ci_high", high, digits=digits, unit=unit, quoted=quoted,
+            bounds=f"{key}.point", bound="high",
+        )
 
     def table(
         self,

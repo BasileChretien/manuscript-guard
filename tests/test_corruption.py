@@ -464,3 +464,44 @@ def test_a_composed_part_does_not_whitelist_another_table(project: Path) -> None
 
     codes = {f.code for f in gate_report(project).findings}
     assert "unemitted-table-number" in codes
+
+
+# ------------------------------------------------- an interval is a declared thing
+
+
+def test_an_interval_quoted_backwards_in_prose_is_caught(project: Path) -> None:
+    """Both bindings resolve, no literal appears, and the paper prints 7.02 to 2.10.
+
+    Three keys named point, ci_low and ci_high are three unrelated numbers as far as any
+    check is concerned. The table path has refused a typed composite cell since round two
+    because "a point estimate and its bounds can be transposed and still pass"; prose is
+    where that sentence actually gets written.
+    """
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    swapped = text.replace(
+        "(95% CI {{results.ror.ci_low}} to\n{{results.ror.ci_high}})",
+        "(95% CI {{results.ror.ci_high}} to\n{{results.ror.ci_low}})",
+    )
+    assert swapped != text, "the example must still quote the interval in one sentence"
+    path.write_text(swapped, encoding="utf-8")
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "interval-reversed" in codes
+
+
+def test_the_example_quotes_its_interval_the_right_way_round(project: Path) -> None:
+    assert "interval-reversed" not in {f.code for f in gate_report(project).findings}
+
+
+def test_bounds_in_separate_sentences_are_not_compared(project: Path) -> None:
+    """Two intervals in successive sentences say nothing about each other, and a paper may
+    legitimately give one bound alone."""
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nThe upper bound was {{results.ror.ci_high}}. The lower was "
+        "{{results.ror.ci_low}}.\n",
+        encoding="utf-8",
+    )
+    assert "interval-reversed" not in {f.code for f in gate_report(project).findings}

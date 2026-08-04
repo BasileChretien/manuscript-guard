@@ -537,3 +537,18 @@ def test_a_typed_numeric_code_list_is_still_refused(scratch: Path) -> None:
     em = emitter(scratch)
     with pytest.raises(DisplayError, match="number written as text"):
         em.table("c", ["Concept", "System", "Codes"], [["x", "MedDRA", "10019663 10019708"]])
+
+
+def test_an_interval_publishes_three_keys_with_their_roles(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    values = em.document()["values"]
+    assert values["ror.point"]["display"] == "3.84"
+    assert values["ror.ci_low"]["bounds"] == "ror.point"
+    assert values["ror.ci_low"]["bound"] == "low"
+    assert values["ror.ci_high"]["bound"] == "high"
+
+
+def test_an_interval_must_bracket_its_estimate(scratch: Path) -> None:
+    with pytest.raises(DisplayError, match="does not bracket"):
+        emitter(scratch).interval("ror", 3.84, 7.02, 2.10, digits=2)

@@ -2,14 +2,14 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "1a45bf43e69c21b191c308181d3884f564ecaab7656260a57f217d401a6b020a",
-    "generated_at": "2026-08-04T07:33:05+00:00",
+    "generated_by_sha256": "b6d3d85f13d9eda859bd2945d360492784102f2f89fe39062e06d574e369fd45",
+    "generated_at": "2026-08-04T08:16:03+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
     "vcs": {
-      "sha": "e386540f9d37c0fac0e39852266c3365312a709d",
+      "sha": "12f3971417c0e5ee279a5345f63574dcdf126128",
       "dirty": true,
       "branch": "main"
     },
@@ -69,12 +69,16 @@
     "ror.ci_low": {
       "value": 2.887625907453547,
       "display": "2.89",
-      "digits": 2
+      "digits": 2,
+      "bounds": "ror.point",
+      "bound": "low"
     },
     "ror.ci_high": {
       "value": 5.117049374666756,
       "display": "5.12",
-      "digits": 2
+      "digits": 2,
+      "bounds": "ror.point",
+      "bound": "high"
     },
     "table2x2.a": {
       "value": 77,

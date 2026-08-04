@@ -164,6 +164,8 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 unit=spec.get("unit"),
                 quoted=spec.get("quoted", True),
                 same_as=spec.get("same_as"),
+                bounds=spec.get("bounds"),
+                bound=spec.get("bound"),
             )
 
         for key, spec in document.get("tables", {}).items():

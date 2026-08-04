@@ -110,6 +110,8 @@ def check_numbers(
                     )
                 )
 
+        report = report.merge(_interval_order(placeholders, namespace, path, text))
+
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
         scan = classifier.scan(text)
@@ -298,6 +300,65 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                         "pandoc renders it; bind it or reword the title",
                     )
                 )
+    return report
+
+
+#: A sentence, for judging whether two bindings are quoted as one interval. Line breaks do
+#: not end one: every manuscript here is hard-wrapped.
+_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text: str) -> Report:
+    """The bounds of one interval must be quoted low first.
+
+    `{{results.ror.ci_high}} to {{results.ror.ci_low}}` resolves cleanly: both keys exist,
+    neither is a literal, every gate passes — and the paper prints "3.84 (95% CI 7.02 to
+    2.10)". Three keys named point, ci_low and ci_high are three unrelated numbers as far as
+    any check is concerned, which is why `interval()` records which end each bound is.
+
+    The table path has refused a typed composite cell since round two, on the grounds that
+    "a point estimate and its bounds can be transposed and still pass". Prose is where that
+    sentence actually gets written.
+
+    Judged per sentence, because two intervals quoted in successive sentences say nothing
+    about each other, and a paper may legitimately give the upper bound alone.
+    """
+    report = Report()
+    quoted = [
+        (placeholder, namespace[placeholder.ref])
+        for placeholder in placeholders
+        if placeholder.is_value and placeholder.ref in namespace
+    ]
+    by_sentence: dict[int, list] = {}
+    for placeholder, value in quoted:
+        if not value.bounds:
+            continue
+        ends = [match.start() for match in _SENTENCE_END.finditer(text, 0, placeholder.start)]
+        by_sentence.setdefault(len(ends), []).append((placeholder, value))
+
+    for group in by_sentence.values():
+        seen: dict[str, int] = {}
+        for placeholder, value in group:
+            if value.bound in seen and value.bound is not None:
+                continue
+            seen[f"{value.bounds}:{value.bound}"] = placeholder.start
+        for estimate in {value.bounds for _p, value in group}:
+            low = seen.get(f"{estimate}:low")
+            high = seen.get(f"{estimate}:high")
+            if low is None or high is None or low < high:
+                continue
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="interval-reversed",
+                    message=f"the interval around {estimate} is quoted upper bound first, "
+                    f"so it will print backwards",
+                    path=path,
+                    line=text.count("\n", 0, high) + 1,
+                    hint="write the lower bound first; both bindings resolve either way, "
+                    "which is why nothing else catches this",
+                )
+            )
     return report
 
 

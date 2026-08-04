@@ -165,6 +165,11 @@ structural:
     # term name as well and so fails regardless. That phrasing is a known gap: write
     # `MedDRA preferred term 10028606` and the rule fires.
     #
+    # `\d{3}\.\d{1,2}` is ICD-9-CM: 428.0, 250.00. It begins with a digit, so the
+    # identifier rule cannot take it, and it has no run of four digits, so the code
+    # branch could not either — leaving every US claims study that spans the October
+    # 2015 transition, which is most of them, with an unclassifiable code set.
+    #
     # A full stop is not in the bridge either, and the gaps are spaces or a single line
     # break rather than `\s*`. "Events were coded using MedDRA terms. 15320 reports were
     # retrieved" classified the count in the *next sentence*, and once the classifier
@@ -176,4 +181,4 @@ structural:
     # so the rule has to reach, but "anything within 120 characters" would classify the
     # count in "ICD-10 codes were found in 412 patients". Nothing a measurement can be
     # written as is allowed in the bridge, which is what keeps the reach safe.
-    pattern: '(?i)\b(?:LOINC|SNOMED(?:[\s-]?CT)?|MedDRA|RxNorm|NDC|CPT|HCPCS|OPCS|ICD(?:[\s-]?(?:9|10|11))?(?:[\s-]?(?:CM|PCS))?|ATC)\b(?:[ \t]*\n?[ \t]*(?:v(?:er(?:sion)?)?\.?[ \t]*\d+(?:\.\d+)*|[;,:=]|\b(?:the|a|an|its|their|and|coded|code|codes|coding|term|terms|concept|concepts|class|classes|identifier|identifiers|preferred|lowest|highest|high|level|group|system|organ|query|following|listed|below|LLT|PT|HLT|HLGT|SOC|SMQ)\b)){0,14}[ \t]*\n?[ \t]*\d{4,18}(?:-\d)?(?:\s*(?:,|;|and|or|to|through|[-–])\s*\d{4,18}(?:-\d)?){0,20}'
+    pattern: '(?i)\b(?:LOINC|SNOMED(?:[\s-]?CT)?|MedDRA|RxNorm|NDC|CPT|HCPCS|OPCS|ICD(?:[\s-]?(?:9|10|11))?(?:[\s-]?(?:CM|PCS))?|ATC)\b(?:[ \t]*\n?[ \t]*(?:v(?:er(?:sion)?)?\.?[ \t]*\d+(?:\.\d+)*|[;,:=]|\b(?:the|a|an|its|their|and|coded|code|codes|coding|term|terms|concept|concepts|class|classes|identifier|identifiers|preferred|lowest|highest|high|level|group|system|organ|query|following|listed|below|LLT|PT|HLT|HLGT|SOC|SMQ)\b)){0,14}[ \t]*\n?[ \t]*(?:\d{4,18}(?:-\d)?|\d{3}\.\d{1,2})(?:\s*(?:,|;|and|or|to|through|[-–])\s*(?:\d{4,18}(?:-\d)?|\d{3}\.\d{1,2})){0,20}'

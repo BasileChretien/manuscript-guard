@@ -94,6 +94,20 @@ conventions:
     rejects:
       - {text: "There were 8601 reports in total.", atom: "8601"}
 
+  balance-criterion:
+    section: [Methods]
+    accepts:
+      - {text: "A standardised mean difference below 0.1 was taken as balance.", atom: "0.1"}
+      - {text: "Matched with a caliper of 0.2 standard deviations of the logit.", atom: "0.2"}
+      - {text: "Patients were matched 1:1 on the propensity score.", atom: "1:1"}
+      - {text: "Heterogeneity above I2 > 50% was called substantial.", atom: "50%"}
+    rejects:
+      # The values these criteria are applied to. As a shape - statistic, operator, number -
+      # this rule would classify every one of them.
+      - {text: "The standardised mean difference was 0.34 after matching.", atom: "0.34"}
+      - {text: "Matched with a caliper of 0.7 standard deviations.", atom: "0.7"}
+      - {text: "We excluded 0.2 percent of records for missing data.", atom: "0.2"}
+
   ratio-null-value:
     accepts:
       - {text: "The 95% CI excluded 1.", atom: "1"}
@@ -117,6 +131,7 @@ conventions:
     section: [Methods]
     accepts:
       - {text: "A signal was defined as IC025 > 0.", atom: "0"}
+      - {text: "A signal was defined as omega025 > 0.", atom: "0"}
       - {text: "We required EB05 >= 2 throughout.", atom: "2"}
       - {text: "A PRR >= 2 was taken as a signal.", atom: "2"}
       - {text: "The criterion was a chi-squared >= 4.", atom: "4"}
@@ -249,6 +264,7 @@ structural:
       - {text: "Results were identified by LOINC 1742-6.", atom: "1742-6"}
       - {text: "Coded with MedDRA version 26.1; the preferred term 10019663 was used.", atom: "10019663"}
       - {text: "Concepts were taken from SNOMED CT 197315008.", atom: "197315008"}
+      - {text: "Before 2015 we used ICD-9-CM codes 428.0 and 428.9.", atom: "428.0"}
     rejects:
       # Round four. The bridge crossed a full stop into the next sentence, and once the
       # classifier scanned whole documents there was no distance cap left to stop it.

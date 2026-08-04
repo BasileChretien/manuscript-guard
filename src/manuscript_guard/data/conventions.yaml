@@ -71,6 +71,19 @@ conventions:
     why: Naming a standard, not stating a value.
     pattern: '(?i)\bISO[\s-]?8601\b'
 
+  - id: balance-criterion
+    why: >-
+      The published constants a cohort study is judged against. A standardised mean
+      difference below 0.1 and a caliper of 0.2 standard deviations of the propensity-score
+      logit are Austin's; an I-squared above 50% is Higgins'. A paper states which it used;
+      the values are not its own findings.
+    # Methods only, and pinned to the published values, exactly like
+    # `disproportionality-criterion`. Every one of these was unclassifiable, which sent a
+    # RECORD-PE author to `conventions:` in paper.yaml on their first Methods section - the
+    # one mechanism DESIGN calls able to make G2 vacuous.
+    methods_only: true
+    pattern: '(?i)\b(?:standardi[sz]ed\s+mean\s+difference|SMD|absolute\s+standardi[sz]ed\s+difference)\s*(?:of|below|under|less\s+than|[<≤]=?)\s*0?\.1\b|\bcaliper\s*(?:of|[=:])?\s*0?\.2\b|\bI\s*[²2]\s*[>≥]=?\s*(?:25|50|75)\s*%|\bmatched\s+1\s*:\s*[1-9]\b'
+
   - id: ratio-null-value
     why: >-
       The 1 a ratio is compared against is where the scale has no effect, not a quantity
@@ -100,6 +113,10 @@ conventions:
       the WHO-UMC criterion, EB05 at or above 2 is DuMouchel's, and PRR at or above 2 with
       a chi-squared of 4 and at least 3 cases is Evans'. A paper states which it used; the
       values are not its own findings.
+    # Ω is Norén's shrinkage measure for drug-drug interaction, and `Ω025 > 0` is its
+    # signal criterion — the same shape as IC025 and used in VigiBase, EudraVigilance
+    # and FAERS interaction screening. It was unwritable: `Ω` is not ASCII, so the
+    # identifier rule could not take it either.
     # The bare `N >= 3` branch is gone. Unlike every other branch here it named no
     # statistic, so "subgroups with N >= 3 patients per site" — an unrelated inclusion
     # threshold — was filed under the Evans criterion. A branch that matches a shape
@@ -109,4 +126,4 @@ conventions:
     # the very result the criterion is applied to - and as a convention everywhere it would
     # have done the same in the Results.
     methods_only: true
-    pattern: '(?i)\b(?:IC0?25|IC)\s*[>≥]=?\s*0(?:\.0+)?\b|\b(?:EB0?5|EBGM|PRR|ROR)\s*[>≥]=?\s*2(?:\.0+)?\b|\b(?:chi[\s-]?squared?|χ2|χ²|X2)\s*[>≥]=?\s*4(?:\.0+)?\b|\b(?:at\s+least|a\s+minimum\s+of|no\s+fewer\s+than)\s+3\s+(?:cases?|reports?|events?)\b|[>≥]=?\s*3\s+(?:cases?|reports?|events?)\b'
+    pattern: '(?i)\b(?:IC0?25|IC|Ω0?25|Ω|omega0?25|omega)\s*[>≥]=?\s*0(?:\.0+)?\b|\b(?:EB0?5|EBGM|PRR|ROR)\s*[>≥]=?\s*2(?:\.0+)?\b|\b(?:chi[\s-]?squared?|χ2|χ²|X2)\s*[>≥]=?\s*4(?:\.0+)?\b|\b(?:at\s+least|a\s+minimum\s+of|no\s+fewer\s+than)\s+3\s+(?:cases?|reports?|events?)\b|[>≥]=?\s*3\s+(?:cases?|reports?|events?)\b'

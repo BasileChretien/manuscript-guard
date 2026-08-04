@@ -1002,6 +1002,49 @@ state — was legal in Python and an error in R. The R function carrying a docst
 to mirror the Python one had been wrong for as long as it had existed, which is what such a
 promise is worth without a test that exercises both on the same input.
 
+## Round four, 2026-08-04
+
+Four reviewers, three of which ran their own reproductions. The domain reviewer had no
+shell, so every one of its fourteen claims was executed here before being acted on; all
+fourteen held. The pattern of this round is worth naming: **most of what it found was in
+code written the same day**, by the fixes for round three.
+
+**The composed-cell exemption verified nothing.** It checked the *declared* literal instead
+of the cell, so an entry declaring an empty literal exempted whatever the cell actually
+said — and `Verbatim`, whose own docstring claimed a script could not build one, was an
+ordinary importable dataclass. `check` passed on a table cell reading "True mortality
+4281003.55% (fabricated)". Separately, `parts` were folded into one project-wide allowlist,
+so a phantom entry in a table with no rows whitelisted its strings in another fragment.
+DESIGN had already called this "verified rather than trusted". It was not. It is now: the
+fragment records the template, the gate rebuilds the cell from template and parts and
+requires the result to equal the text on the page, and a code-list cell — which holds no
+number the emitter derived — is checked against the code list published beside it.
+
+**A regression from this same day's performance work.** `$` in `ratio-null-value` had meant
+end-of-string inside a 160-character window; under the `re.MULTILINE` the document-wide scan
+needs, it came to mean end-of-line. Every manuscript here is hard-wrapped, so "...that
+excluded 1\npatient with missing data..." read as the null value of a ratio because of where
+an editor wrapped. A value passing by coincidence, in the file whose header says that cannot
+happen. `\Z` now.
+
+**Five rule leaks, four of them the shape-not-value mistake yet again**, and one worse:
+`is_methods` matched *any* heading in the chain, so a Results subsection called "Sensitivity
+analyses" — which most pharmacoepidemiology papers have — re-admitted every `methods_only`
+rule, and a reported `p < 0.001` classified as the pre-specified threshold. That is precisely
+the failure `methods_only` was built to close, reintroduced through the chain rather than
+through the heading text. A Methods-like heading now counts only while no ancestor is a
+section that reports what happened.
+
+**And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
+RECORD-PE is for routinely collected health data and the example is a spontaneous-report
+disproportionality study, so the guideline that applies is READUS-PV. It declared neither in
+`reporting_guideline:`, used `p < 0.05` as a decision rule, and never demonstrated
+`code_list()`. Every new user copies that file. The deeper fault was that **no gate read the
+sentence**: an adherence claim is a claim about the paper's own conduct, which makes it worse
+than an unbound number, and nothing reconciled it with the checklist actually completed. G5
+does now, sentence by sentence, over masked text — so a guideline named in a comment is a
+note rather than a claim.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1243,6 +1286,13 @@ Closed since, and why each mattered:
 - **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
   this section; repeated here because it is the same shape as the two above — the toolkit
   judges what it can parse and says so, rather than guessing.
+- **A determined fragment editor is not caught by G2, and never could be.** The table check
+  catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
+  a number no value published, a claim of composition attached to the wrong cell. Someone
+  willing to add a matching `values` entry alongside their edited cell passes it, exactly as
+  they can recompute a `.sha256`. `verify` is the answer to that, and the digest's own
+  docstring has always said it detects accidents rather than adversaries. What changed is
+  that the check now applies to the file rather than to the emitter that wrote it.
 - **A typed list of letter-prefixed codes passes without `code_list()`.** `K71.0` classifies
   as an identifier wherever it appears, so a hand-typed ICD-10 list in a table is accepted.
   `code_list()` earns its place by keeping the list as data the analysis selects on, not by
@@ -1262,6 +1312,22 @@ Closed since, and why each mattered:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
+- **An interval written backwards in prose is not caught.** `{{results.ror.ci_high}} to
+  {{results.ror.ci_low}}` resolves cleanly, every binding is real, and the paper prints
+  "3.84 (95% CI 7.02 to 2.10)". The table path refuses a typed composite cell for exactly
+  this reason — "a point estimate and its bounds can be transposed and still pass" — and
+  prose has no equivalent. For a disproportionality paper that is the one sentence that
+  matters. Closing it needs an interval to be a declared thing rather than three unrelated
+  keys, which is a change to the emitter API and is not made yet.
+- **A structured abstract cannot state its own signal threshold.** `methods_only` rules need
+  a Methods heading, and an abstract's chain is `("Abstract",)`. Treating the whole abstract
+  as Methods was considered and rejected: an abstract states results in the same block, and
+  it is the highest-risk place in the paper for an unbound number. Bind the value, or use
+  the project's own `conventions:`.
+- **A reporting checklist's `where:` can only point at a manuscript heading.** RECORD's added
+  items are answered in supplementary tables, appendices and registry records, so the items
+  the extension exists for are the ones that report `checklist-location-unknown`. It is a
+  warning, which is the only reason it is tolerable.
 - **A Bonferroni-corrected or otherwise derived alpha is not a built-in convention.** Only
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value

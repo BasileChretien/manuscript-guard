@@ -10,7 +10,9 @@ than assumed.
 
 from __future__ import annotations
 
+import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -47,8 +49,6 @@ def test_check_exits_one_when_a_gate_fails(project: Path, capsys) -> None:
 
 def test_check_json_carries_the_finding_code(project: Path, capsys) -> None:
     """The rendered report shows gate and message; --json is where a machine reads codes."""
-    import json
-
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8") + "\n\nAn unbound number: 4321.\n", encoding="utf-8"
@@ -148,8 +148,6 @@ def test_a_rerun_analysis_makes_the_built_document_stale(project: Path) -> None:
     .docx still showed the old number. An adversarial review walked an ROR from 3.84 to
     28.80 with `check --submission` reporting nothing at all.
     """
-    import json
-
     assert run("build", str(project), "--offline") == 0
     assert run("check", str(project), "--stage", "internal-review") == 0
 
@@ -333,3 +331,66 @@ def test_review_files_prints_a_paste_ready_block(project: Path, capsys) -> None:
 def test_checklist_scaffolds_and_is_idempotent(project: Path, capsys) -> None:
     assert run("checklist", "DEMO-OBS", "--path", str(project)) == 0
     assert "all already present" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ a console that is not UTF-8
+
+
+@pytest.mark.parametrize("encoding", ["cp437", "cp850", "cp1252"])
+def test_output_survives_a_console_that_is_not_utf8(encoding: str, monkeypatch) -> None:
+    """A Windows console is whatever code page it started with, and each rejects a different
+    subset: cp437 and cp850 have no em dash, cp1252 has one but no `\u2265`. Printing raised
+    UnicodeEncodeError from inside the gate run, so `check` exited 2 - "the check could not
+    be run at all" - on a manuscript that was merely failing a gate.
+    """
+    import io
+
+    from manuscript_guard.cli import _survive_the_console
+
+    line = "an em dash \u2014 a ratio \u2265 1.0 an ellipsis\u2026"
+
+    raw = io.TextIOWrapper(io.BytesIO(), encoding=encoding, newline="")
+    with pytest.raises(UnicodeEncodeError):
+        raw.write(line)  # the bug, still reachable without the shim
+
+    buffer = io.TextIOWrapper(io.BytesIO(), encoding=encoding, newline="")
+    monkeypatch.setattr(sys, "stdout", buffer)
+    monkeypatch.setattr(sys, "stderr", buffer)
+    _survive_the_console()
+
+    print(line)
+    buffer.flush()
+    written = buffer.buffer.getvalue().decode(encoding)
+    assert "--" in written and ">=" in written and "..." in written
+    assert "?" not in written, "folded, not blanked: `--` still reads as English"
+
+
+def test_a_utf8_console_keeps_the_typography(monkeypatch) -> None:
+    """The fold is a fallback, not a downgrade applied to everyone."""
+    import io
+
+    from manuscript_guard.cli import _survive_the_console
+
+    buffer = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", newline="")
+    monkeypatch.setattr(sys, "stdout", buffer)
+    monkeypatch.setattr(sys, "stderr", buffer)
+    _survive_the_console()
+
+    print("an em dash \u2014 here")
+    buffer.flush()
+    assert "\u2014" in buffer.buffer.getvalue().decode("utf-8")
+
+
+def test_json_output_is_ascii_so_a_pipe_cannot_truncate_it(project: Path, capsys) -> None:
+    assert run("check", str(project), "--json") in (0, 1)
+    out = capsys.readouterr().out
+    out.encode("ascii")  # would raise if a literal em dash survived
+    assert json.loads(out)["counts"]
+
+
+def test_check_does_not_report_exit_2_for_a_failing_gate(project: Path, capsys) -> None:
+    """Exit 2 means the check could not run. A gate failure is exit 1 and nothing else."""
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nThe rate was 47 per 1000.\n",
+                    encoding="utf-8")
+    assert run("check", str(project)) == 1

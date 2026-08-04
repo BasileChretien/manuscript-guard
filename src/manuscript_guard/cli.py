@@ -9,6 +9,7 @@ Exit codes are part of the contract, because hooks and CI read them:
 from __future__ import annotations
 
 import argparse
+import codecs
 import sys
 from pathlib import Path
 
@@ -839,8 +840,67 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: What to write when the terminal cannot take the character. Every one of these appears in
+#: ordinary findings, because the prose in this toolkit is typed properly.
+_FOLD = str.maketrans(
+    {
+        "—": "--",
+        "–": "-",
+        "…": "...",
+        "“": '"',
+        "”": '"',
+        "‘": "'",
+        "’": "'",
+        "≥": ">=",
+        "≤": "<=",
+        "×": "x",
+        "≈": "~",
+        "±": "+/-",
+        "→": "->",
+        "•": "*",
+        " ": " ",
+    }
+)
+
+
+def _survive_the_console() -> None:
+    """Make output printable on a console that is not UTF-8.
+
+    Every finding this tool writes is full of em dashes, and a Windows console is whatever
+    code page it was started with. Each rejects a different subset: cp437 and cp850 cannot
+    take an em dash or an ellipsis, cp1252 takes both but not `≥`. Printing one raised
+    `UnicodeEncodeError` from inside `print`, so `check` exited 2 — "the check could not be
+    run at all" — on a manuscript that was merely failing a gate, and CI reading the exit
+    code could not tell the two apart. `check --json` died the same way, mid-document,
+    while a machine was parsing it.
+
+    Folding is per write and all-or-nothing, so a line either reads as typed or reads as
+    ASCII throughout, rather than switching styles around whichever glyph the code page
+    happened to know.
+
+    Folding to ASCII rather than forcing UTF-8 on the stream: forcing it turns a cp1252
+    console into mojibake, which is harder to read than `--`, and unlike `errors="replace"`
+    this keeps the text meaningful.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        if codecs.lookup(encoding).name in {"utf-8", "utf-8-sig", "utf-32", "utf-16"}:
+            continue
+        write = stream.write
+
+        def safe(text: str, _write=write, _encoding=encoding) -> int:
+            try:
+                text.encode(_encoding)
+            except UnicodeEncodeError:
+                text = text.translate(_FOLD).encode(_encoding, "replace").decode(_encoding)
+            return _write(text)
+
+        stream.write = safe  # type: ignore[method-assign]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    _survive_the_console()
     try:
         return int(args.func(args))
     except ContractError as exc:

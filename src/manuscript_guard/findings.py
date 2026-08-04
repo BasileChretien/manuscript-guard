@@ -108,7 +108,11 @@ class Report:
                 "findings": [f.as_dict() for f in self.sorted().findings],
             },
             indent=2,
-            ensure_ascii=False,
+            # Escaped rather than literal. The machine-readable channel gets piped, and a
+            # pipe on Windows is cp1252 — a literal em dash in a message killed `print`
+            # with UnicodeEncodeError mid-document, handing the caller truncated JSON and
+            # exit 2. `—` parses back to the same character everywhere.
+            ensure_ascii=True,
         )
 
     def render(self, root: Path | None = None) -> str:

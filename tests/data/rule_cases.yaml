@@ -1,0 +1,180 @@
+# Every shipped classifier rule, with what it must accept and what it must never absorb.
+#
+# This file exists because the same mistake has now been made six times: a rule written to
+# match a *shape* rather than to name specific *values*, which then swallows a real
+# measurement. `rate-denominator` took any digit run after "per". `age-band` made the unit
+# optional. `categorical-label` and `time-label` took any number after a keyword.
+# `author-year-citation` spanned a whole parenthetical. `software-version` was narrowed from
+# `\d+\.\d+` to "three or more components" and promptly absorbed `2.10-7.02`, which is how a
+# confidence interval is written.
+#
+# Every one of those was caught by a reviewer reading the regex, never by a test — because
+# each rule only ever had `accepts` cases. `tests/test_rules.py` therefore fails the build if
+# any rule lacks a `rejects` case, so a new rule cannot be added without someone having to
+# write down what it must not do.
+#
+#   accepts: the atom named must classify under this rule
+#   rejects: the atom named must stay UNCLASSIFIED
+#   section: heading chain to classify under (methods_only rules need one)
+
+conventions:
+  significance-threshold:
+    section: [Methods]
+    accepts:
+      - {text: "Significance was set at p < 0.05.", atom: "0.05"}
+      - {text: "Tests used p < 0.01 throughout.", atom: "0.01"}
+      - {text: "We used p < 0.001 as the threshold.", atom: "0.001"}
+    rejects:
+      # Not conventional thresholds: these are reported values wearing the same clothes.
+      - {text: "We report p < 0.37 here.", atom: "0.37"}
+      - {text: "We report p < 0.5 here.", atom: "0.5"}
+      - {text: "The corrected threshold was p < 0.0036.", atom: "0.0036"}
+
+  alpha-level:
+    section: [Methods]
+    accepts:
+      - {text: "Alpha was 0.05 for all comparisons.", atom: "0.05"}
+      - {text: "The alpha level of 0.01 was pre-specified.", atom: "0.01"}
+    rejects:
+      - {text: "Alpha was 0.123 in that model.", atom: "0.123"}
+
+  confidence-level:
+    accepts:
+      - {text: "Reported with 95% CI.", atom: "95%"}
+      - {text: "A 99% confidence interval was used.", atom: "99%"}
+      - {text: "The 90% credible interval excluded one.", atom: "90%"}
+    rejects:
+      - {text: "An 89% CI would be unusual.", atom: "89%"}
+      - {text: "Coverage reached 95.4% of reports.", atom: "95.4%"}
+
+  confidence-level-trailing:
+    accepts:
+      - {text: "Estimates are given with confidence intervals of 95%.", atom: "95%"}
+    rejects:
+      - {text: "Completeness was 73% overall.", atom: "73%"}
+
+  target-power:
+    section: [Methods]
+    accepts:
+      - {text: "The study had power of 80% to detect it.", atom: "80%"}
+      - {text: "Statistical power of 90% was assumed.", atom: "90%"}
+    rejects:
+      - {text: "Observed power of 63% was low.", atom: "63%"}
+
+  percentile-labels:
+    accepts:
+      - {text: "The 97.5th percentile was used.", atom: "97.5th"}
+      - {text: "Reported as Q1 and Q3.", atom: "Q1"}
+    rejects:
+      - {text: "The 12th case was excluded.", atom: "12th"}
+
+  rate-denominator:
+    accepts:
+      - {text: "Rates per 100 000 person-years.", atom: "100"}
+      - {text: "Reported per 1000 patients treated.", atom: "1000"}
+    rejects:
+      # The cohort size is a result, not a conventional denominator.
+      - {text: "The rate was 12 per 83,214 patients treated.", atom: "83,214"}
+      - {text: "Observed in 4 per 617 exposures.", atom: "617"}
+
+  two-by-two:
+    accepts:
+      - {text: "A 2 x 2 contingency table.", atom: "2"}
+    rejects:
+      - {text: "A 7 x 9 grid of comparisons.", atom: "7"}
+
+  iso-8601:
+    accepts:
+      - {text: "Dates follow ISO 8601.", atom: "8601"}
+    rejects:
+      - {text: "There were 8601 reports in total.", atom: "8601"}
+
+structural:
+  cross-reference:
+    accepts:
+      - {text: "Shown in Table 2.", atom: "2"}
+      - {text: "See Figure 1 for the forest plot.", atom: "1"}
+      - {text: "Given in Supplementary Table 3.", atom: "3"}
+    rejects:
+      - {text: "The table listed 412 preferred terms.", atom: "412"}
+
+  supplement-tag:
+    accepts:
+      - {text: "Reported in S1 of the appendix.", atom: "S1"}
+    rejects:
+      - {text: "There were 41 supplementary cases.", atom: "41"}
+
+  categorical-label:
+    accepts:
+      - {text: "Grade 3 events were rare.", atom: "3"}
+      - {text: "A phase 2 trial of the same agent.", atom: "2"}
+      - {text: "Randomised to arm 2 of the study.", atom: "2"}
+    rejects:
+      # Ordinary English word order, needing only a missing comma.
+      - {text: "In the exposed arm 47 hepatic events occurred.", atom: "47"}
+      - {text: "In the pooled cohort 3841 reports were assessed.", atom: "3841"}
+
+  time-label:
+    accepts:
+      - {text: "At day 30 after exposure.", atom: "30"}
+      - {text: "30-day mortality was assessed.", atom: "30-day"}
+      - {text: "Assessed at week 12.", atom: "12"}
+    rejects:
+      - {text: "Over the study years 1204 reports were received.", atom: "1204"}
+
+  ordered-list-marker:
+    accepts:
+      - {text: "1. The first criterion applied.", atom: "1"}
+    rejects:
+      - {text: "We identified 1204 reports meeting it.", atom: "1204"}
+
+  numbered-heading:
+    accepts:
+      - {text: "## 2.1 Statistical analysis", atom: "2.1"}
+    rejects:
+      - {text: "The ratio was 2.1 overall.", atom: "2.1"}
+
+  author-year-citation:
+    audit_only: true
+    accepts:
+      - {text: "In a cohort study (Smith 2019) the effect held.", atom: "2019"}
+    rejects:
+      # Rendered documents only. In manuscript source this must never apply, which
+      # test_text.py asserts separately.
+      - {text: "There were 2019 reports in the cohort.", atom: "2019"}
+
+  age-band:
+    accepts:
+      - {text: "Adults aged 65+ years were excluded.", atom: "65+"}
+      - {text: "The 18-44 years band was largest.", atom: "18-44"}
+    rejects:
+      - {text: "The trial enrolled 500+ patients across ten centres.", atom: "500+"}
+      - {text: "Response was seen in 45+ mg dosing groups.", atom: "45+"}
+
+  software-version:
+    accepts:
+      - {text: "Analyses used R 4.4.1 throughout.", atom: "4.4.1"}
+      - {text: "Python 3.12.3 was used.", atom: "3.12.3"}
+      - {text: "Built with manuscript-guard v0.1.0.", atom: "v0.1.0"}
+      - {text: "We used R 4.4 for all models.", atom: "4.4"}
+    rejects:
+      # The reason this file exists. A hyphenated confidence interval has three or more
+      # components and is not a version; nor is a p-value range.
+      - {text: "The odds ratio was 3.84 (95% CI 2.10-7.02).", atom: "2.10-7.02"}
+      - {text: "p values ranged from 0.001-0.05 across strata.", atom: "0.001-0.05"}
+      - {text: "The odds ratio was 3.84 overall.", atom: "3.84"}
+      - {text: "The z statistic was 1.96 exactly.", atom: "1.96"}
+      - {text: "Mortality reached 12.4% in that arm.", atom: "12.4%"}
+
+  citation-locator:
+    accepts:
+      - {text: "As shown [@key2019, p. 33] here.", atom: "33"}
+      - {text: "Reported [@other2020, pp. 12-19] there.", atom: "12-19"}
+    rejects:
+      - {text: "The page reported 33 000 exposures.", atom: "33"}
+
+  table-alignment-row:
+    accepts:
+      - {text: "|---|---|", atom: null}
+    rejects:
+      - {text: "The value was 412 in that row.", atom: "412"}

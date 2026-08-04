@@ -73,7 +73,17 @@ structural:
     # software versions - the same shape-not-value mistake five other rules had to be
     # corrected for. Three or more components is essentially never a measurement; two
     # components need either an explicit `v` or a named piece of software in front.
-    pattern: '(?i)\b\d+\.\d+(?:[.\-][A-Za-z0-9]+)+\b|\bv(?:er(?:sion)?)?\.?\s*\d+\.\d+[A-Za-z0-9.\-]*|\b(?:R|Python|Julia|SAS|Stata|SPSS|MATLAB|Excel|pandoc|Zotero|Word|pandas|numpy|scipy|statsmodels|scikit-learn|ggplot2|dplyr|tidyverse|epitools|jsonlite|matplotlib|lme4|survival|meta|metafor)\s+\d+\.\d+[A-Za-z0-9.\-]*'
+    # Three attempts, and the history is the argument for tests/data/rule_cases.yaml.
+    # `\d+\.\d+` classified an odds ratio of 3.84. "Three or more components" then classified
+    # `2.10-7.02`, because a hyphenated confidence interval has three components under that
+    # reading - and a hyphenated CI is how a pharmacovigilance result is normally written.
+    #
+    # The bare form is therefore dots only: 4.4.1, 3.12.3, 3.9.0.2. Hyphens are allowed only
+    # where a `v` or a named piece of software says this is a version - which is also what
+    # lets `Stata 18` and `SPSS 29` through, single-component versions the previous attempt
+    # refused. Names that are ordinary English words (survival, meta) are deliberately not on
+    # the list: "survival 3 years" is prose.
+    pattern: '(?i)\b\d+\.\d+\.\d+[A-Za-z0-9.\-]*\b|\bv(?:er(?:sion)?)?\.?\s*\d+\.\d+[A-Za-z0-9.\-]*|\b(?:R|Python|Julia|SAS|Stata|SPSS|MATLAB|Excel|pandoc|Zotero|Word|MedDRA|WHODrug|PostgreSQL|SQLite|pandas|numpy|scipy|statsmodels|scikit-learn|ggplot2|dplyr|tidyverse|epitools|jsonlite|matplotlib|lme4|metafor)\s+v?\d+(?:[.\-][A-Za-z0-9]+)*'
 
   - id: citation-locator
     why: >-

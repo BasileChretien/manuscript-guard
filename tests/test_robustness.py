@@ -21,6 +21,7 @@ subject matter.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -146,3 +147,100 @@ def test_an_enormous_figure_sibling_is_not_read_whole(project: Path) -> None:
     started = time.perf_counter()
     content_digest(figures / "forest.svg")
     assert time.perf_counter() - started < BUDGET_SECONDS
+
+
+# ------------------------------------------------------- running somebody else's analysis
+
+
+def test_a_junction_is_not_followed_when_staging_a_copy(tmp_path: Path) -> None:
+    """`symlinks=True` does not cover a Windows directory junction.
+
+    `os.path.islink` is False for one, so `copytree` walked straight into it and re-copied
+    the tree at every level until the OS gave up - reachable by any unprivileged
+    `mklink /J`, and the comment in verify.py claimed it had been fixed.
+    """
+    import subprocess
+
+    from manuscript_guard.verify import _skip
+
+    root = tmp_path / "paper"
+    (root / "analysis").mkdir(parents=True)
+    if sys.platform == "win32":
+        made = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(root / "loop"), str(root)],
+            capture_output=True,
+            check=False,
+        )
+        if made.returncode != 0:
+            pytest.skip("could not create a junction")
+    else:
+        (root / "loop").symlink_to(root, target_is_directory=True)
+        pytest.skip("junctions are a Windows construct; the symlink case is copytree's own")
+
+    assert "loop" in _skip(str(root), [name.name for name in root.iterdir()])
+
+
+def test_the_build_and_git_trees_are_still_skipped(tmp_path: Path) -> None:
+    from manuscript_guard.verify import _skip
+
+    assert _skip(str(tmp_path), ["build", ".git", "analysis"]) == {"build", ".git"}
+
+
+def test_a_verified_script_cannot_tell_it_is_being_verified(tmp_path: Path) -> None:
+    """PYTHONDONTWRITEBYTECODE was set here for tidiness and was a backdoor in miniature.
+
+    It is readable by the script being checked and is not set in an ordinary run, so two
+    lines made an analysis honest under verification and dishonest everywhere else - the
+    same reason MANUSCRIPT_GUARD_VERIFY was removed.
+    """
+    import inspect
+
+    from manuscript_guard import verify as module
+
+    source = inspect.getsource(module.verify)
+    assert "PYTHONDONTWRITEBYTECODE" not in source.split("miniature")[-1].split("env =")[-1]
+    assert "env = dict(os.environ)" in source
+
+
+def test_a_script_that_never_exits_is_killed_with_its_children(tmp_path: Path) -> None:
+    """`subprocess.run(timeout=)` kills the direct child only, and an analysis is usually a
+    launcher. The grandchild kept the scratch directory alive and cleanup then failed."""
+    import subprocess
+
+    from manuscript_guard import verify as module
+
+    script = tmp_path / "spin.py"
+    script.write_text("import time\nwhile True:\n    time.sleep(0.1)\n", encoding="utf-8")
+    original = module.TIMEOUT
+    module.TIMEOUT = 2
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            module._run(script, tmp_path, dict(os.environ))
+    finally:
+        module.TIMEOUT = original
+
+
+def test_output_from_a_verified_script_is_capped(tmp_path: Path) -> None:
+    """A script printing steadily filled this process's memory, because the reader was here."""
+    import os as _os
+
+    from manuscript_guard.verify import OUTPUT_CAP, _run
+
+    script = tmp_path / "loud.py"
+    script.write_text(
+        "import sys\nsys.stdout.write('x' * (4 << 20))\n", encoding="utf-8"
+    )
+    finished = _run(script, tmp_path, dict(_os.environ))
+    assert finished.returncode == 0
+    assert len(finished.stdout) <= OUTPUT_CAP
+
+
+def test_an_interrupted_stamp_does_not_leave_an_empty_one(tmp_path: Path) -> None:
+    """`write_text` truncates first, so a build interrupted mid-write left an empty stamp -
+    which reads as a digest of nothing, so the next check calls a good document stale."""
+    import inspect
+
+    from manuscript_guard.build import document
+
+    source = inspect.getsource(document._stamp_source)
+    assert "os.replace(pending, stamp)" in source

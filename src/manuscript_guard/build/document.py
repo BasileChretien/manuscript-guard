@@ -18,6 +18,7 @@ cannot go stale: nothing is ever carried across by hand, so there is nothing to 
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import subprocess
 import urllib.error
@@ -208,11 +209,20 @@ def _stamp_source(project, output: Path) -> None:
     """
     from manuscript_guard.gates.review import document_digest
 
+    # Written to a neighbour and renamed into place. `write_text` truncates first, so a
+    # build interrupted between the truncate and the write left an empty stamp beside a
+    # perfectly good document — and an empty stamp reads as a digest of "", which does not
+    # match, so the next `check` reports the document stale and the author rebuilds a
+    # document that was never wrong. `os.replace` is atomic on both platforms.
+    #
     # A build that produced the document must not fail over its receipt.
+    stamp = output.with_name(output.name + SOURCE_STAMP)
     with contextlib.suppress(OSError):
-        output.with_name(output.name + SOURCE_STAMP).write_text(
+        pending = stamp.with_name(stamp.name + ".tmp")
+        pending.write_text(
             f"{document_digest(project)}  {output.name}\n", encoding="utf-8", newline="\n"
         )
+        os.replace(pending, stamp)
 
 
 def _verify_live_fields(docx: Path) -> Report:

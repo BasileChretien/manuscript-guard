@@ -11,6 +11,7 @@ part of the gate rather than a footnote in its output.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
@@ -143,9 +144,7 @@ def check_numbers(
                         "tables are generated from results; replace the table with "
                         "{{table.<key>}} and emit it from the analysis"
                         if in_table
-                        else "bind it with {{results.<key>}} or {{lit.<key>}}; if it is a "
-                        "writing convention, add it to `conventions:` in paper.yaml with a "
-                        "justification"
+                        else _hint_for(atom)
                     ),
                 )
             )
@@ -296,6 +295,51 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
                     )
                 )
     return report
+
+
+_GENERIC_HINT = (
+    "bind it with {{results.<key>}} or {{lit.<key>}}; if it is a writing convention, add it "
+    "to `conventions:` in paper.yaml with a justification"
+)
+
+_DATE = re.compile(
+    r"(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
+    r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b"
+    r"|\b\d{4}-\d{2}-\d{2}\b"
+)
+
+_DURATION = re.compile(
+    r"(?i)\b\d+(?:\.\d+)?\s*(?:days?|weeks?|months?|years?|hours?)\b"
+    r"|\b(?:follow[\s-]?up|washout|wash[\s-]?out|risk\s+window|lag|induction|latency|"
+    r"look[\s-]?back|baseline\s+period|enrolment|enrollment|censor\w*|grace\s+period)\b"
+)
+
+
+def _hint_for(atom) -> str:
+    """A hint that names the thing the author is looking at.
+
+    "Bind it with {{results.<key>}}" is true of every unbound number and useful for almost
+    none of them: an author who has just written a study period does not think of a date as
+    a result, so the generic hint reads as the tool not understanding the sentence. Dates
+    and design parameters are the two that come up in every observational paper, and both
+    have a specific answer.
+    """
+    window = atom.window
+    if _DATE.search(window):
+        return (
+            "a date is one placeholder, not one per number in it: emit it as a string with "
+            'a display — em.value("period.start", "2015-01-01", display="1 January 2015") — '
+            "and write {{results.period.start}}. A study period is a fact about the data, so "
+            "it should come from the data"
+        )
+    if _DURATION.search(window):
+        return (
+            "a follow-up window, washout or censoring horizon is a design parameter the "
+            "analysis also uses: emit it from the script that applies it, so the prose and "
+            "the code cannot drift. If it is a reported duration rather than a chosen one, "
+            "it is a result like any other"
+        )
+    return _GENERIC_HINT
 
 
 def _coverage(results: Results, literature: Literature, referenced: set[str]) -> Report:

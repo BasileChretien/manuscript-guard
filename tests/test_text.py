@@ -435,3 +435,37 @@ def test_block_namespaces_are_recognised_but_not_values() -> None:
 def test_substitute_replaces_only_known_refs() -> None:
     out = substitute("a={{results.a}} b={{results.b}}", {"results.a": "12"})
     assert out == "a=12 b={{results.b}}"
+
+
+# ------------------------------------------------------ a hint that names what you wrote
+
+
+def hint_for(text: str, atom_text: str) -> str:
+    from manuscript_guard.gates.numbers import _hint_for
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    atom = next(a for a in find_atoms(text, mask(text)) if a.text == atom_text)
+    return _hint_for(atom)
+
+
+def test_a_date_is_told_to_bind_as_one_placeholder() -> None:
+    """"Bind it with {{results.<key>}}" is true of every unbound number and useful for
+    almost none of them. An author who has just written a study period does not think of a
+    date as a result, and the tokenizer splits it into three atoms besides.
+    """
+    hint = hint_for("Reports received between 1 January 2015 and 31 December 2022.", "2015")
+    assert "one placeholder" in hint
+    assert "period.start" in hint
+
+
+def test_a_design_parameter_is_told_where_it_comes_from() -> None:
+    hint = hint_for("The risk window was 30 days after the index prescription.", "30")
+    assert "design parameter" in hint
+    assert "cannot drift" in hint
+
+
+def test_an_ordinary_number_still_gets_the_ordinary_hint() -> None:
+    hint = hint_for("The exposed arm held 412 patients.", "412")
+    assert "conventions:" in hint
+    assert "design parameter" not in hint

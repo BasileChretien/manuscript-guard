@@ -155,11 +155,93 @@ def _values_of(document: dict) -> dict[str, object]:
     return out
 
 
+IGNORED_DIRS = ("build", ".git")
+
+
+def _skip(directory: str, names: list[str]) -> set[str]:
+    """What `copytree` must not descend into: the build tree, .git, and any junction."""
+    skipped = {name for name in names if name in IGNORED_DIRS}
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is None:  # pragma: no cover - Python < 3.12
+        return skipped
+    for name in names:
+        try:
+            if isjunction(os.path.join(directory, name)):
+                skipped.add(name)
+        except OSError:
+            skipped.add(name)
+    return skipped
+
+
+#: Output kept from a verified script. Enough to diagnose a failure, bounded because this
+#: runs somebody else's analysis and a runaway loop printing to stdout should not become
+#: this process's memory problem.
+OUTPUT_CAP = 1 << 20
+
+
+def _kill_tree(process: subprocess.Popen) -> None:
+    """Kill the script and anything it started.
+
+    `subprocess.run(timeout=)` kills the direct child only. An analysis is usually a
+    launcher — Rscript starts R, a Python script starts a solver — so on timeout the child
+    died, the grandchild kept the working directory alive, and `TemporaryDirectory` cleanup
+    then failed on Windows with the tree still in use.
+    """
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    else:
+        import contextlib
+        import signal
+
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    try:
+        process.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
 def _run(script: Path, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+    """Run one analysis, with its output on disk and its children accounted for.
+
+    Pipes rather than files meant the reader was this process: a script printing steadily
+    filled memory here, and a grandchild holding the pipe open kept `communicate()` waiting
+    past the timeout it was supposed to enforce. Files have neither problem, and the cap is
+    applied on the way back in.
+    """
     command = [*runner_for(script), str(script)]  # type: ignore[misc]
-    return subprocess.run(
-        command, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT, check=False, env=env
+    group: dict = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32"
+        else {"start_new_session": True}
     )
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        process = subprocess.Popen(command, cwd=cwd, stdout=out, stderr=err, env=env, **group)
+        try:
+            code = process.wait(timeout=TIMEOUT)
+        except subprocess.TimeoutExpired:
+            _kill_tree(process)
+            out.seek(0)
+            err.seek(0)
+            raise subprocess.TimeoutExpired(
+                command,
+                TIMEOUT,
+                output=out.read(OUTPUT_CAP).decode("utf-8", "replace"),
+                stderr=err.read(OUTPUT_CAP).decode("utf-8", "replace"),
+            ) from None
+        out.seek(0)
+        err.seek(0)
+        return subprocess.CompletedProcess(
+            command,
+            code,
+            out.read(OUTPUT_CAP).decode("utf-8", "replace"),
+            err.read(OUTPUT_CAP).decode("utf-8", "replace"),
+        )
 
 
 def verify(project, *, only: list[str] | None = None) -> VerifyReport:
@@ -191,13 +273,13 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
     with tempfile.TemporaryDirectory() as scratch:
         work = Path(scratch) / root.name
         try:
-            # symlinks=True: copy links, do not follow them. Following them dereferenced a
-            # directory junction pointing at the project itself, re-copying the whole tree at
-            # every level until the OS stopped it — an unprivileged directory entry turning a
-            # routine verify into a disk-churning crash.
-            shutil.copytree(
-                root, work, symlinks=True, ignore=shutil.ignore_patterns("build", ".git")
-            )
+            # symlinks=True copies links instead of following them, which stops a symlink
+            # pointing at the project from being re-copied at every level until the OS gives
+            # up. It does *not* cover a Windows directory junction: `os.path.islink` is
+            # False for one, `copytree` walks straight into it, and the recursion the
+            # comment here claimed to have fixed was still reachable by any unprivileged
+            # `mklink /J`. Junctions are skipped explicitly instead.
+            shutil.copytree(root, work, symlinks=True, ignore=_skip)
         except (OSError, shutil.Error) as exc:
             raise VerifyError(f"could not stage a copy of the project: {exc}") from exc
         # Emptied rather than left in place, so a script that fails to write is not silently
@@ -208,7 +290,12 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
         # No MANUSCRIPT_GUARD_VERIFY here, and there must never be one: it told the analysis
         # it was being verified, and two lines then made the script honest under verification
         # and dishonest everywhere else.
-        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        #
+        # PYTHONDONTWRITEBYTECODE was set here for tidiness and was the same mistake in
+        # miniature — `os.environ.get("PYTHONDONTWRITEBYTECODE")` is readable by the script
+        # being checked, and it is not set in an ordinary run. The scratch tree is deleted
+        # afterwards anyway, so the .pyc files it bought nothing to suppress.
+        env = dict(os.environ)
 
         for fragment in fragments:
             on_disk = json.loads(fragment.read_text(encoding="utf-8"))

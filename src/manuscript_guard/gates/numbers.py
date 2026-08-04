@@ -11,7 +11,6 @@ part of the gate rather than a footnote in its output.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
@@ -20,6 +19,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import section_chain
@@ -138,6 +138,8 @@ def check_numbers(
 
         report = report.merge(_fenced_code(path, text, classifier))
 
+    report = report.merge(_paper_yaml_prose(project, classifier))
+
     if by_project:
         listed = "; ".join(
             f"{rule} ({count})" for rule, count in sorted(by_project.items(), key=lambda i: -i[1])
@@ -168,12 +170,6 @@ def check_numbers(
     )
 
 
-_FENCE = re.compile(
-    r"^[ \t]*(?P<tick>`{3,}|~{3,})(?P<lang>[^\n]*)\n(?P<body>.*?)^[ \t]*(?P=tick)[ \t]*$",
-    re.DOTALL | re.MULTILINE,
-)
-
-
 def _fenced_code(path: Path, text: str, classifier: Classifier) -> Report:
     """Numbers inside a fenced block, judged as code rather than as prose.
 
@@ -191,21 +187,81 @@ def _fenced_code(path: Path, text: str, classifier: Classifier) -> Report:
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
-    for match in _FENCE.finditer(text):
-        tag = match.group("lang").strip()
-        language = tag.split()[0].lower() if tag else ""
-        line = text.count("\n", 0, match.start()) + 1
+    for fence in fenced_spans(text):
+        line = text.count("\n", 0, fence.start) + 1
+        body = text[fence.body_start : fence.body_end]
+
+        if fence.is_raw:
+            # ```{=openxml} and friends are not listings. pandoc splices the contents into
+            # the output verbatim, so this reaches the reader as formatted prose — and it
+            # was being reported as "a language with no lexer", whose advice was to tag the
+            # fence, which would only have made it quieter.
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="raw-block",
+                    message=f"a raw {fence.info.strip()} block at line {line} is written "
+                    f"straight into the built document, and nothing can read it",
+                    path=path,
+                    line=line,
+                    context=body.strip()[:160],
+                    hint="write it as Markdown so the gates can read it; a raw block is a "
+                    "hole in every check this toolkit performs",
+                )
+            )
+            continue
+
         report = report.merge(
             judge_code_numbers(
-                match.group("body"),
-                language,
+                body,
+                fence.language,
                 path=path,
-                line_offset=text.count("\n", 0, match.start("body")),
+                line_offset=text.count("\n", 0, fence.body_start),
                 gate=GATE,
                 classifier=classifier,
                 what=f"fenced block at line {line}",
             )
         )
+    return report
+
+
+# Keys in paper.yaml that `build/document.py::_front_matter` writes into the YAML header
+# pandoc receives. They render, so they are prose.
+PAPER_PROSE = ("title", "short_title", "keywords")
+
+
+def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
+    """Numbers in the front matter the *build* generates, which no gate read.
+
+    Round one closed "front matter was masked whole" for `manuscript/*.md`. But the build
+    synthesises a second YAML header from `paper.yaml` — `title`, `subtitle` from
+    `short_title`, and `keywords` — and G2 only ever looked at `manuscript/`. So a
+    `short_title` of "A 9.99-fold excess in 41 200 reports" arrived as a Subtitle-styled
+    paragraph at the top of the .docx with `check` reporting nothing at all.
+
+    The same classifier as prose, because that is what it becomes.
+    """
+    report = Report()
+    for key in PAPER_PROSE:
+        raw = project.paper.get(key)
+        if not raw:
+            continue
+        for value in raw if isinstance(raw, list) else [raw]:
+            text = str(value)
+            for atom in find_atoms(text, mask(text)):
+                if classifier.classify(atom, ("Title",)).kind != UNCLASSIFIED:
+                    continue
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="unclassified-number",
+                        message=f"{atom.text!r} in paper.yaml `{key}` is not bound to any source",
+                        path=project.root / "paper.yaml",
+                        context=text[:160],
+                        hint="the build writes this into the document's front matter, where "
+                        "pandoc renders it; bind it or reword the title",
+                    )
+                )
     return report
 
 

@@ -61,6 +61,7 @@ BINDS_AT = {
     "authors-incomplete": DRAFTING,
     "unclassified-number": DRAFTING,
     "code-block-text-number": DRAFTING,
+    "raw-block": DRAFTING,
     "hand-authored-table": DRAFTING,
     "malformed-placeholder": DRAFTING,
     "unresolved-binding": DRAFTING,

@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import FRONTMATTER, mask
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
@@ -54,9 +55,6 @@ _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 # — and the answers have now diverged: inline code and fenced blocks render, so G2 reads
 # them, while a journal counting body prose does not count a code listing. Sharing the mask
 # meant widening the gate silently changed every word count in the toolkit.
-_FENCED_CODE = re.compile(
-    r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.DOTALL | re.MULTILINE
-)
 _INLINE_CODE = re.compile(r"`[^`\n]+`")
 _MD_SYNTAX = re.compile(r"[*_`~>#\[\]|]")
 
@@ -106,7 +104,7 @@ def _scannable(text: str) -> str:
     def blank(match: re.Match[str]) -> str:
         return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
 
-    out = _HTML_COMMENT.sub(blank, _FENCED_CODE.sub(blank, text))
+    out = _HTML_COMMENT.sub(blank, blank_fences(text))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter.
@@ -196,7 +194,7 @@ def count_words(text: str) -> int:
     # not against the body.
     opening = FRONTMATTER.match(text)
     stripped = text[opening.end() :] if opening else text
-    stripped = _FENCED_CODE.sub(" ", stripped)
+    stripped = blank_fences(stripped)
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")

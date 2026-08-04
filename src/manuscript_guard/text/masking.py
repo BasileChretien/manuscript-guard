@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from manuscript_guard.text.fences import fenced_spans
+
 NUL = "\x00"
 
 FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
@@ -52,10 +54,6 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # `check_numbers` runs the *code* checker over them instead, the same one G3 uses on
     # figure scripts: a number inside a string literal in the listing is still a claim, a
     # loop bound is not.
-    (
-        "fenced-code",
-        re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.DOTALL | re.MULTILINE),
-    ),
     ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
@@ -128,6 +126,12 @@ def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
 def mask(text: str) -> str:
     """Return `text` with non-claim regions replaced by NUL, preserving length."""
     chars = list(text)
+    # Fenced blocks go first, and through the shared scanner rather than a regex of their
+    # own: three copies of that regex all required the closing fence to be *exactly* the
+    # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
+    for fence in fenced_spans(text):
+        for index in range(fence.start, fence.end):
+            chars[index] = NUL
     for start, end in _frontmatter_spans(text):
         for index in range(start, end):
             chars[index] = NUL
@@ -142,6 +146,14 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     """What each pattern matched. Used by the test suite and by `explain` output."""
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
+    fences = [(f.start, f.end) for f in fenced_spans(text)]
+    if fences:
+        found["fenced-code"] = fences
+        chars = list(working)
+        for start, end in fences:
+            for index in range(start, end):
+                chars[index] = NUL
+        working = "".join(chars)
     frontmatter = _frontmatter_spans(text)
     if frontmatter:
         found["frontmatter"] = frontmatter

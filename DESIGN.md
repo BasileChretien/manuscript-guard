@@ -1045,6 +1045,47 @@ than an unbound number, and nothing reconciled it with the checklist actually co
 does now, sentence by sentence, over masked text — so a guideline named in a comment is a
 note rather than a claim.
 
+## The annotated copy: four colours, and yellow is not green
+
+`check` produces a verdict. It does not let a co-author, a supervisor or a reviewer *see*
+why any individual number is trusted, and "the tool says it is fine" is not a thing a
+careful reader should have to accept. `build --annotated` writes
+`manuscript.annotated.docx`: every number highlighted by what backs it, carrying a link.
+Hover it in Word and the provenance appears; click it and you land on its row in the
+provenance appendix. Figures get a contact sheet in the same file — the picture, the values
+declared presentational and why, and the record of the person who reviewed it.
+
+**Four tiers, because a binary scheme would lie in the one place that matters.** Traced
+means an artefact and a digest over it. Attested means a named person's written word, which
+is traceable to a name and a date but not to a document. Exempt means a convention or a
+structural reference: **the gate agreed not to look at this number.** Defect means unbound.
+Colouring a convention like a traced value would make the annotated copy actively
+misleading, in the document whose whole purpose is to be trusted at a glance — and an author
+who sees how much of their Methods is amber has learned something the pass/fail line cannot
+tell them.
+
+Two implementation notes, both about not repeating this repository's recurring mistake.
+
+The annotation is emitted **during substitution**, where the pipeline already knows exactly
+which key it is replacing, and from the same classifier the gate uses. Re-reading the built
+document and inferring what each number was would be a second implementation of "what is
+this number", which is precisely the drift several rounds of review have been spent
+correcting elsewhere.
+
+And the tooltips are injected into the `.docx` afterwards, because **pandoc drops a link
+title** on the way to Word — verified before the design depended on it, not assumed. They
+are keyed on a per-occurrence anchor rather than on the visible text, because two numbers
+that read the same must not share a provenance, and in a paper full of 1s and 2s that
+happens immediately. The highlight itself is a character style injected into pandoc's own
+reference document, generated at build time rather than committed: a reference `.docx` is a
+binary, and this repository ignores `*.docx` precisely so a build product cannot be mistaken
+for a source.
+
+The annotated copy is deliberately **not stamped**. The source stamp is what G1 reads to
+decide whether the document a co-author opens is current, and there must be exactly one such
+document. This one is named so it cannot be mailed to a journal by accident, for the same
+reason `manuscript.UNCHECKED.docx` is.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1312,6 +1353,11 @@ Closed since, and why each mattered:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
+- **The annotated copy shows classification, not correctness.** Green means a number came
+  from an artefact, not that the analysis behind it was right; the tiers describe provenance
+  and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
+  sheet, so a raster sibling is preferred where one exists and the vector is skipped when it
+  is not.
 - **An interval is only checked in prose when it was emitted as one.** `em.interval()`
   publishes the estimate and both bounds together, verifies that the bounds bracket the
   estimate, and records which end each bound is — which is what lets G2 refuse

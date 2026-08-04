@@ -143,22 +143,29 @@ def build_document(
     mode: str = LIVE,
     csl: Path | None = None,
     output: Path | None = None,
+    reference_doc: Path | None = None,
+    prologue: str = "",
+    epilogue: str = "",
 ) -> BuildResult:
     build_dir = project.path("build")
     build_dir.mkdir(parents=True, exist_ok=True)
-    source = build_dir / "manuscript.md"
+    output = output or build_dir / "manuscript.docx"
+    # Named after its output, so the annotated build does not overwrite the intermediate
+    # the ordinary one just wrote - two builds, two sources, and either can be read after.
+    source = build_dir / f"{output.stem}.md"
 
     main = [a for a in assembled if a.path.name == "main.md"]
     rest = sorted((a for a in assembled if a.path.name != "main.md"), key=lambda a: a.path.name)
     if not main:
         raise BuildError("no manuscript/main.md to build")
-    body = "\n\n".join(a.text for a in main + rest)
+    body = prologue + "\n\n".join(a.text for a in main + rest) + epilogue
     source.write_text(
         _front_matter(project) + body, encoding="utf-8", newline="\n"
     )
 
-    output = output or build_dir / "manuscript.docx"
     command = [pandoc(), "--standalone", str(source), "-o", str(output)]
+    if reference_doc is not None:
+        command += [f"--reference-doc={reference_doc}"]
     report = Report()
 
     if mode == LIVE:
@@ -188,7 +195,10 @@ def build_document(
         )
     if mode == LIVE:
         report = report.merge(_verify_live_fields(output))
-    _stamp_source(project, output)
+    # Not the annotated copy: the stamp is what `check` reads to decide whether the
+    # document a co-author opens is current, and there must be exactly one such document.
+    if reference_doc is None:
+        _stamp_source(project, output)
     return BuildResult(output=output, mode=mode, report=report)
 
 

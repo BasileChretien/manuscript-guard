@@ -372,6 +372,60 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _build_annotated(project, namespace, results, assembled, args) -> int:
+    """The copy a human checks by eye: every number coloured by what backs it.
+
+    Built from the same assembly the real document uses, then re-run through the annotator,
+    so the two cannot describe different text. Written under a name that says what it is,
+    for the same reason an unchecked build is called UNCHECKED: this file must never be the
+    one that reaches a journal.
+    """
+    from manuscript_guard.annotate import (
+        annotate,
+        appendix,
+        figure_sheet,
+        inject_tooltips,
+        legend,
+        styled_reference,
+    )
+    from manuscript_guard.build.assemble import Assembled
+    from manuscript_guard.build.document import pandoc
+
+    classifier = Classifier.load(project.extra_conventions, project.extra_terms)
+    counter = [0]
+    marked: list[Assembled] = []
+    marks = []
+    for item in assembled:
+        source = item.path.read_text(encoding="utf-8") if item.path.exists() else item.text
+        text, found = annotate(source, namespace, classifier, counter=counter)
+        marked.append(Assembled(path=item.path, text=text))
+        marks.extend(found)
+
+    build_dir = project.path("build")
+    reference = styled_reference(pandoc(), build_dir / ".cache" / "annotated-reference.docx")
+    result = build_document(
+        project,
+        marked,
+        mode=OFFLINE if args.offline else LIVE,
+        output=build_dir / "manuscript.annotated.docx",
+        reference_doc=reference,
+        prologue=legend() + "\n\n",
+        epilogue=appendix(marks) + figure_sheet(project, results),
+    )
+    added = inject_tooltips(result.output, marks)
+    print(result.report.render(project.root))
+    tiers: dict[str, int] = {}
+    for mark in marks:
+        tiers[mark.tier] = tiers.get(mark.tier, 0) + 1
+    print(f"wrote {result.output}")
+    print("  " + "  ".join(f"{tier}: {count}" for tier, count in sorted(tiers.items())))
+    print(f"  {added} number(s) carry a hover showing where they came from")
+    if tiers.get("defect"):
+        print("  red marks a number bound to nothing. Yellow is not a verification.")
+    return 0
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -392,6 +446,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not assemble_report.ok:
         print(assemble_report.render(project.root))
         return 1
+
+    if getattr(args, "annotated", False):
+        return _build_annotated(project, namespace, results, assembled, args)
 
     mode = OFFLINE if args.offline else LIVE
     # An unchecked build gets a name that says so. Left as `manuscript.docx` it is the file
@@ -775,6 +832,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--offline",
         action="store_true",
         help="format citations from references.bib instead of live Zotero fields",
+    )
+    build.add_argument(
+        "--annotated",
+        action="store_true",
+        help="write manuscript.annotated.docx instead: every number highlighted by what "
+        "backs it, with its source shown on hover",
     )
     build.add_argument("--csl", type=Path, help="citation style, for offline builds")
     build.add_argument("-o", "--output", type=Path)

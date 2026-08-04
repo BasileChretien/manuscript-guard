@@ -201,13 +201,17 @@ def _stamp_source(project, output: Path) -> None:
     not reported by anything: edit the manuscript, do not rebuild, and `check` passes over a
     document that still holds the old number. It is the .docx a co-author opens and a
     journal receives, which makes it the worst file in the project to leave unexamined.
+
+    `document_digest`, not `manuscript_digest`: the numbers in the document come from
+    `results/`, so a re-run analysis with untouched prose is the commoner way for a build to
+    go stale, and the first version of this check could not see it at all.
     """
-    from manuscript_guard.gates.review import manuscript_digest
+    from manuscript_guard.gates.review import document_digest
 
     # A build that produced the document must not fail over its receipt.
     with contextlib.suppress(OSError):
         output.with_name(output.name + SOURCE_STAMP).write_text(
-            f"{manuscript_digest(project)}  {output.name}\n", encoding="utf-8", newline="\n"
+            f"{document_digest(project)}  {output.name}\n", encoding="utf-8", newline="\n"
         )
 
 

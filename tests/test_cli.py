@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from manuscript_guard.cli import main
+from manuscript_guard.emit import write_digest
 
 PANDOC = shutil.which("pandoc") is not None
 needs_pandoc = pytest.mark.skipif(not PANDOC, reason="pandoc is not installed")
@@ -136,6 +137,61 @@ def test_build_skip_checks_builds_under_a_name_that_says_so(project: Path, capsy
 def test_a_clean_build_keeps_the_plain_name(project: Path) -> None:
     assert run("build", str(project), "--offline") == 0
     assert (project / "build" / "manuscript.docx").exists()
+
+
+@needs_pandoc
+def test_a_rerun_analysis_makes_the_built_document_stale(project: Path) -> None:
+    """The commoner way a build goes stale, and the first version could not see it.
+
+    The stamp compared `manuscript_digest`, which covers `manuscript/*.md` — so re-running
+    the analysis on new data with the prose untouched left the digest identical while the
+    .docx still showed the old number. An adversarial review walked an ROR from 3.84 to
+    28.80 with `check --submission` reporting nothing at all.
+    """
+    import json
+
+    assert run("build", str(project), "--offline") == 0
+    assert run("check", str(project), "--stage", "internal-review") == 0
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["ror.point"]["value"] = 28.80
+    document["values"]["ror.point"]["display"] = "28.80"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    # Asserted by code rather than by exit status, and the test stops here: changing a
+    # result legitimately unsettles the figure and its review as well, so a bare exit code
+    # would not show which check fired, and rebuilding is blocked by those other findings.
+    # What is under test is that the prose never moved and the document went stale anyway.
+    assert "document-stale" in {f.code for f in _findings(project)}
+
+
+def _findings(project: Path):
+    from manuscript_guard.cli import _run_gates
+
+    report, _p, _s, _d = _run_gates(project, stage="internal-review")
+    return report.findings
+
+
+@needs_pandoc
+def test_a_document_with_no_stamp_is_reported_rather_than_skipped(project: Path) -> None:
+    """A missing stamp was a `continue`, so deleting one file disabled the check."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    assert run("build", str(project), "--offline") == 0
+    (project / "build" / f"manuscript.docx{SOURCE_STAMP}").unlink()
+
+    assert run("check", str(project), "--stage", "internal-review") == 0
+    out = capsys_text(project)
+    assert "no record of the source" in out
+
+
+def capsys_text(project: Path) -> str:
+    from manuscript_guard.cli import _run_gates
+
+    report, _p, _s, _d = _run_gates(project, stage="internal-review")
+    return report.render(project)
 
 
 @needs_pandoc

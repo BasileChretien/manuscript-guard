@@ -142,7 +142,7 @@ def _check_built_document(project: Project) -> Report:
     a project that has never built, or built with an older version, is not nagged.
     """
     from manuscript_guard.build.document import SOURCE_STAMP
-    from manuscript_guard.gates.review import manuscript_digest
+    from manuscript_guard.gates.review import document_digest
 
     report = Report()
     build_dir = project.path("build")
@@ -152,9 +152,25 @@ def _check_built_document(project: Project) -> Report:
     for document in sorted(build_dir.glob("*.docx")):
         stamp = document.with_name(document.name + SOURCE_STAMP)
         if not stamp.exists():
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="document-unstamped",
+                    severity=WARN,
+                    message=f"{document.name} carries no record of the source it was built "
+                    f"from, so nothing can tell whether it is current",
+                    path=document,
+                    hint="rebuild with `manuscript-guard build`; a document older than this "
+                    "check is not evidence of anything",
+                )
+            )
             continue
-        recorded = stamp.read_text(encoding="utf-8").split()[0].strip()
-        if recorded == manuscript_digest(project):
+        # Capped: a digest line is 80 bytes, and this is read by a command documented as
+        # safe to run on a manuscript someone sent you. An 8 MB sidecar was read whole.
+        with stamp.open("rb") as handle:
+            head = handle.read(4096)
+        recorded = head.decode("utf-8", "replace").split()[0].strip() if head.split() else ""
+        if recorded == document_digest(project):
             continue
         report = report.with_findings(
             Finding(

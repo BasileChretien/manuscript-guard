@@ -49,6 +49,35 @@ def manuscript_digest(project: Project) -> str:
     return digest.hexdigest()
 
 
+def document_digest(project: Project) -> str:
+    """Everything that decides what a built document says: the prose *and* the results.
+
+    `manuscript_digest` covers `manuscript/*.md`, which is what a reviewer read — and it is
+    the wrong question for a built `.docx`, because in this toolkit the numbers in the
+    document come from `results/`, not from the prose. Stamping a build with the manuscript
+    digest alone meant the ordinary workflow slipped through: re-run the analysis on new
+    data, leave the sentences untouched, and the stamp still matched while the document
+    showed the old number. An adversarial review walked an ROR from 3.84 to 28.80 with
+    `check --submission` reporting nothing.
+
+    Cheap enough to recompute on every `check`: the fragments are already loaded, and their
+    sidecars are 64 bytes each.
+    """
+    digest = hashlib.sha256()
+    digest.update(manuscript_digest(project).encode("ascii"))
+
+    results = project.path("results")
+    if results.exists():
+        for path in sorted(results.glob("*.json")):
+            digest.update(path.name.encode("utf-8"))
+            digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
+
+    ledger = project.path("literature") / "ledger.yaml"
+    if ledger.exists():
+        digest.update(hashlib.sha256(ledger.read_bytes()).hexdigest().encode("ascii"))
+    return digest.hexdigest()
+
+
 def review_root(project: Project) -> Path:
     return project.root / REVIEW_DIR
 

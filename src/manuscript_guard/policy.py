@@ -107,6 +107,7 @@ BINDS_AT = {
     # A stale build is normal while drafting — you rebuild when you need the document. It
     # stops being normal once the draft is something other people read.
     "document-stale": INTERNAL_REVIEW,
+    "document-unstamped": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.

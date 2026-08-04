@@ -89,6 +89,40 @@ conventions:
     rejects:
       - {text: "There were 8601 reports in total.", atom: "8601"}
 
+  ratio-null-value:
+    accepts:
+      - {text: "The 95% CI excluded 1.", atom: "1"}
+      - {text: "The interval crossed 1, so the association is uncertain.", atom: "1"}
+      - {text: "The lower bound lay above 1 with at least 3 cases.", atom: "1"}
+      - {text: "The interval excluded the null value of 1.", atom: "1"}
+    rejects:
+      # The bounds either side of the null are the result. A rule reaching back from
+      # "excluded" to the ratio it describes would cover them too.
+      - {text: "The ROR was 3.84 (2.10 to 7.02) and the interval excluded 1.", atom: "3.84"}
+      - {text: "The ROR was 3.84 (2.10 to 7.02) and the interval excluded 1.", atom: "2.10"}
+      - {text: "The ROR was 3.84 (2.10 to 7.02) and the interval excluded 1.", atom: "7.02"}
+      # A count of things, not a null value: what follows tells them apart.
+      - {text: "The cohort excluded 1 patient with a missing date.", atom: "1"}
+      - {text: "The analysis included 1 site from each region.", atom: "1"}
+
+  disproportionality-criterion:
+    section: [Methods]
+    accepts:
+      - {text: "A signal was defined as IC025 > 0.", atom: "0"}
+      - {text: "We required EB05 >= 2 throughout.", atom: "2"}
+      - {text: "A PRR >= 2 was taken as a signal.", atom: "2"}
+      - {text: "The criterion was a chi-squared >= 4.", atom: "4"}
+      - {text: "Signals required at least 3 cases.", atom: "3"}
+    rejects:
+      # The values the criteria are applied to. As a shape - statistic, operator, number -
+      # this rule would have classified every one of them.
+      - {text: "A signal was defined as IC025 above 1.42.", atom: "1.42"}
+      - {text: "We required EB05 >= 7 throughout.", atom: "7"}
+      - {text: "A PRR >= 12 was taken as a signal.", atom: "12"}
+      - {text: "The criterion was a chi-squared >= 41.", atom: "41"}
+      - {text: "Signals required at least 30 cases.", atom: "30"}
+      - {text: "We recorded at least 3 visits per person.", atom: "3"}
+
 structural:
   cross-reference:
     accepts:
@@ -178,3 +212,31 @@ structural:
       - {text: "|---|---|", atom: null}
     rejects:
       - {text: "The value was 412 in that row.", atom: "412"}
+
+  alphanumeric-identifier:
+    accepts:
+      - {text: "Drugs were coded to ATC class L01XC.", atom: "L01XC"}
+      - {text: "Diagnoses used ICD-10 K71.0 onwards.", atom: "K71.0"}
+      - {text: "A signal was IC025 above zero.", atom: "IC025"}
+      - {text: "We also report EB05 alongside.", atom: "EB05"}
+      - {text: "Registered as NCT01234567 before enrolment.", atom: "NCT01234567"}
+    rejects:
+      # Nothing that starts with a letter is a quantity, so the danger is the other end:
+      # the rule must not run past the identifier into the number beside it.
+      - {text: "Class L01XC was given to 412 patients.", atom: "412"}
+      - {text: "ICD-10 K71.0 appeared 3841 times.", atom: "3841"}
+      - {text: "IC025 was 1.42 in that stratum.", atom: "1.42"}
+      - {text: "EB05 reached 2.87 for the pair.", atom: "2.87"}
+
+  coding-system-code:
+    accepts:
+      - {text: "Results were identified by LOINC 1742-6.", atom: "1742-6"}
+      - {text: "Coded with MedDRA version 26.1; the preferred term 10019663 was used.", atom: "10019663"}
+      - {text: "Concepts were taken from SNOMED CT 197315008.", atom: "197315008"}
+    rejects:
+      # Naming a coding system does not make the next number a code. The bridge between the
+      # system name and the code admits only punctuation, a version and function words,
+      # because "anything within 120 characters" classifies these.
+      - {text: "ICD-10 codes were found in 412 patients.", atom: "412"}
+      - {text: "MedDRA coding was applied and the cohort included 83214 people.", atom: "83214"}
+      - {text: "The ATC classification was used for 1204 prescriptions.", atom: "1204"}

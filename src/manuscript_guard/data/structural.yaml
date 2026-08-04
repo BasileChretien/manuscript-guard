@@ -97,3 +97,39 @@ structural:
   - id: table-alignment-row
     why: Markdown table separator rows.
     pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'
+
+  - id: alphanumeric-identifier
+    why: >-
+      An identifier that begins with letters and continues with digits names a thing; a
+      measurement cannot be written that way. ICD-10 K71.0, ATC L01XC, MedDRA SOC codes,
+      trial registrations NCT01234567 and PROSPERO CRD42020123456, and the named
+      disproportionality statistics IC025, EB05 and EB95 are all this one shape.
+    # Safe by construction rather than by enumeration, which is the opposite of how the
+    # other rules here have to work: they match digits, so they must name the conventional
+    # values or they swallow a result. Nothing that starts with a letter is a quantity, so
+    # this one can be general. It classifies the identifier only - "IC025 was 1.42" leaves
+    # 1.42 unclassified and needing a binding, which is correct.
+    #
+    # Bounded at three leading letters so it stays an identifier: a longer run is a word,
+    # and `Table 1` is two atoms anyway. A trailing decimal group is allowed for ICD-10
+    # (K71.0) but capped at three digits so it cannot reach into a following measurement.
+    #
+    # Two digits minimum, which is what every coding system this is for actually uses. With
+    # one it also claimed `Q1` and `S1`, taking them from `percentile-labels` and
+    # `supplement-tag` — the same verdict by a rule that explains it worse, and `explain`
+    # exists to tell an author which convention they relied on.
+    pattern: '\b[A-Z]{1,3}\d{2,}(?:[A-Z]{1,2}\d*)*(?:\.\d{1,3})?\b'
+
+  - id: coding-system-code
+    why: >-
+      A numeric code in a named coding system. LOINC 1742-6, SNOMED CT 197315008 and MedDRA
+      preferred term 10019663 are digits all the way through, so unlike an ICD-10 code they
+      are indistinguishable from a measurement on shape alone and the system has to be
+      named beside them.
+    # The bridge between the system name and the code is a whitelist, not a wildcard:
+    # punctuation, a version number, and a closed set of function words. Real prose puts a
+    # clause between them — "coded with MedDRA version 26.1; the preferred term 10019663" —
+    # so the rule has to reach, but "anything within 120 characters" would classify the
+    # count in "ICD-10 codes were found in 412 patients". Nothing a measurement can be
+    # written as is allowed in the bridge, which is what keeps the reach safe.
+    pattern: '(?i)\b(?:LOINC|SNOMED(?:[\s-]?CT)?|MedDRA|RxNorm|NDC|CPT|HCPCS|OPCS|ICD(?:[\s-]?(?:9|10|11))?(?:[\s-]?(?:CM|PCS))?|ATC)\b(?:\s*(?:v(?:er(?:sion)?)?\.?\s*\d+(?:\.\d+)*|[;,.:=]|\b(?:the|a|an|its|their|and|with|coded|code|codes|coding|using|used|use|were|was|are|is|in|to|by|for|of|from|as|term|terms|concept|concepts|class|classes|identifier|identifiers|preferred|lowest|highest|high|level|group|system|organ|query|LLT|PT|HLT|HLGT|SOC|SMQ)\b)){0,14}\s*\d{4,18}(?:-\d)?(?:\s*(?:,|;|and|or|to|through|[-–])\s*\d{4,18}(?:-\d)?){0,20}'

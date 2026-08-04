@@ -29,11 +29,15 @@ conventions:
 
   - id: confidence-level
     why: The confidence level of an interval is conventional; its bounds are results and must be bound.
-    pattern: '(?i)\b(?:9[059]|99\.9)\s*%\s*(?:two[\s-]sided\s+)?(?:CI\b|confidence\s+interval|credible\s+interval|CrI\b)'
+    # 80 belongs here: it is the conventional level for a futility or non-inferiority
+    # margin and for the prediction intervals in a meta-analysis. Still an enumeration of
+    # the conventional levels, not `\d+%`, which would classify every percentage in the
+    # paper that happened to sit before the letters CI.
+    pattern: '(?i)\b(?:80|9[059]|99\.9)\s*%\s*(?:two[\s-]sided\s+|one[\s-]sided\s+)?(?:CI\b|confidence\s+interval|credible\s+interval|CrI\b|prediction\s+interval)'
 
   - id: confidence-level-trailing
     why: The same convention with the level written after the interval.
-    pattern: '(?i)\b(?:CI|confidence\s+interval|credible\s+interval)s?\s*(?:set\s+)?(?:of|at)\s*(?:9[059]|99\.9)\s*%'
+    pattern: '(?i)\b(?:CI|confidence\s+interval|credible\s+interval|prediction\s+interval)s?\s*(?:set\s+)?(?:of|at)\s*(?:80|9[059]|99\.9)\s*%'
 
   - id: target-power
     why: A conventional target power stated in a sample-size paragraph.
@@ -60,3 +64,34 @@ conventions:
   - id: iso-8601
     why: Naming a standard, not stating a value.
     pattern: '(?i)\bISO[\s-]?8601\b'
+
+  - id: ratio-null-value
+    why: >-
+      The 1 a ratio is compared against is where the scale has no effect, not a quantity
+      anyone measured. "The 95% CI excluded 1" is the standard sentence for reporting an
+      interval, and every paper reporting a ratio writes it.
+    # Anchored on the comparison word and stopped at the end of the clause, deliberately
+    # not spanning back to the ratio it is about. A pattern reaching from "ROR" to
+    # "excluded 1" would also cover the interval in between - "the ROR (1.02 to 3.84)
+    # excluded 1" - and file the two bounds, which are the actual result, as conventional.
+    # That is the mistake that made `author-year-citation` audit-only.
+    #
+    # The lookahead is what separates "the interval excluded 1" from "the cohort excluded 1
+    # patient": a null value ends its clause, a count is followed by what it counts.
+    #
+    # No branch for the word "unity": it is not a number, so it never becomes an atom and a
+    # rule for it would never run. "The null value of 1" does produce one, and is written.
+    pattern: '(?i)\b(?:exclud\w+|cross\w+|straddl\w+|contain\w+|spann\w+|includ\w+|above|below|exceed\w+|(?:greater|less)\s+than|either\s+side\s+of)\s*(?:the\s+)?(?:null\s+value\s+of\s+)?1(?:\.0+)?(?=\s*(?:[.,;:)\]]|$)|\s+(?:with|and|or|but|which|indicating|suggesting|in\s+both|at\s+least)\b)'
+
+  - id: disproportionality-criterion
+    why: >-
+      The published thresholds that define a pharmacovigilance signal. IC025 above zero is
+      the WHO-UMC criterion, EB05 at or above 2 is DuMouchel's, and PRR at or above 2 with
+      a chi-squared of 4 and at least 3 cases is Evans'. A paper states which it used; the
+      values are not its own findings.
+    # Methods only, and pinned to the published values rather than to `<statistic> <op>
+    # <number>`. As a shape it would have accepted "IC025 was above 1.42", waving through
+    # the very result the criterion is applied to - and as a convention everywhere it would
+    # have done the same in the Results.
+    methods_only: true
+    pattern: '(?i)\b(?:IC0?25|IC)\s*[>≥]=?\s*0(?:\.0+)?\b|\b(?:EB0?5|EBGM|PRR|ROR)\s*[>≥]=?\s*2(?:\.0+)?\b|\b(?:chi[\s-]?squared?|χ2|χ²|X2)\s*[>≥]=?\s*4(?:\.0+)?\b|\b(?:at\s+least|a\s+minimum\s+of|no\s+fewer\s+than)\s+3\s+(?:cases?|reports?|events?)\b|[>≥]=?\s*3\s+(?:cases?|reports?|events?)\b|\bN\s*[>≥]=?\s*3\b'

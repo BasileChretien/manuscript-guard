@@ -1,5 +1,7 @@
 # manuscript-guard
 
+[![CI](https://github.com/BasileChretien/manuscript-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/BasileChretien/manuscript-guard/actions/workflows/ci.yml)
+
 > # ⚠️ ALPHA — DO NOT USE FOR REAL WORK YET
 >
 > **This project is published early so it can be read and criticised, not so it can be
@@ -9,7 +11,8 @@
 > submitting.
 >
 > What it is safe to do today: read the code, read [DESIGN.md](DESIGN.md), run the worked
-> example, and tell me where the reasoning is wrong.
+> example, and tell me where the reasoning is wrong — [CONTRIBUTING.md](CONTRIBUTING.md)
+> says which kinds of wrongness are most useful.
 
 Make every number in a scientific manuscript traceable to its source.
 

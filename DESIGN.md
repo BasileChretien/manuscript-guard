@@ -970,6 +970,38 @@ should do: `em.value("period.start", "2015-01-01", display="1 January 2015")` an
 so making it traceable is the point rather than the friction — but the finding's hint now
 says that, instead of telling an author to bind a year to a result.
 
+## The table rule lives in the fragment, not in the emitter
+
+"Tables are emitted, not written" was, for a while, a check inside the Python emitter and
+nowhere else. That is a guarantee with a hole the size of a language: a rule enforced in one
+emitter is a rule an author steps around by switching to another, and the results fragment
+is supposed to be the contract. It was also unverifiable after the fact — edit a fragment,
+re-sign it, and the cell was never looked at again.
+
+The rule now lives in `tables.py` and runs twice. At emit time it raises, naming the call
+just made, because a message about the line you are writing is worth more than a finding two
+commands later. In G2 it reports findings about whatever is on disk, whoever wrote it. One
+implementation, so the two cannot drift.
+
+That required the fragment to say which cells the emitter produced, because a composed cell
+and a typed one are the same characters by the time anyone reads the file. The `composed`
+block records the cell, the literal part of its template, and the displays derived for it.
+Plain numeric cells are recorded the same way: only the emitter knew it had formatted them,
+and the tempting shortcut — let the gate accept any cell that is a single number — waves
+through a 9999 typed straight into the file.
+
+The block is a record, not a licence. Its literal text is still checked, so adding a
+`composed` entry beside a typed cell does not launder it; three corruption tests do exactly
+that and are caught.
+
+With the rule off the emitter, the R package could grow `table()`, `cell()` and
+`code_list()` without weakening anything, and a test asserts that the same table written in
+both languages produces the same `tables` and `code_lists` blocks. It found a divergence on
+its first run: R had no branch for comparator displays, so `<0.001` — a p-value too small to
+state — was legal in Python and an error in R. The R function carrying a docstring promising
+to mirror the Python one had been wrong for as long as it had existed, which is what such a
+promise is worth without a test that exercises both on the same input.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1070,12 +1102,8 @@ Closed since, and why each mattered:
   classifier deciding what counts as a claim so "Age 18-44" is a label in a table for the
   reason it is one in a sentence. `em.cell("{} ({})", n, (pct, 1))` covers "n (%)", because
   an f-string reaches `table()` indistinguishable from a typed string and the API has to be
-  the thing that tells them apart. **Neither rule is mirrored in the R emitter, because the
-  R emitter has no `table()` at all** — this paragraph claimed the mirroring as done, which
-  was the wrong kind of wrong in a design document: the fragment is a cross-language
-  contract, so a rule enforced on one side is one an author steps around by switching
-  language. As it stands an R analysis cannot emit a table rather than emitting an
-  unchecked one, which is a gap rather than a hole; it is listed under Known gaps.
+  the thing that tells them apart. Both are now in the R emitter too, and neither depends on
+  it: see the section below on where the rule actually lives.
 - **`script-newer` compared mtimes, and `touch` sets those.** The fragment now records the
   analysis script's digest. Fragments written before the field existed fall back to the
   mtime test, so an older project degrades rather than breaking.
@@ -1203,10 +1231,6 @@ Closed since, and why each mattered:
 - **No formatting override in bindings.** An abstract wanting a coarser rounding than the
   Results section must emit a second key. Deliberate for now: it makes the second rounding
   a visible decision. Revisit if it proves too rigid in practice.
-- **The R emitter has no `table()`, `cell()` or `code_list()`.** An R analysis can publish
-  values and nothing else, so a project written in R either keeps its tables in Python or
-  writes them by hand — and a hand-written table is what G2 refuses. The fragment is a
-  cross-language contract and this side of it is unfinished.
 - **`em.cell()` launders whatever its parts are.** The emitter checks that each part is a
   number it formatted and that the template's literal text carries no claim; it cannot
   check that the numbers are the right ones. `em.cell("{} ({})", low, high)` with the

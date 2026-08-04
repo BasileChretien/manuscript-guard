@@ -240,6 +240,93 @@ def _plain(text: str) -> str:
 
 GENERATED = re.compile(r"\{\{|\[@")
 
+#: An invisible per-paragraph identifier, carried into the .docx as a Word bookmark.
+#:
+#: Pandoc emits `[]{#id}` as `w:bookmarkStart`, which is invisible, survives editing, and
+#: travels with a paragraph when somebody cuts and pastes it. That makes "which source
+#: paragraph is this" an exact question rather than a similarity score — and it makes moves
+#: tractable, which similarity matching never could: a moved paragraph and a deleted one
+#: followed by an inserted one look identical to a diff.
+#:
+#: Pandoc does *not* read bookmarks back into markdown, so they are read from
+#: `word/document.xml` directly.
+_TAG = "mg-p-{stem}-{index}"
+_TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
+
+
+def tag(text: str, stem: str) -> str:
+    """Give every ordinary paragraph of one source file an invisible identifier.
+
+    Headings are skipped: `[]{#id}# Methods` is not a heading. So are paragraphs that are
+    nothing but a placeholder, because those become a table or a figure rather than a
+    paragraph, and a bookmark would attach to the wrong thing.
+    """
+    out = []
+    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        stripped = para.strip()
+        if not stripped or para.strip("\n") == "" or stripped.startswith("#"):
+            out.append(para)
+            continue
+        if re.fullmatch(r"\{\{[^}]*\}\}", stripped):
+            out.append(para)
+            continue
+        marker = _TAG.format(stem=stem, index=index)
+        out.append(para.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
+    return "".join(out)
+
+
+def tagged_paragraphs(project) -> dict[str, tuple[Path, str]]:
+    """The identifier of every source paragraph, and the paragraph it names."""
+    from manuscript_guard.gates.numbers import source_files
+
+    found: dict[str, tuple[Path, str]] = {}
+    for path in source_files(project.path("manuscript")):
+        text = path.read_text(encoding="utf-8")
+        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+            stripped = para.strip()
+            if not stripped or stripped.startswith("#") or re.fullmatch(r"\{\{[^}]*\}\}", stripped):
+                continue
+            found[_TAG.format(stem=path.stem, index=index)] = (path, stripped)
+    return found
+
+
+def paragraph_order(document: Path) -> list[str]:
+    """The identifiers a returned document carries, in the order they now appear.
+
+    Read from the XML because pandoc discards bookmarks on the way back to markdown. This is
+    what makes a move visible: the same identifier, in a different place.
+    """
+    with zipfile.ZipFile(document) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+    return re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', xml)
+
+
+def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
+    """Paragraphs that came back in a different position, as (id, was, now).
+
+    Only a reordering is reported. A move needs no content from Word at all — the text is
+    already on disk — so applying one cannot lose a binding, which is why it is safe for
+    exactly the paragraphs the content merge has to refuse.
+    """
+    shared = [name for name in after if name in set(before)]
+    original = [name for name in before if name in set(after)]
+    if shared == original:
+        return []
+
+    # Only the paragraphs outside the stable backbone. Comparing positions directly said
+    # that moving one paragraph moved fifteen, because everything after it shifted by one -
+    # true, and useless to a reader trying to see what their co-author did.
+    matcher = difflib.SequenceMatcher(a=original, b=shared, autojunk=False)
+    settled: set[str] = set()
+    for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+        if tag == "equal":
+            settled.update(original[i1:i2])
+    return [
+        (name, original.index(name), shared.index(name))
+        for name in shared
+        if name not in settled
+    ]
+
 
 def _touches(before: str, after: str, protected: set[str]) -> str | None:
     """Why this hunk may not be applied, or None if it may.

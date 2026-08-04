@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import codecs
 import contextlib
+import difflib
 import sys
 from pathlib import Path
 
@@ -209,6 +210,45 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
+
+def _reorder(project, known: dict, order: list[str]) -> None:
+    """Put the source paragraphs back in the order the returned document has them.
+
+    Per file, and only among the paragraphs that moved: the text is taken from disk, never
+    from Word, so a paragraph full of bindings survives a move intact. A paragraph that
+    moved between files is left alone and reported, because splicing across files is a
+    different operation from reordering within one.
+    """
+    from pathlib import Path as _Path
+
+    by_file: dict[_Path, list[str]] = {}
+    for name in order:
+        if name in known:
+            by_file.setdefault(known[name][0], []).append(name)
+
+    for path, names in by_file.items():
+        text = path.read_text(encoding="utf-8")
+        # Only the paragraphs that actually reached the document. A source paragraph that
+        # renders to nothing - an HTML comment, for instance - has no bookmark to come
+        # back, and counting it made every reorder look like a paragraph leaving the file.
+        present = set(names)
+        mine = [n for n in known if known[n][0] == path and n in present]
+        wanted = [n for n in names if n in set(mine)]
+        if len(wanted) != len(mine):
+            continue  # a paragraph left this file; not a reordering
+        blocks = [known[n][1] for n in wanted]
+        cursor = 0
+        for name in mine:
+            para = known[name][1]
+            at = text.find(para, cursor)
+            if at < 0:
+                return
+            replacement = blocks.pop(0)
+            text = text[:at] + replacement + text[at + len(para) :]
+            cursor = at + len(replacement)
+        path.write_text(text, encoding="utf-8", newline="\n")
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     """Bring a co-author's edits back from Word, without losing the bindings.
 
@@ -228,8 +268,11 @@ def cmd_import(args: argparse.Namespace) -> int:
         comments_in,
         differences,
         locate,
+        moves,
+        paragraph_order,
         source_paragraphs,
         stamp_of,
+        tagged_paragraphs,
     )
 
     project, _ = load_project(args.path)
@@ -279,9 +322,43 @@ def cmd_import(args: argparse.Namespace) -> int:
         print("nothing came back: the document matches the manuscript on disk.")
         return 0
 
+    # Moves first, and separately, because a move needs no content from Word at all: the
+    # text is already on disk, so reordering it cannot lose a binding. That makes it safe
+    # for exactly the paragraphs the content merge has to refuse.
+    known = tagged_paragraphs(project)
+    returned_order = paragraph_order(edited)
+    original_order = [name for name in known if name in set(returned_order)]
+    moved = moves(original_order, returned_order)
+    if moved:
+        print(f"{len(moved)} paragraph(s) came back in a different place:")
+        for name, was, now in moved:
+            _path, text = known[name]
+            print(f"    position {was} -> {now}: {text.strip()[:90]}")
+        if args.apply:
+            _reorder(project, known, returned_order)
+            print("    reordered in the manuscript source.")
+        else:
+            print("    `--apply` moves them in the .md too.")
+
+    # A moved paragraph is a delete here and an insert there to any diff, so the content
+    # merge would apply it a second time on top of the reordering - the same text twice, or
+    # spliced into the wrong place. Handled once, as a move.
+    from manuscript_guard.roundtrip import _plain
+
+    relocated = [_plain(known[name][1]) for name, _w, _n in moved]
+
     paragraphs = source_paragraphs(project)
     applied, reported = [], []
     for hunk in hunks:
+        # Compared on the flattened form: the source paragraph carries bindings and the
+        # returned one carries what they rendered to, so the two are never equal as strings.
+        if any(
+            difflib.SequenceMatcher(a=text, b=_plain(side), autojunk=False).ratio() > 0.8
+            for text in relocated
+            for side in (hunk.before, hunk.after)
+            if side.strip()
+        ):
+            continue
         found = locate(hunk.before, paragraphs) if hunk.before.strip() else None
         if hunk.protected or found is None or GENERATED.search(found[1]):
             reported.append((hunk, found))

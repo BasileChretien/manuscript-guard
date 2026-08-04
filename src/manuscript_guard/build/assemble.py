@@ -81,7 +81,12 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
     out: list[Assembled] = []
 
     for path in source_files(project.path("manuscript")):
-        text = path.read_text(encoding="utf-8")
+        # Tagged before substitution, so each identifier names a *source* paragraph. They
+        # become invisible Word bookmarks, and they are how a paragraph a co-author moved is
+        # recognised when the document comes back.
+        from manuscript_guard.roundtrip import tag
+
+        text = tag(path.read_text(encoding="utf-8"), path.stem)
         placeholders, _ = parse(text)
         rendered = text
 

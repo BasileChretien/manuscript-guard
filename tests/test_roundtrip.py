@@ -183,3 +183,66 @@ def test_a_document_with_no_comments_reports_none(project: Path) -> None:
 def test_a_hunk_knows_whether_it_may_be_applied() -> None:
     assert Hunk("a", "b").applied
     assert not Hunk("a", "b", protected="3.84").applied
+
+
+def test_moves_reports_only_what_actually_moved() -> None:
+    """One paragraph moved shifts every paragraph after it. Reporting all of them is true
+    and useless to a reader trying to see what their co-author did."""
+    from manuscript_guard.roundtrip import moves
+
+    before = ["a", "b", "c", "d", "e"]
+    after = ["d", "a", "b", "c", "e"]
+    moved = moves(before, after)
+    assert [name for name, _w, _n in moved] == ["d"]
+
+
+def test_moves_is_silent_when_the_order_is_unchanged() -> None:
+    from manuscript_guard.roundtrip import moves
+
+    assert moves(["a", "b", "c"], ["a", "b", "c"]) == []
+
+
+def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
+    """`[]{#id}# Methods` is not a heading, and a placeholder alone becomes a table."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("# Methods\n\nSome prose here.\n\n{{table.baseline}}\n", "main")
+    assert tagged.startswith("# Methods")
+    assert "[]{#mg-p-main-" in tagged
+    assert tagged.count("[]{#mg-p-main-") == 1, "only the prose paragraph"
+    assert "]{#mg-p-main-4}{{table.baseline}}" not in tagged
+
+
+@needs_pandoc
+def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
+    """A move needs no content from Word - the text is already on disk - so it is safe for
+    exactly the paragraphs the content merge has to refuse."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    document = project / "build" / "manuscript.docx"
+    xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
+    tagged = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-main-" in p]
+    assert len(tagged) > 5, "the example must have several tagged paragraphs"
+    moved_xml = xml.replace(tagged[-3], "", 1).replace(tagged[3], tagged[-3] + tagged[3], 1)
+
+    returned = tmp_path / "moved.docx"
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            data = (
+                moved_xml.encode("utf-8")
+                if item.filename == "word/document.xml"
+                else zin.read(item.filename)
+            )
+            zout.writestr(item, data)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+    was = [p.strip() for p in before.split("\n\n") if p.strip()]
+    now = [p.strip() for p in after.split("\n\n") if p.strip()]
+    assert sorted(was) == sorted(now), "nothing gained or lost"
+    assert was != now, "the order must have changed"
+    assert before.count("{{") == after.count("{{"), "every binding survives a move"

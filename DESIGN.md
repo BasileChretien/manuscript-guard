@@ -1159,6 +1159,22 @@ cannot be located unambiguously in the source is left alone: splicing an edit in
 paragraph is the failure this command must not have, and a near-tie between two candidates
 is exactly when a guess would be wrong.
 
+**A move needs no content from Word at all**, and that is the one thing the round trip can
+do perfectly. Each source paragraph is tagged with an invisible identifier before
+substitution — `[]{#mg-p-main-12}`, which pandoc emits as a Word bookmark: invisible,
+surviving an edit, and travelling with the paragraph when somebody cuts and pastes it. When
+the document comes back, the identifiers say exactly which paragraph is which, so a move is
+a reordering of text already on disk rather than anything imported. That makes it safe for
+precisely the paragraphs the content merge has to refuse: a paragraph solid with bindings
+can be moved without a binding going anywhere near Word.
+
+Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
+because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
+true and useless. And a moved paragraph is excluded from the content diff, which otherwise
+sees it as a deletion here and an insertion there and applies it a second time on top of the
+reordering — compared on the flattened form, since the source carries bindings and the
+returned text carries what they rendered to, so the two are never equal as strings.
+
 **The conservative part, stated plainly.** A paragraph containing a binding or a citation is
 reported rather than merged, even when the edit is pure wording, because splicing returned
 text into it would lose the binding. In a paper where most paragraphs quote a number, that

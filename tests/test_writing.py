@@ -20,6 +20,15 @@ from manuscript_guard.gates import check_writing
 
 
 def written(project: Path, text: str):
+    """Judge exactly this text and nothing else.
+
+    The gate reads every source, so the example's supplement has to go — otherwise its two
+    hundred words sit underneath every case here, and the ones about *rates* stop measuring
+    what they say they measure.
+    """
+    import shutil
+
+    shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
     (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
     projekt, _ = load_project(project)
     return check_writing(projekt)

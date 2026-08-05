@@ -3,7 +3,7 @@ round: 2
 reviewer: desk-editor
 reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
-manuscript_sha256: e8c48958152bbbdfc69e434eebd522225c8615a39e932cd8d18948193843dbb6
+manuscript_sha256: bcb8549c4d61c92833dcaeeec79b2c3db553c5dc46874d888faf321ff99aa366
 verdict: minor-revision
 summary: Comfortably within the journal's limits, correctly structured, and all three
   required declarations are present and say something rather than being placeholders.

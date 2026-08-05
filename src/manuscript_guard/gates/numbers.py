@@ -39,21 +39,45 @@ SOURCE_GLOB = "*.md"
 PER_FILE_CAP = 50
 
 
-def source_files(manuscript_dir: Path) -> list[Path]:
+#: Everything under here is supplementary material: checked like the rest of the manuscript,
+#: built as its own document, and not counted against the main text's limits. A directory
+#: rather than a declaration, because that is how figures and results already work — and
+#: because a heading can be renamed without anyone noticing what left the submission.
+SUPPLEMENTARY = "supplementary"
+
+
+def source_files(manuscript_dir: Path, *, main_text_only: bool = False) -> list[Path]:
     """Every Markdown source, skipping directories whose name starts with `_` or `.`.
 
     The underscore convention gives an author somewhere to keep notes and abandoned drafts
     without either polluting the report or being silently exempted from it: the rule is
     visible in the directory name.
+
+    `main_text_only` drops `supplementary/`. Every gate that reads prose should read the
+    supplement too — a fabricated number in a supplementary table is still fabricated — so
+    this is for the two places that mean the main text specifically: the journal's word and
+    display-item limits, and the count the title page declares to the editor.
     """
     if not manuscript_dir.exists():
         return []
     out = []
     for path in sorted(manuscript_dir.rglob(SOURCE_GLOB)):
-        if any(part.startswith((".", "_")) for part in path.relative_to(manuscript_dir).parts):
+        parts = path.relative_to(manuscript_dir).parts
+        if any(part.startswith((".", "_")) for part in parts):
+            continue
+        if main_text_only and len(parts) > 1 and parts[0] == SUPPLEMENTARY:
             continue
         out.append(path)
     return out
+
+
+def is_supplementary(manuscript_dir: Path, path: Path) -> bool:
+    """Does this source belong to the supplement rather than to the paper?"""
+    try:
+        parts = Path(path).relative_to(manuscript_dir).parts
+    except ValueError:
+        return False
+    return len(parts) > 1 and parts[0] == SUPPLEMENTARY
 
 
 def check_numbers(

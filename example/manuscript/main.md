@@ -38,10 +38,8 @@ a property of the synthetic data rather than a design choice.
 Hepatic injury is the single event term used by the data generator. Real work would need a
 case definition — a MedDRA Standardised Query or an explicit preferred-term list — and the
 choice of definition would change the counts. The terms actually used are published in
-Table 1, emitted from the lists the analysis filtered on rather than retyped, which is what
+Table S1, emitted from the lists the analysis filtered on rather than retyped, which is what
 RECORD 6.1 asks for and what makes a case definition checkable.
-
-{{table.outcome_codes}}
 
 The reporting odds ratio was computed from a 2 x 2 table contrasting reports of hepatic
 injury with all other reported events, for example-drug against all other drugs in the

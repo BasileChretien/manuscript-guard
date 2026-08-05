@@ -91,7 +91,9 @@ def test_the_abstract_and_references_are_counted_apart(project: Path) -> None:
     counts = measure(text)
     assert counts.abstract_words > 0
     assert counts.main_text_words > counts.abstract_words
-    assert counts.tables == 3  # the code list, the 2 x 2, and baseline characteristics
+    # The 2 x 2 and baseline characteristics. The code list is in the supplement, and this
+    # reads main.md — which is what a journal's display-item limit is about.
+    assert counts.tables == 2
     assert counts.figures == 1
 
 

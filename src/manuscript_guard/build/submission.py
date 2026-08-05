@@ -146,10 +146,12 @@ def title_page(project: Project) -> str:
 
 
 def _counts(project: Project):
+    """What the title page declares to the editor: the main text, not the supplement."""
     from manuscript_guard.gates.numbers import source_files
 
     text = "\n\n".join(
-        p.read_text(encoding="utf-8") for p in source_files(project.path("manuscript"))
+        p.read_text(encoding="utf-8")
+        for p in source_files(project.path("manuscript"), main_text_only=True)
     )
     return measure(text)
 
@@ -221,6 +223,66 @@ def declarations(project: Project) -> str:
     return "\n".join(lines)
 
 
+def _escape_cell(text: str) -> str:
+    """A pipe inside a cell ends the cell, so a checklist item containing one has to say so."""
+    return " ".join(str(text).split()).replace("|", "\\|")
+
+
+def checklist_table(project: Project, completion: Path) -> str:
+    """A completed checklist as a journal reads it: item, where it is addressed, or why not.
+
+    The pack shipped `reporting/*.yaml` and nothing else, so what a journal received in
+    answer to "attach your completed STROBE checklist" was a serialisation. Generated rather
+    than maintained, so it cannot drift from the file the gate checks — and the item text
+    comes from the transcribed guideline, not from the completion, so an item nobody answered
+    still appears with the answer blank rather than vanishing from the table.
+    """
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.reporting import checklist_path
+
+    answers = read_structured(completion) or {}
+    name = str(answers.get("guideline") or completion.stem)
+    source = checklist_path(project, name)
+    published = (read_structured(source) or {}) if source else {}
+    items = published.get("items") or []
+
+    lines = [f"# {name} checklist", ""]
+    if source is None:
+        lines += [
+            f"The {name} item list is not in this project, so this table can only show the "
+            "answers, not the items they answer.",
+            "",
+        ]
+    if licence := published.get("licence"):
+        lines += [f"Item text reproduced from the published {name} checklist ({licence}).", ""]
+    lines += [
+        "| Item | Recommendation | Addressed in | Not applicable because |",
+        "|---|---|---|---|",
+    ]
+
+    answered = {str(entry.get("id")): entry for entry in answers.get("items", [])}
+    ids = [str(item["id"]) for item in items] or sorted(answered)
+    text_of = {str(item["id"]): item.get("text", "") for item in items}
+
+    for identifier in ids:
+        entry = answered.get(identifier, {})
+        lines.append(
+            f"| {_escape_cell(identifier)} | {_escape_cell(text_of.get(identifier, ''))} "
+            f"| {_escape_cell(entry.get('where', ''))} "
+            f"| {_escape_cell(entry.get('not_applicable', ''))} |"
+        )
+
+    extra = sorted(set(answered) - set(ids))
+    for identifier in extra:
+        entry = answered[identifier]
+        lines.append(
+            f"| {_escape_cell(identifier)} | *not in the published checklist* "
+            f"| {_escape_cell(entry.get('where', ''))} "
+            f"| {_escape_cell(entry.get('not_applicable', ''))} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
@@ -230,6 +292,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     later nobody can tell, and the manifest's whole purpose is to be the thing you can tell
     from.
     """
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary, source_files
+
     directory = project.path("build") / "submission"
     if directory.exists():
         shutil.rmtree(directory)
@@ -251,12 +315,37 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         target.write_text(text, encoding="utf-8", newline="\n")
         files.append(target)
 
+    # The supplement, as its own file. Welded into the manuscript it counted against the
+    # word limit and could not be uploaded to the "supplementary material" slot every
+    # submission system has.
+    #
+    # Gated on the project still having supplementary sources, not on the file existing: a
+    # `supplementary.docx` left in build/ from a layout the author has since abandoned would
+    # otherwise be sent to a journal with nothing in the project to check it against.
+    supplement = document.parent / f"{SUPPLEMENTARY}.docx"
+    has_supplement = any(
+        is_supplementary(project.path("manuscript"), p)
+        for p in source_files(project.path("manuscript"))
+    )
+    if has_supplement and supplement.exists() and supplement != document:
+        target = directory / supplement.name
+        shutil.copy2(supplement, target)
+        files.append(target)
+
     checklists = project.root / "reporting"
     if checklists.exists():
         for path in sorted(checklists.glob("*.yaml")):
+            # The YAML, because it is the record and it diffs. And a table beside it,
+            # because the YAML is what the pack used to offer a journal and a journal cannot
+            # read it: an editor asking for a completed STROBE checklist wants to see the
+            # items and where each is addressed, not a serialisation of them.
             target = directory / f"checklist-{path.name}"
             shutil.copy2(path, target)
             files.append(target)
+
+            table = directory / f"checklist-{path.stem}.md"
+            table.write_text(checklist_table(project, path), encoding="utf-8", newline="\n")
+            files.append(table)
 
     figures = project.path("figures")
     if figures.exists():

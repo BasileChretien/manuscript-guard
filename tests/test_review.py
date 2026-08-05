@@ -336,7 +336,10 @@ def test_two_files_with_the_same_name_are_both_covered(project: Path) -> None:
     (nested / "main.md").write_text("# Extra\n\nA section nobody reviewed.\n", encoding="utf-8")
 
     keys = set(file_digests(load_project(project)[0]))
-    assert keys == {"main.md", "parts/main.md"}, keys
+    # The supplement is in scope for review too: a finding list describes what the reviewer
+    # read, and leaving the supplement out is what lets it change under a review that still
+    # claims to cover the manuscript.
+    assert keys == {"main.md", "parts/main.md", "supplementary/S1_code_lists.md"}, keys
 
     scope_reviews(project, files={"main.md": file_digests(load_project(project)[0])["main.md"]})
     report = report_for(project, submission=True)

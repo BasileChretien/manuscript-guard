@@ -172,9 +172,9 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
 
     tagged = tag("# Methods\n\nSome prose here.\n\n{{table.baseline}}\n", "main")
     assert tagged.startswith("# Methods")
-    assert "[]{#mg-p-main-" in tagged
-    assert tagged.count("[]{#mg-p-main-") == 1, "only the prose paragraph"
-    assert "]{#mg-p-main-4}{{table.baseline}}" not in tagged
+    assert "[]{#mg-p-" in tagged
+    assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
+    assert "}{{table.baseline}}" not in tagged
 
 
 @needs_pandoc
@@ -189,7 +189,7 @@ def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: P
 
     document = project / "build" / "manuscript.docx"
     xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
-    tagged = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-main-" in p]
+    tagged = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p]
     assert len(tagged) > 5, "the example must have several tagged paragraphs"
     moved_xml = xml.replace(tagged[-3], "", 1).replace(tagged[3], tagged[-3] + tagged[3], 1)
 

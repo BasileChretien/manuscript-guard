@@ -215,6 +215,28 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
+def _crossed_files(known: dict, order: list[str]) -> list[str]:
+    """Identifiers that came back sitting among a different file's paragraphs.
+
+    `_reorder` groups by the *original* file, so a paragraph cut from one file and pasted
+    into another was silently repositioned inside the file it came from and never applied
+    to the file it went to. The docstring promised it would be "left alone and reported";
+    it was neither.
+    """
+    present = [name for name in order if name in known]
+    crossed = []
+    for position, name in enumerate(present):
+        home = known[name][0]
+        neighbours = [
+            known[other][0]
+            for other in present[max(0, position - 1) : position + 2]
+            if other != name
+        ]
+        if neighbours and home not in neighbours:
+            crossed.append(name)
+    return crossed
+
+
 def _reorder(project, known: dict, order: list[str]) -> None:
     """Put the source paragraphs back in the order the returned document has them.
 
@@ -339,6 +361,17 @@ def cmd_import(args: argparse.Namespace) -> int:
         print("nothing came back: the document matches the manuscript on disk.")
         return 0
 
+    crossed = set(_crossed_files(known, paragraph_order(edited)))
+    moved = [entry for entry in moved if entry[0] not in crossed]
+    if crossed:
+        print(f"{len(crossed)} paragraph(s) were moved into a different file:")
+        for name in sorted(crossed):
+            print(f"    {known[name][1].strip()[:80]}")
+        print(
+            "    Not applied. Moving a paragraph between files is a different operation "
+            "from reordering within one; do it in the .md yourself."
+        )
+
     if moved:
         print(f"{len(moved)} paragraph(s) came back in a different place:")
         for name, was_at, now_at in moved:
@@ -398,9 +431,13 @@ def _seeded(source: Path) -> list[dict]:
     """
     from manuscript_guard.roundtrip import comments_in
 
+    # Grouped by the slug, not the raw author. "Reviewer 2" and "REVIEWER 2" are two
+    # buckets and one id, which put two people's points under one heading in the letter that
+    # goes to the journal.
     by_author: dict[str, list[dict]] = {}
     for comment in comments_in(source):
-        by_author.setdefault(comment.author, []).append(
+        slug = re.sub(r"[^a-z0-9]+", "-", comment.author.lower()).strip("-")
+        by_author.setdefault(slug or "reviewer", []).append(
             {
                 "id": "",
                 "comment": comment.text,
@@ -410,8 +447,7 @@ def _seeded(source: Path) -> list[dict]:
         )
 
     reviewers = []
-    for index, (author, points) in enumerate(sorted(by_author.items()), start=1):
-        slug = re.sub(r"[^a-z0-9]+", "-", author.lower()).strip("-") or f"reviewer-{index}"
+    for index, (slug, points) in enumerate(sorted(by_author.items()), start=1):
         for position, point in enumerate(points, start=1):
             point["id"] = f"{index}.{position}"
         reviewers.append({"id": slug, "points": points})

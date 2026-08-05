@@ -86,7 +86,8 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
         # recognised when the document comes back.
         from manuscript_guard.roundtrip import tag
 
-        text = tag(path.read_text(encoding="utf-8"), path.stem)
+        relative = path.relative_to(project.path("manuscript")).as_posix()
+        text = tag(path.read_text(encoding="utf-8"), relative)
         placeholders, _ = parse(text)
         rendered = text
 

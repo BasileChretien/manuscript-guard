@@ -38,7 +38,7 @@ TYPE = (
 def commented(source: Path, target: Path, notes: list[tuple[str, str]]) -> Path:
     """A returned document with comments anchored to its first identified paragraphs."""
     xml = zipfile.ZipFile(source).read("word/document.xml").decode("utf-8")
-    paras = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-main-" in p]
+    paras = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p]
     assert len(paras) >= len(notes), "the example needs enough identified paragraphs"
 
     bodies = []
@@ -80,7 +80,7 @@ def test_a_comment_knows_which_paragraph_it_is_about(project: Path, tmp_path: Pa
     assert len(found) == 1
     assert found[0].author == "Reviewer 2"
     assert found[0].text == "Unclear."
-    assert found[0].where.startswith("mg-p-main-")
+    assert found[0].where.startswith("mg-p-")
 
 
 @needs_pandoc
@@ -103,7 +103,7 @@ def test_a_round_is_seeded_from_the_comments(project: Path, tmp_path: Path) -> N
     assert set(reviewers) == {"editor", "reviewer-2"}
     assert [p["id"] for p in reviewers["reviewer-2"]["points"]] == ["2.1", "2.2"]
     assert reviewers["reviewer-2"]["points"][0]["comment"] == "The case definition is not stated."
-    assert all(p["where"].startswith("mg-p-main-") for p in reviewers["reviewer-2"]["points"])
+    assert all(p["where"].startswith("mg-p-") for p in reviewers["reviewer-2"]["points"])
     assert all(p["response"] == "" for r in document["reviewers"] for p in r["points"])
 
 

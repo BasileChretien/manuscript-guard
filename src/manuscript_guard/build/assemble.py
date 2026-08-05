@@ -12,13 +12,14 @@ that the Zotero filter can turn it into a live field.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.findings import Finding, Report
+from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.placeholders import parse
 
@@ -73,6 +74,31 @@ def find_figure(project: Project, key: str) -> Path | None:
     return None
 
 
+_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+
+
+def strip_front_matter(text: str) -> tuple[str, str]:
+    """The body without its YAML header, and the title the header declared.
+
+    `init` scaffolds a `title:` into both `paper.yaml` and `manuscript/main.md`, and only
+    the first is used — while the second was never removed from the body. Every document
+    this tool has ever built therefore opens with a line of raw YAML rendered as prose, and
+    when the two titles differ the paper is uploaded under the wrong one: `submit` writes
+    the title page and the manifest from `paper.yaml`, so nothing anywhere reports the
+    contradiction. It reproduces in the shipped example, where the two happen to match and
+    the stray line reads as a harmless duplicate.
+    """
+    found = _FRONT.match(text)
+    if not found:
+        return text, ""
+    declared = ""
+    for line in found.group(1).splitlines():
+        if line.strip().startswith("title:"):
+            declared = line.split(":", 1)[1].strip().strip("\"'")
+            break
+    return text[found.end():].lstrip("\n"), declared
+
+
 def assemble(project: Project, namespace: dict[str, Value], results: Results) -> tuple[
     list[Assembled], Report
 ]:
@@ -87,7 +113,21 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
         from manuscript_guard.roundtrip import tag
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
-        text = tag(path.read_text(encoding="utf-8"), relative)
+        raw, declared = strip_front_matter(path.read_text(encoding="utf-8"))
+        if declared and declared != str(project.paper.get("title", "")):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="two-titles",
+                    severity=WARN,
+                    message=f"{path.name} declares a different title from paper.yaml",
+                    path=path,
+                    context=declared[:120],
+                    hint="paper.yaml is the one the document and the submission pack use; "
+                    "delete the title from the manuscript or make them agree",
+                )
+            )
+        text = tag(raw, relative)
         placeholders, _ = parse(text)
         rendered = text
 

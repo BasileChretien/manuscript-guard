@@ -253,8 +253,17 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
     for path in source_files(root):
         relative = path.relative_to(root).as_posix()
         slug = paragraph_slug(relative)
-        text = path.read_text(encoding="utf-8")
-        cursor = 0
+        # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing
+        # the raw source here while the document was tagged from the stripped text put every
+        # identifier one block out of step - the two must read the same string or the
+        # identifier stops naming anything.
+        from manuscript_guard.build.assemble import strip_front_matter
+
+        raw = path.read_text(encoding="utf-8")
+        text, _title = strip_front_matter(raw)
+        # Offsets are into the file on disk, not into the stripped copy: the merge splices
+        # into the real file, and a paragraph would land one front matter earlier.
+        cursor = len(raw) - len(text)
         for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor

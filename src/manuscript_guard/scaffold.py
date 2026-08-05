@@ -69,6 +69,11 @@ schema: manuscript-guard/ledger/1
 entries: []
 """
 
+BIBLIOGRAPHY = """\
+% Written by `manuscript-guard sync-bib` from your Zotero library, and safe to commit:
+% it is what CI and a co-author without your library format citations from.
+"""
+
 ATTESTED = """\
 schema: manuscript-guard/attested/1
 
@@ -168,6 +173,10 @@ _FILES = {
     "authors.yaml": AUTHORS,
     "literature/ledger.yaml": LEDGER,
     "literature/attested.yaml": ATTESTED,
+    # Empty, but present. Without it `build --offline` refused a project that has no
+    # citations at all, and told the author to run `sync-bib` with Zotero open - the one
+    # thing `--offline` exists so they do not have to do.
+    "literature/references.bib": BIBLIOGRAPHY,
     "manuscript/main.md": MANUSCRIPT,
     ".gitignore": GITIGNORE,
     "README.md": README,

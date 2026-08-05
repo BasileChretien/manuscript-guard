@@ -552,3 +552,34 @@ def test_an_interval_publishes_three_keys_with_their_roles(scratch: Path) -> Non
 def test_an_interval_must_bracket_its_estimate(scratch: Path) -> None:
     with pytest.raises(DisplayError, match="does not bracket"):
         emitter(scratch).interval("ror", 3.84, 7.02, 2.10, digits=2)
+
+
+def test_a_code_list_cell_must_match_its_published_list(scratch: Path) -> None:
+    """The abuse of the code-list exemption, which had no test until the inventory asked.
+
+    A code-list cell is exempt from the emitted-value check because it is a join of the
+    codes published beside it. Nothing about that is self-evident from the cell, so the
+    fragment is what it is checked against - and a cell claiming to be a code list while
+    saying something else must be refused.
+    """
+    import json
+
+    em = emitter(scratch)
+    em.code_list("codes", [{"concept": "x", "system": "ICD-10", "codes": ["K71.0"]}])
+    document = em.document()
+    # The emitter's own output, then the claim falsified: the cell says something the
+    # published list does not.
+    document["tables"]["codes"]["rows"][0][2] = "K71.0, and 4281003.55 besides"
+
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.tables import problems_in
+
+    problems = problems_in(
+        "codes",
+        document["tables"]["codes"],
+        set(),
+        Classifier.load(),
+        document.get("code_lists"),
+    )
+    assert any(p.code == "code-list-does-not-match" for p in problems), [p.code for p in problems]
+    assert json.dumps(document["code_lists"])  # the list itself is untouched

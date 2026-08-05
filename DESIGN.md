@@ -1464,6 +1464,23 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **A claim published through the results file came out green.**
+
+      em.value("conclusion", "The drug causes liver failure and should be withdrawn")
+
+  resolved, passed every gate, and the annotated copy painted it *traced* — green, over its
+  own key and "emitted by 01_disproportionality.json", the strongest reassurance that document
+  offers — on a sentence the author typed into an analysis script and nothing verified. And it
+  is the one route by which text escapes everything that reads text: the writing gate reads
+  manuscript sources, and this sentence is not in one.
+
+  Judged on whether the display carries a digit, not on whether it reads like a sentence — a
+  rule about the shape of the text would be the wrong kind of rule. `label=True` already means
+  "a name, not a measurement", so it is both the way out and a declaration on the record: a
+  drug name or a cohort label stays green, because it really is traced to the analysis.
+  Unlabelled prose is a defect in the annotated copy and a `prose-as-value` warning in
+  `check`. A warning rather than a refusal, because the toolkit does not get to decide that
+  keeping a name in one place is wrong.
 - **A p-value of 3.2 × 10⁻⁹ was published as "0.00".** `digits=2` on any number smaller than
   half a unit in the last place gives a string of zeroes, and nothing objected: an explicit
   `display` has been checked against its value since round two, but a *derived* one was

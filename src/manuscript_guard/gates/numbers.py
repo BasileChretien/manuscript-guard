@@ -197,6 +197,7 @@ def check_numbers(
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_emitted_tables(results, classifier))
     report = report.merge(_declared_intervals(namespace))
+    report = report.merge(_prose_as_value(namespace, referenced))
 
     if by_project:
         listed = "; ".join(
@@ -394,6 +395,45 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                     "which is why nothing else catches this",
                 )
             )
+    return report
+
+
+def _prose_as_value(namespace: dict[str, Value], referenced: set[str]) -> Report:
+    """A binding that substitutes words rather than a number.
+
+        em.value("conclusion", "The drug causes liver failure and should be withdrawn")
+
+    resolves, passes every gate, and is painted green in the annotated copy — "traced to a
+    results value", the strongest thing that document says — on a sentence the author typed
+    into an analysis script. It also leaves the manuscript sources, which is where G6 reads
+    prose, so the writing lint never sees it either. Publishing a claim through the results
+    file is the one route by which text escapes everything that reads text.
+
+    A warning rather than a refusal, and judged on whether the display carries a digit rather
+    than on whether it reads like a sentence. A drug name or a cohort label is a perfectly
+    good thing to keep in one place, and `label=True` already means "this is a name, not a
+    measurement" — so saying so is both the way out and a declaration on the record.
+    """
+    report = Report()
+    for ref in sorted(referenced):
+        value = namespace.get(ref)
+        if value is None or value.label:
+            continue
+        if any(character.isdigit() for character in value.display):
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="prose-as-value",
+                severity=WARN,
+                message=f"{{{{{ref}}}}} substitutes words rather than a number: "
+                f"{value.display[:60]!r}",
+                path=value.source,
+                hint="prose belongs in the manuscript, where the writing gate reads it and a "
+                "reviewer sees it in context. If this is a name rather than a claim, emit it "
+                "with label=True",
+            )
+        )
     return report
 
 

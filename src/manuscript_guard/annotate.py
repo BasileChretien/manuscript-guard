@@ -96,6 +96,26 @@ def _escape(text: str) -> str:
 def _value_mark(anchor: str, ref: str, value: Value) -> Mark:
     """What to say about a bound number."""
     detail = ""
+    # Prose is not a traced number. A results key holding "The drug causes liver failure and
+    # should be withdrawn" substituted into the manuscript and came out green, labelled with
+    # its key and "emitted by 01_disproportionality.json" — the strongest reassurance this
+    # document offers, on a sentence the author typed into an analysis script and nothing
+    # verified. It also slips past every prose gate, since those read manuscript sources.
+    #
+    # Judged on whether the display carries a digit, not on whether it reads like a sentence:
+    # a rule about the shape of the text would be the wrong kind of rule, and `label=True`
+    # already exists for the author to say "this is a name". A name stays traced, because it
+    # really is traced to the analysis. Unlabelled prose is a defect.
+    if not value.label and not any(character.isdigit() for character in value.display):
+        return Mark(
+            anchor=anchor,
+            tier=DEFECT,
+            shown=value.display,
+            label=ref,
+            detail="text published through the results file: no number in it, and nothing "
+            "checked the words. Write it in the manuscript, or emit it with label=True if "
+            "it is a name",
+        )
     if value.origin == RESULTS:
         tier = TRACED
         source = value.source.name if value.source else "an analysis"

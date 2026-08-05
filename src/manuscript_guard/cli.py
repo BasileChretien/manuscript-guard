@@ -53,6 +53,8 @@ from manuscript_guard.policy import (
     resolve_stage,
     summarise_deferred,
 )
+from manuscript_guard.record import FIGURE_VERDICTS
+from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
@@ -141,12 +143,47 @@ def _guarded(name: str, gate) -> Report:
 
 
 def cmd_review(args: argparse.Namespace) -> int:
-    """Show where the review stands, and the digest a review record must carry."""
+    """Show where the review stands, and write the record a reviewer has to file."""
     project, _ = load_project(args.path)
     digest = manuscript_digest(project)
     if args.digest:
         print(digest)
         return 0
+
+    if args.record or args.record_figure:
+        from manuscript_guard.record import RecordError, write_figure_review, write_review
+
+        if not args.verdict:
+            print(
+                "manuscript-guard: --verdict is required. The record is written after the "
+                "reading, and a placeholder verdict is a claim that somebody looked.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            if args.record_figure:
+                written = write_figure_review(
+                    project, args.record_figure, verdict=args.verdict, reviewed_by=args.by
+                )
+            else:
+                written = write_review(
+                    project,
+                    args.record,
+                    verdict=args.verdict,
+                    round_number=args.round,
+                    reviewed_by=args.by,
+                    remit=args.remit or "",
+                    summary=args.summary or "",
+                )
+        except RecordError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if written.panel is not None:
+            print(f"panel: {written.panel}")
+        print(f"wrote {written.path}")
+        print("Add the findings there. An empty list says the reviewer found nothing.")
+        return 0
+
     if args.files:
         # Paste-ready, because a reviewer who has to assemble this by hand will instead
         # omit it and go back to having a typo void their review.
@@ -1385,6 +1422,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="print the per-file digests a review record lists as what it read",
     )
     review.add_argument("--submission", action="store_true")
+    review.add_argument(
+        "--record",
+        metavar="REVIEWER",
+        help="write review/round-N/REVIEWER.yaml for the manuscript as it now stands, with "
+        "the digests filled in. G11 blocks submission until every reviewer has filed one, "
+        "and there was no command that produced one",
+    )
+    review.add_argument(
+        "--record-figure",
+        metavar="FIGURE",
+        help="write <figure>.review.yaml, with the content digest G10 asks for and never "
+        "printed",
+    )
+    review.add_argument(
+        "--verdict",
+        choices=sorted({*RECORD_VERDICTS, *FIGURE_VERDICTS}),
+        help="required with --record or --record-figure",
+    )
+    review.add_argument("--round", type=int, default=1, help="review round; default 1")
+    review.add_argument("--by", help="who did the reading; defaults to the reviewer id")
+    review.add_argument("--remit", help="what this reviewer is responsible for noticing")
+    review.add_argument("--summary", help="the reviewer's overall comment")
     review.set_defaults(func=cmd_review)
 
     bind = sub.add_parser(

@@ -44,7 +44,10 @@ uploaded to the supplementary slot rather than pasted onto the end of the paper.
 CLI: `check` (all gates, exit 1 on failure, `--json` for machines), `build` (the .docx;
 live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `references.bib` from Zotero), `explain` (how every number in a file was classified),
-`render` (substitute bindings only), `init` (scaffold a project).
+`render` (substitute bindings only), `init` (scaffold a project),
+`review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
+digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
+record: a second reading is a second round.
 
 The example's citekeys are fictional and live in its committed `references.bib`, so it
 builds offline anywhere without touching anyone's Zotero.

@@ -1464,6 +1464,22 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **Two gates blocked the work and had no command behind them.** G11 refuses a submission
+  until a panel exists and every reviewer has filed a record; G10 refuses until every figure
+  has been read. Both asked for a SHA-256 the toolkit computed and never printed — G10's is a
+  digest of the figure's *content*, so it could not be obtained at all. An author who reaches
+  a gate and finds no way through does not hand-write the YAML; they reach for
+  `--skip-checks`, and the gate has then made the project worse than having no gate.
+  `review --record` and `--record-figure` write the file, fill in the digests, extend the
+  panel (carrying a reviewer's remit into a later round), and leave the findings to a person.
+
+  What they deliberately do not offer is a way to re-stamp a record after the manuscript has
+  changed. That one flag would turn the review system into theatre: the digest is the only
+  thing separating "somebody read this version" from "somebody read a version". Recording
+  twice is refused and says to record a further round instead. For the same reason the
+  verdict is required rather than defaulted — a record written before the reading is a claim
+  that somebody looked — and a figure's checks are written `ok: false` with the question each
+  one asks, so the file is a to-do list the gate reads back rather than a row of ticks.
 - **R could not express an interval at all.** The R emitter had `value()` and no
   `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
   keys that no gate could know were one estimate — `interval-reversed` simply could not fire

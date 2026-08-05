@@ -1275,6 +1275,39 @@ response document prints it in the author's own words rather than inventing agre
 Severity follows the internal panel: an author part-way through a revision must still be
 able to build something to read, so ordinary work warns and a resubmission fails.
 
+## Round five, and what it says about the last two days
+
+Four reviewers, all able to run their reproductions this time. The revision cycle and the
+Word round trip had had no external review at all, and the result is the clearest instance
+yet of this project`s recurring defect:
+
+**Two of the six findings were functions whose docstrings promised a comparison the body
+never made.** `_anchor_unchanged` read the recorded paragraph digest into a variable and
+then checked only that the identifier still resolved - so a response could claim a revision,
+change something else in the same file, and the paragraph the reviewer actually objected to
+went untouched with the gate silent. `_unverified` compared `submitted.get(name)` against the
+current digest, and `.get` returns None for an absent key, which is never equal to a digest,
+so a claimed revision of any file the baseline did not happen to list fell through to
+"verified". Both were written the day before, both by the author of this paragraph, and both
+read correctly right up until somebody executed them.
+
+**A third was a lesson learned in one file and not carried to another.** `file_digests` was
+fixed in round four to key on the path relative to `manuscript/` rather than the filename,
+because `source_files` walks subdirectories and two files called `notes.md` collapse into
+one entry. The paragraph identifiers introduced a day later made exactly the same mistake,
+and the consequence was worse: the built document carried the same bookmark twice, and a
+co-author`s edit to one of those paragraphs was neither merged nor refused. It vanished, with
+`import --apply` exiting 0 and printing "nothing came back".
+
+The other three: a path join that accepted `C:/Windows/win.ini` as evidence a figure was
+updated, a cross-file paragraph move that the docstring promised to refuse and instead
+applied to the wrong file, and two spellings of one reviewer`s name becoming two headings
+in the letter that goes to the journal.
+
+The pattern is stable enough to name. **Every one of these is a claim that outran its code**,
+and the countermeasure that works is the one already in the repository: a test that executes
+the claim. `tests/test_round_five.py` holds one per finding.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.

@@ -185,12 +185,25 @@ def _anchor_unchanged(
     if not any(entry["kind"] == "manuscript" for entry in changed):
         return None
 
+    import hashlib
+
     from manuscript_guard.roundtrip import tagged_paragraphs
 
     known = tagged_paragraphs(project)
     if where not in known:
         return f"the paragraph this point was attached to ({where}) is no longer in the "\
                f"manuscript, so the response cannot be checked against it"
+
+    # The comparison the docstring has always promised. Checking only that the identifier
+    # still resolves detects a deleted paragraph and nothing else - so a response could
+    # claim a revision, change something else in the same file, and the paragraph the
+    # reviewer actually objected to went untouched with the gate silent.
+    now = hashlib.sha256(known[where][1].encode("utf-8")).hexdigest()
+    if now == paragraphs[where]:
+        return (
+            f"the paragraph this point was attached to ({where}) is unchanged, though the "
+            f"response says the manuscript was revised"
+        )
     return None
 
 
@@ -203,7 +216,16 @@ def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -
             return f"the response names {name}, which is not a manuscript file"
         if not submitted:
             return None  # nothing to compare against; the round was opened without a baseline
-        if submitted.get(name) == current[name]:
+        if name not in submitted:
+            # Absent from a baseline that lists other files. `.get` returning None is never
+            # equal to a digest, so falling through read as "verified" - a claimed revision
+            # of any file the baseline happened not to list passed unconditionally, which is
+            # the one thing this function exists to refuse.
+            return (
+                f"the response says {name} was revised, and the round's baseline does not "
+                f"record what it looked like when it was submitted, so nothing can confirm it"
+            )
+        if submitted[name] == current[name]:
             return f"the response says {name} was revised, and it is byte-identical to what "\
                    f"was submitted"
         return None
@@ -216,7 +238,17 @@ def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -
             return f"the response names results key {name}, which nothing emits"
         return None
 
-    path = project.path("figures" if kind == "figure" else "analysis") / name
+    # Contained, not merely joined. `Path / "C:/Windows/win.ini"` discards the left side
+    # entirely, and `../paper.yaml` walks out of the directory - so "does this artefact
+    # exist" was satisfiable by naming any file on the machine.
+    root = project.path("figures" if kind == "figure" else "analysis").resolve()
+    try:
+        path = (root / name).resolve()
+        inside = path.is_relative_to(root)
+    except (OSError, ValueError):
+        return f"the response names {kind} {name}, which is not a usable path"
+    if not inside:
+        return f"the response names {kind} {name}, which is outside {root.name}/"
     if not path.exists():
         return f"the response names {kind} {name}, which does not exist"
     return None

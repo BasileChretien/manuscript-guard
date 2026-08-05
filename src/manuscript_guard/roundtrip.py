@@ -190,11 +190,32 @@ GENERATED = re.compile(r"\{\{|\[@")
 #:
 #: Pandoc does *not* read bookmarks back into markdown, so they are read from
 #: `word/document.xml` directly.
-_TAG = "mg-p-{stem}-{index}"
+_TAG = "mg-p-{slug}-{index}"
+
+
+def paragraph_slug(relative: str) -> str:
+    """A per-file component that is unique, stable, and legal in a Word bookmark.
+
+    Keyed on the path relative to `manuscript/`, not on the filename. `source_files` walks
+    subdirectories, so two files named `notes.md` in different folders produced identical
+    identifiers - and the consequence was not a confused report but silent data loss: the
+    built document carried the same bookmark twice, `paragraph_text` could only return one
+    of them, and a co-author's edit to the other was neither merged nor refused. It vanished,
+    with `import --apply` exiting 0 and saying "nothing came back".
+
+    `gates/review.py` already learned this and keys `file_digests` on the relative path; the
+    lesson had not reached here. A short digest carries the uniqueness because a bookmark
+    name may not contain a separator, and a readable stem is kept in front of it because the
+    identifier ends up in a revision record a person reads.
+    """
+    import hashlib
+
+    stem = re.sub(r"[^A-Za-z0-9]+", "_", Path(relative).stem)[:12].strip("_") or "f"
+    return f"{stem}{hashlib.sha256(relative.encode('utf-8')).hexdigest()[:6]}"
 _TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
 
 
-def tag(text: str, stem: str) -> str:
+def tag(text: str, relative: str) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are paragraphs that are
@@ -210,7 +231,7 @@ def tag(text: str, stem: str) -> str:
         if re.fullmatch(r"\{\{[^}]*\}\}", stripped):
             out.append(para)
             continue
-        marker = _TAG.format(stem=stem, index=index)
+        marker = _TAG.format(slug=paragraph_slug(relative), index=index)
         out.append(para.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
     return "".join(out)
 
@@ -220,13 +241,16 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str]]:
     from manuscript_guard.gates.numbers import source_files
 
     found: dict[str, tuple[Path, str]] = {}
-    for path in source_files(project.path("manuscript")):
+    root = project.path("manuscript")
+    for path in source_files(root):
+        relative = path.relative_to(root).as_posix()
+        slug = paragraph_slug(relative)
         text = path.read_text(encoding="utf-8")
         for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
             stripped = para.strip()
             if not stripped or stripped.startswith("#") or re.fullmatch(r"\{\{[^}]*\}\}", stripped):
                 continue
-            found[_TAG.format(stem=path.stem, index=index)] = (path, stripped)
+            found[_TAG.format(slug=slug, index=index)] = (path, stripped)
     return found
 
 

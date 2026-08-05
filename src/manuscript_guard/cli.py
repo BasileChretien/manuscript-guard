@@ -466,7 +466,11 @@ def cmd_import(args: argparse.Namespace) -> int:
 
     if not args.apply and (moved or merged):
         print(f"\n`manuscript-guard import {edited} --apply` applies the safe changes.")
-    return 0 if args.apply else 1
+
+    # Comments alone are not a failure. Exit 1 meant a hook or a CI step keyed on the code
+    # reported a problem when a co-author had done nothing but leave notes.
+    outstanding = bool(refused or gone) or (not args.apply and (moved or merged))
+    return 1 if outstanding else 0
 
 
 
@@ -519,7 +523,6 @@ def cmd_respond(args: argparse.Namespace) -> int:
 
     from manuscript_guard.gates.review import file_digests
     from manuscript_guard.gates.revision import check_revision, rounds
-    from manuscript_guard.roundtrip import paragraph_text
 
     project, _ = load_project(args.path)
 
@@ -566,9 +569,17 @@ def cmd_respond(args: argparse.Namespace) -> int:
         if args.source:
             # The paragraphs as they stood when the comments were made, so a point anchored
             # to one can be checked against that paragraph and not merely its file.
+            # Hashed from the *source*, because that is what the gate re-hashes when it
+            # checks. Hashing the .docx text instead made the two representations - rendered
+            # prose against markdown carrying `{{bindings}}` - never equal, so the
+            # comparison could not fire and the check was dead code. Its test passed because
+            # the test built the baseline the way the gate reads it, not the way this
+            # command writes it.
+            from manuscript_guard.roundtrip import tagged_paragraphs
+
             document["submitted_paragraphs"] = {
-                name: hashlib.sha256(text.encode("utf-8")).hexdigest()
-                for name, text in paragraph_text(args.source).items()
+                name: hashlib.sha256(entry[1].encode("utf-8")).hexdigest()
+                for name, entry in tagged_paragraphs(project).items()
             }
         path.write_text(
             yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
@@ -919,7 +930,20 @@ def cmd_build(args: argparse.Namespace) -> int:
         return 1
 
     if getattr(args, "annotated", False):
-        return _build_annotated(project, namespace, results, assembled, args)
+        # Wrapped like the ordinary build. Without this a pandoc failure - Zotero down
+        # being the common one - came out of the annotated path as a Python traceback
+        # instead of the message that names `--offline`.
+        try:
+            return _build_annotated(project, namespace, results, assembled, args)
+        except BuildError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            if not args.offline:
+                print(
+                    "  If Zotero is not running, `--offline` formats citations from "
+                    "references.bib instead.",
+                    file=sys.stderr,
+                )
+            return 2
 
     mode = OFFLINE if args.offline else LIVE
     # An unchecked build gets a name that says so. Left as `manuscript.docx` it is the file
@@ -934,6 +958,12 @@ def cmd_build(args: argparse.Namespace) -> int:
         result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
     except BuildError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
+        if not args.offline:
+            print(
+                "  If Zotero is not running, `--offline` formats citations from "
+                "references.bib instead.",
+                file=sys.stderr,
+            )
         return 2
 
     print(f"built {result.output} ({result.mode})")

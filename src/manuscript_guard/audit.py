@@ -96,6 +96,13 @@ def normalise_number(text: str) -> str:
 #: "77/412", "1.2 ± 0.3". Deliberately not general — an atom carrying any letter is left
 #: alone, because splitting one would let an email address or a model name match on whatever
 #: digit it happens to contain, and a false match is worse than an unexplained number.
+#:
+#: A short statistical label closed up against its own number — "n=8,393", "p=0.03", "df=2" —
+#: is stripped first. Written with spaces it is already two tokens and reads correctly;
+#: written closed up it is one atom that no longer looks like a number at all, and on a real
+#: paper's supplements thirty numbers were reported unexplained for that reason alone.
+#: Bounded to three letters, so it strips a label and never a word.
+_LABELLED = re.compile(r"^[A-Za-z]{1,3}\s*=\s*")
 _COMPOUND = re.compile(r"^[\d.,%\s ]*\d[\d.,%\s ]*(?:[-–—/±:x×][\d.,%\s ]*\d[\d.,%\s ]*)+$")
 
 
@@ -108,11 +115,11 @@ def parts_of(text: str) -> list[str]:
     are the paper's actual results rather than incidental numbers: the ones an audit exists
     to check are the ones it was worst at.
     """
-    stripped = text.strip().strip("()[]")
+    stripped = _LABELLED.sub("", text.strip().strip("()[]"), count=1)
     if not _COMPOUND.match(stripped):
-        return [normalise_number(text)]
+        return [normalise_number(stripped)]
     found = [normalise_number(part.group(0)) for part in _NUMBER.finditer(stripped)]
-    return found or [normalise_number(text)]
+    return found or [normalise_number(stripped)]
 
 
 def _numbers_in(text: str) -> set[str]:

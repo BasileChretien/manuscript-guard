@@ -1464,6 +1464,16 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **The submission pack left out the response to reviewers.** `respond` wrote the letter into
+  `build/` and nothing collected it, so a resubmission pack held the revised manuscript and no
+  answer to the reviewers — the document a resubmission is judged on as much as the paper, and
+  the only artefact whose claims G13 actually checks. It is generated at pack time from the
+  revision records rather than read out of `build/`, by the same function `respond` calls: two
+  renderers would drift, and the drift would be invisible because both produce something that
+  looks like a letter. A stale letter is worse than an absent one — a checked set of claims
+  and an unchecked document making them. The manifest now also says which submission the pack
+  is, because "which version did the journal get" is a question about a round as much as about
+  a checksum.
 - **Two gates blocked the work and had no command behind them.** G11 refuses a submission
   until a panel exists and every reviewer has filed a record; G10 refuses until every figure
   has been read. Both asked for a SHA-256 the toolkit computed and never printed — G10's is a

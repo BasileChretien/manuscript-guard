@@ -145,6 +145,50 @@ def title_page(project: Project) -> str:
     return "\n".join(lines)
 
 
+def response_letter(project: Project) -> str | None:
+    """The point-by-point response, or `None` if this is not a resubmission.
+
+    Generated here rather than read out of `build/`, so the pack carries the letter that
+    matches the revision records rather than whatever `respond` last happened to write. A
+    response is made almost entirely of claims about the paper — "we have revised the
+    Methods" — and G13 checks each of them against the baseline the round recorded. Sending a
+    stale letter would mean a checked set of claims and an unchecked document making them.
+    """
+    from manuscript_guard.gates.revision import rounds
+
+    found = rounds(project)
+    if not found:
+        return None
+
+    lines = ["# Response to reviewers", ""]
+    for number, path in found:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            continue
+        lines += [f"## Round {number} — {document.get('journal', '')}".rstrip(), ""]
+        lines += [
+            "We thank the reviewers for their comments. Each point is answered below, with "
+            "what changed in the manuscript.",
+            "",
+        ]
+        for reviewer in document.get("reviewers", []):
+            lines += [f"### {reviewer['id'].replace('-', ' ').title()}", ""]
+            for point in reviewer.get("points", []):
+                lines += [f"**{point['id']}.** {point['comment'].strip()}", ""]
+                response = str(point.get("response", "")).strip()
+                lines += [response or "_No response recorded._", ""]
+                rebutted = str(point.get("rebutted", "")).strip()
+                if rebutted:
+                    lines += [f"We have not made this change: {rebutted}", ""]
+                for entry in point.get("changed") or []:
+                    note = f" — {entry['note']}" if entry.get("note") else ""
+                    lines += [f"- Changed: {entry['kind']} `{entry['name']}`{note}"]
+                if point.get("changed"):
+                    lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _counts(project: Project):
     """What the title page declares to the editor: the main text, not the supplement."""
     from manuscript_guard.gates.numbers import source_files
@@ -306,11 +350,18 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         shutil.copy2(document, target)
         files.append(target)
 
-    for name, text in (
+    generated = [
         ("title-page.md", title_page(project)),
         ("credit-statement.md", credit_statement(project)),
         ("declarations.md", declarations(project)),
-    ):
+        # The document a resubmission is judged on as much as the manuscript, and the pack
+        # left it out entirely: `respond` wrote it to build/ and nothing collected it, so the
+        # one artefact whose claims G13 checks was the one not sent.
+        ("response-to-reviewers.md", response_letter(project)),
+    ]
+    for name, text in generated:
+        if text is None:
+            continue
         target = directory / name
         target.write_text(text, encoding="utf-8", newline="\n")
         files.append(target)
@@ -377,10 +428,19 @@ def _write_manifest(
             }
         )
 
+    from manuscript_guard.gates.revision import rounds
+
+    # Which submission this is. A pack for a revision and a pack for a first submission were
+    # indistinguishable, and "which version did the journal get" is a question about a round
+    # as much as about a checksum.
+    revisions = rounds(project)
     document = {
         "schema": "manuscript-guard/submission/1",
         "title": project.paper.get("title", ""),
         "journal": project.target_journal or "(none chosen)",
+        "submission": (
+            f"revision {max(n for n, _p in revisions)}" if revisions else "first submission"
+        ),
         "assembled_on": date.today().isoformat(),
         "checks": (
             "passed"

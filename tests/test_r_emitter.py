@@ -216,7 +216,18 @@ cases <- list(
   list("n", 1200, ">1000", TRUE),
   list("p", 0.04, "≤0.05", TRUE),
   list("p", 0.4, "<0.001", FALSE),
-  list("n", 900, ">1000", FALSE)
+  list("n", 900, ">1000", FALSE),
+  # Scientific notation, in the two spellings a paper uses. R had only the programmer's one,
+  # and its tolerance was computed from the mantissa alone - so it accepted a display of
+  # "9.99e-6" for a value of 1.2e-6 while Python refused it. A live divergence in the
+  # cross-language contract that this harness missed because no case carried an exponent.
+  list("p", 0.0000000032, "3.2e-9", TRUE),
+  list("p", 0.0000000032, "3.2 × 10⁻⁹", TRUE),
+  list("p", 0.0000000032, "3.2 x 10^-9", TRUE),
+  list("p", 0.0000000032, "3.2 × 10⁻⁸", FALSE),
+  list("p", 3.2, "3.2 × 10⁻⁹", FALSE),
+  list("v", 0.0000012, "1.2 × 10⁻⁶", TRUE),
+  list("v", 0.0000012, "9.99 × 10⁻⁶", FALSE)
 )
 for (c in cases) {
   ok <- tryCatch({ mg_check_display(c[[1]], c[[2]], c[[3]]); TRUE }, error = function(e) FALSE)
@@ -361,3 +372,36 @@ def test_r_refuses_a_number_typed_into_a_cell(tmp_path: Path) -> None:
     )
     assert out.returncode != 0
     assert "number written as text" in out.stderr
+
+
+ROUNDING_CHECK = """
+source("%(emit)s")
+# A rounding that turns a real number into zero is not a rounding of it.
+bad <- tryCatch({ mg_display("p", 0.0000000032, NULL, 2); TRUE }, error = function(e) FALSE)
+if (isTRUE(bad)) { cat("ACCEPTED 0.00\n"); quit(status = 1) }
+neg <- tryCatch({ mg_display("d", -0.000000001, NULL, 2); TRUE }, error = function(e) FALSE)
+if (isTRUE(neg)) { cat("ACCEPTED -0.00\n"); quit(status = 1) }
+# A value that really is zero still rounds.
+if (!identical(mg_display("z", 0, NULL, 2), "0.00")) { cat("ZERO BROKEN\n"); quit(status = 1) }
+if (!identical(mg_display("r", 3.4211, NULL, 2), "3.42")) { cat("BROKEN\n"); quit(status = 1) }
+cat("AGREED\n")
+"""
+
+
+def test_r_and_python_agree_that_rounding_to_zero_is_not_rounding(tmp_path: Path) -> None:
+    """The same case `tests/test_emit.py` asserts for Python.
+
+    A p-value of 3.2e-9 emitted with two decimal places was published as "0.00" in either
+    language, which is the emitter printing a number that is not the number.
+    """
+    script = tmp_path / "rounding.R"
+    script.write_text(ROUNDING_CHECK % {"emit": EMIT_R.as_posix()}, encoding="utf-8")
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "AGREED" in out.stdout

@@ -1464,6 +1464,27 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **A p-value of 3.2 × 10⁻⁹ was published as "0.00".** `digits=2` on any number smaller than
+  half a unit in the last place gives a string of zeroes, and nothing objected: an explicit
+  `display` has been checked against its value since round two, but a *derived* one was
+  checked against nothing at all. So the one field a reader looks at first could carry a
+  number that is not the number, silently, from a single ordinary call. A rounding that turns
+  a non-zero value into zero is now refused, and the message says what to write instead.
+
+  What to write instead had to exist first. `display="<0.001"` already worked; scientific
+  notation parsed only as `3.2e-9`, which no journal prints — so an author wanting the value
+  stated precisely had the choice of a programmer's notation or `digits=`, and `digits=` was
+  the trap above. `3.2 × 10⁻⁹`, `3.2 x 10^-9` and `3.2*10**-9` are now readings of the same
+  number, superscripts included, and each is still checked against the value it claims to
+  render: `3.2 × 10⁻⁸` on a value of 3.2e-9 is refused, and so is `3.2 × 10⁻⁹` on a value
+  of 3.2 — which would previously have parsed with `10⁻⁹` as a *unit*.
+
+  Mirroring it in R exposed a live divergence in the cross-language contract: R's tolerance
+  was computed from the mantissa alone, which the Python side had already fixed. R therefore
+  accepted a display of `9.99e-6` for a value of `1.2e-6` while Python refused it. The parity
+  harness missed it because not one of its cases carried an exponent — "both emitters have to
+  be exercised on the same input, or mirrors is only a claim", written in that file's own
+  comments, and true again.
 - **`bind --apply` was all or nothing.** It replaced every literal that matched exactly one
   published value, in one go. But a match is a suggestion and never evidence — the gate
   refuses a number *because* it matches one, since nothing may pass by coincidence — so a

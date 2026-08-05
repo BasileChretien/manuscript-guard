@@ -79,7 +79,20 @@ def derive_display(key: str, value: object, display: str | None, digits: int | N
                 f"{key}: a float needs `display` or `digits` so that every place it is "
                 f"quoted rounds it identically"
             )
-        return f"{value:.{digits}f}"
+        shown = f"{value:.{digits}f}"
+        # A rounding that turns a real number into zero is not a rounding of it. A p-value of
+        # 3.2e-9 emitted with digits=2 was published as "0.00": the emitter printing a number
+        # that is not the number, silently, in the field a reader looks at first. An explicit
+        # `display` is checked against its value, and a *derived* one was checked against
+        # nothing at all.
+        if float(value) != 0.0 and float(shown) == 0.0:
+            raise DisplayError(
+                f"{key}: rounding {value!r} to {digits} decimal place(s) gives {shown!r}, "
+                f"which is not this number. Say what the paper should print: "
+                f'display="<0.001" for a value too small to state, or display="3.2 × 10⁻⁹" '
+                f"for one worth stating precisely — both are checked against the value"
+            )
+        return shown
     if isinstance(value, str):
         return value
     raise DisplayError(f"{key}: values of type {type(value).__name__} need an explicit `display`")
@@ -148,13 +161,33 @@ _NUMERIC_DISPLAY = re.compile(
     (?P<sign>[-+−])?
     (?P<number>\d{1,3}(?:[,    ]\d{3})+(?:\.\d+)?
               |\d+(?:\.\d+)?)
-    (?:[eE](?P<exp>[-+]?\d+))?
+    # An exponent, in the two forms a paper is written in: 3.2e-9 as a programmer types it,
+    # and "3.2 × 10⁻⁹" as a journal prints it. Without the second, a p-value worth stating
+    # precisely could be written only in a notation no journal uses, and the alternative an
+    # author reaches for is `digits=` — which used to round it silently to "0.00".
+    (?:
+        [eE](?P<exp>[-+]?\d+)
+      | \s*[x×*]\s*10\s*(?:\^|\*\*)?\s*(?P<sup>[-+−]?[0-9]+|[⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)
+    )?
     # A unit carries no digits of its own. Without that, "(95% CI 2.10 to 7.02)" parses as
     # the unit of 3.84 and the whole interval is waved through as a rendering of one number.
     \s*(?P<unit>%|[^\s\d][^\d]*?)?
     \s*$""",
     re.VERBOSE,
 )
+
+#: Superscript digits, so "10⁻⁹" reads as an exponent rather than as a unit.
+_SUPERSCRIPT = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺", "0123456789-+")
+
+
+def _exponent_of(match: re.Match) -> str:
+    """The exponent a display carries, whichever of the two ways it was written."""
+    if match.group("exp"):
+        return match.group("exp")
+    written = match.group("sup")
+    if not written:
+        return ""
+    return written.translate(_SUPERSCRIPT).replace("−", "-")
 
 
 def _check_display_matches(key: str, value: object, display: str) -> None:
@@ -188,8 +221,9 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
         text = text.replace(separator, "")
     if match.group("sign") in ("-", "−"):
         text = f"-{text}"
-    if match.group("exp"):
-        text = f"{text}e{match.group('exp')}"
+    exponent_text = _exponent_of(match)
+    if exponent_text:
+        text = f"{text}e{exponent_text}"
 
     shown = float(text)
     compare = match.group("compare")
@@ -213,7 +247,7 @@ def _check_display_matches(key: str, value: object, display: str) -> None:
     # for anything with a negative exponent the check stopped meaning anything: a value of
     # 1.2e-6 accepted a display of "9.99e-6", of "1e-2", and even of "-9e-6". Large values
     # were fine only because the relative term dominates there.
-    exponent = int(match.group("exp") or 0)
+    exponent = int(exponent_text or 0)
     decimals = len(text.partition(".")[2].split("e")[0])
     tolerance = 0.5 * (10 ** (exponent - decimals)) + abs(float(value)) * 1e-9
     if abs(shown - float(value)) > tolerance:

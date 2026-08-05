@@ -41,10 +41,17 @@ mg_check_display <- function(key, value, display) {
   # the divergence the docstring above warns about. Found by a cross-language test rather
   # than by reading: both emitters have to be exercised on the same input, or "mirrors" is
   # only a claim.
+  # The exponent has two spellings, and the second is the one a paper is written in:
+  # 3.2e-9 as a programmer types it, "3.2 x 10^-9" with superscripts as a journal prints it.
+  # Without it a p-value worth stating precisely could be written only in a notation no
+  # journal uses, and the alternative an author reaches for is `digits`, which rounds it away.
   pattern <- paste0(
     "^\\s*(<=|>=|<|>|\u2264|\u2265)?\\s*([-+\u2212]?)",
     "((?:\\d{1,3}(?:[,\u00a0\u202f ]\\d{3})+(?:\\.\\d+)?)|(?:\\d+(?:\\.\\d+)?))",
-    "(?:[eE]([-+]?\\d+))?\\s*(%|[^\\s\\d][^\\d]*?)?\\s*$"
+    "(?:[eE]([-+]?\\d+)",
+    "|\\s*[x\u00d7*]\\s*10\\s*(?:\\^|\\*\\*)?\\s*",
+    "([-+\u2212]?[0-9]+|[\u207b\u207a]?[\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079]+))?",
+    "\\s*(%|[^\\s\\d][^\\d]*?)?\\s*$"
   )
   parts <- regmatches(display, regexec(pattern, display, perl = TRUE))[[1]]
   if (length(parts) == 0) {
@@ -60,8 +67,9 @@ mg_check_display <- function(key, value, display) {
   if (identical(parts[3], "-") || identical(parts[3], "\u2212")) {
     text <- paste0("-", text)
   }
-  if (nzchar(parts[5])) {
-    text <- paste0(text, "e", parts[5])
+  exponent <- mg_exponent(parts[5], parts[6])
+  if (nzchar(exponent)) {
+    text <- paste0(text, "e", exponent)
   }
 
   shown <- as.numeric(text)
@@ -82,7 +90,13 @@ mg_check_display <- function(key, value, display) {
   }
 
   decimals <- if (grepl("\\.", text)) nchar(sub("^[^.]*\\.", "", sub("e.*$", "", text))) else 0
-  tolerance <- 0.5 * (10^-decimals) + abs(value) * 1e-9
+  # Half a unit in the last place *shown*, and "shown" has to account for the exponent. The
+  # Python side learned this and R did not: from the mantissa alone the tolerance is a fixed
+  # ~0.005 however small the number is, so below about 1e-3 the check stopped meaning
+  # anything - R accepted a display of "9.99e-6" for a value of 1.2e-6 while Python refused
+  # it. The parity test never noticed, because none of its cases carried an exponent.
+  power <- if (nzchar(exponent)) as.integer(exponent) else 0L
+  tolerance <- 0.5 * (10^(power - decimals)) + abs(value) * 1e-9
   if (abs(shown - value) > tolerance) {
     stop(
       key, ": display '", display, "' reads as ", format(shown), ", but the value is ",
@@ -115,7 +129,22 @@ mg_display <- function(key, value, display, digits) {
   }
   if (is.numeric(value)) {
     if (!is.null(digits)) {
-      return(sprintf(paste0("%.", as.integer(digits), "f"), value))
+      shown <- sprintf(paste0("%.", as.integer(digits), "f"), value)
+      # A rounding that turns a real number into zero is not a rounding of it. A p-value of
+      # 3.2e-9 with digits = 2 was published as "0.00": the emitter printing a number that is
+      # not the number, silently. An explicit display is checked against its value; a derived
+      # one was checked against nothing.
+      if (value != 0 && as.numeric(shown) == 0) {
+        stop(
+          key, ": rounding ", format(value), " to ", as.integer(digits),
+          " decimal place(s) gives '", shown, "', which is not this number. Say what the ",
+          "paper should print: display = '<0.001' for a value too small to state, or ",
+          "display = '3.2 x 10^-9' for one worth stating precisely - both are checked ",
+          "against the value",
+          call. = FALSE
+        )
+      }
+      return(shown)
     }
     if (is.integer(value) || (is.finite(value) && value == round(value) && abs(value) < 1e15)) {
       return(format(value, scientific = FALSE, trim = TRUE))
@@ -144,6 +173,26 @@ mg_write_lf <- function(text, path) {
   on.exit(close(con), add = TRUE)
   writeLines(text, con, sep = "\n", useBytes = TRUE)
   invisible(path)
+}
+
+#' The exponent a display carries, whichever of its two spellings was used
+#'
+#' Mirrors `_exponent_of` in the Python emitter. "10^-9" and "10⁻⁹" are the same exponent,
+#' and a display written either way has to compare against the same number.
+#' @noRd
+mg_exponent <- function(plain, superscript) {
+  if (nzchar(plain)) {
+    return(plain)
+  }
+  if (!nzchar(superscript)) {
+    return("")
+  }
+  from <- strsplit("⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺−", "")[[1]]
+  to <- strsplit("0123456789-+-", "")[[1]]
+  out <- strsplit(superscript, "")[[1]]
+  matched <- match(out, from)
+  out[!is.na(matched)] <- to[matched[!is.na(matched)]]
+  paste(out, collapse = "")
 }
 
 #' The key fragment naming a second interval

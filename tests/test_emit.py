@@ -671,3 +671,66 @@ def test_a_code_list_cell_must_match_its_published_list(scratch: Path) -> None:
     # Checking must not rewrite what it is checking against: a validator that cleared the
     # published codes would make every later cell agree with an empty list.
     assert document["code_lists"] == published
+
+
+# ------------------------------------------------ a number too small to write as a decimal
+
+
+def test_a_rounding_that_destroys_the_number_is_refused(scratch: Path) -> None:
+    """`digits=2` on a p-value of 3.2e-9 published "0.00".
+
+    The emitter printing a number that is not the number, silently, in the field a reader
+    looks at first. An explicit `display` has been checked against its value since round two;
+    a *derived* display was checked against nothing at all.
+    """
+    with pytest.raises(DisplayError, match="which is not this number"):
+        emitter(scratch).value("p", 3.2e-9, digits=2)
+
+
+def test_a_value_that_really_is_zero_still_rounds(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.value("d", 0.0, digits=2)
+    assert em.document()["values"]["d"]["display"] == "0.00"
+
+
+def test_a_small_negative_is_refused_too(scratch: Path) -> None:
+    """"-0.00" is the same failure wearing a sign."""
+    with pytest.raises(DisplayError, match="which is not this number"):
+        emitter(scratch).value("d", -1e-9, digits=2)
+
+
+@pytest.mark.parametrize(
+    "display",
+    ["3.2 × 10⁻⁹", "3.2 x 10-9", "3.2 × 10^-9", "3.2e-9", "3.2E-9", "3.2*10**-9"],
+)
+def test_scientific_notation_is_a_rendering_a_journal_prints(scratch: Path, display) -> None:
+    """The way out of the case above, in the notation a paper is actually written in.
+
+    Only `3.2e-9` parsed before, so an author who wanted the number stated precisely had to
+    print it the way a programmer types it — and the alternative they reach for instead is
+    `digits=`, which rounds it to nothing.
+    """
+    em = emitter(scratch)
+    em.value(f"p{abs(hash(display)) % 9999}", 3.2e-9, display=display)
+
+
+def test_scientific_notation_is_still_checked_against_its_value(scratch: Path) -> None:
+    """Accepting the notation must not mean accepting whatever is written in it."""
+    with pytest.raises(DisplayError, match="reads as"):
+        emitter(scratch).value("p", 3.2e-9, display="3.2 × 10⁻⁸")
+
+
+def test_a_superscript_exponent_is_not_read_as_a_unit(scratch: Path) -> None:
+    """Before, "10⁻⁹" could only parse as the *unit* of 3.2 — which would have made
+    "3.2 × 10⁻⁹" a valid display for a value of 3.2."""
+    with pytest.raises(DisplayError):
+        emitter(scratch).value("p", 3.2, display="3.2 × 10⁻⁹")
+
+
+def test_the_tolerance_follows_the_exponent(scratch: Path) -> None:
+    """Half a unit in the last place *shown*. From the mantissa alone the tolerance is a
+    fixed ~0.005 however small the number is, and every display below 1e-3 passes."""
+    em = emitter(scratch)
+    em.value("ok", 1.2e-6, display="1.2 × 10⁻⁶")
+    with pytest.raises(DisplayError, match="reads as"):
+        em.value("bad", 1.2e-6, display="9.99 × 10⁻⁶")

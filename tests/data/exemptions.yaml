@@ -1,0 +1,107 @@
+# Every place the toolkit deliberately agrees not to look, and the test that proves a false
+# claim of it is caught.
+#
+# This file exists because the same mistake was made in nearly every feature: an escape
+# hatch whose first version *believed its own claim*.
+#
+#   `composed` exempted a table cell without checking that the exemption described it, so an
+#   entry declaring an empty template exempted whatever the cell actually said.
+#   `Verbatim`'s docstring said a script could not build one. It was an ordinary importable
+#   dataclass, and `Verbatim("mortality 4281003.55%")` passed.
+#   `file_sha256` scoping was a way to review one file and pass, until `review-uncovered`
+#   was invented alongside it.
+#   `parts` were folded into one project-wide allowlist, so a phantom entry in an empty
+#   table whitelisted its strings in another fragment.
+#
+# Each of those was found by a reviewer or by opening the file, never by a test — because
+# nothing required an exemption to prove itself. `tests/test_exemptions.py` fails the build
+# if any entry here has no `abuse` test, and if any exemption is missing from this file.
+#
+#   why:   what the exemption is for, in one line
+#   grants: what stops being checked once it is claimed
+#   abuse: the name of a test that claims it falsely and expects to be caught
+#   note:  where the guarantee genuinely stops, when it does
+
+exemptions:
+  - id: project-conventions
+    why: A project declares a number that is a convention of its own field.
+    grants: The number is accepted wherever the declared pattern matches.
+    abuse: tests/test_corruption.py::test_a_projects_own_allowlist_is_reported_not_silent
+    note: >-
+      Self-service by design - the gate is a tool for an author who wants it. What is
+      enforced is visibility: every run reports what the project's own allowlist accounted
+      for, so a project exempting half its numbers cannot read like one exempting none.
+
+  - id: project-terms
+    why: A project names a term containing digits that is not a measurement.
+    grants: The atom is accepted anywhere it appears.
+    abuse: tests/test_corruption.py::test_a_projects_own_allowlist_is_reported_not_silent
+
+  - id: value-label
+    why: A string value is a name or a period rather than a measurement.
+    grants: The string is not searched for numbers it might be smuggling.
+    abuse: tests/test_emit.py::test_a_string_value_may_not_smuggle_a_number
+
+  - id: value-unquoted
+    why: A value is an intermediate the manuscript is not expected to quote.
+    grants: Coverage stops requiring it to appear anywhere.
+    abuse: tests/test_corruption.py::test_unreferenced_result_is_caught
+
+  - id: audit-only-rule
+    why: A rule needed to read a rendered document, where citations are already formatted.
+    grants: The rule matches when auditing an existing paper.
+    abuse: tests/test_rules.py::test_every_rule_declares_what_it_must_not_absorb
+    note: >-
+      Deliberately kept out of the gate that reads source, because the pattern spans a whole
+      parenthetical and would file every number sharing a bracket with a year as structural.
+
+  - id: composed-cell
+    why: A table cell the emitter built from numbers rather than received as text.
+    grants: The cell's rendered text is not checked against published values.
+    abuse: tests/test_corruption.py::test_a_composed_claim_must_rebuild_the_cell_it_is_attached_to
+
+  - id: composed-parts
+    why: The displays the emitter derived for one composed cell.
+    grants: Those strings are accounted for inside that cell.
+    abuse: tests/test_corruption.py::test_a_composed_part_does_not_whitelist_another_table
+
+  - id: code-list-cell
+    why: A cell that is a join of the code list published beside it.
+    grants: The cell is checked against that list rather than against published values.
+    abuse: tests/test_emit.py::test_a_code_list_cell_must_match_its_published_list
+
+  - id: review-file-scope
+    why: A reviewer records which manuscript files they actually read.
+    grants: Their record only goes stale when one of those files changes.
+    abuse: tests/test_review.py::test_a_file_nobody_read_leaves_the_round_incomplete
+
+  - id: finding-overridden
+    why: A major review finding is left unaddressed for a stated reason.
+    grants: The finding stops blocking a submission build.
+    abuse: tests/test_review.py::test_an_unanswered_major_finding_blocks_a_submission
+    note: A recorded reason is a legitimate answer to a reviewer; silence is not.
+
+  - id: figure-presentational
+    why: A number in a figure is an axis tick or a scale label, not a result.
+    grants: The number is not required to match a published value.
+    abuse: tests/test_figures.py::test_a_declaration_without_a_reason_is_ignored
+
+  - id: build-skip-checks
+    why: An author wants a document to read while a gate is still failing.
+    grants: The build proceeds over failing gates.
+    abuse: tests/test_cli.py::test_build_skip_checks_builds_under_a_name_that_says_so
+    note: >-
+      The document is named UNCHECKED, so an unchecked build cannot pass for a checked one.
+      Reverting the source afterwards would otherwise leave `check` passing over a stale
+      document holding the wrong number.
+
+  - id: submit-skip-checks
+    why: Assembling a submission pack while the submission check fails.
+    grants: The pack is assembled anyway.
+    abuse: tests/test_cli.py::test_submit_refuses_while_the_submission_check_fails
+    note: The manifest records that checks were skipped, in words, inside the pack.
+
+  - id: import-force
+    why: Importing edits made against a version of the source that has since changed.
+    grants: The stale-document refusal is bypassed.
+    abuse: tests/test_roundtrip.py::test_a_document_built_from_older_source_is_refused

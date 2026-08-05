@@ -314,3 +314,42 @@ def test_the_example_claims_no_guideline_it_has_not_completed(project: Path) -> 
     projekt, _ = load_project(project)
     codes = {f.code for f in check_reporting(projekt).findings}
     assert "guideline-claimed-not-declared" not in codes
+
+
+def test_the_example_demonstrates_every_public_emitter_api() -> None:
+    """The example is the spec: it is what every new user copies.
+
+    `code_list()` existed for a day before anything in `example/` used it - the one API
+    added to make a reporting requirement satisfiable, undemonstrated in the artefact that
+    demonstrates the toolkit. Nothing noticed, because nothing was looking.
+    """
+    import ast
+    import re
+    from pathlib import Path as _Path
+
+    repo = _Path(__file__).resolve().parent.parent
+    source = (repo / "src" / "manuscript_guard" / "emit.py").read_text(encoding="utf-8")
+    public = {
+        name
+        for name in re.findall(r"\n    def ([a-z_]+)\(", source)
+        if not name.startswith("_")
+    }
+    # `document`, `render` and `add_input` are plumbing rather than things an analysis writes.
+    public -= {"document", "render", "add_input"}
+
+    # Parsed, not searched. `.code_list(` inside a comment or a docstring satisfies a text
+    # search, so an example could stop demonstrating an API while this still passed - the
+    # same "not checked looks like checked" shape this file exists to catch.
+    called: set[str] = set()
+    for path in (repo / "example").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        called |= {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+    missing = sorted(public - called)
+    assert not missing, (
+        f"public emitter API not demonstrated in example/: {missing}. Every new user copies "
+        f"that directory; an API absent from it is an API nobody will find."
+    )

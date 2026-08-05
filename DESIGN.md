@@ -1194,6 +1194,52 @@ is most of them. And an unchanged segment is rebuilt from the source rather than
 so only a segment the co-author actually edited loses its inline formatting — Word text is
 read as plain `<w:t>` runs, and that is the price of using the bookmark as identity.
 
+## An exemption has to prove itself
+
+The recurring defect of this project is not a wrong regex. It is an escape hatch whose first
+version *believed its own claim*.
+
+`composed` exempted a table cell without checking that the exemption described it, so an
+entry declaring an empty template exempted whatever the cell actually said. `Verbatim`'s
+docstring asserted that a script could not build one; it was an ordinary importable
+dataclass. `file_sha256` scoping was a way to review one file and pass until
+`review-uncovered` was invented alongside it. Composed `parts` were folded into one
+project-wide allowlist, so a phantom entry in a table with no rows whitelisted its strings
+in a different fragment. Every one of those was found by a reviewer or by opening a file,
+never by a test — because nothing required an exemption to be self-verifying.
+
+`tests/data/exemptions.yaml` lists every place the toolkit agrees not to look, what each one
+stops checking, and the test that claims it falsely and expects to be caught. The build
+fails if an entry has no such test, if the test it names does not exist, or if that test
+does not pass. It is the countermeasure `rule_cases.yaml` already applies to classifier
+rules, raised to the whole toolkit.
+
+The check runs in both directions, and the second is the one that rots: a list that only
+grows when somebody remembers to add to it is the same "not checked looks like checked" this
+repository keeps finding. So each exemption's spelling is looked for in the source — grant
+one in code and leave it off the list, and the build says so. It earned its place on its
+first run, by finding that the code-list exemption had no abuse test at all.
+
+## Assert on the artefact, not on what should have produced it
+
+Two defects shipped in the annotated copy because the tests checked an intermediate. The
+highlight never reached the page — the test asserted that the character styles existed in
+`styles.xml`, which stayed true while OOXML discarded them, since a run carries one
+`w:rStyle` and pandoc's Link writer had already taken it. And the copy contained no tables,
+because only *value* bindings were substituted. Neither failed anything; both were found by
+opening the document.
+
+`tests/test_artifact.py` unzips what was built and asserts what a reader would see: the
+highlights are present and coloured, the tables and the figure are there, no placeholder
+survived to the page, the source digest and the paragraph identifiers travel inside the
+file. Slower than testing the code that was supposed to do it, and the only kind of test
+that would have caught either.
+
+And `example/` is checked against the public API, because the example is the spec — every
+new user copies it. `code_list()` existed for a day with nothing in `example/` using it: the
+one API added to make a reporting requirement satisfiable, absent from the artefact that
+demonstrates the toolkit.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1435,6 +1481,14 @@ Closed since, and why each mattered:
 - **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
   this section; repeated here because it is the same shape as the two above — the toolkit
   judges what it can parse and says so, rather than guessing.
+- **The exemption inventory is open-world.** `tests/test_exemptions.py` checks that every
+  listed exemption has a passing abuse test, and that nothing listed has quietly left the
+  code. It cannot see an escape hatch nobody wrote down: a new grant, spelled some way the
+  mapping does not know, enters neither direction of the check. Closing it means routing
+  every grant through one registry — `exempt("composed-cell")` at the point of the decision
+  — so the set is discoverable rather than enumerated. The harness that exists to stop
+  "not checked looks like checked" has a version of it inside, and saying so is better than
+  the list implying a completeness it does not have.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone

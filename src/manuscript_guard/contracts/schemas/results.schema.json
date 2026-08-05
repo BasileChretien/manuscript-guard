@@ -139,6 +139,10 @@
           "enum": ["low", "high"],
           "description": "Which end of the interval. With `bounds`, this is what lets G2 read the order the bounds are quoted in and refuse an interval printed backwards."
         },
+        "level": {
+          "type": "string",
+          "description": "Which interval this bound belongs to, when one estimate carries more than one - \"90%\" beside a 95% CI, or \"95% CrI\" beside a frequentist one. Bounds are compared within a level and never across: a 90% interval nested inside a 95% one is correct, not a contradiction. Absent means the estimate's only interval."
+        },
         "same_as": {
           "type": "string",
           "description": "Another key this value is the same quantity as. G8 notices two keys holding the same number and goes quiet the moment they diverge, which is when it matters; nothing else in this file records that two keys were meant to agree. A declaration rather than an inference, because the question is about intent: ror.point, ror.ci_low and ror.ci_high share everything a heuristic could see and are supposed to differ."

@@ -80,6 +80,12 @@ def main() -> None:
     # No render timestamp: it is not part of the figure, and it would make every rebuild
     # look like a change to anything hashing the file.
     fig.savefig(OUT, format="svg", metadata={"Date": None})
+    # matplotlib writes the SVG through a text stream, so one figure comes out CRLF on
+    # Windows and LF on Linux. Everything downstream hashes the bytes, so re-running this
+    # script on Windows invalidated the figure's own review record and its render manifest
+    # and reported a change nobody had made - the trap `writeLines` set for the R emitter,
+    # here in the Python path, in the example a new user copies.
+    OUT.write_bytes(OUT.read_bytes().replace(b"\r\n", b"\n"))
     # A raster alongside the vector: journals ask for one, and it is what a reviewer
     # actually looks at. Both are the same figure, so they share one review record.
     fig.savefig(OUT.with_suffix(".png"), format="png", dpi=300)

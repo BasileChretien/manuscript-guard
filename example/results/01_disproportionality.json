@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "b6d3d85f13d9eda859bd2945d360492784102f2f89fe39062e06d574e369fd45",
-    "generated_at": "2026-08-04T08:16:03+00:00",
+    "generated_by_sha256": "0e86c1ed4b7a15d989fbd205a2f6365369941c5f4bc5af778893500afea43e80",
+    "generated_at": "2026-08-05T04:47:49+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.1.0"
     },
     "vcs": {
-      "sha": "12f3971417c0e5ee279a5345f63574dcdf126128",
+      "sha": "7ebdc4de04156549a4771568adef6f8ec5d424a4",
       "dirty": true,
-      "branch": "main"
+      "branch": "feat/interval-levels"
     },
     "inputs": [
       {
@@ -79,6 +79,22 @@
       "digits": 2,
       "bounds": "ror.point",
       "bound": "high"
+    },
+    "ror.ci90_low": {
+      "value": 3.023486029492708,
+      "display": "3.02",
+      "digits": 2,
+      "bounds": "ror.point",
+      "bound": "low",
+      "level": "90%"
+    },
+    "ror.ci90_high": {
+      "value": 4.887115137914459,
+      "display": "4.89",
+      "digits": 2,
+      "bounds": "ror.point",
+      "bound": "high",
+      "level": "90%"
     },
     "table2x2.a": {
       "value": 77,

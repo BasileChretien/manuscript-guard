@@ -43,6 +43,8 @@ def main() -> None:
     se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
     low = math.exp(math.log(ror) - 1.96 * se)
     high = math.exp(math.log(ror) + 1.96 * se)
+    low90 = math.exp(math.log(ror) - 1.645 * se)
+    high90 = math.exp(math.log(ror) + 1.645 * se)
 
     years = sorted({int(r["year"]) for r in rows})
     serious = sum(
@@ -64,6 +66,12 @@ def main() -> None:
     # numbers. It checks that the bounds bracket the estimate, and records which end each
     # bound is - which is what lets G2 refuse an interval quoted backwards in prose.
     em.interval("ror", ror, low, high, digits=2)
+
+    # A second interval on the same estimate is named by its level, and reuses ror.point
+    # rather than publishing the estimate twice. Writes ror.ci90_low and ror.ci90_high;
+    # each level is checked against the estimate and never against the other, because a
+    # 90% interval nested inside a 95% one is correct rather than a contradiction.
+    em.interval("ror", low=low90, high=high90, level="90%", digits=2)
 
     em.value("table2x2.a", a, quoted=False)
     em.value("table2x2.b", b, quoted=False)

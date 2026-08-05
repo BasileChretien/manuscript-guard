@@ -1,9 +1,9 @@
 {
   "schema": "manuscript-guard/render/1",
   "rendered_by": "forest.py",
-  "rendered_by_sha256": "e6b76e5972d9aa05b4867eb042ed838b601b1ec55e322f609c5ff7e83dc9d180",
+  "rendered_by_sha256": "d0513dd70c9d040257b8cba1e2bca7df1ca724725de22aa98c20b595bff9b8b8",
   "outputs": {
     "forest.png": "6c474fec63295e2ac9067eb17f79754ad42d78fb00d9a410c53575c85bc419b7",
-    "forest.svg": "44bec14a809a2276be252345428779c21749ef1b1046c261c2e4181939c00d30"
+    "forest.svg": "64ed55e95e83953707922f4b59db91e04d9ab595902eb186151834051e66d703"
   }
 }

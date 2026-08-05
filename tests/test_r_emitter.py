@@ -44,6 +44,7 @@ em$value("ror.point", 3.4211, digits = 2)
 em$value("model.aic", 918.22, digits = 1, quoted = FALSE)
 em$value("cohort.label", "2015-2024")
 em$interval("prr", 2.5104, 1.8022, 3.4411, digits = 2)
+em$interval("prr", low = 1.9411, high = 3.1002, level = "90%%", digits = 2)
 em$table(
   "baseline",
   list("Group", em$cell("Exposed (n = {})", 412L), "ROR", "p", "n/N"),
@@ -138,6 +139,27 @@ def test_r_can_express_an_interval_at_all(r_project: Path) -> None:
     low, high = results.values["prr.ci_low"], results.values["prr.ci_high"]
     assert (low.bounds, low.bound) == ("prr.point", "low")
     assert (high.bounds, high.bound) == ("prr.point", "high")
+
+
+def test_r_and_python_derive_the_same_keys_for_a_level(r_project: Path) -> None:
+    """The same call in either language has to produce the same keys.
+
+    Otherwise a manuscript's bindings depend on which language the analysis was written in,
+    and porting an analysis silently breaks every sentence that quotes the second interval.
+    """
+    from manuscript_guard.emit import Emitter
+
+    results, report = load_results(r_project / "results")
+    assert report.ok, report.render()
+
+    python = Emitter(r_project / "analysis" / "01_r.R", root=r_project)
+    python.interval("prr", 2.5104, 1.8022, 3.4411, digits=2)
+    python.interval("prr", low=1.9411, high=3.1002, level="90%", digits=2)
+
+    from_r = {k for k in results.values if k.startswith("prr.")}
+    assert from_r == set(python.document()["values"]), from_r
+    assert results.values["prr.ci90_low"].level == "90%"
+    assert results.values["prr.ci90_low"].display == "1.94"
 
 
 BRACKET_CHECK = """

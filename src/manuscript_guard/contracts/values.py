@@ -42,6 +42,11 @@ class Value:
     # for exactly this reason since round two; prose had no equivalent.
     bounds: str | None = None
     bound: str | None = None
+    # Which interval this bound belongs to, when one estimate carries more than one: "90%"
+    # beside a 95% CI, or a credibility interval beside a frequentist one. Bounds are
+    # compared within a level and never across, because a 90% interval nested inside a 95%
+    # one is correct rather than a contradiction.
+    level: str | None = None
 
     @property
     def namespace(self) -> str:

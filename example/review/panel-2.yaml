@@ -1,7 +1,7 @@
 schema: manuscript-guard/panel/1
 round: 2
 opened_on: 2026-08-03
-manuscript_sha256: 2f5f33925d345ed4302054c3f395f53174da679f9b6b6ef8300687d841911e61
+manuscript_sha256: e8c48958152bbbdfc69e434eebd522225c8615a39e932cd8d18948193843dbb6
 blinded: true
 rationale: 'Deliberately not the same panel. Round one was built around the study
   design, and a second pass by the same remits would mostly confirm itself. These

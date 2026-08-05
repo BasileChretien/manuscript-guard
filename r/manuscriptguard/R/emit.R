@@ -146,6 +146,24 @@ mg_write_lf <- function(text, path) {
   invisible(path)
 }
 
+#' The key fragment naming a second interval
+#'
+#' Mirrors `_level_slug` in the Python emitter, and must keep mirroring it: the same call in
+#' either language has to produce the same keys, or a manuscript's bindings depend on which
+#' language the analysis was written in. "90%" -> "90", "95% CrI" -> "95cri".
+#' @noRd
+mg_level_slug <- function(level) {
+  slug <- tolower(gsub("[^0-9A-Za-z]", "", level))
+  if (!nzchar(slug)) {
+    stop(
+      "level '", level, "' has no letters or digits to name a key with; use something ",
+      "like '90%' or '95% CrI'",
+      call. = FALSE
+    )
+  }
+  slug
+}
+
 #' A cell that is a number written as text
 #'
 #' Mirrors `_NUMERIC_TEXT` in the Python emitter. This is the shape that used to slip
@@ -255,9 +273,13 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   }
 
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
-                    quoted = TRUE, note = NULL, bounds = NULL, bound = NULL) {
+                    quoted = TRUE, note = NULL, bounds = NULL, bound = NULL,
+                    level = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
+    }
+    if (is.null(bounds) && !is.null(level)) {
+      stop(key, " declares a level without being a bound of anything", call. = FALSE)
     }
     shown <- mg_display(key, value, display, digits)
     entry <- list(value = value, display = shown)
@@ -267,6 +289,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(note)) entry$note <- note
     if (!is.null(bounds)) entry$bounds <- bounds
     if (!is.null(bound)) entry$bound <- match.arg(bound, c("low", "high"))
+    if (!is.null(level)) entry$level <- level
     state$values[[key]] <- entry
     invisible(NULL)
   }
@@ -279,7 +302,31 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   # fragment records which end each bound is, which is what lets G2 refuse an interval quoted
   # backwards. The results file is a cross-language contract, and a rule enforced on one side
   # only is a rule an author steps around by switching language.
-  interval <- function(key, point, low, high, digits = NULL, unit = NULL, quoted = TRUE) {
+  #
+  # A second interval on the same estimate - a 90% CI beside the 95%, a credibility interval
+  # beside a frequentist one - is named by its `level`, and reuses the estimate rather than
+  # publishing it twice:
+  #
+  #   em$interval("ror", 3.8439, 2.1032, 7.0210, digits = 2)
+  #   em$interval("ror", low = 2.5104, high = 5.8722, level = "90%", digits = 2)
+  interval <- function(key, point = NULL, low = NULL, high = NULL, level = NULL,
+                       digits = NULL, unit = NULL, quoted = TRUE) {
+    if (is.null(low) || is.null(high)) {
+      stop(key, ": an interval needs both `low` and `high`", call. = FALSE)
+    }
+    point_key <- paste0(key, ".point")
+    if (is.null(point)) {
+      if (is.null(state$values[[point_key]])) {
+        stop(
+          key, ": no `point` given and ", point_key, " has not been emitted. Publish the ",
+          "estimate with its first interval, then add further levels",
+          call. = FALSE
+        )
+      }
+      point <- state$values[[point_key]]$value
+    } else {
+      value(point_key, point, digits = digits, unit = unit, quoted = quoted)
+    }
     if (!(low <= point && point <= high)) {
       stop(
         key, ": the interval does not bracket the estimate - ", format(low), " to ",
@@ -287,14 +334,14 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
         call. = FALSE
       )
     }
-    value(paste0(key, ".point"), point, digits = digits, unit = unit, quoted = quoted)
+    stem <- if (is.null(level)) "ci" else paste0("ci", mg_level_slug(level))
     value(
-      paste0(key, ".ci_low"), low, digits = digits, unit = unit, quoted = quoted,
-      bounds = paste0(key, ".point"), bound = "low"
+      paste0(key, ".", stem, "_low"), low, digits = digits, unit = unit, quoted = quoted,
+      bounds = point_key, bound = "low", level = level
     )
     value(
-      paste0(key, ".ci_high"), high, digits = digits, unit = unit, quoted = quoted,
-      bounds = paste0(key, ".point"), bound = "high"
+      paste0(key, ".", stem, "_high"), high, digits = digits, unit = unit, quoted = quoted,
+      bounds = point_key, bound = "high", level = level
     )
     invisible(NULL)
   }

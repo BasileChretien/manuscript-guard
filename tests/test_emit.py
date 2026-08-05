@@ -554,6 +554,91 @@ def test_an_interval_must_bracket_its_estimate(scratch: Path) -> None:
         emitter(scratch).interval("ror", 3.84, 7.02, 2.10, digits=2)
 
 
+# ------------------------------------------------ a second interval on one estimate
+
+
+def test_a_second_interval_is_named_by_its_level(scratch: Path) -> None:
+    """A 90% CI beside the 95% is ordinary in a disproportionality paper, and was
+    inexpressible: `interval()` wrote one fixed pair of key names, and declaring a second
+    pair by hand is now refused as a duplicated bound."""
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    em.interval("ror", low=2.5104, high=5.8722, level="90%", digits=2)
+    values = em.document()["values"]
+    assert values["ror.ci90_low"]["display"] == "2.51"
+    assert values["ror.ci90_low"]["bounds"] == "ror.point"
+    assert values["ror.ci90_low"]["level"] == "90%"
+    assert values["ror.ci_low"]["display"] == "2.10", "the first interval is untouched"
+    assert "level" not in values["ror.ci_low"]
+
+
+def test_a_second_interval_does_not_republish_the_estimate(scratch: Path) -> None:
+    """Two keys holding one number is the thing G8 exists to watch; `same_as` is the way to
+    say it deliberately. So omitting `point` reuses the estimate rather than copying it."""
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    em.interval("ror", low=2.5104, high=5.8722, level="90%", digits=2)
+    assert sorted(em.document()["values"]) == [
+        "ror.ci90_high",
+        "ror.ci90_low",
+        "ror.ci_high",
+        "ror.ci_low",
+        "ror.point",
+    ]
+
+
+def test_a_second_interval_must_bracket_the_estimate_it_reuses(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    with pytest.raises(DisplayError, match="does not bracket"):
+        em.interval("ror", low=4.10, high=5.87, level="90%", digits=2)
+
+
+def test_a_level_without_an_estimate_to_attach_to_is_refused(scratch: Path) -> None:
+    """Rather than inventing `ror.point` from the bounds, which is a computed estimate the
+    analysis never produced."""
+    with pytest.raises(DisplayError, match="has not been emitted"):
+        emitter(scratch).interval("ror", low=2.51, high=5.87, level="90%", digits=2)
+
+
+def test_an_interval_needs_both_ends(scratch: Path) -> None:
+    with pytest.raises(DisplayError, match="both `low` and `high`"):
+        emitter(scratch).interval("ror", 3.84, low=2.10, digits=2)
+
+
+@pytest.mark.parametrize(
+    ("level", "key"),
+    [
+        ("90%", "ror.ci90_low"),
+        ("95% CrI", "ror.ci95cri_low"),
+        ("one-sided 97.5", "ror.cionesided975_low"),
+    ],
+)
+def test_a_level_names_the_key_the_same_way_every_time(scratch: Path, level, key) -> None:
+    """Derived rather than asked for, so a reader of the manuscript source can tell which
+    interval a binding is without opening the results file — and so two analyses quoting a
+    90% CI produce the same key."""
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    em.interval("ror", low=2.5104, high=5.8722, level=level, digits=2)
+    assert key in em.document()["values"]
+
+
+def test_a_level_that_names_no_key_is_refused(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.interval("ror", 3.8439, 2.1032, 7.0210, digits=2)
+    with pytest.raises(DisplayError, match="no letters or digits"):
+        em.interval("ror", low=2.51, high=5.87, level="—", digits=2)
+
+
+def test_a_level_on_something_that_bounds_nothing_is_refused(scratch: Path) -> None:
+    """`level` alone says which interval a bound belongs to, and a value that bounds nothing
+    has no interval to belong to. Accepting it would put a field in the fragment that no
+    gate reads, which is how a declaration comes to look like a check."""
+    with pytest.raises(ValueError, match="without being a bound"):
+        emitter(scratch).value("ror.point", 3.84, digits=2, level="90%")
+
+
 def test_a_code_list_cell_must_match_its_published_list(scratch: Path) -> None:
     """The abuse of the code-list exemption, which had no test until the inventory asked.
 

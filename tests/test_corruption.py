@@ -480,8 +480,8 @@ def test_an_interval_quoted_backwards_in_prose_is_caught(project: Path) -> None:
     path = project / "manuscript" / "main.md"
     text = path.read_text(encoding="utf-8")
     swapped = text.replace(
-        "(95% CI {{results.ror.ci_low}} to\n{{results.ror.ci_high}})",
-        "(95% CI {{results.ror.ci_high}} to\n{{results.ror.ci_low}})",
+        "(95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}})",
+        "(95% CI {{results.ror.ci_high}} to {{results.ror.ci_low}})",
     )
     assert swapped != text, "the example must still quote the interval in one sentence"
     path.write_text(swapped, encoding="utf-8")
@@ -595,6 +595,75 @@ def test_a_bound_that_cannot_be_compared_says_so(project: Path) -> None:
     """Skipping it silently would make "not checked" read exactly like "checked"."""
     _rewrite_value(project, "ror.ci_low", value="about two", display="about two")
     assert "bound-uncheckable" in codes(gate_report(project))
+
+
+def _add_second_interval(project: Path, low: float, high: float, level: str = "90%") -> None:
+    """Give `ror.point` a second interval, the way `interval(level=…)` writes one."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    slug = "".join(c for c in level if c.isalnum()).lower()
+    for end, number in (("low", low), ("high", high)):
+        document["values"][f"ror.ci{slug}_{end}"] = {
+            "value": number,
+            "display": f"{number:.2f}",
+            "digits": 2,
+            "bounds": "ror.point",
+            "bound": end,
+            "level": level,
+        }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_second_interval_is_not_a_duplicated_bound(project: Path) -> None:
+    """Two intervals on one estimate is ordinary; four ends on one interval is not.
+
+    The bracketing check groups by (estimate, level), so declaring a 90% CI beside the 95%
+    gives two intervals rather than one with two lower bounds. Without the level it is a
+    duplicate, and rightly.
+    """
+    _add_second_interval(project, 2.51, 5.87)
+    assert not codes(gate_report(project)) & {"bound-duplicated", "estimate-outside-interval"}
+
+
+def test_a_second_interval_is_checked_like_the_first(project: Path) -> None:
+    """Naming a level must not be a way to stop the estimate being checked against it."""
+    _add_second_interval(project, 4.10, 5.87)
+    report = gate_report(project)
+    assert "estimate-outside-interval" in codes(report)
+    assert any("90%" in (f.message or "") for f in report.failures), report.render(project)
+
+
+def test_two_levels_quoted_in_one_sentence_are_not_compared(project: Path) -> None:
+    """"3.84 (95% CI 2.10 to 7.02; 90% CI 2.51 to 5.87)" is one sentence and two intervals.
+
+    Comparing the positions across levels made the 90% lower bound follow the 95% upper one
+    and read as a reversal — a false positive on the exact sentence the feature exists for.
+    """
+    _add_second_interval(project, 2.51, 5.87)
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nThe estimate was {{results.ror.point}} (95% CI {{results.ror.ci_low}} to "
+        "{{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to "
+        "{{results.ror.ci90_high}}).\n",
+        encoding="utf-8",
+    )
+    assert "interval-reversed" not in codes(gate_report(project))
+
+
+def test_the_second_interval_is_still_read_for_order(project: Path) -> None:
+    """Levels must partition the check, not switch it off."""
+    _add_second_interval(project, 2.51, 5.87)
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nThe 90% interval ran {{results.ror.ci90_high}} to {{results.ror.ci90_low}}.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert "interval-reversed" in codes(report)
+    assert any("90%" in (f.message or "") for f in report.failures)
 
 
 def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:

@@ -322,7 +322,10 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     sentence actually gets written.
 
     Judged per sentence, because two intervals quoted in successive sentences say nothing
-    about each other, and a paper may legitimately give the upper bound alone.
+    about each other, and a paper may legitimately give the upper bound alone. And per level
+    within a sentence, because "3.84 (95% CI 2.10 to 7.02; 90% CI 2.51 to 5.87)" is one
+    sentence carrying two intervals, and the 90% lower bound follows the 95% upper one
+    perfectly correctly.
     """
     report = Report()
     quoted = [
@@ -348,17 +351,18 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
             # lower bound is restated later in the same sentence — "2.10 to 7.02, and the
             # lower bound of 2.10 excludes unity" — was reported as reversed, and a genuinely
             # reversed one restated the other way round went unreported.
-            seen.setdefault(f"{value.bounds}:{value.bound}", placeholder.start)
-        for estimate in {value.bounds for _p, value in group}:
-            low = seen.get(f"{estimate}:low")
-            high = seen.get(f"{estimate}:high")
+            seen.setdefault(f"{value.bounds}@{value.level or ''}:{value.bound}", placeholder.start)
+        for estimate, level in {(value.bounds, value.level or "") for _p, value in group}:
+            low = seen.get(f"{estimate}@{level}:low")
+            high = seen.get(f"{estimate}@{level}:high")
             if low is None or high is None or low < high:
                 continue
+            named = f"the {level} interval" if level else "the interval"
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="interval-reversed",
-                    message=f"the interval around {estimate} is quoted upper bound first, "
+                    message=f"{named} around {estimate} is quoted upper bound first, "
                     f"so it will print backwards",
                     path=path,
                     line=text.count("\n", 0, high) + 1,
@@ -384,9 +388,14 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
 
     Checked here rather than at load time so it reads as a finding an author can see beside
     the others, and so one broken interval does not stop the rest of the run.
+
+    Grouped by `(estimate, level)`, so an estimate carrying a 90% interval beside its 95% one
+    has two intervals checked rather than one interval with four ends. Both must bracket the
+    estimate; neither is compared with the other, because a 90% interval nested inside a 95%
+    one is correct.
     """
     report = Report()
-    intervals: dict[str, dict[str, Value]] = {}
+    intervals: dict[tuple[str, str], dict[str, Value]] = {}
     for value in namespace.values():
         if not value.bounds or not value.bound:
             continue
@@ -404,22 +413,25 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                 )
             )
             continue
-        ends = intervals.setdefault(target, {})
+        ends = intervals.setdefault((target, value.level or ""), {})
         if value.bound in ends:
+            named = f" {value.level}" if value.level else ""
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="bound-duplicated",
                     message=f"{ends[value.bound].key!r} and {value.key!r} both declare "
-                    f"themselves the {value.bound} bound of {value.bounds!r}",
+                    f"themselves the{named} {value.bound} bound of {value.bounds!r}",
                     path=value.source,
-                    hint="one of the two is the other end; an interval has one of each",
+                    hint="one of the two is the other end; an interval has one of each. A "
+                    "second interval on the same estimate needs its own `level=`",
                 )
             )
             continue
         ends[value.bound] = value
 
-    for target, ends in sorted(intervals.items()):
+    for (target, level), ends in sorted(intervals.items()):
+        about = f"the {level} interval around" if level else "the interval around"
         point = namespace[target]
         low, high = ends.get("low"), ends.get("high")
         declared = [v for v in (point, low, high) if v is not None]
@@ -436,7 +448,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                 Finding(
                     gate=GATE,
                     code="bound-uncheckable",
-                    message=f"the interval around {point.key!r} cannot be checked: "
+                    message=f"{about} {point.key!r} cannot be checked: "
                     f"{', '.join(sorted(unusable))} is not a number",
                     path=point.source,
                     hint="emit the estimate and its bounds as numbers with `digits=`; a value "
@@ -449,7 +461,7 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                 Finding(
                     gate=GATE,
                     code="interval-inverted",
-                    message=f"the interval around {point.key!r} runs {low.display} to "
+                    message=f"{about} {point.key!r} runs {low.display} to "
                     f"{high.display}: its lower bound is above its upper bound",
                     path=low.source or point.source,
                     hint="the two are swapped at the point they are computed; naming them "
@@ -471,7 +483,8 @@ def _declared_intervals(namespace: dict[str, Value]) -> Report:
                 Finding(
                     gate=GATE,
                     code="estimate-outside-interval",
-                    message=f"{point.key} is {point.display}, outside its own interval: the "
+                    message=f"{point.key} is {point.display}, outside "
+                    f"{'its ' + level if level else 'its own'} interval: the "
                     f"{end} bound is {value.display}",
                     path=point.source,
                     hint="a reader checks this one by eye in the first sentence of the "

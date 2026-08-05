@@ -80,8 +80,9 @@ The database contained {{results.cohort.n_reports}} reports, of which
 
 Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
 ratio of {{results.ror.point}} (95% CI {{results.ror.ci_low}} to
-{{results.ror.ci_high}}). The estimate is shown in Figure 1, and the counts it was computed
-from in Table 3, so a reader can reconstruct it.
+{{results.ror.ci_high}}; 90% CI {{results.ror.ci90_low}} to {{results.ror.ci90_high}}). The
+estimate is shown in Figure 1, and the counts it was computed from in Table 3, so a reader
+can reconstruct it.
 
 {{table.two_by_two}}
 

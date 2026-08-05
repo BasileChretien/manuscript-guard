@@ -1422,6 +1422,25 @@ Closed since, and why each mattered:
   reversed, and a genuinely reversed interval that named its upper bound again went
   unreported. A false positive on ordinary writing is the worse half — an author whose only
   recourse is to delete a true sentence learns to distrust the gate.
+- **One estimate could carry only one interval.** A 90% CI beside the 95%, or a credibility
+  interval beside a frequentist one, is ordinary in a disproportionality paper and was
+  inexpressible: `interval()` wrote one fixed pair of key names, and declaring a second pair
+  by hand became a duplicated bound the moment bracketing started being checked — so closing
+  that hole closed a door too. A bound now carries a `level`, `interval()` takes one and
+  derives the key from it (`"90%"` → `ror.ci90_low`), and omitting `point` reuses the estimate
+  rather than publishing it twice: two keys holding one number is what `same_as` is for and
+  what G8 watches. Bounds are compared within a level and never across, because a 90% interval
+  nested inside a 95% one is correct rather than a contradiction — in the fragment and in
+  prose alike, since "3.84 (95% CI 2.10 to 7.02; 90% CI 2.51 to 5.87)" is one sentence and two
+  intervals. The slug is derived identically in both languages, or a manuscript's bindings
+  would depend on which language its analysis was written in.
+- **The example's figure had a different digest on Windows and on Linux.** matplotlib writes
+  an SVG through a text stream, so the same picture came out CRLF on one and LF on the other,
+  and everything downstream hashes the bytes: re-running `figures/forest.py` on Windows
+  invalidated the figure's own review record and its render manifest, and reported a change
+  nobody had made. The committed manifest was therefore right only on the machine that wrote
+  it. Exactly the trap `writeLines` set for the R emitter, in the Python path, in the example
+  a new user copies from. The script normalises the file before recording it.
 - **R could not express an interval at all.** The R emitter had `value()` and no
   `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
   keys that no gate could know were one estimate — `interval-reversed` simply could not fire

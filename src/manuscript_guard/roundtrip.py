@@ -236,8 +236,16 @@ def tag(text: str, relative: str) -> str:
     return "".join(out)
 
 
-def tagged_paragraphs(project) -> dict[str, tuple[Path, str]]:
-    """The identifier of every source paragraph, and the paragraph it names."""
+def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
+    """The identifier of every source paragraph: its file, its text, and where it starts.
+
+    The offset is what makes a merge exact. Splicing by `text.replace(original, rebuilt, 1)`
+    rewrote the *first* paragraph reading that way — and a limitation restated in the
+    Abstract and again in the Discussion is ordinary in a paper, so an edit to the second
+    copy silently rewrote the first and left the second alone. Two corruptions, nothing
+    reported, after the identifier had been established precisely so nothing had to be
+    guessed. `bind` already learned this; the round trip had not.
+    """
     from manuscript_guard.gates.numbers import source_files
 
     found: dict[str, tuple[Path, str]] = {}
@@ -246,11 +254,14 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str]]:
         relative = path.relative_to(root).as_posix()
         slug = paragraph_slug(relative)
         text = path.read_text(encoding="utf-8")
+        cursor = 0
         for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
             stripped = para.strip()
+            start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
+            cursor += len(para)
             if not stripped or stripped.startswith("#") or re.fullmatch(r"\{\{[^}]*\}\}", stripped):
                 continue
-            found[_TAG.format(slug=slug, index=index)] = (path, stripped)
+            found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found
 
 

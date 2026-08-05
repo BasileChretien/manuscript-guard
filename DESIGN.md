@@ -1566,6 +1566,25 @@ Closed since, and why each mattered:
   numbers them, and records which paragraph each was attached to. A journal that sends a
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it.
+- **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
+  is the paragraph's position in the file, and applying a reorder moves text between slots -
+  so a `where:` anchor recorded before the reorder afterwards names different text. Content
+  is not the answer either: hashing the text means editing the paragraph a reviewer asked
+  about invalidates the anchor to it, which is the opposite failure. The real fix is to
+  persist the identifier in the source rather than derive it, and it is not done.
+- **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
+  captions and anything the co-author newly wrote carry none. Those edits are not merged,
+  not refused, and until now were not mentioned; the count of what went unexamined is
+  printed, which is a report rather than a fix. A number corrected in a table is the case
+  that matters, because that is where a stale number is likeliest to be.
+- **A transposed interval passes inside a composed table cell.** `em.interval()` records
+  which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
+  a transposition rebuilds the template exactly. The emitter refuses a transposed interval
+  through one API and renders one through another.
+- **`document-stale` can block the build that would clear it.** At `internal-review` the
+  gate fails, `build` refuses while anything fails, and `--skip-checks` writes a different
+  filename - so the stale document stays stale and the UNCHECKED copy becomes a second
+  permanent finding. `--output` is the escape and its message is then untrue.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone

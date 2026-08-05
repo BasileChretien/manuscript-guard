@@ -180,7 +180,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                     severity=FAIL if submission else INFO,
                     message=f"nobody has reviewed this manuscript ({required} round(s) expected)",
                     hint="the review-panel skill assembles a panel and records it; "
-                    "`manuscript-guard review --open` writes the file",
+                    "see the panel schema; `manuscript-guard review` shows where the review stands",
                 ),
             ),
             {"review_rounds": 0},

@@ -19,15 +19,16 @@ than a limitation. Comments become review findings, because a co-author's commen
 most valuable thing in the returned file and losing it on import would be worse than not
 importing at all.
 
-Both sides of the diff are pushed through the same `docx -> markdown` conversion, so what
-remains is the edit rather than pandoc's formatting habits.
+Everything is keyed on an invisible per-paragraph identifier carried into the document as
+a Word bookmark, so "which paragraph is this" is exact rather than a similarity score.
+That makes a move and a rewording orthogonal, and it makes sub-paragraph alignment
+possible: a paragraph can be reworded around its bindings without them being touched.
 """
 
 from __future__ import annotations
 
 import difflib
 import re
-import subprocess
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,19 +67,6 @@ class Comment:
     author: str
     date: str
     text: str
-
-
-@dataclass(frozen=True)
-class Hunk:
-    """One difference between the document we built and the one that came back."""
-
-    before: str
-    after: str
-    protected: str | None = None
-
-    @property
-    def applied(self) -> bool:
-        return self.protected is None
 
 
 def stamp_into(document: Path, digest: str) -> None:
@@ -150,85 +138,6 @@ def comments_in(document: Path) -> list[Comment]:
                 )
             )
     return out
-
-
-def as_markdown(pandoc: str, document: Path) -> str:
-    """One conversion, used for both sides of the diff.
-
-    Pandoc's `docx -> markdown` is not the inverse of `markdown -> docx`, so comparing the
-    returned document against the markdown we fed in would report pandoc's own formatting
-    choices as co-author edits. Rendering both sides the same way cancels them.
-    """
-    finished = subprocess.run(
-        [
-            pandoc,
-            str(document),
-            "-t",
-            "markdown_strict",
-            "--wrap=none",
-            "--track-changes=accept",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if finished.returncode != 0:
-        raise RoundTripError(f"pandoc could not read {document.name}:\n{finished.stderr}")
-    return finished.stdout
-
-
-def differences(before: str, after: str, protected: set[str]) -> list[Hunk]:
-    """Paragraph-level differences, each judged safe or protected.
-
-    Paragraphs rather than lines: a hard-wrapped file re-wraps on the way through Word, so a
-    line diff reports the whole document as changed. A paragraph is the unit an author edits
-    anyway.
-    """
-    old = [p.strip() for p in re.split(r"\n\s*\n", before) if p.strip()]
-    new = [p.strip() for p in re.split(r"\n\s*\n", after) if p.strip()]
-
-    hunks: list[Hunk] = []
-    matcher = difflib.SequenceMatcher(a=old, b=new, autojunk=False)
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "equal":
-            continue
-        was = "\n\n".join(old[i1:i2])
-        now = "\n\n".join(new[j1:j2])
-        hunks.append(Hunk(before=was, after=now, protected=_touches(was, now, protected)))
-    return hunks
-
-
-def source_paragraphs(project) -> list[tuple[Path, str]]:
-    """Every paragraph of the manuscript source, with the file it came from."""
-    from manuscript_guard.gates.numbers import source_files
-
-    out: list[tuple[Path, str]] = []
-    for path in source_files(project.path("manuscript")):
-        for para in re.split(r"\n\s*\n", path.read_text(encoding="utf-8")):
-            if para.strip():
-                out.append((path, para))
-    return out
-
-
-def locate(before: str, paragraphs: list[tuple[Path, str]]) -> tuple[Path, str] | None:
-    """The source paragraph a returned paragraph came from, or None if it is not certain.
-
-    Matched by similarity rather than equality, because the returned text has been through
-    Word and back. Ambiguity is refused rather than resolved: splicing an edit into the
-    wrong paragraph is the failure this whole command has to avoid, and a near-tie between
-    two paragraphs is exactly when a guess would be wrong.
-    """
-    scored = []
-    for path, para in paragraphs:
-        ratio = difflib.SequenceMatcher(a=_plain(para), b=_plain(before), autojunk=False).ratio()
-        scored.append((ratio, path, para))
-    scored.sort(key=lambda item: item[0], reverse=True)
-    if not scored or scored[0][0] < 0.6:
-        return None
-    if len(scored) > 1 and scored[1][0] > scored[0][0] - 0.05:
-        return None
-    return scored[0][1], scored[0][2]
 
 
 def _plain(text: str) -> str:
@@ -328,15 +237,135 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
     ]
 
 
-def _touches(before: str, after: str, protected: set[str]) -> str | None:
-    """Why this hunk may not be applied, or None if it may.
+#: A binding or a citation: the parts of a paragraph the author does not own.
+_PROTECTED = re.compile(r"\{\{[^}]*\}\}|\[@[^\]]*\]")
 
-    A protected string that survives the edit unchanged is fine — the co-author rewrote the
-    sentence around a number, which is ordinary. What is refused is a protected string that
-    the edit removed or altered, because the .md holds a binding there and applying the hunk
-    would replace the binding with whatever the co-author typed.
+
+def paragraph_text(document: Path) -> dict[str, str]:
+    """The text of every identified paragraph, keyed by its identifier.
+
+    Read from the XML rather than through pandoc, because pandoc discards the bookmarks and
+    the bookmark is the identity. The cost is inline formatting: `<w:t>` runs concatenate to
+    plain text, so a merged segment loses its bold. `realign` limits that to the segments
+    that actually changed.
     """
-    for rendered in protected:
-        if rendered and rendered in before and before.count(rendered) > after.count(rendered):
-            return rendered
-    return None
+    with zipfile.ZipFile(document) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+
+    found: dict[str, str] = {}
+    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
+        names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
+        if not names:
+            continue
+        text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", block, re.DOTALL))
+        found[names[0]] = re.sub(r"\s+", " ", _unescape(text)).strip()
+    return found
+
+
+def _unescape(text: str) -> str:
+    for entity, char in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"')):
+        text = text.replace(entity, char)
+    return text
+
+
+def segments(paragraph: str) -> tuple[list[str], list[str]]:
+    """Split a source paragraph into its prose and the parts the author does not own.
+
+    Returns `(prose, protected)` with `len(prose) == len(protected) + 1`, so the paragraph is
+    `prose[0] + protected[0] + prose[1] + ...`.
+    """
+    protected = _PROTECTED.findall(paragraph)
+    prose = _PROTECTED.split(paragraph)
+    return prose, protected
+
+
+def _flatten(text: str) -> str:
+    """Prose as it will appear in the document: emphasis markers gone, spaces normalised.
+
+    Prose is unchanged by rendering *except* for its markdown. `**striking**` reaches Word
+    as `striking`, so locating the source segment verbatim failed on any paragraph with
+    emphasis in it — which is most of them. Compared flattened, rebuilt from the original.
+    """
+    text = re.sub(r"(\*\*|__|\*|_|`)", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def realign(source: str, rendered: str, returned: str) -> str | None:
+    """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
+
+    The paragraph-level merge had to refuse anything carrying a binding, because splicing
+    the returned text in would replace `{{results.ror.point}}` with `3.84`. Refusing is safe
+    and, in a paper where most paragraphs quote a number, refuses almost everything.
+
+    Alignment makes the finer move possible. A source paragraph is prose and protected
+    tokens in alternation. Its prose appears verbatim in the rendered form — rendering only
+    changes the protected parts — so locating the prose segments in `rendered` reveals what
+    each token rendered to, *without needing to know how it renders*. That matters for
+    citations, whose rendering depends on a CSL style this code never sees.
+
+    Those rendered forms are then located in the returned text. If any is missing, or they
+    come back in a different order, the co-author changed a number or a citation and the
+    paragraph is refused. Otherwise the text between them is the new prose, and the
+    paragraph is rebuilt from the *source's* tokens and the *co-author's* words.
+
+    Searching is sequential, so a paragraph quoting two values that render the same string
+    still pairs them up in order rather than matching both to the first occurrence.
+
+    An unchanged prose segment is kept exactly as the source has it, which preserves its
+    markdown — only a segment the co-author actually edited loses its inline formatting.
+    """
+    prose, protected = segments(source)
+    if not protected:
+        return returned.strip() or None
+
+    flat = [_flatten(piece) for piece in prose]
+
+    # What each protected token rendered to: the gaps between the prose segments. Found
+    # without knowing how anything renders, which is what makes citations work - their
+    # rendering depends on a CSL style this code never sees.
+    rendered_tokens: list[str] = []
+    cursor = 0
+    if flat[0]:
+        at = rendered.find(flat[0])
+        if at < 0:
+            return None
+        cursor = at + len(flat[0])
+    for index in range(1, len(prose)):
+        piece = flat[index]
+        if piece:
+            at = rendered.find(piece, cursor)
+            if at < 0:
+                return None
+            rendered_tokens.append(rendered[cursor:at].strip())
+            cursor = at + len(piece)
+        elif index == len(prose) - 1:
+            rendered_tokens.append(rendered[cursor:].strip())
+            cursor = len(rendered)
+        else:
+            # Two protected tokens with nothing between them: there is no way to say where
+            # one rendering ends and the next begins.
+            return None
+    if len(rendered_tokens) != len(protected) or any(not token for token in rendered_tokens):
+        return None
+
+    # The same rendered forms, in the same order, in what came back.
+    new_prose: list[str] = []
+    cursor = 0
+    for token in rendered_tokens:
+        at = returned.find(token, cursor)
+        if at < 0:
+            return None  # the co-author changed a number or a citation
+        new_prose.append(returned[cursor:at])
+        cursor = at + len(token)
+    new_prose.append(returned[cursor:])
+
+    out: list[str] = []
+    for index, piece in enumerate(new_prose):
+        original = prose[index]
+        # Unchanged prose keeps the source's own markdown; only an edited segment is taken
+        # from Word, where inline formatting did not survive being read as plain text.
+        same = _flatten(original) == _flatten(piece)
+        out.append(original if same else piece)
+        if index < len(protected):
+            out.append(protected[index])
+    return "".join(out).strip() or None

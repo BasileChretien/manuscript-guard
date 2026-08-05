@@ -1175,12 +1175,24 @@ sees it as a deletion here and an insertion there and applies it a second time o
 reordering — compared on the flattened form, since the source carries bindings and the
 returned text carries what they rendered to, so the two are never equal as strings.
 
-**The conservative part, stated plainly.** A paragraph containing a binding or a citation is
-reported rather than merged, even when the edit is pure wording, because splicing returned
-text into it would lose the binding. In a paper where most paragraphs quote a number, that
-is most paragraphs — so this version carries copy-edits to prose and hands everything else
-back as a diff to apply by hand. Doing better means aligning the edit against the binding's
-position rather than the paragraph's, which is a real piece of work and not yet done.
+**Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
+and protected tokens in alternation, and its prose reaches Word unchanged except for its
+markdown — so locating the prose segments in the rendered form reveals what each token
+rendered to *without knowing how anything renders*. That last part is what makes citations
+work: their rendering depends on a CSL style this code never sees, and it does not need to.
+
+Those rendered forms are then found in the returned text. If one is missing, or they come
+back out of order, the co-author changed a number or a citation and the paragraph is
+refused. Otherwise the text between them is the new wording, and the paragraph is rebuilt
+from the *source's* tokens and the *co-author's* words. Searching is sequential, so a
+paragraph quoting two values that render the same string pairs them up in order rather than
+matching both to the first occurrence — the same collision that `bind` refuses to guess at.
+
+Two details are load-bearing. Prose is compared flattened, because `**striking**` reaches
+Word as `striking` and matching verbatim failed on any paragraph with emphasis in it, which
+is most of them. And an unchanged segment is rebuilt from the source rather than from Word,
+so only a segment the co-author actually edited loses its inline formatting — Word text is
+read as plain `<w:t>` runs, and that is the price of using the bookmark as identity.
 
 ## Known gaps
 
@@ -1449,9 +1461,13 @@ Closed since, and why each mattered:
   analysis or they fail the gate. That is the intended answer — the reported study period
   should be the data's actual range — but it is friction, and the finding's hint now says
   what to do rather than leaving the author to guess.
-- **`import` merges whole paragraphs, and only binding-free ones.** A wording change in a
-  paragraph that quotes a number is reported rather than applied. The safe version of
-  applying it needs sub-paragraph alignment against each binding's position.
+- **A merged segment loses its inline formatting.** Word text is read as plain `<w:t>` runs,
+  because the bookmark that identifies the paragraph is discarded by pandoc's markdown
+  writer. Only a segment the co-author actually edited is affected; unchanged prose is
+  rebuilt from the source.
+- **Two protected tokens with nothing between them cannot be aligned.**
+  `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
+  one rendering ends and the next begins. The paragraph is refused.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted. Rejecting a co-author's change means rejecting it in Word
   before sending it back.

@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import codecs
 import contextlib
-import difflib
+import re
 import sys
 from pathlib import Path
 
@@ -252,30 +252,27 @@ def _reorder(project, known: dict, order: list[str]) -> None:
 def cmd_import(args: argparse.Namespace) -> int:
     """Bring a co-author's edits back from Word, without losing the bindings.
 
-    Prose comes back; generated things do not. A paragraph carrying a binding or a citation
-    is reported rather than merged, because splicing returned text into it would replace the
-    binding with whatever the co-author's Word rendered - a checked manuscript quietly
-    becoming an unchecked one that still passes.
+    Everything is keyed on the invisible identifier each paragraph carries, so "which
+    paragraph is this" is an exact question. That makes moves and wording changes orthogonal:
+    a paragraph can be reordered, reworded, or both, and each is handled on its own terms.
     """
     import tempfile
 
-    from manuscript_guard.build.document import pandoc
+    from manuscript_guard.build.document import pandoc as _pandoc
     from manuscript_guard.gates.review import document_digest
     from manuscript_guard.roundtrip import (
-        GENERATED,
         RoundTripError,
-        as_markdown,
         comments_in,
-        differences,
-        locate,
         moves,
         paragraph_order,
-        source_paragraphs,
+        paragraph_text,
+        realign,
         stamp_of,
         tagged_paragraphs,
     )
 
-    project, _ = load_project(args.path)
+    _ = _pandoc
+    project, _loaded = load_project(args.path)
     edited = args.document
     if not edited.exists():
         print(f"manuscript-guard: {edited} does not exist", file=sys.stderr)
@@ -287,7 +284,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
-    current = document_digest(project)
     if carried is None:
         print(
             f"{edited.name} carries no record of the source it was built from, so there is "
@@ -295,7 +291,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"tool built can be imported."
         )
         return 1
-    if carried != current and not args.force:
+    if carried != document_digest(project) and not args.force:
         print(
             f"{edited.name} was built from a different version of the manuscript than the "
             f"one on disk. Merging edits made against text that has since changed is how a "
@@ -305,97 +301,73 @@ def cmd_import(args: argparse.Namespace) -> int:
         )
         return 1
 
-    namespace, results, _literature, _ = load_namespace(project)
-    assembled, _r = assemble(project, namespace, results)
+    namespace, results, _literature, _r = load_namespace(project)
+    assembled, _ar = assemble(project, namespace, results)
 
     with tempfile.TemporaryDirectory() as scratch:
         reference = Path(scratch) / "reference.docx"
         build_document(project, assembled, mode=OFFLINE, output=reference)
-        before = as_markdown(pandoc(), reference)
-    after = as_markdown(pandoc(), edited)
+        rendered = paragraph_text(reference)
+        original_order = paragraph_order(reference)
 
-    protected = {value.display for value in namespace.values() if value.display}
-    hunks = differences(before, after, protected)
+    returned = paragraph_text(edited)
+    known = tagged_paragraphs(project)
     comments = comments_in(edited)
 
-    if not hunks and not comments:
+    # A move needs no content from Word - the text is already on disk - so it is safe even
+    # for a paragraph solid with bindings, and it is handled separately from any rewording.
+    moved = moves([n for n in original_order if n in returned], paragraph_order(edited))
+
+    merged, refused, gone = [], [], []
+    for name, source in known.items():
+        was, now = rendered.get(name), returned.get(name)
+        if was is None:
+            continue
+        if now is None:
+            gone.append((name, source[1]))
+            continue
+        if re.sub(r"\s+", " ", was).strip() == re.sub(r"\s+", " ", now).strip():
+            continue
+        rebuilt = realign(source[1], was, now)
+        (merged if rebuilt else refused).append((name, source, was, now, rebuilt))
+
+    if not (moved or merged or refused or gone or comments):
         print("nothing came back: the document matches the manuscript on disk.")
         return 0
 
-    # Moves first, and separately, because a move needs no content from Word at all: the
-    # text is already on disk, so reordering it cannot lose a binding. That makes it safe
-    # for exactly the paragraphs the content merge has to refuse.
-    known = tagged_paragraphs(project)
-    returned_order = paragraph_order(edited)
-    original_order = [name for name in known if name in set(returned_order)]
-    moved = moves(original_order, returned_order)
     if moved:
         print(f"{len(moved)} paragraph(s) came back in a different place:")
-        for name, was, now in moved:
-            _path, text = known[name]
-            print(f"    position {was} -> {now}: {text.strip()[:90]}")
-        if args.apply:
-            _reorder(project, known, returned_order)
-            print("    reordered in the manuscript source.")
-        else:
-            print("    `--apply` moves them in the .md too.")
+        for name, was_at, now_at in moved:
+            print(f"    position {was_at} -> {now_at}: {known[name][1].strip()[:80]}")
 
-    # A moved paragraph is a delete here and an insert there to any diff, so the content
-    # merge would apply it a second time on top of the reordering - the same text twice, or
-    # spliced into the wrong place. Handled once, as a move.
-    from manuscript_guard.roundtrip import _plain
+    verb = "merging" if args.apply else "would merge"
+    for _name, source, _was, now, _rebuilt in merged:
+        where = source[0].relative_to(project.root).as_posix()
+        print(f"\n{verb} into {where}:")
+        print(f"    + {now.strip()[:150]}")
 
-    relocated = [_plain(known[name][1]) for name, _w, _n in moved]
+    for _name, _source, _was, now, _rebuilt in refused:
+        print("\nNOT merged:")
+        print(f"    + {now.strip()[:150]}")
+        print(
+            "    a number or a citation in this paragraph changed. Those come from the "
+            "analysis and the ledger; change them there, not in the document."
+        )
 
-    paragraphs = source_paragraphs(project)
-    applied, reported = [], []
-    for hunk in hunks:
-        # Compared on the flattened form: the source paragraph carries bindings and the
-        # returned one carries what they rendered to, so the two are never equal as strings.
-        if any(
-            difflib.SequenceMatcher(a=text, b=_plain(side), autojunk=False).ratio() > 0.8
-            for text in relocated
-            for side in (hunk.before, hunk.after)
-            if side.strip()
-        ):
-            continue
-        found = locate(hunk.before, paragraphs) if hunk.before.strip() else None
-        if hunk.protected or found is None or GENERATED.search(found[1]):
-            reported.append((hunk, found))
-        else:
-            applied.append((hunk, found))
+    for _name, text in gone:
+        print(f"\ndeleted in Word, left in place here: {text.strip()[:110]}")
+        print("    delete it in the .md yourself if that was intended.")
 
     if args.apply:
-        for hunk, found in applied:
-            path, para = found
+        if moved:
+            _reorder(project, known, paragraph_order(edited))
+            print(f"\nreordered {len(moved)} paragraph(s) in the manuscript source.")
+        for _name, source, _was, _now, rebuilt in merged:
+            path, original = source
             text = path.read_text(encoding="utf-8")
-            path.write_text(text.replace(para, hunk.after.strip(), 1), encoding="utf-8")
-        print(f"merged {len(applied)} paragraph(s) of prose into the manuscript source.")
-    else:
-        for hunk, found in applied:
-            where = found[0].relative_to(project.root).as_posix()
-            print(f"\nwould merge into {where}:")
-            print(f"    - {hunk.before.strip()[:140]}")
-            print(f"    + {hunk.after.strip()[:140]}")
-
-    for hunk, found in reported:
-        print("\nNOT merged:")
-        print(f"    - {hunk.before.strip()[:140]}")
-        print(f"    + {hunk.after.strip()[:140]}")
-        if hunk.protected:
-            keys = [k for k, v in namespace.items() if v.display == hunk.protected]
-            named = keys[0] if len(keys) == 1 else ", ".join(keys) or "a published value"
-            print(
-                f"    {hunk.protected!r} comes from {named}. Change the analysis, not the "
-                f"document; the manuscript holds a binding there."
-            )
-        elif found is None:
-            print("    could not tell which paragraph this was, so it was left alone.")
-        else:
-            print(
-                "    this paragraph carries a binding or a citation. Apply the wording by "
-                "hand in the .md so the binding survives."
-            )
+            path.write_text(text.replace(original, rebuilt, 1), encoding="utf-8", newline="\n")
+        if merged:
+            print(f"merged {len(merged)} reworded paragraph(s), bindings intact.")
 
     for comment in comments:
         print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
@@ -405,11 +377,8 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"were answered: `manuscript-guard review --open`."
         )
 
-    if not args.apply and applied:
-        print(
-            f"\n`manuscript-guard import {edited} --apply` merges the "
-            f"{len(applied)} safe one(s)."
-        )
+    if not args.apply and (moved or merged):
+        print(f"\n`manuscript-guard import {edited} --apply` applies the safe changes.")
     return 0 if args.apply else 1
 
 

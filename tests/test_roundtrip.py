@@ -15,11 +15,9 @@ from pathlib import Path
 import pytest
 
 from manuscript_guard.roundtrip import (
-    Hunk,
     comments_in,
-    differences,
-    locate,
-    source_paragraphs,
+    realign,
+    segments,
     stamp_into,
     stamp_of,
 )
@@ -142,35 +140,6 @@ def test_an_unstamped_document_is_refused(project: Path, tmp_path: Path) -> None
     assert main(["import", str(plain), str(project)]) == 1
 
 
-def test_a_hunk_that_drops_a_protected_value_is_flagged() -> None:
-    hunks = differences("The ratio was 3.84 overall.", "The ratio was 4.02 overall.", {"3.84"})
-    assert len(hunks) == 1
-    assert hunks[0].protected == "3.84"
-    assert not hunks[0].applied
-
-
-def test_a_hunk_that_keeps_the_value_is_not_flagged() -> None:
-    """Rewording the sentence around a number is ordinary, and must not be refused."""
-    hunks = differences(
-        "The ratio was 3.84 overall.", "Overall, the ratio was 3.84.", {"3.84"}
-    )
-    assert hunks and all(h.applied for h in hunks)
-
-
-def test_an_ambiguous_paragraph_is_not_located(project: Path) -> None:
-    """A near-tie between two paragraphs is exactly when a guess would be wrong."""
-    paragraphs = [(Path("a.md"), "The same sentence."), (Path("b.md"), "The same sentence.")]
-    assert locate("The same sentence.", paragraphs) is None
-
-
-def test_paragraphs_are_read_from_every_source_file(project: Path) -> None:
-    from manuscript_guard.contracts import load_project
-
-    projekt, _ = load_project(project)
-    found = source_paragraphs(projekt)
-    assert found and all(text.strip() for _path, text in found)
-
-
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:
     from manuscript_guard.cli import main
 
@@ -178,11 +147,6 @@ def test_a_document_with_no_comments_reports_none(project: Path) -> None:
         pytest.skip("pandoc is not installed")
     assert main(["build", str(project), "--offline"]) == 0
     assert comments_in(project / "build" / "manuscript.docx") == []
-
-
-def test_a_hunk_knows_whether_it_may_be_applied() -> None:
-    assert Hunk("a", "b").applied
-    assert not Hunk("a", "b", protected="3.84").applied
 
 
 def test_moves_reports_only_what_actually_moved() -> None:
@@ -246,3 +210,60 @@ def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: P
     assert sorted(was) == sorted(now), "nothing gained or lost"
     assert was != now, "the order must have changed"
     assert before.count("{{") == after.count("{{"), "every binding survives a move"
+
+
+# ------------------------------------------- alignment inside a paragraph with bindings
+
+
+def test_a_rewording_keeps_every_binding() -> None:
+    """The move the paragraph-level merge could not make.
+
+    Splicing returned text into a paragraph carrying a binding would replace it with the
+    literal it rendered to. Aligning on the rendered forms rebuilds the paragraph from the
+    source's tokens and the co-author's words instead.
+    """
+    source = "The ratio was {{results.ror.point}} overall [@smith2020]."
+    rendered = "The ratio was 3.84 overall (Smith 2020)."
+    out = realign(source, rendered, "The ratio was notably 3.84 overall (Smith 2020).")
+    assert out == "The ratio was notably {{results.ror.point}} overall [@smith2020]."
+
+
+def test_an_edited_number_refuses_the_whole_paragraph() -> None:
+    source = "The ratio was {{results.ror.point}} overall."
+    assert realign(source, "The ratio was 3.84 overall.", "The ratio was 4.02 overall.") is None
+
+
+def test_a_removed_citation_refuses_the_paragraph() -> None:
+    """A citation's rendering depends on a CSL style this code never sees. It is located by
+    the gap between the prose segments, so it is protected without being understood."""
+    source = "The ratio was high [@smith2020]."
+    assert realign(source, "The ratio was high (Smith 2020).", "The ratio was high.") is None
+
+
+def test_transposed_bounds_are_refused() -> None:
+    """Sequential search is what catches this: the bounds come back out of order."""
+    source = "({{results.ror.ci_low}} to {{results.ror.ci_high}})"
+    assert realign(source, "(2.10 to 7.02)", "(7.02 to 2.10)") is None
+
+
+def test_two_bindings_that_render_the_same_are_paired_in_order() -> None:
+    """The collision case again: searching sequentially pairs them up rather than matching
+    both to the first occurrence."""
+    source = "{{results.a}} and {{results.b}}"
+    out = realign(source, "1 and 1", "1 and, notably, 1")
+    assert out == "{{results.a}} and, notably, {{results.b}}"
+
+
+def test_unchanged_prose_keeps_its_own_markdown() -> None:
+    """Word text loses inline formatting, so only an edited segment is taken from it."""
+    source = "The **striking** ratio was {{results.ror.point}} here."
+    out = realign(source, "The striking ratio was 3.84 here.", "The striking ratio was 3.84 there.")
+    assert out is not None
+    assert "**striking**" in out, "the untouched segment keeps its emphasis"
+    assert "there" in out
+
+
+def test_segments_splits_prose_from_what_the_author_does_not_own() -> None:
+    prose, protected = segments("a {{results.x}} b [@key] c")
+    assert protected == ["{{results.x}}", "[@key]"]
+    assert len(prose) == len(protected) + 1

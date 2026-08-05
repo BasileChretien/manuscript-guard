@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/revision/1",
+  "title": "manuscript-guard revision round",
+  "description": "One round of external review: what a journal's reviewers asked, what was answered, and what actually changed as a result. The internal panel (G11) records a review this project commissioned; this records one it received. The point of writing it down in the same shape as everything else is that a response is a claim like any other - 'we have revised the Methods' is checkable against whether the Methods changed, and until now nothing checked it.",
+  "type": "object",
+  "required": ["schema", "round", "journal", "received_on", "submitted_files", "reviewers"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/revision/1" },
+    "round": { "type": "integer", "minimum": 1 },
+    "journal": { "type": "string", "minLength": 1 },
+    "editor": { "type": "string" },
+    "decision": {
+      "enum": ["major-revision", "minor-revision", "reject-and-resubmit", "accept-with-changes"],
+      "description": "The journal's verdict, in its own vocabulary."
+    },
+    "received_on": { "type": "string", "format": "date" },
+    "submitted_files": {
+      "type": "object",
+      "description": "The manuscript as the journal received it, one digest per file. Written when the round is opened, from the version that was submitted. This is what makes a response verifiable: a point claiming the Methods were revised can be checked against whether methods.md actually differs from what went out.",
+      "propertyNames": { "pattern": "^(?!.*\\.\\.)[^\\\\]+\\.md$" },
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "reviewers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "points"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "description": "As the journal names them: reviewer-1, reviewer-2, editor."
+          },
+          "points": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/point" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "required": ["id", "comment"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "comment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The reviewer's words, quoted rather than paraphrased. A paraphrase is where a point quietly becomes the easier point next to it."
+        },
+        "response": {
+          "type": "string",
+          "description": "What the authors say back. An empty response is an unanswered point, which blocks a resubmission."
+        },
+        "changed": {
+          "type": "array",
+          "description": "What changed because of this point. Each entry is checked: a manuscript file must actually differ from the submitted version, and a results key must exist. A response claiming a revision that did not happen is the specific failure this whole record exists to catch.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "name"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["manuscript", "results", "figure", "analysis"] },
+              "name": { "type": "string", "minLength": 1 },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "rebutted": {
+          "type": "string",
+          "description": "Why nothing changed. A reasoned disagreement is a legitimate answer to a reviewer and often the right one; silence is not. Recording it here is also what lets the response document say so in the author's own words rather than inventing agreement."
+        }
+      }
+    }
+  }
+}

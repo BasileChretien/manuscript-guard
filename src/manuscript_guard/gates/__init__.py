@@ -27,6 +27,7 @@ from manuscript_guard.gates.review import (
     open_panel,
     panels,
 )
+from manuscript_guard.gates.revision import check_revision, rounds
 from manuscript_guard.gates.writing import check_writing
 
 GATES = {
@@ -45,6 +46,8 @@ GATES = {
 }
 
 __all__ = [
+    "check_revision",
+    "rounds",
     "GATES",
     "check_citations",
     "check_consistency",

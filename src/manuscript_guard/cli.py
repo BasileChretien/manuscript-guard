@@ -13,6 +13,7 @@ import codecs
 import contextlib
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
@@ -33,6 +34,7 @@ from manuscript_guard.gates import (
     check_numbers,
     check_reporting,
     check_review,
+    check_revision,
     check_writing,
     content_digest,
     manuscript_digest,
@@ -104,6 +106,7 @@ def _run_gates(
         ("G9", lambda: check_methods(project)),
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
+        ("G13", lambda: check_revision(project, submission=at_submission)),
     ):
         reports.append(_guarded(name, gate))
 
@@ -380,6 +383,99 @@ def cmd_import(args: argparse.Namespace) -> int:
     if not args.apply and (moved or merged):
         print(f"\n`manuscript-guard import {edited} --apply` applies the safe changes.")
     return 0 if args.apply else 1
+
+
+
+def cmd_respond(args: argparse.Namespace) -> int:
+    """Open a revision round, or write the point-by-point response.
+
+    A response is a document made almost entirely of claims about the paper - "we have
+    revised the Methods" - and nothing checked any of them. Opening a round records the
+    manuscript as the journal received it, so each claim can be checked against whether the
+    file it names actually changed.
+    """
+    import yaml
+
+    from manuscript_guard.gates.review import file_digests
+    from manuscript_guard.gates.revision import check_revision, rounds
+
+    project, _ = load_project(args.path)
+
+    if args.open:
+        number = max((n for n, _p in rounds(project)), default=0) + 1
+        path = project.root / "revision" / f"round-{number}.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        document = {
+            "schema": "manuscript-guard/revision/1",
+            "round": number,
+            "journal": project.paper.get("target_journal", "the journal"),
+            "received_on": date.today().isoformat(),
+            "submitted_files": file_digests(project),
+            "reviewers": [
+                {
+                    "id": "reviewer-1",
+                    "points": [
+                        {
+                            "id": "1.1",
+                            "comment": "Quote the reviewer here, in their words.",
+                            "response": "",
+                        }
+                    ],
+                }
+            ],
+        }
+        path.write_text(
+            yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+            newline="\n",
+        )
+        print(f"opened {path.relative_to(project.root).as_posix()}")
+        print(
+            "  submitted_files records the manuscript as it stands now, which is what a\n"
+            "  claimed revision is checked against. Open the round *before* you start\n"
+            "  revising, or there is no baseline to compare with."
+        )
+        return 0
+
+    found = rounds(project)
+    if not found:
+        print("no revision rounds. `manuscript-guard respond --open` starts one.")
+        return 1
+
+    lines = ["# Response to reviewers", ""]
+    for number, path in found:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            continue
+        lines += [f"## Round {number} — {document.get('journal', '')}".rstrip(), ""]
+        lines += [
+            "We thank the reviewers for their comments. Each point is answered below, with "
+            "what changed in the manuscript.",
+            "",
+        ]
+        for reviewer in document.get("reviewers", []):
+            lines += [f"### {reviewer['id'].replace('-', ' ').title()}", ""]
+            for point in reviewer.get("points", []):
+                lines += [f"**{point['id']}.** {point['comment'].strip()}", ""]
+                response = str(point.get("response", "")).strip()
+                lines += [response or "_No response recorded._", ""]
+                rebutted = str(point.get("rebutted", "")).strip()
+                if rebutted:
+                    lines += [f"We have not made this change: {rebutted}", ""]
+                for entry in point.get("changed") or []:
+                    note = f" — {entry['note']}" if entry.get("note") else ""
+                    lines += [f"- Changed: {entry['kind']} `{entry['name']}`{note}"]
+                if point.get("changed"):
+                    lines.append("")
+
+    output = project.path("build") / "response-to-reviewers.md"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+    print(f"wrote {output.relative_to(project.root).as_posix()}")
+
+    report = check_revision(project, submission=args.submission)
+    print(report.render(project.root))
+    return 0 if report.ok else 1
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -1059,6 +1155,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="import even if it was built from older source"
     )
     importer.set_defaults(func=cmd_import)
+
+    respond = sub.add_parser(
+        "respond", help="open a revision round, or write the point-by-point response"
+    )
+    respond.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    respond.add_argument("--open", action="store_true", help="start a new round")
+    respond.add_argument("--submission", action="store_true")
+    respond.set_defaults(func=cmd_respond)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")
     explain.add_argument("file", type=Path)

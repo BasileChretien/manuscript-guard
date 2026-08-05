@@ -105,3 +105,13 @@ exemptions:
     why: Importing edits made against a version of the source that has since changed.
     grants: The stale-document refusal is bypassed.
     abuse: tests/test_roundtrip.py::test_a_document_built_from_older_source_is_refused
+
+  - id: point-rebutted
+    why: A reviewer's point is answered by disagreeing with it rather than by changing.
+    grants: The point stops needing a change it can be checked against.
+    abuse: tests/test_revision.py::test_an_empty_rebuttal_does_not_answer_anything
+    note: >-
+      Disagreeing with a reviewer is often the right answer and is not the same as ignoring
+      them. What is enforced is that the reason exists and is not blank - the record is what
+      makes it a decision rather than an omission, and it is what the response document
+      prints in the author's own words instead of inventing agreement.

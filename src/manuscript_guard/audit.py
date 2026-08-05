@@ -92,6 +92,29 @@ def normalise_number(text: str) -> str:
     return repr(round(value, 10)).rstrip("0").rstrip(".")
 
 
+#: An atom made of numbers and the characters that join them: "0.72–0.82", "2000-3999",
+#: "77/412", "1.2 ± 0.3". Deliberately not general — an atom carrying any letter is left
+#: alone, because splitting one would let an email address or a model name match on whatever
+#: digit it happens to contain, and a false match is worse than an unexplained number.
+_COMPOUND = re.compile(r"^[\d.,%\s ]*\d[\d.,%\s ]*(?:[-–—/±:x×][\d.,%\s ]*\d[\d.,%\s ]*)+$")
+
+
+def parts_of(text: str) -> list[str]:
+    """The numbers an atom carries, normalised. One for a plain number, two for an interval.
+
+    A confidence interval written as a range is one atom — "0.72–0.82" — and matching it as
+    a single string matched nothing, so an interval whose two bounds were both sitting in the
+    analysis outputs was reported as not found. On a real paper that was 29 of 232, and they
+    are the paper's actual results rather than incidental numbers: the ones an audit exists
+    to check are the ones it was worst at.
+    """
+    stripped = text.strip().strip("()[]")
+    if not _COMPOUND.match(stripped):
+        return [normalise_number(text)]
+    found = [normalise_number(part.group(0)) for part in _NUMBER.finditer(stripped)]
+    return found or [normalise_number(text)]
+
+
 def _numbers_in(text: str) -> set[str]:
     return {normalise_number(m.group(0)) for m in _NUMBER.finditer(_OPAQUE.sub(' ', text))}
 
@@ -219,7 +242,10 @@ def audit(
                 line=atom.line,
                 context=atom.line_text.strip()[:140],
             )
-            if candidate.normalised in values:
+            # Every number the atom carries has to be in the outputs, not just one of them:
+            # an interval is accounted for when both its bounds are, and "0.72-0.99" with
+            # only 0.72 published is exactly the discrepancy this command is for.
+            if all(part in values for part in parts_of(atom.text)):
                 report.matched.append(candidate)
             else:
                 report.unmatched.append(candidate)

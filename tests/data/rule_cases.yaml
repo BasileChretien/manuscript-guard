@@ -205,6 +205,34 @@ structural:
       # test_text.py asserts separately.
       - {text: "There were 2019 reports in the cohort.", atom: "2019"}
 
+  numbered-citation:
+    audit_only: true
+    accepts:
+      # An atom runs to the next space, so the preceding word comes with the marker — which
+      # is why the rule has to span it. A standalone marker loses its brackets to the
+      # tokeniser and arrives as the bare number.
+      - {text: "Editors shape rejection[1,2] in the field.", atom: "rejection[1,2"}
+      - {text: "As reported previously [11] the effect held.", atom: "11"}
+      - {text: "Shown in earlier work[13-15] and since.", atom: "work[13-15"}
+      - {text: "The pipeline (OEP 2026.1)[15] extracted them.", atom: "2026.1)[15"}
+    rejects:
+      # The bracketed run is integers only, so a bracketed interval keeps its decimal point
+      # and is left alone. Some journals write confidence intervals exactly this way, and
+      # absorbing one would file a paper's headline result as a citation marker.
+      - {text: "The interval was [0.72-0.82] overall.", atom: "0.72-0.82"}
+      - {text: "A total of 412 records[3] were kept, of which 77 were serious.", atom: "77"}
+
+  orcid:
+    accepts:
+      - {text: "Correspondence: A. Author (ORCID 0000-0002-7483-2489).", atom: "0000-0002-7483-2489"}
+      # The last group's check character may be X.
+      - {text: "ORCID 0000-0002-1825-009X was listed.", atom: "0000-0002-1825-009X"}
+    rejects:
+      # Four groups of four digits is a shape nothing measured shares, but a study period and
+      # a run of digits in the same sentence are the near misses worth pinning.
+      - {text: "The study ran 2015-2024 and included 4000 reports.", atom: "4000"}
+      - {text: "Reports rose from 1200-1400 over the period.", atom: "1200-1400"}
+
   age-band:
     accepts:
       - {text: "Adults aged 65+ years were excluded.", atom: "65+"}

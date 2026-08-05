@@ -18,6 +18,7 @@ from manuscript_guard.audit import (
     looks_like_reference,
     measure_discrimination,
     normalise_number,
+    parts_of,
     render,
     strip_bibliography,
 )
@@ -206,3 +207,107 @@ def test_a_dense_backing_set_earns_advice_about_raw_data(tmp_path: Path) -> None
     report = audit([paper], [raw])
     text = render(report, measure_discrimination(report.backing_values))
     assert "rather than the raw data" in text
+
+
+# ------------------------------------------------- an interval is two numbers, not one token
+
+
+@pytest.mark.parametrize(
+    ("atom", "expected"),
+    [
+        ("0.72–0.82", ["0.72", "0.82"]),
+        ("2000-3999", ["2000", "3999"]),
+        ("77/412", ["77", "412"]),
+        ("350", ["350"]),
+        ("3.84", ["3.84"]),
+        # Anything with a letter is left whole. Splitting an email address or a model name
+        # would let it match on whatever digit it happens to contain, and a false match is
+        # worse than an unexplained number.
+        ("claude-sonnet-4-5-20250929", ["claude-sonnet-4-5-20250929"]),
+        ("a.person@example.invalid", ["a.person@example.invalid"]),
+    ],
+)
+def test_the_numbers_an_atom_carries(atom: str, expected: list[str]) -> None:
+    assert parts_of(atom) == expected
+
+
+def test_an_interval_whose_bounds_are_both_published_is_found(tmp_path: Path) -> None:
+    """A confidence interval written as a range is one atom, and matching it as one string
+    matched nothing — so an interval sitting in the outputs was reported as not found.
+
+    Found on a real submitted paper: 29 of its 232 unexplained numbers were intervals, and
+    they are the paper's actual results rather than incidental numbers. The ones an audit
+    exists to check were the ones it was worst at.
+    """
+    outputs = tmp_path / "gini.csv"
+    outputs.write_text("estimate,lo,hi\n0.77,0.72,0.82\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The jackknife interval was 0.72–0.82.\n", encoding="utf-8")
+
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == []
+    assert any(c.text == "0.72–0.82" for c in report.matched)
+
+
+def test_an_interval_with_one_bound_missing_is_still_reported(tmp_path: Path) -> None:
+    """Every part has to be there, not just one. "0.72-0.99" with only 0.72 published is
+    exactly the discrepancy this command exists to find, and matching on either part would
+    have hidden it."""
+    outputs = tmp_path / "gini.csv"
+    outputs.write_text("estimate,lo,hi\n0.77,0.72,0.82\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The jackknife interval was 0.72–0.99.\n", encoding="utf-8")
+
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["0.72–0.99"]
+
+
+# ------------------------------------------------- what a submitted document is full of
+
+
+def test_vancouver_citations_are_not_unexplained_numbers(tmp_path: Path) -> None:
+    """Every numbered-reference journal prints [11], and an atom runs to the next space, so
+    each marker arrived dragging the preceding word with it. On a real paper that was 25
+    unexplained numbers, none of them a number anyone had written."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "Editors shape rejection[1,2] and outcomes[7,8]; see earlier work[13-15].\n"
+        "We included 412 records.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == []
+    assert report.classified >= 3
+
+
+def test_an_orcid_is_not_an_unexplained_number(tmp_path: Path) -> None:
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("A. Author (ORCID 0000-0002-7483-2489) wrote it.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == []
+
+
+def test_a_section_sign_reference_is_not_an_unexplained_number(tmp_path: Path) -> None:
+    """`§3.1` is a section reference in every journal that uses it, and only the word form
+    was recognised — which also missed "Section 4.2", because the number was undotted."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The model is given in §3.1, and validated in Section 4.2.\n", "utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == []
+
+
+def test_a_real_number_beside_all_of_that_is_still_reported(tmp_path: Path) -> None:
+    """The point of widening a rule is to make the remaining findings readable, not fewer."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "See §3.1 and earlier work[13-15]. A. Author (ORCID 0000-0002-7483-2489) "
+        "reports 9999 events among 412 records.\n",
+        encoding="utf-8",
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9999"]

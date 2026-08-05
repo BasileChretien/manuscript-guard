@@ -1380,6 +1380,20 @@ Added by the adversarial review, verified and **not** fixed:
   carry another outcome's number. Set membership is the backstop for the figure nobody
   scripted, and should be read as "no number here is a stranger", not as "every number here
   is the right one".
+- **The source-of-truth invariant does not survive a co-author round in Word, and a real
+  paper is the proof.** This toolkit rests on "Markdown is the permanent source of truth and
+  the .docx is a disposable build artifact". Run against a submitted pharmacology paper, the
+  main text turned out to be a `.docx`: the project began markdown-first, twelve rounds of
+  tracked changes happened in Word between May and July, none were back-ported, and the
+  markdown was eventually deleted as the losing copy. The supplements, which never went
+  through Word, are still markdown and still built from the pipeline.
+
+  So the invariant held exactly where the review loop did not touch it. `import` and the
+  paragraph round trip exist to prevent this and were built after the fact; whether they
+  actually hold a manuscript together through a real co-author round is untested, because no
+  paper has yet been through one with them in place. Until then, `audit` — the weaker
+  question, asked of a document nobody bound — is not a fallback for awkward cases. It is the
+  command that meets the situation a real paper is most likely to be in.
 
 Closed since, and why each mattered:
 
@@ -1464,6 +1478,23 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **`audit` reported a third of a real paper's citation markers as unexplained numbers.**
+  Pointed at a submitted pharmacology paper — 580 numeric tokens, 94 output files — it called
+  232 of them "not found in any output". Reading the list rather than the count: 25 were
+  Vancouver citation markers (`rejection[1,2]`, each dragging the preceding word in, because
+  an atom runs to the next space and only *author-year* citations had a rule); 29 were
+  confidence intervals written as ranges, matched as a single string `0.72–0.82` against
+  outputs holding the two bounds separately; 15 were `§3.1` section references, since only
+  the word form was recognised and its number was undotted, so "Section 4.2" failed too; and
+  14 were the ORCIDs and postcodes in the author block. Fixing those four took 232 to 151 on
+  the same paper.
+
+  The count was never wrong; it was unreadable, which is the same thing. A list where two in
+  three entries are the tool's own noise does not get triaged, it gets abandoned — and the
+  intervals are the sharpest case, because an interval is the paper's actual result and the
+  audit was worst precisely there. What remains at 151 is mostly the paper's own vocabulary
+  (`3-core`, `top-1%`), which is what `terms:` is for and is correctly reported as "this tool
+  does not know these words".
 - **A claim published through the results file came out green.**
 
       em.value("conclusion", "The drug causes liver failure and should be withdrawn")

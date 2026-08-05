@@ -11,7 +11,11 @@ schema: manuscript-guard/structural/1
 structural:
   - id: cross-reference
     why: A pointer to a table, figure or section.
-    pattern: '(?i)\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|box|panel|equation|eq\.?|section|chapter|step|item|supplementary\s+(?:table|figure|file|material|method)s?|supplement|additional\s+file)\s*[-–]?\s*S?\d+[A-Za-z]?\b'
+    # Two gaps a real paper found. `§` is a section reference in every journal that uses it
+    # and only the word form was recognised, so fifteen of that paper's unexplained numbers
+    # were §3.1, §2.4 and the like. And the number was `\d+`, undotted — so "Section 4.2"
+    # matched "Section 4" and left `4.2` as the atom, which the span then failed to cover.
+    pattern: '(?i)(?:\b(?:table|tables|figure|figures|fig\.?|figs\.?|appendix|annex|box|panel|equation|eq\.?|section|chapter|step|item|supplementary\s+(?:table|figure|file|material|method)s?|supplement|additional\s+file)\s*[-–]?\s*S?\d+(?:\.\d+)*[A-Za-z]?|§\s*\d+(?:\.\d+)*[A-Za-z]?)\b'
 
   - id: supplement-tag
     why: Supplement identifiers of the form S1, S2.
@@ -60,6 +64,27 @@ structural:
       existing paper meets "(Smith and Jones 2019)" as ordinary text. Without this every
       citation in the paper is reported as an unexplained number.
     pattern: '\((?:[^()]{0,80}?[A-Za-z][^()]{0,80}?)?\b(?:19|20)\d{2}[a-z]?(?:[;,]\s*[^()]{0,60})?\)|\b[A-Z][A-Za-z''-]+\s+(?:et al\.?|and\s+[A-Z][A-Za-z''-]+)\s*,?\s*\(?(?:19|20)\d{2}[a-z]?\)?'
+
+  - id: numbered-citation
+    # Audit only, for the same reason as the rule above: manuscript source writes [@key]
+    # and a bare [11] there is a hand-typed citation the citation gate is meant to catch.
+    audit_only: true
+    why: >-
+      A rendered Vancouver citation — [11], [1,2], [13-15] — which is what every
+      numbered-reference journal prints and therefore what auditing a submitted document
+      meets. Found on a real paper: 25 of its 232 unexplained numbers were citation markers,
+      each dragging the preceding word in with it because an atom runs to the next space.
+      The bracketed run is integers, commas, spaces and dashes only, so unlike the
+      author-year rule nothing measured can hide inside the span — "[0.72-0.82]", a
+      confidence interval some journals bracket, carries a decimal point and is not matched.
+    pattern: '[\w.%)\]]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
+
+  - id: orcid
+    why: >-
+      An ORCID is an identifier for a person, in the one place a paper lists them. Sixteen
+      digits in four groups, the last of which may be a check character X — a shape nothing
+      measured shares. Every author of a real paper contributed one unexplained number here.
+    pattern: '\b\d{4}-\d{4}-\d{4}-\d{3}[\dXx]\b'
 
   - id: age-band
     why: An age or duration band is a category label, not a measured value.

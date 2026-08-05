@@ -246,3 +246,106 @@ def test_opening_a_round_records_the_manuscript_as_submitted(project: Path) -> N
     )
     projekt, _ = load_project(project)
     assert document["submitted_files"] == file_digests(projekt)
+
+
+# ---------------------------------------------------------------- the resubmission pack
+
+
+def _answered(project: Path) -> None:
+    """A round with every point answered and the manuscript really revised."""
+    opened(
+        project,
+        [
+            {
+                "id": "1.1",
+                "comment": "The case definition is not stated.",
+                "response": "We have revised the Methods.",
+                "changed": [{"kind": "manuscript", "name": "main.md", "note": "definition added"}],
+            }
+        ],
+    )
+    revise(project)
+
+
+def test_the_response_letter_reaches_the_submission_pack(project: Path) -> None:
+    """The one artefact whose claims G13 actually checks was the one not sent.
+
+    `respond` wrote it into build/ and nothing collected it, so a resubmission pack held the
+    revised manuscript and no answer to the reviewers — the document a resubmission is judged
+    on as much as the paper.
+    """
+    from manuscript_guard.build import assemble_pack
+
+    _answered(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    pack = assemble_pack(load_project(project)[0], document)
+    letter = next(p for p in pack.files if p.name == "response-to-reviewers.md")
+    assert "The case definition is not stated." in letter.read_text(encoding="utf-8")
+
+
+def test_a_first_submission_has_no_response_letter(project: Path) -> None:
+    """A letter answering nobody is worse than none: an editor reads it as a resubmission."""
+    from manuscript_guard.build import assemble_pack
+
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    pack = assemble_pack(load_project(project)[0], document)
+    assert not any(p.name == "response-to-reviewers.md" for p in pack.files)
+    manifest = yaml.safe_load(pack.manifest.read_text(encoding="utf-8"))
+    assert manifest["submission"] == "first submission"
+
+
+def test_the_pack_says_which_submission_this_is(project: Path) -> None:
+    """A pack for a revision and a pack for a first submission were byte-indistinguishable
+    in this respect, and "which version did the journal get" is a question about a round as
+    much as about a checksum."""
+    from manuscript_guard.build import assemble_pack
+
+    _answered(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    manifest = yaml.safe_load(
+        assemble_pack(load_project(project)[0], document).manifest.read_text(encoding="utf-8")
+    )
+    assert manifest["submission"] == "revision 1"
+
+
+def test_the_packed_letter_is_generated_not_collected(project: Path) -> None:
+    """Read out of build/, the pack would send whatever `respond` last happened to write.
+
+    G13 checks the claims in the revision records; a stale letter means a checked set of
+    claims and an unchecked document making them.
+    """
+    from manuscript_guard.build import assemble_pack
+    from manuscript_guard.cli import main
+
+    _answered(project)
+    assert main(["respond", str(project)]) in (0, 1)
+
+    stale = project / "build" / "response-to-reviewers.md"
+    stale.write_text("# Nothing to see here\n", encoding="utf-8")
+
+    document = project / "build" / "manuscript.docx"
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    pack = assemble_pack(load_project(project)[0], document)
+    packed = next(p for p in pack.files if p.name == "response-to-reviewers.md")
+    assert "Nothing to see here" not in packed.read_text(encoding="utf-8")
+    assert "The case definition is not stated." in packed.read_text(encoding="utf-8")
+
+
+def test_the_letter_a_person_reads_is_the_letter_that_is_sent(project: Path) -> None:
+    """Two renderers would drift, and the drift would be invisible: both look like letters."""
+    from manuscript_guard.build.submission import response_letter
+    from manuscript_guard.cli import main
+
+    _answered(project)
+    assert main(["respond", str(project)]) in (0, 1)
+    written = (project / "build" / "response-to-reviewers.md").read_text(encoding="utf-8")
+    assert written == response_letter(load_project(project)[0])

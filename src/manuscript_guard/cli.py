@@ -640,40 +640,18 @@ def cmd_respond(args: argparse.Namespace) -> int:
         )
         return 0
 
-    found = rounds(project)
-    if not found:
+    # The same renderer the submission pack uses, so the letter an author reads here and the
+    # letter the journal receives cannot come apart.
+    from manuscript_guard.build.submission import response_letter
+
+    letter = response_letter(project)
+    if letter is None:
         print("no revision rounds. `manuscript-guard respond --open` starts one.")
         return 1
 
-    lines = ["# Response to reviewers", ""]
-    for number, path in found:
-        document = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if not isinstance(document, dict):
-            continue
-        lines += [f"## Round {number} — {document.get('journal', '')}".rstrip(), ""]
-        lines += [
-            "We thank the reviewers for their comments. Each point is answered below, with "
-            "what changed in the manuscript.",
-            "",
-        ]
-        for reviewer in document.get("reviewers", []):
-            lines += [f"### {reviewer['id'].replace('-', ' ').title()}", ""]
-            for point in reviewer.get("points", []):
-                lines += [f"**{point['id']}.** {point['comment'].strip()}", ""]
-                response = str(point.get("response", "")).strip()
-                lines += [response or "_No response recorded._", ""]
-                rebutted = str(point.get("rebutted", "")).strip()
-                if rebutted:
-                    lines += [f"We have not made this change: {rebutted}", ""]
-                for entry in point.get("changed") or []:
-                    note = f" — {entry['note']}" if entry.get("note") else ""
-                    lines += [f"- Changed: {entry['kind']} `{entry['name']}`{note}"]
-                if point.get("changed"):
-                    lines.append("")
-
     output = project.path("build") / "response-to-reviewers.md"
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+    output.write_text(letter, encoding="utf-8", newline="\n")
     print(f"wrote {output.relative_to(project.root).as_posix()}")
 
     report = check_revision(project, submission=args.submission)

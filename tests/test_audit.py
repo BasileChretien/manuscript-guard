@@ -225,10 +225,36 @@ def test_a_dense_backing_set_earns_advice_about_raw_data(tmp_path: Path) -> None
         # worse than an unexplained number.
         ("claude-sonnet-4-5-20250929", ["claude-sonnet-4-5-20250929"]),
         ("a.person@example.invalid", ["a.person@example.invalid"]),
+        # A short statistical label closed up against its number. With spaces it is already
+        # two tokens and reads correctly; closed up it stopped looking like a number at all.
+        ("n=8,393", ["8393"]),
+        ("p=0.03", ["0.03"]),
+        ("df=2", ["2"]),
+        # Three letters at most, so a label is stripped and a word never is.
+        ("beta=0.4", ["beta=0.4"]),
     ],
 )
 def test_the_numbers_an_atom_carries(atom: str, expected: list[str]) -> None:
     assert parts_of(atom) == expected
+
+
+def test_a_count_written_closed_up_is_found(tmp_path: Path) -> None:
+    """"n=8,393" is one atom and no longer looks like a number, so a count sitting in the
+    outputs was reported as unexplained — thirty of them on one real paper's supplements."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("group,n\nexposed,8393\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The exposed group (n=8,393) was analysed.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == []
+
+
+def test_a_labelled_count_that_is_wrong_is_still_reported(tmp_path: Path) -> None:
+    """Reading the label must not mean accepting whatever follows it."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("group,n\nexposed,8393\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The exposed group (n=9,999) was analysed.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["n=9,999"]
 
 
 def test_an_interval_whose_bounds_are_both_published_is_found(tmp_path: Path) -> None:

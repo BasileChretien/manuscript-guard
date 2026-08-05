@@ -1495,6 +1495,16 @@ Closed since, and why each mattered:
   audit was worst precisely there. What remains at 151 is mostly the paper's own vocabulary
   (`3-core`, `top-1%`), which is what `terms:` is for and is correctly reported as "this tool
   does not know these words".
+
+  The same paper's supplements — still markdown, 1766 tokens — added one more: `n=8,393`
+  written closed up is a single atom that no longer looks like a number at all, so thirty
+  counts sitting in the outputs were reported unexplained. With spaces, `n = 8,393` is
+  already two tokens and always read correctly, which is why nobody had noticed. A label of
+  up to three letters is stripped before the number is read; 278 → 248 on those files.
+  Deliberately *not* fixed there: forty-three four-digit-hyphen-four-digit tokens, which in a
+  bibliometrics paper are ISSNs. They have the same shape as a plain range — that paper also
+  writes `2000-3999` for a Scopus code band — so a rule for them would be a rule matching a
+  shape rather than naming values, which is the mistake this file records six times already.
 - **A claim published through the results file came out green.**
 
       em.value("conclusion", "The drug causes liver failure and should be withdrawn")

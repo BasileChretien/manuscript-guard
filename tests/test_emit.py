@@ -562,11 +562,12 @@ def test_a_code_list_cell_must_match_its_published_list(scratch: Path) -> None:
     fragment is what it is checked against - and a cell claiming to be a code list while
     saying something else must be refused.
     """
-    import json
+    import copy
 
     em = emitter(scratch)
     em.code_list("codes", [{"concept": "x", "system": "ICD-10", "codes": ["K71.0"]}])
     document = em.document()
+    published = copy.deepcopy(document["code_lists"])
     # The emitter's own output, then the claim falsified: the cell says something the
     # published list does not.
     document["tables"]["codes"]["rows"][0][2] = "K71.0, and 4281003.55 besides"
@@ -582,4 +583,6 @@ def test_a_code_list_cell_must_match_its_published_list(scratch: Path) -> None:
         document.get("code_lists"),
     )
     assert any(p.code == "code-list-does-not-match" for p in problems), [p.code for p in problems]
-    assert json.dumps(document["code_lists"])  # the list itself is untouched
+    # Checking must not rewrite what it is checking against: a validator that cleared the
+    # published codes would make every later cell agree with an empty list.
+    assert document["code_lists"] == published

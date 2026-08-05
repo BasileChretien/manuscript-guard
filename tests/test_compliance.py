@@ -323,6 +323,7 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     added to make a reporting requirement satisfiable, undemonstrated in the artefact that
     demonstrates the toolkit. Nothing noticed, because nothing was looking.
     """
+    import ast
     import re
     from pathlib import Path as _Path
 
@@ -336,8 +337,18 @@ def test_the_example_demonstrates_every_public_emitter_api() -> None:
     # `document`, `render` and `add_input` are plumbing rather than things an analysis writes.
     public -= {"document", "render", "add_input"}
 
-    used = " ".join(p.read_text(encoding="utf-8") for p in (repo / "example").rglob("*.py"))
-    missing = sorted(name for name in public if f".{name}(" not in used)
+    # Parsed, not searched. `.code_list(` inside a comment or a docstring satisfies a text
+    # search, so an example could stop demonstrating an API while this still passed - the
+    # same "not checked looks like checked" shape this file exists to catch.
+    called: set[str] = set()
+    for path in (repo / "example").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        called |= {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+    missing = sorted(public - called)
     assert not missing, (
         f"public emitter API not demonstrated in example/: {missing}. Every new user copies "
         f"that directory; an API absent from it is an API nobody will find."

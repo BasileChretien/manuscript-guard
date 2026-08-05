@@ -1481,6 +1481,14 @@ Closed since, and why each mattered:
 - **A fence tagged with a language nothing can lex is read as prose.** Listed at the top of
   this section; repeated here because it is the same shape as the two above — the toolkit
   judges what it can parse and says so, rather than guessing.
+- **The exemption inventory is open-world.** `tests/test_exemptions.py` checks that every
+  listed exemption has a passing abuse test, and that nothing listed has quietly left the
+  code. It cannot see an escape hatch nobody wrote down: a new grant, spelled some way the
+  mapping does not know, enters neither direction of the check. Closing it means routing
+  every grant through one registry — `exempt("composed-cell")` at the point of the decision
+  — so the set is discoverable rather than enumerated. The harness that exists to stop
+  "not checked looks like checked" has a version of it inside, and saying so is better than
+  the list implying a completeness it does not have.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone

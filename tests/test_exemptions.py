@@ -32,7 +32,16 @@ INVENTORY = REPO / "tests" / "data" / "exemptions.yaml"
 DECLARED = yaml.safe_load(INVENTORY.read_text(encoding="utf-8"))["exemptions"]
 
 #: How each exemption is spelled where it is granted. The inventory is checked against the
-#: source, so an exemption cannot be quietly added to the code and left off the list.
+#: source, so an exemption cannot be quietly *removed* from the list while the code still
+#: grants it.
+#:
+#: This mapping is open-world, and that is a real limit rather than an oversight: a brand
+#: new escape hatch, spelled some way nobody has written down here, enters neither `unlisted`
+#: nor `stale` and so bypasses the inventory and its abuse test both. Closing it properly
+#: means routing every grant through one registry — `exempt("composed-cell")` at the point
+#: of the decision — so the set is discoverable rather than enumerated. Worth doing; not
+#: done. Recorded in DESIGN under Known gaps, because a harness whose limits are
+#: undocumented gets trusted past them exactly like a gate does.
 IN_SOURCE = {
     "project-conventions": r"extra_conventions",
     "project-terms": r"extra_terms",
@@ -75,7 +84,10 @@ def test_every_abuse_test_passes() -> None:
     """Run them. A named test that fails leaves the exemption unguarded either way."""
     named = sorted({entry["abuse"] for entry in DECLARED})
     finished = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *named],
+        [
+            sys.executable, "-m", "pytest", "-q", "--no-header",
+            "-p", "no:cacheprovider", "-rs", *named,
+        ],
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -83,6 +95,20 @@ def test_every_abuse_test_passes() -> None:
         errors="replace",
     )
     assert finished.returncode == 0, finished.stdout[-3000:]
+
+    # A skipped abuse test exits 0 and guards nothing. On a machine without pandoc several
+    # of these skip, and "the exemptions are covered" would be true of a run that checked
+    # none of them - which is the exact shape this file exists to refuse.
+    # Counted as "none skipped" rather than an exact total, because several of these are
+    # parametrized and one name is many cases.
+    skipped = re.search(r"(\d+) skipped", finished.stdout)
+    assert not skipped, (
+        f"{skipped.group(1)} abuse test(s) skipped. An exemption whose abuse test did not "
+        f"run is unguarded, and the run would still have said otherwise:\n"
+        + finished.stdout[-2000:]
+    )
+    passed = re.search(r"(\d+) passed", finished.stdout)
+    assert passed and int(passed.group(1)) >= len(named), finished.stdout[-2000:]
 
 
 def test_the_inventory_covers_what_the_code_grants() -> None:

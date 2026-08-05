@@ -3,7 +3,7 @@ round: 1
 reviewer: checklist-auditor
 reviewed_by: claude-opus-5
 reviewed_on: 2026-08-03
-manuscript_sha256: e8c48958152bbbdfc69e434eebd522225c8615a39e932cd8d18948193843dbb6
+manuscript_sha256: bcb8549c4d61c92833dcaeeec79b2c3db553c5dc46874d888faf321ff99aa366
 verdict: pass
 summary: All ten DEMO-OBS items are answered in reporting/DEMO-OBS.yaml, each pointing
   at a heading that exists, and I checked the sections rather than the pointers. Two

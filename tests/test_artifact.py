@@ -56,8 +56,14 @@ def test_the_built_document_contains_its_tables_and_figure(project: Path) -> Non
 
     assert main(["build", str(project), "--offline"]) == 0
     archive = zipfile.ZipFile(project / "build" / "manuscript.docx")
-    assert archive.read("word/document.xml").decode("utf-8").count("<w:tbl>") >= 3
+    assert archive.read("word/document.xml").decode("utf-8").count("<w:tbl>") >= 2
     assert any(name.startswith("word/media/") for name in archive.namelist())
+
+    # The third is the code list, which the example places in its supplement. Asserted here
+    # rather than only in the CLI tests: a table that reached neither document would satisfy
+    # a count of two in the paper, and this file exists to check what a reader receives.
+    supplement = zipfile.ZipFile(project / "build" / "supplementary.docx")
+    assert supplement.read("word/document.xml").decode("utf-8").count("<w:tbl>") >= 1
 
 
 @needs_pandoc

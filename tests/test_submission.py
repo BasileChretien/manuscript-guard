@@ -7,6 +7,7 @@ CRediT statement and the declarations must come from authors.yaml and change whe
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -155,6 +156,61 @@ def test_the_manifest_records_what_was_sent(project: Path) -> None:
     assert len(manifest["files"]) == len(pack.files)
     assert all(len(entry["sha256"]) == 64 for entry in manifest["files"])
     assert len(manifest["manuscript_sha256"]) == 64
+
+
+def test_the_pack_offers_a_checklist_a_journal_can_read(project: Path) -> None:
+    """What the pack sent in answer to "attach your completed STROBE checklist" was YAML.
+
+    An editor wants the items and where each is addressed. The YAML stays — it is the record,
+    and it diffs — but a table goes beside it, generated so it cannot drift from the file the
+    gate checks.
+    """
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    pack = assemble_pack(projekt, document)
+    table = next(p for p in pack.files if p.name == "checklist-DEMO-OBS.md")
+    text = table.read_text(encoding="utf-8")
+    assert "| Item | Recommendation | Addressed in | Not applicable because |" in text
+    assert "| Abstract |" in text, text
+    assert any(p.name == "checklist-DEMO-OBS.yaml" for p in pack.files), "the record is still sent"
+
+
+def test_an_unanswered_checklist_item_still_appears_in_the_table(project: Path) -> None:
+    """The item text comes from the published guideline, not from the completion — so an item
+    nobody answered shows with the answer blank rather than vanishing from what a journal
+    receives, which is the difference between an incomplete checklist and a shorter one."""
+    from manuscript_guard.build.submission import checklist_table
+
+    completion = project / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(completion.read_text(encoding="utf-8"))
+    dropped = document["items"].pop()["id"]
+    completion.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    projekt, _ = load_project(project)
+    rows = checklist_table(projekt, completion).splitlines()
+    assert any(row.startswith(f"| {dropped} |") for row in rows), rows[-4:]
+
+
+def test_a_pipe_in_an_item_does_not_break_the_table(project: Path) -> None:
+    """A pipe inside a cell ends the cell, and reporting checklists contain "and/or" lists."""
+    from manuscript_guard.build.submission import checklist_table
+
+    completion = project / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(completion.read_text(encoding="utf-8"))
+    document["items"][0]["where"] = "Methods | Statistical analysis"
+    completion.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    projekt, _ = load_project(project)
+    row = next(
+        line
+        for line in checklist_table(projekt, completion).splitlines()
+        if "Statistical analysis" in line
+    )
+    assert "\\|" in row
+    assert len(re.findall(r"(?<!\\)\|", row)) == 5, row
 
 
 def test_reassembling_clears_the_previous_pack(project: Path) -> None:

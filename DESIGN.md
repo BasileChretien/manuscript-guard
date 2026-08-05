@@ -145,9 +145,18 @@ copy — see the note under "What an adversarial review found".
     sources/            # PDFs and abstracts, filed by citation key
     ledger.yaml         # verified extracted values, each keyed and quoted
   manuscript/*.md       # prose with {{results.x}} / {{lit.y}} and [@citekey]
+  manuscript/supplementary/*.md   # the same, built as its own document
   figures/              # scripts that may read results.json and nothing else
   build/                # docx/pdf artifacts, gitignored
 ```
+
+`manuscript/supplementary/` is read by every gate that reads prose — a fabricated number in a
+supplementary table is still fabricated, and a supplement nobody checks is the obvious place
+to put one — and excluded from the two places that mean the main text specifically: the
+journal's word and display-item limits, and the count the title page declares to the editor.
+It builds as `supplementary.docx` and reaches the pack as its own file. A directory rather
+than a declaration, matching how figures and results already work, and because a heading can
+be renamed without anyone noticing what left the submission.
 
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
@@ -1441,6 +1450,20 @@ Closed since, and why each mattered:
   nobody had made. The committed manifest was therefore right only on the machine that wrote
   it. Exactly the trap `writeLines` set for the R emitter, in the Python path, in the example
   a new user copies from. The script normalises the file before recording it.
+- **Supplementary material was welded into the manuscript.** There was no way to say a file
+  was a supplement, so it went into `manuscript.docx` after the Discussion — counted against
+  the journal's word and display-item limits, declared in that count on the title page,
+  arriving as pages an editor has to find the end of, and impossible to upload to the
+  "supplementary material" slot every submission system has. An author's only recourse was to
+  keep the supplement outside the project, which is also the only place the gates cannot see
+  it. `manuscript/supplementary/` builds as its own document, reaches the pack as its own
+  file, is still read by every gate that reads prose, and is still in scope for review.
+- **The pack answered "attach your completed checklist" with YAML.** It copied
+  `reporting/*.yaml` and nothing else, which is a serialisation rather than a checklist. A
+  table now goes beside the record — generated, so it cannot drift from the file the gate
+  checks, and built from the *published* item list rather than the completion, so an item
+  nobody answered appears with the answer blank instead of vanishing from what the journal
+  receives.
 - **R could not express an interval at all.** The R emitter had `value()` and no
   `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
   keys that no gate could know were one estimate — `interval-reversed` simply could not fire

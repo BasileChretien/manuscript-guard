@@ -977,7 +977,34 @@ def cmd_build(args: argparse.Namespace) -> int:
     fields = result.report.counts.get("zotero_fields")
     if fields:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
+
+    supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    if supplement is not None:
+        print(f"built {supplement} (supplementary material, its own document)")
     return 0
+
+
+def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Path | None:
+    """The supplement, as its own document. `None` when the project has none.
+
+    Built alongside the paper rather than on request, because a supplement that has to be
+    asked for is one that arrives at the journal a version behind the manuscript it belongs
+    to. A failure here is reported and does not fail the build: the paper is what the author
+    was making.
+    """
+    from manuscript_guard.gates.numbers import is_supplementary
+
+    manuscript_dir = project.path("manuscript")
+    if not any(is_supplementary(manuscript_dir, a.path) for a in assembled):
+        return None
+    try:
+        built = build_document(project, assembled, mode=mode, csl=csl, supplementary=True)
+    except BuildError as exc:
+        print(f"manuscript-guard: the supplement did not build: {exc}", file=sys.stderr)
+        return None
+    if built.report.findings:
+        print(built.report.render(project.root))
+    return built.output
 
 
 def cmd_submit(args: argparse.Namespace) -> int:
@@ -1019,6 +1046,11 @@ def cmd_submit(args: argparse.Namespace) -> int:
             print("\nThe document did not build cleanly. The pack is not assembled.")
             return 1
         document = built.output
+        # Built here as well as in `build`, so the supplement in the pack is the one that
+        # belongs to this manuscript. Taking whatever `supplementary.docx` happened to be
+        # lying in build/ is how a supplement arrives at a journal a version behind the
+        # paper it is supplementing.
+        _build_supplement(project, assembled, mode=mode, csl=args.csl)
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

@@ -86,7 +86,11 @@ def check_journal(project: Project) -> Report:
 
     report = report.merge(_check_freshness(document, path))
 
-    sources = source_files(project.path("manuscript"))
+    # The main text only. A journal's word count, display-item count and required sections
+    # are about the paper; a supplement counted against them turned a compliant submission
+    # into an over-length one, and the author's recourse was to cut material the journal was
+    # never going to count in the first place.
+    sources = source_files(project.path("manuscript"), main_text_only=True)
     text = "\n\n".join(p.read_text(encoding="utf-8") for p in sources)
     counts = measure(text)
     report = report.merge(_check_limits(document, counts, path))

@@ -230,6 +230,92 @@ def test_a_checked_submission_pack_says_so(project: Path) -> None:
     assert "checks: passed" in manifest
 
 
+# ---------------------------------------------------------------- supplementary material
+
+
+@needs_pandoc
+def test_the_supplement_is_its_own_document(project: Path) -> None:
+    """Welded into the manuscript it counted against the journal's word limit, arrived as
+    pages an editor had to find the end of, and could not be uploaded to the supplementary
+    slot every submission system has."""
+    from manuscript_guard.text.docx import read_docx
+
+    assert run("build", str(project), "--offline") == 0
+    supplement = project / "build" / "supplementary.docx"
+    assert supplement.exists(), "the example's supplement did not build"
+    assert "Table S1" in read_docx(supplement)
+    assert "Code lists used to identify" not in read_docx(project / "build" / "manuscript.docx")
+
+
+@needs_pandoc
+def test_the_supplement_carries_its_own_title(project: Path) -> None:
+    """A supplement under the paper's own title and running head reads, in a journal's
+    submission system, as a second copy of the paper."""
+    from manuscript_guard.text.docx import read_docx
+
+    assert run("build", str(project), "--offline") == 0
+    assert "Supplementary material for" in read_docx(project / "build" / "supplementary.docx")
+
+
+@needs_pandoc
+def test_a_project_with_no_supplement_builds_one_document(project: Path, capsys) -> None:
+    """The supplement is built alongside the paper when there is one, and not mentioned
+    when there is not."""
+    import shutil
+
+    # The table the supplement placed has to go back into the paper, or it is emitted and
+    # unplaced and the build refuses - which is the coverage check doing its job.
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "\nThe reporting odds ratio was computed",
+            "\n{{table.outcome_codes}}\n\nThe reporting odds ratio was computed",
+        ),
+        encoding="utf-8",
+    )
+    shutil.rmtree(project / "manuscript" / "supplementary")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    assert not (project / "build" / "supplementary.docx").exists()
+    assert "supplementary" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_the_supplement_reaches_the_submission_pack(project: Path) -> None:
+    assert run("submit", str(project), "--offline") == 0
+    pack = project / "build" / "submission"
+    assert (pack / "supplementary.docx").exists()
+    assert "supplementary.docx" in (pack / "MANIFEST.yaml").read_text(encoding="utf-8")
+
+
+def test_the_supplement_does_not_count_against_the_word_limit(project: Path) -> None:
+    """The concrete harm of having no supplementary concept: a compliant paper reported as
+    over-length, with the author's recourse being to cut material the journal never counts.
+    """
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_journal
+
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    before = check_journal(load_project(project)[0]).counts["main_text_words"]
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8") + "\n\n" + ("filler words here. " * 400),
+        encoding="utf-8",
+    )
+    after = check_journal(load_project(project)[0]).counts["main_text_words"]
+    assert before == after, "1200 supplementary words moved the main-text count"
+
+
+def test_the_supplement_is_still_checked_like_the_paper(project: Path) -> None:
+    """Not counted is not unread. A fabricated number in a supplementary table is still
+    fabricated, and a supplement nobody checks is the obvious place to put one."""
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8") + "\n\nThe rate was 9.99 per thousand.\n",
+        encoding="utf-8",
+    )
+    assert run("check", str(project)) == 1
+
+
 # ---------------------------------------------------------------- audit
 
 
@@ -324,7 +410,10 @@ def test_review_files_prints_a_paste_ready_block(project: Path, capsys) -> None:
     assert run("review", str(project), "--files") == 0
     block = yaml.safe_load(capsys.readouterr().out)
     assert set(block) == {"file_sha256"}
-    assert set(block["file_sha256"]) == {"main.md"}
+    # The supplement too: a reviewer's finding list describes what they read, and they read
+    # the supplement. Its absence here is what lets it change under a review that still says
+    # it covers the manuscript.
+    assert set(block["file_sha256"]) == {"main.md", "supplementary/S1_code_lists.md"}
     assert all(len(v) == 64 for v in block["file_sha256"].values())
 
 

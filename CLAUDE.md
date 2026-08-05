@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # 451 tests, ~50 s (R and Zotero tests skip if absent)
+pytest -q                    # 943 tests, ~6 min (R and Zotero tests skip if absent)
 ruff check src tests
 ```
 
@@ -34,8 +34,12 @@ cd example
 python analysis/00_simulate.py && python analysis/01_disproportionality.py && python figures/forest.py
 manuscript-guard check
 manuscript-guard explain manuscript/main.md
-manuscript-guard build --offline
+manuscript-guard build --offline    # writes manuscript.docx and supplementary.docx
 ```
+
+Anything under `manuscript/supplementary/` is checked like the rest of the manuscript and
+built as its own document, so it does not count against the journal's limits and can be
+uploaded to the supplementary slot rather than pasted onto the end of the paper.
 
 CLI: `check` (all gates, exit 1 on failure, `--json` for machines), `build` (the .docx;
 live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite

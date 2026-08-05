@@ -114,14 +114,19 @@ def ensure_zotero_lua(cache_dir: Path) -> Path:
     return path
 
 
-def _front_matter(project) -> str:
+def _front_matter(project, *, supplementary: bool = False) -> str:
     """A YAML header carrying the title and the Zotero settings the filter reads."""
     paper = project.paper
-    lines = ["---", f'title: "{paper.get("title", "").replace(chr(34), chr(39))}"']
-    short = paper.get("short_title")
+    title = str(paper.get("title", "")).replace(chr(34), chr(39))
+    if supplementary:
+        title = f"Supplementary material for: {title}"
+    lines = ["---", f'title: "{title}"']
+    # The short title and keywords belong to the paper. A supplement carrying the paper's
+    # running head reads, in a journal's system, as a second copy of the paper.
+    short = None if supplementary else paper.get("short_title")
     if short:
         lines.append(f'subtitle: "{short}"')
-    keywords = paper.get("keywords")
+    keywords = None if supplementary else paper.get("keywords")
     if keywords:
         lines.append("keywords: [" + ", ".join(f'"{k}"' for k in keywords) + "]")
     lines += [
@@ -146,21 +151,41 @@ def build_document(
     reference_doc: Path | None = None,
     prologue: str = "",
     epilogue: str = "",
+    supplementary: bool = False,
 ) -> BuildResult:
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
+
     build_dir = project.path("build")
     build_dir.mkdir(parents=True, exist_ok=True)
-    output = output or build_dir / "manuscript.docx"
+    output = output or build_dir / (f"{SUPPLEMENTARY}.docx" if supplementary else "manuscript.docx")
     # Named after its output, so the annotated build does not overwrite the intermediate
     # the ordinary one just wrote - two builds, two sources, and either can be read after.
     source = build_dir / f"{output.stem}.md"
 
-    main = [a for a in assembled if a.path.name == "main.md"]
-    rest = sorted((a for a in assembled if a.path.name != "main.md"), key=lambda a: a.path.name)
-    if not main:
-        raise BuildError("no manuscript/main.md to build")
-    body = prologue + "\n\n".join(a.text for a in main + rest) + epilogue
+    # The supplement is a separate document, never appended to the paper. Welded in, it
+    # counted against the journal's word limit, arrived as pages the editor had to find the
+    # end of, and could not be uploaded to the "supplementary material" slot every
+    # submission system has.
+    manuscript_dir = project.path("manuscript")
+    wanted = [a for a in assembled if is_supplementary(manuscript_dir, a.path) == supplementary]
+
+    if supplementary:
+        if not wanted:
+            raise BuildError(f"nothing under manuscript/{SUPPLEMENTARY}/ to build")
+        ordered = sorted(wanted, key=lambda a: a.path.name)
+    else:
+        main = [a for a in wanted if a.path.name == "main.md"]
+        if not main:
+            raise BuildError("no manuscript/main.md to build")
+        ordered = main + sorted(
+            (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
+        )
+
+    body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
     source.write_text(
-        _front_matter(project) + body, encoding="utf-8", newline="\n"
+        _front_matter(project, supplementary=supplementary) + body,
+        encoding="utf-8",
+        newline="\n",
     )
 
     command = [pandoc(), "--standalone", str(source), "-o", str(output)]

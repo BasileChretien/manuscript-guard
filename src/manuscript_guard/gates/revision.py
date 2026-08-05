@@ -68,11 +68,13 @@ def check_revision(project: Project, *, submission: bool = False) -> Report:
             continue
 
         submitted = document.get("submitted_files") or {}
+        paragraphs = document.get("submitted_paragraphs") or {}
         for reviewer in document["reviewers"]:
             for point in reviewer["points"]:
                 total += 1
                 report, ok = _check_point(
-                    report, project, number, reviewer["id"], point, submitted, current, severity
+                    report, project, number, reviewer["id"], point, submitted, current,
+                    severity, paragraphs,
                 )
                 answered += int(ok)
 
@@ -92,6 +94,7 @@ def _check_point(
     submitted: dict,
     current: dict,
     severity: str,
+    paragraphs: dict,
 ) -> tuple[Report, bool]:
     where = f"round {number}, {reviewer} point {point['id']}"
     response = str(point.get("response", "")).strip()
@@ -131,6 +134,22 @@ def _check_point(
         )
 
     ok = True
+    anchored = _anchor_unchanged(project, point, paragraphs, changed)
+    if anchored:
+        ok = False
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="claimed-change-missed-the-point",
+                severity=severity,
+                message=f"{where}: {anchored}",
+                context=response[:140],
+                hint="the reviewer commented on a particular paragraph. Revising elsewhere "
+                "in the same file may well be the right answer - say so in `rebutted` "
+                "rather than letting the response imply the paragraph was addressed",
+            )
+        )
+
     for entry in changed:
         problem = _unverified(project, entry, submitted, current)
         if problem is None:
@@ -148,6 +167,31 @@ def _check_point(
             )
         )
     return report, ok
+
+
+def _anchor_unchanged(
+    project: Project, point: dict, paragraphs: dict, changed: list
+) -> str | None:
+    """Whether the paragraph the reviewer actually commented on is still as it was.
+
+    A response claiming a manuscript revision is satisfied by *any* difference in the file,
+    and a paper's Methods is one file. When the point came from a comment attached to a
+    paragraph, the tighter question is available and worth asking: the reviewer objected to
+    that paragraph, and it is unchanged.
+    """
+    where = point.get("where")
+    if not where or not paragraphs or where not in paragraphs:
+        return None
+    if not any(entry["kind"] == "manuscript" for entry in changed):
+        return None
+
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    known = tagged_paragraphs(project)
+    if where not in known:
+        return f"the paragraph this point was attached to ({where}) is no longer in the "\
+               f"manuscript, so the response cannot be checked against it"
+    return None
 
 
 def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -> str | None:

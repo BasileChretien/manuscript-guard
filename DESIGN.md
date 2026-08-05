@@ -1257,6 +1257,13 @@ checked against whether that file differs from what went out; a claim about a re
 against whether the key exists. A point with neither a change nor a recorded rebuttal is
 unanswered — "Done." names nothing and can be checked against nothing.
 
+When the points come from a document this tool built, the anchor comes with them. A Word
+comment records which paragraph it marks, and paired with the invisible paragraph
+identifiers that turns "reviewer 2 said something about the Methods" into a point that knows
+where it applies — so the round also stores a per-paragraph baseline, and a response claiming
+a revision can be asked the tighter question. A file differing is satisfied by any change
+anywhere in it, and a paper's Methods is one file.
+
 The baseline is the whole mechanism, which is why `respond --open` says so: open the round
 before revising, or there is nothing to compare with.
 
@@ -1521,9 +1528,11 @@ Closed since, and why each mattered:
   differs satisfies it, whatever the difference was, and no gate can read a reviewer's
   intent. It closes the gap between the letter and the diff, not the gap between the diff
   and the request.
-- **A revision round is not seeded from the reviewer's own file.** `import` already reads
-  Word comments; a journal usually sends a PDF or an email, so the points are typed in.
-  Wiring the two together is the obvious next step and is not done.
+- **A revision round is only seeded when the reviewer commented in a document this tool
+  built.** `respond --open --from <docx>` reads the comments, groups them by author,
+  numbers them, and records which paragraph each was attached to. A journal that sends a
+  PDF or an email still means typing the points in, which is where a point quietly becomes
+  the easier point next to it.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone

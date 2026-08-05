@@ -174,6 +174,7 @@ All deterministic, all runnable in CI without Claude.
 | G10 | Figure review | a figure has no current review, or its review raised concerns |
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
+| G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -1240,6 +1241,33 @@ new user copies it. `code_list()` existed for a day with nothing in `example/` u
 one API added to make a reporting requirement satisfiable, absent from the artefact that
 demonstrates the toolkit.
 
+## The response to the reviewers is a document full of unchecked claims
+
+Every other gate checks the manuscript. G13 checks the letter that goes with it.
+
+A point-by-point response is made almost entirely of statements about the paper: "we have
+revised the Methods", "the analysis has been rerun", "Table 2 now reports the counts". Each
+is a claim nobody verifies. The journal cannot see the diff, and the authors wrote it from
+memory at the end of a long revision. **The commonest failure is not dishonesty — it is a
+response written before the change, and the change then made differently, or not at all.**
+
+So a revision round records the manuscript as the journal received it, one digest per file,
+and each response names what changed because of it. A claim that a file was revised is
+checked against whether that file differs from what went out; a claim about a results key,
+against whether the key exists. A point with neither a change nor a recorded rebuttal is
+unanswered — "Done." names nothing and can be checked against nothing.
+
+The baseline is the whole mechanism, which is why `respond --open` says so: open the round
+before revising, or there is nothing to compare with.
+
+**A reasoned rebuttal is a complete answer.** Disagreeing with a reviewer is often the right
+thing to do and is not the same as ignoring them — the same bargain as `overridden` on an
+internal finding. What is enforced is that the reason exists and is not blank, and the
+response document prints it in the author's own words rather than inventing agreement.
+
+Severity follows the internal panel: an author part-way through a revision must still be
+able to build something to read, so ordinary work warns and a resubmission fails.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1489,6 +1517,13 @@ Closed since, and why each mattered:
   — so the set is discoverable rather than enumerated. The harness that exists to stop
   "not checked looks like checked" has a version of it inside, and saying so is better than
   the list implying a completeness it does not have.
+- **G13 checks that a claimed change happened, not that it answers the point.** A file that
+  differs satisfies it, whatever the difference was, and no gate can read a reviewer's
+  intent. It closes the gap between the letter and the diff, not the gap between the diff
+  and the request.
+- **A revision round is not seeded from the reviewer's own file.** `import` already reads
+  Word comments; a journal usually sends a PDF or an email, so the points are typed in.
+  Wiring the two together is the obvious next step and is not done.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone

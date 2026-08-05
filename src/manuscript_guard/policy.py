@@ -114,7 +114,10 @@ BINDS_AT = {
     "no-review": SUBMISSION,
     "rounds-outstanding": SUBMISSION,
     "review-missing": SUBMISSION,
-    "review-stale": SUBMISSION,
+    "point-unanswered": SUBMISSION,
+    "response-claims-nothing": SUBMISSION,
+    "claimed-change-did-not-happen": SUBMISSION,
+            "review-stale": SUBMISSION,
     "open-major-finding": SUBMISSION,
 }
 

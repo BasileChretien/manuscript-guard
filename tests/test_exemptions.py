@@ -61,6 +61,7 @@ IN_SOURCE = {
     "build-skip-checks": r"skip_checks",
     "submit-skip-checks": r"skip_checks",
     "import-force": r"args\.force",
+    "point-rebutted": r'"rebutted"|rebutted',
 }
 
 

@@ -64,6 +64,7 @@ manuscript-guard build                 # the .docx, with live Zotero citations
 manuscript-guard build --annotated     # the same, every number coloured by what backs it
 manuscript-guard bind                  # every unbound number, and how to give it a source
 manuscript-guard import edited.docx    # a co-author's Word edits, back into the source
+manuscript-guard respond               # the point-by-point response, and whether it is true
 manuscript-guard check --submission    # submission standards
 manuscript-guard submit                # the whole pack, ready to upload
 ```
@@ -112,6 +113,7 @@ Currently implemented:
 | G10 | every figure has a current review by someone who looked at it |
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
+| G13 | every reviewer point is answered, and every claimed revision really happened |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building

@@ -215,6 +215,33 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
+def _unexamined(document: Path, identified: int) -> str:
+    """How much of the returned document this command could not look at.
+
+    Import compares paragraphs that carry an identifier. Table cells, headings, captions and
+    any paragraph the co-author newly wrote carry none, so an edit to one is not merged, not
+    refused, and not reported - it simply does not exist as far as the tool is concerned.
+    A co-author who corrects a number in a table has every reason to believe it landed.
+    """
+    import re as _re
+    import zipfile as _zip
+
+    try:
+        with _zip.ZipFile(document) as archive:
+            xml = archive.read("word/document.xml").decode("utf-8")
+    except (OSError, KeyError, _zip.BadZipFile):
+        return ""
+    total = len(_re.findall(r"<w:p\b", xml))
+    missed = max(0, total - identified)
+    if not missed:
+        return ""
+    return (
+        f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
+        f"not compared: table cells, headings, captions, and anything newly written. An "
+        f"edit to one of those is not reported here."
+    )
+
+
 def _crossed_files(known: dict, order: list[str]) -> list[str]:
     """Identifiers that came back sitting among a different file's paragraphs.
 
@@ -263,15 +290,13 @@ def _reorder(project, known: dict, order: list[str]) -> None:
         if len(wanted) != len(mine):
             continue  # a paragraph left this file; not a reordering
         blocks = [known[n][1] for n in wanted]
-        cursor = 0
-        for name in mine:
-            para = known[name][1]
-            at = text.find(para, cursor)
-            if at < 0:
-                return
-            replacement = blocks.pop(0)
-            text = text[:at] + replacement + text[at + len(para) :]
-            cursor = at + len(replacement)
+        # Right to left, at the offsets the identifiers carry, so an earlier splice cannot
+        # move a later one and a repeated paragraph cannot be confused for its twin.
+        for name, replacement in sorted(
+            zip(mine, blocks, strict=True), key=lambda pair: known[pair[0]][2], reverse=True
+        ):
+            _p, para, start = known[name]
+            text = text[:start] + replacement + text[start + len(para) :]
         path.write_text(text, encoding="utf-8", newline="\n")
 
 
@@ -357,8 +382,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         rebuilt = realign(source[1], was, now)
         (merged if rebuilt else refused).append((name, source, was, now, rebuilt))
 
+    # Only paragraphs carrying an identifier are compared at all. Everything else - table
+    # cells, headings, captions, the reference list, and anything the co-author newly wrote
+    # - is invisible to this command, and saying nothing about that let a co-author believe
+    # they had corrected a table when the correction went nowhere.
+    unexamined = _unexamined(edited, len(returned))
+
     if not (moved or merged or refused or gone or comments):
         print("nothing came back: the document matches the manuscript on disk.")
+        if unexamined:
+            print(f"  {unexamined}")
         return 0
 
     crossed = set(_crossed_files(known, paragraph_order(edited)))
@@ -399,10 +432,24 @@ def cmd_import(args: argparse.Namespace) -> int:
         if moved:
             _reorder(project, known, paragraph_order(edited))
             print(f"\nreordered {len(moved)} paragraph(s) in the manuscript source.")
+        # By offset, never by text. `text.replace(original, rebuilt, 1)` rewrote the
+        # *first* paragraph reading that way, and a limitation restated in the Abstract and
+        # the Discussion is ordinary in a paper - so an edit to the Discussion copy silently
+        # rewrote the Abstract and left the Discussion alone. Two corruptions, nothing
+        # reported, after the identifier had been established precisely to avoid guessing.
+        # Spliced at the offset the identifier carries, never by searching for the text.
+        # `text.replace(original, rebuilt, 1)` rewrote the *first* paragraph reading that
+        # way, so an edit to a sentence restated later in the paper corrupted the earlier
+        # copy and left the edited one alone - with nothing reported either time.
+        by_path: dict[Path, list[tuple[int, int, str]]] = {}
         for _name, source, _was, _now, rebuilt in merged:
-            path, original = source
+            path, original, start = source
+            by_path.setdefault(path, []).append((start, start + len(original), rebuilt))
+        for path, spans in by_path.items():
             text = path.read_text(encoding="utf-8")
-            path.write_text(text.replace(original, rebuilt, 1), encoding="utf-8", newline="\n")
+            for start, end, rebuilt in sorted(spans, reverse=True):
+                text = text[:start] + rebuilt + text[end:]
+            path.write_text(text, encoding="utf-8", newline="\n")
         if merged:
             print(f"merged {len(merged)} reworded paragraph(s), bindings intact.")
 
@@ -411,8 +458,11 @@ def cmd_import(args: argparse.Namespace) -> int:
     if comments:
         print(
             f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: `manuscript-guard review --open`."
+            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
         )
+
+    if unexamined:
+        print(f"\n{unexamined}")
 
     if not args.apply and (moved or merged):
         print(f"\n`manuscript-guard import {edited} --apply` applies the safe changes.")
@@ -474,6 +524,23 @@ def cmd_respond(args: argparse.Namespace) -> int:
     project, _ = load_project(args.path)
 
     if args.open:
+        if args.source:
+            # The same refusal `import` makes, for the same reason. Reading anchors out of a
+            # document built from text that has since changed records a baseline describing
+            # two different manuscripts - one command called that dangerous while the other
+            # baked it into the revision record without a word.
+            from manuscript_guard.gates.review import document_digest
+            from manuscript_guard.roundtrip import stamp_of
+
+            carried = stamp_of(args.source)
+            if carried is None or (carried != document_digest(project) and not args.force):
+                print(
+                    f"{args.source.name} was not built from the manuscript as it now stands, "
+                    f"so the paragraphs its comments point at are not the paragraphs on disk."
+                    f"\n  Re-send a current build, or pass --force and check every anchor."
+                )
+                return 1
+
         number = max((n for n, _p in rounds(project)), default=0) + 1
         path = project.root / "revision" / f"round-{number}.yaml"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1256,6 +1323,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="seed the round from the comments in a returned .docx",
     )
     respond.add_argument("--submission", action="store_true")
+    respond.add_argument(
+        "--force", action="store_true", help="seed even from an out-of-date document"
+    )
     respond.set_defaults(func=cmd_respond)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")

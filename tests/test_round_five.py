@@ -146,7 +146,7 @@ def test_identifiers_are_unique_across_the_whole_manuscript(project: Path) -> No
     projekt, _ = load_project(project)
     known = tagged_paragraphs(projekt)
     assert len(known) == len(set(known)), "an identifier names one paragraph or it names none"
-    assert len({path for path, _text in known.values()}) == 2
+    assert len({entry[0] for entry in known.values()}) == 2
 
 
 # ---------------------------------------------------------------- 4: the anchored check
@@ -173,7 +173,7 @@ def test_the_anchored_paragraph_must_actually_change(project: Path) -> None:
         },
         submitted_paragraphs={
             name: hashlib.sha256(text.encode("utf-8")).hexdigest()
-            for name, (_path, text) in known.items()
+            for name, (_path, text, _at) in known.items()
         },
     )
     # Change the file, but not the paragraph the reviewer commented on.
@@ -188,7 +188,7 @@ def test_the_anchored_paragraph_must_actually_change(project: Path) -> None:
 def test_revising_the_anchored_paragraph_satisfies_it(project: Path) -> None:
     projekt, _ = load_project(project)
     known = tagged_paragraphs(projekt)
-    anchor, (path, text) = next(iter(known.items()))
+    anchor, (path, text, _start) = next(iter(known.items()))
 
     round_with(
         project,
@@ -201,7 +201,7 @@ def test_revising_the_anchored_paragraph_satisfies_it(project: Path) -> None:
         },
         submitted_paragraphs={
             name: hashlib.sha256(body.encode("utf-8")).hexdigest()
-            for name, (_p, body) in known.items()
+            for name, (_p, body, _at) in known.items()
         },
     )
     whole = path.read_text(encoding="utf-8")

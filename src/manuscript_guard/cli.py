@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import codecs
 import contextlib
+import hashlib
 import re
 import sys
 from datetime import date
@@ -386,6 +387,40 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 
+
+def _seeded(source: Path) -> list[dict]:
+    """Reviewers and their points, read from the comments in a returned document.
+
+    A journal usually sends a PDF or an email and the points get typed in, which is where
+    a point quietly becomes the easier point next to it. When the reviewer commented in a
+    document this tool built, their words and the place they were about are both already in
+    the file - and losing either on the way in is work the author redoes by hand.
+    """
+    from manuscript_guard.roundtrip import comments_in
+
+    by_author: dict[str, list[dict]] = {}
+    for comment in comments_in(source):
+        by_author.setdefault(comment.author, []).append(
+            {
+                "id": "",
+                "comment": comment.text,
+                "response": "",
+                **({"where": comment.where} if comment.where else {}),
+            }
+        )
+
+    reviewers = []
+    for index, (author, points) in enumerate(sorted(by_author.items()), start=1):
+        slug = re.sub(r"[^a-z0-9]+", "-", author.lower()).strip("-") or f"reviewer-{index}"
+        for position, point in enumerate(points, start=1):
+            point["id"] = f"{index}.{position}"
+        reviewers.append({"id": slug, "points": points})
+    if reviewers:
+        return reviewers
+    empty = {"id": "1.1", "comment": "No comments found in the document.", "response": ""}
+    return [{"id": "reviewer-1", "points": [empty]}]
+
+
 def cmd_respond(args: argparse.Namespace) -> int:
     """Open a revision round, or write the point-by-point response.
 
@@ -398,6 +433,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
 
     from manuscript_guard.gates.review import file_digests
     from manuscript_guard.gates.revision import check_revision, rounds
+    from manuscript_guard.roundtrip import paragraph_text
 
     project, _ = load_project(args.path)
 
@@ -411,7 +447,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": [
+            "reviewers": _seeded(args.source) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [
@@ -424,12 +460,28 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 }
             ],
         }
+        if args.source:
+            # The paragraphs as they stood when the comments were made, so a point anchored
+            # to one can be checked against that paragraph and not merely its file.
+            document["submitted_paragraphs"] = {
+                name: hashlib.sha256(text.encode("utf-8")).hexdigest()
+                for name, text in paragraph_text(args.source).items()
+            }
         path.write_text(
             yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
             encoding="utf-8",
             newline="\n",
         )
         print(f"opened {path.relative_to(project.root).as_posix()}")
+        if args.source:
+            seeded = sum(len(r["points"]) for r in document["reviewers"])
+            anchored = sum(
+                1 for r in document["reviewers"] for p in r["points"] if p.get("where")
+            )
+            print(
+                f"  {seeded} point(s) read from {args.source.name}, {anchored} of them "
+                f"knowing which paragraph they are about."
+            )
         print(
             "  submitted_files records the manuscript as it stands now, which is what a\n"
             "  claimed revision is checked against. Open the round *before* you start\n"
@@ -1161,6 +1213,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     respond.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     respond.add_argument("--open", action="store_true", help="start a new round")
+    respond.add_argument(
+        "--from",
+        dest="source",
+        type=Path,
+        help="seed the round from the comments in a returned .docx",
+    )
     respond.add_argument("--submission", action="store_true")
     respond.set_defaults(func=cmd_respond)
 

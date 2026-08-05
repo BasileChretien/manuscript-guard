@@ -67,6 +67,10 @@ class Comment:
     author: str
     date: str
     text: str
+    #: The paragraph it is attached to, when the document carries identifiers. A reviewer's
+    #: point is about a *place* in the paper, and losing that on the way in means the author
+    #: re-finds it by hand for every point.
+    where: str = ""
 
 
 def stamp_into(document: Path, digest: str) -> None:
@@ -124,20 +128,47 @@ def comments_in(document: Path) -> list[Comment]:
             return []
         xml = archive.read("word/comments.xml").decode("utf-8")
 
+    anchors = _comment_anchors(document)
     out: list[Comment] = []
     for block in re.findall(r"<w:comment\b(.*?)</w:comment>", xml, re.DOTALL):
         author = re.search(r'w:author="([^"]*)"', block)
         date = re.search(r'w:date="([^"]*)"', block)
+        ident = re.search(r'w:id="([^"]*)"', block)
         text = " ".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", block, re.DOTALL))
         if text.strip():
             out.append(
                 Comment(
                     author=author.group(1) if author else "an unnamed reviewer",
                     date=(date.group(1)[:10] if date else ""),
-                    text=re.sub(r"\s+", " ", text).strip(),
+                    text=re.sub(r"\s+", " ", _unescape(text)).strip(),
+                    where=anchors.get(ident.group(1), "") if ident else "",
                 )
             )
     return out
+
+
+def _comment_anchors(document: Path) -> dict[str, str]:
+    """Which paragraph each comment is attached to.
+
+    `word/comments.xml` holds the text; the anchor lives in `document.xml`, as a
+    `w:commentRangeStart` inside the paragraph it marks. Paired with the invisible paragraph
+    identifiers, that turns "reviewer 2 said something about the Methods" into a point that
+    knows which paragraph it is about — and a claimed revision can then be checked against
+    *that* paragraph rather than against the file containing it.
+    """
+    with zipfile.ZipFile(document) as archive:
+        if "word/document.xml" not in archive.namelist():
+            return {}
+        xml = archive.read("word/document.xml").decode("utf-8")
+
+    found: dict[str, str] = {}
+    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
+        names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
+        if not names:
+            continue
+        for ident in re.findall(r'<w:commentRangeStart[^>]*w:id="([^"]*)"', block):
+            found[ident] = names[0]
+    return found
 
 
 def _plain(text: str) -> str:

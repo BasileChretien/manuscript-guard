@@ -1362,6 +1362,16 @@ Added by the adversarial review, verified and **not** fixed:
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
+- **G3 checks a number drawn in a figure for set membership, not identity.** A text node in
+  an SVG is accepted if it equals *any* results display, not the one that belongs at that
+  position — so a forest plot labelled with the right value against the wrong outcome passes.
+  The gate cannot know which value a given text node is meant to be; nothing in the artefact
+  says. The real protection is one level up: `figure-script-ignores-results` requires the
+  script to read the results file, and a figure whose labels are drawn from results cannot
+  carry another outcome's number. Set membership is the backstop for the figure nobody
+  scripted, and should be read as "no number here is a stranger", not as "every number here
+  is the right one".
+
 Closed since, and why each mattered:
 
 - **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
@@ -1398,6 +1408,44 @@ Closed since, and why each mattered:
   where a number was supposed to be. One typo, worst available outcome.
 - **A `.jl` figure script produced an empty report**, which reads as "checked and clean".
   The lexer has no Julia entry; it now says the source was not read.
+- **A point estimate outside its own confidence interval passed `check`.** `interval()`
+  refuses it, and `interval()` was the only thing that did — the results fragment is a
+  contract with three other writers (`value(bounds=…)` called directly, the R emitter, a
+  hand-edited file), and none of them went through that helper. It is the one arithmetic
+  error a reader catches by eye in the first sentence of the Results. Bracketing is now
+  checked where every producer meets: at the fragment, by G2, along with an inverted interval,
+  a bound of an estimate nobody published, and two bounds claiming the same end.
+- **The reversed-interval check was disabled by restating a bound, and invented reversals
+  that were not there.** The guard meant to keep the *first* mention of each end tested
+  `value.bound in seen` while the keys were `"{bounds}:{bound}"`, so it never matched: the
+  last mention won. "2.10 to 7.02, and a lower bound of 2.10 excludes unity" was reported as
+  reversed, and a genuinely reversed interval that named its upper bound again went
+  unreported. A false positive on ordinary writing is the worse half — an author whose only
+  recourse is to delete a true sentence learns to distrust the gate.
+- **R could not express an interval at all.** The R emitter had `value()` and no
+  `interval()`, and its `value()` took no `bounds`/`bound`, so an R analysis published three
+  keys that no gate could know were one estimate — `interval-reversed` simply could not fire
+  on an R project, with nothing saying so. The results fragment is a cross-language contract,
+  and a rule enforced on one side only is a rule an author steps around by switching language.
+- **"According to the medical record" claimed adherence to RECORD.** The guideline names were
+  matched case-insensitively, and several of them — RECORD, ARRIVE, CONSORT — are ordinary
+  English words. The gate therefore warned about an unfollowed reporting guideline on the
+  Methods section of essentially every observational paper: a false positive about the
+  paper's own conduct, which is the fastest way to teach an author that this output is noise.
+  Guideline names are published in capitals; the match now requires that casing.
+- **The annotated figure sheet always said no values were exempt.** It read a
+  `presentational` section; the sidecar's sections are `allow` and `allow_source`, and no
+  schema, gate or example has ever written the other name. So the one page whose whole job is
+  to show what was exempted claimed nothing was — including for the shipped example, which
+  declares five axis ticks. Wrong precisely when it mattered, and untested, which is why it
+  survived.
+- **`fetch --save-url` wrote inside the installed package.** `_recipe_paths` falls back to the
+  recipes shipped in `src/`, and `--save-url` wrote back to whatever it returned: on a normal
+  pip install the command edited a file in site-packages — invisible to git, lost on upgrade,
+  applied to every other project on the machine, a `PermissionError` traceback on a
+  system-wide install. It also round-tripped the YAML through `safe_dump`, dropping every
+  comment; in those files the comments *are* the licence reasoning. The URL now goes into the
+  project's own recipe, edited line by line.
 
 - **The emitter had no invariants.** `display` was returned verbatim, so one call could
   publish a fabricated estimate *and* a fabricated interval; table cells were `str()`-ed and

@@ -225,13 +225,13 @@ mg_git <- function(root, args) {
 #' @param script Path to the analysis script. Inside a script, pass its own path.
 #' @param inputs Character vector of data files read, project-relative or absolute.
 #' @param root Project root. Detected from `script` when omitted.
-#' @return A list of functions: `value()`, `cell()`, `table()`, `code_list()`,
+#' @return A list of functions: `value()`, `interval()`, `cell()`, `table()`, `code_list()`,
 #'   `add_input()`, `write()`.
 #' @examples
 #' \dontrun{
 #' em <- mg_emitter("analysis/01_model.R", inputs = "data/reports.csv")
 #' em$value("cohort.n_reports", 4000L)
-#' em$value("ror.point", 3.4211, digits = 2)
+#' em$interval("ror", 3.8439, 2.1032, 7.0210, digits = 2)
 #' em$write()
 #' }
 #' @export
@@ -255,7 +255,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
   }
 
   value <- function(key, value, display = NULL, digits = NULL, unit = NULL,
-                    quoted = TRUE, note = NULL) {
+                    quoted = TRUE, note = NULL, bounds = NULL, bound = NULL) {
     if (!is.null(state$values[[key]])) {
       stop(key, " emitted twice by ", script_path, call. = FALSE)
     }
@@ -265,7 +265,37 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     if (!is.null(unit)) entry$unit <- unit
     if (!isTRUE(quoted)) entry$quoted <- FALSE
     if (!is.null(note)) entry$note <- note
+    if (!is.null(bounds)) entry$bounds <- bounds
+    if (!is.null(bound)) entry$bound <- match.arg(bound, c("low", "high"))
     state$values[[key]] <- entry
+    invisible(NULL)
+  }
+
+  # Publish an estimate and its interval as one thing, mirroring the Python `interval()`.
+  #
+  # R had only `value()`, so the one sentence a disproportionality paper exists to carry - an
+  # estimate with its interval - was the sentence an R analysis could not express. Three keys
+  # named point, ci_low and ci_high are three unrelated numbers to every gate unless the
+  # fragment records which end each bound is, which is what lets G2 refuse an interval quoted
+  # backwards. The results file is a cross-language contract, and a rule enforced on one side
+  # only is a rule an author steps around by switching language.
+  interval <- function(key, point, low, high, digits = NULL, unit = NULL, quoted = TRUE) {
+    if (!(low <= point && point <= high)) {
+      stop(
+        key, ": the interval does not bracket the estimate - ", format(low), " to ",
+        format(high), " around ", format(point), ". Check the order of the arguments",
+        call. = FALSE
+      )
+    }
+    value(paste0(key, ".point"), point, digits = digits, unit = unit, quoted = quoted)
+    value(
+      paste0(key, ".ci_low"), low, digits = digits, unit = unit, quoted = quoted,
+      bounds = paste0(key, ".point"), bound = "low"
+    )
+    value(
+      paste0(key, ".ci_high"), high, digits = digits, unit = unit, quoted = quoted,
+      bounds = paste0(key, ".point"), bound = "high"
+    )
     invisible(NULL)
   }
 
@@ -520,6 +550,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
 
   list(
     value = value,
+    interval = interval,
     cell = mg_cell,
     table = table_,
     code_list = code_list,

@@ -43,6 +43,7 @@ em$value("cohort.n_sites", 12)
 em$value("ror.point", 3.4211, digits = 2)
 em$value("model.aic", 918.22, digits = 1, quoted = FALSE)
 em$value("cohort.label", "2015-2024")
+em$interval("prr", 2.5104, 1.8022, 3.4411, digits = 2)
 em$table(
   "baseline",
   list("Group", em$cell("Exposed (n = {})", 412L), "ROR", "p", "n/N"),
@@ -121,6 +122,56 @@ def test_r_fragment_loads_and_formats_like_python(r_project: Path) -> None:
 def test_r_writes_a_usable_digest_sidecar(r_project: Path) -> None:
     fragment = r_project / "results" / "01_r.json"
     assert read_digest(fragment) == sha256_of(fragment)
+
+
+def test_r_can_express_an_interval_at_all(r_project: Path) -> None:
+    """The sentence a disproportionality paper exists to carry, from R.
+
+    R had only `value()`, so an R analysis could publish three keys named point, ci_low and
+    ci_high and no gate could know they were one estimate. `interval-reversed` therefore
+    could not fire on an R project, whatever the manuscript said — the check was Python-only
+    without anything saying so.
+    """
+    results, report = load_results(r_project / "results")
+    assert report.ok, report.render()
+    assert results.values["prr.point"].display == "2.51"
+    low, high = results.values["prr.ci_low"], results.values["prr.ci_high"]
+    assert (low.bounds, low.bound) == ("prr.point", "low")
+    assert (high.bounds, high.bound) == ("prr.point", "high")
+
+
+BRACKET_CHECK = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(root)s/analysis/01_r.R", inputs = "%(root)s/data/tiny.csv")
+ok <- tryCatch({ em$interval("ror", 12.0, 2.10, 7.02, digits = 2); TRUE },
+               error = function(e) FALSE)
+if (isTRUE(ok)) { cat("ACCEPTED\\n"); quit(status = 1) }
+cat("REFUSED\\n")
+"""
+
+
+def test_r_refuses_an_interval_that_does_not_bracket_its_estimate(r_project: Path) -> None:
+    """Mirroring the Python emitter, which has refused this since it gained `interval()`."""
+    script = r_project / "bracket.R"
+    script.write_text(
+        BRACKET_CHECK % {"emit": EMIT_R.as_posix(), "root": r_project.as_posix()},
+        encoding="utf-8",
+    )
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=r_project,
+    )
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    assert out.returncode == 0, f"{out.stdout}\n{out.stderr}"
+    assert "REFUSED" in out.stdout
 
 
 DISPLAY_CHECK = """

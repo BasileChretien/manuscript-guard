@@ -505,3 +505,103 @@ def test_bounds_in_separate_sentences_are_not_compared(project: Path) -> None:
         encoding="utf-8",
     )
     assert "interval-reversed" not in {f.code for f in gate_report(project).findings}
+
+
+def test_restating_a_bound_does_not_invent_a_reversal(project: Path) -> None:
+    """"2.10 to 7.02, and the lower bound of 2.10 excludes unity" is ordinary writing.
+
+    The guard meant to keep the *first* mention of each end read `value.bound in seen` while
+    the keys were `"{bounds}:{bound}"`, so it never matched and each later mention overwrote
+    the position. Restating the lower bound after the upper therefore made a correctly
+    ordered interval look reversed — and an author whose only recourse is to delete a true
+    sentence learns to distrust the gate.
+    """
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nThe interval ran {{results.ror.ci_low}} to {{results.ror.ci_high}}, and a "
+        "lower bound of {{results.ror.ci_low}} excludes the null.\n",
+        encoding="utf-8",
+    )
+    assert "interval-reversed" not in {f.code for f in gate_report(project).findings}
+
+
+def test_restating_a_bound_does_not_hide_a_reversal(project: Path) -> None:
+    """The same dead guard, the other way round: the reversal that goes unreported.
+
+    Last-mention-wins moved `high` past `low`, so a sentence that really does print the
+    interval backwards passed as long as it went on to name the upper bound again.
+    """
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nThe interval ran {{results.ror.ci_high}} to {{results.ror.ci_low}}, an upper "
+        "bound of {{results.ror.ci_high}} in the primary analysis.\n",
+        encoding="utf-8",
+    )
+    assert "interval-reversed" in {f.code for f in gate_report(project).findings}
+
+
+# ------------------------------------------------- a bound must bracket its estimate
+
+
+def _rewrite_value(project: Path, key: str, **fields) -> None:
+    """Edit one value in the fragment and re-stamp it, so the *freshness* gate stays quiet.
+
+    Without the re-stamp every one of these cases fails on `results-edited` instead, and
+    would pass while proving nothing about the check under test.
+    """
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"][key].update(fields)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_an_estimate_outside_its_own_interval_is_caught(project: Path) -> None:
+    """`interval()` refuses this, and `interval()` was the only thing that did.
+
+    The results fragment is a contract with three other writers — `value(bounds=…)` called
+    directly, the R emitter, a hand-edited file — so a point estimate outside its own
+    confidence interval reached the page with `check` silent. It is the one arithmetic error
+    a reader catches by eye in the first sentence of the Results.
+    """
+    _rewrite_value(project, "ror.point", value=12.0, display="12.00")
+    report = gate_report(project)
+    assert "estimate-outside-interval" in codes(report)
+    assert any("12.00" in (f.message or "") for f in report.failures)
+
+
+def test_an_inverted_interval_in_the_fragment_is_caught(project: Path) -> None:
+    """Naming them low and high in the analysis does not make them so."""
+    _rewrite_value(project, "ror.ci_low", value=7.02, display="7.02")
+    _rewrite_value(project, "ror.ci_high", value=2.10, display="2.10")
+    assert "interval-inverted" in codes(gate_report(project))
+
+
+def test_a_bound_of_nothing_is_caught(project: Path) -> None:
+    """A bound whose estimate no source publishes claims a check that cannot happen."""
+    _rewrite_value(project, "ror.ci_low", bounds="ror.absent")
+    assert "bound-dangling" in codes(gate_report(project))
+
+
+def test_two_lower_bounds_are_caught(project: Path) -> None:
+    """Both ends declared `low` left the interval unbracketed and nothing said so."""
+    _rewrite_value(project, "ror.ci_high", bound="low")
+    assert "bound-duplicated" in codes(gate_report(project))
+
+
+def test_a_bound_that_cannot_be_compared_says_so(project: Path) -> None:
+    """Skipping it silently would make "not checked" read exactly like "checked"."""
+    _rewrite_value(project, "ror.ci_low", value="about two", display="about two")
+    assert "bound-uncheckable" in codes(gate_report(project))
+
+
+def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
+    clean = codes(gate_report(project))
+    assert not clean & {
+        "estimate-outside-interval",
+        "interval-inverted",
+        "bound-dangling",
+        "bound-duplicated",
+    }

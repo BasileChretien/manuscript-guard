@@ -30,6 +30,11 @@ class Value:
     unit: str | None = None
     quoted: bool = True
     detail: dict | None = None
+    # The author saying "this string is a name or a period, not a measurement". Carried
+    # through to the reader, because the annotated copy paints a bound value green — "traced
+    # to a results value" — and a sentence published through the results file is prose that
+    # nothing verified, wearing the strongest reassurance the document offers.
+    label: bool = False
     # Another key this one is the same quantity as. G8 catches two keys holding the *same*
     # value with different displays, and goes quiet once they have actually diverged —
     # which is when it matters. Nothing in the file recorded that two keys were meant to

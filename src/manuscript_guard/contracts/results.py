@@ -163,6 +163,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 source=path,
                 unit=spec.get("unit"),
                 quoted=spec.get("quoted", True),
+                label=bool(spec.get("label", False)),
                 same_as=spec.get("same_as"),
                 bounds=spec.get("bounds"),
                 bound=spec.get("bound"),

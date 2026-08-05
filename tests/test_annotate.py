@@ -248,3 +248,45 @@ def test_the_figure_sheet_says_so_when_nothing_is_exempt(project: Path) -> None:
     projekt, _ = load_project(project)
     _namespace, results, _lit, _r = load_namespace(projekt)
     assert "No exemptions are declared" in figure_sheet(projekt, results)
+
+
+def test_a_claim_published_as_a_value_is_not_painted_green(project: Path) -> None:
+    """Green says "traced to a results value" — the strongest thing this document claims.
+
+    A sentence the author typed into an analysis script wore it, over its own key and
+    "emitted by 01_disproportionality.json". Red is the honest colour: nothing verified the
+    words, and no prose gate ever saw them, because they are not in a manuscript source.
+    """
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["spin.conclusion"] = {
+        "value": "The drug causes liver failure",
+        "display": "The drug causes liver failure",
+        "quoted": True,
+    }
+    document["values"]["study.drug"] = {
+        "value": "example-drug",
+        "display": "example-drug",
+        "label": True,
+        "quoted": True,
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8")
+        + "\n\nIn conclusion, {{results.spin.conclusion}} for {{results.study.drug}}.\n",
+        encoding="utf-8",
+    )
+
+    _text, marks = marked(project)
+    by_label = {mark.label: mark for mark in marks}
+    assert by_label["results.spin.conclusion"].tier == DEFECT
+    assert "nothing checked the words" in by_label["results.spin.conclusion"].detail
+    # A name really is traced to the analysis, and stays green.
+    assert by_label["results.study.drug"].tier == TRACED

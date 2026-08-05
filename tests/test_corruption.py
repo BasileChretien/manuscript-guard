@@ -666,6 +666,51 @@ def test_the_second_interval_is_still_read_for_order(project: Path) -> None:
     assert any("90%" in (f.message or "") for f in report.failures)
 
 
+def _publish_text(project: Path, key: str, text: str, *, quoted: bool = True, **extra) -> None:
+    """Add a string value to the fragment, and quote it in the manuscript if it is quoted."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"][key] = {"value": text, "display": text, "quoted": quoted, **extra}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    if not quoted:
+        return
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8") + f"\n\nIn conclusion, {{{{results.{key}}}}}.\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_claim_published_as_a_value_is_reported(project: Path) -> None:
+    """The one route by which text escapes everything that reads text.
+
+    A results key holding a sentence substitutes into the manuscript, resolves, and passes —
+    while leaving the manuscript sources, which is where the writing gate reads prose. So a
+    causal claim nobody wrote in the paper, and nothing checked, reached the page.
+    """
+    _publish_text(project, "spin.conclusion", "The drug causes liver failure")
+    assert "prose-as-value" in {f.code for f in gate_report(project).findings}
+
+
+def test_a_name_declared_as_a_name_is_not_reported(project: Path) -> None:
+    """`label=True` already means "a name, not a measurement", and keeping a drug name in
+    one place is a perfectly good reason to publish a string."""
+    _publish_text(project, "study.drug", "example-drug", label=True)
+    assert "prose-as-value" not in {f.code for f in gate_report(project).findings}
+
+
+def test_an_unquoted_string_is_nobody_s_business(project: Path) -> None:
+    """The rule is about what reaches the page, not about what the analysis holds."""
+    _publish_text(project, "notes.internal", "a working note", quoted=False)
+    assert "prose-as-value" not in {f.code for f in gate_report(project).findings}
+
+
+def test_the_example_publishes_no_prose(project: Path) -> None:
+    assert "prose-as-value" not in {f.code for f in gate_report(project).findings}
+
+
 def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
     clean = codes(gate_report(project))
     assert not clean & {

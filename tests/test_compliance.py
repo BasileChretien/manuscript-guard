@@ -306,6 +306,38 @@ def test_a_guideline_named_in_a_comment_is_not_a_claim(project: Path) -> None:
     assert "guideline-claimed-not-declared" not in codes
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "According to the medical record, the reaction resolved on withdrawal.",
+        "Each record was reported to the national centre before analysis.",
+        "Patients who arrive at the emergency department are triaged according to severity.",
+        "Reports were prepared from the hospital record system.",
+    ],
+)
+def test_an_ordinary_english_word_is_not_an_adherence_claim(project: Path, sentence: str) -> None:
+    """RECORD and ARRIVE are also words, and the name was matched case-insensitively.
+
+    So the gate warned "the manuscript says it followed RECORD" on the Methods section of
+    essentially every observational paper — a false positive about the paper's own conduct,
+    which is the fastest way to teach an author that this output is noise. Guideline names
+    are published in capitals and written that way; requiring the published casing costs
+    nothing and removes the whole family.
+    """
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates import check_reporting
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\n{sentence}\n", encoding="utf-8")
+    projekt, _ = load_project(project)
+    claimed = [
+        f.message
+        for f in check_reporting(projekt).findings
+        if f.code == "guideline-claimed-not-declared"
+    ]
+    assert not claimed, claimed
+
+
 def test_the_example_claims_no_guideline_it_has_not_completed(project: Path) -> None:
     """The template every new user copies must model the behaviour the gate asks for."""
     from manuscript_guard.contracts import load_project

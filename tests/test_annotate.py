@@ -217,3 +217,34 @@ def test_the_annotated_copy_contains_the_tables_and_the_figure(project: Path) ->
     assert "{{table." not in document and "{{figure." not in document
     assert document.count("<w:tbl>") >= 4
     assert any(name.startswith("word/media/") for name in archive.namelist())
+
+
+def test_the_figure_sheet_lists_the_exemptions_the_figure_declares(project: Path) -> None:
+    """It read `presentational`; the sidecar sections are `allow` and `allow_source`.
+
+    So the sheet told every reader "no values are declared presentational, so every number
+    drawn on this figure has to match a results value" — including for the shipped example,
+    which declares five axis ticks. The one page whose whole job is to show what was exempted
+    was guaranteed to claim nothing was, and it was wrong precisely when it mattered. Read
+    from disk rather than from a fixture, because reading the wrong key is the bug.
+    """
+    from manuscript_guard.annotate import figure_sheet
+
+    projekt, _ = load_project(project)
+    _namespace, results, _lit, _r = load_namespace(projekt)
+    sidecar = project / "figures" / "forest.guard.yaml"
+    assert "allow:" in sidecar.read_text(encoding="utf-8"), "the fixture no longer declares any"
+
+    sheet = figure_sheet(projekt, results)
+    assert "x-axis tick, and the line of no effect" in sheet, sheet
+    assert "No exemptions are declared" not in sheet
+
+
+def test_the_figure_sheet_says_so_when_nothing_is_exempt(project: Path) -> None:
+    """The reassuring sentence has to be earned, so it needs its own case."""
+    from manuscript_guard.annotate import figure_sheet
+
+    (project / "figures" / "forest.guard.yaml").unlink()
+    projekt, _ = load_project(project)
+    _namespace, results, _lit, _r = load_namespace(projekt)
+    assert "No exemptions are declared" in figure_sheet(projekt, results)

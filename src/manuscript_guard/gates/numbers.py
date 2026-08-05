@@ -172,6 +172,7 @@ def check_numbers(
 
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_emitted_tables(results, classifier))
+    report = report.merge(_declared_intervals(namespace))
 
     if by_project:
         listed = "; ".join(
@@ -339,9 +340,15 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
     for group in by_sentence.values():
         seen: dict[str, int] = {}
         for placeholder, value in group:
-            if value.bound in seen and value.bound is not None:
+            if value.bound is None:
                 continue
-            seen[f"{value.bounds}:{value.bound}"] = placeholder.start
+            # First mention wins. The guard used to read `value.bound in seen` while the keys
+            # were `"{bounds}:{bound}"`, so it never matched and every later mention
+            # overwrote the position. That cut both ways: a correctly ordered interval whose
+            # lower bound is restated later in the same sentence — "2.10 to 7.02, and the
+            # lower bound of 2.10 excludes unity" — was reported as reversed, and a genuinely
+            # reversed one restated the other way round went unreported.
+            seen.setdefault(f"{value.bounds}:{value.bound}", placeholder.start)
         for estimate in {value.bounds for _p, value in group}:
             low = seen.get(f"{estimate}:low")
             high = seen.get(f"{estimate}:high")
@@ -360,6 +367,118 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                 )
             )
     return report
+
+
+def _declared_intervals(namespace: dict[str, Value]) -> Report:
+    """A bound must bracket the estimate it says it bounds.
+
+    `interval()` already refuses `low <= point <= high` when it fails — but only there, and
+    the results fragment is a contract with three other writers: `value(bounds=…)` called
+    directly, the R emitter, and a hand-edited JSON file. Any of them could publish
+
+        ror.point 12.00, ror.ci_low 2.10, ror.ci_high 7.02
+
+    and `check` was silent, because the bracketing lived in one Python helper rather than in
+    the file every gate reads. A point estimate outside its own confidence interval is the
+    single most visible arithmetic error a reader can catch in a disproportionality paper.
+
+    Checked here rather than at load time so it reads as a finding an author can see beside
+    the others, and so one broken interval does not stop the rest of the run.
+    """
+    report = Report()
+    intervals: dict[str, dict[str, Value]] = {}
+    for value in namespace.values():
+        if not value.bounds or not value.bound:
+            continue
+        target = f"{value.namespace}.{value.bounds}"
+        if target not in namespace:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="bound-dangling",
+                    message=f"{value.key!r} declares itself a bound of {value.bounds!r}, "
+                    f"which no source publishes",
+                    path=value.source,
+                    hint="emit the estimate and its interval together with interval(), which "
+                    "writes all three keys and cannot get this wrong",
+                )
+            )
+            continue
+        ends = intervals.setdefault(target, {})
+        if value.bound in ends:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="bound-duplicated",
+                    message=f"{ends[value.bound].key!r} and {value.key!r} both declare "
+                    f"themselves the {value.bound} bound of {value.bounds!r}",
+                    path=value.source,
+                    hint="one of the two is the other end; an interval has one of each",
+                )
+            )
+            continue
+        ends[value.bound] = value
+
+    for target, ends in sorted(intervals.items()):
+        point = namespace[target]
+        low, high = ends.get("low"), ends.get("high")
+        declared = [v for v in (point, low, high) if v is not None]
+        # A bound of something that is not a number cannot be compared, and saying nothing
+        # would make that indistinguishable from having compared it — the failure this whole
+        # section exists to remove one level down.
+        unusable = [
+            v.key
+            for v in declared
+            if isinstance(v.value, bool) or not isinstance(v.value, (int, float))
+        ]
+        if unusable:
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="bound-uncheckable",
+                    message=f"the interval around {point.key!r} cannot be checked: "
+                    f"{', '.join(sorted(unusable))} is not a number",
+                    path=point.source,
+                    hint="emit the estimate and its bounds as numbers with `digits=`; a value "
+                    "already rendered as a string cannot be compared with anything",
+                )
+            )
+            continue
+        if low is not None and high is not None and float(low.value) > float(high.value):
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="interval-inverted",
+                    message=f"the interval around {point.key!r} runs {low.display} to "
+                    f"{high.display}: its lower bound is above its upper bound",
+                    path=low.source or point.source,
+                    hint="the two are swapped at the point they are computed; naming them "
+                    "low and high in the analysis does not make them so",
+                )
+            )
+            continue
+        for end, value in (("low", low), ("high", high)):
+            if value is None:
+                continue
+            outside = (
+                float(value.value) > float(point.value)
+                if end == "low"
+                else float(value.value) < float(point.value)
+            )
+            if not outside:
+                continue
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="estimate-outside-interval",
+                    message=f"{point.key} is {point.display}, outside its own interval: the "
+                    f"{end} bound is {value.display}",
+                    path=point.source,
+                    hint="a reader checks this one by eye in the first sentence of the "
+                    "Results; interval() refuses it, so this was written some other way",
+                )
+            )
+    return report.with_counts(intervals_checked=len(intervals))
 
 
 _GENERIC_HINT = (

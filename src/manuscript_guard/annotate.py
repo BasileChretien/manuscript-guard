@@ -325,6 +325,7 @@ def figure_sheet(project, results) -> str:
     sheet holds all of that; an overlay holds one of them badly.
     """
     from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.figures import _declared
     from manuscript_guard.paths import FIGURE_SCRIPT_SUFFIXES
 
     root = project.path("figures")
@@ -364,21 +365,34 @@ def figure_sheet(project, results) -> str:
         declared = figure.with_name(f"{figure.stem}.guard.yaml")
         review = figure.with_name(f"{figure.stem}.review.yaml")
 
-        rows = []
-        if declared.exists():
-            document = read_structured(declared) or {}
-            for entry in document.get("presentational", ()) or ():
-                if isinstance(entry, dict):
-                    rows.append(
-                        f"| {entry.get('value', '?')} | declared presentational | "
-                        f"{entry.get('why', '—')} |"
-                    )
+        # `allow` and `allow_source` are the two sections a `.guard.yaml` has. This read
+        # `presentational`, which no schema, no gate and no example has ever written — so
+        # every figure sheet ever produced said no exemptions were declared, including for
+        # the shipped example, which declares five. The sentence a reader trusts most on this
+        # page was the one guaranteed to be wrong whenever it mattered.
+        rows = [
+            (f"| {value} | drawn in the figure | {why} |", value)
+            for value, why in _declared(declared, "allow")
+        ] + [
+            (f"| {value} | in the figure's script | {why} |", value)
+            for value, why in _declared(declared, "allow_source")
+        ]
         if rows:
-            out.append("\n| Value | Status | Reason |\n|---|---|---|\n" + "\n".join(rows) + "\n")
+            out.append(
+                "\nDeclared exemptions — every other number drawn here has to match a "
+                "results value:\n\n| Value | Where | Reason |\n|---|---|---|\n"
+                + "\n".join(row for row, _v in rows)
+                + "\n"
+            )
+        elif declared.exists():
+            out.append(
+                f"\n`{declared.name}` declares no exemption with a reason, so every number "
+                "drawn on this figure has to match a results value.\n"
+            )
         else:
             out.append(
-                "\nNo values are declared presentational, so every number drawn on this "
-                "figure has to match a results value.\n"
+                "\nNo exemptions are declared, so every number drawn on this figure has to "
+                "match a results value.\n"
             )
 
         if review.exists():

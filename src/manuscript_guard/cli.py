@@ -1103,6 +1103,48 @@ def _recipe_paths(workspace: Path, name: str | None) -> list[Path]:
     return [by_name[key] for key in sorted(by_name)]
 
 
+_DOWNLOAD_URL = re.compile(r"^(?P<indent>[ \t]*)download_url:.*$", re.MULTILINE)
+_SOURCE_URL = re.compile(r"^(?P<indent>[ \t]*)source_url:.*$", re.MULTILINE)
+
+
+def _record_download_url(workspace: Path, recipe_path: Path, url: str) -> tuple[Path, bool]:
+    """Write `--save-url` into the project, never into the installed package.
+
+    `_recipe_paths` falls back to the recipes shipped inside the package, and `--save-url`
+    wrote back to whatever it returned — so on a normal pip install the command edited a file
+    in site-packages. That change is invisible to git, lost on the next upgrade, applied to
+    every other project on the machine, and on a system-wide install raises PermissionError
+    as a traceback. A project's own recipe already wins over the shipped one, so the copy is
+    also what the author meant.
+
+    Rewritten line by line rather than through `yaml.safe_dump`, because a round trip drops
+    every comment — and in these files the comments are the licence reasoning: which document
+    the terms were read from, and why a related licence does not settle it. Losing that
+    silently is worse than not recording the URL.
+    """
+    from manuscript_guard.reporting import RecipeError
+
+    local = workspace / "profiles" / "reporting" / "recipes" / recipe_path.name
+    copied = not recipe_path.is_relative_to(workspace)
+    text = recipe_path.read_text(encoding="utf-8")
+
+    line = f"download_url: {url}"
+    if _DOWNLOAD_URL.search(text):
+        text = _DOWNLOAD_URL.sub(lambda m: f"{m.group('indent')}{line}", text, count=1)
+    elif found := _SOURCE_URL.search(text):
+        indent = found.group("indent")
+        text = f"{text[: found.end()]}\n{indent}{line}{text[found.end() :]}"
+    else:
+        raise RecipeError(
+            f"{recipe_path.name}: no `meta.source_url` to record the download URL beside; "
+            f"add `download_url:` to the recipe by hand"
+        )
+
+    local.parent.mkdir(parents=True, exist_ok=True)
+    local.write_text(text, encoding="utf-8", newline="\n")
+    return local, copied
+
+
 def cmd_fetch(args: argparse.Namespace) -> int:
     """Download a guideline's own checklist document, at the user's request.
 
@@ -1110,8 +1152,6 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     document from the publisher for the person who asked, and prints the licence first so
     the terms are seen rather than buried.
     """
-    import yaml
-
     from manuscript_guard.paths import workspace as find_workspace
     from manuscript_guard.reporting import RecipeError, load_recipe
     from manuscript_guard.reporting.fetch import FetchError, fetch_document, licence_notice
@@ -1168,14 +1208,10 @@ def cmd_fetch(args: argparse.Namespace) -> int:
             )
             print("    The published checklist may have been revised. Check the recipe.")
         elif args.save_url and args.url:
-            document = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
-            document.setdefault("meta", {})["download_url"] = args.url
-            recipe_path.write_text(
-                yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
-                encoding="utf-8",
-                newline="\n",
-            )
-            print("    recorded download_url in the recipe")
+            written, copied = _record_download_url(root, recipe_path, args.url)
+            if copied:
+                print(f"    copied the shipped recipe to {written.parent}")
+            print(f"    recorded download_url in {written.name}")
 
     return 1 if failed else 0
 

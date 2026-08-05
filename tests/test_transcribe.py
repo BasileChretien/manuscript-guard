@@ -423,6 +423,83 @@ def test_fetch_does_not_overwrite_without_being_told(tmp_path: Path) -> None:
     assert existing.read_bytes() == b"original content"
 
 
+# ------------------------------------------------ --save-url writes into the project
+
+
+def test_save_url_never_writes_into_the_installed_package(tmp_path: Path) -> None:
+    """`_recipe_paths` falls back to the recipes shipped inside the package.
+
+    `--save-url` wrote back to whatever it returned, so on a normal pip install the command
+    edited a file in site-packages: invisible to git, lost on the next upgrade, applied to
+    every other project on the machine, and a PermissionError traceback on a system-wide
+    install. The shipped copy has to stay exactly as released.
+    """
+    from manuscript_guard.cli import _record_download_url
+    from manuscript_guard.paths import SHIPPED_RECIPES
+
+    shipped = SHIPPED_RECIPES / "RECORD.recipe.yaml"
+    before = shipped.read_bytes()
+
+    written, copied = _record_download_url(tmp_path, shipped, "https://example.invalid/new.docx")
+
+    assert shipped.read_bytes() == before, "the installed package was modified"
+    assert copied and written.is_relative_to(tmp_path)
+    assert "download_url: https://example.invalid/new.docx" in written.read_text(encoding="utf-8")
+
+
+def test_save_url_keeps_the_licence_reasoning(tmp_path: Path) -> None:
+    """A `safe_load`/`safe_dump` round trip drops every comment in the file.
+
+    In these recipes the comments *are* the licence reasoning — which document the terms were
+    read from, and why a related licence does not settle the question. Recording a URL is not
+    worth losing the argument that says the file may be redistributed at all.
+    """
+    from manuscript_guard.cli import _record_download_url
+    from manuscript_guard.paths import SHIPPED_RECIPES
+
+    shipped = SHIPPED_RECIPES / "RECORD.recipe.yaml"
+    original = shipped.read_text(encoding="utf-8")
+    comments = [line for line in original.splitlines() if line.lstrip().startswith("#")]
+    assert comments, "the fixture recipe no longer carries comments"
+
+    written, _copied = _record_download_url(tmp_path, shipped, "https://example.invalid/new.docx")
+    kept = written.read_text(encoding="utf-8")
+    for line in comments:
+        assert line in kept, f"lost: {line}"
+    assert "licence:" in kept and "sha256:" in kept
+
+
+def test_save_url_edits_the_projects_own_recipe_in_place(tmp_path: Path) -> None:
+    """A recipe the project already owns is edited where it is, not copied beside itself."""
+    from manuscript_guard.cli import _record_download_url
+
+    local = tmp_path / "profiles" / "reporting" / "recipes" / "LOCAL.recipe.yaml"
+    local.parent.mkdir(parents=True)
+    local.write_text(
+        "schema: manuscript-guard/recipe/1\n\n# why this licence\nmeta:\n"
+        '  source_url: "https://example.invalid/page"\n\ndocument: x.docx\n',
+        encoding="utf-8",
+    )
+
+    written, copied = _record_download_url(tmp_path, local, "https://example.invalid/new.docx")
+    assert written == local and not copied
+    text = written.read_text(encoding="utf-8")
+    assert "# why this licence" in text
+    assert "  download_url: https://example.invalid/new.docx" in text, text
+
+
+def test_save_url_refuses_a_recipe_it_cannot_place_the_url_in(tmp_path: Path) -> None:
+    """Rather than append the key at top level, where `meta` is not, and read as recorded."""
+    from manuscript_guard.cli import _record_download_url
+
+    local = tmp_path / "profiles" / "reporting" / "recipes" / "ODD.recipe.yaml"
+    local.parent.mkdir(parents=True)
+    local.write_text("schema: manuscript-guard/recipe/1\ndocument: x.docx\n", encoding="utf-8")
+
+    with pytest.raises(RecipeError):
+        _record_download_url(tmp_path, local, "https://example.invalid/new.docx")
+
+
 # ---------------------------------------------------------------- column-laid-out pages
 
 # Two sets printed side by side, as ARRIVE 2.0 does, with a topic wrapping into the left

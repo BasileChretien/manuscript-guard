@@ -68,7 +68,13 @@ _CLAIMING = re.compile(
     r"reported|written|guided|checklist|statement)\b"
 )
 
-_NAMED = re.compile(r"(?i)\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
+#: Case-sensitive, because several of these acronyms are ordinary English words. Matched
+#: case-insensitively, "According to the medical record" claimed adherence to RECORD and
+#: "patients who arrive at the emergency department" claimed ARRIVE — so the gate warned
+#: about a guideline on the Methods section of essentially every observational paper, which
+#: teaches an author to stop reading its output. Guideline names are published in capitals
+#: and written that way; requiring the published casing costs nothing and removes the family.
+_NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) + r")\b")
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the

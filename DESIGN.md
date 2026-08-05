@@ -1464,6 +1464,15 @@ Closed since, and why each mattered:
   checks, and built from the *published* item list rather than the completion, so an item
   nobody answered appears with the answer blank instead of vanishing from what the journal
   receives.
+- **`bind --apply` was all or nothing.** It replaced every literal that matched exactly one
+  published value, in one go. But a match is a suggestion and never evidence — the gate
+  refuses a number *because* it matches one, since nothing may pass by coincidence — so a
+  `12` that happens to equal a published count while meaning twelve months of follow-up was
+  applied along with the nine correct ones, and the only way to avoid it was to decline all
+  ten and retype them. `--only main.md:42` accepts one suggestion; naming an ambiguous one is
+  refused rather than treated as permission to guess, and an unmatched selector is an error
+  rather than a silent no-op. The command now also names every replacement it made — "replaced
+  7 literal(s)" said nothing about which seven, and each of them rewrote a sentence.
 - **The submission pack left out the response to reviewers.** `respond` wrote the letter into
   `build/` and nothing collected it, so a resubmission pack held the revised manuscript and no
   answer to the reviewers — the document a resubmission is judged on as much as the paper, and

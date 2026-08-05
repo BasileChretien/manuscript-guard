@@ -112,15 +112,70 @@ def routes(item: Unbound) -> list[str]:
     return out
 
 
-def apply(items: list[Unbound]) -> tuple[int, list[Unbound]]:
-    """Replace every unambiguous literal with its binding. Returns how many, and the rest.
+class SelectionError(Exception):
+    """A selector names nothing, or names something that has no single answer."""
+
+
+def label(item: Unbound, root: Path) -> str:
+    """How a suggestion is named on the command line: `main.md:42`.
+
+    Positional rather than ordinal. Numbering the list 1..n and taking `--apply 3` would mean
+    that editing the file between reading the list and accepting a suggestion applies a
+    different one — and each of these writes a binding that changes what the paper says.
+    """
+    try:
+        where = item.path.relative_to(root).as_posix()
+    except ValueError:
+        where = item.path.name
+    return f"{where}:{item.line}"
+
+
+def select(items: list[Unbound], wanted: list[str], root: Path) -> list[Unbound]:
+    """The suggestions named by `--apply main.md:42 …`, or every certain one if none is named.
+
+    An unmatched selector is an error rather than a silent no-op. The author has said what
+    they want applied; applying less than that without saying so is exactly the quiet
+    divergence between intention and file that this command exists to close.
+    """
+    if not wanted:
+        return [item for item in items if item.certain]
+
+    by_label: dict[str, list[Unbound]] = {}
+    for item in items:
+        by_label.setdefault(label(item, root), []).append(item)
+
+    chosen: list[Unbound] = []
+    for selector in wanted:
+        found = by_label.get(selector)
+        if not found:
+            near = ", ".join(sorted(by_label)[:6]) or "none"
+            raise SelectionError(f"nothing to bind at {selector!r}. Suggestions here: {near}")
+        undecided = [item for item in found if not item.certain]
+        if undecided:
+            listed = ", ".join(f"{{{{{key}}}}}" for key in undecided[0].candidates) or "nothing"
+            raise SelectionError(
+                f"{selector} has no single answer ({listed}), so it cannot be applied. "
+                f"Write the binding you mean by hand"
+            )
+        chosen += found
+    return chosen
+
+
+def apply(items: list[Unbound]) -> tuple[list[tuple[Unbound, str]], list[Unbound]]:
+    """Replace the given literals with their bindings. Returns what changed, and what did not.
 
     Rewritten from the end of each file backwards, by offset. Replacing by text search
     would rewrite every occurrence of a string that may legitimately appear elsewhere —
     and in a paper full of 1s and 2s, "replace 1 with a binding" is a catastrophe.
+
+    Takes the items to apply rather than choosing them here, so accepting eight suggestions
+    out of ten is one command. It used to take everything `unbound()` found and replace every
+    unambiguous one, which made a single wrong suggestion — a `12` that happens to equal a
+    published value while meaning twelve months of follow-up — something an author could only
+    avoid by declining the other nine.
     """
-    replaced = 0
-    remaining = [item for item in items if not item.certain]
+    applied: list[tuple[Unbound, str]] = []
+    accepted = {(item.path, item.start) for item in items if item.certain}
     by_file: dict[Path, list[Unbound]] = {}
     for item in items:
         if item.certain:
@@ -129,7 +184,10 @@ def apply(items: list[Unbound]) -> tuple[int, list[Unbound]]:
     for path, entries in by_file.items():
         text = path.read_text(encoding="utf-8")
         for item in sorted(entries, key=lambda i: i.start, reverse=True):
-            text = f"{text[: item.start]}{{{{{item.certain}}}}}{text[item.end :]}"
-            replaced += 1
+            binding = f"{{{{{item.certain}}}}}"
+            text = f"{text[: item.start]}{binding}{text[item.end :]}"
+            applied.append((item, binding))
         path.write_text(text, encoding="utf-8", newline="\n")
-    return replaced, remaining
+
+    applied.sort(key=lambda pair: (pair[0].path.name, pair[0].start))
+    return applied, [item for item in items if (item.path, item.start) not in accepted]

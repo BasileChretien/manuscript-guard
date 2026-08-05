@@ -214,7 +214,7 @@ def cmd_bind(args: argparse.Namespace) -> int:
     to type next, and usually the answer is that the number is already in `results/` and was
     typed instead of bound. That case is detected and offered as a replacement.
     """
-    from manuscript_guard.binding import apply, routes, unbound
+    from manuscript_guard.binding import SelectionError, apply, label, routes, select, unbound
 
     project, _ = load_project(args.path)
     namespace, _results, _literature, _ = load_namespace(project)
@@ -225,18 +225,30 @@ def cmd_bind(args: argparse.Namespace) -> int:
         return 0
 
     if args.apply:
-        replaced, remaining = apply(items)
-        print(f"replaced {replaced} literal(s) with the binding they match.")
-        if remaining:
-            print(f"{len(remaining)} left, which need a decision:\n")
-        items = remaining
+        try:
+            chosen = select(items, args.only, project.root)
+        except SelectionError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+
+        applied, _rest = apply(chosen)
+        # Named, not counted. "replaced 7 literal(s)" tells an author nothing about which
+        # seven, and every one of these rewrote a sentence: a suggestion is a guess from a
+        # matching value, so the line where it landed is the only way to review it after the
+        # fact. `git diff` says the same thing, but only if you already know to look.
+        for item, binding in applied:
+            print(f"{label(item, project.root)}  {item.text!r} -> {binding}")
+        print(f"\nreplaced {len(applied)} literal(s) with the binding they match.")
+
+        accepted = {(item.path, item.start) for item, _b in applied}
+        items = [item for item in items if (item.path, item.start) not in accepted]
         if not items:
             print("Re-run `manuscript-guard check` to confirm.")
             return 0
+        print(f"{len(items)} left:\n")
 
     for item in items:
-        where = item.path.relative_to(project.root).as_posix()
-        print(f"\n{where}:{item.line}  {item.text!r}")
+        print(f"\n{label(item, project.root)}  {item.text!r}")
         for route in routes(item):
             print(f"    {route}")
         print(f"    hint: {item.hint}")
@@ -245,7 +257,8 @@ def cmd_bind(args: argparse.Namespace) -> int:
     if certain and not args.apply:
         print(
             f"\n{certain} of {len(items)} match exactly one published value. "
-            f"`manuscript-guard bind --apply` replaces those and leaves the rest."
+            f"`manuscript-guard bind --apply` replaces all of those; "
+            f"`--apply --only main.md:12 --only main.md:20` replaces just those two."
         )
     return 1
 
@@ -1432,6 +1445,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply",
         action="store_true",
         help="replace the literals that match exactly one published value",
+    )
+    bind.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="FILE:LINE",
+        help="with --apply, replace just this suggestion; repeatable. Without it, --apply "
+        "takes every unambiguous one, which means one wrong guess can only be avoided by "
+        "declining all the right ones",
     )
     bind.set_defaults(func=cmd_bind)
 

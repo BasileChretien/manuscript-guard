@@ -437,8 +437,12 @@ def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
     result = subprocess.run(
         [RSCRIPT, "--vanilla", str(probe), *[str(tmp_path / n) for n in names]],
         capture_output=True, text=True, timeout=120, check=False)
-    if "MISSING_DEPS" in result.stdout or result.returncode != 0:
-        pytest.skip(f"R could not run the probe: {result.stderr.strip()[:200]}")
+    # Skip only for the one condition that genuinely means "R cannot run this here". Skipping
+    # on any non-zero exit would turn a syntax error or a digest regression in emit.R into a
+    # skipped test, which reads exactly like a passing one.
+    if "MISSING_DEPS" in result.stdout:
+        pytest.skip("R is present but jsonlite/digest is not installed")
+    assert result.returncode == 0, f"the R probe failed: {result.stderr.strip()[:400]}"
 
     from_r = dict(zip(names, result.stdout.split(), strict=True))
     for name in names:

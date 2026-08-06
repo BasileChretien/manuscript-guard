@@ -222,12 +222,23 @@ def source_digest(path: Path) -> str:
 def source_digest_matches(path: Path, recorded: str) -> bool:
     """Whether `path` is the script `recorded` was taken from.
 
-    Accepts the byte digest as well as the normalised one, because fragments written before
-    `source_digest` existed recorded raw bytes, and on a CRLF checkout those two differ. A
-    script whose *content* changed matches neither, so this admits one further spelling of the
-    same file rather than a different file.
+    Fragments written before `source_digest` existed recorded raw bytes, so the record depends
+    on the line endings of whichever checkout produced it. Accepting only the normalised digest
+    and today's raw digest left one combination broken, and it is the likeliest one: a digest
+    recorded on Windows over CRLF, against a file git has since handed out as LF. Both
+    candidates then hash the LF bytes and neither matches the CRLF record, so G1 reported
+    `script-newer` for a script nobody had touched — the very failure this function exists to
+    prevent, surviving in the legacy case.
+
+    So the recorded digest is compared against every canonical spelling of the *current
+    content*: LF, CRLF and CR. A script whose content changed matches none of them, so this
+    admits three ways of writing one file rather than a second file.
     """
-    return recorded in (source_digest(path), sha256_of(path))
+    if path.suffix.lower() not in _SOURCE_SUFFIXES:
+        return recorded == sha256_of(path)
+    as_lf = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    spellings = (as_lf, as_lf.replace(b"\n", b"\r\n"), as_lf.replace(b"\n", b"\r"))
+    return any(recorded == hashlib.sha256(text).hexdigest() for text in spellings)
 
 
 DIGEST_SUFFIX = ".sha256"

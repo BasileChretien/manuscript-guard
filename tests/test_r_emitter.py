@@ -427,7 +427,15 @@ def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
         (tmp_path / name).write_bytes(content)
 
     probe = tmp_path / "probe.R"
+    # The same MISSING_DEPS guard the other R script in this file carries. Without it a
+    # runner that has R but not `digest` — which is every windows-latest runner in this
+    # repository's CI — dies inside mg_source_digest with a bare non-zero exit. That used to
+    # be swallowed by a blanket skip, so this test was quietly not running on Windows at all;
+    # tightening the skip is what surfaced it.
     probe.write_text(
+        'if (!requireNamespace("digest", quietly = TRUE)) {\n'
+        '  cat("MISSING_DEPS\\n"); quit(status = 3)\n'
+        "}\n"
         f'source("{EMIT_R.as_posix()}")\n'
         f'for (f in commandArgs(trailingOnly = TRUE)) cat(mg_source_digest(f), "\n")\n',
         encoding="utf-8",

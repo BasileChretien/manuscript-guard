@@ -78,3 +78,22 @@ def test_a_scaffolded_project_passes_its_own_number_gate(tmp_path: Path) -> None
     report, _project, _stage, _deferred = _run_gates(root, stage="drafting")
     numbers = [f for f in report.findings if f.gate == "G2"]
     assert not numbers, "\n".join(f.message for f in numbers)
+
+
+def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> None:
+    """A scaffolded project must not inherit the bug this repository already cured.
+
+    manuscript-guard's guarantees are byte-level — the .sha256 beside each fragment, the
+    manuscript digest a review record is tied to. Git's default stores LF and hands Windows
+    CRLF, so the same commit hashes differently on two machines and `check` reports an edit
+    nobody made. This repository's own .gitattributes records that CI failed exactly that way;
+    `init` shipped a .gitignore and no .gitattributes, so the fix protected the toolkit and
+    not its users.
+    """
+    init_project(tmp_path / "paper")
+    written = (tmp_path / "paper" / ".gitattributes").read_text(encoding="utf-8")
+    assert "* text=auto eol=lf" in written
+    # Figures and the built .docx are digested as bytes; normalising them would corrupt them.
+    # Matched on the fields, not the spacing, which is column-aligned for reading.
+    marked = {line.split()[0] for line in written.splitlines() if line.endswith("binary")}
+    assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked

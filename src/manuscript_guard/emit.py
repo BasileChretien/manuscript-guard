@@ -40,7 +40,16 @@ _NUMERIC_TEXT = re.compile(r"^\s*[-+−]?[\d,  ]*\d(?:[.,]\d+)?\s*%?\s*$")
 # Numbers inside a composite cell such as "3.84 (2.10 to 7.02)". Each must be traceable.
 _NUMBER_IN_TEXT = re.compile(r"\d[\d,  ]*(?:\.\d+)?")
 
-__all__ = ["TABLE_SECTION", "Composed", "Emitter", "read_digest", "sha256_of", "write_digest"]
+__all__ = [
+    "TABLE_SECTION",
+    "Composed",
+    "Emitter",
+    "read_digest",
+    "sha256_of",
+    "source_digest",
+    "source_digest_matches",
+    "write_digest",
+]
 
 
 @dataclass(frozen=True)
@@ -181,6 +190,44 @@ def sha256_of(path: Path) -> str:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+# Suffixes whose bytes are a text encoding of the content, so a line ending is formatting
+# rather than substance. Deliberately narrow: only what an analysis script can be written in.
+_SOURCE_SUFFIXES = frozenset({".py", ".r", ".rmd", ".qmd", ".jl", ".do", ".sas", ".sh"})
+
+
+def source_digest(path: Path) -> str:
+    """The digest of a *script*, ignoring line endings.
+
+    Separate from `sha256_of` on purpose. A results fragment is hashed byte for byte, because
+    that digest has to be reproducible from any language that can emit results, and "hash the
+    bytes you just wrote" is the only operation meaning the same thing everywhere. A script is
+    different: git rewrites its line endings on checkout, and CRLF instead of LF cannot change
+    what the script computed.
+
+    Without this, G1 reports `script-newer` for a script nobody touched. This repository's own
+    .gitattributes already pins `eol=lf`, and its comment records the symptom — "CI failed
+    exactly that way on Ubuntu and macOS while passing on the machine the digests were computed
+    on" — but a project scaffolded by `init` never got that file, so the fix protected the
+    toolkit and not the people using it. `init` now ships one; this keeps the gate right where
+    it is missing anyway, on a repository predating it or not created by `init`.
+    """
+    if path.suffix.lower() not in _SOURCE_SUFFIXES:
+        return sha256_of(path)
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
+def source_digest_matches(path: Path, recorded: str) -> bool:
+    """Whether `path` is the script `recorded` was taken from.
+
+    Accepts the byte digest as well as the normalised one, because fragments written before
+    `source_digest` existed recorded raw bytes, and on a CRLF checkout those two differ. A
+    script whose *content* changed matches neither, so this admits one further spelling of the
+    same file rather than a different file.
+    """
+    return recorded in (source_digest(path), sha256_of(path))
 
 
 DIGEST_SUFFIX = ".sha256"
@@ -564,7 +611,7 @@ class Emitter:
             # editing the script and stamping the fragment forward made the edit invisible.
             # G1's own docstring says hashes are used "because timestamps lie"; that was
             # true of the inputs and not of the code that read them.
-            "generated_by_sha256": sha256_of(Path(self.script)),
+            "generated_by_sha256": source_digest(Path(self.script)),
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "tool": {"name": "manuscript-guard", "version": __version__},
             "vcs": vcs,
@@ -680,5 +727,7 @@ __all__ = [
     "Emitter",
     "read_digest",
     "sha256_of",
+    "source_digest",
+    "source_digest_matches",
     "write_digest",
 ]

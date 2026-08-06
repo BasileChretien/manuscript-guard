@@ -126,6 +126,36 @@ build/
 __pycache__/
 """
 
+# Not cosmetic. Several of this toolkit's guarantees are byte-level: the .sha256 beside every
+# results fragment, and the manuscript digest a review record is tied to. Git's default stores
+# LF and hands Windows CRLF, so the same commit hashes differently on different machines and
+# each of those checks reports a change nobody made. manuscript-guard's own repository hit
+# exactly that — CI failing on Ubuntu and macOS while passing on the machine the digests were
+# computed on — and fixed it with this file, which `init` then did not give to anyone else. A
+# scaffolded project inherited the bug the toolkit had already cured for itself.
+GITATTRIBUTES = """\
+# Normalise line endings, and check them out as LF everywhere.
+#
+# manuscript-guard's digests are taken over file bytes. Without this, Git hands Windows CRLF
+# and Linux LF for the same commit, the digests disagree across machines, and `check` reports
+# an edit nobody made. `eol=lf` makes the working copy match the repository on every platform,
+# so a digest computed anywhere is valid everywhere.
+* text=auto eol=lf
+
+# Binary: never touch these.
+*.docx binary
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.tif  binary
+*.tiff binary
+*.eps  binary
+*.xlsx binary
+*.zip  binary
+*.RData binary
+"""
+
 README = """\
 # {title}
 
@@ -179,6 +209,7 @@ _FILES = {
     "literature/references.bib": BIBLIOGRAPHY,
     "manuscript/main.md": MANUSCRIPT,
     ".gitignore": GITIGNORE,
+    ".gitattributes": GITATTRIBUTES,
     "README.md": README,
 }
 

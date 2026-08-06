@@ -719,3 +719,37 @@ def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
         "bound-dangling",
         "bound-duplicated",
     }
+
+
+# ------------------------------------------------- line endings are not a change
+
+
+def test_rewriting_the_analysis_to_crlf_is_not_a_change(project: Path) -> None:
+    """A checkout must not be able to fake `script-newer`.
+
+    This repository's own .gitattributes pins `eol=lf` and its comment records why: "CI
+    failed exactly that way on Ubuntu and macOS while passing on the machine the digests
+    were computed on." A project scaffolded by `init` got no such file, so the fix
+    protected the toolkit and not the people using it. An author on Windows with
+    core.autocrlf=true records a CRLF digest, a co-author on Linux checks out LF, and G1
+    reports that a script nobody touched has changed.
+
+    The bytes differ here; the code does not. That distinction is the whole finding.
+    """
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n")
+    script.write_bytes(as_lf.replace(b"\n", b"\r\n"))
+
+    assert "script-newer" not in codes(gate_report(project))
+
+
+def test_a_real_edit_still_fails_after_a_crlf_rewrite(project: Path) -> None:
+    """The obvious wrong fix — normalise, then compare loosely — must not blind the gate.
+
+    Line endings are excused; a changed statement is not, whatever the file's line endings.
+    """
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n") + b"\n# changed\n"
+    script.write_bytes(as_lf.replace(b"\n", b"\r\n"))
+
+    assert "script-newer" in codes(gate_report(project))

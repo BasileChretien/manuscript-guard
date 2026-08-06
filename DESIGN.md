@@ -1321,6 +1321,18 @@ the claim. `tests/test_round_five.py` holds one per finding.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **Digests are byte-level, so line endings are part of the guarantee.** `.gitattributes`
+  pins `eol=lf` here, and `init` now writes the same file into every scaffolded project:
+  without it Git stores LF and hands Windows CRLF, and every byte-level check reports a
+  change nobody made. A *script's* digest is normalised in code as well (`source_digest`,
+  mirrored by `mg_source_digest` in the R emitter), so G1 stays right on a repository that
+  predates the scaffold or was not made by `init`. A *fragment's* digest is still byte-exact
+  on purpose: it must be reproducible from any language that can emit results, and "hash the
+  bytes you just wrote" is the only operation meaning the same thing everywhere. So a project
+  that deletes its `.gitattributes` can still see `results-edited` on a clean checkout. Found
+  by dogfooding — the same omission in the author's own paper repository, `.csv` missing from
+  a normalisation set, reported 16 stale outputs including all seven figures, every one of
+  which re-rendered pixel-identical.
 - **A fenced block tagged with a language the lexer does not know is not read.** Only
   Python and R have lexers, so a ```stata or ```sql listing is reported as unread rather
   than checked. Saying so is the point; it is still a hole an author could tag their way

@@ -175,6 +175,34 @@ mg_write_lf <- function(text, path) {
   invisible(path)
 }
 
+#' Suffixes an analysis script can have, where a line ending is formatting not substance
+#' @noRd
+MG_SOURCE_SUFFIXES <- c("py", "r", "rmd", "qmd", "jl", "do", "sas", "sh")
+
+#' The digest of a script, ignoring line endings
+#'
+#' Mirrors `source_digest` in the Python emitter, and must stay identical to it: an R-written
+#' fragment and a Python-written one have to describe the same file the same way. Distinct
+#' from the fragment digest, which stays byte-exact on purpose — see `mg_write_lf` above for
+#' the sibling problem. Git rewrites line endings on checkout, and CRLF instead of LF cannot
+#' change what a script computed; hashing the raw bytes made G1 report `script-newer` for a
+#' script nobody had touched.
+#' @noRd
+mg_source_digest <- function(path) {
+  suffix <- tolower(tools::file_ext(path))
+  if (!(suffix %in% MG_SOURCE_SUFFIXES)) {
+    return(digest::digest(file = path, algo = "sha256"))
+  }
+  raw_bytes <- readBin(path, "raw", file.info(path)$size)
+  # Drop CR before LF, then any surviving lone CR — the same two steps, in the same order,
+  # as the Python side. Order matters: dropping every CR first would turn a lone CR into
+  # nothing rather than into a newline.
+  text <- rawToChar(raw_bytes)
+  text <- gsub("\r\n", "\n", text, fixed = TRUE, useBytes = TRUE)
+  text <- gsub("\r", "\n", text, fixed = TRUE, useBytes = TRUE)
+  digest::digest(charToRaw(text), algo = "sha256", serialize = FALSE)
+}
+
 #' The exponent a display carries, whichever of its two spellings was used
 #'
 #' Mirrors `_exponent_of` in the Python emitter. "10^-9" and "10⁻⁹" are the same exponent,
@@ -598,8 +626,13 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
     provenance <- list(
       generated_by = relative(script_path),
       # Mirrors the Python emitter. G1 compares this rather than modification times,
-      # because an mtime is set by `touch`.
-      generated_by_sha256 = digest::digest(file = script_path, algo = "sha256"),
+      # because an mtime is set by `touch`. Line-ending-normalised, like Python's
+      # `source_digest`: git rewrites line endings on checkout, and CRLF instead of LF
+      # cannot change what a script computed. Hashing raw bytes made G1 report
+      # `script-newer` for a script nobody had touched. The two emitters have to agree
+      # here, or an R-written fragment and a Python-written one describe the same file
+      # differently.
+      generated_by_sha256 = mg_source_digest(script_path),
       generated_at = stamp,
       tool = list(name = "manuscriptguard", version = "0.1.0"),
       inputs = input_records,

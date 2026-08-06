@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from manuscript_guard.emit import sha256_of
+from manuscript_guard.emit import sha256_of, source_digest, source_digest_matches
 
 SUFFIX = ".render.json"
 SCHEMA = "manuscript-guard/render/1"
@@ -60,7 +60,7 @@ def record(script: str | Path, *outputs: str | Path) -> Path:
     document = {
         "schema": SCHEMA,
         "rendered_by": script_path.name,
-        "rendered_by_sha256": sha256_of(script_path),
+        "rendered_by_sha256": source_digest(script_path),
         "outputs": {p.name: sha256_of(p) for p in sorted(paths, key=lambda p: p.name)},
     }
     path = manifest_path(paths[0])
@@ -119,7 +119,7 @@ def same_render(raster: Path, vector: Path) -> bool:
     if not named or not recorded_script:
         return False
     script = raster.with_name(str(named))
-    return script.exists() and sha256_of(script) == recorded_script
+    return script.exists() and source_digest_matches(script, recorded_script)
 
 
 __all__ = ["SCHEMA", "SUFFIX", "manifest_path", "read", "record", "same_render"]

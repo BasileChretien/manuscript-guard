@@ -719,3 +719,89 @@ def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
         "bound-dangling",
         "bound-duplicated",
     }
+
+
+# ------------------------------------------------- line endings are not a change
+
+
+def test_rewriting_the_analysis_to_crlf_is_not_a_change(project: Path) -> None:
+    """A checkout must not be able to fake `script-newer`.
+
+    This repository's own .gitattributes pins `eol=lf` and its comment records why: "CI
+    failed exactly that way on Ubuntu and macOS while passing on the machine the digests
+    were computed on." A project scaffolded by `init` got no such file, so the fix
+    protected the toolkit and not the people using it. An author on Windows with
+    core.autocrlf=true records a CRLF digest, a co-author on Linux checks out LF, and G1
+    reports that a script nobody touched has changed.
+
+    The bytes differ here; the code does not. That distinction is the whole finding.
+    """
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n")
+    script.write_bytes(as_lf.replace(b"\n", b"\r\n"))
+
+    assert "script-newer" not in codes(gate_report(project))
+
+
+def test_a_real_edit_still_fails_after_a_crlf_rewrite(project: Path) -> None:
+    """The obvious wrong fix — normalise, then compare loosely — must not blind the gate.
+
+    Line endings are excused; a changed statement is not, whatever the file's line endings.
+    """
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n") + b"\n# changed\n"
+    script.write_bytes(as_lf.replace(b"\n", b"\r\n"))
+
+    assert "script-newer" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("recorded_as", "on_disk_as"),
+    [(b"\r\n", b"\n"), (b"\n", b"\r\n"), (b"\r", b"\n"), (b"\n", b"\r")],
+)
+def test_a_legacy_digest_survives_a_change_of_checkout(
+    project: Path, recorded_as: bytes, on_disk_as: bytes
+) -> None:
+    """A digest recorded before `source_digest` existed was taken over raw bytes.
+
+    Which bytes those were depends on the checkout that produced it, so the record and the
+    working tree can disagree about line endings while agreeing about the code. The
+    CRLF-recorded / LF-current direction is the likeliest of all — recorded on Windows, then
+    normalised by git — and it was the one combination still broken when this only accepted
+    the normalised digest and today's raw digest. Both hashed the LF bytes; neither matched
+    the CRLF record; G1 reported `script-newer` for a script nobody had touched.
+    """
+    import hashlib
+
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by_sha256"] = hashlib.sha256(
+        as_lf.replace(b"\n", recorded_as)
+    ).hexdigest()
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    script.write_bytes(as_lf.replace(b"\n", on_disk_as))
+    assert "script-newer" not in codes(gate_report(project))
+
+
+def test_a_legacy_digest_does_not_excuse_an_edited_script(project: Path) -> None:
+    """Accepting three spellings of one file must not become accepting a different file."""
+    import hashlib
+
+    script = project / "analysis" / "01_disproportionality.py"
+    as_lf = script.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["provenance"]["generated_by_sha256"] = hashlib.sha256(
+        as_lf.replace(b"\n", b"\r\n")
+    ).hexdigest()
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    script.write_bytes(as_lf + b"\n# changed\n")
+    assert "script-newer" in codes(gate_report(project))

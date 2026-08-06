@@ -405,3 +405,57 @@ def test_r_and_python_agree_that_rounding_to_zero_is_not_rounding(tmp_path: Path
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert "AGREED" in out.stdout
+
+
+def test_both_emitters_digest_a_script_the_same_way(tmp_path: Path) -> None:
+    """`generated_by_sha256` is written by whichever emitter ran and read by one gate.
+
+    If R and Python disagree about a script's digest, an R-written fragment and a
+    Python-written one describe the same file differently, and G1's answer depends on which
+    language the analysis happened to be in. Both normalise line endings, because git rewrites
+    them on checkout and CRLF instead of LF cannot change what a script computed.
+    """
+    from manuscript_guard.emit import source_digest
+
+    variants = {
+        "lf.py": b"x = 1\ny = 2\n",
+        "crlf.py": b"x = 1\r\ny = 2\r\n",
+        "cr.py": b"x = 1\ry = 2\r",
+        "changed.py": b"x = 1\ny = 3\n",
+    }
+    for name, content in variants.items():
+        (tmp_path / name).write_bytes(content)
+
+    probe = tmp_path / "probe.R"
+    # The same MISSING_DEPS guard the other R script in this file carries. Without it a
+    # runner that has R but not `digest` — which is every windows-latest runner in this
+    # repository's CI — dies inside mg_source_digest with a bare non-zero exit. That used to
+    # be swallowed by a blanket skip, so this test was quietly not running on Windows at all;
+    # tightening the skip is what surfaced it.
+    probe.write_text(
+        'if (!requireNamespace("digest", quietly = TRUE)) {\n'
+        '  cat("MISSING_DEPS\\n"); quit(status = 3)\n'
+        "}\n"
+        f'source("{EMIT_R.as_posix()}")\n'
+        f'for (f in commandArgs(trailingOnly = TRUE)) cat(mg_source_digest(f), "\n")\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    names = list(variants)
+    result = subprocess.run(
+        [RSCRIPT, "--vanilla", str(probe), *[str(tmp_path / n) for n in names]],
+        capture_output=True, text=True, timeout=120, check=False)
+    # Skip only for the one condition that genuinely means "R cannot run this here". Skipping
+    # on any non-zero exit would turn a syntax error or a digest regression in emit.R into a
+    # skipped test, which reads exactly like a passing one.
+    if "MISSING_DEPS" in result.stdout:
+        pytest.skip("R is present but jsonlite/digest is not installed")
+    assert result.returncode == 0, f"the R probe failed: {result.stderr.strip()[:400]}"
+
+    from_r = dict(zip(names, result.stdout.split(), strict=True))
+    for name in names:
+        assert from_r[name] == source_digest(tmp_path / name), f"{name}: R and Python disagree"
+
+    # And the normalisation must be real on both sides, not agreement on doing nothing.
+    assert from_r["lf.py"] == from_r["crlf.py"] == from_r["cr.py"]
+    assert from_r["changed.py"] != from_r["lf.py"]

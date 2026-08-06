@@ -19,7 +19,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
-from manuscript_guard.emit import DIGEST_SUFFIX, read_digest, sha256_of
+from manuscript_guard.emit import DIGEST_SUFFIX, read_digest, sha256_of, source_digest_matches
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.paths import SOURCE_SUFFIXES
 
@@ -83,9 +83,16 @@ def check_freshness(project: Project, results: Results) -> Report:
             # hashes are used "because timestamps lie" — which was true of the inputs and
             # not of the code that read them. Fragments written before this field existed
             # still get the old test, so an older project degrades rather than breaking.
+            #
+            # `source_digest_matches` rather than a byte comparison, because git rewrites
+            # line endings on checkout and CRLF instead of LF cannot change what a script
+            # computed. Comparing bytes reported `script-newer` for a script nobody had
+            # touched: recorded on Windows, checked out on Linux, and the gate fired on a
+            # clean tree. It accepts the raw digest too, so fragments written before that
+            # distinction existed keep verifying.
             declared = fragment.generated_by_sha256
             changed = (
-                sha256_of(script_path) != declared
+                not source_digest_matches(script_path, declared)
                 if declared
                 else script_path.stat().st_mtime > stamp
             )

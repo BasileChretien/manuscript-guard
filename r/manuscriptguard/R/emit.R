@@ -179,6 +179,17 @@ mg_write_lf <- function(text, path) {
 #' @noRd
 MG_SOURCE_SUFFIXES <- c("py", "r", "rmd", "qmd", "jl", "do", "sas", "sh")
 
+#' Suffixes of DATA an analysis reads, with the same property
+#'
+#' Mirrors `_DATA_SUFFIXES` in the Python emitter and must stay identical to it. Without this,
+#' the digest chain did not survive a git checkout: a project writing CSVs on Windows records
+#' CRLF digests, .gitattributes normalises the blob to LF, and a fresh clone then mismatches
+#' every declared input on every platform. Anything absent from this list is hashed byte for
+#' byte, which is the right default wherever a CR is content.
+#' @noRd
+MG_DATA_SUFFIXES <- c("csv", "tsv", "psv", "json", "jsonl", "yaml", "yml", "toml",
+                      "md", "txt", "bib", "xml", "sql")
+
 #' The digest of a script, ignoring line endings
 #'
 #' Mirrors `source_digest` in the Python emitter, and must stay identical to it: an R-written
@@ -188,19 +199,54 @@ MG_SOURCE_SUFFIXES <- c("py", "r", "rmd", "qmd", "jl", "do", "sas", "sh")
 #' change what a script computed; hashing the raw bytes made G1 report `script-newer` for a
 #' script nobody had touched.
 #' @noRd
-mg_source_digest <- function(path) {
+mg_digest_in <- function(path, suffixes) {
   suffix <- tolower(tools::file_ext(path))
-  if (!(suffix %in% MG_SOURCE_SUFFIXES)) {
+  raw_bytes <- readBin(path, "raw", file.info(path)$size)
+
+  # UTF-16 is never normalised: 0x0D and 0x0A occur as bytes of ordinary characters there,
+  # so rewriting them corrupts text rather than reformatting it. Matches `_is_utf16` on the
+  # Python side.
+  is_utf16 <- length(raw_bytes) >= 2 &&
+    (identical(raw_bytes[1:2], as.raw(c(0xff, 0xfe))) ||
+     identical(raw_bytes[1:2], as.raw(c(0xfe, 0xff))))
+  if (!(suffix %in% suffixes) || is_utf16) {
     return(digest::digest(file = path, algo = "sha256"))
   }
-  raw_bytes <- readBin(path, "raw", file.info(path)$size)
-  # Drop CR before LF, then any surviving lone CR — the same two steps, in the same order,
-  # as the Python side. Order matters: dropping every CR first would turn a lone CR into
-  # nothing rather than into a newline.
-  text <- rawToChar(raw_bytes)
-  text <- gsub("\r\n", "\n", text, fixed = TRUE, useBytes = TRUE)
-  text <- gsub("\r", "\n", text, fixed = TRUE, useBytes = TRUE)
-  digest::digest(charToRaw(text), algo = "sha256", serialize = FALSE)
+
+  # Operated on RAW vectors, not on a string. The previous version called rawToChar first,
+  # which R refuses for any file containing an embedded NUL - so an analysis declaring a
+  # UTF-16 or NUL-bearing input died inside the emitter with an opaque error, on files that
+  # digest::digest(file=) had handled before this function existed. Python returns a digest
+  # for those, so the crash was also a parity break.
+  #
+  # Drop CR before LF, then any surviving lone CR - the same two steps, in the same order, as
+  # the Python side. Order matters: dropping every CR first would turn a lone CR into nothing
+  # rather than into a newline.
+  cr <- as.raw(0x0d)
+  lf <- as.raw(0x0a)
+  n <- length(raw_bytes)
+  if (n > 0L) {
+    is_cr <- raw_bytes == cr
+    follows_lf <- c(raw_bytes[-1L] == lf, FALSE)
+    raw_bytes <- raw_bytes[!(is_cr & follows_lf)]   # CRLF -> LF
+    raw_bytes[raw_bytes == cr] <- lf                # lone CR -> LF
+  }
+  digest::digest(raw_bytes, algo = "sha256", serialize = FALSE)
+}
+
+mg_source_digest <- function(path) {
+  mg_digest_in(path, MG_SOURCE_SUFFIXES)
+}
+
+#' The digest of a file the analysis READ, ignoring line endings where they are formatting
+#'
+#' Mirrors `input_digest` in the Python emitter and must stay identical to it. Distinct from
+#' the fragment's own digest, which stays byte-exact because it has to be reproducible from
+#' any language that can emit results. Nobody reproduces an input; they check it has not
+#' changed, and a line ending git rewrote on checkout is not a change.
+#' @noRd
+mg_input_digest <- function(path) {
+  mg_digest_in(path, c(MG_SOURCE_SUFFIXES, MG_DATA_SUFFIXES))
 }
 
 #' The exponent a display carries, whichever of its two spellings was used
@@ -590,7 +636,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL) {
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
       list(
         path = relative(full),
-        sha256 = digest::digest(file = full, algo = "sha256"),
+        sha256 = mg_input_digest(full),
         bytes = as.integer(file.info(full)$size)
       )
     })

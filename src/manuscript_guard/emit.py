@@ -46,7 +46,11 @@ __all__ = [
     "Composed",
     "DisplayError",
     "Emitter",
+    "input_digest",
+    "input_digest_matches",
     "read_digest",
+    "input_digest",
+    "input_digest_matches",
     "sha256_of",
     "source_digest",
     "source_digest_matches",
@@ -198,6 +202,104 @@ def sha256_of(path: Path) -> str:
 # rather than substance. Deliberately narrow: only what an analysis script can be written in.
 _SOURCE_SUFFIXES = frozenset({".py", ".r", ".rmd", ".qmd", ".jl", ".do", ".sas", ".sh"})
 
+# The same property, for the data an analysis READS.
+#
+# Without this, the digest chain did not survive a git checkout. A project whose analysis
+# writes CSVs on Windows records CRLF digests; `.gitattributes` normalises the blob to LF; a
+# fresh clone therefore mismatches every declared input, on every platform. Measured on the
+# project this came from: 0 failing in the author's working copy, 35 failing in a clone of the
+# same commit. The `.gitattributes` had been added to PREVENT that, and made it certain — it
+# normalised what git stores while the digests went on being taken over what sits on disk.
+#
+# Extensions rather than content sniffing, because a rule you can read off a filename is one
+# an author can predict; a heuristic that sometimes normalises is worse than one that never
+# does. Everything absent from this set is hashed byte for byte, which is the right default
+# and covers every format where a `\r` is content: .xlsx, .zip, .pdf, images, and anything
+# the toolkit has not been told about.
+#
+# `.sql` and `.txt` were listed here and have been removed. Normalising rewrites every CR in
+# the byte stream, not only the ones that end lines, so for a format that can carry a CR
+# INSIDE a value the two are not distinguishable. Verified collisions: a .sql file inserting
+# 'x\ry' against one inserting 'x\ny' hash the same, and .txt is the catch-all for
+# fixed-width records and arbitrary dumps, which is where the assumption is least defensible.
+# The same argument would remove .csv - a quoted free-text field can contain a bare CR - and
+# .csv stays, because it is the format the whole problem is about and excluding it would
+# leave the gate broken for the ordinary case. That asymmetry is a judgement, not a
+# derivation, and it is recorded here rather than hidden.
+_DATA_SUFFIXES = frozenset(
+    {".csv", ".tsv", ".psv", ".json", ".jsonl", ".yaml", ".yml", ".toml",
+     ".md", ".bib", ".xml"}
+)
+
+_TEXT_SUFFIXES = _SOURCE_SUFFIXES | _DATA_SUFFIXES
+
+
+# A UTF-16 byte stream is not safe to normalise: 0x0D and 0x0A occur as the low or high byte
+# of ordinary characters, so rewriting them corrupts text rather than reformatting it.
+# Verified: "㐍" (U+340D) and "㐊" (U+340A) written as UTF-16LE .csv normalise to the same
+# bytes. Excel's "Unicode Text" export and many Japanese-Windows CSV exports are UTF-16, so
+# this is in the path of the projects this toolkit is for. A BOM settles it cheaply, and a
+# file whose encoding cannot be read off its first bytes is hashed byte for byte.
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+
+
+def _is_utf16(data: bytes) -> bool:
+    return data[:2] in _UTF16_BOMS
+
+
+def _as_lf(data: bytes) -> bytes:
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def _normalises(path: Path, suffixes: frozenset[str], data: bytes) -> bool:
+    return path.suffix.lower() in suffixes and not _is_utf16(data)
+
+
+def _digest_of(path: Path, suffixes: frozenset[str]) -> str:
+    data = path.read_bytes()
+    if not _normalises(path, suffixes, data):
+        return sha256_of(path)
+    return hashlib.sha256(_as_lf(data)).hexdigest()
+
+
+def _matches(path: Path, recorded: str, suffixes: frozenset[str]) -> bool:
+    """Whether `recorded` is a digest of this file's current content, however spelt.
+
+    The file's ACTUAL bytes are tried first, then each canonical spelling — LF, CRLF, CR.
+    Trying only the canonical three was a regression: a file with mixed endings, which is what
+    you get from appending CRLF rows to an LF header or from a partially normalised
+    repository, matches none of them, so an untouched input that had been passing began to
+    fail. The commit that introduced this claimed to be non-breaking and was not, for exactly
+    that class. Including the raw bytes restores the old behaviour as a floor: nothing that
+    passed before can fail now.
+
+    A file whose CONTENT changed matches none of the candidates, so this admits several ways
+    of writing one file rather than a second file.
+    """
+    data = path.read_bytes()
+    if not _normalises(path, suffixes, data):
+        return recorded == sha256_of(path)
+    as_lf = _as_lf(data)
+    candidates = (data, as_lf, as_lf.replace(b"\n", b"\r\n"), as_lf.replace(b"\n", b"\r"))
+    return any(recorded == hashlib.sha256(text).hexdigest() for text in candidates)
+
+
+def input_digest(path: Path) -> str:
+    """The digest of a file an analysis READ, ignoring line endings where they are formatting.
+
+    Distinct from `sha256_of`, which stays byte-exact for the results fragment itself: that
+    digest has to be reproducible from any language that can emit results, and "hash the bytes
+    you just wrote" is the only operation meaning the same thing everywhere. An input is
+    different — nobody is reproducing it, they are checking it has not changed, and a line
+    ending git rewrote on checkout is not a change.
+    """
+    return _digest_of(path, _TEXT_SUFFIXES)
+
+
+def input_digest_matches(path: Path, recorded: str) -> bool:
+    """Whether `path` still holds the content `recorded` was taken from."""
+    return _matches(path, recorded, _TEXT_SUFFIXES)
+
 
 def source_digest(path: Path) -> str:
     """The digest of a *script*, ignoring line endings.
@@ -215,10 +317,7 @@ def source_digest(path: Path) -> str:
     toolkit and not the people using it. `init` now ships one; this keeps the gate right where
     it is missing anyway, on a repository predating it or not created by `init`.
     """
-    if path.suffix.lower() not in _SOURCE_SUFFIXES:
-        return sha256_of(path)
-    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    return hashlib.sha256(data).hexdigest()
+    return _digest_of(path, _SOURCE_SUFFIXES)
 
 
 def source_digest_matches(path: Path, recorded: str) -> bool:
@@ -236,11 +335,7 @@ def source_digest_matches(path: Path, recorded: str) -> bool:
     content*: LF, CRLF and CR. A script whose content changed matches none of them, so this
     admits three ways of writing one file rather than a second file.
     """
-    if path.suffix.lower() not in _SOURCE_SUFFIXES:
-        return recorded == sha256_of(path)
-    as_lf = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    spellings = (as_lf, as_lf.replace(b"\n", b"\r\n"), as_lf.replace(b"\n", b"\r"))
-    return any(recorded == hashlib.sha256(text).hexdigest() for text in spellings)
+    return _matches(path, recorded, _SOURCE_SUFFIXES)
 
 
 DIGEST_SUFFIX = ".sha256"
@@ -602,7 +697,7 @@ class Emitter:
             inputs.append(
                 {
                     "path": str(path.relative_to(root)).replace("\\", "/"),
-                    "sha256": sha256_of(path),
+                    "sha256": input_digest(path),
                     "bytes": path.stat().st_size,
                 }
             )

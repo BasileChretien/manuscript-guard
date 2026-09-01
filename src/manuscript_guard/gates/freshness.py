@@ -19,7 +19,13 @@ from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import HOW_TO_EMIT, Results
-from manuscript_guard.emit import DIGEST_SUFFIX, read_digest, sha256_of, source_digest_matches
+from manuscript_guard.emit import (
+    DIGEST_SUFFIX,
+    input_digest_matches,
+    read_digest,
+    sha256_of,
+    source_digest_matches,
+)
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.paths import SOURCE_SUFFIXES
 
@@ -51,7 +57,11 @@ def check_freshness(project: Project, results: Results) -> Report:
                     )
                 )
                 continue
-            if sha256_of(input_path) != declared["sha256"]:
+            # `input_digest_matches` rather than a byte comparison, for the same reason the
+            # script check below uses `source_digest_matches`: git rewrites line endings on
+            # checkout, and a CSV handed out as LF where it was written as CRLF is the same
+            # data. Before this, a fresh clone of a clean repository failed every input.
+            if not input_digest_matches(input_path, declared["sha256"]):
                 report = report.with_findings(
                     Finding(
                         gate=GATE,

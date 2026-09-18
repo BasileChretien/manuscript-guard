@@ -73,6 +73,33 @@ class Comment:
     where: str = ""
 
 
+_PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
+
+
+def _custom_properties(existing: str | None, digest: str) -> str:
+    """The custom-properties part with the source stamp added, every other property kept.
+
+    It used to be replaced whole. Pandoc writes metadata there, and Word's Zotero plugin
+    keeps a document's citation style there (ZOTERO_PREF_1, ...): the stamp erased the
+    style, and Word asked for one again after every build.
+    """
+    ours = _CUSTOM_XML.format(name=PROPERTY, value=digest)
+    if not existing:
+        return ours
+    kept = [
+        element
+        for element in _PROPERTY_ELEMENT.findall(existing)
+        if f'name="{PROPERTY}"' not in element
+    ]
+    elements = kept + _PROPERTY_ELEMENT.findall(ours)
+    # Property ids must be unique, and custom properties number from 2.
+    numbered = [
+        re.sub(r'\bpid="\d+"', f'pid="{i}"', element, count=1)
+        for i, element in enumerate(elements, start=2)
+    ]
+    return ours[: ours.index("<property")] + "".join(numbered) + "</Properties>"
+
+
 def stamp_into(document: Path, digest: str) -> None:
     """Record the source digest inside the .docx itself.
 
@@ -86,6 +113,7 @@ def stamp_into(document: Path, digest: str) -> None:
         scratch, "w", zipfile.ZIP_DEFLATED
     ) as zout:
         names = set(zin.namelist())
+        existing = zin.read(_CUSTOM).decode("utf-8") if _CUSTOM in names else None
         for item in zin.infolist():
             if item.filename == _CUSTOM:
                 continue
@@ -99,7 +127,7 @@ def stamp_into(document: Path, digest: str) -> None:
                 )
                 data = data.encode("utf-8")
             zout.writestr(item, data)
-        zout.writestr(_CUSTOM, _CUSTOM_XML.format(name=PROPERTY, value=digest))
+        zout.writestr(_CUSTOM, _custom_properties(existing, digest))
     scratch.replace(document)
 
 
@@ -112,7 +140,9 @@ def stamp_of(document: Path) -> str | None:
             xml = archive.read(_CUSTOM).decode("utf-8")
     except (OSError, zipfile.BadZipFile) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
-    found = re.search(r"<vt:lpwstr>([0-9a-f]{64})</vt:lpwstr>", xml)
+    # By name: the part now holds other properties too, and the first 64-hex value in it
+    # need not be ours.
+    found = re.search(rf'name="{PROPERTY}"[^>]*>\s*<vt:lpwstr>([0-9a-f]{{64}})</vt:lpwstr>', xml)
     return found.group(1) if found else None
 
 
@@ -214,21 +244,33 @@ def paragraph_slug(relative: str) -> str:
     return f"{stem}{hashlib.sha256(relative.encode('utf-8')).hexdigest()[:6]}"
 _TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
 
+# Blocks that are not paragraphs of prose. A marker in front of a fence turns it into text:
+# `[]{#id}::: {#refs}` printed ":::" in the document, and the reference list it was meant to
+# place never appeared. A marker in front of a code fence would do the same to the code.
+_FENCE = re.compile(r"(:::|```|~~~)")
+
+
+def _untagged(stripped: str) -> bool:
+    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+    return (
+        not stripped
+        or stripped.startswith("#")
+        or _FENCE.match(stripped) is not None
+        or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+    )
+
 
 def tag(text: str, relative: str) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
-    Headings are skipped: `[]{#id}# Methods` is not a heading. So are paragraphs that are
-    nothing but a placeholder, because those become a table or a figure rather than a
-    paragraph, and a bookmark would attach to the wrong thing.
+    Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
+    blocks, and paragraphs that are nothing but a placeholder, because those become a table
+    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
     """
     out = []
     for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
         stripped = para.strip()
-        if not stripped or para.strip("\n") == "" or stripped.startswith("#"):
-            out.append(para)
-            continue
-        if re.fullmatch(r"\{\{[^}]*\}\}", stripped):
+        if para.strip("\n") == "" or _untagged(stripped):
             out.append(para)
             continue
         marker = _TAG.format(slug=paragraph_slug(relative), index=index)
@@ -268,7 +310,7 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if not stripped or stripped.startswith("#") or re.fullmatch(r"\{\{[^}]*\}\}", stripped):
+            if _untagged(stripped):
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

@@ -233,14 +233,19 @@ def test_the_built_document_carries_no_unresolved_bindings(project: Path) -> Non
 @needs_zotero
 def test_live_build_writes_real_zotero_fields(tmp_path: Path) -> None:
     """The end the whole architecture rests on: Markdown in, live Zotero citations out."""
-    from manuscript_guard.zotero import ZoteroUnavailable, library
+    from manuscript_guard.zotero import ZoteroUnavailable, rpc
+    from manuscript_guard.zotero.client import PINNED_CONDITION
 
+    # Two pinned items, found by a condition search. Reading the whole library here, as this
+    # test used to, takes about a minute on a library of a few thousand items, so on any real
+    # library the test ran out of time and skipped itself: the end-to-end test was the one
+    # never run where it mattered.
     try:
-        keys = list(library())[:2]
+        keys = [i["citation-key"] for i in rpc("item.search", [PINNED_CONDITION])][:2]
     except ZoteroUnavailable as exc:
         pytest.skip(f"Zotero answered the ping but not the query: {exc}")
     if len(keys) < 2:
-        pytest.skip("the Zotero library has fewer than two items with citation keys")
+        pytest.skip("the Zotero library has fewer than two items with pinned citation keys")
 
     root = tmp_path / "live"
     (root / "manuscript").mkdir(parents=True)

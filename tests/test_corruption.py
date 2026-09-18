@@ -805,3 +805,61 @@ def test_a_legacy_digest_does_not_excuse_an_edited_script(project: Path) -> None
 
     script.write_bytes(as_lf + b"\n# changed\n")
     assert "script-newer" in codes(gate_report(project))
+
+
+# -------------------------------------------------------------------------------------- G7
+# Citation integrity against a running Zotero, simulated: the fake answers as Better BibTeX
+# 9.0.64 does (see tests/test_zotero.py), so these run anywhere.
+
+
+def _g7(root: Path):
+    from manuscript_guard.gates import check_citations
+
+    project, _ = load_project(root)
+    _namespace, _results, literature, _ = load_namespace(project)
+    return check_citations(project, literature)
+
+
+def _zotero(monkeypatch, items: list[dict]) -> None:
+    from test_zotero import FakeBBT
+
+    from manuscript_guard.zotero import client, reset_cache
+
+    reset_cache()
+    monkeypatch.setattr(client, "rpc", FakeBBT(items))
+    monkeypatch.setattr("manuscript_guard.gates.citations.available", lambda: True)
+
+
+def test_an_unpinned_cited_key_is_caught(project: Path, monkeypatch) -> None:
+    from test_zotero import CLASS, HEPATIC, csl
+
+    _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, False)])
+    report = _g7(project)
+    unpinned = [f for f in report.failures if f.code == "citation-key-unpinned"]
+    assert [f.message for f in unpinned] == [f"@{CLASS} is not pinned in Zotero"]
+    assert f"Citation Key: {CLASS}" in unpinned[0].hint
+
+
+def test_a_cited_key_carried_by_two_items_is_caught(project: Path, monkeypatch) -> None:
+    """The duplicate that made Better BibTeX refuse the whole export in a real project."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, True), csl(CLASS, False)])
+    report = _g7(project)
+    assert "citation-key-ambiguous" in codes(report)
+    assert "citation-unresolved" not in codes(report)
+
+
+def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypatch) -> None:
+    """The first key of a group that wraps onto a new line was invisible to G7 and to
+    sync-bib (neither the bracketed nor the narrative pattern found it)."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    main = main_md(project)
+    wrapped = f"\nA wrapped claim [@ghostKey2020;\n@{HEPATIC}].\n"
+    main.write_text(main.read_text(encoding="utf-8") + wrapped, encoding="utf-8")
+    _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, True)])
+    report = _g7(project)
+    assert any(
+        f.code == "citation-unresolved" and "ghostKey2020" in f.message for f in report.failures
+    )

@@ -5,15 +5,19 @@ Three failures this catches, in descending order of how quietly they happen:
 1. **An unpinned citation key.** Better BibTeX derives an unpinned key from metadata, so
    correcting an author's initials or a publication year silently renames it. Every
    citation using the old key stops resolving, and the failure surfaces as a missing
-   reference in a built document rather than as an error. Pinning is one menu item in
-   Zotero and it removes the whole class.
-2. **A citation key that resolves to nothing.** A typo, or an item deleted from the library.
+   reference in a built document rather than as an error. Pinning is one line in the item's
+   Extra field (`Citation Key: xyz`) and it removes the whole class.
+2. **A citation key that resolves to nothing, or to several items.** A typo, an item deleted
+   from the library, or a duplicate: two items carrying one key, which Better BibTeX refuses
+   to export, so `sync-bib` stops on it.
 3. **A literature value whose stored source is missing**, which turns a ledger entry from
    evidence back into an assertion.
 
-The gate works from the committed `.bib` when Zotero is not running, so it still means
-something in CI. Pinning can only be checked against Zotero itself, so that part downgrades
-to a single warning rather than silently passing.
+The gate asks Zotero about the cited keys only (`zotero.lookup`), never for the whole
+library, so its answer does not depend on how large the library is or how busy Zotero is.
+It works from the committed `.bib` when Zotero is not running, so it still means something
+in CI. Pinning can only be checked against Zotero itself, so that part downgrades to a
+single warning rather than silently passing.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.zotero import ZoteroUnavailable, available, find_citations, library
+from manuscript_guard.zotero import Lookup, ZoteroUnavailable, available, find_citations, lookup
 
 GATE = "G7"
 BIB_FILE = "references.bib"
@@ -45,15 +49,17 @@ def check_citations(project: Project, literature: Literature) -> Report:
     for path in source_files(project.path("manuscript")):
         uses.extend(find_citations(path.read_text(encoding="utf-8"), path))
 
+    seen: set[str] = {use.citekey for use in uses}
     committed = bib_keys(project)
-    zotero_keys: frozenset[str] = frozenset()
-    unpinned: set[str] = set()
-    online = available()
-    if online:
+    bib_path = project.path("literature") / BIB_FILE
+
+    # Zotero is asked only when something is cited, and only about what is cited.
+    zotero = Lookup()
+    running = bool(seen) and available()
+    online = running
+    if running:
         try:
-            index = library()
-            zotero_keys = frozenset(index)
-            unpinned = {key for key, ref in index.items() if not ref.pinned}
+            zotero = lookup(tuple(sorted(seen)))
         except ZoteroUnavailable as exc:
             online = False
             report = report.with_findings(
@@ -66,23 +72,26 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 )
             )
 
-    known = committed | zotero_keys
-    if not known:
+    known = committed | zotero.found
+    checkable = online or bool(committed)
+    if seen and not checkable:
+        where = (
+            "references.bib is empty" if bib_path.exists() else "there is no references.bib"
+        )
+        zotero_state = "Zotero could not be read" if running else "Zotero is not running"
         report = report.with_findings(
             Finding(
                 gate=GATE,
                 code="no-reference-source",
                 severity=WARN,
-                message="no references.bib and no running Zotero, so citations are unchecked",
-                path=project.path("literature") / BIB_FILE,
+                message=f"{where} and {zotero_state}, so citations are unchecked",
+                path=bib_path,
                 hint="run `manuscript-guard sync-bib` with Zotero open",
             )
         )
 
-    seen: set[str] = set()
     for use in uses:
-        seen.add(use.citekey)
-        if known and use.citekey not in known:
+        if checkable and use.citekey not in known and use.citekey not in zotero.ambiguous:
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -94,24 +103,38 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 )
             )
 
-    for citekey in sorted(seen & unpinned):
+    for citekey in sorted(seen & set(zotero.ambiguous)):
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="citation-key-ambiguous",
+                message=f"@{citekey} is carried by {zotero.ambiguous[citekey]} items in Zotero, "
+                "so Better BibTeX cannot tell which one is cited and `sync-bib` will stop",
+                hint="merge the duplicates in Zotero (Duplicate Items), or move the extra copy "
+                "to the trash, then run the check again",
+            )
+        )
+
+    for citekey in sorted(seen & zotero.unpinned):
         report = report.with_findings(
             Finding(
                 gate=GATE,
                 code="citation-key-unpinned",
                 message=f"@{citekey} is not pinned in Zotero",
-                hint="in Zotero, right-click the item and pin the citation key; an unpinned "
-                "key is regenerated from metadata and will change under you",
+                hint=f"in Zotero, put the line `Citation Key: {citekey}` at the top of the "
+                "item's Extra field; an unpinned key is regenerated from metadata and will "
+                "change under you",
             )
         )
 
-    if seen and not online and not unpinned:
+    if seen and not online:
+        reason = "Zotero could not be read" if running else "Zotero is not running"
         report = report.with_findings(
             Finding(
                 gate=GATE,
                 code="pinning-unchecked",
                 severity=WARN,
-                message="Zotero is not running, so citation keys were not checked for pinning",
+                message=f"{reason}, so citation keys were not checked for pinning",
                 hint="run the check again with Zotero open before submitting",
             )
         )

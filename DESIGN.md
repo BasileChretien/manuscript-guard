@@ -97,6 +97,15 @@ These were tested, not assumed, and they determine the architecture.
   through Python, never PowerShell.
 - **The agent tool sandbox blocks localhost.** Any step touching Zotero needs the sandbox
   disabled, which has consequences for how hooks are written and permissioned.
+- **Never ask Better BibTeX for the whole library.** `item.search("")` serialises every item
+  as CSL: 51 s for 4,688 items (Better BibTeX 9.0.64), against G7's 20 s budget, so G7 passed
+  or failed on how busy Zotero was. G7 now asks `item.pandoc_filter` about the cited keys
+  (0.2 s; an unresolvable key comes back with the number of items carrying it, 0 or a
+  duplicate count) and finds pinned items with one condition search,
+  `item.search([["extra", "contains", "Citation Key:"]])` (0.7 s).
+- **A pinned key comes back as `citation-key: xyz`**, in the CSL `note`, although it is typed
+  in Extra as `Citation Key: xyz`. `item.search` keeps that line; `item.pandoc_filter` and
+  `item.export` strip it, so they cannot tell pinned from unpinned.
 - Environment: Zotero 9.0.6, Better BibTeX installed, `Zotero.dotm` in Word's STARTUP,
   pandoc 3.9.0.2, Word 16, R 4.3.3–4.6.0, Python 3.12.3.
 

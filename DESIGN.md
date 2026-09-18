@@ -85,9 +85,14 @@ These were tested, not assumed, and they determine the architecture.
   Document Preferences, and the file is not reported as corrupt.
   **Consequence: Markdown is the permanent source of truth and the .docx is a disposable
   build artifact.** No surgical patching, no md/docx drift.
-- One chore remains in the build pipeline: no `ZOTERO_PREF` or `ZOTERO_BIBL` field is
-  emitted, so document preferences and bibliography insertion are manual unless we inject
-  them. (Narrative `@key` citations also produced no field at the time of this note; that
+- `zotero.lua` emits no `ZOTERO_PREF` properties and no `ZOTERO_BIBL` field for .docx (it
+  does for .odt), so a Word build had live citations, no reference list, and a style dialog on
+  the first Refresh. `build/zotero_word.lua`, run after it on a live build, now adds both: the
+  bibliography field where the manuscript writes a `refs` div (or at the end), and the
+  preferences for the target journal's `references.csl`. Verified in Word 16 with Zotero
+  9.0.6 on a 57-reference manuscript: Refresh formatted every citation in the preset style
+  without a dialog, filled the bibliography, and Add/Edit Citation worked on the document.
+  (Narrative `@key` citations also produced no field at the time of the first note; that
   was fixed with `author-in-text: true` — see "The build" below.)
 - **Zotero's local API (`/api/`) is disabled** on this machine — returns
   `403 Local API is not enabled`. Not needed: **Better BibTeX's JSON-RPC works** and

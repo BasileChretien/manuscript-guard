@@ -50,6 +50,12 @@ LUA_MAX_BYTES = 2 * 1024 * 1024
 LIVE = "live"
 OFFLINE = "offline"
 
+# Ours, shipped with the package, run after zotero.lua on a live build: the bibliography
+# field and document preferences Word's Zotero plugin needs, which zotero.lua writes for
+# LibreOffice only. See the file's header.
+ZOTERO_WORD_LUA = Path(__file__).with_name("zotero_word.lua")
+ZOTERO_STYLES = "http://www.zotero.org/styles/"
+
 
 class BuildError(Exception):
     """The document could not be produced."""
@@ -114,7 +120,51 @@ def ensure_zotero_lua(cache_dir: Path) -> Path:
     return path
 
 
-def _front_matter(project, *, supplementary: bool = False) -> str:
+def _zotero_style(project) -> str | None:
+    """The Zotero style id for the target journal's citation style, if its profile names one.
+
+    A journal profile records `references: {csl: apa}`; Zotero identifies the same style as
+    http://www.zotero.org/styles/apa. A full URL in the profile is used as it is.
+    """
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.journal import profile_path
+
+    slug = project.target_journal
+    path = profile_path(project, slug) if slug else None
+    if path is None:
+        return None
+    with contextlib.suppress(Exception):
+        document = read_structured(path)
+        csl = str(((document or {}).get("references") or {}).get("csl") or "").strip()
+        if csl:
+            return csl if csl.startswith("http") else ZOTERO_STYLES + csl
+    return None
+
+
+def _zotero_version() -> str | None:
+    """The running Zotero's version, as Better BibTeX reports it; None if it does not answer."""
+    from manuscript_guard.zotero import ZoteroUnavailable, rpc
+
+    with contextlib.suppress(ZoteroUnavailable, AttributeError, TypeError):
+        ready = rpc("api.ready", [], timeout=5)
+        return str(ready.get("zotero")) if isinstance(ready, dict) and ready.get("zotero") else None
+    return None
+
+
+def _word_lines(project) -> list[str]:
+    """The `zotero-word` block zotero_word.lua reads: the style and locale Word should use."""
+    style = _zotero_style(project)
+    if style is None:
+        return []
+    locale = "en-GB" if project.english_variant == "en-GB" else "en-US"
+    lines = ["zotero-word:", f'  style: "{style}"', f"  locale: {locale}"]
+    version = _zotero_version()
+    if version:
+        lines.append(f'  zotero-version: "{version}"')
+    return lines
+
+
+def _front_matter(project, *, supplementary: bool = False, live: bool = False) -> str:
     """A YAML header carrying the title and the Zotero settings the filter reads."""
     paper = project.paper
     title = str(paper.get("title", "")).replace(chr(34), chr(39))
@@ -135,9 +185,10 @@ def _front_matter(project, *, supplementary: bool = False) -> str:
         "  client: zotero",
         "  scannable-cite: false",
         "  author-in-text: true",
-        "---",
-        "",
     ]
+    if live:
+        lines += _word_lines(project)
+    lines += ["---", ""]
     return "\n".join(lines)
 
 
@@ -183,10 +234,13 @@ def build_document(
 
     body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
     source.write_text(
-        _front_matter(project, supplementary=supplementary) + body,
+        _front_matter(project, supplementary=supplementary, live=mode == LIVE) + body,
         encoding="utf-8",
         newline="\n",
     )
+    from manuscript_guard.zotero import find_citations
+
+    cites = bool(find_citations(body, source))
 
     command = [pandoc(), "--standalone", str(source), "-o", str(output)]
     if reference_doc is not None:
@@ -195,6 +249,9 @@ def build_document(
 
     if mode == LIVE:
         command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache')}"]
+        # A document with no citations gets no bibliography field (a supplement of tables).
+        if cites:
+            command += [f"--lua-filter={ZOTERO_WORD_LUA}"]
     else:
         bib = project.path("literature") / "references.bib"
         if not bib.exists():
@@ -218,7 +275,9 @@ def build_document(
                 path=output,
             )
         )
-    if mode == LIVE:
+    # A document that cites nothing has no fields to find, and warning that its citations
+    # will be plain text only taught the author to ignore the warning.
+    if mode == LIVE and cites:
         report = report.merge(_verify_live_fields(output))
     # Not the annotated copy: the stamp is what `check` reads to decide whether the
     # document a co-author opens is current, and there must be exactly one such document.

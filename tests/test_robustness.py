@@ -143,8 +143,14 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
 
 @pytest.mark.parametrize(
     "line",
-    ["<!-- never closed\n", "Prose\n## Methods\n", "- item\n> quote\n| row |\n", "<div>\n"],
-    ids=["unclosed comments", "paragraph and heading", "list quote row", "html divs"],
+    [
+        "<!-- never closed\n", "Prose\n## Methods\n", "- item\n> quote\n| row |\n", "<div>\n",
+        "<>" * 25,
+    ],
+    ids=[
+        "unclosed comments", "paragraph and heading", "list quote row", "html divs",
+        "one line of tags",
+    ],
 )
 def test_the_heading_scan_is_linear(line: str) -> None:
     """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s

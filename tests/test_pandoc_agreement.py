@@ -247,7 +247,39 @@ CONSTRUCTS = {
     "atx under a page reference": "\\pageref{x}\n## Results\n",
     "atx under a fence closing a roman list item": "(ii) An item\n~~~\nx\n~~~\n## Results\n",
     "atx under a fence in a paragraph starting A.": "A. Smith agreed\n~~~\nx\n~~~\n## Methods\n",
+    # Found by the second review.
+    "atx under a link definition with attributes": "[f]: fig.png {width=80%}\n## Results\n",
+    "atx under a link definition in angle brackets": "[a]: <my file.png>\n## Results\n",
+    "atx under an inline tag after a block tag": "The excess.<hr><br>\n## Methods\n",
+    "atx under a closing span after a closing div": "<div>\nIt was.</div></span>\n## Methods\n",
+    "atx inside a pre block opened after prose": "The excess.<pre>\n## Methods\n</pre>\n",
+    "atx inside a textarea": "<textarea>\n## Methods\n</textarea>\n",
+    "atx under a closed style block": "<style>\n## Methods\n</style>\n## Results\n",
+    "atx under an unclosed style tag": "<style>\n## Results\n",
+    "atx under a noscript tag at the margin": "<noscript>\n## Results\n",
+    "atx under a quote after a div in inline code": (
+        "Wrap it in `<div>` tags.\n\n> A quotation\n</div>\n## Methods\n"
+    ),
+    "atx under an indented closing div in a quote": "<div>\n> A quotation\n </div>\n## Methods\n",
+    "atx under a section closing a block quote": (
+        "<section>\n> A quotation\n</section>\n## Results\n"
+    ),
+    "atx under a list item ending in a block tag": "- An item <hr>\n## Results\n",
+    "atx under a fence ending a lettered item": "(A) An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence ending a roman item": "II. An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence in a paragraph starting dim.": "dim. light\n~~~\nx\n~~~\n## Methods\n",
+    "atx under a fence in a paragraph starting p. 12": "p. 12 of it\n~~~\nx\n~~~\n## Methods\n",
+    "atx under a div with a colon in its class": "::: fig:one\nProse.\n:::\n## Results\n",
+    "setext titled with a block tag": "Some text.<pre>\n-------\n",
 }
+
+
+def test_an_html_tag_read_inline_over_an_underline_is_a_heading() -> None:
+    """Pandoc looks for a heading before an HTML block, `<div>` apart, so `<noscript>` over
+    an underline is a heading with the tag as its raw title. Compared by count: pandoc's
+    title has no text in it, the toolkit's is the tag."""
+    markdown = "<noscript>\n-------\n\nProse.\n"
+    assert len(headings(markdown)) == len(pandoc_headings(markdown)) == 1
 
 
 @pytest.mark.parametrize("name", sorted(CONSTRUCTS))

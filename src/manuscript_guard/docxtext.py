@@ -26,6 +26,7 @@ from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+W16SE = "{http://schemas.microsoft.com/office/word/2015/wordml/symex}"
 
 #: Subtrees whose text is not on the page once every tracked change is accepted, or is not
 #: this paragraph's text at all: a text box holds paragraphs of its own, and an
@@ -103,11 +104,31 @@ def _text(element: ET.Element) -> str:
             out.append(" ")
         elif node.tag == W + "noBreakHyphen":
             out.append("-")
+        elif node.tag == W16SE + "symEx":
+            out.append(extended_symbol(node))
         for child in node:
             walk(child)
 
     walk(element)
     return spaced("".join(out)).strip()
+
+
+def extended_symbol(node: ET.Element) -> str:
+    """A `w16se:symEx` character, by its code point: an emoji inserted in Word can be one.
+
+    Word writes it in an AlternateContent choice, with the character as text only in the
+    fallback, which is not read. Read as nothing, an emoji the author inserted never came
+    back, and one already in the source was deleted from it. The audit's reader uses this too.
+
+    Only a character that document text could hold. A control character would pass for the
+    mark the audit's reader puts on a heading's line, and a lone surrogate cannot be printed.
+    """
+    try:
+        code = int(node.get(W16SE + "char", ""), 16)
+    except ValueError:
+        return " "
+    text = 0x20 <= code < 0xD800 or 0xE000 <= code <= 0xFFFD or 0x10000 <= code <= 0x10FFFF
+    return chr(code) if text else " "
 
 
 def runs_on(paragraph: ET.Element) -> bool:

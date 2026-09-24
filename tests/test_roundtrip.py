@@ -43,6 +43,21 @@ def edit_docx(source: Path, target: Path, replacements: dict[str, str]) -> Path:
     return target
 
 
+EMOJI = chr(0x1F642)
+
+
+def word_emoji() -> str:
+    """A run holding an emoji as Word can write one it inserts (pandoc issue 11113): a
+    `w16se:symEx` in an AlternateContent choice, the character as text only in the fallback."""
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    return (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{EMOJI}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+
+
 @needs_pandoc
 def test_a_built_document_carries_its_source_digest(project: Path) -> None:
     """A sidecar cannot survive being emailed, and the returned document is exactly the case
@@ -122,6 +137,45 @@ def test_a_prose_edit_merges(project: Path, tmp_path: Path) -> None:
     assert "no external funding" in (project / "manuscript" / "main.md").read_text(
         encoding="utf-8"
     )
+
+
+@needs_pandoc
+def test_an_emoji_inserted_in_word_merges(project: Path, tmp_path: Path) -> None:
+    """Written as text only in the fallback, which is not read, the emoji was nothing:
+    "nothing came back", and the co-author's edit was dropped without a word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"no funding.</w:t>": f"no funding</w:t></w:r>{word_emoji()}<w:r><w:t>.</w:t>"},
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"This work received no funding{EMOJI}." in text
+
+
+@needs_pandoc
+def test_an_emoji_word_saves_as_a_choice_is_no_edit(project: Path, tmp_path: Path) -> None:
+    """An emoji in the source that came back in Word's own form read as deleted, and
+    `--apply` took it out of the source, reporting a reworded paragraph."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    source = main_md.read_text(encoding="utf-8").replace("no funding.", f"no funding{EMOJI}.")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {f"no funding{EMOJI}.</w:t>": f"no funding</w:t></w:r>{word_emoji()}<w:r><w:t>.</w:t>"},
+    )
+    with zipfile.ZipFile(returned) as archive:
+        # Unchanged source is also what an edit that never landed leaves.
+        assert "symEx" in archive.read("word/document.xml").decode("utf-8")
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert main_md.read_text(encoding="utf-8") == source
 
 
 @needs_pandoc
@@ -1836,6 +1890,25 @@ def test_word_text_keeps_a_no_break_space_and_collapses_layout(tmp_path: Path) -
     with zipfile.ZipFile(document, "w") as archive:
         archive.writestr("word/document.xml", xml)
     assert [b.text for b in blocks(document)] == ["5\u00a0mg and\u202f: «\u00a0x\u2007y\u00a0» end"]
+
+
+def test_word_text_reads_an_emoji_word_writes_as_a_choice(tmp_path: Path) -> None:
+    """Word can write an emoji it inserts as `w16se:symEx` in an AlternateContent choice, with
+    the character only in the fallback, which is not read: a fallback repeats its choice, so
+    read, it would give the emoji twice. Read as nothing, it ran "12" and "34" together."""
+    from manuscript_guard.docxtext import blocks
+
+    main = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xml = (
+        f'<w:document xmlns:w="{main}"><w:body><w:p>'
+        '<w:bookmarkStart w:id="0" w:name="mg-p-x-0"/>'
+        f"<w:r><w:t>Scored 12</w:t></w:r>{word_emoji()}<w:r><w:t>34 today</w:t></w:r>"
+        "</w:p></w:body></w:document>"
+    )
+    document = tmp_path / "a.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    assert [b.text for b in blocks(document)] == [f"Scored 12{EMOJI}34 today"]
 
 
 @pytest.mark.parametrize("bookmark", ["kept", "lost"])

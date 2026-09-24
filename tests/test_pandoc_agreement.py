@@ -358,6 +358,18 @@ TAGGING = {
     "a line holding only a form feed": "Para one.\n\f\nPara two.\n\nAfter.\n",
     "a definition inside a list item's continuation": "- a\n\n  para\n    : def\n",
     "balanced braces in prose": "The set {a, b} was used, and [a span]{.note} too.\n",
+    "multiline table with three rows": (
+        "Before.\n\n"
+        "---------- -----------------------\n Drug      Signal\n"
+        "---------- -----------------------\nWarfarin   Bleeding, strongest\n"
+        "           in older patients.\n\nApixaban   Bleeding, weaker\n"
+        "           than warfarin.\n\nHeparin    Thrombocytopenia.\n"
+        "---------- -----------------------\n\nAfter.\n"
+    ),
+    "yaml block with a blank line, closed by dots": (
+        "Intro.\n\n---\ntitle: x\nabstract: |\n  a\n\n  b\n...\n\nAfter.\n"
+    ),
+    "a rule between paragraphs": "Before.\n\n---\n\nAfter.\n",
     "a comment opened in the block where a fence closes": (
         f"{FENCE}\ncode\n\nmore\n{FENCE}\ntext <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
     ),

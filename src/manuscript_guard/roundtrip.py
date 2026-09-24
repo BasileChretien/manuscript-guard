@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import bisect
 import difflib
+import itertools
 import re
 import zipfile
 from collections.abc import Iterator
@@ -479,6 +480,34 @@ def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
     return 0
 
 
+# A multiline table's rows are separated by blank lines, and a YAML block in the body may
+# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML).
+_DASH_RULE = re.compile(r" {0,3}-{3,}[- \t]*")
+_RULED_EDGE = re.compile(r" {0,3}(?:-{3,}[- \t]*|\.\.\.[ \t]*)")
+
+
+def _ruled_spans(pieces: list[str]) -> dict[int, int]:
+    """Each block that opens a table or a YAML block running across blank lines, mapped to
+    the block that closes it. Without this the middle rows of a three-row multiline table
+    were ordinary-looking blocks, and a marker printed into a cell. An opener with nothing
+    after it to close it closes nothing."""
+    opening: dict[int, bool] = {}
+    closing: dict[int, bool] = {}
+    for index in range(0, len(pieces), 2):
+        lines = [line for line in pieces[index].split("\n") if line.strip()]
+        if lines:
+            closing[index] = _RULED_EDGE.fullmatch(lines[-1]) is not None
+            opening[index] = _DASH_RULE.fullmatch(lines[0]) is not None and not closing[index]
+    spans: dict[int, int] = {}
+    following: int | None = None
+    for index in range(len(pieces) - 1, -1, -1):
+        if opening.get(index) and following is not None:
+            spans[index] = following
+        if closing.get(index):
+            following = index
+    return spans
+
+
 def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     """Every piece of `text` in order, with its index and whether it gets an identifier.
 
@@ -506,6 +535,8 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         index % 2 == 1 and re.search(r"[^ \t\n]", piece) is not None
         for index, piece in enumerate(pieces)
     ]
+    ruled = _ruled_spans(pieces)
+    ends = list(itertools.accumulate(len(piece) for piece in pieces))
     for index, piece in enumerate(pieces):
         apart = not (joined[max(index - 1, 0)] or joined[min(index + 1, len(pieces) - 1)])
         origin = cursor
@@ -526,6 +557,8 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
         runs_on = _raw_end(text, origin, end, closers)
+        if index in ruled:
+            runs_on = max(runs_on, ends[ruled[index]])
         hidden = max(hidden, runs_on)
         yield index, piece, apart and not (runs_on or _untagged(piece))
 

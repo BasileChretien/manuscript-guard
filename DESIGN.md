@@ -1447,8 +1447,9 @@ Added by the adversarial review, verified and **not** fixed:
   question, asked of a document nobody bound — is not a fallback for awkward cases. It is the
   command that meets the situation a real paper is most likely to be in.
 - **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
-  captions, list items, block quotes, definition lists, footnote text, code, and anything
-  the co-author newly wrote carry none. Those edits are not merged, not refused, and until
+  captions, list items, block quotes, definitions (the term of a loose definition list is
+  one paragraph and keeps its identifier), footnote text, code, and anything the co-author
+  newly wrote carry none. Those edits are not merged, not refused, and until
   now were not mentioned; the count of what went unexamined is printed, which is a report
   rather than a fix. A number corrected in a table is the case that matters, because that is
   where a stale number is likeliest to be. Lists and quotes are on the list by choice: a
@@ -1465,22 +1466,25 @@ Added by the adversarial review, verified and **not** fixed:
   tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
   one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
   after a `<!--` written inside inline code, up to the next `-->`; a paragraph whose braces
-  do not pair. Raw TeX other than an environment is not followed across a blank line. The
-  blocks that open and close it are refused by the brace count, since
-  `\footnote{One.\n\nTwo.}` is one paragraph to pandoc, but a block wholly inside it, such
-  as the middle of a `\newcommand` with two blank lines in its body, gets a marker; pandoc
-  drops raw TeX from the .docx and the identifier names nothing, which `import` already
-  tolerates. Every review round on these patterns found holes in the version before it,
+  do not pair. Raw TeX other than an environment is not followed across a blank line. When
+  the blank line falls inside braces, the blocks either side are refused by the brace
+  count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
+  such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
+  marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which
+  `import` already tolerates. When it falls inside an optional argument,
+  `\cite[p.~5\n\nmore]{key}`, the braces pair on each side and both halves are marked:
+  pandoc then prints the halves as literal text. The document shows it and `import` stays
+  consistent with it, and counting brackets instead would refuse every paragraph quoting an
+  interval such as `[0, 1)`. Every review round on these patterns found holes in the
+  version before it,
   each by running pandoc on a construct the table did not yet hold, so the table is
   evidence for what is in it and no more.
-- **Two block boundaries are drawn where pandoc draws none.** A line holding only a
-  non-breaking space, an em or ideographic space or a form feed ends a block for the
-  identifiers' numbering, while pandoc reads one paragraph across it. Marked, the first
-  half's bookmark sat on the joined paragraph and `import --apply` wrote the second half
-  twice; both halves are now left unmarked and never compared. Renumbering would fix it and
-  would move every identifier after them. And a YAML block in the middle of the document
-  with a blank line inside and closed by `...` gets a marker inside it, which pandoc then
-  refuses to parse — loudly, so the build fails rather than the document.
+- **A line pandoc does not call blank still ends a block for the numbering.** A line
+  holding only a non-breaking space, an em or ideographic space or a form feed ends a block
+  for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the
+  first half's bookmark sat on the joined paragraph and `import --apply` wrote the second
+  half twice; both halves are now left unmarked and never compared. Renumbering would fix
+  it and would move every identifier after them.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

@@ -290,6 +290,9 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
         "\\begin{itemize}\n\\begin{itemize}\na\n\\end{itemize}\n\nb\n\n\\end{itemize}\n\n"
         "<pre>\ncode\n\nmore\n</pre>\n\n"
         "text\n<pre>\ncode\n\nmore\n</pre>\n\n"
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    Thrombocytopenia\n---------- ----------\n\n"
+        "---\ntitle: x\nabstract: |\n  a\n\n  b\n...\n\n"
         "After.\n"
     )
     tagged = tag(text, "main.md")

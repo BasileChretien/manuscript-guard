@@ -899,7 +899,12 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   of the front matter with a pattern of its own, and the two had to be made one: fixed in
   the gates alone, G2 read a `## Methods` heading that the build still stripped, and
   `p < 0.001` under it passed as the alpha chosen in advance. There is one pattern now, and
-  `test_pandoc_agreement.py` holds it to pandoc's reading.)
+  `test_pandoc_agreement.py` holds it to pandoc's reading. Every reader also applies it to
+  the text as written: the heading scan blanked HTML comments first, so a comment on the
+  YAML's first line read as a blank one and the front matter went unrecognised. And nothing
+  opened in the front matter closes in the body, as pandoc reads it: a `<!--` in a title ran
+  on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
+  below, hiding everything between from G2 and the audit. See `front_matter_end`.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1997,11 +2002,9 @@ Closed since, and why each mattered:
   unread prints. The audit of a Markdown paper rendered some other way does not read it.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. It needs a paper that
-  writes both markers in backticks, and the comment scanner would have to know code spans.
-  The heading scan also blanks comments before it looks for front matter, so a `<!--`
-  inside a YAML value, closed after the front matter ends, hides the closing `---` from
-  it: a `# Methods` line in the YAML then heads the body, which the build prints without it.
+  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
+  enough, since any later real comment supplies the `-->`, and a draft often has one. The
+  comment scanner would have to know code spans.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

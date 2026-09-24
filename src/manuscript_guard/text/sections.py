@@ -111,12 +111,16 @@ def scannable(text: str) -> str:
     def blank(match: re.Match[str]) -> str:
         return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
 
-    out = _HTML_COMMENT.sub(blank, blank_fences(text))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter.
-    opening = FRONTMATTER.match(out)
-    return blank(opening) + out[opening.end() :] if opening else out
+    # a level-2 heading conjured out of the document's own delimiter. It is found in the
+    # text as written, as the build and `mask` find it, and fences and comments are looked
+    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
+    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # headed a body the build printed without it.
+    opening = FRONTMATTER.match(text)
+    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
+    return blank(opening) + rest if opening else rest
 
 
 @dataclass(frozen=True)

@@ -394,6 +394,10 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
             aligned = align(source, was, now)
+            if aligned.rebuilt == source:
+                # Only pandoc's typesetting was undone in Word - a no-break space it put after
+                # "e.g." taken out again - and the next build puts it back. Nothing to merge.
+                continue
             if aligned.rebuilt:
                 merged[name] = aligned.rebuilt
             else:

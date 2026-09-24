@@ -2018,7 +2018,8 @@ Closed since, and why each mattered:
     reads it the same, but it cannot be seen in an editor, and a diff shows the line as
     changed there. Where the source is read against Word's text, U+00A0 therefore counts
     as a space; Word's text against Word's text compares it exactly, so one the co-author
-    typed is an edit.
+    typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
+    space taken out again in Word is no edit, and the next build puts it back.
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
     without its own, so a no-break space the co-author added there is dropped: silently,
     when it is the only change to the paragraph.
@@ -2068,7 +2069,9 @@ Closed since, and why each mattered:
   citation is whatever lies between. Pandoc typesets prose (`drug's` reaches Word as
   `drug’s`), so a paragraph with a binding and an apostrophe is refused. Worse, a short piece
   of prose can be found inside a citation: "(Smith et al. 2020)." ending a paragraph is cut
-  at "al.", and a rewording merges as `[@smith2020]. 2020).`. A narrative `@key`, and a
+  at "al.", and a rewording merges as `[@smith2020]. 2020).`. The rewording can be one
+  nobody sees: now that Word's text keeps a no-break space, a typography corrector turning
+  the space in "et al. 2020" into a narrow no-break one is enough. A narrative `@key`, and a
   bracketed citation with a prefix (`[see @key]`), is not protected: the source does not read
   as what Word shows, so a paragraph quoting one is refused whatever the edit.
 - **The annotated copy shows classification, not correctness.** Green means a number came

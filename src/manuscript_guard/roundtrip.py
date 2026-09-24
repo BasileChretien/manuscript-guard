@@ -460,6 +460,14 @@ _EMPHASIS = (
 #: the document, where the author had bold.
 _HALF_SPAN = "one end of an emphasis or code span"
 
+#: Every space but layout, as a character that is neither a space nor a letter, for pairing
+#: emphasis. Pandoc reads a no-break space as text, so a `*` with one just inside it still
+#: opens or closes italics; `_EMPHASIS` reads `\s`, took it for a space, and the paragraph
+#: was refused as unaligned.
+_TEXT_SPACES = str.maketrans(
+    {chr(code): "." for code in range(0x80, 0x3001) if chr(code).isspace()}
+)
+
 
 def _shows(match: re.Match[str]) -> str:
     """What Word's paragraph shows of one construct `_SCAN` found."""
@@ -572,7 +580,7 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             closing = m.end(f"{kind}_text")
             marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
 
-    for start, end, width in _emphasis("".join(plain)):
+    for start, end, width in _emphasis("".join(plain).translate(_TEXT_SPACES)):
         shows[start : start + width] = [""] * width
         shows[end - width : end] = [""] * width
         if any(start < t.start() < end for t in tokens):
@@ -861,11 +869,11 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     lost: list[str] = []
     for index, piece in enumerate(new_prose):
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
-        # from Word, where inline formatting did not survive being read as plain text. What
-        # was sent against what came back, both Word's: read against the source, a stretch
-        # holding "e.g." differed by pandoc's no-break space, and one the co-author typed
-        # was not an edit at all.
-        if _spaced(sent[index]) == _spaced(piece):
+        # from Word, where inline formatting did not survive being read as plain text.
+        # Unchanged means it came back as it was sent, which catches a no-break space the
+        # co-author typed, or as the source reads, which lets pandoc's own after "e.g." be
+        # taken out again in Word without costing the stretch its formatting.
+        if _spaced(piece) in (_spaced(sent[index]), reading.shown[index]):
             out.append(prose[index])
         else:
             lost += [name for name in reading.lost[index] if name not in lost]
@@ -889,7 +897,8 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
     what Word does show, part of the source did not reach Word as text, and a rewording
     rebuilt from Word's text would delete it.
     """
-    if _spaced(returned).strip() == _spaced(rendered).strip():
+    # As it was sent, or as the source reads; see `align`.
+    if _spaced(returned).strip() in (_spaced(rendered).strip(), reading.shown[0].strip()):
         return Alignment(source)
     if reading.lost[0]:
         return Alignment(None, markup=reading.lost[0])

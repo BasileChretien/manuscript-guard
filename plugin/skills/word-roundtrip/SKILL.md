@@ -159,7 +159,8 @@ Read the whole diff. What to look for:
   itself. Each prints as it did, but a diff can show a line as changed where nothing
   visible changed.
 - Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
-  paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
+  paragraph, "(Smith et al. 2020).", can be cut at "al.", even when the only change there was
+  an invisible one to the kind of space. Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

@@ -615,6 +615,13 @@ NO_BREAK = [
         "Smith et al.\u00a02020 found this.",
         id="pandoc-abbreviation-edited",
     ),
+    pytest.param(
+        "The *mot\u00a0* here gave {{results.x}} in all cases.",
+        "The mot\u00a0 here gave 3.84 in all cases.",
+        "The mot\u00a0 here gave 3.84 in most cases.",
+        "The *mot\u00a0* here gave {{results.x}} in most cases.",
+        id="emphasis-beside-it",
+    ),
 ]
 
 
@@ -632,6 +639,28 @@ def test_a_no_break_space_merges_as_typed(
     the source has a plain space. That is typesetting, not an edit: a stretch left alone keeps
     the source's space, and an edited one carries pandoc's character, which prints the same."""
     assert realign(source, rendered, returned) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered"),
+    [
+        pytest.param(
+            "Expression of *BRCA1* in tumours, e.g. breast, was {{results.x}} overall.",
+            "Expression of BRCA1 in tumours, e.g.\u00a0breast, was 3.84 overall.",
+            id="beside-a-binding",
+        ),
+        pytest.param(
+            "Expression of *BRCA1* in tumours, e.g. breast.",
+            "Expression of BRCA1 in tumours, e.g.\u00a0breast.",
+            id="plain",
+        ),
+    ],
+)
+def test_pandocs_no_break_space_taken_out_in_word_is_no_edit(source: str, rendered: str) -> None:
+    """Compared only with what was sent, a stretch whose no-break space after "e.g." came back
+    plain read as edited, was rebuilt from Word's text, and lost its italics - for a change
+    the next build undoes. It came back as the source reads, so the source is kept."""
+    assert realign(source, rendered, rendered.replace("\u00a0", " ")) == source
 
 
 @needs_pandoc
@@ -1585,6 +1614,19 @@ def test_a_no_break_space_typed_in_word_is_an_edit(tmp_path: Path) -> None:
     sent, returned = [Block(("a",), "Le mot : clair.")], [Block(("a",), "Le mot\u00a0: clair.")]
     plan = plan_import(known, sent, returned)
     assert plan.merged == {"a": "Le mot\u00a0: clair."}
+
+
+def test_pandocs_no_break_space_taken_out_in_word_is_not_reported(tmp_path: Path) -> None:
+    """A paragraph whose only change undoes pandoc's typesetting has nothing to merge, and
+    reporting it as merged made a dry run exit 1 asking for an `--apply` that did nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    source = "See *this*, e.g. here."
+    _path, known = source_of(tmp_path, {"a": source})
+    sent = [Block(("a",), "See this, e.g.\u00a0here.")]
+    plan = plan_import(known, sent, [Block(("a",), "See this, e.g. here.")])
+    assert plan.empty
 
 
 def test_word_text_keeps_a_no_break_space_and_collapses_layout(tmp_path: Path) -> None:

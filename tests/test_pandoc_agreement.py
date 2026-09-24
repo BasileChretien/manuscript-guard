@@ -423,6 +423,18 @@ TAGGING = {
         "Intro.\n\n---\nText under.\n\n------\n\nMore.\n\n---\n Drug   Signal\n------ ------\n"
         "First  1.2\n\nSecond 2.3\n---------------\n\nAfter.\n"
     ),
+    "yaml given up on whose stop of dots opens a block": (
+        "Intro.\n\n---\n- item\n\n...\nMore.\n\nAfter.\n\n---\ntitle: x\n...\n\nEnd.\n"
+    ),
+    "yaml holding only null, whose stop of dots opens a block": (
+        "Intro.\n\n---\nnull\n\n...\nMore.\n\nEnd.\n"
+    ),
+    "a multiline table with a paragraph straight under its closing rule": (
+        "Intro.\n\n---------- ----------\n Drug      Signal\n---------- ----------\n"
+        "Warfarin   Bleeding\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n"
+        "The signals are listed above.\n"
+    ),
+    "yaml after a blank first line": "\n---\ntitle: x\n\nabstract: y\n...\n\nIntro.\n",
     "yaml longer than four thousand characters": (
         "Intro.\n\n---\ntitle: x\nabstract: |\n  "
         + "\n\n  ".join(["word " * 300] * 4)

@@ -290,6 +290,13 @@ RULED = {
     "yaml pandoc gives up on, stopping on a later yaml opener": (
         "---\nText under.\n\n------\n\nMore.\n\n---\ntitle: x\n\nsubtitle: y\n..."
     ),
+    "yaml given up on whose stop of dots opens a block": (
+        "---\n- item\n\n...\nMore.\n\nAfter the list.\n\n---\ntitle: x\n..."
+    ),
+    "a multiline table with a paragraph straight under its closing rule": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\nListed above."
+    ),
     "yaml longer than four thousand characters": (
         "---\ntitle: x\nabstract: |\n  " + "\n\n  ".join(["word " * 300] * 4) + "\n..."
     ),
@@ -325,7 +332,7 @@ def test_no_marker_inside_a_table_or_yaml_across_blank_lines(name: str) -> None:
     from manuscript_guard.roundtrip import tag
 
     tagged = tag(f"Before.\n\n{RULED[name]}\n\nAfter.\n", "main.md")
-    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tagged) == ["Before", "After"], tagged
+    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tagged) == ["Before.", "After."], tagged
 
 
 def test_yaml_closed_in_its_own_block_hides_nothing_after_it() -> None:
@@ -335,12 +342,33 @@ def test_yaml_closed_in_its_own_block_hides_nothing_after_it() -> None:
     from manuscript_guard.roundtrip import tag
 
     text = "Intro.\n\n---\ntitle: x\n...\n\nPara one.\n\nPara two.\n\nMethods\n-------\n\nP3.\n"
-    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(text, "main.md"))
-    assert marked == ["Intro", "Para", "Para", "P3"]
-    # Nothing but a comment is empty metadata to pandoc, not something it gives up on.
-    note = "Intro.\n\n---\n# a private note\n...\n\nPara one.\n\nPara two.\n\nResults\n-------\n"
-    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(note + "\nAfter.\n", "main.md"))
-    assert marked == ["Intro", "Para", "Para", "After"]
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+    assert marked == ["Intro.", "Para", "Para", "P3."]
+    # Nothing but a comment, or a null, is empty metadata to pandoc, not something it gives
+    # up on.
+    for body in ("# a private note", "null", "~"):
+        note = f"Intro.\n\n---\n{body}\n...\n\nPara one.\n\nPara two.\n\nResults\n-------\n"
+        marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(note + "\nAfter.\n", "main.md"))
+        assert marked == ["Intro.", "Para", "Para", "After."], body
+
+
+def test_yaml_after_a_blank_first_line_is_recognised() -> None:
+    """Pandoc skips blank lines before a file's first block; the check read the blank line
+    as the block's first line, never saw the `---`, and marked a paragraph of the YAML."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("\n---\ntitle: x\n\nabstract: y\n...\n\nIntro.\n", "main.md")
+    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tagged) == ["Intro."], tagged
+
+
+def test_deeply_nested_yaml_does_not_crash_the_tagger() -> None:
+    """With nothing capping how much YAML is read, the C loader overflowed the stack on
+    thousands of nesting levels and took the interpreter down with no message."""
+    from manuscript_guard.roundtrip import tag
+
+    for body in ("note: " + "[" * 6000, "- " * 20000):
+        tagged = tag(f"Intro.\n\n---\n{body}\n...\n\nAfter.\n", "main.md")
+        assert tagged.count("[]{#mg-p-") == 2
 
 
 def test_a_table_closed_by_its_caption_does_not_hide_what_follows() -> None:
@@ -353,8 +381,8 @@ def test_a_table_closed_by_its_caption_does_not_hide_what_follows() -> None:
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
         "---------- ----------\nTable: One row.\n\nP1.\n\nP2.\n\nMethods\n-------\n\nP3.\n"
     )
-    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(text, "main.md"))
-    assert marked == ["P1", "P2", "P3"]
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+    assert marked == ["P1.", "P2.", "P3."]
 
 
 def _docx_with_body(path: Path, body: str) -> Path:

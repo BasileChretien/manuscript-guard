@@ -1703,10 +1703,12 @@ Added by the adversarial review, verified and **not** fixed:
   every `---` in column 0 with text straight under it as YAML, up to the first `---` or
   `...` in column 0, and a marker at the start of a line inside turns its quiet fallback (to
   a rule, a table or prose) into a parse error that fails the build. So everything it tries
-  is left unmarked, mapping or not. Two cases are not followed, and both fail loudly rather
-  than corrupt anything: a `---` that opens mid-block, straight after a code fence or inside
-  a fenced div with no blank line before it, and an attempt that opens in one source file
-  and stops in the next, since each file is tagged on its own and the build joins them.
+  is left unmarked, mapping or not. Two cases are not followed, and neither corrupts the
+  source. A `---` that opens mid-block, straight after a code fence or inside a fenced div
+  with no blank line before it, fails the build. An attempt that opens in one source file
+  and stops in the next - each file is tagged on its own and the build joins them - builds,
+  with the second file's paragraphs read into a table whose bookmarks `import` ignores, so
+  their edits go uncompared.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

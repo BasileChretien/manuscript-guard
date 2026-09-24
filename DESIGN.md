@@ -1225,12 +1225,14 @@ file when nothing had moved at all.
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and
 `@key [p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and
-`@{10.1000/xyz}` as well as `@smith2020`. A narrative key takes the bracket group after it,
-across a line break too, because pandoc reads `@a [see @b]` as one citation; a binding
-inside a citation is part of it; and nothing in code or an autolink is a citation. Each of
-these was once split or found where pandoc finds none, and marking then broke the paragraph
-for good. A key left in the prose all the same refuses the paragraph, since Word's text
-holds the citation's rendering and not the key. Where each token's rendering begins
+`@{10.1000/xyz}` as well as `@smith2020`, and none straight after a full stop, where pandoc
+reads none. A narrative key takes the bracket group after it, with or without a space and
+across a line break, because pandoc reads `@key[p. 3]` as a key and its locator and
+`@a [see @b]` as one citation; a group followed by `(` or `{` is a link or a span instead.
+A binding inside a citation is part of it, and nothing in code, an autolink or a link's
+address is a citation. Each of these was once split or found where pandoc finds none, and
+marking then broke the paragraph for good. A key left in the prose all the same refuses the
+paragraph, since Word's text holds the citation's rendering and not the key. Where each token's rendering begins
 and ends is not worked out. It is read from a second build of the same source in which
 every token has a Word bookmark around it, written as raw OpenXML that pandoc passes
 through. So nothing about how a number or a citation renders has to be known, which is what
@@ -1314,7 +1316,11 @@ typesetting; those are escaped only where they open a paragraph as a list would 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
 what this module can see - a delimiter left unpaired, a span stretched over new words - and
-not where the reading and pandoc disagree. Every edited stretch has one more backstop, for
+not where the reading and pandoc disagree. Its tokens must be the source's, each read as
+before and none touching the next. Counting them was not enough. An edit deleting a space
+made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
+`@a [@b]` one citation, and one leaving `@a:{{results.x}}` gave pandoc the key `a:3.84`.
+Each still had as many tokens, and the build printed a raw key or a garbled citation. Every edited stretch has one more backstop, for
 what the list does not name: if its source, read as Word should show it, is not what the
 build printed of that stretch, something in it never reached Word as text, and the
 rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
@@ -2096,9 +2102,11 @@ Closed since, and why each mattered:
   rendering, that paragraph is refused rather than aligned on extents that describe
   different text, and it can never take a rewording, even far from the token. Known cases:
   a binding inside inline code, where the bookmark is printed rather than read; super- or
-  subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; and quotes that
-  pandoc pairs differently around a bookmark. A binding in an HTML comment is never marked,
-  and `@a [-@b]`, once two tokens that marking split, is one.
+  subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
+  an autolink, which the bookmark breaks the same way; and quotes that pandoc pairs
+  differently around a bookmark. A binding in an HTML comment is never marked, and
+  `@a [-@b]`, `@key[p. 3]`, `@key [text](url)`, `[@key](url)` and an `@` in a link's address,
+  each once a token that marking broke, are read as pandoc reads them now.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
   punctuation and merges; so does a unit or a percent sign added after a value. Both change
   what the sentence claims, and neither is caught here; `check` sees the binding intact.

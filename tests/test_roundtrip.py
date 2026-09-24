@@ -665,6 +665,98 @@ def test_an_edited_stretch_the_build_printed_differently_is_refused(
     assert merged(source, rendered, returned) is None
 
 
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "It was clear in this cohort. @key reported {{results.x}} here.",
+            "It was clear in this cohort. ⟦Key (2019)⟧ reported ⟦3.84⟧ here.",
+            "It was clear in the whole cohort.Key (2019) reported 3.84 here.",
+            id="full-stop-before-a-key",
+        ),
+        pytest.param(
+            "Both [@a] [@b] found {{results.x}} here.",
+            "Both ⟦(A 2019)⟧ ⟦(B 2021)⟧ found ⟦3.84⟧ here.",
+            "Both (A 2019)(B 2021) found 3.84 here.",
+            id="citations-left-touching",
+        ),
+        pytest.param(
+            "As @a and [@b] found, it was {{results.x}} here.",
+            "As ⟦A (2019)⟧ and ⟦(B 2021)⟧ found, it was ⟦3.84⟧ here.",
+            "As A (2019) (B 2021) found, it was 3.84 here.",
+            id="key-then-bracket-read-as-one",
+        ),
+        pytest.param(
+            "As @a: {{results.x}} was the ratio.",
+            "As ⟦A (2019)⟧: ⟦3.84⟧ was the ratio.",
+            "As A (2019):3.84 was the ratio.",
+            id="key-running-into-a-number",
+        ),
+        pytest.param(
+            "As @a found, it was {{results.x}} here.",
+            "As ⟦A (2019)⟧ found, it was ⟦3.84⟧ here.",
+            "As A (2019)s found, it was 3.84 here.",
+            id="key-running-into-a-word",
+        ),
+    ],
+)
+def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Pandoc reads no citation in `.@key`, reads `[@a][@b]` as a link, `@a [@b]` as one
+    citation and `@a:3.84` as the key `a:3.84`. Each edit merged, because the read-back found
+    as many tokens as before, and the next build printed a raw key or a garbled citation."""
+    assert merged(source, rendered, returned) is None
+
+
+def test_part_of_a_citation_ending_a_paragraph_deleted_is_a_changed_citation() -> None:
+    """Cut at "al." by the guessed extents, the citation lost " 2020)" and the rebuild equalled
+    the source, so import reported nothing at all."""
+    source = "Prior work agreed [@smith2020]."
+    plain, spans = unmark("Prior work agreed ⟦(Smith et al. 2020)⟧.")
+    aligned = align(source, plain, "Prior work agreed (Smith et al..", spans)
+    assert aligned.rebuilt is None
+    assert aligned.changed == (("(Smith et al. 2020)", "[@smith2020]"),)
+
+
+@pytest.mark.parametrize(
+    ("paragraph", "expected"),
+    [
+        pytest.param(
+            "As @key[p. 3] found, it was {{results.x}}.",
+            ["@key[p. 3]", "{{results.x}}"],
+            id="locator-without-a-space",
+        ),
+        pytest.param(
+            "As @key [the protocol](https://example.org) says, it was {{results.x}}.",
+            ["@key", "{{results.x}}"],
+            id="link-after-a-key",
+        ),
+        pytest.param(
+            "See [@key](https://example.org) and [@key]{.smallcaps}: {{results.x}}.",
+            ["{{results.x}}"],
+            id="link-and-span-around-a-key",
+        ),
+        pytest.param(
+            "See [the thread](https://mastodon.social/@someone); it was {{results.x}}.",
+            ["{{results.x}}"],
+            id="at-sign-in-a-link-address",
+        ),
+        pytest.param(
+            "As @key::a found, it was {{results.x}}.",
+            ["@key", "{{results.x}}"],
+            id="doubled-punctuation-ends-a-key",
+        ),
+    ],
+)
+def test_links_and_keys_are_read_as_pandoc_reads_them(
+    paragraph: str, expected: list[str]
+) -> None:
+    """Each was a token pandoc did not read as one, or not all of one, so marking changed
+    the build and the paragraph could never take a rewording."""
+    assert segments(paragraph)[1] == expected
+
+
 def test_a_rewording_beside_code_holding_an_at_sign_merges() -> None:
     source = "Run `fit(@cohort)` first; the ratio was {{results.x}} in zebrafish."
     out = merged(
@@ -1877,6 +1969,12 @@ MARKUP = {
     "at-sign-in-code": "Run `fit(@cohort)` and the ratio was {{results.ror.point}}.",
     "narrative-then-suppressed": "As @fictionalClassSignal2019 [-@fictionalHepaticCohort2021] "
     "found, it was {{results.ror.point}}.",
+    "locator-without-a-space": "As @fictionalClassSignal2019[p. 3] found, it was "
+    "{{results.ror.point}}.",
+    "link-after-a-key": "As @fictionalClassSignal2019 [the protocol](https://example.org) "
+    "says, it was {{results.ror.point}}.",
+    "at-sign-in-a-link-address": "See [the thread](https://mastodon.social/@someone); it was "
+    "{{results.ror.point}}.",
 }
 
 
@@ -1968,6 +2066,39 @@ def test_a_link_to_a_heading_beside_a_binding_is_not_deleted_end_to_end(
         tmp_path / "bleeding.docx",
         lambda xml: xml.replace("As detailed in", "As described in", 1),
     )
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert sentence in source.read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_a_full_stop_typed_against_a_citation_does_not_print_its_key_end_to_end(
+    project: Path, tmp_path: Path
+) -> None:
+    """With the space after a full stop deleted in Word, the citation merged as
+    `cohort.@fictionalClassSignal2019`, which pandoc prints as the key, and `check` passed."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import paragraph_text
+
+    source = project / "manuscript" / "main.md"
+    sentence = (
+        "The signal was clear in this cohort. @fictionalClassSignal2019 reported a ratio of "
+        "{{results.ror.point}}."
+    )
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Bleeding\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project),
+        tmp_path / "bleeding.docx",
+        # The space after the full stop is a run of its own.
+        lambda xml: xml.replace(
+            'clear in this cohort.</w:t></w:r><w:r><w:t xml:space="preserve"> </w:t>',
+            'clear in the whole cohort.</w:t></w:r><w:r><w:t xml:space="preserve"></w:t>',
+            1,
+        ),
+    )
+    assert "whole cohort." in "".join(paragraph_text(returned).values())
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert sentence in source.read_text(encoding="utf-8")
 

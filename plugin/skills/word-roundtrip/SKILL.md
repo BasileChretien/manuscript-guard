@@ -114,9 +114,13 @@ handled, and each has a test:
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
   HTML, a superscript or subscript (`10^9^` reads "109" in Word), a non-breaking space, a
   hard line break, or emphasis or code wrapped around a binding. The reason names it. In a
-  paragraph with a binding, markup on one side of the binding does not stop an edit on the
-  other side. A paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses
-  every edit to it.
+  paragraph with a binding, markup of those kinds on one side of the binding does not stop
+  an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
+  to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
+  one piece, so one `kg/m^2^` in it refuses every edit to it.
+- An edit that would make pandoc read a citation differently is refused: a space deleted
+  after a full stop before a citation, or between two citations, or text deleted between a
+  citation and a number.
 - What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
   co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
 

@@ -384,17 +384,20 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
 #: rewording of a paragraph citing `@smith2020` merged it back as the text "Smith (2020)".
 _BINDING = re.compile(r"\{\{[^}]*\}\}")
 #: A key as pandoc reads one: a letter of any alphabet, a digit or an underscore, then
-#: word characters and punctuation, or anything but a space in braces - `@2019who`,
-#: `@Élodie2020`, `@{10.1000/xyz}`. Starting it at an ASCII letter left those in the prose.
-_KEY = r"-?@(?:\{[^{}\s]+\}|\w[\w:.#$%&+?<>~/-]*(?<![:.#$%&+?<>~/-]))"
+#: word characters, each mark of punctuation between them single, or anything but a space
+#: in braces - `@2019who`, `@Élodie2020`, `@{10.1000/xyz}`. Starting it at an ASCII letter
+#: left those in the prose, and `@key::a` is the key `key` to pandoc.
+_KEY = r"-?@(?:\{[^{}\s]+\}|\w(?:\w|[:.#$%&+?<>~/-](?=\w))*)"
 #: A key at a bracket group's own level makes the group a citation. A narrative key ends on
 #: a word character, so a full stop after it stays prose; an email address is no key, and
-#: nor is `\@admin`, which is how a co-author's typed `@` is written back.
-_OWN_KEY = re.compile(rf"(?<![\w@\\]){_KEY}")
-_NARRATIVE = re.compile(rf"(?<![\w`\[@\\]){_KEY}")
+#: nor is `\@admin`, which is how a co-author's typed `@` is written back. Pandoc reads no
+#: key straight after a full stop either: `cohort.@key`, a space deleted in Word, printed
+#: the key. Nor straight after a dash, which would make `-@key` of it.
+_OWN_KEY = re.compile(rf"(?<![\w@\\.]){_KEY}")
+_NARRATIVE = re.compile(rf"(?<![\w`\[@\\.-]){_KEY}")
 #: Whatever the patterns above miss, a key left in the prose: the paragraph is refused
 #: rather than merged, since Word's text holds the citation's rendering and not the key.
-_LOOSE_KEY = re.compile(r"(?<![\w`@\\])@[\w{]")
+_LOOSE_KEY = re.compile(r"(?<![\w`@\\.])@[\w{]")
 
 
 def _bracket_groups(text: str) -> list[tuple[int, int]]:
@@ -416,8 +419,10 @@ def _bracket_groups(text: str) -> list[tuple[int, int]]:
 
 
 #: What may stand between a narrative key and the bracket after it, for pandoc to read the
-#: two as one citation: spaces, and a line break in a hard-wrapped source.
-_LOCATOR = re.compile(r"(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)\[")
+#: two as one citation: nothing, spaces, and a line break in a hard-wrapped source.
+_LOCATOR = re.compile(r"[ \t]*(?:\n[ \t]*)?\[")
+#: What makes a bracket group a link or a span rather than a citation or a locator.
+_LINKED = re.compile(r"\(|\{(?!\{)")
 
 
 def _protected_spans(
@@ -431,7 +436,8 @@ def _protected_spans(
     either stopped at the first inner bracket - and protected nothing - or started at the
     first `[` of the paragraph, and made the prose "[low, high) were rescaled as in" part of
     a citation. A narrative key takes the bracket group after it, as pandoc does: `@key
-    [p. 33]` is a key and its locator, and `@a [see @b]` is one citation.
+    [p. 33]` is a key and its locator, and `@a [see @b]` is one citation. A group followed
+    by `(` or `{` is a link or a span, and neither.
 
     A citation is one token with any binding inside it, `[@key, table {{results.t}}]`:
     found as a binding first, it dropped the citation, which then stayed in the prose. None
@@ -442,6 +448,7 @@ def _protected_spans(
     def within(at: int, spans: Sequence[tuple[int, int]]) -> bool:
         return any(s <= at < e for s, e in spans)
 
+    groups = [(s, e) for s, e in groups if not _LINKED.match(text, e)]
     cites: list[tuple[int, int]] = []
     for start, end in groups:  # in order of start, so a group comes before those inside it
         if within(start, cites) or within(start, literal):
@@ -617,10 +624,16 @@ class _Token:
 
 def _tokens(paragraph: str) -> list[_Token]:
     """The paragraph's own bindings and citations: not those inside a footnote or comment,
-    and no citation in code or an autolink."""
-    scanned = [(m.lastgroup, m.span()) for m in _SCAN.finditer(paragraph)]
-    opaque = [span for kind, span in scanned if kind in _OPAQUE]
-    literal = [span for kind, span in scanned if kind in _LITERAL]
+    and no citation in code, an autolink or a link's address."""
+    scanned = list(_SCAN.finditer(paragraph))
+    opaque = [m.span() for m in scanned if m.lastgroup in _OPAQUE]
+    literal = [m.span() for m in scanned if m.lastgroup in _LITERAL]
+    # A link's address: `(https://mastodon.social/@someone)` holds no citation.
+    literal += [
+        (m.end("link_text") + 1, m.end())
+        for m in scanned
+        if m.lastgroup == "link" and paragraph.startswith("(", m.end("link_text") + 1)
+    ]
     return [
         _Token(a, b, paragraph[a:b])
         for a, b in _protected_spans(paragraph, literal)
@@ -838,11 +851,32 @@ def _escaped(
     return text
 
 
-def _reads_as(rebuilt: str, renderings: Sequence[str], returned: str) -> bool:
-    """Whether the rebuilt source, built, would read as what came back from Word."""
+def _reads_as(
+    rebuilt: str, protected: Sequence[str], renderings: Sequence[str], returned: str
+) -> bool:
+    """Whether the rebuilt source, built, would read as what came back from Word.
+
+    Its tokens must be the source's, each read as it was and none touching another. Counting
+    them was not enough: an edit that left `[@a][@b]` read as a link, `@a:{{results.x}}` as
+    the key `a:3.84`, and `cohort.@key` as no citation at all, with as many tokens found.
+    """
     reading = _read(rebuilt, renderings)
-    if len(reading.protected) != len(renderings):
+    if reading.protected != list(protected):
         return False
+    found = _tokens(rebuilt)
+    for index, (first, second) in enumerate(zip(found, found[1:], strict=False)):
+        between = rebuilt[first.end() : second.start()]
+        if not between:
+            return False
+        # A key then one mark of punctuation reads on into a number put straight after it.
+        glued = (
+            not first.text.endswith(("]", "}"))
+            and _BINDING.fullmatch(second.text)
+            and re.fullmatch(r"[:.#$%&+?<>~/-]", between)
+            and re.match(r"\w", renderings[index + 1])
+        )
+        if glued:
+            return False
     return _untypeset(reading.whole) == _untypeset(returned)
 
 
@@ -1039,7 +1073,7 @@ def align(
     if unread:
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
-    if not _reads_as(rebuilt, tokens, returned):
+    if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
 
@@ -1059,7 +1093,7 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
     rebuilt = _escaped(returned.strip(), opening=True)
-    if not _reads_as(rebuilt, (), returned):
+    if not _reads_as(rebuilt, (), (), returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
 

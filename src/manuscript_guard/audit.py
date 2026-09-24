@@ -34,6 +34,7 @@ from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
+from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -57,16 +58,29 @@ _NUMBER = re.compile(
     rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])-|\u2212)?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
 )
 
-# Pandoc renders "--" between two digits as an en dash, so in Markdown "2010--2019" is a
-# range and "-0.72--0.30" runs from -0.72 to 0.30, which is what its reader sees. Read that
-# way in Markdown only: anywhere else "--" is a separator followed by a minus.
-_PANDOC_EN_DASH = re.compile(r"(?<=\d)--(?=\d)")
+# Pandoc renders "---" as an em dash and "--" as an en dash, so in Markdown "2010--2019" is a
+# range, "-0.72--0.30" runs from -0.72 to 0.30 and "2010---2019" is two years: what its
+# reader sees. Read that way in Markdown only, where pandoc applies it; anywhere else "--" is
+# a separator followed by a minus. Only beside a digit, the one place the difference changes
+# a number, and never inside code, which pandoc leaves as written. knitr puts R's console
+# output in code blocks, and "-0.72--0.30" there runs to -0.30: rewriting it made a paper
+# printing an upper bound of 0.30 match.
+_PANDOC_EM_DASH = re.compile(r"(?<=\d)---(?=[^\s-])|(?<=[^\s-])---(?=\d)")
+_PANDOC_EN_DASH = re.compile(r"(?<=\d)--(?=[^\s-])|(?<=[^\s-])--(?=\d)")
+_INLINE_CODE = re.compile(r"`[^`\n]+`")
 MARKDOWN_SUFFIXES = {".md", ".markdown"}
 
 
 def _as_rendered(text: str, path: Path) -> str:
-    if path.suffix.lower() in MARKDOWN_SUFFIXES:
-        return _PANDOC_EN_DASH.sub("\u2013", text)
+    """Markdown with pandoc's dashes applied outside code; anything else unchanged."""
+    if path.suffix.lower() not in MARKDOWN_SUFFIXES:
+        return text
+    # The same text with code blanked, offsets kept: matched there, applied to both.
+    visible = _INLINE_CODE.sub(lambda m: " " * len(m.group(0)), blank_fences(text))
+    for pattern, dash in ((_PANDOC_EM_DASH, "\u2014"), (_PANDOC_EN_DASH, "\u2013")):
+        for begin, finish in reversed([m.span() for m in pattern.finditer(visible)]):
+            text = text[:begin] + dash + text[finish:]
+            visible = visible[:begin] + dash + visible[finish:]
     return text
 
 

@@ -675,3 +675,13 @@ def test_a_pandoc_en_dash_in_markdown_is_a_range(tmp_path: Path) -> None:
     paper.write_text("Reports from 2010--2019 gave -0.72--0.30.\n", encoding="utf-8")
     report = audit([paper], [outputs])
     assert report.unmatched == [], [c.text for c in report.unmatched]
+
+
+def test_pandoc_dashes_in_markdown_invent_no_minus(tmp_path: Path) -> None:
+    """Pandoc renders `---` as an em dash and `--` as an en dash wherever they fall, so
+    neither gives the number after it a sign."""
+    outputs = tmp_path / "notes.md"
+    outputs.write_text("Total 2010---2019 and n--413.\n", encoding="utf-8")
+    values, _used, _skipped = load_backing([outputs])
+    assert {"2010", "2019", "413"} <= values
+    assert not {"-2019", "-413"} & values

@@ -519,3 +519,22 @@ def test_check_does_not_report_exit_2_for_a_failing_gate(project: Path, capsys) 
     path.write_text(path.read_text(encoding="utf-8") + "\n\nThe rate was 47 per 1000.\n",
                     encoding="utf-8")
     assert run("check", str(project)) == 1
+
+
+def test_audit_of_nothing_readable_exits_two(project: Path, capsys) -> None:
+    """An unreadable paper printed "Audited 0 file(s) … 0 not found" and exited 0, even
+    with --strict: a clean-looking report of nothing."""
+    locked = project / "locked.docx"
+    locked.write_bytes(b"not a zip")
+    assert run("audit", str(locked), "--against", str(project / "results"), "--strict") == 2
+    assert "locked.docx" in capsys.readouterr().err
+
+
+def test_audit_strict_fails_when_a_paper_could_not_be_read(project: Path) -> None:
+    readable = project / "loose.md"
+    readable.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    locked = project / "locked.docx"
+    locked.write_bytes(b"not a zip")
+    args = ("audit", str(readable), str(locked), "--against", str(project / "results"))
+    assert run(*args) == 0
+    assert run(*args, "--strict") == 1

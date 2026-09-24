@@ -58,11 +58,15 @@ manuscript-guard audit manuscript.docx supplement.docx \
 It needs no project and reads no `paper.yaml`. A `.docx` is read with tracked changes
 accepted and table cells kept apart, from the body, footnotes and endnotes; headers,
 footers and comments are not read. The notes are read after the reference list has been
-cut from the body, so they are always audited. Markdown and text files are read as they
-are. There is no reader for a PDF manuscript. `--figures` takes SVG and PDF files with a
-text layer; one with no text at all, such as a matplotlib SVG with its labels drawn as
-outlines, is listed as unreadable rather than audited. `--strict` exits 1 when anything is
-unmatched.
+cut from the body, so they are always audited. Text files are read as they are. Markdown,
+papers and outputs alike, is read with pandoc's dashes: outside code, `--` beside a digit is
+an en dash and `---` an em dash, so `-0.72--0.30` in a `.md` file runs from -0.72 to +0.30,
+as its reader sees it, and the finding quotes the dash as rendered. In a `.txt`, `.docx` or
+`.csv`, and inside Markdown code, the same text runs to -0.30. There is no reader for a PDF
+manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
+such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
+than audited. `--strict` exits 1 when anything is unmatched or a paper or figure could not
+be read, and the audit exits 2 when nothing given could be read at all.
 
 ## 3. Read the report
 

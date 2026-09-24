@@ -1245,3 +1245,20 @@ def test_audit_catches_a_flipped_upper_bound_written_with_a_minus_sign(
     paper = tmp_path / "paper.md"
     paper.write_text(f"The interval was {interval} in this analysis.\n", encoding="utf-8")
     assert len(audit([paper], [outputs]).unmatched) == 1
+
+
+def test_audit_reads_code_in_a_markdown_output_as_written(tmp_path: Path) -> None:
+    """Pandoc leaves `--` alone inside code, and knitr puts R's console output in code
+    blocks, so "-0.72--0.30" there runs to -0.30: rewriting it as an en dash made a paper
+    printing an upper bound of 0.30 match."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "model.md"
+    outputs.write_text(
+        '```\n## [1] "-0.72--0.30"\n```\n\nInline `-0.51--0.10` too.\n', encoding="utf-8"
+    )
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The interval was -0.72 to 0.30, and -0.51 to 0.10.\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.startswith("0.30") for t in unmatched), unmatched
+    assert any(t.startswith("0.10") for t in unmatched), unmatched

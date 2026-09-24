@@ -708,8 +708,17 @@ def cmd_audit(args: argparse.Namespace) -> int:
         for item in report.skipped:
             print(f"  {item}", file=sys.stderr)
         return 2
+    if not report.papers:
+        # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
+        # --strict, when every paper given was unreadable.
+        print("nothing given could be audited:", file=sys.stderr)
+        for item in report.unreadable:
+            print(f"  {item}", file=sys.stderr)
+        return 2
     print(render(report, measure_discrimination(report.backing_values), Path.cwd()))
-    return 1 if (report.unmatched and args.strict) else 0
+    # A paper or figure the audit could not read is a check that did not happen, which
+    # --strict must not pass.
+    return 1 if (report.unmatched or report.unreadable) and args.strict else 0
 
 
 def cmd_journal(args: argparse.Namespace) -> int:

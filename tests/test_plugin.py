@@ -83,8 +83,9 @@ def test_every_link_between_skills_resolves_inside_the_plugin():
     for skill in SKILLS.glob("*/SKILL.md"):
         for target in re.findall(r"\]\((\.\./[^)#]+)\)", skill.read_text(encoding="utf-8")):
             resolved = (skill.parent / target).resolve()
-            assert resolved.is_file(), f"{skill.parent.name} -> {target}"
-            assert resolved.is_relative_to(plugin), f"{skill.parent.name} -> {target} leaves plugin/"
+            where = f"{skill.parent.name} -> {target}"
+            assert resolved.is_file(), where
+            assert resolved.is_relative_to(plugin), f"{where} leaves plugin/"
 
 
 def test_the_readme_lists_exactly_the_skills_that_ship():

@@ -117,7 +117,7 @@ class SelectionError(Exception):
 
 
 def label(item: Unbound, root: Path) -> str:
-    """How a suggestion is named on the command line: `main.md:42`.
+    """How a suggestion is named on the command line: `manuscript/main.md:42`.
 
     Positional rather than ordinal. Numbering the list 1..n and taking `--apply 3` would mean
     that editing the file between reading the list and accepting a suggestion applies a
@@ -131,7 +131,7 @@ def label(item: Unbound, root: Path) -> str:
 
 
 def select(items: list[Unbound], wanted: list[str], root: Path) -> list[Unbound]:
-    """The suggestions named by `--apply main.md:42 …`, or every certain one if none is named.
+    """The suggestions named by `--only manuscript/main.md:42 …`, or every certain one.
 
     An unmatched selector is an error rather than a silent no-op. The author has said what
     they want applied; applying less than that without saying so is exactly the quiet

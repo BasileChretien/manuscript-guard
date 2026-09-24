@@ -345,6 +345,42 @@ def test_audit_with_nothing_to_read_exits_two(tmp_path: Path, capsys) -> None:
     assert "nothing to audit" in capsys.readouterr().err
 
 
+def test_audit_against_a_path_that_does_not_exist_exits_two(project: Path, capsys) -> None:
+    """A typo in --against gave "0 distinct numbers from 0 output file(s)", every number in
+    the paper reported missing, and exit 0."""
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    typo = project / "resluts"
+    assert run("audit", str(paper), "--against", str(project / "results"), str(typo)) == 2
+    assert "resluts" in capsys.readouterr().err
+
+
+def test_audit_of_a_paper_that_does_not_exist_exits_two(project: Path, capsys) -> None:
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    missing = project / "supplement.md"
+    assert run("audit", str(paper), str(missing), "--against", str(project / "results")) == 2
+    assert "supplement.md" in capsys.readouterr().err
+
+
+def test_audit_against_nothing_it_can_read_exits_two(project: Path, capsys) -> None:
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    sheet = project / "results.xlsx"
+    sheet.write_bytes(b"PK\x03\x04")
+    assert run("audit", str(paper), "--against", str(sheet)) == 2
+    assert "results.xlsx" in capsys.readouterr().err
+
+
+def test_audit_help_names_every_format_it_reads(capsys) -> None:
+    from manuscript_guard.audit import BACKING_SUFFIXES
+
+    with pytest.raises(SystemExit):
+        run("audit", "--help")
+    helptext = " ".join(capsys.readouterr().out.split())
+    assert all(suffix in helptext for suffix in BACKING_SUFFIXES), helptext
+
+
 # ---------------------------------------------------------------- the rest
 
 
@@ -483,3 +519,22 @@ def test_check_does_not_report_exit_2_for_a_failing_gate(project: Path, capsys) 
     path.write_text(path.read_text(encoding="utf-8") + "\n\nThe rate was 47 per 1000.\n",
                     encoding="utf-8")
     assert run("check", str(project)) == 1
+
+
+def test_audit_of_nothing_readable_exits_two(project: Path, capsys) -> None:
+    """An unreadable paper printed "Audited 0 file(s) … 0 not found" and exited 0, even
+    with --strict: a clean-looking report of nothing."""
+    locked = project / "locked.docx"
+    locked.write_bytes(b"not a zip")
+    assert run("audit", str(locked), "--against", str(project / "results"), "--strict") == 2
+    assert "locked.docx" in capsys.readouterr().err
+
+
+def test_audit_strict_fails_when_a_paper_could_not_be_read(project: Path) -> None:
+    readable = project / "loose.md"
+    readable.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    locked = project / "locked.docx"
+    locked.write_bytes(b"not a zip")
+    args = ("audit", str(readable), str(locked), "--against", str(project / "results"))
+    assert run(*args) == 0
+    assert run(*args, "--strict") == 1

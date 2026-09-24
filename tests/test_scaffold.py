@@ -97,3 +97,38 @@ def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> N
     # Matched on the fields, not the spacing, which is column-aligned for reading.
     marked = {line.split()[0] for line in written.splitlines() if line.endswith("binary")}
     assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked
+
+
+def test_the_advice_names_an_emitter_that_exists(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """`init`, the no-results hint and the no-digest hint all said to call emit(). There is
+    no emit(): it is Emitter(...).write() in Python and mg_emitter() in R."""
+    import re
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import Emitter
+    from manuscript_guard.gates import check_freshness
+
+    root = tmp_path / "fresh"
+    assert main(["init", str(root), "--title", "T"]) == 0
+    said = [capsys.readouterr().out]
+
+    fresh, _ = load_project(root)
+    _namespace, _results, _lit, load_report = load_namespace(fresh)
+    said += [f.hint for f in load_report.findings if f.code == "no-results"]
+
+    (project / "results" / "01_disproportionality.json.sha256").unlink()
+    example, _ = load_project(project)
+    _namespace, results, _lit, _r = load_namespace(example)
+    said += [f.hint for f in check_freshness(example, results).findings if f.code == "no-digest"]
+
+    assert len(said) == 3, said
+    r_source = (Path(__file__).parent.parent / "r" / "manuscriptguard" / "R" / "emit.R").read_text(
+        encoding="utf-8"
+    )
+    for text in said:
+        assert "emit()" not in text, text
+        assert "Emitter(" in text and "mg_emitter(" in text, text
+    assert callable(Emitter.write)
+    assert re.search(r"^mg_emitter <- function", r_source, re.MULTILINE)

@@ -65,8 +65,13 @@ _MD_SYNTAX = re.compile(r"[*_`~>#\[\]|]")
 class Section:
     title: str
     level: int
+    #: The section's own text, up to the next heading of any level. The bodies of a
+    #: document's sections partition it, so they can be summed without counting twice.
     body: str
     line: int
+    #: Everything under the heading, subsections included: up to the next heading at this
+    #: level or above. What a caller asking for "the Methods" means.
+    enclosed: str = ""
 
     @property
     def is_abstract(self) -> bool:
@@ -175,31 +180,56 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
 
 
 def split_sections(text: str) -> list[Section]:
-    """Top-level structure. Subsections stay inside their parent's body."""
+    """Every heading, in document order, each with its own text and everything under it.
+
+    This used to say "subsections stay inside their parent's body" while the body stopped
+    at the next heading of any level. Every caller that wanted a whole section got its
+    first paragraphs: the design gate called a Population written under `### Inclusion` a
+    heading with nothing under it, and a parameter stated under `## Statistical analysis`
+    was reported absent from the Methods. Both answers are carried now — `body` to sum,
+    `enclosed` to read — so no caller has to guess which one it was given.
+    """
     matches = _headings_in(text)
     if not matches:
-        return [Section(title="", level=0, body=text, line=1)]
+        return [Section(title="", level=0, body=text, line=1, enclosed=text)]
 
     sections: list[Section] = []
     preamble = text[: matches[0].start].strip()
     if preamble:
-        sections.append(Section(title="", level=0, body=preamble, line=1))
+        sections.append(Section(title="", level=0, body=preamble, line=1, enclosed=preamble))
 
     for index, found in enumerate(matches):
         end = matches[index + 1].start if index + 1 < len(matches) else len(text)
+        closes = next(
+            (later.start for later in matches[index + 1 :] if later.level <= found.level),
+            len(text),
+        )
         # Past the heading itself: the `#` line, or the title plus its underline.
         body_from = text.find("\n", found.start)
         if body_from != -1 and found.level and text[found.start] != "#":
             body_from = text.find("\n", body_from + 1)
+        opens = body_from if body_from != -1 else found.start
         sections.append(
             Section(
                 title=found.title,
                 level=found.level,
-                body=text[(body_from if body_from != -1 else found.start) : end],
+                body=text[opens:end],
                 line=text.count("\n", 0, found.start) + 1,
+                enclosed=text[opens:closes],
             )
         )
     return sections
+
+
+def subsections(sections: list[Section], index: int) -> list[Section]:
+    """The section at `index` and every section nested under it, in order."""
+    level = sections[index].level
+    nested = [sections[index]]
+    for later in sections[index + 1 :]:
+        if later.level <= level:
+            break
+        nested.append(later)
+    return nested
 
 
 def headings(text: str) -> list[str]:
@@ -242,12 +272,24 @@ def measure(text: str) -> Counts:
     not change when the analysis is re-run.
     """
     sections = split_sections(text)
-    abstract = sum(count_words(s.body) for s in sections if s.is_abstract)
-    main = sum(
-        count_words(s.body) + count_words(s.title)
-        for s in sections
-        if not s.is_abstract and not s.is_references
-    )
+    abstract = main = 0
+    # Each section counts where its enclosing sections put it. Judged by its own title
+    # alone, `## Background` under `# Abstract` was main text, so a structured abstract
+    # written with headings escaped the abstract's limit.
+    chain: list[Section] = []
+    for section in sections:
+        while chain and chain[-1].level >= section.level:
+            chain.pop()
+        chain.append(section)
+        if any(s.is_references for s in chain):
+            continue
+        words = count_words(section.body)
+        if section.is_abstract:
+            abstract += words
+        elif any(s.is_abstract for s in chain):
+            abstract += words + count_words(section.title)
+        else:
+            main += words + count_words(section.title)
     return Counts(
         abstract_words=abstract,
         main_text_words=main,

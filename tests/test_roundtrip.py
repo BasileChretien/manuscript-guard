@@ -2400,6 +2400,236 @@ def test_text_typed_on_a_line_that_renders_nothing_is_still_refused(
     assert source.read_text(encoding="utf-8") == before
 
 
+def _maths(tmp_path: Path) -> tuple[Path, str, dict, list]:
+    """A section with a paragraph that reaches Word in parts, as sent."""
+    from manuscript_guard.docxtext import Block
+
+    fitted = "The model was fitted as $$y = a + b x$$ where b is the slope."
+    paragraphs = {
+        "a": "Alpha opens the section here.",
+        "p": fitted,
+        "b": "Beta sits in the middle of it.",
+        "c": "Gamma closes the section here.",
+    }
+    path = tmp_path / "main.md"
+    text = "# Methods\n\n" + "\n\n".join(paragraphs.values()) + "\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, words, text.index(words)) for name, words in paragraphs.items()}
+    sent = [
+        Block((), "Methods"),
+        Block(("a",), paragraphs["a"]),
+        Block(("p",), "The model was fitted as"),
+        Block((), "y = a + b x"),
+        Block((), "where b is the slope."),
+        Block(("b",), paragraphs["b"]),
+        Block(("c",), paragraphs["c"]),
+    ]
+    return path, text, known, sent
+
+
+def test_moving_the_first_part_of_a_display_maths_paragraph_does_not_move_it_all(
+    tmp_path: Path,
+) -> None:
+    """Only the line before the equation was moved with Track Changes on, and the whole
+    paragraph was moved in the source, equation and all, while Word still showed the
+    equation where it was. Exit 0, "reordered 1 paragraph"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, sent = _maths(tmp_path)
+    first = Block(("p",), "The model was fitted as", arrived=True)
+    returned = [sent[0], sent[1], sent[3], sent[4], sent[5], first, sent[6]]
+    plan = plan_import(known, sent, returned)
+    assert "p" in plan.misplaced and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_paragraph_left_between_the_parts_of_another_is_reported(tmp_path: Path) -> None:
+    """A paragraph that came back between an equation and the text after it, with the order
+    of the identified paragraphs unchanged, was dropped without a word: "nothing came
+    back"."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, sent = _maths(tmp_path)
+    returned = [sent[0], sent[1], sent[2], sent[3], sent[5], sent[4], sent[6]]
+    plan = plan_import(known, sent, returned)
+    assert "b" in plan.misplaced and not plan.empty
+
+
+def test_a_move_beside_a_split_is_held_whatever_stands_next_to_the_new_text(
+    tmp_path: Path,
+) -> None:
+    """A section that gained text keeps its order. The section was found from the paragraphs
+    either side of the new text, and a paragraph moved in from another section standing
+    beside it hid the one it was in: a paragraph moved between the halves of a split was
+    reordered to after the whole of it."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    words = {
+        "x": "Xray opens section one.",
+        "y": "Yankee closes section one. It has a second sentence.",
+        "f": "Foxtrot opens section two.",
+        "g": "Golf closes section two.",
+    }
+    text = f"# One\n\n{words['x']}\n\n{words['y']}\n\n# Two\n\n{words['f']}\n\n{words['g']}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    sent = [Block((), "One"), Block(("x",), words["x"]), Block(("y",), words["y"]),
+            Block((), "Two"), Block(("f",), words["f"]), Block(("g",), words["g"])]
+    returned = [
+        sent[0],
+        Block(("y",), "Yankee closes section one."),
+        Block(("x",), words["x"], arrived=True),
+        Block(("f",), words["f"], arrived=True),
+        Block((), "It has a second sentence."),
+        sent[3],
+        sent[5],
+    ]
+    plan = plan_import(known, sent, returned)
+    assert not plan.moved and not plan.merged
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_took_in_a_vanished_paragraph_is_not_merged(tmp_path: Path) -> None:
+    """A paragraph cut and pasted onto the end of one elsewhere, with a word typed to join
+    them: the one it joined merged holding it, and the report told the author to move the
+    vanished paragraph in the .md rather than delete it - so its text was in the source
+    twice."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {
+        "x": "Patients with prior liver disease were excluded from every analysis we ran.",
+        "m": "Middle paragraph left alone.",
+        "y": "The cohort included adult patients only.",
+        "z": "Zulu closes it.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    joined = paragraphs["y"] + " Moreover, " + paragraphs["x"][0].lower() + paragraphs["x"][1:]
+    returned = [Block(("x", "m"), paragraphs["m"]), Block(("y",), joined), sent[3]]
+    plan = plan_import(known, sent, returned)
+    assert "y" in [refusal.name for refusal in plan.refused] and not plan.merged
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_an_empty_line_gives_back_only_the_identifier_that_matched(tmp_path: Path) -> None:
+    """A paragraph cut without Track Changes left its identifier on the line an HTML comment
+    renders as, and was pasted just below it. Both identifiers went to the pasted text, and
+    the comment was reported "deleted in Word" - an invitation to delete the author's note."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "Sierra is a paragraph.\n\n<!-- a note -->\n\nTango follows.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {
+        "s": (path, "Sierra is a paragraph.", 0),
+        "h": (path, "<!-- a note -->", text.index("<!--")),
+        "t": (path, "Tango follows.", text.index("Tango")),
+    }
+    sent = [Block(("s",), "Sierra is a paragraph."), Block(("h",), ""),
+            Block(("t",), "Tango follows.")]
+    returned = [Block(("s", "h"), ""), Block((), "Sierra is a paragraph."), sent[2]]
+    plan = plan_import(known, sent, returned)
+    assert "h" not in plan.gone and "h" not in [name for name, _t in plan.displaced]
+
+
+@needs_pandoc
+def test_a_recorded_move_ended_with_enter_is_still_a_move(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Enter at the end of the moved copy marks its paragraph mark inserted rather than moved,
+    and the pairing asked for a moved mark: the move was reported as one Word did not
+    record."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml = _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+        arrived = xml.index("w:moveToRangeStart")
+        mark = xml.rindex("<w:moveTo ", 0, arrived)
+        xml = xml[:mark] + "<w:ins " + xml[mark + len("<w:moveTo ") :]
+        end = xml.index("</w:p>", arrived) + len("</w:p>")
+        # The new empty line ends with the copy's own mark, still a moved one.
+        empty = f"<w:p>{_tracked_mark('', 'moveTo')}</w:p>"
+        return xml[:end] + empty + xml[end:]
+
+    returned = rewrite(document, tmp_path / "enter.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "moved in Word" not in out, out
+    after = source.read_text(encoding="utf-8")
+    assert by_heading(after) == _moved_first(before, "# Methods", "The reporting odds ratio")
+
+
+@needs_pandoc
+def test_a_move_held_back_says_what_held_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A heading retitled with Track Changes on is text the document as sent did not have, and
+    it holds the moves beside it. The report said "a paragraph split, or a new one (below)",
+    and nothing was below."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml = _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+        return xml.replace(">Methods</w:t>", ">Study design</w:t>", 1)
+
+    returned = rewrite(document, tmp_path / "retitled.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "not applied" in out and "Study design" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_document_built_before_moves_were_recorded_is_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A document built before the build let Word record moves brings every move back as a
+    deletion and new text. The advice named a version the command line cannot show; the
+    document itself says which kind it is."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        return _word_paste(xml, [tagged[5]], tagged[3], "tracked")
+
+    returned = rewrite(document, tmp_path / "old.docx", move)
+    scratch = tmp_path / "old-settings.docx"
+    with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/settings.xml":
+                data = data.replace(b"<w:zoom ", b"<w:doNotTrackMoves /><w:zoom ", 1)
+                assert b"doNotTrackMoves" in data
+            zout.writestr(item, data)
+    capsys.readouterr()
+    assert main(["import", str(scratch), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "record moves" in out and "rebuild" in out.lower(), out
+
+
 @needs_pandoc
 def test_a_built_document_lets_word_record_a_move_as_a_move(project: Path) -> None:
     """Pandoc's reference document carries `w:doNotTrackMoves`, so with Track Changes on Word

@@ -187,7 +187,16 @@ FRONT_MATTER_CASES = {
     "a blank line after the opening": "---\n\ntitle: T\n---\n\nProse 9.99.\n",
     "a line of spaces after the opening": "---\n  \ntitle: T\n---\n\nProse 9.99.\n",
     "a rule, prose, and a rule": "---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots, then a rule": "---\ntitle: T\n...\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots on the last line": "---\ntitle: T\n...",
+    "closed by dashes on the last line": "---\ntitle: T\n---",
+    "a list between the delimiters": "---\n- a\n- b\n---\n\nProse 9.99.\n",
+    "a sentence closed by dots": "---\nJust a sentence.\n...\n\nProse 9.99.\n",
+    "never closed": "---\ntitle: T\n\nProse 9.99.\n",
 }
+# Pandoc keeps a header holding only a comment as empty metadata: nothing in `meta`, and
+# nothing printed either.
+STRIPPED_CASES = {**FRONT_MATTER_CASES, "only a comment": "---\n# a note\n---\n\nProse 9.99.\n"}
 
 
 def pandoc_meta(markdown: str) -> dict:
@@ -213,6 +222,48 @@ def test_the_toolkit_finds_the_front_matter_pandoc_reads(name: str) -> None:
         f"{name}: pandoc {'reads' if not toolkit else 'does not read'} front matter here; "
         f"the toolkit thinks the opposite"
     )
+
+
+def pandoc_blocks(markdown: str) -> list:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)["blocks"]
+
+
+@pytest.mark.parametrize("name", sorted(STRIPPED_CASES))
+def test_the_build_strips_only_what_pandoc_does_not_print(name: str) -> None:
+    """The build takes each file's front matter off before pandoc sees it, so what it takes
+    must be exactly what pandoc would not have printed. A list or a sentence between two
+    delimiters is not metadata to pandoc, which prints it; stripped, it vanished."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = STRIPPED_CASES[name]
+    body, _title = strip_front_matter(markdown)
+    assert pandoc_blocks(body) == pandoc_blocks(markdown), f"{name}: stripped {markdown!r}"
+
+
+def test_front_matter_pandoc_refuses_is_left_for_pandoc_to_refuse() -> None:
+    """A header that is never closed, with a rule further down, is YAML to pandoc up to the
+    rule; with prose in it, it is not valid YAML, and pandoc refuses the file. Stripped to
+    the rule, the file built, without the Introduction between."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = "---\ntitle: T\n\n# Introduction\n\nProse 9.99.\n\n---\n\nMore prose.\n"
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode != 0, "pandoc read this front matter; the test assumes not"
+    assert strip_front_matter(markdown) == (markdown, "")
 
 
 @pytest.mark.parametrize("name", sorted(FENCE_CASES))

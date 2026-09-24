@@ -88,6 +88,47 @@ def test_front_matter_is_stripped_and_its_title_reported() -> None:
     assert declared == "A paper"
 
 
+_BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "body", "declared"),
+    [
+        (f'---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        # YAML closes with `...` too. Taken for prose, the header ran on to the rule.
+        (f'---\ntitle: "A paper"\n...\n\n{_BODY}', _BODY, "A paper"),
+        (f'---\ntitle: "A paper"\n...   \n\n{_BODY}', _BODY, "A paper"),
+        (
+            '---\r\ntitle: "A paper"\r\n...\r\n\r\n' + _BODY.replace("\n", "\r\n"),
+            "\r\n" + _BODY.replace("\n", "\r\n"),
+            "A paper",
+        ),
+        # Closed on the file's last line, which has no newline after it.
+        ('---\ntitle: "A paper"\n...', "", "A paper"),
+        ('---\ntitle: "A paper"\n---', "", "A paper"),
+        # No front matter: a rule at the top, and a block that never closes.
+        (f"---\n\n{_BODY}", f"---\n\n{_BODY}", ""),
+        ('---\ntitle: "A paper"\n\nText.\n', '---\ntitle: "A paper"\n\nText.\n', ""),
+        (_BODY, _BODY, ""),
+    ],
+    ids=[
+        "closed by dashes",
+        "closed by dots",
+        "closed by dots with trailing spaces",
+        "crlf, closed by dots",
+        "closed by dots on the last line",
+        "closed by dashes on the last line",
+        "a rule at the top",
+        "never closed",
+        "no front matter",
+    ],
+)
+def test_front_matter_ends_where_pandoc_ends_it(text: str, body: str, declared: str) -> None:
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    assert strip_front_matter(text) == (body, declared)
+
+
 # ---------------------------------------------------------------- the baseline
 
 

@@ -897,7 +897,9 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   YAML's first line read as a blank one and the front matter went unrecognised. And nothing
   opened in the front matter closes in the body, as pandoc reads it: a `<!--` in a title ran
   on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
-  below, hiding everything between from G2 and the audit. See `front_matter_end`.)
+  below, hiding everything between from G2 and the audit. See `front_matter_end`. Later
+  still: the one pattern counts a block only where pandoc keeps it as metadata; see "Front
+  matter closed by `...` took the body with it" under Known gaps.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1643,6 +1645,16 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
+  with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
+  next `---` line in the file, a horizontal rule, and the Introduction above the rule
+  vanished from the document, from `import` and from G13, with no warning. The build now
+  uses the pattern the gates use, which closes on the first `---` or `...` line, the file's
+  last line included. And it counts a block as front matter only where pandoc keeps it as
+  metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
+  it is no longer stripped or masked. A header never closed before a later rule, with prose
+  in it, is not YAML: pandoc refuses the file, and the build no longer strips it into one
+  that builds without the Introduction.
 - **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
   the same value with different displays, so a duplicate was caught while it still agreed
   and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
@@ -1991,10 +2003,16 @@ Closed since, and why each mattered:
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
-- **A `---` block at the top that is not YAML is taken for front matter.** Pandoc wants a
-  YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
-  gates mask it and the build strips it, so for a paper built here they agree and nothing
-  unread prints. The audit of a Markdown paper rendered some other way does not read it.
+- **A header pandoc refuses is read as body.** A `---` block at the top that is not YAML
+  at all, such as one opening on an HTML comment or one never closed before a later rule,
+  is not front matter to pandoc, which refuses the file. The gates read it as prose until
+  the YAML is fixed: a `# Methods` in it heads a section, and a `# References` in it starts
+  the audit's reference list, which the audit names under "Not audited".
+- **A heading under a header that is never closed can be read as a YAML comment.** Pandoc
+  reads the header to the first `---` or `...` line, so `---`, `title: x`, a blank line,
+  `# Introduction`, a blank line and a rule make a valid mapping with a comment in it. The
+  heading goes into the metadata for pandoc and the build alike, and nothing says so. Any
+  prose under the heading makes the YAML invalid, and pandoc refuses the file instead.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is

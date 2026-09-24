@@ -1105,7 +1105,10 @@ def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: P
         "## Methods\n\n<!--\n# References\n-->\n",
         "## Methods\n\n<!--\nReferences\n-->\n",
         "---\ntitle: A study\n# References\nbibliography: refs.bib\n---\n",
-        "---\n<!-- keep in step with paper.yaml -->\n# References\nbibliography: refs.bib\n---\n",
+        # A comment inside the YAML. On a line of its own the comment makes the header not
+        # YAML, which pandoc refuses to build, so it sits in a value here.
+        "---\ntitle: A study <!-- keep in step with paper.yaml -->\n# References\n"
+        "bibliography: refs.bib\n---\n",
     ],
 )
 def test_audit_does_not_start_a_reference_list_in_code_or_a_comment(
@@ -1152,8 +1155,11 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         # A rule, not front matter: the heading prints.
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
+        # A comment on the YAML's first line makes it not YAML at all: pandoc refuses the
+        # file, and the build leaves it for pandoc to refuse, so both read a heading.
+        (f"---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
         (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
     ],
 )
@@ -1169,6 +1175,43 @@ def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[s
 
     body, _title = strip_front_matter(text)
     assert headings(body) == headings(text) == printed
+
+
+_INTRODUCTION = (
+    "# Introduction\n\nThe first reports came in 2019.\n\n---\n\n# Methods\n\n"
+    "Cases were compared with non-cases.\n"
+)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Closed by `...`, which YAML and pandoc accept. The build took only `---` and ran on
+        # to the horizontal rule, and the Introduction went with the header.
+        f"---\ntitle: A study\n...\n\n{_INTRODUCTION}",
+        "---\r\ntitle: A study\r\n...\r\n\r\n" + _INTRODUCTION.replace("\n", "\r\n"),
+        # Never closed. Pandoc reads to the rule, finds no YAML there and refuses to build.
+        f"---\ntitle: A study\n\n{_INTRODUCTION}",
+        # Closed, but not a mapping, so not metadata: pandoc prints it.
+        f"---\n- first\n- second\n---\n\n{_INTRODUCTION}",
+        f"---\nA sentence, not a key.\n...\n\n{_INTRODUCTION}",
+    ],
+    ids=["closed by dots", "closed by dots, crlf", "never closed", "a list", "a sentence"],
+)
+def test_the_front_matter_never_takes_the_body_with_it(text: str) -> None:
+    """`strip_front_matter` ran to the first `---` line in the file, wherever it was, and
+    called everything above it front matter. A header closed by `...` and a rule further
+    down took the Introduction out of the built document, out of `import` and out of G13,
+    with no warning. The front matter now ends at the first `---` or `...` line, and counts
+    only when pandoc keeps it as metadata; anything else is left where pandoc prints it or
+    refuses it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import headings
+
+    body, _title = strip_front_matter(text)
+    assert "The first reports came in 2019." in body
+    assert "Introduction" in headings(body)
+    assert headings(body) == headings(text)
 
 
 @pytest.mark.parametrize(

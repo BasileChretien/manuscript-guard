@@ -13,6 +13,7 @@ dangerous direction, so anything questionable is left unmasked and allowed to fa
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 from manuscript_guard.text.fences import fenced_spans
 
@@ -20,13 +21,80 @@ NUL = "\x00"
 
 # Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
 # opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
-# and the prose after it prints. Either delimiter may carry trailing spaces, and `...`
-# closes the block as well as `---`. The build had a copy of its own that differed on each
-# of these, and where the two disagreed a heading could be read by G2 and stripped by the
-# build: `p < 0.001` under it passed as the alpha chosen in advance and printed without it.
-FRONTMATTER = re.compile(
-    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n", re.DOTALL
+# and the prose after it prints. Either delimiter may carry trailing spaces, `...` closes
+# the block as well as `---`, and the closing line may be the file's last. The build had a
+# copy of its own that differed on each of these, and where the two disagreed a heading
+# could be read by G2 and stripped by the build: `p < 0.001` under it passed as the alpha
+# chosen in advance and printed without it.
+_FRONT_MATTER_BLOCK = re.compile(
+    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
+    re.DOTALL,
 )
+# Nesting deeper than this is nobody's metadata. Composing thousands of levels took seconds
+# before the pure-Python loader hit the recursion limit.
+_YAML_DEPTH = 100
+_SEQUENCE_ITEMS = re.compile(r"(?:[ \t]*-(?:[ \t]+|$))+")
+
+
+def _nesting(yaml_text: str) -> int:
+    """How deep YAML's flow brackets or block sequences nest, read without parsing."""
+    depth = deepest = 0
+    for char in yaml_text:
+        if char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth = max(depth - 1, 0)
+    for line in yaml_text.split("\n"):
+        items = _SEQUENCE_ITEMS.match(line)
+        if items:
+            deepest = max(deepest, items.group(0).count("-"))
+    return deepest
+
+
+@lru_cache(maxsize=64)
+def _is_metadata(yaml_text: str) -> bool:
+    """Whether pandoc keeps this YAML as metadata: a mapping, or nothing at all.
+
+    Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
+    `date: 2026-02-30`, and nothing here needs the values. With the pure-Python loader, as
+    the C one overflowed its stack on deep nesting. A comment alone, or a null, is empty
+    metadata to pandoc.
+    """
+    import yaml
+
+    if _nesting(yaml_text) > _YAML_DEPTH:
+        return False
+    try:
+        node = yaml.compose(yaml_text, Loader=yaml.SafeLoader)
+    except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
+        return False
+    empty = node is None or (
+        isinstance(node, yaml.ScalarNode) and node.tag == "tag:yaml.org,2002:null"
+    )
+    return empty or isinstance(node, yaml.MappingNode)
+
+
+class _FrontMatter:
+    """`FRONTMATTER.match(text)`: the YAML block that opens `text`, or None.
+
+    Pandoc reads from the opening `---` to the first `---` or `...` line and keeps what is
+    between as metadata only when it is a mapping, or nothing. Anything else it prints: a
+    list becomes a table, a sentence a paragraph. And a header that is never closed is read
+    to the next rule, where the text between is not YAML, and pandoc refuses the file. The
+    pattern alone took all of these for front matter, and the build stripped them: with a
+    rule further down, an Introduction under an unclosed header vanished from the document
+    with no warning. They are left where pandoc prints them, or refuses them.
+    """
+
+    def match(self, text: str) -> re.Match[str] | None:
+        found = _FRONT_MATTER_BLOCK.match(text)
+        if found is None or not _is_metadata(found.group("yaml")):
+            return None
+        return found
+
+
+FRONTMATTER = _FrontMatter()
 
 
 def front_matter_end(text: str) -> int:

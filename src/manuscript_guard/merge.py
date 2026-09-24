@@ -359,13 +359,21 @@ def plan_import(
     `marked` is the same document built with each binding and citation bookmarked, which is
     where `align` learns each token's extent. It is trusted only for a paragraph that reads
     exactly as it does in `reference`: if marking changed a rendering, that paragraph is
-    refused rather than aligned on extents that describe different text.
+    refused rather than aligned on extents that describe different text. Exactly but for
+    pandoc's no-break space, which it puts after "et al." before a bookmark and not before a
+    citation: one character for one, so the extents still fit, and every edit to "Smith et
+    al. [@key]" was refused without it.
     """
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+
+    def fits(text: str, name: str) -> bool:
+        sent = rendered.get(name)
+        return sent is not None and sent.replace(" ", " ") == text.replace(" ", " ")
+
     extents = {
         b.names[0]: b.tokens
         for b in marked or ()
-        if b.names and not b.table and rendered.get(b.names[0]) == b.text
+        if b.names and not b.table and fits(b.text, b.names[0])
     }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}

@@ -713,6 +713,18 @@ def test_an_edited_stretch_the_build_printed_differently_is_refused(
             "As A (2019):/ reported, it was 3.84 here.",
             id="key-running-into-a-colon-and-slash",
         ),
+        pytest.param(
+            "As @a reported, it was {{results.x}} overall.",
+            "As ⟦A (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
+            "As A (2019) [pooled] overall.",
+            id="value-read-as-a-locator",
+        ),
+        pytest.param(
+            "As @{10.1000/xyz} reported, it was {{results.x}} overall.",
+            "As ⟦X (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
+            "As X (2019) [pooled] overall.",
+            id="value-read-as-a-braced-key's-locator",
+        ),
     ],
 )
 def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
@@ -2391,6 +2403,30 @@ def test_a_full_stop_typed_against_a_citation_does_not_print_its_key_end_to_end(
     assert "whole cohort." in "".join(paragraph_text(returned).values())
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert sentence in source.read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_a_citation_after_et_al_takes_a_rewording_end_to_end(
+    project: Path, tmp_path: Path
+) -> None:
+    """Marked, the citation after "et al." got pandoc's no-break space where the plain build
+    has a plain one, so the extents were distrusted and every edit to the paragraph was
+    refused as "could not be told apart from its prose"."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    sentence = "Smith et al. [@fictionalHepaticCohort2021] found a ratio of {{results.ror.point}}."
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Bleeding\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project),
+        tmp_path / "bleeding.docx",
+        lambda xml: xml.replace("found a ratio of", "reported a ratio of", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert sentence.replace("found", "reported") in source.read_text(encoding="utf-8")
 
 
 @needs_pandoc

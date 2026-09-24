@@ -1242,27 +1242,27 @@ file when nothing had moved at all.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
-`[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and
-`@key [p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and
-`@{10.1000/xyz}` as well as `@smith2020`, and none straight after a full stop, where pandoc
-reads none. A narrative key takes the bracket group after it, with or without a space and
-across a line break, because pandoc reads `@key[p. 3]` as a key and its locator and
-`@a [see @b]` as one citation; a group followed by `(` or `{` is a link or a span instead.
-A binding inside a citation is part of it, and nothing in code, an autolink or a link's
-address is a citation. Each of these was once split or found where pandoc finds none, and
-marking then broke the paragraph for good. A key left in the prose all the same refuses the
-paragraph, since Word's text holds the citation's rendering and not the key. Where each token's rendering begins
-and ends is not worked out. It is read from a second build of the same source in which
-every token has a Word bookmark around it, written as raw OpenXML that pandoc passes
-through. So nothing about how a number or a citation renders has to be known, which is what
-makes citations work: their rendering depends on a CSL style this code never sees. The
-first marking was a `[token]{#id}` span, and a span adds brackets: beside an unbalanced one,
-as in "Scores in [low, high) … [@key]", pandoc paired them differently, the text still read
-the same, the extent lost its first character, and a rewording wrote the `[` twice. A
-bracketed citation is found by bracket balance - a group with a key at its own level - and
-not by a pattern: one that started at the first `[` made the prose "[low, high) were
-rescaled as in" part of a citation, and one that could not contain `[` protected nothing in
-`[@key, p. 3 [emphasis added]]`.
+`[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and `@key
+[p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and `@{10.1000/xyz}`
+as well as `@smith2020`, and none straight after a full stop, where pandoc reads none. A
+narrative key takes the bracket group after it, with or without a space and across a line
+break, because pandoc reads `@key[p. 3]` as a key and its locator and `@a [see @b]` as one
+citation; a group followed by `(` or `{` is a link or a span instead. A binding inside a
+citation is part of it, and nothing in code, an autolink or a link's address is a citation.
+Each of these was once split or found where pandoc finds none, and marking then broke the
+paragraph for good. A key left in the prose all the same refuses the paragraph, since Word's
+text holds the citation's rendering and not the key. Where each token's rendering begins and
+ends is not worked out. It is read from a second build of the same source in which every
+token has a Word bookmark around it, written as raw OpenXML that pandoc passes through. So
+nothing about how a number or a citation renders has to be known, which is what makes
+citations work: their rendering depends on a CSL style this code never sees. The first
+marking was a `[token]{#id}` span, and a span adds brackets: beside an unbalanced one, as in
+"Scores in [low, high) … [@key]", pandoc paired them differently, the text still read the
+same, the extent lost its first character, and a rewording wrote the `[` twice. A bracketed
+citation is found by bracket balance - a group with a key at its own level - and not by a
+pattern: one that started at the first `[` made the prose "[low, high) were rescaled as in"
+part of a citation, and one that could not contain `[` protected nothing in `[@key, p. 3
+[emphasis added]]`.
 
 It used to be worked out, and the working was wrong in both directions. The source's prose
 was flattened and searched for in the rendered text, and the tokens were whatever lay
@@ -1347,7 +1347,11 @@ not where the reading and pandoc disagree. Its tokens must be the source's, each
 before and none touching the next. Counting them was not enough. An edit deleting a space
 made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
 `@a [@b]` one citation, and one leaving `@a:{{results.x}}` gave pandoc the key `a:3.84`.
-Each still had as many tokens, and the build printed a raw key or a garbled citation. Every edited stretch has one more backstop, for
+Each still had as many tokens, and the build printed a raw key or a garbled citation. The
+reading takes a binding for digits, so what a value does beside a key is checked apart: a
+value that opens with `[`, left with only a space after a narrative key, is the key's
+locator to pandoc, and "(2019) [pooled]" printed as "(2019, pooled)". Every edited stretch
+has one more backstop, for
 what the list does not name: if its source, read as Word should show it, is not what the
 build printed of that stretch, something in it never reached Word as text, and the
 rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
@@ -2197,7 +2201,8 @@ Closed since, and why each mattered:
   punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
   stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
   closes it is written straight. Where that rule and pandoc disagree, one quote prints
-  the wrong way round, and no word changes.
+  the wrong way round, and no word changes. A space typed just before that closing quote is
+  lost: pandoc trims it from inside the quotation, so "3.84 ’" prints as "3.84’".
 - **A straight quote from Word is typeset like one in the source.** Word's text is written
   back with its quotes as they are, and pandoc curls a straight one. So a co-author who
   types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
@@ -2251,10 +2256,13 @@ Closed since, and why each mattered:
   different text, and it can never take a rewording, even far from the token. Known cases:
   a binding inside inline code, where the bookmark is printed rather than read; super- or
   subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
-  an autolink, which the bookmark breaks the same way; and quotes that pandoc pairs
-  differently around a bookmark. A binding in an HTML comment is never marked, and
-  `@a [-@b]`, `@key[p. 3]`, `@key [text](url)` and an `@` in a link's address, each once a
-  token that marking broke, are read as pandoc reads them now. `[@key](url)` and
+  an autolink, which the bookmark breaks the same way; `@key [b][c]`, whose `[b]` is read
+  here as a locator and is none to pandoc, being followed by `[`; and quotes that pandoc
+  pairs differently around a bookmark. The no-break space pandoc puts after "et al." or
+  "e.g." before a bookmark, where it puts a plain one before a citation, is not a change:
+  one character for one, the extents still fit. A binding in an HTML comment is never
+  marked, and `@a [-@b]`, `@key[p. 3]`, `@key [text](url)` and an `@` in a link's address,
+  each once a token that marking broke, are read as pandoc reads them now. `[@key](url)` and
   `[@key]{.smallcaps}` no longer break marking, but a paragraph holding one still refuses
   every edit: the reading shows the link's text as `@key`, where Word shows the citation.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as

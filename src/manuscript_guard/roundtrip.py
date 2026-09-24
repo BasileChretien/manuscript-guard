@@ -874,6 +874,8 @@ def _reads_as(
     Its tokens must be the source's, each read as it was and none touching another. Counting
     them was not enough: an edit that left `[@a][@b]` read as a link, `@a:{{results.x}}` as
     the key `a:3.84`, and `cohort.@key` as no citation at all, with as many tokens found.
+    A binding is read here as digits, so what its value does beside a key is checked apart:
+    `@a {{results.x}}` with a value of `[pooled]` is a key and its locator.
     """
     reading = _read(rebuilt, renderings)
     if reading.protected != list(protected):
@@ -883,14 +885,12 @@ def _reads_as(
         between = rebuilt[first.end() : second.start()]
         if not between:
             return False
-        # A key then one mark of punctuation reads on into a number put straight after it.
-        glued = (
-            not first.text.endswith(("]", "}"))
-            and _BINDING.fullmatch(second.text)
-            and re.fullmatch(r"[:.#$%&+?<>~/-]", between)
-            and re.match(r"\w", renderings[index + 1])
-        )
-        if glued:
+        if not first.text.lstrip("-").startswith("@") or not _BINDING.fullmatch(second.text):
+            continue
+        value = renderings[index + 1]
+        # A key then one mark of punctuation reads on into a value put straight after it.
+        glued = not first.text.endswith("}") and re.fullmatch(r"[:.#$%&+?<>~/-]", between)
+        if (glued and re.match(r"\w", value)) or (not between.strip() and value.startswith("[")):
             return False
     return _untypeset(reading.whole) == _untypeset(returned)
 

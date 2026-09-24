@@ -27,9 +27,11 @@ possible: a paragraph can be reworded around its bindings without them being tou
 from __future__ import annotations
 
 import difflib
+import html
 import re
 import unicodedata
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -367,26 +369,305 @@ def paragraph_text(document: Path) -> dict[str, str]:
     }
 
 
+#: Inline Markdown that does not reach Word as its own text, by kind: what a refusal calls
+#: it, its pattern, and the group Word's paragraph shows of it (None: nothing at all). An
+#: empty name is something a merge can bring back, because `_escaped` writes Word's text
+#: into the source so that it reads as it did in Word.
+#:
+#: Only bindings and citations used to be told apart from prose, and everything else was
+#: taken to read in Word as it did in the source. A comment, a footnote and raw TeX read as
+#: nothing there, a link as its words without the address, `10^9^/L` as "109/L". A rewording
+#: rebuilt from Word's text deleted them, or printed 109, and nothing was reported.
+_INLINE: dict[str, tuple[str, str, str | None]] = {
+    # A hard line break reaches Word's text as a space, and nothing in it says there was one.
+    "break": ("a line break", r"(?:\\|[ ]{2,})(?P<break_text>\n)", "break_text"),
+    # Word's text is read with its spaces normalised, so a non-breaking one comes back plain.
+    "nbsp": ("a non-breaking space", r"\\ |[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]", None),
+    "escape": ("", r"\\(?P<escape_text>[!-/:-@\[-`{-~])", "escape_text"),
+    "raw": ("a raw inline", r"(?P<raw_ticks>`+).+?(?<!`)(?P=raw_ticks)\{=[^}]*\}", None),
+    "coded": (
+        "code with attributes",
+        r"(?P<coded_ticks>`+)(?P<coded_text>.+?)(?<!`)(?P=coded_ticks)\{(?!\{)[^}]*\}",
+        "coded_text",
+    ),
+    "code": ("", r"(?P<code_ticks>`+)(?P<code_text>.+?)(?<!`)(?P=code_ticks)(?!`)", "code_text"),
+    # Shown decoded; see `_shows`. After code, where `&amp;` is printed as it is written.
+    "entity": ("", r"&(?:#\d+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);", None),
+    "comment": ("an HTML comment", r"<!--.*?-->", None),
+    # Two levels of brackets inside, which covers a citation with a locator in a footnote.
+    "note": ("a footnote", r"\^\[(?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*\]", None),
+    "note_ref": ("a footnote", r"\[\^[^\]\s]+\]", None),
+    "image": ("an image", r"!\[[^\]]*\](?:\([^)]*\)|\[[^\]]*\])", None),
+    "link": ("a link", r"\[(?P<link_text>[^\]]*)\](?:\([^)]*\)|\[[^\]]*\])", "link_text"),
+    "span": ("a span with attributes", r"\[(?P<span_text>[^\]]*)\]\{(?!\{)[^}]*\}", "span_text"),
+    "autolink": (
+        "a link",
+        r"<(?P<autolink_text>[A-Za-z][A-Za-z0-9+.-]*:[^\s<>]+|[^\s<>@]+@[^\s<>@]+)>",
+        "autolink_text",
+    ),
+    # Pandoc's rule for a dollar: no space inside either end, no digit after the closing one.
+    # So "US$ 5" and "$5 and $10" are prose. `_read` fills each binding in with digits before
+    # scanning, so `US$5–US${{results.hi}}` is read as pandoc will read it; `{{` is refused
+    # here too for `segments`, which scans the paragraph before any binding is filled in.
+    "math": (
+        "an equation",
+        r"\$\$.+?\$\$|(?<![\\$])\$(?=\S)[^$]*?(?<=\S)\$(?!\d|\{\{)",
+        None,
+    ),
+    "tex": ("raw TeX", r"\\[A-Za-z]+\*?(?:\[[^\]]*\])*(?:\{[^{}]*\})*", None),
+    # A tag only if its attributes are attributes: pandoc prints `<LOD ... LOD/2 and >` as
+    # the text it is.
+    "html": (
+        "inline HTML",
+        r"</?[A-Za-z][A-Za-z0-9-]*"
+        r"(?:\s+[A-Za-z_:][\w:.-]*(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*\s*/?>",
+        None,
+    ),
+    "struck": ("struck-through text", r"~~(?P<struck_text>.+?)~~", "struck_text"),
+    "sup": ("a superscript", r"\^(?P<sup_text>(?:[^\s^\\]|\\.)+)\^", "sup_text"),
+    "sub": ("a subscript", r"~(?P<sub_text>(?:[^\s~\\]|\\.)+)~", "sub_text"),
+}
+
+#: One pass, the first alternative winning at each position: a citation inside a footnote
+#: belongs to the footnote, and a comment inside backticks is code.
+_SCAN = re.compile(
+    "|".join(f"(?P<{kind}>{pattern})" for kind, (_name, pattern, _shows) in _INLINE.items()),
+    re.DOTALL,
+)
+
+#: What renders nothing into the paragraph, so a binding or a citation inside it is not one
+#: of the paragraph's own tokens: it is printed in a footnote, or dropped with the comment.
+_OPAQUE = frozenset({"raw", "comment", "note", "note_ref", "image", "math", "tex", "html"})
+
+#: Kinds whose shown text is itself Markdown, so emphasis inside it is read as emphasis.
+_MARKDOWN_INSIDE = frozenset({"link", "span", "struck", "sup", "sub"})
+
+_NBSP = re.compile(_INLINE["nbsp"][1])
+
+#: Emphasis, strong before single so `***x***` and `*a **b** c*` pair up as pandoc pairs
+#: them: no space just inside a delimiter, and an underscore inside a word is a letter.
+_EMPHASIS = (
+    (2, re.compile(r"\*\*(?=[^\s*]).*?(?<=[^\s*])\*\*", re.DOTALL)),
+    (2, re.compile(r"(?<![^\W_])__(?=[^\s_]).*?(?<=[^\s_])__(?![^\W_])", re.DOTALL)),
+    (1, re.compile(r"\*(?=[^\s*]).*?(?<=[^\s*])\*", re.DOTALL)),
+    (1, re.compile(r"(?<![^\W_])_(?=[^\s_]).*?(?<=[^\s_])_(?![^\W_])", re.DOTALL)),
+)
+
+#: Emphasis or code wrapped around a binding is split between the prose on either side of
+#: it. Rebuilding one side from Word's text dropped its delimiter and kept the other, and
+#: `**ratio {{results.x}} was**` merged as `**ratio {{results.x}} was`: literal asterisks in
+#: the document, where the author had bold.
+_HALF_SPAN = "one end of an emphasis or code span"
+
+
+def _shows(match: re.Match[str]) -> str:
+    """What Word's paragraph shows of one construct `_SCAN` found."""
+    kind = match.lastgroup or ""
+    if kind == "entity":
+        return html.unescape(match.group(0))
+    if kind == "nbsp":
+        return " "
+    group = _INLINE[kind][2]
+    return match.group(group) if group else ""
+
+
+def _named(match: re.Match[str]) -> str:
+    """What a refusal calls it; empty for what a merge brings back."""
+    kind = match.lastgroup or ""
+    if kind == "entity" and _NBSP.fullmatch(html.unescape(match.group(0))):
+        return _INLINE["nbsp"][0]
+    return _INLINE[kind][0]
+
+
+def _tokens(paragraph: str) -> list[re.Match[str]]:
+    """The paragraph's own bindings and citations: not those inside a footnote or comment."""
+    opaque = [m.span() for m in _SCAN.finditer(paragraph) if m.lastgroup in _OPAQUE]
+    return [
+        m
+        for m in _PROTECTED.finditer(paragraph)
+        if not any(start <= m.start() < end for start, end in opaque)
+    ]
+
+
 def segments(paragraph: str) -> tuple[list[str], list[str]]:
     """Split a source paragraph into its prose and the parts the author does not own.
 
     Returns `(prose, protected)` with `len(prose) == len(protected) + 1`, so the paragraph is
-    `prose[0] + protected[0] + prose[1] + ...`.
+    `prose[0] + protected[0] + prose[1] + ...`. A binding or a citation inside a footnote or a
+    comment stays in the prose, with the markup it belongs to.
     """
-    protected = _PROTECTED.findall(paragraph)
-    prose = _PROTECTED.split(paragraph)
-    return prose, protected
+    tokens = _tokens(paragraph)
+    edges = [0] + [edge for m in tokens for edge in m.span()] + [len(paragraph)]
+    prose = [paragraph[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    return prose, [m.group(0) for m in tokens]
 
 
-def _flatten(text: str) -> str:
-    """Prose as it will appear in the document: emphasis markers gone, spaces normalised.
+def _spaced(text: str) -> str:
+    """Runs of whitespace as one space, kept at the ends: a stretch retyped from `3.84%` to
+    `3.84 %` differs only there, and stripping it made the edit disappear."""
+    return re.sub(r"\s+", " ", text)
 
-    Prose is unchanged by rendering *except* for its markdown. `**striking**` reaches Word
-    as `striking`, so locating the source segment verbatim failed on any paragraph with
-    emphasis in it — which is most of them. Compared flattened, rebuilt from the original.
+
+def _emphasis(text: str) -> list[tuple[int, int, int]]:
+    """Emphasis spans in `text`, as (start, end, delimiter width)."""
+    work = text
+    found: list[tuple[int, int, int]] = []
+    for width, pattern in _EMPHASIS:
+        while spans := [m.span() for m in pattern.finditer(work)]:
+            for start, end in spans:
+                # Marked, not removed: offsets stay put, and a marked delimiter still reads
+                # as something that is not a space, so `***x***` pairs its outer asterisks.
+                inside = work[start + width : end - width]
+                work = work[:start] + "\x01" * width + inside + "\x01" * width + work[end:]
+                found.append((start, end, width))
+    return found
+
+
+@dataclass(frozen=True)
+class _Reading:
+    """A source paragraph read the way Word shows it, stretch by stretch.
+
+    The paragraph is read whole, with each binding filled in by digits, because what a
+    stretch is depends on its neighbours: `*{{results.x}}*` is emphasis around a number and
+    `US$5–US${{results.hi}}` is a price, and neither is either when a stretch is read alone.
     """
-    text = re.sub(r"(\*\*|__|\*|_|`)", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+
+    prose: list[str]
+    protected: list[str]
+    #: What Word shows of each stretch of prose, spaces normalised.
+    shown: list[str]
+    #: What each stretch holds that Word's text cannot carry back, named for the author.
+    lost: list[tuple[str, ...]]
+    #: The whole paragraph as Word shows it, with each token as the rendering given for it.
+    whole: str
+
+
+def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
+    tokens = _tokens(paragraph)
+    filled = list(paragraph)
+    for m in tokens:
+        filled[m.start() : m.end()] = "0" * (m.end() - m.start())
+    filled_text = "".join(filled)
+
+    shows = list(paragraph)  # what each character of the source puts into Word's text
+    plain = list(filled_text)  # where emphasis is read: constructs set aside, as digits
+    marks: list[tuple[int, int, str]] = []
+    for m in _SCAN.finditer(filled_text):
+        kind = m.lastgroup or ""
+        start, end = m.span()
+        group = _INLINE[kind][2]
+        inner = m.span(group) if group else (start, start)
+        shows[start:end] = [""] * (end - start)
+        if kind in ("entity", "nbsp"):
+            shows[start] = _shows(m)
+        elif group:
+            shows[inner[0] : inner[1]] = list(paragraph[inner[0] : inner[1]])
+        keep = inner if kind in _MARKDOWN_INSIDE else (start, start)
+        plain[start:end] = [
+            filled_text[p] if keep[0] <= p < keep[1] else "0" for p in range(start, end)
+        ]
+        if name := _named(m):
+            marks.append((start, end, name))
+        elif kind in ("code", "coded") and any(start < t.start() < end for t in tokens):
+            ticks = len(m.group(f"{kind}_ticks"))
+            closing = m.end(f"{kind}_text")
+            marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
+
+    for start, end, width in _emphasis("".join(plain)):
+        shows[start : start + width] = [""] * width
+        shows[end - width : end] = [""] * width
+        if any(start < t.start() < end for t in tokens):
+            marks += [(start, start + width, _HALF_SPAN), (end - width, end, _HALF_SPAN)]
+
+    for index, m in enumerate(tokens):
+        shows[m.start() : m.end()] = [""] * (m.end() - m.start())
+        if index < len(renderings):
+            shows[m.start()] = renderings[index]
+
+    edges = [0] + [edge for m in tokens for edge in m.span()] + [len(paragraph)]
+    ranges = list(zip(edges[::2], edges[1::2], strict=True))
+    return _Reading(
+        prose=[paragraph[a:b] for a, b in ranges],
+        protected=[m.group(0) for m in tokens],
+        shown=[_spaced("".join(shows[a:b])) for a, b in ranges],
+        lost=[
+            tuple(dict.fromkeys(name for start, end, name in marks if start < b and end > a))
+            for a, b in ranges
+        ],
+        whole=_spaced("".join(shows)).strip(),
+    )
+
+
+#: A paragraph that opens like a block: a heading, a list item, a block quote, a fenced div.
+#: Word's text rarely does, and "1990. The year..." at the start of a paragraph is a list.
+_OPENER = re.compile(
+    r"(?P<mark>[#>]|:(?=::))|(?P<bullet>[-+])(?=\s)"
+    r"|(?:\d+|[a-z]|[ivxlcdm]+)(?P<delim>[.)])(?=\s)"
+    r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
+)
+
+#: Every character Markdown can read as the start or end of markup, wherever it stands in
+#: Word's text. Asking this module's own reading which ones mattered was tried first, and
+#: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
+#: and was text to it, so the words were merged bare and deleted at the next build. A
+#: backslash before punctuation never changes what pandoc prints, except before a quote, a
+#: hyphen or a full stop, which it would stop typesetting; those are left alone here, and
+#: only `_OPENER` escapes one, where it would open the paragraph as a list.
+_MARKDOWN = re.compile(
+    r"[\\`*\[^~{$]"
+    r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
+    r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
+    r"|&(?=#?\w+;)"  # an entity
+    r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
+)
+
+
+def _escaped(
+    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+) -> str:
+    """Word's text written into Markdown so that it reads as the text it is.
+
+    Word's text is literal. Put into the source as it is, a `*` typed there opens italics,
+    an `@name` is a citation, a `{{results.x}}` is a binding - a number the co-author typed,
+    entering the manuscript as though the analysis had produced it - and `CYP2D6\\*4`, shown
+    in Word as `CYP2D6*4`, came back as the start of an emphasis span.
+
+    Its edges are read with what will stand beside them. A `(` straight after a citation's
+    `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
+    binding whose value is a word opens a tag. At the end of the text neither looked like
+    markup, because the citation and the binding were not there to see.
+    """
+    text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    if after_token and text.startswith("("):
+        text = "\\" + text
+    if before_token and text.endswith(("<", "&")):
+        text = text[:-1] + "\\" + text[-1]
+    if opening and (block := _OPENER.match(text)):
+        at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
+        text = text[:at] + "\\" + text[at:]
+    return text
+
+
+def _reads_as(rebuilt: str, renderings: Sequence[str], returned: str) -> bool:
+    """Whether the rebuilt source, built, would read as what came back from Word."""
+    reading = _read(rebuilt, renderings)
+    if len(reading.protected) != len(renderings):
+        return False
+    return _untypeset(reading.whole) == _untypeset(returned)
+
+
+#: Pandoc typesets prose: quotes curl, `--` becomes an en dash. None of that is an edit, and
+#: none of it is something the source holds that Word's text lost.
+_TYPESET = str.maketrans(
+    {
+        "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+        "\u2013": "--", "\u2014": "---", "\u2026": "...",
+    }
+)
+
+
+def _untypeset(text: str) -> str:
+    return re.sub(r"\s+", " ", text.translate(_TYPESET)).strip()
 
 
 @dataclass(frozen=True)
@@ -399,10 +680,14 @@ class Alignment:
     #: where it comes from instead of saying that something, somewhere, changed.
     changed: tuple[tuple[str, str], ...] = ()
     #: The paragraph could not be lined up with its own rendering, so nothing can be said
-    #: about which part of it is a number.
+    #: about which part of it is a number, or what a rewording of it would lose.
     unaligned: bool = False
-    #: It carries markup that plain Word text cannot bring back: a footnote, a link, an image.
-    markup: bool = False
+    #: What the edited text carries that plain Word text cannot bring back, named for the
+    #: author: `("a footnote", "an HTML comment")`.
+    markup: tuple[str, ...] = ()
+    #: Rebuilt, it would not read as what came back: Markdown the merge could not keep from
+    #: being read as markup, or markup beside the edit that it would change.
+    misread: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -417,20 +702,14 @@ _WORD = re.compile(r"\d+(?:[.,]\d+)*|[^\W\d_]+|\s+|.", re.DOTALL)
 #: AutoCorrect merged as a negative ratio.
 _SIGNS = frozenset({"Pd", "Sm"})
 
-#: Markdown that renders to something plain `w:t` text does not carry. Merging Word's text
-#: over a paragraph with a footnote in it deleted the footnote; with a link, the address;
-#: with display maths, the equation and everything after it, which pandoc sets apart as
-#: paragraphs of their own; with an HTML comment, the comment.
-_MARKUP = re.compile(r"\^\[|\]\(|\$\$|<!--")
 
-
-def _token_spans(prose: list[str], rendered: str) -> list[tuple[int, int]] | None:
+def _token_spans(flat: list[str], rendered: str) -> list[tuple[int, int]] | None:
     """Where each protected token sits in the rendered paragraph: the gaps between the prose.
 
-    Found without knowing how anything renders, which is what makes citations work - their
-    rendering depends on a CSL style this code never sees.
+    `flat` is each stretch of prose as Word shows it. Found without knowing how anything
+    renders, which is what makes citations work - their rendering depends on a CSL style
+    this code never sees.
     """
-    flat = [_flatten(piece) for piece in prose]
     spans: list[tuple[int, int]] = []
     cursor = 0
     if flat[0]:
@@ -438,14 +717,14 @@ def _token_spans(prose: list[str], rendered: str) -> list[tuple[int, int]] | Non
         if at < 0:
             return None
         cursor = at + len(flat[0])
-    for index in range(1, len(prose)):
+    for index in range(1, len(flat)):
         piece = flat[index]
         if piece:
             at = rendered.find(piece, cursor)
             if at < 0:
                 return None
             start, end, cursor = cursor, at, at + len(piece)
-        elif index == len(prose) - 1:
+        elif index == len(flat) - 1:
             start, end, cursor = cursor, len(rendered), len(rendered)
         else:
             # Two protected tokens with nothing between them: there is no way to say where
@@ -530,14 +809,23 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     the *source's* tokens and the *co-author's* words. An unchanged prose segment is kept
     exactly as the source has it, which preserves its markdown - only a segment the
     co-author actually edited loses its inline formatting.
-    """
-    if _MARKUP.search(source):
-        return Alignment(None, markup=True)
-    prose, protected = segments(source)
-    if not protected:
-        return Alignment(returned.strip() or None)
 
-    spans = _token_spans(prose, rendered)
+    Losing bold is a cost; losing a footnote is a corruption. An edited segment that holds
+    something Word's text cannot carry back - a footnote, a comment, a link's address, the
+    raised 9 in 10^9 - refuses the paragraph and names it. Only the edited segment counts:
+    a footnote in a stretch the co-author left alone is kept from the source, where it was.
+
+    Then the rebuilt paragraph is read back, by this module's reading of Markdown, and must
+    read as what the co-author wrote. That catches what the reading can see - a delimiter
+    left without its partner, a span stretched over new words - and not where it and
+    pandoc disagree, which is why `_escaped` does not consult it.
+    """
+    reading = _read(source)
+    prose, protected = reading.prose, reading.protected
+    if not protected:
+        return _align_plain(source, reading, rendered, returned)
+
+    spans = _token_spans([shown.strip() for shown in reading.shown], rendered)
     if spans is None:
         return Alignment(None, unaligned=True)
     tokens = [rendered[start:end] for start, end in spans]
@@ -555,15 +843,44 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     new_prose.append("".join(after[cursor:]))
 
     out: list[str] = []
+    lost: list[str] = []
     for index, piece in enumerate(new_prose):
-        original = prose[index]
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
         # from Word, where inline formatting did not survive being read as plain text.
-        same = _flatten(original) == _flatten(piece)
-        out.append(original if same else piece)
+        if reading.shown[index] == _spaced(piece):
+            out.append(prose[index])
+        else:
+            lost += [name for name in reading.lost[index] if name not in lost]
+            beside = {"after_token": index > 0, "before_token": index < len(protected)}
+            out.append(_escaped(piece, opening=index == 0, **beside))
         if index < len(protected):
             out.append(protected[index])
-    return Alignment("".join(out).strip() or None)
+    if lost:
+        return Alignment(None, markup=tuple(lost))
+    rebuilt = "".join(out).strip()
+    if not _reads_as(rebuilt, tokens, returned):
+        return Alignment(None, misread=True)
+    return Alignment(rebuilt or None)
+
+
+def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -> Alignment:
+    """A paragraph with no binding or citation, which Word's text replaces whole.
+
+    Unless that would lose something. What `_INLINE` names is refused by name. Anything it
+    does not know is caught by reading the source as Word should show it: if that is not
+    what Word does show, part of the source did not reach Word as text, and a rewording
+    rebuilt from Word's text would delete it.
+    """
+    if _spaced(returned).strip() == _spaced(rendered).strip():
+        return Alignment(source)
+    if reading.lost[0]:
+        return Alignment(None, markup=reading.lost[0])
+    if _untypeset(reading.shown[0]) != _untypeset(rendered):
+        return Alignment(None, unaligned=True)
+    rebuilt = _escaped(returned.strip(), opening=True)
+    if not _reads_as(rebuilt, (), returned):
+        return Alignment(None, misread=True)
+    return Alignment(rebuilt or None)
 
 
 def realign(source: str, rendered: str, returned: str) -> str | None:

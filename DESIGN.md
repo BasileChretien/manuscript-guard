@@ -1204,8 +1204,20 @@ the reorder. A co-author who moved one paragraph and reworded another produced
 gone, the edit lost. (An earlier draft of this section said a moved paragraph was "excluded
 from the content diff". Nothing excluded it; with identifiers nothing needs to.) The import
 is now planned first, from one reading of each document, and written in one pass from one
-snapshot of the offsets: every paragraph slot in a file receives the paragraph that now
-belongs there, reworded if it was.
+snapshot of the offsets: every paragraph slot receives the paragraph that now belongs
+there, reworded if it was.
+
+The slots are counted per *section*, the stretch between two headings, tables or figures,
+and not per file. A heading is not a slot, so filling a file's slots in the returned order
+let a paragraph moved from the Discussion to the Introduction push one paragraph out of
+every section in between, each into the next, with "reordered 1 paragraph(s)" printed and
+the tests comparing `sorted(...)` and seeing nothing. Import cannot change how many
+paragraphs a section holds, so a move past a heading, table or figure is reported and
+refused, like one into another file. Only a paragraph that moved is judged, and only
+against what did not move around it: the stable backbone of paragraphs and the headings as
+the document was sent. The file-level check it replaces judged every paragraph by its
+neighbours, and so reported the single paragraph of a one-paragraph file as moved into
+another file when nothing had moved at all.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation, and its prose reaches Word unchanged except for its
@@ -1933,7 +1945,14 @@ Closed since, and why each mattered:
   the new one, so it is reported rather than applied.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
-  `.md` is the way through; the refusal names the paragraphs.
+  `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
+  into its paragraph is recognised by its text vanishing from the document and turning up
+  in the paragraph; a heading reworded in the same edit is not recognised.
+- **A move is applied only within its section.** A paragraph moved past a heading, table or
+  figure, or into another file, is reported and left where it was. Whether a move stayed in
+  its section is judged against the unmoved paragraphs and the headings as sent. An edited
+  heading is not one of them, so a move beside one is judged by the next thing that did not
+  change.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

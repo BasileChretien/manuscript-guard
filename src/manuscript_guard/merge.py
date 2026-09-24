@@ -26,7 +26,7 @@ Both are refused, and named, rather than guessed at.
 from __future__ import annotations
 
 import difflib
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,13 +59,21 @@ class Plan:
     #: Groups of identifiers that came back as one paragraph.
     joined: tuple[tuple[str, ...], ...] = ()
     moved: tuple[tuple[str, int, int], ...] = ()
-    #: Moved among a different file's paragraphs; not applied.
-    crossed: tuple[str, ...] = ()
+    #: Moved into a different section or file; not applied.
+    misplaced: tuple[str, ...] = ()
+    #: Identifier -> (file, section): the stretch between headings, tables and figures that
+    #: the paragraph belongs to, which is what a move is applied within.
+    sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
 
     @property
     def empty(self) -> bool:
         return not (
-            self.merged or self.refused or self.gone or self.joined or self.moved or self.crossed
+            self.merged
+            or self.refused
+            or self.gone
+            or self.joined
+            or self.moved
+            or self.misplaced
         )
 
 
@@ -114,25 +122,115 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     return found
 
 
-def crossed_files(known: dict, order: list[str]) -> list[str]:
-    """Identifiers that came back sitting among a different file's paragraphs.
+def _sections(known: dict) -> dict[str, tuple[Path, int]]:
+    """Which section of its file each paragraph is in: how many headings, tables or figures
+    come before it there.
 
-    Reordering is per file, so a paragraph cut from one file and pasted into another was
-    once silently repositioned inside the file it came from and never applied to the file
-    it went to. It is left where it is and reported.
+    Import fills paragraph slots, and a heading is not a slot: it cannot change how many
+    paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
+    Discussion to the Introduction pushed one paragraph out of every section in between. A
+    section is therefore the unit a move is applied within.
     """
-    present = [name for name in order if name in known]
-    crossed = []
-    for position, name in enumerate(present):
-        home = known[name][0]
-        neighbours = [
-            known[other][0]
-            for other in present[max(0, position - 1) : position + 2]
-            if other != name
-        ]
-        if neighbours and home not in neighbours:
-            crossed.append(name)
-    return crossed
+    out: dict[str, tuple[Path, int]] = {}
+    texts: dict[Path, str] = {}
+    section: dict[Path, int] = {}
+    end: dict[Path, int] = {}
+    for name, (path, para, start) in sorted(
+        known.items(), key=lambda item: (str(item[1][0]), item[1][2])
+    ):
+        if path not in texts:
+            texts[path] = path.read_text(encoding="utf-8")
+            section[path] = 0
+        elif texts[path][end[path] : start].strip():
+            section[path] += 1
+        out[name] = (path, section[path])
+        end[path] = start + len(para)
+    return out
+
+
+def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
+    """The headings, tables and figures of the document as sent, each ranked as the opening
+    of the section after it, keyed by what they say (a table by its position among tables)."""
+    found: dict[tuple, deque] = {}
+    pending: list[tuple] = []
+    tables = 0
+    for block in reference:
+        if block.names and not block.table:
+            opening = (*rank(block.names[0])[:2], 0)
+            for key in pending:
+                found.setdefault(key, deque()).append(opening)
+            pending = []
+        elif block.table:
+            pending.append(("table", tables))
+            tables += 1
+        elif block.text:
+            pending.append(("text", block.text))
+    for key in pending:
+        found.setdefault(key, deque()).append((float("inf"),))
+    return found
+
+
+def _misplaced(
+    reference: list[Block], returned: list[Block], order: list[str], moved: set[str], rank
+) -> list[str]:
+    """Moved paragraphs that came back outside their own section or file.
+
+    Only a moved paragraph is judged, and only against what did not move around it: the
+    paragraphs of the stable backbone and the headings, tables and figures the document was
+    sent with. A file holding a single paragraph used to be reported as moved into another
+    file when nothing had moved, because neither of its neighbours came from it.
+    """
+    boundaries = _boundaries(reference, rank)
+    same_tables = sum(b.table for b in reference) == sum(b.table for b in returned)
+    ordered = set(order)
+    sequence: list[tuple[str | None, tuple]] = []
+    tables = 0
+    for block in returned:
+        if block.table:
+            key = ("table", tables)
+            tables += 1
+            if same_tables and boundaries.get(key):
+                sequence.append((None, boundaries[key].popleft()))
+        elif block.names:
+            sequence += [(name, rank(name)) for name in block.names if name in ordered]
+        elif block.text and boundaries.get(("text", block.text)):
+            sequence.append((None, boundaries[("text", block.text)].popleft()))
+
+    out = []
+    for index, (name, place) in enumerate(sequence):
+        if name not in moved:
+            continue
+        before = [r for n, r in reversed(sequence[:index]) if n not in moved]
+        after = [r for n, r in sequence[index + 1 :] if n not in moved]
+        low = before[0] if before else (float("-inf"),)
+        high = after[0] if after else (float("inf"),)
+        if not low <= place <= high:
+            out.append(name)
+    return out
+
+
+def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
+    """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
+
+    Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
+    paragraph's identifier, reading "MethodsWe analysed...". It merged as prose, and the
+    heading stayed in the file above it. The heading has no identifier to be joined by, so
+    it is recognised by having vanished while its text turned up in its neighbour.
+    """
+    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
+    squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
+    for step in (-1, 1):
+        i = at + step
+        while 0 <= i < len(reference) and not (
+            reference[i].names or reference[i].table or reference[i].text
+        ):
+            i += step
+        if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
+            continue
+        text = " ".join(reference[i].text.split())
+        if missing[reference[i].text] and text in squashed_now and text not in squashed_was:
+            return reference[i].text
+    return ""
 
 
 def _read_returned(
@@ -224,6 +322,9 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
     ]
 
     beside_new = _beside_new_text(reference, returned)
+    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
+    missing = +untagged
     merged: dict[str, str] = {}
     refused: list[Refusal] = []
     gone: list[str] = []
@@ -237,6 +338,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             gone.append(name)
         elif _same(was, now):
             continue
+        elif took := _took_in(name, now, was, reference, missing):
+            refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
@@ -246,12 +349,18 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             else:
                 refused.append(Refusal(name, now, why(aligned)))
 
-    crossed = crossed_files(known, order)
-    moved = [
-        entry
-        for entry in moves([n for n in rendered if n in set(order)], order)
-        if entry[0] not in set(crossed)
-    ]
+    sections = _sections(known)
+    files: dict[Path, int] = {}
+    for name in rendered:
+        files.setdefault(known[name][0], len(files))
+
+    def rank(name: str) -> tuple:
+        path, section = sections[name]
+        return (files[path], section, 1)
+
+    moved = moves([n for n in rendered if n in set(order)], order)
+    misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
+    moved = [entry for entry in moved if entry[0] not in set(misplaced)]
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -260,7 +369,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         gone=tuple(gone),
         joined=tuple(joined),
         moved=tuple(moved),
-        crossed=tuple(crossed),
+        misplaced=tuple(misplaced),
+        sections=sections,
     )
 
 
@@ -268,6 +378,11 @@ _SPLIT = (
     "it came back with a new paragraph beside it: split in two in Word, or new text written "
     "next to it. Merging it would replace the whole source paragraph with only part of it. "
     "Make the split or the addition in the .md."
+)
+_TOOK_IN = (
+    "it came back joined with the heading or caption beside it ('{text}'). Merging it would "
+    "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
+    "make the edit in the .md."
 )
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "
@@ -300,39 +415,52 @@ def why(aligned: Alignment) -> tuple[str, ...]:
     )
 
 
+def _arranged(slots: list[str], order: dict[str, int], fixed: set[str]) -> dict[str, str]:
+    """Which paragraph each slot of one section receives: slot -> paragraph.
+
+    A paragraph with no place of its own in the returned document - deleted in Word, moved
+    somewhere it cannot go, absorbed by a join that lost its bookmark, or present twice -
+    travels with the paragraph it followed in the section, or stays first if it was first.
+    It used to keep its slot while the others moved around it, so a move could land between
+    the two halves of a join; and anchoring across a heading carried it into the section
+    before.
+    """
+    placed = [n for n in slots if n in order and n not in fixed]
+    followers: dict[str | None, list[str]] = {}
+    anchor: str | None = None
+    for name in slots:
+        if name in placed:
+            anchor = name
+        else:
+            followers.setdefault(anchor, []).append(name)
+    sequence = list(followers.get(None, []))
+    for name in sorted(placed, key=order.__getitem__):
+        sequence += [name, *followers.get(name, [])]
+    return dict(zip(slots, sequence, strict=True))
+
+
 def apply_plan(known: dict, plan: Plan) -> list[Path]:
     """Write the moves and the rewordings, together, from one snapshot of the offsets.
 
-    Per file, every slot a paragraph occupied receives the paragraph that now belongs there,
-    in its reworded form if it has one. Returns the files that changed.
-
-    A paragraph that has no place of its own in the returned document - deleted in Word, moved
-    into another file, absorbed by a join that lost its bookmark, or present twice - travels
-    with the paragraph it followed in the source. It used to keep its slot while the others
-    moved around it, so a move elsewhere in the file could land between the two halves of a
-    join.
+    Per section of each file, every slot a paragraph occupied receives the paragraph that now
+    belongs there, in its reworded form if it has one. Returns the files that changed.
     """
     order = {name: position for position, name in enumerate(plan.order)}
-    crossed = set(plan.crossed)
-    by_file: dict[Path, list[str]] = {}
+    fixed = set(plan.misplaced)
+    by_section: dict[tuple[Path, int], list[str]] = {}
     for name, (path, _text, _start) in known.items():
         if name in plan.reached:
-            by_file.setdefault(path, []).append(name)
+            where = plan.sections.get(name, (path, 0))
+            by_section.setdefault(where, []).append(name)
+
+    occupant: dict[str, str] = {}
+    by_file: dict[Path, list[str]] = {}
+    for (path, _section), slots in by_section.items():
+        occupant.update(_arranged(slots, order, fixed))
+        by_file.setdefault(path, []).extend(slots)
 
     written = []
     for path, slots in by_file.items():
-        placed = [n for n in slots if n in order and n not in crossed]
-        followers: dict[str | None, list[str]] = {}
-        anchor: str | None = None
-        for name in slots:
-            if name in placed:
-                anchor = name
-            else:
-                followers.setdefault(anchor, []).append(name)
-        sequence = list(followers.get(None, []))
-        for name in sorted(placed, key=order.__getitem__):
-            sequence += [name, *followers.get(name, [])]
-        occupant = dict(zip(slots, sequence, strict=True))
         edits = []
         for slot in slots:
             incoming = occupant[slot]

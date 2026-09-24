@@ -201,7 +201,9 @@ def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: P
     xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
     tagged = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p]
     assert len(tagged) > 5, "the example must have several tagged paragraphs"
-    moved_xml = xml.replace(tagged[-3], "", 1).replace(tagged[3], tagged[-3] + tagged[3], 1)
+    # Within the Discussion: its last paragraph to its first.
+    assert "Several limitations" in tagged[12] and "exceeds the class-level" in tagged[10]
+    moved_xml = xml.replace(tagged[12], "", 1).replace(tagged[10], tagged[12] + tagged[10], 1)
 
     returned = tmp_path / "moved.docx"
     with zipfile.ZipFile(document) as zin, zipfile.ZipFile(returned, "w") as zout:
@@ -215,11 +217,27 @@ def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: P
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     after = source.read_text(encoding="utf-8")
-    was = [p.strip() for p in before.split("\n\n") if p.strip()]
-    now = [p.strip() for p in after.split("\n\n") if p.strip()]
-    assert sorted(was) == sorted(now), "nothing gained or lost"
-    assert was != now, "the order must have changed"
+    # Section by section, not `sorted(...)`: a sorted comparison passed while a move shifted
+    # a paragraph out of every section between its old place and its new one.
+    expected = by_heading(before)
+    discussion = expected["# Discussion"]
+    moved = next(p for p in discussion if p.startswith("Several limitations"))
+    expected["# Discussion"] = [moved] + [p for p in discussion if p is not moved]
+    assert by_heading(after) == expected
     assert before.count("{{") == after.count("{{"), "every binding survives a move"
+
+
+def by_heading(text: str) -> dict[str, list[str]]:
+    """Each heading's paragraphs, in order, with their line wrapping ignored."""
+    out: dict[str, list[str]] = {}
+    current = ""
+    for block in blocks(text):
+        if block.startswith("#"):
+            current = block
+            out.setdefault(current, [])
+        else:
+            out.setdefault(current, []).append(block)
+    return out
 
 
 # ------------------------------------------- alignment inside a paragraph with bindings
@@ -372,33 +390,172 @@ def test_a_move_and_a_rewording_in_one_import_both_land(project: Path, tmp_path:
     document = built(project)
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
+    rewordings = {
+        "We analysed a synthetic": "We examined a synthetic",
+        "the single event term": "the only event term",
+        "The reporting odds ratio was computed": "The reporting odds ratio was then computed",
+    }
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        moved = tagged[5]
+        assert "was computed from a 2 x 2 table" in moved and "We analysed" in tagged[3]
+        # Within the Methods: its third paragraph to its first. Reworded: the paragraph the
+        # move lands on, one inside the span it shifts, and the moved paragraph itself - one
+        # of them carrying bindings.
+        xml = xml.replace(moved, "", 1).replace(tagged[3], moved + tagged[3], 1)
+        for was, now in rewordings.items():
+            xml = xml.replace(was, now, 1)
+        return xml
+
+    returned = rewrite(document, tmp_path / "moved.docx", edit)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+
+    reworded = before
+    for was, now in rewordings.items():
+        reworded = reworded.replace(was, now)
+    expected = by_heading(reworded)
+    methods = expected["# Methods"]
+    moved = next(p for p in methods if p.startswith("The reporting odds ratio was then"))
+    expected["# Methods"] = [moved] + [p for p in methods if p is not moved]
+    assert by_heading(after) == expected, "every paragraph, edited, once, in its section"
+    assert sorted(re.findall(r"\{\{[^}]*\}\}", after)) == sorted(
+        re.findall(r"\{\{[^}]*\}\}", before)
+    ), "every binding survives, whole"
+    assert closed(after)
+
+
+@needs_pandoc
+def test_a_move_into_another_section_is_reported_not_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Paragraph slots were filled per file in the order Word returned them, and headings are
+    not slots. A Discussion paragraph moved to the top of the Introduction shifted every
+    section in between by one: each lost its last paragraph to the next, "Whether the signal
+    extends..." landed under Methods, and the command said "reordered 1 paragraph(s)". A
+    section's paragraph count is not the import's to change, so the move is refused - and the
+    rewording elsewhere in the same document still lands."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
 
     def edit(xml: str) -> str:
         tagged = tagged_xml(xml)
         moved = tagged[12]
         assert "Several limitations" in moved
         xml = xml.replace(moved, "", 1).replace(tagged[1], moved + tagged[1], 1)
-        # One reworded paragraph before the move's landing point, one inside the span the
-        # reorder shifts, one that carries bindings, and the moved paragraph itself.
-        xml = xml.replace("has not been examined.", "has not yet been examined.", 1)
-        xml = xml.replace("We analysed a synthetic", "We examined a synthetic", 1)
-        return xml.replace("Several limitations follow", "Several limitations follow directly", 1)
+        return xml.replace("has not been examined.", "has not yet been examined.", 1)
 
-    returned = rewrite(document, tmp_path / "moved.docx", edit)
-    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    returned = rewrite(document, tmp_path / "across.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
     after = source.read_text(encoding="utf-8")
+    expected = before.replace("has not been examined.", "has not yet been examined.")
+    assert by_heading(after) == by_heading(expected), "every paragraph stays in its section"
+    assert "different section" in capsys.readouterr().out
 
-    expected = (
-        before.replace("has not been examined.", "has not yet been examined.")
-        .replace("We analysed a synthetic", "We examined a synthetic")
-        .replace("Several limitations follow", "Several limitations follow directly")
+
+@needs_pandoc
+def test_an_untouched_document_with_a_one_paragraph_file_is_unchanged(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph was "moved into a different file" when neither neighbour came from its own
+    file - always true of a file holding one paragraph. An untouched document exited 1."""
+    from manuscript_guard.cli import main
+
+    (project / "manuscript" / "notes.md").write_text(
+        "# Notes\n\nThe notes hold one paragraph only.\n", encoding="utf-8"
     )
-    assert sorted(blocks(after)) == sorted(blocks(expected)), "every paragraph, edited, once"
-    assert after.index("Several limitations") < after.index("Drug-induced hepatic injury remains")
-    assert sorted(re.findall(r"\{\{[^}]*\}\}", after)) == sorted(
-        re.findall(r"\{\{[^}]*\}\}", before)
-    ), "every binding survives, whole"
-    assert closed(after)
+    document = built(project)
+    capsys.readouterr()
+    assert main(["import", str(document), str(project)]) == 0
+    assert "nothing came back" in capsys.readouterr().out
+
+
+def test_a_paragraph_moved_into_another_file_is_not_applied(tmp_path: Path) -> None:
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    main_md, notes = tmp_path / "main.md", tmp_path / "notes.md"
+    main_md.write_text("Main one.\n\nMain two.\n", encoding="utf-8")
+    notes.write_text("Notes one.\n\nNotes two.\n", encoding="utf-8")
+    known = {
+        "m1": (main_md, "Main one.", 0),
+        "m2": (main_md, "Main two.", 11),
+        "n1": (notes, "Notes one.", 0),
+        "n2": (notes, "Notes two.", 12),
+    }
+    sent = [Block((n,), known[n][1]) for n in known]
+    returned = [sent[0], sent[2], sent[1], sent[3]]  # "Notes one." pasted into main's run
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced and set(plan.misplaced) <= {"n1", "m2"}
+    apply_plan(known, plan)
+    assert main_md.read_text(encoding="utf-8") == "Main one.\n\nMain two.\n"
+    assert notes.read_text(encoding="utf-8") == "Notes one.\n\nNotes two.\n"
+
+
+def test_a_deletion_beside_a_move_keeps_every_paragraph_in_its_section(tmp_path: Path) -> None:
+    """A paragraph left in place travelled with the paragraph before it in the file - which,
+    for the first paragraph of a section, is the last of the section before. Moved, that
+    paragraph took it across the heading."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = "# A\n\nA one.\n\nA two.\n\n# B\n\nB one.\n\nB two.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {
+        name: (path, words, text.index(words))
+        for name, words in (("a1", "A one."), ("a2", "A two."), ("b1", "B one."), ("b2", "B two."))
+    }
+    heading_a, heading_b = Block((), "A"), Block((), "B")
+    sent = [heading_a, Block(("a1",), "A one."), Block(("a2",), "A two."), heading_b,
+            Block(("b1",), "B one."), Block(("b2",), "B two.")]
+    # A's two paragraphs swapped; B's first deleted.
+    returned = [heading_a, sent[2], sent[1], heading_b, sent[5]]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.gone == ("b1",)
+    apply_plan(known, plan)
+    expected = "# A\n\nA two.\n\nA one.\n\n# B\n\nB one.\n\nB two.\n"
+    assert path.read_text(encoding="utf-8") == expected
+
+
+@needs_pandoc
+def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Delete at the end of a heading makes a run-in heading: one paragraph reading
+    "MethodsWe analysed...", carrying the paragraph's identifier. It merged as prose, and
+    `# Methods` stayed in the file above it."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def join(xml: str) -> str:
+        paragraph = tagged_xml(xml)[3]
+        heading = re.search(
+            r"<w:p>(?:(?!<w:p>).)*?>Methods</w:t></w:r></w:p>\s*" + re.escape(paragraph),
+            xml,
+            re.DOTALL,
+        )
+        assert heading, "the Methods heading sits directly before its first paragraph"
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
+        heading_xml = heading.group(0)[: heading.group(0).index(paragraph)].rstrip()
+        joined = heading_xml[: -len("</w:p>")] + inner
+        return xml.replace(heading.group(0), joined, 1)
+
+    returned = rewrite(document, tmp_path / "runin.docx", join)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    assert "heading" in capsys.readouterr().out
 
 
 @needs_pandoc

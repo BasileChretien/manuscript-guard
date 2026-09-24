@@ -66,18 +66,19 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, it has a footnote or a link, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, it has a footnote or a link, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one file; `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different file` | not applied; move it in the `.md` yourself |
+| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
 
-Anything refused, joined, deleted or moved between files makes the command exit 1, with or
-without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted or moved between sections or files makes the command exit
+1, with or without `--apply`; the safe changes are still applied.
 
-The preview shows the Word text, not the Markdown that will be written. The stamp check
-refuses a document built from a different version of the source; see step 6.
+A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
+merged` line shows what came back from Word. The stamp check refuses a document built from
+a different version of the source; see step 6.
 
 For the paragraphs nobody compared, look yourself. Converting both documents to text shows
 every difference, compared or not:
@@ -97,9 +98,11 @@ Each of these once corrupted the source while `import` reported success. They ar
 handled, and each has a test:
 
 - A move together with rewording is applied in one pass: the paragraph goes to its new
-  place, reworded if it was.
+  place in its section, reworded if it was. A move into another section is reported and not
+  applied, rather than pushing a paragraph out of every section in between.
 - A paragraph split in two in Word is refused, not cut down to its first half.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
+  So is a heading joined into the paragraph under it.
 - A tab or other Word layout in a paragraph no longer leaks XML into the merge.
 - A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
   (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit

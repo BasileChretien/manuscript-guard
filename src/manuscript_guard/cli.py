@@ -407,7 +407,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.crossed) or (
+    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
         not args.apply and bool(plan.moved or plan.merged)
     )
     return 1 if outstanding else 0
@@ -422,13 +422,14 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
     def opening(name: str) -> str:
         return known[name][1].strip()[:80]
 
-    if plan.crossed:
-        print(f"{len(plan.crossed)} paragraph(s) were moved into a different file:")
-        for name in sorted(plan.crossed):
+    if plan.misplaced:
+        print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
+        for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. Moving a paragraph between files is a different operation "
-            "from reordering within one; do it in the .md yourself."
+            "    Not applied. A move past a heading, a table or a figure, or into another "
+            "file, changes how many paragraphs a section holds, and import only reorders "
+            "within one; move it in the .md yourself."
         )
 
     if plan.moved:

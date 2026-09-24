@@ -257,34 +257,65 @@ Nothing is fetched during installation. Reporting checklists are downloaded on r
 ### The Claude Code plugin (optional)
 
 The pip package is the whole guarantee and needs nothing else. The plugin adds the parts
-that need judgement — drafting, literature verification, figure review, review panels — plus
-hooks that catch mistakes at the moment they are made.
+that need judgement — setting up a project, drafting, literature verification, figure
+review, review panels, answering reviewers — plus hooks that catch mistakes at the moment
+they are made.
 
-Install it by linking the `plugin/` directory into your skills directory:
+This repository is its own plugin marketplace. Install once, and the skills and hooks are
+there in every project you open:
 
 ```bash
-# personal, available in every project
-ln -s /path/to/manuscript-guard/plugin ~/.claude/skills/manuscript-guard
+claude plugin marketplace add BasileChretien/manuscript-guard
+claude plugin install manuscript-guard@manuscript-guard
 ```
 
-```powershell
-# Windows
-New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\manuscript-guard" `
-         -Target "C:\path\to\manuscript-guard\plugin"
+A local clone works as the source too: `claude plugin marketplace add /path/to/manuscript-guard`.
+Restart Claude Code afterwards. Skills are namespaced, so they appear as
+`/manuscript-guard:project-setup` and so on, and Claude also picks them up by description
+without being asked.
+
+The plugin is installed as a copy, so a new version of a skill reaches you only when you
+ask for it:
+
+```bash
+claude plugin marketplace update manuscript-guard
+claude plugin update manuscript-guard@manuscript-guard
 ```
 
-Restart Claude Code, or run `/reload-plugins`. It loads as `manuscript-guard@skills-dir`.
+To work on the skills themselves, load the directory for one session instead, and edits
+apply on the next start: `claude --plugin-dir ./plugin`.
 
-**Seven skills**: `manuscript-writing`, `methods-writer`, `literature-verify`,
-`figure-review`, `journal-profile`, `reporting-checklist`, `review-panel`, `submission-pack`.
+The hooks call `manuscript-guard-hook`, so the pip package has to be on the `PATH` that
+Claude Code sees. Outside a manuscript-guard project they find no `paper.yaml` and do
+nothing.
+
+**Fourteen skills.** Start with `project-setup`; each of the others names the finding codes
+that should send you to it.
+
+| Skill | For |
+|---|---|
+| `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
+| `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
+| `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
+| `manuscript-writing` | prose that reads as written |
+| `methods-writer` | Methods that describe the code that was actually run |
+| `literature-verify` | a number from a paper, with its verbatim quote and stored source |
+| `figure-review` | looking at a rendered figure and recording what was seen |
+| `journal-profile` | choosing a journal with the author, and encoding its rules |
+| `reporting-checklist` | STROBE, CONSORT, PRISMA and the rest, retrieved rather than remembered |
+| `review-panel` | an internal review panel, recorded and answered |
+| `word-roundtrip` | a co-author's Word edits, back into the source |
+| `reviewer-response` | the point-by-point response to a journal, checked against the revision |
+| `submission-pack` | everything the journal asks for, and the covering letter |
+| `paper-audit` | a paper that was not written with this toolkit |
 
 **Four hooks**, and what each is for:
 
 | Hook | What it does |
 |---|---|
+| session start | One line: the stage, and how many findings fail and warn |
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it |
-| after a write | Classifies the numbers in the manuscript file just saved, and names any bound to nothing — feedback while you are still in the paragraph |
-| after editing analysis | Says the results are now stale and the Methods may no longer describe the code |
+| after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
 | before a submission-shaped shell command | Runs the submission check and blocks if it fails |
 
 The submission guard matches against the **whole command string** rather than a prefix rule,

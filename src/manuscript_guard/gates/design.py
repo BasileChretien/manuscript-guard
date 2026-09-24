@@ -68,7 +68,7 @@ def check_design(project: Project) -> Report:
                     severity=WARN,
                     message=f"{len(analysis)} analysis file(s) exist and there is no {PLAN}",
                     path=path,
-                    hint="write down what you intended before you did it; the design-gate "
+                    hint="write down what you intended before you did it; the analysis-plan "
                     "skill has the outline. A deviation that was declared is a decision",
                 )
             ,),

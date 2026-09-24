@@ -133,8 +133,9 @@ manuscript-guard/
     profiles/      # shipped, read-only: checklist recipes, journal profiles
     paths.py       # what is shipped vs what a project writes; see the note below
   r/manuscriptguard/   # emit() -> results.json with provenance
+  .claude-plugin/   # marketplace.json: the repository is its own plugin marketplace
   plugin/
-    skills/  agents/  hooks/  commands/
+    skills/  hooks/
   profiles/        # the *workspace*, not shipped data: downloaded guideline documents
     reporting/     #   and the profiles transcribed from them. Gitignored.
   example/         # synthetic pharmacovigilance study: demo and test fixture
@@ -1718,8 +1719,13 @@ Closed since, and why each mattered:
 - **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
   editor does not share, they silently do nothing — which is the safe direction, but it is
   silent.
-- **The plugin is installed by symlink, not from a marketplace.** No marketplace manifest
-  exists yet, so installation is a manual link into a skills directory.
+- **An installed plugin is a copy, and goes stale silently.** The repository is its own
+  marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
+  plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
+  they run `claude plugin update`, and nothing tells them to. An update compares only the
+  version in `plugin.json` and the marketplace entry: a skill edited without a bump is
+  reported as "already at the latest version" and never reaches anyone. Verified 2026-09-24
+  with Claude Code 2.1.119.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

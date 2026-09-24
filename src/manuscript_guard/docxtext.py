@@ -21,7 +21,6 @@ import hashlib
 import posixpath
 import re
 import zipfile
-import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -327,11 +326,13 @@ def _digest_of(archive: zipfile.ZipFile, part: str) -> str | None:
 
     Reading a picture is not what the import is for, so a part it cannot read must not stop
     it: a missing part, a compression `zipfile` does not support, an encrypted or corrupt one.
+    Each decompressor fails in its own way - a list of the exceptions missed `lzma.LZMAError`
+    and the import died with a traceback - so any failure means only that the figure is
+    known by its place.
     """
     try:
         return hashlib.sha256(archive.read(part)).hexdigest()
-    except (KeyError, OSError, RuntimeError, NotImplementedError, EOFError, zipfile.BadZipFile,
-            zlib.error):
+    except Exception:
         return None
 
 

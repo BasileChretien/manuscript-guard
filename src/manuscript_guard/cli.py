@@ -440,19 +440,20 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {opening(name)}")
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
-            "a table, a figure, another file, or a paragraph it holds in place ends one: an "
-            "HTML comment (an empty line in Word), or a paragraph with a fence or `</div>` "
-            "directly under it. Move it in the .md yourself."
+            "a table, a figure, another file, or a paragraph it holds in place ends one. It "
+            "holds an HTML comment (an empty line in Word), and a paragraph that opens a "
+            "comment, holds display maths, or has a fence, `</div>` or a similar line directly "
+            "under it in the .md. Move it in the .md yourself."
         )
 
     if plan.strayed:
         print(f"{len(plan.strayed)} heading(s), table(s) or figure(s) came back somewhere else:")
         for kind, text in plan.strayed:
-            what = f"the heading or caption '{text[:80]}'" if kind == "text" else f"a {kind}"
-            print(f"    {what}")
+            print(f"    '{text[:80]}'" if kind == "text" else f"    a {kind}")
         print(
-            "    Not applied: each goes where the .md puts it. Move the heading, or the "
-            "table's or figure's placeholder, in the .md yourself."
+            "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
+            "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
+            ".md yourself."
         )
 
     if plan.lost:

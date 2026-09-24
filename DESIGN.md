@@ -1273,14 +1273,24 @@ past a heading:
 - one with a line directly under it that opens or closes something else: a `:::` or code
   fence, an HTML block tag such as `</div>`, `\begin` or `\end`, a definition, or a heading's
   underline;
-- one that Word shows as more than one paragraph.
+- one that Word shows as more than one paragraph: with untagged text before the next
+  paragraph of its section, or with display maths in its source, which Word sets apart
+  even when the paragraph ends its section.
 
-None of them takes a rewording. A held paragraph the co-author drags is reported by name,
-like any other paragraph that left its section. The first version made it an anonymous
-anchor, so a held paragraph dragged past a heading was dropped with "nothing came back".
-Whether a paragraph reaches Word in parts is still judged within the sections the source
-has. Judged within the finer sections that holding creates, a one-line comment after a
-definition list hid the split, and a rewording of the term deleted the definition.
+None of them takes a rewording. A held paragraph the co-author drags past two paragraphs or
+more, or past a heading, is reported by name, like any other paragraph that left its
+section. The first version made it an anonymous anchor, so a held paragraph dragged past a
+heading was dropped with "nothing came back"; the second weighed it above all other
+paragraphs together, so dragged to the top of the Methods it had the four paragraphs it
+passed reported instead. It now outweighs one paragraph and not two. Whether a paragraph
+reaches Word in parts is still judged within the sections the source has. Judged within the
+finer sections that holding creates, a one-line comment after a definition list hid the
+split, and a rewording of the term deleted the definition.
+
+Headings and captions are matched between the two documents as a sequence, not one text at
+a time. With two "Outcome" subheadings, matching by text alone, first come first served,
+made the second stand in for the first once the first was renamed or deleted. The second
+was then reported as having moved, and a real move in the same document went unnamed.
 
 A table or a figure is a boundary only if it can be found again in the returned document.
 They were matched by position, both kinds together, and only while their total was
@@ -2365,19 +2375,27 @@ Closed since, and why each mattered:
   underline is never moved or reworded by `import`; for a fence, a blank line before it frees
   the paragraph on the next build. The lines are found by pattern: prose that happens to
   start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
-  not recognised. A co-author who drags the empty line past the paragraph beside it sees
-  that paragraph reported as moved; dragged past a heading, the line itself is reported.
+  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
+  that paragraph reported as moved; dragged past two or more, or past a heading, the line
+  itself is reported. A paragraph with display maths is held too, so dragging it whole,
+  equation and all, is refused like dragging its first part.
 - **A table or figure is recognised by what it holds, and failing that by its place.** A
   table with a corrected cell, or a picture Word stored again, no longer matches by content,
   and is taken to be the one in its place among its kind, between the same two headings,
   captions or matched tables and figures, when that stretch holds as many of its kind in
   both documents. A table deleted and another pasted into the same stretch are taken for
-  one, and the deletion is not reported. A figure pasted twice matches neither copy and is
-  reported as not found.
+  one, and the deletion is not reported. A figure pasted a second time into its own stretch
+  matches neither copy and is reported as not found; a copy pasted into another section is
+  new content, and is not reported at all.
 - **A paragraph that reaches Word in parts is only recognised by what lies around it.**
-  Untagged text between it and the next paragraph of its section, or a line under it that
-  opens a block, marks it. One that pandoc splits for another reason and that ends its
-  section is not recognised: a rewording of its first part would replace the rest.
+  Untagged text between it and the next paragraph of its section, display maths in its
+  source, or a line under it that opens a block, marks it. One that pandoc splits for
+  another reason and that ends its section is not recognised: a rewording of its first part
+  would replace the rest, and a move of its first part would carry the rest along.
+- **A duplicated heading is matched with the one it copies only when that is unambiguous.**
+  Headings and captions are paired as a sequence. A pasted copy of one, or a heading
+  that shares its text with another and left the sequence, is paired with nothing, so a move
+  past it is not seen and the copy is not reported.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section

@@ -149,6 +149,8 @@ _BLOCK_LINE = re.compile(
     r"|^[ \t]{0,3}(?:=+|-+)[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
 )
+#: Display maths, which Word sets apart as a paragraph of its own wherever it stands.
+_DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
 def _held_in_place(
@@ -169,7 +171,9 @@ def _held_in_place(
     - `empty`: it reaches Word as an empty line, like a comment's first line.
     - `glued`: a line opening or closing a block follows it with no blank line between,
       and went with it.
-    - `in-parts`: Word shows it as more than one paragraph, and only the first moved.
+    - `in-parts`: Word shows it as more than one paragraph, and only the first moved. Found
+      by untagged text before the next paragraph of its section, which misses the last
+      paragraph of a section, and by display maths in its source, which does not.
 
     Each is a section of its own, so a move is never applied across one.
     """
@@ -193,9 +197,41 @@ def _held_in_place(
             found[name] = "runs-on"
         elif _BLOCK_LINE.search(para):
             found[name] = "glued"
-        elif name in in_parts:
+        elif name in in_parts or _DISPLAY_MATHS.search(para):
             found[name] = "in-parts"
         before[path] = (name, start + len(para))
+    return found
+
+
+def _text_counterparts(reference: list[Block], returned: list[Block]) -> dict[int, int]:
+    """Which heading or caption of the document as sent each returned one is, by index.
+
+    Matched as a sequence, so that of two headings reading "Outcome" each is paired with its
+    own. Matched one text at a time, first come first served, renaming or deleting the first
+    made the second stand in for it, and the second was reported as moved. A text the sequence
+    leaves over that is unique in both documents is paired too, which is how a heading
+    dragged elsewhere is still recognised.
+    """
+
+    def texts(blocks: list[Block]) -> list[tuple[int, str]]:
+        return [(i, b.text) for i, b in enumerate(blocks) if not b.names and not b.table and b.text]
+
+    sent, back = texts(reference), texts(returned)
+    matcher = difflib.SequenceMatcher(
+        a=[text for _i, text in sent], b=[text for _j, text in back], autojunk=False
+    )
+    found = {
+        back[b + k][0]: sent[a + k][0]
+        for a, b, size in matcher.get_matching_blocks()
+        for k in range(size)
+    }
+    in_sent = Counter(text for _i, text in sent)
+    in_back = Counter(text for _j, text in back)
+    where = {text: i for i, text in sent}
+    taken = set(found.values())
+    for j, text in back:
+        if j not in found and in_sent[text] == 1 == in_back[text] and where[text] not in taken:
+            found[j] = where[text]
     return found
 
 
@@ -228,7 +264,7 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
 
 
 def _counterparts(
-    reference: list[Block], returned: list[Block]
+    reference: list[Block], returned: list[Block], texts: dict[int, int] | None = None
 ) -> tuple[dict[int, int], tuple[str, ...]]:
     """Which table or figure of the document as sent each returned one is, by index, and
     the kinds of those sent that could not be found.
@@ -259,13 +295,12 @@ def _counterparts(
         if returned[j].key and in_sent[ident(returned[j])] == in_back[ident(returned[j])] == 1
     }
 
-    def texts(blocks: list[Block]) -> Counter:
-        return Counter(b.text for b in blocks if not b.names and not b.table and b.text)
+    if texts is None:
+        texts = _text_counterparts(reference, returned)
 
-    once_sent, once_back = texts(reference), texts(returned)
-    marks = {text for text, n in once_sent.items() if n == 1 == once_back[text]}
-
-    def stretches(blocks: list[Block], matched: dict[int, int]) -> dict[tuple, list[int]]:
+    def stretches(
+        blocks: list[Block], matched: dict[int, int], marks: dict[int, int]
+    ) -> dict[tuple, list[int]]:
         """The unmatched tables and figures, grouped by kind and by the last heading,
         caption or matched table or figure before them."""
         out: dict[tuple, list[int]] = {}
@@ -275,12 +310,12 @@ def _counterparts(
                 last = ("block", matched[index])
             elif block.table:
                 out.setdefault((last, block.kind), []).append(index)
-            elif not block.names and block.text in marks:
-                last = ("text", block.text)
+            elif index in marks:
+                last = ("text", marks[index])
         return out
 
-    left = stretches(reference, {i: i for i in found.values()})
-    right = stretches(returned, found)
+    left = stretches(reference, {i: i for i in found.values()}, {i: i for i in texts.values()})
+    right = stretches(returned, found, texts)
     lost: list[str] = []
     for (stretch, kind), indices in left.items():
         there = right.get((stretch, kind), [])
@@ -293,7 +328,7 @@ def _counterparts(
 
 def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     """The headings, tables and figures of the document as sent, each ranked as the opening
-    of the section after it, keyed by what they say (a table or figure by its index).
+    of the section after it, keyed by their index in the document as sent.
 
     Only what stands between two sections counts. Pandoc can render an untagged paragraph
     inside a section - display maths, say - and ranked as a boundary it would make every
@@ -313,7 +348,7 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
         elif block.table:
             pending.append(("block", index))
         elif block.text:
-            pending.append(("text", block.text))
+            pending.append(("text", index))
     for place, key in enumerate(pending):
         found.setdefault(key, deque()).append((float("inf"), place))
     return found
@@ -327,6 +362,7 @@ def _misplaced(
     rank,
     held: Collection[str] = (),
     counterparts: dict[int, int] | None = None,
+    texts: dict[int, int] | None = None,
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Paragraphs that came back outside their own section or file, and the headings, tables
     and figures that came back somewhere else.
@@ -335,18 +371,22 @@ def _misplaced(
     from the end of one section to just below the next heading keeps its place among the
     paragraphs, so the diff saw nothing and the move was dropped with "nothing came back".
     The largest set whose sections read in order is kept, and whatever falls outside it is out
-    of place. The headings, tables and figures as sent outweigh everything else together; a
-    paragraph held in place outweighs every other paragraph together, so the paragraph that
-    crossed it is the one named; and the order diff only breaks ties, so the paragraph that
-    crossed a heading is named rather than a neighbour the diff happened to prefer.
+    of place. The headings, tables and figures as sent outweigh everything else together. A
+    paragraph held in place outweighs one other paragraph but not two, so a paragraph dragged
+    past it is the one named, and so is a held paragraph dragged past several; weighed above
+    all of them together, it had the four paragraphs it passed reported instead. The order
+    diff only breaks ties, so the paragraph that crossed a heading is named rather than a
+    neighbour the diff happened to prefer.
 
     Whatever falls outside is named. A paragraph held in place took part as an anonymous
     anchor once, and dragged past a heading it was dropped without a word; a table dragged
     into another section was the anchor dropped, and said "nothing came back".
     """
     boundaries = _boundaries(reference, rank)
+    if texts is None:
+        texts = _text_counterparts(reference, returned)
     if counterparts is None:
-        counterparts = _counterparts(reference, returned)[0]
+        counterparts = _counterparts(reference, returned, texts)[0]
     ordered = set(order)
     # (what, rank, tier): a boundary is ("table" | "figure" | "text", its text), tier 2; a
     # paragraph is its identifier, tier 1 if held in place and 0 otherwise.
@@ -362,12 +402,12 @@ def _misplaced(
                 for name in block.names
                 if name in ordered
             ]
-        elif block.text and boundaries.get(("text", block.text)):
-            sequence.append((("text", block.text), boundaries[("text", block.text)].popleft(), 2))
+        elif block.text and boundaries.get(key := ("text", texts.get(index))):
+            sequence.append((("text", block.text), boundaries[key].popleft(), 2))
 
-    # The heaviest subsequence whose ranks never decrease.
-    paragraphs = 2 * len(sequence) + 1
-    tiers = {0: 0, 1: paragraphs, 2: paragraphs * (len(sequence) + 1)}
+    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 1 if the diff
+    # called it moved and 2 otherwise, a held one 3, and a boundary more than all of them.
+    tiers = {0: 0, 1: 3, 2: 3 * len(sequence) + 1}
     weight = [
         tiers[tier] or (1 if what in moved else 2) for what, _rank, tier in sequence
     ]
@@ -579,7 +619,7 @@ def plan_import(
             refused.append(Refusal(name, now, (_RUNS_ON,)))
         elif held.get(name) == "glued":
             refused.append(Refusal(name, now, (_GLUED,)))
-        elif name in in_parts:
+        elif name in in_parts or held.get(name) == "in-parts":
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
@@ -605,9 +645,10 @@ def plan_import(
         return (files[path], section, 1)
 
     diffed = moves([n for n in rendered if n in set(order)], order)
-    counterparts, lost = _counterparts(reference, returned)
+    texts = _text_counterparts(reference, returned)
+    counterparts, lost = _counterparts(reference, returned, texts)
     misplaced, strayed = _misplaced(
-        reference, returned, order, {m[0] for m in diffed}, rank, held, counterparts
+        reference, returned, order, {m[0] for m in diffed}, rank, held, counterparts, texts
     )
     # What moved among the paragraphs that will be reordered. Taken from the diff above, a
     # paragraph passed by a misplaced one was reported as reordered, and nothing was written.

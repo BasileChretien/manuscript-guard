@@ -2761,14 +2761,20 @@ def test_a_heading_table_or_figure_moved_in_word_is_reported(tmp_path: Path, mov
     assert not plan.misplaced and not plan.empty
 
 
-def test_a_picture_that_cannot_be_read_leaves_its_figure_unkeyed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("method", [98, 14], ids=["unsupported", "corrupt-lzma"])
+def test_a_picture_that_cannot_be_read_leaves_its_figure_unkeyed(
+    tmp_path: Path, method: int
+) -> None:
     """Reading pictures to know figures apart crashed the import with a traceback on a part
-    stored with a compression Python cannot read, where the import had never read one."""
+    stored with a compression Python cannot read, where the import had never read one; then,
+    once that was caught, on an LZMA part whose data is corrupt."""
     import struct
 
     from manuscript_guard.docxtext import blocks as read
 
-    document = word_document(tmp_path / "odd.docx", _picture("rId7"), {"rId7": b"forest"})
+    # An LZMA header zipfile accepts, then data the decompressor rejects as corrupt.
+    picture = b"\x09\x04\x05\x00\x5d\x00\x00\x10\x00" + b"\xff" * 32
+    document = word_document(tmp_path / "odd.docx", _picture("rId7"), {"rId7": picture})
     data = bytearray(document.read_bytes())
     name = b"word/media/rId7.png"
     local = data.find(b"PK\x03\x04")
@@ -2777,11 +2783,116 @@ def test_a_picture_that_cannot_be_read_leaves_its_figure_unkeyed(tmp_path: Path)
     central = data.find(b"PK\x01\x02")
     while data[central + 46 : central + 46 + len(name)] != name:
         central = data.find(b"PK\x01\x02", central + 1)
-    data[local + 8 : local + 10] = struct.pack("<H", 98)  # PPMd, which zipfile cannot read
-    data[central + 10 : central + 12] = struct.pack("<H", 98)
+    # 98 is PPMd, which zipfile cannot read; 14 is LZMA, which the stored bytes are not.
+    data[local + 8 : local + 10] = struct.pack("<H", method)
+    data[central + 10 : central + 12] = struct.pack("<H", method)
     document.write_bytes(bytes(data))
 
     assert [(b.kind, b.key) for b in read(document)] == [("figure", "")]
+
+
+def _two_outcomes(tmp_path: Path):
+    """Methods and Results, each with an '## Outcome' subsection."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = (
+        "# Methods\n\nMethods one.\n\n## Outcome\n\nMethods two.\n\n"
+        "# Results\n\nResults one.\n\n## Outcome\n\nResults two.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {"m1": "Methods one.", "m2": "Methods two.", "r1": "Results one.", "r2": "Results two."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), w) for name, w in words.items()}
+    for heading in ("Methods", "Results"):
+        b[heading] = Block((), heading)
+    b["o1"], b["o2"] = Block((), "Outcome"), Block((), "Outcome")
+    sent = [b[n] for n in ("Methods", "m1", "o1", "m2", "Results", "r1", "o2", "r2")]
+    return path, text, known, b, sent
+
+
+@pytest.mark.parametrize("change", ["renamed", "deleted", "renamed-and-a-drag", "pasted-copy"])
+def test_two_headings_with_the_same_text_are_each_matched_with_their_own(
+    tmp_path: Path, change: str
+) -> None:
+    """Headings were matched by their text, first come first served. With two "Outcome"
+    subheadings, renaming or deleting the first made the second stand in for it, and the
+    second was reported as having moved; a real move in the same document went unnamed."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, sent = _two_outcomes(tmp_path)
+    renamed = [block if block is not b["o1"] else Block((), "Outcomes") for block in sent]
+    if change == "renamed":
+        returned, misplaced = renamed, ()
+    elif change == "deleted":
+        returned, misplaced = [block for block in sent if block is not b["o1"]], ()
+    elif change == "renamed-and-a-drag":
+        at = renamed.index(b["o2"])
+        returned = renamed[:at] + [b["r2"], b["o2"]]  # Results two above its own subheading
+        misplaced = ("r2",)
+    else:
+        returned, misplaced = [*sent[:2], Block((), "Results"), *sent[2:]], ()
+
+    plan = plan_import(known, sent, returned)
+    assert plan.strayed == ()
+    assert plan.misplaced == misplaced
+
+
+def test_a_paragraph_with_display_maths_is_held_where_it_ends_its_section(
+    tmp_path: Path,
+) -> None:
+    """Display maths splits a paragraph in Word, and only its first part carries the
+    identifier. Ending its section, it was not recognised: its first part dragged to the top
+    was applied, moving the equation and the rest of the paragraph that Word had left behind."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = (
+        "# Intro\n\nFirst paragraph.\n\nSecond, using\n$$x = y$$\nas the measure.\n\n"
+        "# Methods\n\nMethods one.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {
+        "p1": "First paragraph.",
+        "p2": "Second, using\n$$x = y$$\nas the measure.",
+        "m1": "Methods one.",
+    }
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    intro, methods = Block((), "Intro"), Block((), "Methods")
+    p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second, using")
+    parts = [Block((), "x = y"), Block((), "as the measure.")]
+    m1 = Block(("m1",), "Methods one.")
+    sent = [intro, p1, p2, *parts, methods, m1]
+
+    plan = plan_import(known, sent, [intro, p2, p1, *parts, methods, m1])
+    assert plan.misplaced and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_held_paragraph_dragged_past_several_is_the_one_named(tmp_path: Path) -> None:
+    """A held paragraph outweighed every other paragraph together, so the Methods' empty
+    comment line dragged to the top of the Methods reported the four paragraphs it passed."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = "# A\n\nA one.\n\nA two.\n\nA three.\n\n<!-- a note -->\n\n# B\n\nB one.\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"a1": "A one.", "a2": "A two.", "a3": "A three.", "c": "<!-- a note -->",
+             "b1": "B one."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), "" if name == "c" else w) for name, w in words.items()}
+    heading_a, heading_b = Block((), "A"), Block((), "B")
+    sent = [heading_a, b["a1"], b["a2"], b["a3"], b["c"], heading_b, b["b1"]]
+    returned = [heading_a, b["c"], b["a1"], b["a2"], b["a3"], heading_b, b["b1"]]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == ("c",)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
 
 
 @needs_pandoc

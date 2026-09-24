@@ -36,6 +36,11 @@ RELS = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
+# `writestr` given a bare name stamps the entry with the current time, to two seconds, so
+# two writes of the same table that straddle a tick differ byte for byte, and a test that
+# checksums one write and builds from the next fails now and then.
+FIXED_TIME = (2020, 1, 1, 0, 0, 0)
+
 
 def make_docx(path: Path, rows: list[list[str]], split_runs: bool = False) -> Path:
     """A .docx with one table. `split_runs` chops each cell across several w:t elements,
@@ -58,10 +63,14 @@ def make_docx(path: Path, rows: list[list[str]], split_runs: bool = False) -> Pa
         f"<?xml version='1.0' encoding='UTF-8'?><w:document {NS}><w:body>"
         f"<w:tbl>{''.join(body)}</w:tbl></w:body></w:document>"
     )
+    parts = {
+        "[Content_Types].xml": CONTENT_TYPES,
+        "_rels/.rels": RELS,
+        "word/document.xml": document,
+    }
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("[Content_Types].xml", CONTENT_TYPES)
-        archive.writestr("_rels/.rels", RELS)
-        archive.writestr("word/document.xml", document)
+        for name, data in parts.items():
+            archive.writestr(zipfile.ZipInfo(name, FIXED_TIME), data)
     return path
 
 

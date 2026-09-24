@@ -288,8 +288,14 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
 # version had five optional whitespace runs in a row there, and a line that began with the
 # word and failed later backtracked through every way of dividing its spaces between them:
 # 26 s for one line of the kind `pdftotext -layout` writes.
+#
+# And every run of whitespace before the word has exactly one quantifier that can take it:
+# the line is stripped first, and a number takes the spaces after it. With `^\s*` beside
+# `[\s*_]*` a failing line was still quadratic in its indentation, and `pdftotext -layout`
+# indents a right-hand column by a hundred spaces: 20 s for 3,000 such lines.
 _BIBLIOGRAPHY = re.compile(
-    r"^\s*(?P<hashes>#+\s*)?(?:(?P<numbered>\d+[.)])|(?P<bare>\d+)(?=\s))?[\s*_]*"
+    r"^(?P<hashes>#+)?[\s*_]*"
+    r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
     r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
     r"(?P<tail>[\s*_:.|]*)$",
@@ -306,7 +312,7 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
     """
-    found = _BIBLIOGRAPHY.match(line)
+    found = _BIBLIOGRAPHY.match(line.strip())
     if not found:
         return False
     if marked or found.group("hashes"):
@@ -343,7 +349,8 @@ _AUTHOR_LIST = (
 )
 _REFERENCE_ENTRY = re.compile(
     rf"^\s*[{_CAPITAL}][\w'’-]+,\s+"                                 # "Fictional,"
-    rf"(?:[{_CAPITAL}]\.(?:\s?-?[{_CAPITAL}]\.)*(?=\s*[,&(]|\s+and\s|\s+(?:19|20)\d{{2}})"
+    rf"(?:[{_CAPITAL}]\.(?:\s?-?[{_CAPITAL}]\.)*"
+    r"(?=\s*[,&(]|\s+and\s|\s+et\s+al\b|\s+(?:19|20)\d{2})"
     rf"|[{_CAPITAL}][\w'’-]+(?:\s+[{_CAPITAL}][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"
     + _AUTHOR_LIST
     + r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|(?:\.|(?<=\.))\s+(?:19|20)\d{2}[a-z]?\.)",
@@ -354,12 +361,15 @@ _REFERENCE_ENTRY = re.compile(
 # sentence does not share is the journal signature "2019;393:100", year, volume, page:
 # "Figure A. Reports by year, 2015 to 2019" starts the same way and has none. "Stage III,
 # diagnosed in 2010-2020; 45 excluded" has a year and a semicolon, which is why the volume
-# must run on to its page, and the initials on to another author or the title.
+# must run on to its page, and the initials on to another author or the title. "Figure A.
+# Case-control design, 2010 to 2019; 1:4 matching" has all of that, which is why the year
+# must also follow the full stop that ends a journal's name: "Lancet. 2019;393". A style
+# that omits it, as the BMJ's own does, is not recognised, which is the safe direction.
 _VANCOUVER_ENTRY = re.compile(
     r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])?\s*"                # "12." / "[12]" / "12)"
     r"(?:[a-z]{1,3}\s+){0,2}[A-Z][\w'’-]+\s+[A-Z](?:-?[A-Z]){0,3}"  # "Smith J", "van Berg AB"
     r"[,.](?=\s+(?:[A-Z]|et\s+al\b))"                     # ... then an author or the title
-    r".{0,400}?\b(?:19|20)\d{2}[a-z]?"
+    r".{0,400}?\.\s+(?:19|20)\d{2}[a-z]?"                 # "Lancet. 2019"
     r"(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"               # "2019 Mar", "2019 Mar 5"
     r";\s?\d+(?:\(\d+\))?:\s?[A-Za-z]?\d"                 # ";393:100", ";42(3):100", ";372:n71"
 )
@@ -421,8 +431,13 @@ def strip_bibliography(
     cells: frozenset[int] = frozenset(),
 ) -> str:
     """`text` with its reference lists blanked, line for line, so line numbers still hold."""
+    return _blank(text, bibliography_spans(text, headings, cells))
+
+
+def _blank(text: str, spans: list[tuple[int, int]]) -> str:
+    """`text` with the lines in `spans` emptied, except the footnote definitions among them."""
     lines = text.split("\n")
-    for start, end in bibliography_spans(text, headings, cells):
+    for start, end in spans:
         in_note = False
         for index in range(start, end):
             line = lines[index]
@@ -444,10 +459,11 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
     """
     if not is_docx(path):
         text = read_text(path)
-        return strip_bibliography(text), bibliography_spans(text)
+        spans = bibliography_spans(text)
+        return _blank(text, spans), spans
     document = read_docx_text(path)
-    body = strip_bibliography(document.body, document.headings, document.cells)
     spans = bibliography_spans(document.body, document.headings, document.cells)
+    body = _blank(document.body, spans)
     return (f"{body}\n{document.notes}" if document.notes else body), spans
 
 

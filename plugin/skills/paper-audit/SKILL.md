@@ -119,8 +119,9 @@ interval matches when both bounds appear anywhere, not necessarily together. Num
 classifier accepts as conventions or references are never compared at all, and that
 includes `p < 0.05` anywhere in the text, the lines the report lists under `Not audited`,
 and, in a paper with no references heading, any line shaped like a reference entry
-(section 4). The report counts them together as "conventions or references"; describe them
-as not checked, never as matched.
+(section 4). Conventions and lines taken for references by their shape are counted as
+"conventions or references"; the numbers on a cut reference list are not counted at all.
+Describe all of them as not checked, never as matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

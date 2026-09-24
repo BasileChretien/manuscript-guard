@@ -590,3 +590,21 @@ def test_every_line_read_as_a_reference_by_shape_is_named(tmp_path: Path) -> Non
 )
 def test_an_entry_with_accented_or_particled_names_is_recognised(entry: str) -> None:
     assert looks_like_reference(entry)
+
+
+def test_indented_lines_do_not_stall_the_reference_list_search() -> None:
+    """`pdftotext -layout` indents a right-hand column by a hundred spaces or more, and the
+    heading check was quadratic in leading whitespace: 20 s for 3,000 such lines."""
+    import time
+
+    from manuscript_guard.audit import bibliography_spans, strip_bibliography
+
+    text = "\n".join([" " * 150 + "Some text 12"] * 3000)
+    started = time.perf_counter()
+    assert bibliography_spans(text) == []
+    strip_bibliography(text)
+    assert time.perf_counter() - started < 1.0
+
+
+def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
+    assert looks_like_reference("Smith, J. et al. (2020). Hepatic injury. Drug Safety, 42, 1-9.")

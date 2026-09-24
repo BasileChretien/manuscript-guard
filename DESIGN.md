@@ -1832,7 +1832,8 @@ Closed since, and why each mattered:
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
-  volume in a numbered style is not, nor is a Harvard entry with no full stop after
+  volume in a numbered style is not, nor is one with no full stop before the year (the
+  BMJ's house style, "BMJ 2021;372:n71"), nor a Harvard entry with no full stop after
   "(2019)", nor one whose names are not in the Latin script, so their numbers are
   reported: noise rather than a pass. The other direction
   is rarer and worse. A line that opens with a name and a comma and runs through nothing

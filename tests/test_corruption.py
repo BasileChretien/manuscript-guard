@@ -1153,3 +1153,19 @@ def test_audit_keeps_the_sign_of_a_number_inside_a_json_string(tmp_path: Path) -
     paper = tmp_path / "paper.md"
     paper.write_text("The log reporting odds ratio for age was 0.51.\n", encoding="utf-8")
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["0.51"]
+
+
+def test_audit_does_not_take_a_caption_for_a_numbered_reference(tmp_path: Path) -> None:
+    """"Figure A." reads as "Smith J." and "2019; 1:4" as "2019;393:100": in a file with no
+    references heading, the caption's numbers were never compared."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "cases": 412}')
+    paper = tmp_path / "supplement.md"
+    paper.write_text(
+        "Figure A. Case-control design, 2010 to 2019; 1:4 matching on age and sex. "
+        "Cases 413 of 8,393; ROR 9.99.\n",
+        encoding="utf-8",
+    )
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert "413" in unmatched and "9.99" in unmatched, unmatched

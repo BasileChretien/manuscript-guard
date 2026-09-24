@@ -85,8 +85,8 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     contradiction. It reproduces in the shipped example, where the two happen to match and
     the stray line reads as a harmless duplicate.
 
-    The block is the one the gates mask, found by the same pattern, so a heading G2 reads is
-    a heading the build prints.
+    The block is found by the pattern the gates mask it with, so the build and the gates
+    agree on where the front matter ends.
     """
     found = FRONTMATTER.match(text)
     if not found:

@@ -2177,37 +2177,34 @@ Closed since, and why each mattered:
   and `[^1]: ...` only at the start of a block, and they render nothing, so there is no
   paragraph in Word for an identifier to name and nowhere in the definition to put one. In
   front of it, the identifier made the definition a paragraph, and every link or footnote
-  using it printed as bracketed text on every build. A block is left untagged only when it
-  is nothing but definitions, and a link's only when its address is one token, as a real
-  address is. Untagged, a definition is never a splice target and stays where it was
-  written. What that leaves:
-  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
-    source, so a move across it is refused as a move past a heading, a table or a figure.
-    Safe, and the reason given is wrong.
-  - *A definition written straight above prose, with no blank line, prints as text.* The
-    block is not all definitions, so it is marked in front, as it always was, and the links
-    that use it do not resolve. A blank line after the definition avoids it.
+  using it printed as bracketed text on every build. A block is now left untagged only
+  when every line of it is a definition in a shape pandoc can read no other way; anything
+  else is marked, as it always was. Untagged, a definition is never a splice target and
+  stays where it was written. What that leaves:
+  - *Only the plainest shapes count.* A link is a label, one token for its address and
+    perhaps a quoted or parenthesised title, on one line. The label holds no bracket,
+    backslash, backtick, `$`, `<`, `@`, `^` or `|`, because pandoc reads it as inline
+    markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
+    line a citation. No part holds a brace, because a binding is filled in after this
+    reading and its value could change it. A footnote is its label and its text on one
+    line. Links come before notes, because a line under a note is more of the note. Anything
+    else - a definition wrapped over two lines, with attributes or a title on the next
+    line, a nested bracket in its label, a footnote whose text wraps, or one written
+    straight above prose - is marked, and prints as text, as it did before this fix. That
+    failure is visible. Three versions that modelled more of pandoc's grammar were each
+    caught in review failing the other way: they left a block unmarked that pandoc printed,
+    so a co-author's edit to it was dropped while `import` said nothing came back, and one
+    took minutes over a line of attributes. One definition per line, with a blank line
+    before and after the block, is what works.
   - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
     `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
     definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and
     it prints nothing of either. No real address has several words, so such a line is
-    marked, and prints as it was written, as it always had. Two earlier versions, each
-    caught in review, left prose unmarked: the first took every `[label]:` for a definition,
-    and the second followed pandoc, so a paragraph whose first line pandoc swallowed went
-    unmarked too. Its identifier was lost, and a co-author's edit to it was dropped while
-    `import` said nothing came back. With one word after the colon, `[Note]: none.`, the
-    line is a definition to both, and prints nothing.
-  - *The test is pandoc's grammar, and is not pandoc.* A footnote definition takes anything
-    after its colon. A link definition's label holds no citation key, and its address is
-    followed by a title and attributes if it has them, then the end of the line: words after
-    a title make it prose, as they do to pandoc. What still reads differently: a label
-    holding a code span with a bracket, or brackets nested two deep, and a title nested
-    three deep, make a definition that gets an identifier and prints as text. Whether an `@`
-    in a label is a citation key is judged by the character before it, as measured against
-    pandoc 3.9 rather than taken from its parser, so an unusual label - `["@key"]`, or one
-    with a backslash before the `@` - can be read either way. A binding is read as the
-    token it is in the source, so a value that would change how pandoc reads the line goes
-    unseen.
+    marked, and prints as it was written, as it always had. With one word after the colon,
+    `[Note]: none.`, the line is a definition to both, and prints nothing.
+  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
+    source, so a move across it is refused as a move past a heading, a table or a figure.
+    Safe, and the reason given is wrong.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

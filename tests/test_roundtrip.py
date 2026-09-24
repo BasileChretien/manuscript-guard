@@ -203,7 +203,7 @@ REFERENCE_LINKS = [
     ),
     pytest.param(
         "See [reg] and [other] for details.",
-        f"[other]: https://example.org/other\n[reg]:\n  {REGISTRY}\n  \"The registry\"",
+        f"[other]: https://example.org/other\n[reg]: {REGISTRY} \"The registry\"",
         "reg and other",
         id="several-definitions",
     ),
@@ -257,27 +257,48 @@ def test_a_footnote_definition_is_left_for_pandoc_to_read(tmp_path: Path) -> Non
     assert list(paragraph_text(document).values()) == ["Doses were capped."]
 
 
-#: How pandoc 3.9 reads a block: as nothing but definitions, as a paragraph, or as a link
-#: definition whose address is several words run together - which it swallows, printing
-#: nothing, and which `tag` marks on purpose so that it prints as it was written.
-DEFINITION, PROSE, SWALLOWED = "definition", "prose", "swallowed"
+#: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc
+#: can read no other way is left alone; prose is marked; and a definition written any other
+#: way is marked on purpose, so it prints as text - visibly, where leaving a block unmarked
+#: that pandoc prints would lose a co-author's edit to it without a word.
+DEFINITION, PROSE, MARKED = "definition", "prose", "marked"
 
 BLOCKS = [
     pytest.param(f"[reg]: {REGISTRY}", DEFINITION, id="link"),
+    pytest.param(f"[reg]: {REGISTRY} \"The registry\"", DEFINITION, id="title"),
+    pytest.param(f"   [reg]: <{REGISTRY}> (The registry)", DEFINITION, id="angled-title"),
     pytest.param("[^cap]: Capped at 40 mg.", DEFINITION, id="footnote"),
-    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", DEFINITION, id="note-lines"),
     pytest.param(f"[a]: {REGISTRY}\n[b]: {REGISTRY}/b", DEFINITION, id="several"),
-    pytest.param(f"[a [b] c]: {REGISTRY}", DEFINITION, id="nested-label"),
-    pytest.param(f"[mail@example.org]: {REGISTRY}", DEFINITION, id="address-in-label"),
-    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", DEFINITION, id="wrapped-label"),
+    pytest.param(f"[a]: {REGISTRY}\n[^1]: A note.\n[^2]: Another.", DEFINITION, id="links-notes"),
     pytest.param(f"[]: {REGISTRY}", DEFINITION, id="empty-label"),
-    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", DEFINITION, id="attributes"),
-    pytest.param(f"[reg]: {REGISTRY}\n  'Registry'\n  {{.ext}}", DEFINITION, id="next-lines"),
-    pytest.param(f"[a\\]b]: {REGISTRY}", DEFINITION, id="escaped-bracket"),
-    pytest.param("[josé@example.org]: mailto:jose@example.org", DEFINITION, id="accented-address"),
-    pytest.param("[^@cap]: A note.", DEFINITION, id="footnote-with-at"),
-    pytest.param("[Methods]: patients were enrolled.", SWALLOWED, id="prose-shaped"),
-    pytest.param("[1]: Smith J, Doe A. A cohort study. Lancet. 2020;395:1.", SWALLOWED, id="refs"),
+    pytest.param("[^@cap]: A note <!-- with `code` $x$", DEFINITION, id="note-with-markup"),
+    pytest.param("[^or]: Adjusted, {{results.ror.point}}.", DEFINITION, id="note-with-binding"),
+    # An address of several words, run together: pandoc prints nothing of these.
+    pytest.param("[Methods]: patients were enrolled.", MARKED, id="prose-shaped"),
+    pytest.param("[1]: Smith J, Doe A. A cohort study. Lancet. 2020;395:1.", MARKED, id="refs"),
+    # Definitions in a shape pandoc could read another way.
+    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", MARKED, id="note-lines"),
+    pytest.param(f"[^1]: A note.\n[a]: {REGISTRY}", MARKED, id="link-under-a-note"),
+    pytest.param(f"[a [b] c]: {REGISTRY}", MARKED, id="nested-label"),
+    pytest.param(f"[mail@example.org]: {REGISTRY}", MARKED, id="at-in-label"),
+    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", MARKED, id="wrapped-label"),
+    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", MARKED, id="attributes"),
+    pytest.param(f"[reg]: {REGISTRY}\n  'Registry'", MARKED, id="title-below"),
+    pytest.param(f"[a\\]b]: {REGISTRY}", MARKED, id="escaped-bracket"),
+    # Filled in after `tag` has read the line, a binding's value could make it prose.
+    pytest.param(f"[reg]: {REGISTRY}/{{{{lit.agency.url}}}}", MARKED, id="binding-in-link"),
+    # Prose: a line pandoc gives up on as a definition, or a line after it that it does not.
+    pytest.param(f"[reg]: {REGISTRY}{chr(0xA0)}", PROSE, id="no-break-space-after"),
+    pytest.param(f"{chr(0x3000)}[reg]: {REGISTRY}", PROSE, id="wide-space-before"),
+    pytest.param(f'[reg]: {REGISTRY} "Registry" {{#NCT01/2020}}', PROSE, id="bad-attributes"),
+    pytest.param(
+        "[^1]: Adjusted for age.\n[^2]: Adjusted for sex.\n[^3] Adjusted for renal function.",
+        PROSE,
+        id="note-without-colon",
+    ),
+    pytest.param("[<!--x]: u\n[^y]: -->", PROSE, id="comment-in-label"),
+    pytest.param("[a $x]: u '$'", PROSE, id="maths-in-label"),
+    pytest.param("[@*key]: u", PROSE, id="wildcard-citation"),
     # Words after what pandoc takes for a title, or a bracket in the address, make it prose.
     pytest.param("[Methods]: patients (n = 200) were enrolled.", PROSE, id="words-after-title"),
     pytest.param('[Box 1]: Patients described as "frail" were excluded.', PROSE, id="quoted"),
@@ -314,7 +335,7 @@ def test_only_a_block_of_definitions_is_left_without_an_identifier(
 
     tagged = tag(block, "main.md")
     assert (tagged == block) is (reads == DEFINITION), tagged
-    assert tagged.startswith("[]{#mg-p-") is (reads != DEFINITION), tagged
+    assert tagged.lstrip().startswith("[]{#mg-p-") is (reads != DEFINITION), tagged
 
 
 def _renders_nothing(text: str) -> bool:

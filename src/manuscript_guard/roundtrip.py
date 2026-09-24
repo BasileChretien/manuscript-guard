@@ -243,91 +243,53 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 # `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
 # definition printed as a line of text, on every build.
 #
-# Only a block that is nothing but definitions goes without a marker, and only a link
-# whose address is one token, as every real one is. Pandoc takes almost any words for an
-# address - `[Methods]: patients were enrolled.` is a definition to it, and prints nothing -
-# and a version that followed it left a paragraph opening that way, or whose first line
-# did, without an identifier: a co-author's edit to it was dropped while `import` said
-# nothing came back. Marked, such a paragraph prints as written, as it always had.
-_REFERENCE = re.compile(r" {0,3}\[(?P<label>(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*)\]:")
-# What pandoc reads as a citation key inside the label, which makes the line a citation:
-# `[@smith2020]: they found` is a paragraph. After a letter, a digit, `.`, `;` or `*` an `@`
-# is not one to pandoc 3.9, which is how `[josé@example.org]:` stays a definition.
-_CITATION_KEY = re.compile(r"(?<![^\W_])(?<![.;*])@[\w{]")
-_UNREAD_IN_LABEL = re.compile(r"\\[!-/:-@\[-`{-~]|`[^`]*`|\[[^\]]*\]")
-
-# After a link's address pandoc takes a title and attributes, each allowed onto the next
-# line, and then wants the end of the line. Each piece is written so that it can match in
-# only one way: stacked optional spaces, or an attribute that could split in two, made a
-# line that failed take cubic or exponential time to say so.
-_GAP = re.compile(r"[ \t]*(?:\n[ \t]*)?")
-# A quote closes a title unless a letter or digit follows it. One that is followed by one
-# opens a quote inside the title if that quote closes, and is a plain character if not.
-_QUOTED = (
-    r"{q}(?!\s)(?:\\.|[^{q}\\]"
-    r"|{q}(?=[^\W_]){body}{q}(?![^\W_])"
-    r"|{q}(?=[^\W_])(?!{body}{q}(?![^\W_])))*"
-    r"{q}(?![^\W_])"
+# A block goes without a marker only when every line of it is a definition in a shape that
+# pandoc can read no other way. Three versions that modelled pandoc's grammar more closely
+# were each caught in review leaving a block unmarked that pandoc printed - a co-author's
+# edit to it was dropped, and `import` said nothing came back - and one of them took
+# minutes over a line of attributes. Everything else is marked, as it always was: a
+# definition written another way prints as text, which is visible where the other is not.
+#
+# A link: a plain label, one token for its address - no real address has a space - and
+# perhaps a title, on one line. Pandoc takes almost any words after `[label]:` for an
+# address, so `[Methods]: patients were enrolled.` is a definition to it and prints nothing;
+# marked, it prints as written. The label is read as inline markup: with `@` in it the line
+# may be a citation, and code, maths or HTML opened in it can run past its `]`. No brace
+# anywhere: a binding is filled in after this reading, and its value could change it.
+_LINK_LINE = re.compile(
+    r" {0,3}\[[^\[\]\\`$<@^|{\n]*\]:[ \t]+"
+    r"(?:<[^<>\s\\{]+>|[^\s\"'(<\[{\\][^\s\[\]\\{]*)"
+    r"(?:[ \t]+(?:\"[^\s\"\\\[\]{][^\"\\\[\]{\n]*\"|'[^\s'\\\[\]{][^'\\\[\]{\n]*'"
+    r"|\([^()\\\[\]{\n]*\)))?"
+    r"[ \t]*"
 )
-_TITLE = "|".join(
-    _QUOTED.format(q=q, body=rf"(?:\\.|[^{q}\\])*") for q in ('"', "'")
-) + r"|\((?:\\.|[^()\\]|\((?:\\.|[^()\\])*\))*\)"
-_ATTRIBUTES = (
-    r"\{\s*(?:(?:[#.][^\s{}=]+|[^\s{}=]+=(?:\"[^\"]*\"|'[^']*'|[^\s{}]*)|-)(?=[\s}])\s*)*\}"
-)
-_NOT_AN_ADDRESS = re.compile(rf"\[|{_TITLE}|{_ATTRIBUTES}")
-_ADDRESS = re.compile(r"<[^>]*>|\S+")
-_TITLE_AFTER = re.compile(rf"{_GAP.pattern}(?:{_TITLE})")
-_ATTRIBUTES_AFTER = re.compile(rf"{_GAP.pattern}{_ATTRIBUTES}")
-_LINE_END = re.compile(r"[ \t]*(?:\n|\Z)")
-
-
-def _link_line(block: str, at: int) -> int | None:
-    """Where a link definition whose label ends at `at` ends, if its address is one token."""
-    at = _GAP.match(block, at).end()
-    if _NOT_AN_ADDRESS.match(block, at):
-        return None
-    address = _ADDRESS.match(block, at)
-    if address is None:
-        return None
-    at = address.end()
-    for after in (_TITLE_AFTER, _ATTRIBUTES_AFTER):
-        if found := after.match(block, at):
-            at = found.end()
-    end = _LINE_END.match(block, at)
-    return end.end() if end else None
+# A footnote: its label and its text on one line. Pandoc parses a note's text by itself, so
+# nothing in it reaches the body - but a line under it is more of the note, even a link's
+# definition, and that link then resolves nowhere. So links come first.
+_NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 
 
 def _only_definitions(block: str) -> bool:
-    """Whether a block is nothing but link and footnote definitions, as pandoc reads them."""
-    at = 0
-    while at < len(block):
-        found = _REFERENCE.match(block, at)
-        if found is None:
-            return False
-        label = found["label"]
-        # A footnote takes everything after its colon, the lines below included, and is
-        # never read as a citation.
-        if re.fullmatch(r"\^\S+", label):
-            return True
-        # Only a key at the label's own level counts, and not one escaped or in code.
-        if _CITATION_KEY.search(_UNREAD_IN_LABEL.sub("", label)):
-            return False
-        end = _link_line(block, found.end())
-        if end is None:
-            return False
-        at = end
-    return True
+    """Whether every line of a block is a link or footnote definition in a shape pandoc
+    can only read as one, the links before the notes."""
+    lines = block.strip("\n").split("\n")
+    links = 0
+    while links < len(lines) and _LINK_LINE.fullmatch(lines[links]):
+        links += 1
+    return all(_NOTE_LINE.fullmatch(line) for line in lines[links:])
 
 
-def _untagged(stripped: str) -> bool:
+def _untagged(block: str) -> bool:
     """Headings, fences, link and footnote definitions, and a lone placeholder (which
     becomes a table or a figure)."""
+    stripped = block.strip()
     return (
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
-        or _only_definitions(stripped)
+        # Not `stripped`: a no-break space is text to pandoc, and a line that ends in one
+        # is not a definition; nor is one indented four spaces.
+        or _only_definitions(block)
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 
@@ -343,7 +305,7 @@ def tag(text: str, relative: str) -> str:
     out = []
     for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
         stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(stripped):
+        if para.strip("\n") == "" or _untagged(para):
             out.append(para)
             continue
         marker = _TAG.format(slug=paragraph_slug(relative), index=index)
@@ -383,7 +345,7 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(stripped):
+            if _untagged(para):
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

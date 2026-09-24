@@ -380,6 +380,10 @@ def _untagged(block: str) -> bool:
         # math a paragraph of its own: the bookmark stayed on the words before the equation,
         # and `import` spliced them over the equation and everything after it.
         or "$$" in stripped
+        # A brace group left open runs on across the blank line when it is raw TeX -
+        # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
+        # is the paragraph the bookmark lands in.
+        or stripped.count("{") != stripped.count("}")
         or _FENCE.match(stripped) is not None
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
         or _FIGURE.fullmatch(stripped) is not None
@@ -397,11 +401,15 @@ def _untagged(block: str) -> bool:
         for line in rest
     ):
         return True
-    # Inside a list item, which is what an indented block is, a nested list or the list's
-    # next item needs no blank line. `  Matched on:\n  - age\n- Drugs were mapped.` is a
-    # paragraph and two list items, and `import` spliced the items away with the paragraph.
+    # Inside a list item, which is what an indented block is, a nested list, the list's next
+    # item or a definition needs no blank line. `  Matched on:\n  - age\n- Drugs were
+    # mapped.` is a paragraph and two list items, and `import` spliced the items away with
+    # the paragraph.
     return lines[0][:1] == " " and any(
-        _BULLET.match(line.lstrip()) is not None or _enumerates(line.lstrip()) for line in rest
+        _BULLET.match(line.lstrip()) is not None
+        or _enumerates(line.lstrip())
+        or _DEFINITION.match(line.lstrip()) is not None
+        for line in rest
     )
 
 
@@ -488,7 +496,18 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     closers = _Closers(text)
     hidden = 0
     cursor = 0
-    for index, piece in enumerate(_BREAK.split(text)):
+    pieces = _BREAK.split(text)
+    # A "blank" line holding a non-breaking space, an em or ideographic space or a form feed
+    # separates blocks for the numbering and not for pandoc, which reads one paragraph
+    # across it. Marked, the first half's bookmark sat on the whole joined paragraph and
+    # `import` spliced it over the first half, writing the second half twice. Both halves go
+    # unmarked instead: renumbering would move every identifier after them.
+    joined = [
+        index % 2 == 1 and re.search(r"[^ \t\n]", piece) is not None
+        for index, piece in enumerate(pieces)
+    ]
+    for index, piece in enumerate(pieces):
+        apart = not (joined[max(index - 1, 0)] or joined[min(index + 1, len(pieces) - 1)])
         origin = cursor
         start = cursor + len(piece) - len(piece.lstrip())
         end = cursor + len(piece)
@@ -508,7 +527,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         # line, and a search starting at the `<` cannot see that it does.
         runs_on = _raw_end(text, origin, end, closers)
         hidden = max(hidden, runs_on)
-        yield index, piece, not (runs_on or _untagged(piece))
+        yield index, piece, apart and not (runs_on or _untagged(piece))
 
 
 def tag(text: str, relative: str) -> str:

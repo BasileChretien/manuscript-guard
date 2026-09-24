@@ -217,6 +217,9 @@ NOT_PARAGRAPHS = {
     "display math inside a paragraph": "The model is\n$$\ny = a + bx\n$$\nwhere b is the slope.",
     "a block html tag mid-line": "In women. <div>See the note.</div> Weaker in men.",
     "html block inside a list item's continuation": "  para\n    <div>\n    x\n    </div>",
+    "a raw tex argument left open": "The signal \\footnote{In the sensitivity analysis.",
+    "a raw tex argument closed": "And in the restricted cohort.} in both periods.",
+    "a definition inside a list item's continuation": "  para\n    : def",
     "example list without parentheses": "@good. second",
     "a capital and a period alone": "A.",
     "a valid roman numeral": "mix. up",
@@ -235,7 +238,21 @@ PARAGRAPHS = {
     "a word made of roman letters": "dim. lights were used.",
     "a less-than before a word": "Values <LOQ were imputed as half the limit.",
     "an inline tag mid-line": "The <em>adjusted</em> estimate was lower.",
+    "balanced braces": "The set {a, b} and a binding {{results.ror.point}} were used.",
 }
+
+
+def test_paragraphs_joined_by_a_line_pandoc_does_not_call_blank_are_not_marked() -> None:
+    """A non-breaking space alone on a line split the text into two blocks, both marked,
+    where pandoc reads one paragraph; `import --apply` then wrote the second half twice.
+    The halves go unmarked, and nothing after them is renumbered."""
+    from manuscript_guard.roundtrip import paragraph_slug, tag
+
+    third = f"mg-p-{paragraph_slug('main.md')}-4"
+    for space in (" ", "　", " ", "\f"):
+        tagged = tag(f"Para one.\n{space}\nPara two.\n\nPara three.\n", "main.md")
+        assert re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged) == [third], f"{space!r}: {tagged!r}"
+        assert f"[]{{#{third}}}Para three." in tagged
 
 
 @pytest.mark.parametrize("name", sorted(NOT_PARAGRAPHS))

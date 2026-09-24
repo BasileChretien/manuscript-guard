@@ -349,6 +349,15 @@ TAGGING = {
         "- item\n\n  para\n    <div>\n    x\n    </div>\n"
     ),
     "pre opened mid-line": "text <pre>code\n\nmore</pre>\n\nAfter.\n",
+    "raw tex argument across a blank line": (
+        "The signal was confirmed \\footnote{In the sensitivity analysis.\n\n"
+        "And in the restricted cohort.} in both periods.\n\nAfter.\n"
+    ),
+    "a line holding only a non-breaking space": "Para one.\n \nPara two.\n\nAfter.\n",
+    "a line holding only an ideographic space": "Para one.\n　\nPara two.\n\nAfter.\n",
+    "a line holding only a form feed": "Para one.\n\f\nPara two.\n\nAfter.\n",
+    "a definition inside a list item's continuation": "- a\n\n  para\n    : def\n",
+    "balanced braces in prose": "The set {a, b} was used, and [a span]{.note} too.\n",
     "a comment opened in the block where a fence closes": (
         f"{FENCE}\ncode\n\nmore\n{FENCE}\ntext <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
     ),

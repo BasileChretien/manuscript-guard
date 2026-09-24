@@ -1464,18 +1464,28 @@ Added by the adversarial review, verified and **not** fixed:
   comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
   tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
   one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
-  after a `<!--` written inside inline code, up to the next `-->`. Raw TeX other than an
-  environment is not followed across a blank line, so a `\newcommand` whose body holds a
-  blank line gets a marker inside it; pandoc drops raw TeX from the .docx and the identifier
-  names nothing, which `import` already tolerates. Three review rounds found holes in earlier
-  versions of these patterns, every one by running pandoc on a construct the table did not
-  yet hold, so the table is evidence for what is in it and no more.
+  after a `<!--` written inside inline code, up to the next `-->`; a paragraph whose braces
+  do not pair. Raw TeX other than an environment is not followed across a blank line. The
+  blocks that open and close it are refused by the brace count, since
+  `\footnote{One.\n\nTwo.}` is one paragraph to pandoc, but a block wholly inside it, such
+  as the middle of a `\newcommand` with two blank lines in its body, gets a marker; pandoc
+  drops raw TeX from the .docx and the identifier names nothing, which `import` already
+  tolerates. Every review round on these patterns found holes in the version before it,
+  each by running pandoc on a construct the table did not yet hold, so the table is
+  evidence for what is in it and no more.
 - **Two block boundaries are drawn where pandoc draws none.** A line holding only a
-  non-breaking space splits the text into two blocks, each marked, where pandoc reads one
-  paragraph carrying both bookmarks; fixing it renumbers every identifier after it. And a
-  YAML block in the middle of the document with a blank line inside and closed by `...`
-  gets a marker inside it, which pandoc then refuses to parse — loudly, so the build fails
-  rather than the document.
+  non-breaking space, an em or ideographic space or a form feed ends a block for the
+  identifiers' numbering, while pandoc reads one paragraph across it. Marked, the first
+  half's bookmark sat on the joined paragraph and `import --apply` wrote the second half
+  twice; both halves are now left unmarked and never compared. Renumbering would fix it and
+  would move every identifier after them. And a YAML block in the middle of the document
+  with a blank line inside and closed by `...` gets a marker inside it, which pandoc then
+  refuses to parse — loudly, so the build fails rather than the document.
+- **A heading with its first paragraph directly under it is one block, left unmarked.**
+  `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
+  with `#` the paragraph never carries an identifier and its edits are never compared.
+  Marking it would mean placing the identifier after the heading line. This was already so
+  before identifiers moved off lists.
 - **A review point anchored to a list or a quote before identifiers moved off them names
   nothing.** A `where:` recorded from a document built earlier can hold the identifier the
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no

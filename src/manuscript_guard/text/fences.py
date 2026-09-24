@@ -29,67 +29,20 @@ closing fence — and it undermines the claim that `check` is safe to run on a m
 someone sent you.
 
 A line scanner has neither problem and is easier to read than the regex was.
+
+It is not a line scanner any more, because a fence cannot be found alone. A code span or a
+comment that starts first swallows a fence line, and a `~~~` line inside a paragraph is
+prose, so the lines are read in the same pass as those: see `text/scan.py`, which holds the
+rules. This module keeps the questions its callers ask.
 """
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-
-# Up to three spaces of indent; four would be an indented code block, not a fence.
-_OPENER = re.compile(r"^(?P<indent>[ ]{0,3})(?P<fence>`{3,}|~{3,})(?P<info>[^\n]*)$")
-
-
-@dataclass(frozen=True)
-class Fence:
-    """One fenced block, as offsets into the original text."""
-
-    start: int  # first character of the opening line
-    body_start: int  # first character after the opening line's newline
-    body_end: int  # first character of the closing line, or end of text
-    end: int  # first character after the block
-    info: str  # the info string, e.g. "python" or "{=openxml}"
-
-    @property
-    def language(self) -> str:
-        """The first word of the info string, lowercased. Empty when untagged."""
-        stripped = self.info.strip()
-        return stripped.split()[0].lower() if stripped else ""
-
-    @property
-    def is_raw(self) -> bool:
-        """A pandoc raw-attribute block: ```{=openxml}, ```{=html}, ```{=latex}.
-
-        Not a listing at all — pandoc splices its contents into the output format verbatim,
-        so the text inside reaches the reader as formatted prose. Reporting it as "a
-        language with no lexer" was actively misleading: the advice was to tag the fence,
-        which would have made it quieter still.
-        """
-        return self.info.strip().startswith("{=")
-
-
-def _closing(line: str) -> tuple[str, int] | None:
-    """The character and width of the fences this line could close, or None."""
-    stripped = line.strip()
-    if not stripped or stripped[0] not in "`~" or set(stripped) != {stripped[0]}:
-        return None
-    if len(line) - len(line.lstrip(" ")) > 3:
-        return None
-    return stripped[0], len(stripped)
-
-
-def _closes(line: str, char: str, width: int) -> bool:
-    """Is this line a closing fence for a run of `width` of `char`?
-
-    "At least as long", per CommonMark. Requiring equality is what let a longer closer
-    slip past and swallow the prose after it.
-    """
-    closing = _closing(line)
-    return closing is not None and closing[0] == char and closing[1] >= width
+from manuscript_guard.text.scan import Fence, scan
 
 
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
-    """Every fenced block, in document order. Linear in the length of the text.
+    """Every fenced block pandoc reads as one, in document order. Linear in the text.
 
     An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
     ``` as literal text and the rest of the document as ordinary paragraphs — verified
@@ -97,83 +50,11 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
     the reader plainly sees. That is the same failure as the longer-closer bug, arrived at
     from the other side, and `tests/test_pandoc_agreement.py` caught it here.
 
-    `begin`, the start of a line, is where the body starts: no fence opens in the front
-    matter before it (see `masking.front_matter_end`). Offsets are still into `text`.
+    `begin`, the start of a line, is where the body starts: a fence before it, in the front
+    matter, closes before it. Offsets are into `text`. `masking.fenced_blocks` asks with the
+    front matter found for you.
     """
-    found: list[Fence] = []
-    offset = begin
-    lines = text[begin:].splitlines(keepends=True)
-    index = 0
-
-    # The widest line at or below each line that could close a fence, by fence character.
-    # Without it the scan is quadratic again: every unterminated opener reads to the end of
-    # the file, and a document of 8,000 of them took 55 seconds — the very cost the regex
-    # was replaced to avoid, reintroduced by the fix for unterminated fences.
-    #
-    # A closing line of width w closes every opener of width <= w, so an opener has a closer
-    # exactly when the widest one below it is at least as wide, and one that has none is
-    # rejected without looking. This replaced a record of the narrowest width known to have
-    # no closer, which rejected only wider openers: openers each narrower than the last
-    # still read to the end, and 400 KB of them took 33 seconds.
-    widest = {char: [0] * (len(lines) + 1) for char in "`~"}
-    for below in range(len(lines) - 1, -1, -1):
-        for char in widest:
-            widest[char][below] = widest[char][below + 1]
-        closing = _closing(lines[below].rstrip("\r\n"))
-        if closing is not None:
-            char, width = closing
-            widest[char][below] = max(widest[char][below], width)
-
-    while index < len(lines):
-        line = lines[index]
-        bare = line.rstrip("\r\n")
-        opener = _OPENER.match(bare)
-        if opener is None:
-            offset += len(line)
-            index += 1
-            continue
-
-        fence = opener.group("fence")
-        # A backtick fence's info string may not contain a backtick; that construct is
-        # inline code, not a fence. Tilde fences have no such restriction.
-        if fence[0] == "`" and "`" in opener.group("info"):
-            offset += len(line)
-            index += 1
-            continue
-
-        if widest[fence[0]][index + 1] < len(fence):
-            # No closer: pandoc does not read this as a code block, and neither do we. The
-            # rest stays prose.
-            offset += len(line)
-            index += 1
-            continue
-
-        start = offset
-        offset += len(line)
-        index += 1
-        body_start = offset
-
-        while index < len(lines) and not _closes(
-            lines[index].rstrip("\r\n"), fence[0], len(fence)
-        ):
-            offset += len(lines[index])
-            index += 1
-
-        body_end = offset
-        offset += len(lines[index])
-        index += 1
-
-        found.append(
-            Fence(
-                start=start,
-                body_start=body_start,
-                body_end=body_end,
-                end=offset,
-                info=opener.group("info"),
-            )
-        )
-
-    return found
+    return scan(text, begin).fences
 
 
 def blank_fences(text: str) -> str:

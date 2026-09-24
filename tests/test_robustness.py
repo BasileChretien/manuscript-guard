@@ -59,6 +59,8 @@ def timed_check(project: Path) -> float:
             " ".join("`" * n + "x" for n in range(1, 400)) + " <!-- x\n",
         ),
         ("one long backtick run", "a " + "`" * 200_000 + " <!-- x\n"),
+        ("tilde lines in one paragraph", "x\n" + "~~~\nprose line\n" * 3000 + "~~~\n"),
+        ("fence lines inside code spans", "`a\n```\nb` " * 3000 + "\n```\n<!-- x\n"),
     ],
     # Explicit ids: pytest builds one from the parameters otherwise, and puts it in
     # PYTEST_CURRENT_TEST — which Windows refuses past 32767 characters, so a 60 KB body

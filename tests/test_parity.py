@@ -74,6 +74,25 @@ ROUTES = [
         f"{FENCE}\n",
     ),
     Route("front matter generated from paper.yaml", "\n", {"short_title": f"A {FAKE}-fold excess"}),
+    # A fence line is a listing only where pandoc reads one: not inside a code span or a
+    # comment that started first, and not a `~~~` line inside a paragraph.
+    Route(
+        "a listing found after a code span",
+        f"\n\nSet `x\n{LONGER}\ny`\n{FENCE}\n<!--\n{LONGER}\n\n"
+        f"The reporting odds ratio was {FAKE} overall. -->\n",
+    ),
+    Route(
+        "a fence line inside a code span",
+        f"\n\nSet `x\n{FENCE}\ny`.\n\nThe reporting odds ratio was {FAKE} overall.\n\n{FENCE}\n",
+    ),
+    Route(
+        "a half-commented listing",
+        f"\n\n<!--\n{FENCE}r\nold <- 1\n-->\n\nThe reporting odds ratio was {FAKE} overall.\n\n"
+        f"{FENCE}r\nnew <- 1\n{FENCE}\n",
+    ),
+    Route("tildes inside a paragraph", f"\n\nThe reporting odds ratio\n~~~\nwas {FAKE}.\n~~~\n"),
+    # Pandoc rejects an info string it cannot parse, and prints the chunk as a paragraph.
+    Route("an R Markdown chunk", f"\n\n{FENCE}{{r, echo=FALSE}}\nror <- {FAKE}\n{FENCE}\n"),
 ]
 
 

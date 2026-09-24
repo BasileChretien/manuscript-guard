@@ -103,6 +103,12 @@ CONSTRUCTS = {
     "hash after a comment opened in the front matter": (
         '---\nnote: "<!-- legacy"\n---\n\n## Real\n\nProse. <!-- a -->\n'
     ),
+    "hash after a fence line inside a comment": (
+        f"## Real\n\n<!-- draft\n{FENCE}\n-->\n\n## Also real\n\n{FENCE}\n\nProse.\n"
+    ),
+    "hash after a fence line inside a code span": (
+        f"## Real\n\nSet `x\n{FENCE}\ny`.\n\n## Also real\n\nProse.\n\n{FENCE}\n"
+    ),
     "hash before a fence line that ends in a comment": (
         f"## Real\n\nWe used\n{FENCE}\n\n## Also real\n\nProse.\n\n{FENCE}<!-- TODO -->\n"
     ),
@@ -161,6 +167,27 @@ FENCE_CASES = {
         f"   {FENCE}python\nx = 1\n   {FENCE}\n\nProse 9.99.\n"
     ),
     "unterminated fence": f"{FENCE}python\nx = 1\n\nProse 9.99.\n",
+    "fence line inside a code span": f"Set `x\n{FENCE}\ny`.\n\nProse 9.99.\n\n{FENCE}\n",
+    "fence line inside a comment": (
+        f"<!--\n{FENCE}r\nold\n-->\n\nProse 9.99.\n\n{FENCE}r\nx\n{FENCE}\n"
+    ),
+    "listing found after a code span": f"Set `x\n````\ny`\n{FENCE}\n9.99\n````\n",
+    "backticks interrupt a paragraph": f"The ROR\n{FENCE}\nwas 9.99.\n{FENCE}\n",
+    "tildes do not": "The ROR\n~~~\nwas 9.99.\n~~~\n",
+    "indented backticks do not": f"The ROR\n  {FENCE}\nwas 9.99.\n  {FENCE}\n",
+    "tildes after a heading": "# Head\n~~~\nx 9.99\n~~~\n",
+    "tildes after a listing": f"{FENCE}\na\n{FENCE}\n~~~\nx 9.99\n~~~\n",
+    "tildes after a comment block": "<!--\nx\n-->\n~~~\nx 9.99\n~~~\n",
+    "tildes after a list item": "- item\n~~~\nx 9.99\n~~~\n",
+    "tildes after a blockquote line": "> quote\n~~~\nx 9.99\n~~~\n",
+    "tildes after an inline comment": "Text <!-- x -->\n~~~\nx 9.99\n~~~\n",
+    "backticks in a list item's second paragraph": (
+        f"1. Step.\n\n   Then run:\n   {FENCE}r\n   x <- 9.99\n   {FENCE}\n"
+    ),
+    "tildes after a definition": "Term\n:   def\n~~~\nx 9.99\n~~~\n",
+    "an R Markdown chunk is prose": f"{FENCE}{{r, echo=FALSE}}\nx <- 9.99\n{FENCE}\n",
+    "a key without braces is prose": f'{FENCE}python title="x"\nx = 9.99\n{FENCE}\n',
+    "a class and a key in braces": f"{FENCE}{{.r echo=FALSE}}\nx <- 9.99\n{FENCE}\n",
 }
 
 
@@ -281,6 +308,10 @@ COMMENT_CASES = {
     "code across a fence line": f"Set `<!-- ROR 9.99\n{FENCE}\n-->\n{FENCE}\n` in it.\n",
     "code across a listing": f"a `<!--\n{FENCE}\ncode\n{FENCE}\nb`\n\nROR 9.99. -->\n",
     "no-break space is not an end": "a <!-- x -- > 9.99 --> b\n",
+    "listing found after a code span": (
+        f"Set `x\n````\ny`\n{FENCE}\n<!--\n````\n\nThe ROR was 9.99. -->\n"
+    ),
+    "tildes in a paragraph hold no listing": "The ROR\n~~~\n<!-- was\n~~~\n\n9.99 -->\n",
 }
 
 

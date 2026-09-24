@@ -1997,8 +1997,8 @@ Closed since, and why each mattered:
   YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
   gates mask it and the build strips it, so for a paper built here they agree and nothing
   unread prints. The audit of a Markdown paper rendered some other way does not read it.
-- **The comment scanner knows code spans, fences and the front matter, and no other
-  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+- **The one pass knows fences, code spans, comments and the front matter, and no other
+  Markdown.** `text/scan.py` keeps `` `<!--` `` as code and ends a comment where pandoc
   does, but it ends a code span only at a blank line or a front-matter value's edge, where
   pandoc also ends one at the edge of a list item, a blockquote or a heading.
   And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
@@ -2014,19 +2014,16 @@ Closed since, and why each mattered:
   pandoc also reads, is prose to the toolkit, and so are the YAML boundaries inside a value
   it keeps: a `<!--` in one keyword runs through the next to a `-->`, and a `# -->` YAML
   comment after a quoted title closes one opened in it.
-- **Fences are found without knowing what a comment or a code span swallowed.**
-  `text/fences.py` reads the file for fences before anything else. So a fence line that
-  pandoc reads as part of a comment or of an open code span is still an opener there, and
-  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
-  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
-  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
-  such a fence for itself, but it does not look for the fences pandoc finds after it. One
-  case follows from that, the only one where this branch reads worse than the regex did: a
-  code span holding a line of four backticks, followed by a listing that holds `<!--`,
-  hides the prose after the listing up to the next `-->`. Separately, a `~~~` fence, or a
-  backtick fence indented one to three spaces, does not interrupt a paragraph in pandoc,
-  which prints it as prose. One pass that finds fences, code spans and comments together
-  would close all of these.
+- **Whether a paragraph is open above a fence is judged from the line above it.** A `~~~`
+  fence, or backticks off the margin, open a listing only where pandoc has no paragraph
+  open, and `text/scan.py` tells that from the kind of line above: prose, a list item, a
+  blockquote, a heading, a table row, a tag or a definition, not from a parse. Where it is
+  unsure it takes the fence for a listing, as every fence used to be taken. A fence under a
+  list item's first line, a footnote, a caption, a `:::` line, a lone inline tag such as
+  `<br>`, or prose that opens like a list marker ("A. Smith said"), is prose to pandoc, and
+  the listing checker reads it in place of the prose rules. The reverse would be worse: a
+  listing read as prose lets a `#` comment in it pass for a heading. A sweep of 47 kinds of
+  line above 6 kinds of fence found no case of it.
 - **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
   typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
   mentions both markers hides everything between them.

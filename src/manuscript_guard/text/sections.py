@@ -24,10 +24,9 @@ from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import (
     FRONTMATTER,
     blank,
-    fenced_blocks,
     front_matter_end,
-    html_comments,
     mask,
+    scan_source,
 )
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
@@ -119,13 +118,13 @@ def scannable(text: str) -> str:
     # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
     # headed a body the build printed without it.
     #
-    # Fences and comments are found in the text as written too. Blanking the comments
-    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
-    # earlier opener and blanked the headings between them.
-    head = front_matter_end(text)
-    fences = fenced_blocks(text)
-    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
-    return blank(text, [(0, head), *spans])
+    # Fences and comments are found in the text as written too, and in one pass. Blanking
+    # the comments first made a line like "```<!-- TODO -->" a bare closing fence, which
+    # paired with an earlier opener and blanked the headings between them; finding every
+    # fence first kept a fence line inside a comment as an opener, which did the same.
+    found = scan_source(text)
+    spans = [(f.start, f.end) for f in found.fences] + found.comments
+    return blank(text, [(0, front_matter_end(text)), *spans])
 
 
 @dataclass(frozen=True)

@@ -1503,6 +1503,49 @@ def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, pa
     assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
 
 
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "Set `x\n````\ny`\n```\n<!--\n````\n\nThe ROR was 9.99. -->\n",
+        "Set `x\n```\ny`.\n\nThe ROR was 9.99.\n\n```\n",
+        "<!--\n```r\nold\n-->\n\nThe ROR was 9.99.\n\n```r\nnew\n```\n",
+        "The ROR\n~~~\nwas 9.99.\n~~~\n",
+    ],
+    ids=[
+        "a listing after a code span",
+        "a code span over an opener",
+        "a half-commented listing",
+        "tildes in a paragraph",
+    ],
+)
+def test_audit_reads_prose_that_only_looked_like_a_listing(tmp_path: Path, paper: str) -> None:
+    """Pandoc prints 9.99 as prose in each. The fence scanner ran before anything else, so
+    a fence line a code span or a comment had swallowed still opened a listing, and one
+    pandoc found after a code span was never looked for: its `<!--` hid the prose after it.
+    Tildes, or an indented fence, do not interrupt a paragraph at all."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+
+
+def test_g2_reads_prose_after_a_fence_line_a_code_span_swallowed(project: Path) -> None:
+    """G2 masked it as a listing and ran the listing checker, which reads a number in prose
+    as a bare literal and lets it pass."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\nSet `x\n```\ny`.\n\nThe pooled ROR was 9.99.\n\n```\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "9.99" in f.message for f in report.failures
+    ), report.render(project)
+
+
 def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
     """The old binding parser got this right and the first version of the shared scanner
     did not: it read with the fences blanked, so the comment ran on over the binding."""

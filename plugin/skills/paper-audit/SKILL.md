@@ -35,17 +35,15 @@ they exist.
 **Include every source of quoted values.** Literature values, numbers from a collaborator's
 analysis, figures taken from a protocol: anything not in `--against` comes back unmatched.
 
-**It reads `.json .csv .tsv .txt .yaml .yml .md`, and skips everything else in silence**,
-including `.xlsx`, `.rds`, `.log` and `.html`, any `.json` that does not parse (JSON
-Lines saved as `.json` among them), and paths that do not exist. Save every backing file as
-UTF-8 without a byte-order mark. A BOM, which Windows PowerShell 5's `-Encoding UTF8` adds,
-makes a `.json` unreadable, so it is skipped. UTF-16, that shell's default for `>` and
-`Out-File`, is worse for every other type: the file is read as single digits and still
-counted among the files read, so the first-line check below passes. On Python 3.10 a
-UTF-16 `.csv` or `.tsv` stops the audit instead.
-Export spreadsheets to CSV first. Then read the first line of the report: `against 0
-distinct numbers from 0 output file(s)` means no supported file was read, whether from a
-typo, an empty folder or a folder of unsupported files. It never means a clean paper.
+**It reads `.json .csv .tsv .txt .yaml .yml .md`.** Anything else, such as `.xlsx`, `.rds`,
+`.log` or `.html`, is listed in the report under `Outputs not read as given`, and so is a
+`.json` that does not parse (JSON Lines saved as `.json`, say), which is then read as plain
+text. A path that does not exist stops the audit with exit 2, and so does a set of outputs
+with nothing readable in it. A byte-order mark names the encoding, so UTF-8 with a BOM and
+UTF-16 (Windows PowerShell 5's default for `>` and `Out-File`) are read correctly; a file
+with NUL bytes and no BOM is listed as not read. Export spreadsheets to CSV first, and read
+that section of the report before the findings: every number in an output it names is
+reported missing from the paper.
 
 Keep it narrow. A directory is read recursively, READMEs and notes included, and every
 extra number raises the chance of a coincidental match.
@@ -59,10 +57,16 @@ manuscript-guard audit manuscript.docx supplement.docx \
 
 It needs no project and reads no `paper.yaml`. A `.docx` is read with tracked changes
 accepted and table cells kept apart, from the body, footnotes and endnotes; headers,
-footers and comments are not read. The notes are read after the body, so a references
-heading in the body cuts them off along with the bibliography (section 4). Markdown and text files are read as they are. There is
-no reader for a PDF manuscript. `--figures` takes SVG and PDF files with a text layer.
-`--strict` exits 1 when anything is unmatched.
+footers and comments are not read. The notes are read after the reference list has been
+cut from the body, so they are always audited. Markdown and text files are read as written,
+and `--` between digits is read as a separator and a minus in every format: `-0.72--0.30`
+runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
+`2010--2019`, meaning pandoc's en dash, gets `-2019` reported as not found; check such
+ranges by hand. There is no reader for a PDF
+manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
+such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
+than audited. `--strict` exits 1 when anything is unmatched or a paper or figure could not
+be read, and the audit exits 2 when nothing given could be read at all.
 
 ## 3. Read the report
 
@@ -84,29 +88,33 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | A stale or wrong value | Tell the author, with the value the outputs hold |
 | From a source not in `--against` | Add the source, or check the number by hand |
 | Rounded, a percentage written as a fraction, or `×10⁻ⁿ` | Check by hand against the output |
-| **Negative** | Check by hand. The outputs lose the sign when read, so a negative number never matches |
+| A magnitude quoted without its sign, "fell by 0.51" for -0.51 | Check by hand. The sign is compared, so this is reported |
+| A range written `2010--2019` in Markdown | Check by hand; `--` is read as a separator and a minus |
 | A label longer than three letters, `beta=0.4` | Check by hand |
 | Vocabulary: `3-core`, an ISSN, a dose schedule | Check by hand |
 | An axis tick | Nothing, if the axis is what it claims |
 | A reference entry | See below |
 | `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
 
-The bibliography is dropped from the first line that reads `References`, `Bibliography`,
-`Works cited` or `Literature cited`, with or without a leading `#`, a number such as `5.` or
-`5)`, or a trailing colon. `Reference list`, `5 References` and a bold `**References**`
-paragraph are not recognised. Everything after that line goes, and in a `.docx` that
-includes every footnote and endnote, which are read after the body. Adding a recognised
-heading to a copy of the document saves reading past forty spurious findings, at the price
-of the notes: check those by hand.
+A reference list starts at a line that is only a heading such as `References`,
+`Reference list`, `Bibliography`, `Works cited` or `Literature cited`, with or without a
+leading `#`, a number (`5`, `5.`, `5)`), bold, or a trailing colon. A line the document does
+not mark as a heading (a Markdown `#` or underline, a heading style in a `.docx`) also has to
+be capitalised and not end in a full stop, so a wrapped "…duplicate / references." is prose.
+A table cell reading `References` is a column header, not a heading. The
+list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
+Every such list is cut, and the report names the lines under `Not audited`. Check each
+range. In a `.docx` whose headings are only bold text, the list runs to the end of the body,
+and an appendix after it goes unread.
 
-With or without a heading, every line is also tested by its shape: a capitalised word, a
-comma, another capitalised word, and within about 200 characters four digits from 1900 to
-2099 standing alone (a year, `2019a`, or the decimals of `0.2013`). A line that fits counts as a reference entry. That catches author-year entries
-and misses Vancouver ones (`Smith J, …`), whose volume and page numbers are then reported.
-**It also catches body text.** In a `.docx` a line is a paragraph; in Markdown or text it is
-a physical line, so a wrapped line in mid-paragraph counts too. "Overall, Japanese patients
-accounted for 412 of 1985 cases" is treated as a reference, and none of its numbers is
-compared, without a word in the report.
+Only when there is no such heading is a line taken for a reference entry by its shape, and
+only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
+2021.", or the numbered styles' "Smith J, Jones K. … 2019;393:100-10.". A Harvard entry with
+no full stop after "(2019)", or a book, web page or online-first article in a numbered
+style, is not recognised, and its numbers show up as unmatched. A line taken for an entry is
+still compared: numbers on it found nowhere are listed apart, under `NOT FOUND, ON LINES READ
+AS REFERENCE ENTRIES`, which `--strict` does not count. Most are volumes and pages. Read the
+list anyway, because a caption can have the same shape.
 
 ## 5. Say what a clean report does not mean
 
@@ -114,10 +122,10 @@ A match means the number appears somewhere in the outputs. It does not mean it a
 the right place: a value correct in the abstract and wrong in the Results passes. An
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
-includes `p < 0.05` anywhere in the text, everything after the references heading
-(appendices, and a `.docx`'s footnotes and endnotes), and any line shaped like a reference
-entry (section 4). Read every line, every paragraph in a `.docx`, that opens with a word, a
-comma and a capitalised word yourself.
+includes `p < 0.05` anywhere in the text and the lines the report lists under
+`Not audited`. Conventions, and numbers on lines taken for reference entries that happened to
+match, are counted as "conventions or references"; the numbers on a cut reference list are
+not counted at all. Describe all of them as not checked, never as matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

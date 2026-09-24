@@ -79,8 +79,12 @@ was not. **An override is a legitimate answer to a reviewer; silence is not.** R
 reason is what makes it a decision rather than an oversight, and it is the thing you will
 want when a real reviewer asks the same question.
 
-Changing a file a reviewer read marks their review stale — correctly. Once
-the round's findings are addressed, re-review against the new text and update the records.
+Changing a file a reviewer read marks their review stale — correctly. Once the round's
+findings are addressed, read the revised text as a further round (`manuscript-guard review
+--record <reviewer> --round <n> --verdict <verdict>`) rather than editing the old records: a
+record's digest is the only thing that says which version was read. When that round is complete, it
+supersedes the stale rounds before it, which stay as the history of the review. Their
+unanswered major findings still have to be answered.
 
 ## 4. The second panel is blinded
 

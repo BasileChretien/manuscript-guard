@@ -19,6 +19,13 @@ from manuscript_guard.findings import Finding, Report, merge_all
 
 FRAGMENT_GLOB = "*.json"
 
+#: How an analysis publishes its results, in the words every message uses. Three messages
+#: said "emit()", which exists in neither language.
+HOW_TO_EMIT = (
+    "Emitter(__file__, inputs=[...]) and .write() in Python, "
+    "mg_emitter(script, inputs) and em$write() in R"
+)
+
 
 @dataclass(frozen=True)
 class Fragment:
@@ -95,7 +102,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                     code="no-results",
                     message=f"no results fragments in {results_dir}",
                     path=results_dir,
-                    hint="an analysis script should write one with emit()",
+                    hint=f"an analysis script writes one: {HOW_TO_EMIT}",
                 ),
             )
         )

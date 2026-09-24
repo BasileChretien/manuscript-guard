@@ -16,11 +16,19 @@ wrong count in Table 1 survived every check for exactly that reason.
 the new. Reading it raw gives numbers that were deleted and numbers that were inserted, mixed
 together, so the audit reports corrections as errors and misses the text that will actually
 be published. Insertions are kept and deletions dropped, which is what the reader will see.
+
+**The body and the notes are kept apart**, and the body says which of its lines are
+headings. Both are for finding the reference list: the audit drops it, and used to drop
+everything after its heading too — every appendix, and every footnote and endnote, because
+the notes were read after the body. A heading is the only thing that says where a reference
+list ends, and in Word only a paragraph's style says it is one.
 """
 
 from __future__ import annotations
 
 import re
+import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -29,22 +37,110 @@ from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml")
+BODY, NOTES = PARTS[0], PARTS[1:]
+
+# Put in front of a heading paragraph, or one inside a table cell, while the text is
+# assembled, and taken out once its line is known. XML 1.0 cannot carry these characters,
+# so no document text contains them.
+_HEADING_MARK = "\x1e"
+_CELL_MARK = "\x1f"
+_HEADING_NAME = re.compile(r"heading\s*[1-9]", re.IGNORECASE)
 
 
 class NotADocx(Exception):
     """The file is not a readable Word document."""
 
 
-def _in_deletion(node: ET.Element, parents: dict) -> bool:
+@dataclass(frozen=True)
+class DocxText:
+    """A document's text: the body, then the footnotes and endnotes, read apart."""
+
+    body: str
+    notes: str
+    #: 0-based indexes of the lines of `body` whose paragraph is styled as a heading.
+    headings: frozenset[int]
+    #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
+    #: column header rather than the start of a bibliography.
+    cells: frozenset[int] = frozenset()
+
+    @property
+    def text(self) -> str:
+        return _tidy(f"{self.body}\n{self.notes}") if self.notes else self.body
+
+
+def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
     current = parents.get(node)
     while current is not None:
-        if current.tag == W + "del":
+        if current.tag == tag:
             return True
         current = parents.get(current)
     return False
 
 
-def _part_text(root: ET.Element) -> str:
+def _in_deletion(node: ET.Element, parents: dict) -> bool:
+    return _inside(node, parents, W + "del")
+
+
+def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
+    """The paragraph style ids that are headings.
+
+    Read from the style's name rather than its id: the id is localised — a French Word
+    writes `Titre1` — while a built-in style is named "heading 1" in every language.
+    """
+    found = {f"Heading{n}" for n in range(1, 10)}
+    if "word/styles.xml" not in names:
+        return frozenset(found)
+    try:
+        styles = read_part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
+    except UnsafeDocument:
+        return frozenset(found)
+    for style in styles.iter(W + "style"):
+        name = style.find(W + "name")
+        named = name is not None and _HEADING_NAME.fullmatch(name.get(W + "val", ""))
+        if named or style.find(f"{W}pPr/{W}outlineLvl") is not None:
+            found.add(style.get(W + "styleId", ""))
+    return frozenset(found)
+
+
+def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
+    props = paragraph.find(W + "pPr")
+    if props is None:
+        return False
+    style = props.find(W + "pStyle")
+    styled = style is not None and style.get(W + "val") in styles
+    return styled or props.find(W + "outlineLvl") is not None
+
+
+#: Layout elements that read as a space. A manual line break read as nothing ran the
+#: numbers either side of it together: "-0.51" over "-0.72 to -0.30" became "-0.51-0.72".
+_SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
+
+# The Symbol font's characters, by their code in that font, that can stand beside a number.
+_SYMBOL_FONT = {0x2D: "−", 0xB1: "\xb1", 0xA3: "≤", 0xB3: "≥", 0xB4: "\xd7"}
+
+
+def _symbol(node: ET.Element) -> str:
+    """A `w:sym` character: a minus inserted from the Symbol font is an element, not text."""
+    if node.get(W + "font", "").lower() != "symbol":
+        return " "
+    try:
+        code = int(node.get(W + "char", ""), 16)
+    except ValueError:
+        return " "
+    return _SYMBOL_FONT.get(code - 0xF000 if code >= 0xF000 else code, " ")
+
+
+#: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
+#: hyphen (Ctrl+Shift+-, used to keep a minus on its number) or a Symbol-font minus left
+#: "-0.30" as 0.30, and a flipped bound matched.
+_CHARACTERS = {
+    W + "noBreakHyphen": lambda node: "-",
+    W + "softHyphen": lambda node: "",
+    W + "sym": _symbol,
+}
+
+
+def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
     pieces: list[str] = []
 
@@ -52,17 +148,29 @@ def _part_text(root: ET.Element) -> str:
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")
-        elif node.tag == W + "p" or node.tag == W + "tr":
+        elif node.tag == W + "p":
+            heading = _HEADING_MARK if _is_heading(node, headings) else ""
+            cell = _CELL_MARK if _inside(node, parents, W + "tc") else ""
+            pieces.append("\n" + heading + cell)
+        elif node.tag == W + "tr":
             pieces.append("\n")
-        elif node.tag == W + "tab":
-            pieces.append("\t")
+        elif node.tag in _SPACES:
+            pieces.append(" ")
+        elif node.tag in _CHARACTERS and not _in_deletion(node, parents):
+            pieces.append(_CHARACTERS[node.tag](node))
         elif node.tag == W + "t" and node.text and not _in_deletion(node, parents):
             pieces.append(node.text)
 
     return "".join(pieces)
 
 
-def read_docx(path: Path) -> str:
+def _tidy(text: str) -> str:
+    # Collapse runs of spaces but keep line structure, so findings can cite a line.
+    text = re.sub(r"[ \t]+", " ", text)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def read_docx_text(path: Path) -> DocxText:
     """Visible text of a .docx with tracked changes accepted, tables kept separable.
 
     The document may have come from a collaborator, so it is parsed through `safexml`:
@@ -74,21 +182,27 @@ def read_docx(path: Path) -> str:
         raise NotADocx(str(exc)) from exc
 
     names = set(archive.namelist())
-    if "word/document.xml" not in names:
+    if BODY not in names:
         raise NotADocx(f"{path.name}: no word/document.xml; is this really a .docx?")
 
-    out = []
-    for part in PARTS:
-        if part in names:
-            try:
-                out.append(_part_text(read_part(archive, part, what=f"{path.name}:{part}")))
-            except UnsafeDocument as exc:
-                raise NotADocx(str(exc)) from exc
+    def text_of(part: str, styles: frozenset[str] = frozenset()) -> str:
+        try:
+            return _part_text(read_part(archive, part, what=f"{path.name}:{part}"), styles)
+        except UnsafeDocument as exc:
+            raise NotADocx(str(exc)) from exc
 
-    text = "\n".join(out)
-    # Collapse runs of spaces but keep line structure, so findings can cite a line.
-    text = re.sub(r"[ \t]+", " ", text)
-    return re.sub(r"\n{3,}", "\n\n", text)
+    marked = _tidy(text_of(BODY, _heading_styles(archive, names, path.name)))
+    lines = marked.split("\n")
+    headings = frozenset(i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK))
+    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
+    notes = _tidy("\n".join(text_of(part) for part in NOTES if part in names))
+    body = marked.replace(_HEADING_MARK, "").replace(_CELL_MARK, "")
+    return DocxText(body=body, notes=notes, headings=headings, cells=cells)
+
+
+def read_docx(path: Path) -> str:
+    """The whole visible text, body then notes. See `read_docx_text`."""
+    return read_docx_text(path).text
 
 
 def is_docx(path: Path) -> bool:

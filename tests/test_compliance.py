@@ -86,6 +86,33 @@ def test_sections_are_split_on_top_level_headings() -> None:
     assert sections[-1].is_references
 
 
+def test_a_subsection_stays_inside_its_parent() -> None:
+    """The docstring always said so; `body` stopped at the next heading of any level, so
+    every caller asking for "the Methods" got the Methods up to its first subsection."""
+    text = "# Methods\n\nB.\n\n## Detail\n\nC.\n\n### Deeper\n\nD.\n\n# Results\n\nE.\n"
+    methods, detail, deeper, results = split_sections(text)
+    assert "C." not in methods.body, "body is the section's own text, so bodies can be summed"
+    assert all(part in methods.enclosed for part in ("B.", "## Detail", "C.", "D."))
+    assert "E." not in methods.enclosed
+    assert "D." in detail.enclosed and "B." not in detail.enclosed
+    assert deeper.enclosed.strip() == "D."
+    assert results.enclosed.strip() == "E."
+
+
+def test_a_subsection_of_the_abstract_is_counted_as_abstract() -> None:
+    """A structured abstract written with `## Background` headings was counted as main
+    text, so its words escaped the abstract's limit."""
+    flat = "# Abstract\n\nOne two three four.\n\n# Introduction\n\nFive six.\n"
+    nested = (
+        "# Abstract\n\n## Background\n\nOne two.\n\n## Methods\n\nThree four.\n\n"
+        "# Introduction\n\nFive six.\n\n# References\n\n## Primary\n\nSmith 2019.\n"
+    )
+    assert measure(flat).abstract_words == 4
+    counts = measure(nested)
+    assert counts.abstract_words == 4 + 2, "four words, plus the two subsection headings"
+    assert counts.main_text_words == measure(flat).main_text_words
+
+
 def test_the_abstract_and_references_are_counted_apart(project: Path) -> None:
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     counts = measure(text)

@@ -242,6 +242,87 @@ PARAGRAPHS = {
 }
 
 
+RULED = {
+    "three rows": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
+    ),
+    "caption straight under": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\nTable: Caption."
+    ),
+    "colon caption straight under": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n: Caption."
+    ),
+    "first column two dashes wide": (
+        "-- ---------- ----------\n#  Drug       Signal\n-- ---------- ----------\n"
+        "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
+        "-- ---------- ----------"
+    ),
+    "yaml closed by dots": "---\ntitle: x\nabstract: |\n  a\n\n  b\n...",
+}
+
+
+@pytest.mark.parametrize("name", sorted(RULED))
+def test_no_marker_inside_a_table_or_yaml_across_blank_lines(name: str) -> None:
+    """A multiline table's rows are separated by blank lines, so its middle rows look like
+    paragraphs. Marked, the identifier printed into a cell, or became a bookmark on one cell
+    that `import` spliced over the whole row."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(f"Before.\n\n{RULED[name]}\n\nAfter.\n", "main.md")
+    assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tagged) == ["Before", "After"], tagged
+
+
+def test_a_table_closed_by_its_caption_does_not_hide_what_follows() -> None:
+    """A one-row table with its caption straight under it ends at the caption. Read as
+    left open, it paired with the next line of dashes - a setext heading - and every
+    paragraph in between lost its identifier."""
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
+        "---------- ----------\nTable: One row.\n\nP1.\n\nP2.\n\nMethods\n-------\n\nP3.\n"
+    )
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(text, "main.md"))
+    assert marked == ["P1", "P2", "P3"]
+
+
+def _docx_with_body(path: Path, body: str) -> Path:
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.'
+        f'openxmlformats.org/wordprocessingml/2006/main"><w:body>{body}</w:body></w:document>'
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    return path
+
+
+def _para(name: str, text: str) -> str:
+    return (
+        f'<w:p><w:bookmarkStart w:id="0" w:name="{name}"/><w:r><w:t>{text}</w:t></w:r>'
+        '<w:bookmarkEnd w:id="0"/></w:p>'
+    )
+
+
+def test_a_bookmark_in_a_table_cell_is_not_an_identity(tmp_path: Path) -> None:
+    """A cell's bookmark names a cell, and `import` splices over the whole block its
+    identifier names: an edit to one cell deleted the rest of the row from the source. Every
+    build before identifiers moved off tables put one in each pipe table's first cell, so
+    documents already out with co-authors carry them."""
+    from manuscript_guard.roundtrip import paragraph_order, paragraph_text
+
+    cell = f"<w:tc>{_para('mg-p-a-1', 'Apixaban')}</w:tc>"
+    nested = f"<w:tc><w:tbl><w:tr><w:tc>{_para('mg-p-a-2', 'inner')}</w:tc></w:tr></w:tbl></w:tc>"
+    document = _docx_with_body(
+        tmp_path / "returned.docx",
+        f"<w:tbl><w:tblPr/><w:tr>{cell}{nested}</w:tr></w:tbl>{_para('mg-p-a-3', 'Prose.')}",
+    )
+    assert paragraph_text(document) == {"mg-p-a-3": "Prose."}
+    assert paragraph_order(document) == ["mg-p-a-3"]
+
+
 def test_paragraphs_joined_by_a_line_pandoc_does_not_call_blank_are_not_marked() -> None:
     """A non-breaking space alone on a line split the text into two blocks, both marked,
     where pandoc reads one paragraph; `import --apply` then wrote the second half twice.
@@ -292,6 +373,11 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
         "text\n<pre>\ncode\n\nmore\n</pre>\n\n"
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    Thrombocytopenia\n---------- ----------\n\n"
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\nTable: Caption.\n\n"
+        "-- ---------- ----------\n#  Drug       Signal\n-- ---------- ----------\n"
+        "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
+        "-- ---------- ----------\n\n"
         "---\ntitle: x\nabstract: |\n  a\n\n  b\n...\n\n"
         "After.\n"
     )

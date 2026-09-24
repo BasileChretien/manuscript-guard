@@ -1215,7 +1215,15 @@ sentence after it — and exited 0. The last is invisible to pandoc's reader, wh
 `$$...$$` inside the paragraph; its Word writer gives the equation a paragraph of its own and
 the bookmark stays on the words before it. So a block is marked only when the whole of it
 becomes one paragraph, and `tests/test_pandoc_agreement.py` asks pandoc directly, of both its
-reader and the .docx it writes, for each construct in its table, whether that holds. Lists and quotes cost their identifiers, and their edits are counted as
+reader and the .docx it writes, for each construct in its table, whether that holds.
+
+Four review rounds each found another structure a marker could slip inside, the last a
+multiline table with its caption straight under it, where the marker became a bookmark on
+one cell and `import --apply` deleted the rest of the row from the source. So `import`
+also refuses the identity outright where it can never be right: a bookmark inside a table
+cell is ignored when a document is read back. A cell is never a source block, every build
+before this change put a bookmark in each pipe table's first cell, and a construct the
+patterns miss could put one there again. Lists and quotes cost their identifiers, and their edits are counted as
 unexamined rather than merged; see Known gaps.
 
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,

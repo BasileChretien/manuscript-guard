@@ -370,6 +370,29 @@ TAGGING = {
         "Intro.\n\n---\ntitle: x\nabstract: |\n  a\n\n  b\n...\n\nAfter.\n"
     ),
     "a rule between paragraphs": "Before.\n\n---\n\nAfter.\n",
+    "multiline table with its caption straight under it": (
+        "Before.\n\n"
+        "---------- -----------------------\n Drug      Signal\n"
+        "---------- -----------------------\nWarfarin   Bleeding, strongest\n"
+        "           in older patients.\n\nApixaban   Bleeding, weaker\n"
+        "           than warfarin.\n\nHeparin    Thrombocytopenia.\n"
+        "---------- -----------------------\nTable: Signals by drug.\n\nAfter.\n"
+    ),
+    "multiline table with a colon caption straight under it": (
+        "Before.\n\n"
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    Thrombocytopenia\n---------- ----------\n"
+        ": Signals by drug.\n\nAfter.\n"
+    ),
+    "multiline table whose first column is two dashes wide": (
+        "Before.\n\n-- ---------- ----------\n#  Drug       Signal\n-- ---------- ----------\n"
+        "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
+        "-- ---------- ----------\n\nAfter.\n"
+    ),
+    "one-row table with its caption straight under it, then prose": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
+        "---------- ----------\nTable: One row.\n\nP1.\n\nP2.\n\nMethods\n-------\n\nP3.\n"
+    ),
     "a comment opened in the block where a fence closes": (
         f"{FENCE}\ncode\n\nmore\n{FENCE}\ntext <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
     ),

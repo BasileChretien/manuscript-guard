@@ -197,7 +197,7 @@ def _comment_anchors(document: Path) -> dict[str, str]:
         xml = archive.read("word/document.xml").decode("utf-8")
 
     found: dict[str, str] = {}
-    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
+    for block in re.findall(r"<w:p\b.*?</w:p>", _outside_tables(xml), re.DOTALL):
         names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
         if not names:
             continue
@@ -481,9 +481,25 @@ def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
 
 
 # A multiline table's rows are separated by blank lines, and a YAML block in the body may
-# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML).
-_DASH_RULE = re.compile(r" {0,3}-{3,}[- \t]*")
-_RULED_EDGE = re.compile(r" {0,3}(?:-{3,}[- \t]*|\.\.\.[ \t]*)")
+# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML). A
+# table's first column may be one dash wide, so the dashes are counted rather than run.
+_DASH_GROUPS = re.compile(r" {0,3}-+(?:[ \t]+-+)*[ \t]*")
+
+
+def _dash_rule(line: str) -> bool:
+    return _DASH_GROUPS.fullmatch(line) is not None and line.count("-") >= 3
+
+
+def _closes_ruled(lines: list[str]) -> bool:
+    """Whether a block ends a table or a YAML block: on its last rule, or on a rule with the
+    table's caption straight under it, which pandoc takes without a blank line between."""
+    edges = [i for i, line in enumerate(lines) if _dash_rule(line) or line.strip() == "..."]
+    if not edges:
+        return False
+    after = lines[edges[-1] + 1 :]
+    return not after or _CAPTION.match(after[0]) is not None or (
+        _DEFINITION.match(after[0]) is not None
+    )
 
 
 def _ruled_spans(pieces: list[str]) -> dict[int, int]:
@@ -496,8 +512,8 @@ def _ruled_spans(pieces: list[str]) -> dict[int, int]:
     for index in range(0, len(pieces), 2):
         lines = [line for line in pieces[index].split("\n") if line.strip()]
         if lines:
-            closing[index] = _RULED_EDGE.fullmatch(lines[-1]) is not None
-            opening[index] = _DASH_RULE.fullmatch(lines[0]) is not None and not closing[index]
+            closing[index] = _closes_ruled(lines)
+            opening[index] = _dash_rule(lines[0]) and not closing[index]
     spans: dict[int, int] = {}
     following: int | None = None
     for index in range(len(pieces) - 1, -1, -1):
@@ -620,6 +636,35 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
     return found
 
 
+_TABLE_TAG = re.compile(r"<w:tbl\b[^>]*>|</w:tbl>")
+
+
+def _outside_tables(xml: str) -> str:
+    """The document body with every table taken out.
+
+    A bookmark in a table cell names a cell, never a source block, and `import` splices a
+    paragraph over the whole block its identifier names: a co-author's edit to one cell
+    deleted the rest of the row from the source. Every build before identifiers moved off
+    tables put one in the first cell of each pipe table, and a construct the tagging misses
+    could put one there again, so a cell's bookmark is not taken as an identity at all.
+    """
+    kept: list[str] = []
+    depth = 0
+    cursor = 0
+    for found in _TABLE_TAG.finditer(xml):
+        if found.group(0).startswith("</"):
+            if depth == 1:
+                cursor = found.end()
+            depth = max(depth - 1, 0)
+        else:
+            if depth == 0:
+                kept.append(xml[cursor : found.start()])
+            depth += 1
+    if depth == 0:
+        kept.append(xml[cursor:])
+    return "".join(kept)
+
+
 def paragraph_order(document: Path) -> list[str]:
     """The identifiers a returned document carries, in the order they now appear.
 
@@ -628,7 +673,7 @@ def paragraph_order(document: Path) -> list[str]:
     """
     with zipfile.ZipFile(document) as archive:
         xml = archive.read("word/document.xml").decode("utf-8")
-    return re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', xml)
+    return re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', _outside_tables(xml))
 
 
 def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
@@ -674,7 +719,7 @@ def paragraph_text(document: Path) -> dict[str, str]:
         xml = archive.read("word/document.xml").decode("utf-8")
 
     found: dict[str, str] = {}
-    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
+    for block in re.findall(r"<w:p\b.*?</w:p>", _outside_tables(xml), re.DOTALL):
         names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
         if not names:
             continue

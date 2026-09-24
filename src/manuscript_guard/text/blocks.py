@@ -125,17 +125,20 @@ _UNDERLINE = re.compile(r"^(?:=+|-+)[ \t]*$")
 _THEMATIC_BREAK = re.compile(r"^[ ]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
 # Pandoc's markers: bullets, numbers, letters, roman numerals, `#` and example `@`, closed by
 # a full stop or a bracket. A capital and a full stop need two spaces after them, so
-# "A. Smith agreed" and "I. Introduction" are prose.
+# "A. Smith agreed" and "I. Introduction" are prose, and so is a page reference, "p. 12".
+_ROMAN = r"m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})"
+_ROMAN_UPPER = _ROMAN.upper()
 _LIST_ITEM = re.compile(
-    r"^(?P<marker>[ ]{0,3}(?:[-*+]"
-    r"|\((?:\d{1,9}|#|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+|@[\w-]*)\)"
-    r"|(?:\d{1,9}|#|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,}|@[\w-]*)[.)]"
+    r"^(?P<marker>[ ]{0,3}(?!p\.[ \t]+\d)(?:[-*+]"
+    rf"|\((?:\d{{1,9}}|#|[A-Za-z]|(?=[ivxlcdm]){_ROMAN}|(?=[IVXLCDM]){_ROMAN_UPPER}|@[\w-]*)\)"
+    rf"|(?:\d{{1,9}}|#|[a-z]|(?=[ivxlcdm]{{2}}){_ROMAN}|(?=[IVXLCDM]{{2}}){_ROMAN_UPPER}"
+    r"|@[\w-]*)[.)]"
     r"|[A-Z]\)|[A-Z]\.(?=[ \t]{2}|\t)))"
     r"(?P<gap>[ \t]+|$)"
 )
 _QUOTE = re.compile(r"^[ ]{0,3}>")
 # A class or attributes and nothing else: "::: note text here" is a paragraph.
-_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}:]+)[ \t]*:*[ \t]*$")
+_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}]+)[ \t]*:*[ \t]*$")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
 # A grid table opens on `+-` or `+=`, a line block on a pipe and a space: "+12% more reports"
@@ -145,23 +148,40 @@ _GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
 _LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
 _CAPTION = re.compile(r"^[ ]{0,3}(?:[Tt]able:|:(?![^\w\s]))")
-# A link definition: a destination and at most a title. "[@smith2020]: they found it" is
-# prose.
+# A link definition: a destination, then at most a title and attributes.
+# "[@smith2020]: they found it" is prose.
 _REFERENCE = re.compile(
-    r"""^[ ]{0,3}\[(?!\^)[^\]]+\]:[ \t]*\S+(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"""
+    r"""^[ ]{0,3}\[(?!\^)[^\]]+\]:[ \t]*(?:<[^>\n]*>|\S+)"""
+    r"""(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?(?:[ \t]*\{[^}\n]*\})?[ \t]*$"""
 )
 
-# Tags pandoc will not read inline, checked against pandoc 3.9 one by one. A line starting
-# with one is a block, and one ending with one ends the paragraph it closes.
+# HTML, with every tag checked against pandoc 3.9. Block-level tags are never read inline: a
+# line starting with one is a block, and a paragraph ends at one. Pandoc's "either" tags are
+# a block at the margin and inline inside a paragraph. The verbatim ones hold everything up
+# to their closing tag, when there is one.
 _BLOCK_TAGS = (
     "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|dir|"
     "div|dl|dt|fieldset|figcaption|figure|footer|form|frameset|h[1-6]|head|header|hgroup|hr|"
     "html|isindex|li|main|menu|meta|nav|noframes|ol|output|p|pre|script|section|summary|"
     "table|tbody|td|textarea|tfoot|th|thead|title|tr|ul"
 )
+_EITHER_TAGS = (
+    "applet|area|audio|button|del|embed|iframe|ins|map|noscript|object|progress|source|style|"
+    "svg|video"
+)
+_VOID_TAGS = frozenset({"area", "col", "embed", "hr", "isindex", "meta", "source"})
 _BLOCK_TAG = re.compile(rf"^[ ]{{0,3}}</?(?:{_BLOCK_TAGS})(?=[\s/>]|$)", re.IGNORECASE)
+_START_TAG = re.compile(
+    rf"^[ ]{{0,3}}</?(?:{_BLOCK_TAGS}|{_EITHER_TAGS})(?=[\s/>]|$)", re.IGNORECASE
+)
 _A_BLOCK_TAG = re.compile(rf"</?(?:{_BLOCK_TAGS})(?=[\s/>]|$)", re.IGNORECASE)
-_DIV_END = re.compile(r"^[ ]{0,3}</div\s*>", re.IGNORECASE)
+_HTML_DIV = re.compile(r"^[ ]{0,3}</?div(?=[\s/>]|$)", re.IGNORECASE)
+_OPENS = re.compile(rf"^[ ]{{0,3}}<({_BLOCK_TAGS}|{_EITHER_TAGS})(?=[\s/>]|$)", re.IGNORECASE)
+_CLOSES = re.compile(rf"</({_BLOCK_TAGS}|{_EITHER_TAGS})\s*>$", re.IGNORECASE)
+_VERBATIM = re.compile(r"<(pre|script|style|textarea)(?=[\s>])", re.IGNORECASE)
+# What ends a block quote's lazy lines: the closing tag of an HTML block it sits in, at the
+# margin.
+_QUOTE_STOP = re.compile(rf"^</({_BLOCK_TAGS}|{_EITHER_TAGS})\s*>", re.IGNORECASE)
 
 
 def _blank(line: str) -> bool:
@@ -170,30 +190,28 @@ def _blank(line: str) -> bool:
 
 
 def _ends_on_block_tag(line: str) -> bool:
-    """A line whose last word is a run of tags holding a block-level one.
+    """A line whose last tag, closing the line, is block-level.
 
     Pandoc will not read a block-level tag inline, so the paragraph ends where one starts,
-    and when nothing but tags follow it on the line the next line starts a block:
-    "Last sentence.<hr>" over `## Results` leaves the heading a heading. Read from the end,
-    a tag at a time, so a line of many tags costs one pass.
+    and when it closes the line the next line starts a block: "Last sentence.<hr>" over
+    `## Results` leaves the heading a heading. An inline tag after it, "<hr><br>", opens a
+    new paragraph, which the `#` line then continues.
     """
     rest = line.rstrip(" \t")
-    found = False
-    while rest.endswith(">"):
-        opening = rest.rfind("<")
-        if opening == -1:
-            return False
-        found = found or _A_BLOCK_TAG.match(rest, opening) is not None
-        rest = rest[:opening].rstrip(" \t")
-    return found
+    opening = rest.rfind("<")
+    return (
+        rest.endswith(">") and opening != -1 and _A_BLOCK_TAG.match(rest, opening) is not None
+    )
 
 
-def _div_balance(line: str) -> int:
-    """HTML divs this line opens, less those it closes."""
-    if "<" not in line:
-        return 0
-    lowered = line.lower()
-    return len(re.findall(r"<div(?=[\s>])", lowered)) - lowered.count("</div")
+def _html_balance(line: str) -> tuple[str | None, str | None]:
+    """The HTML block this line opens at its start, and the one it closes at its end."""
+    opens = _OPENS.match(line)
+    opened = opens.group(1).lower() if opens else None
+    if opened in _VOID_TAGS or (opened and f"</{opened}" in line[opens.end() :].lower()):
+        opened = None
+    closes = _CLOSES.search(line.rstrip(" \t"))
+    return opened, closes.group(1).lower() if closes else None
 
 # Raw LaTeX. A line of nothing but commands is a block unless a command is one pandoc reads
 # inline, so `\newpage` over `# References` leaves the heading a heading, and `\textbf{Note}`
@@ -302,9 +320,12 @@ class _Walk:
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
         self.divs = 0
-        #: HTML divs open around this line, which a block quote's lazy lines stop to close.
-        self.html_divs = 0
+        #: HTML blocks open around this line, by tag, which a block quote's lazy lines stop
+        #: to close. Counted from tags that start or end a line, not from ones in the middle
+        #: of one, which is where inline code mentions them.
+        self.html: dict[str, int] = {}
         self._ends: dict[str, list[int]] | None = None
+        self._closers: dict[str, list[int]] = {}
 
     def run(self) -> list[Heading]:
         index = 0
@@ -322,17 +343,46 @@ class _Walk:
                 self.open = None
             return index + 1
         after = self._line(index)
-        self.html_divs = max(0, self.html_divs + _div_balance(line.shown))
+        opened, closed = _html_balance(line.shown)
+        if opened:
+            self.html[opened] = self.html.get(opened, 0) + 1
+        if closed and self.html.get(closed):
+            self.html[closed] -= 1
         return after
 
     def _line(self, index: int) -> int:
-        shown = self.lines[index].shown
         if self.open is not None and self._continues(index):
-            if self.open != _QUOTE_LINES and _ends_on_block_tag(shown):
-                self.open = None
-            return index + 1
+            return index + 1 if self.open == _QUOTE_LINES else self._paragraph_line(index)
         self.open = None
         return self._block(index)
+
+    def _paragraph_line(self, index: int) -> int:
+        """After a line of a paragraph or a list item: a block-level tag closing the line ends
+        it, and a `<pre>`, `<script>` or `<textarea>` it leaves open holds everything up to
+        its closing tag."""
+        after = self._verbatim(index, ("pre", "script", "textarea"))
+        if after is not None or _ends_on_block_tag(self.lines[index].shown):
+            self.open = None
+        return after if after is not None else index + 1
+
+    def _verbatim(self, index: int, tags: tuple[str, ...]) -> int | None:
+        """The line after the closing tag of a verbatim element this line leaves open, or
+        None. One that is never closed is not verbatim: pandoc reads on as usual."""
+        shown = self.lines[index].shown
+        opened = [m for m in _VERBATIM.finditer(shown) if m.group(1).lower() in tags]
+        if not opened:
+            return None
+        name = opened[-1].group(1).lower()
+        if f"</{name}" in shown[opened[-1].end() :].lower():
+            return None
+        if name not in self._closers:
+            closing = f"</{name}"
+            self._closers[name] = [
+                number for number, line in enumerate(self.lines) if closing in line.shown.lower()
+            ]
+        closers = self._closers[name]
+        later = bisect_right(closers, index)
+        return closers[later] + 1 if later < len(closers) else None
 
     def _fence(self, last: int, char: str, indented: bool) -> int:
         # A backtick fence at the margin interrupts a paragraph. A tilde one, or an indented
@@ -351,7 +401,8 @@ class _Walk:
         if self.divs and _DIV_CLOSE.match(shown):
             return False
         if self.open == _QUOTE_LINES:
-            return not (self.html_divs and _DIV_END.match(shown))
+            closes = _QUOTE_STOP.match(shown)
+            return not (closes and self.html.get(closes.group(1).lower()))
         return not _BLOCK_TAG.match(shown) and self._environment(index) is None
 
     def _block(self, index: int) -> int:
@@ -362,8 +413,8 @@ class _Walk:
             after = opens(index)
             if after is not None:
                 return after
-        self.open = None if _ends_on_block_tag(shown) else _PARAGRAPH
-        return index + 1
+        self.open = _PARAGRAPH
+        return self._paragraph_line(index)
 
     def _in_list(self, shown: str) -> bool:
         """An indented line under a list item belongs to it: a paragraph, or code if it is
@@ -377,20 +428,32 @@ class _Walk:
         return True
 
     def _container(self, index: int) -> int | None:
-        """Fenced divs and HTML blocks, which pandoc reads before it looks for a heading."""
+        """Divs, fenced or HTML, which pandoc reads before it looks for a heading. Other HTML
+        blocks come after: `<noscript>` over an underline is a heading."""
         shown = self.lines[index].shown
         if _DIV_OPEN.match(shown):
             self.divs += 1
         elif self.divs and _DIV_CLOSE.match(shown):
             self.divs -= 1
-        elif not _BLOCK_TAG.match(shown):
+        elif not _HTML_DIV.match(shown):
             return None
         return index + 1
+
+    def _html_block(self, index: int) -> int | None:
+        if not _START_TAG.match(self.lines[index].shown):
+            return None
+        after = self._verbatim(index, ("pre", "script", "style", "textarea"))
+        return after if after is not None else index + 1
 
     def _heading(self, index: int) -> int | None:
         line = self.lines[index]
         below = self.lines[index + 1] if index + 1 < len(self.lines) else None
-        if below is not None and _UNDERLINE.match(below.shown):
+        # A block-level tag in the title ends its inline text short, and the underline with it.
+        if (
+            below is not None
+            and _UNDERLINE.match(below.shown)
+            and not _A_BLOCK_TAG.search(line.shown)
+        ):
             level = 1 if below.shown.startswith("=") else 2
             self.found.append(Heading(line.start, level, line.shown.strip(), setext=True))
             return index + 2
@@ -404,6 +467,9 @@ class _Walk:
     def _leaf(self, index: int) -> int | None:
         """Blocks that end at their own last line, so a heading may follow with no blank."""
         shown = self.lines[index].shown
+        html = self._html_block(index)
+        if html is not None:
+            return html
         if shown.startswith(("    ", "\t")) or _THEMATIC_BREAK.match(shown):
             return index + 1
         item = _LIST_ITEM.match(shown)
@@ -411,7 +477,7 @@ class _Walk:
             gap = len(item.group("gap"))
             self.list_indent = len(item.group("marker")) + (gap if 0 < gap <= 4 else 1)
             self.open = _ITEM
-            return index + 1
+            return self._paragraph_line(index)
         if _QUOTE.match(shown):
             self.open = _QUOTE_LINES
             return index + 1

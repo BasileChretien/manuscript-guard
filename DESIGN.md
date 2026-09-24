@@ -2051,14 +2051,18 @@ Closed since, and why each mattered:
   build writes an image there, and a heading under it is printed as text.
 - **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
   line of nothing but LaTeX commands is a block unless one of them is on a list of inline
-  commands, and a line starting or ending with a tag ends a paragraph if the tag is on a list
-  of block-level ones. Every entry was checked against pandoc 3.9, and a name on neither
-  list is read as pandoc reads most unknown ones: a LaTeX command as a block, a tag as
-  inline. A block quote's lazy lines stop at `</div>` only while the gates count an HTML div
-  open around them, and a `<div>` inside a table or a LaTeX environment is not counted.
-  Pandoc also drops the indentation of the line after a raw block, and
-  reads a setext title that is only an HTML comment as an empty heading, where the gates see
-  none.
+  commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
+  verbatim (`pre`, `script`, `style`, `textarea`, holding everything to their closing tag)
+  or inline, by list. A paragraph ends at a line starting with a block-level tag, and after
+  one whose last tag is block-level. Every entry was checked against pandoc 3.9, and a name
+  on no list is read as pandoc reads most unknown ones: a LaTeX command as a block, a tag as
+  inline. A block quote's lazy lines stop at the closing tag of an HTML block counted open
+  around them, and only tags that start or end a line are counted, so one opened in the
+  middle of a line, or inside a table or a LaTeX environment, is not. Pandoc also drops the
+  indentation of the line after a raw block, and reads a setext title that is only an HTML
+  comment as an empty heading, where the gates see none. A heading's title keeps its raw
+  HTML and LaTeX, which pandoc's printed title does not show, so `## Methods <span>` is not
+  read as Methods.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

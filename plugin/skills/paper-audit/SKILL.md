@@ -36,7 +36,8 @@ they exist.
 analysis, figures taken from a protocol: anything not in `--against` comes back unmatched.
 
 **It reads `.json .csv .tsv .txt .yaml .yml .md`, and skips everything else in silence**,
-including `.xlsx`, `.rds`, `.log` and `.html`, and including paths that do not exist.
+including `.xlsx`, `.rds`, `.log` and `.html`, any `.json` that does not parse (JSON
+Lines saved as `.json` among them), and paths that do not exist.
 Export spreadsheets to CSV first. Then read the first line of the report: `against 0
 distinct numbers from 0 output file(s)` means no supported file was read, whether from a
 typo, an empty folder or a folder of unsupported files. It never means a clean paper.
@@ -84,12 +85,18 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | A reference entry | See below |
 | `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
 
-The bibliography is dropped from the first line that is a heading reading `References`,
-`Bibliography`, `Works cited` or `Literature cited`, with or without a leading `#`, a
-section number or a trailing colon. `Reference list` is not recognised. Without a heading,
-only author-year entries (`Surname, Given … 2019`) are recognised as references; Vancouver
-entries are not, so their volume and page numbers are reported. Add a recognised heading to
-a copy of the document rather than reading past forty spurious findings.
+The bibliography is dropped from the first line that reads `References`, `Bibliography`,
+`Works cited` or `Literature cited`, with or without a leading `#`, a number such as `5.` or
+`5)`, or a trailing colon. `Reference list`, `5 References` and a bold `**References**`
+paragraph are not recognised. Add a recognised heading to a copy of the document rather
+than reading past forty spurious findings.
+
+Without a heading, a line counts as a reference entry by its shape alone: a capitalised
+word, a comma, another capitalised word, and a year within about 200 characters. That
+catches author-year entries and misses Vancouver ones (`Smith J, …`), whose volume and page
+numbers are then reported. **It also catches body text.** In a `.docx` a line is a whole
+paragraph, so one that opens "Overall, Japanese patients … 2019" is treated as a reference
+and none of its numbers is compared, without a word in the report.
 
 ## 5. Say what a clean report does not mean
 
@@ -97,8 +104,9 @@ A match means the number appears somewhere in the outputs. It does not mean it a
 the right place: a value correct in the abstract and wrong in the Results passes. An
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
-includes `p < 0.05` anywhere in the text and everything after the references heading,
-appendices included.
+includes `p < 0.05` anywhere in the text, everything after the references heading,
+appendices included, and any paragraph shaped like a reference entry (section 4). Read the
+paragraphs that open with a word, a comma and a capitalised word yourself.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

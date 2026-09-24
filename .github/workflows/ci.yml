@@ -26,18 +26,24 @@ jobs:
       - run: pytest -q
 
   plugin-manifests:
-    # A marketplace manifest with one key Claude Code refuses cannot be installed by anyone,
-    # and every other job skips the test that would notice. Validation reads JSON only: no
-    # model and no credentials are involved.
+    # Validation reads JSON only: no model and no credentials are involved. Two versions,
+    # because they disagree: 2.1.119 refuses root keys ($schema, description) that the
+    # latest release accepts, so a manifest checked only against the latest can still fail
+    # for anyone who has not updated. 2.1.119 is the oldest version the plugin was verified
+    # with, and has no --strict; on the latest, --strict turns unknown keys into failures.
+    strategy:
+      fail-fast: false
+      matrix:
+        claude: ["2.1.119", "latest"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - run: npm install -g @anthropic-ai/claude-code
-      - run: claude plugin validate .
-      - run: claude plugin validate plugin
+          node-version: "22"
+      - run: npm install -g @anthropic-ai/claude-code@${{ matrix.claude }}
+      - run: claude plugin validate ${{ matrix.claude == 'latest' && '--strict' || '' }} .
+      - run: claude plugin validate ${{ matrix.claude == 'latest' && '--strict' || '' }} plugin
 
   r-interop:
     # The results contract is only a contract if a second language can honour it.

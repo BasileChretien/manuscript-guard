@@ -45,7 +45,12 @@ manuscript-guard init . --title "Working title"          # an existing analysis 
 ```
 
 It never overwrites an existing file, so the second form adds manuscript-guard to a
-repository that already holds an analysis, with `paper.yaml` at its root. It creates:
+repository that already holds an analysis, with `paper.yaml` at its root. That also means
+an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was, without a word:
+add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` to
+`.gitignore`, by hand. And `results/` belongs to manuscript-guard, which reads every
+`results/*.json` as a fragment and fails on anything else; the emitters always write there,
+so move whatever the analysis already keeps in `results/` somewhere else. It creates:
 
 ```
 paper.yaml             stage, English variant, target journal, reporting guideline

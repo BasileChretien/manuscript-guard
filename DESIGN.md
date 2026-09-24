@@ -1730,6 +1730,14 @@ Closed since, and why each mattered:
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a
   guarantee.
+- **The audit's reference-entry shape also matches body paragraphs.** Without a
+  bibliography heading, a line is a reference if it opens with a capitalised word, a comma
+  and another capitalised word, with a year within 200 characters. In a `.docx` a line is a
+  paragraph, so "Overall, Japanese patients accounted for 412 of 8,393 cases reported
+  between 2010 and 2019." is classified as a reference and none of its numbers is compared,
+  silently. This is the unsafe direction for an audit. Found by an independent review of the
+  plugin skills, 2026-09-24; the `paper-audit` skill tells the reader to check such
+  paragraphs by hand until the shape is tightened.
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
   and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
   ones are not distinguishable from a sentence break.

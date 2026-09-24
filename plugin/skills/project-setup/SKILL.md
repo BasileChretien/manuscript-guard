@@ -48,9 +48,12 @@ It never overwrites an existing file, so the second form adds manuscript-guard t
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
 an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was, without a word:
 add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` to
-`.gitignore`, by hand. And `results/` belongs to manuscript-guard, which reads every
-`results/*.json` as a fragment and fails on anything else; the emitters always write there,
-so move whatever the analysis already keeps in `results/` somewhere else. It creates:
+`.gitignore`, by hand. And `results/` belongs to manuscript-guard: every `.json` directly
+in it is read as a results fragment and fails the schema if it is not one, and `verify`
+empties the whole directory in its scratch copy. If the analysis already keeps its own
+output there, either move that output, or set `paths: {results: <dir>}` in `paper.yaml`
+and pass the same path to every emitter's `write()`, because the emitters default to
+`results/` and do not read `paper.yaml`. It creates:
 
 ```
 paper.yaml             stage, English variant, target journal, reporting guideline

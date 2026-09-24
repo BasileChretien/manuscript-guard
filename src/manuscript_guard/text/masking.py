@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import Fence, fenced_spans
 
 NUL = "\x00"
 
@@ -46,6 +46,13 @@ def without_front_matter(text: str) -> str:
     """`text` after its front matter: the part of a source file the build prints."""
     return text[front_matter_end(text) :]
 
+
+def fenced_blocks(text: str) -> list[Fence]:
+    """The fenced blocks of the front matter and of the body, none opening in one and
+    closing in the other. A code block in an abstract is still code: looked for in the body
+    alone, its `<!--` opened a comment that hid the abstract's prose."""
+    head = front_matter_end(text)
+    return [*fenced_spans(text[:head]), *fenced_spans(text, head)]
 
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of
@@ -162,7 +169,7 @@ def mask(text: str) -> str:
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    for fence in fenced_spans(text, head):
+    for fence in fenced_blocks(text):
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
@@ -180,7 +187,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
     head = front_matter_end(text)
-    fences = [(f.start, f.end) for f in fenced_spans(text, head)]
+    fences = [(f.start, f.end) for f in fenced_blocks(text)]
     if fences:
         found["fenced-code"] = fences
         chars = list(working)

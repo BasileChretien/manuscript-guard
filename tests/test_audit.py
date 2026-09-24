@@ -22,9 +22,10 @@ from manuscript_guard.audit import (
     render,
     strip_bibliography,
 )
-from manuscript_guard.text.docx import NotADocx, read_docx, read_docx_text
+from manuscript_guard.text.docx import DocxText, NotADocx, read_docx, read_docx_text
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
 
 # A fixed timestamp, so the same body always gives the same bytes (see test_transcribe).
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
@@ -125,6 +126,58 @@ def test_a_joined_line_in_a_table_cell_is_still_a_cell(tmp_path: Path) -> None:
     lines = document.body.split("\n")
     assert lines[-1] == "-0.51", lines
     assert len(lines) - 1 in document.cells
+
+
+def text_box(inside: str, *, fallback: bool) -> str:
+    """A run holding a text box: as DrawingML alone, or as Word writes one, with the same box
+    again in VML in an AlternateContent fallback for readers that predate DrawingML."""
+    content = f"<w:txbxContent>{inside}</w:txbxContent>"
+    choice = f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+    spare = f"<mc:Fallback><w:pict>{content}</w:pict></mc:Fallback>" if fallback else ""
+    return f"<w:r><mc:AlternateContent {MC}>{choice}{spare}</mc:AlternateContent></w:r>"
+
+
+@pytest.mark.parametrize(
+    ("inside", "number"),
+    [(para("Panel 12"), "12"), (f"<w:tbl>{row('7', '8')}</w:tbl>", "7")],
+    ids=["paragraph", "table"],
+)
+def test_a_text_box_is_read_once_although_word_writes_it_twice(
+    tmp_path: Path, inside: str, number: str
+) -> None:
+    """Both copies were read, so every line of the box came twice and each number in it was
+    reported twice. The fallback's paragraphs, rows and cells break nothing either: only the
+    lines of the box as Word shows it are read."""
+
+    def read(*, fallback: bool) -> DocxText:
+        body = f"<w:p><w:r><w:t>Host</w:t></w:r>{text_box(inside, fallback=fallback)}</w:p>"
+        return read_docx_text(make_docx(tmp_path / f"{fallback}.docx", body))
+
+    once, twice = read(fallback=False), read(fallback=True)
+    assert once.body.count(number) == 1, once.body
+    assert twice == once, twice.body
+
+
+@pytest.mark.parametrize(
+    ("code", "shown"),
+    [("1F642", chr(0x1F642)), ("zz", " "), ("1E", " "), ("D800", " "), ("110000", " ")],
+    ids=["emoji", "unreadable", "control", "surrogate", "past-unicode"],
+)
+def test_an_emoji_word_inserted_is_read_from_the_choice(
+    tmp_path: Path, code: str, shown: str
+) -> None:
+    """Word writes an emoji it inserts as a `w16se:symEx` element in an AlternateContent
+    choice, with the character as text only in the fallback, which is not read. A code that
+    is not a character text can hold reads as a space, as an unknown Symbol-font character
+    does: U+001E is the mark the reader puts on a heading's line."""
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {MC} {se}><mc:Choice Requires="w16se">'
+        f'<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="{code}"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>12</w:t></w:r>{emoji}<w:r><w:t>34</w:t></w:r></w:p>"
+    assert read_docx(make_docx(tmp_path / "e.docx", body)) == f"\n12{shown}34"
 
 
 def test_a_file_that_is_not_a_docx_says_so(tmp_path: Path) -> None:

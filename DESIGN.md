@@ -677,6 +677,23 @@ incomplete while some manuscript file is on nobody's list. Without it, trimming 
 would have been a way to review the Methods and pass — the same fix-opens-the-next-hole
 pattern that three review rounds kept finding, so the two landed together.
 
+**A revision is answered by a further round, which supersedes the rounds before it.**
+`review --record` will not re-stamp a record, because the digest is the only thing
+separating "somebody read this version" from "somebody read a version", and it tells the
+author to record the new reading as a further round instead. Until 2026-09-24 that advice
+led nowhere: the earlier records stayed `review-stale`, and a file added in revision left
+every earlier round `review-uncovered`, so `check --submission` could pass only after
+somebody hand-edited a digest or deleted a round. Now, once a later round is complete and
+current, each earlier round that is stale or uncovered is reported as `review-superseded`,
+an INFO naming the round that superseded it. It still counts towards `rounds_required`,
+because it was a complete reading of the paper it read, and its unanswered major findings
+still fail the submission: history is not absolution. A round that never finished is not
+rescued, since a missing record is a remit nobody answered, whenever that was. The author
+chose this over the alternatives: re-reading every round after every change (the strongest
+guarantee, and the one most likely to be switched off), superseding only across a journal's
+revision round (which left copy-edits before the first submission at the same dead end), and
+no change.
+
 The worked example carries a real two-round panel. Round one found that the paper had no
 case definition, no mention of duplicate records, and no contingency table for a result that
 was a single ratio; all three were fixed, and the manuscript is better for it. Round two,
@@ -1766,6 +1783,15 @@ Closed since, and why each mattered:
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
+- **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is
+  "the response letter" reads the revised text, the round is complete, and the
+  biostatistician's stale reading of the Methods becomes history. The panel file's
+  rationale shows what the later round was for; the gate cannot judge whether it was
+  enough, any more than it can judge a first round.
+- **An unfinished earlier round still blocks after a revision.** A record nobody filed in
+  round one is a `review-missing` failure whatever came later, and the only way past it is
+  to file the record or remove the reviewer from that panel. Deliberate: superseding is for
+  a reading of an older text, not for a reading that never happened.
 - **A model reviewing its own draft is worth less than a fresh reader.** The skill warns
   about agreeableness, which is the likely failure, but nothing enforces independence.
 - **Submission is the only severity that depends on how the tool was invoked.** It is a
@@ -1971,3 +1997,7 @@ Closed since, and why each mattered:
 
 Resolved 2026-08-03: the pre-analysis design gate **warns rather than blocks**, so
 exploratory work stays possible.
+
+Resolved 2026-09-24: after a revision, **a later complete round supersedes the outdated
+rounds before it**, chosen over requiring every round to be re-read, over superseding only
+across a journal's revision, and over leaving it as it was. See "Review panels" above.

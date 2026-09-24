@@ -701,6 +701,18 @@ def test_an_edited_stretch_the_build_printed_differently_is_refused(
             "As A (2019)s found, it was 3.84 here.",
             id="key-running-into-a-word",
         ),
+        pytest.param(
+            "As @a reported, it was {{results.x}} here.",
+            "As ⟦A (2019)⟧ reported, it was ⟦3.84⟧ here.",
+            "As A (2019)// reported, it was 3.84 here.",
+            id="key-running-into-slashes",
+        ),
+        pytest.param(
+            "As @a reported, it was {{results.x}} here.",
+            "As ⟦A (2019)⟧ reported, it was ⟦3.84⟧ here.",
+            "As A (2019):/ reported, it was 3.84 here.",
+            id="key-running-into-a-colon-and-slash",
+        ),
     ],
 )
 def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
@@ -1072,6 +1084,27 @@ def test_quotes_from_word_are_kept_as_word_shows_them(
     way, and reads one before a word as opening a quotation."""
     plain = returned.replace("12", "{{results.n}}").replace("3 rose", "{{results.x}} rose")
     assert merged(source, rendered, returned) == plain
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Rates of {{results.x}} rose among 'em, as the agency's 'review' said.",
+            "Rates of ⟦3.84⟧ rose among ‘em, as the agency’s ’review’ said.",
+            "Rates of 3.84 rose among ’em, as the agency’s ‘review’ said.",
+            "Rates of {{results.x}} rose among ’em, as the agency’s ‘review’ said.",
+            id="turned-the-right-way-round",
+        ),
+    ],
+)
+def test_a_correction_to_quotes_alone_is_an_edit(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Stretches compared quotes as quotes, so a co-author turning ‘em the right way round
+    left a stretch that read as untouched: the source was kept, and import said nothing had
+    come back. Word does not change a character nobody typed, so any difference is an edit."""
+    assert merged(source, rendered, returned) == expected
 
 
 def test_only_the_quote_closing_a_kept_straight_one_is_straightened() -> None:

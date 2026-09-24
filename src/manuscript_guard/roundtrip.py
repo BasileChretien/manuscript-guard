@@ -386,8 +386,9 @@ _BINDING = re.compile(r"\{\{[^}]*\}\}")
 #: A key as pandoc reads one: a letter of any alphabet, a digit or an underscore, then
 #: word characters, each mark of punctuation between them single, or anything but a space
 #: in braces - `@2019who`, `@Élodie2020`, `@{10.1000/xyz}`. Starting it at an ASCII letter
-#: left those in the prose, and `@key::a` is the key `key` to pandoc.
-_KEY = r"-?@(?:\{[^{}\s]+\}|\w(?:\w|[:.#$%&+?<>~/-](?=\w))*)"
+#: left those in the prose, and `@key::a` is the key `key` to pandoc. A `:` or `/` before a
+#: `/` continues it too, as in a URL: `@key//` is the key `key/`.
+_KEY = r"-?@(?:\{[^{}\s]+\}|\w(?:\w|[:.#$%&+?<>~/-](?=\w)|[:/](?=/))*)"
 #: A key at a bracket group's own level makes the group a citation. A narrative key ends on
 #: a word character, so a full stop after it stays prose; an email address is no key, and
 #: nor is `\@admin`, which is how a co-author's typed `@` is written back. Pandoc reads no
@@ -658,18 +659,16 @@ def segments(paragraph: str) -> tuple[list[str], list[str]]:
     return prose, [m.group(0) for m in tokens]
 
 
-#: Quotes of every kind as the straight quote they are, for comparing stretches only: what is
-#: written into the source keeps Word's own characters. Straightening those for pandoc to
-#: curl again turned „ein Signal“ into “ein Signal” and the ’90s into ‘90s.
-_STRAIGHT = str.maketrans(
-    "\u2018\u2019\u201a\u201b\u201c\u201d\u201e\u201f", "\u0027" * 4 + "\u0022" * 4
-)
-
-
 def _unchanged(was: str, now: str) -> bool:
-    """Whether a stretch came back as it was rendered: quotes compared as quotes, spaces
-    kept at the ends."""
-    return _spaced(was.translate(_STRAIGHT)) == _spaced(now.translate(_STRAIGHT))
+    """Whether a stretch came back as it was rendered, spaces kept at the ends.
+
+    Both are Word's text, and Word changes no character nobody typed, so every difference is
+    an edit. Quotes were compared as quotes at first, and a co-author turning ‘em the right
+    way round left a stretch that read as untouched: the correction was dropped, and import
+    said nothing had come back. What is written keeps Word's own quotes too: straightening
+    them for pandoc to curl again turned „ein Signal“ into “ein Signal”.
+    """
+    return _spaced(was) == _spaced(now)
 
 
 #: A straight single quote where pandoc reads it as opening a quotation, and one where it

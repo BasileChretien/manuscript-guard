@@ -153,8 +153,10 @@ Read the whole diff. What to look for:
   instead, because merging would delete it.)
 - Backslashes. Every character in Word's text that Markdown could read as markup is
   escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
-  Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
-  bare and is curled: put the backslash back if the straight quote mattered.
+  Each prints as it did. The exception is a straight quote: an escaped one of yours, `\"`,
+  comes back bare, and one the co-author typed is left bare, and pandoc curls both. Put a
+  backslash in front where the straight quote mattered. A co-author who only turned curly
+  quotes straight has changed nothing that reaches the build.
 - Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
   abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
   itself. Each prints as it did, but a diff can show a line as changed where nothing

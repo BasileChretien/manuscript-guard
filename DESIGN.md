@@ -1290,8 +1290,10 @@ order rather than matching both to the first occurrence — the same collision t
 refuses to guess at.
 
 Two details are load-bearing. Prose is only ever compared with rendered prose: a returned
-segment with the same segment of the build, quotes straightened on both sides, because a
-co-author's Word curls or uncurls them without anyone editing anything. And an unchanged
+segment with the same segment of the build, character for character but for layout
+whitespace, since both are Word's text and Word changes no character nobody typed. Quotes
+were once compared as quotes, and a co-author turning ‘em the right way round left a segment
+that read as untouched: the correction was dropped with nothing reported. And an unchanged
 segment is rebuilt from the source rather than from Word, so only a segment the co-author
 actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
 that is the price of using the bookmark as identity. An edited segment keeps Word's quotes
@@ -2180,8 +2182,16 @@ Closed since, and why each mattered:
   punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
   stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
   closes it is written straight. Where that rule and pandoc disagree, one quote prints
-  the wrong way round, and no word changes. Stretches also compare quotes as quotes, so one
-  in which only their style changed, “x” to „x“, reads as untouched and keeps the source's.
+  the wrong way round, and no word changes.
+- **A straight quote from Word is typeset like one in the source.** Word's text is written
+  back with its quotes as they are, and pandoc curls a straight one. So a co-author who
+  types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
+  them curled at the next build; the second change is lost with nothing reported, since the
+  rebuilt paragraph equals the source. A straight quote typed in an edited stretch can also
+  pair with a straight one kept from the source across a token: `'high' at "{{x}} and
+  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
+  Carrying Word's straight quotes would mean escaping every one, which a co-author who
+  types them meaning curly ones does not want either.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -2228,8 +2238,10 @@ Closed since, and why each mattered:
   subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
   an autolink, which the bookmark breaks the same way; and quotes that pandoc pairs
   differently around a bookmark. A binding in an HTML comment is never marked, and
-  `@a [-@b]`, `@key[p. 3]`, `@key [text](url)`, `[@key](url)` and an `@` in a link's address,
-  each once a token that marking broke, are read as pandoc reads them now.
+  `@a [-@b]`, `@key[p. 3]`, `@key [text](url)` and an `@` in a link's address, each once a
+  token that marking broke, are read as pandoc reads them now. `[@key](url)` and
+  `[@key]{.smallcaps}` no longer break marking, but a paragraph holding one still refuses
+  every edit: the reading shows the link's text as `@key`, where Word shows the citation.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
   punctuation and merges; so does a unit or a percent sign added after a value. Both change
   what the sentence claims, and neither is caught here; `check` sees the binding intact.

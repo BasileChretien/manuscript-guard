@@ -2890,6 +2890,60 @@ def test_a_display_equation_is_a_block_of_its_own(tmp_path: Path) -> None:
     assert found[0].key == found[1].key != found[2].key
 
 
+def _deleted(inner: str) -> str:
+    """A paragraph whose content and mark were deleted with Track Changes on."""
+    mark = '<w:pPr><w:rPr><w:del w:id="91" w:author="A"/></w:rPr></w:pPr>'
+    return f'<w:p>{mark}<w:del w:id="92" w:author="A">{inner}</w:del></w:p>'
+
+
+@pytest.mark.parametrize("what", ["figure", "equation", "equation-run-by-run", "table"])
+def test_a_table_figure_or_equation_deleted_with_track_changes_is_gone(
+    tmp_path: Path, what: str
+) -> None:
+    """Deleted with Track Changes on, a figure still counted as a picture, an equation's text
+    was read from inside `w:del`, and a table's deleted rows were still read, so each came
+    back as if untouched and the deletion said "nothing came back"."""
+    from manuscript_guard.docxtext import blocks as read
+
+    before = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-1"/><w:r><w:t>Before.</w:t></w:r></w:p>'
+    )
+    drawing = '<w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r>'
+    maths = "<m:oMathPara><m:oMath><m:r><m:t>x=y</m:t></m:r></m:oMath></m:oMathPara>"
+    deleted_row = (
+        '<w:tr><w:trPr><w:del w:id="93" w:author="A"/></w:trPr>'
+        '<w:tc><w:p><w:r><w:delText>426</w:delText></w:r></w:p></w:tc></w:tr>'
+    )
+    # Word itself deletes an equation run by run, inside an `m:oMath` it leaves in place.
+    by_run = maths.replace("<m:r>", '<w:del w:id="97" w:author="A"><m:r>').replace(
+        "</m:r>", "</m:r></w:del>"
+    )
+    body = {
+        "figure": _deleted(drawing),
+        "equation": _deleted(maths),
+        "equation-run-by-run": f"<w:p>{by_run}</w:p>",
+        "table": f"<w:tbl>{deleted_row}</w:tbl>",
+    }[what]
+    found = read(word_document(tmp_path / "tracked.docx", before + body, {"rId7": b"forest"}))
+    assert not [b for b in found if b.table], found
+
+
+def test_a_figure_moved_with_track_changes_is_where_it_was_moved_to(tmp_path: Path) -> None:
+    """A tracked move leaves the picture at its old place inside `w:moveFrom` and puts it at
+    the new one inside `w:moveTo`. Both were read as figures, and the move was not seen."""
+    from manuscript_guard.docxtext import blocks as read
+
+    text = '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-1"/><w:r><w:t>Text.</w:t></w:r></w:p>'
+    drawing = '<w:r><w:drawing><a:blip r:embed="rId7"/></w:drawing></w:r>'
+    away = (
+        '<w:p><w:pPr><w:rPr><w:moveFrom w:id="94" w:author="A"/></w:rPr></w:pPr>'
+        f'<w:moveFrom w:id="95" w:author="A">{drawing}</w:moveFrom></w:p>'
+    )
+    arrived = f'<w:p><w:moveTo w:id="96" w:author="A">{drawing}</w:moveTo></w:p>'
+    found = read(word_document(tmp_path / "moved.docx", away + text + arrived, {"rId7": b"forest"}))
+    assert [b.kind or b.text for b in found] == ["Text.", "figure"]
+
+
 def _display_maths(tmp_path: Path):
     """'# A': 'Alpha.', a paragraph with display maths in it, 'Omega.'; '# B': 'Beta.'."""
     from manuscript_guard.docxtext import Block
@@ -2998,9 +3052,13 @@ def test_a_dragged_heading_that_shares_its_text_is_still_reported(tmp_path: Path
 def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) -> None:
     """The source was searched for `$$` and `<!--` as written, so a paragraph explaining them
     in inline code was held in place: its rewording refused as display maths or as an open
-    comment, and a move past it refused."""
+    comment, and a move past it refused.
+
+    Whether the rewording merges is the rewording's own business, and not asserted here: a
+    code span holding `--` comes back from Word as plain text, which the next build
+    typesets as a dash."""
     from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import plan_import
+    from manuscript_guard.merge import _IN_PARTS, _RUNS_ON, plan_import
 
     paragraphs = {
         "maths": "Display maths goes between `$$` signs.",
@@ -3013,11 +3071,55 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
 
     reworded = [Block(b.names, b.text.replace(".", ", as ever.")) for b in sent]
     plan = plan_import(known, sent, reworded)
-    assert not plan.refused, [r.why for r in plan.refused]
-    assert set(plan.merged) == set(paragraphs)
+    assert not [r for r in plan.refused if {_IN_PARTS, _RUNS_ON} & set(r.why)]
 
     moved = plan_import(known, sent, [sent[2], sent[0], sent[1]])
     assert not moved.misplaced and moved.moved
+
+
+@pytest.mark.parametrize(
+    "para",
+    [
+        "Models were fitted with `glmer` from\n$$y = X b$$\nusing the `nlme`{.r} package.",
+        "Units ~~ $$x = y$$ ~~ after.",
+        "See `a` here <!-- a note `b`{.x}",
+    ],
+    ids=["maths-after-a-code-span", "maths-inside-strikeout", "comment-after-code-spans"],
+)
+def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
+    tmp_path: Path, para: str
+) -> None:
+    """Read with the rewording's scan, `$$` or `<!--` could be swallowed by what it took for
+    one long code span with attributes, or for struck-through text, and the paragraph was
+    not held: its first part dragged up was applied, carrying the equation along."""
+    from manuscript_guard.merge import _held_in_place
+
+    _path, known = source_of(tmp_path, {"p": para})
+    assert _held_in_place(known, {"p": para.split("\n")[0]}).get("p") in ("in-parts", "runs-on")
+
+
+@pytest.mark.parametrize("inserted", ["equation", "figure"])
+def test_a_split_around_an_inserted_equation_or_picture_is_refused(
+    tmp_path: Path, inserted: str
+) -> None:
+    """A paragraph split in two with a new equation or a pasted picture between its halves
+    was merged as its first half: the split was recognised by new text beside the paragraph,
+    and the search for it stopped at the first block that was not prose."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {"p": "First half here. Second half here.", "q": "Another paragraph."}
+    _path, known = source_of(tmp_path, paragraphs)
+    sent = [Block((name,), text) for name, text in paragraphs.items()]
+    returned = [
+        Block(("p",), "First half here."),
+        Block(kind=inserted, key="new"),
+        Block((), "Second half here."),
+        sent[1],
+    ]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    assert [r.name for r in plan.refused] == ["p"]
 
 
 def test_a_held_paragraph_dragged_past_two_that_were_swapped_is_the_one_named(
@@ -3040,6 +3142,29 @@ def test_a_held_paragraph_dragged_past_two_that_were_swapped_is_the_one_named(
 
     plan = plan_import(known, sent, returned)
     assert plan.misplaced == ("c",)
+
+
+def test_a_held_paragraph_dragged_below_two_the_diff_calls_moved_is_the_one_named(
+    tmp_path: Path,
+) -> None:
+    """The mirror of the case above: dragged down past two paragraphs that were also
+    swapped, the held paragraph (5) outweighed the two the diff called moved (2 + 2)."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "z": "Zeta, last inside the div.\n:::",
+        "a": "Alpha after the div.",
+        "b": "Beta after the div.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    b = {
+        "z": Block(("z",), "Zeta, last inside the div."),
+        "a": Block(("a",), paragraphs["a"]),
+        "b": Block(("b",), paragraphs["b"]),
+    }
+    plan = plan_import(known, [b["z"], b["a"], b["b"]], [b["b"], b["a"], b["z"]])
+    assert plan.misplaced == ("z",)
 
 
 def test_a_held_paragraph_dragged_past_several_is_the_one_named(tmp_path: Path) -> None:

@@ -1286,9 +1286,13 @@ passed reported instead. It now outweighs one paragraph and not two. Whether a p
 reaches Word in parts is still judged within the sections the source has. Judged within the
 finer sections that holding creates, a one-line comment after a definition list hid the
 split, and a rewording of the term deleted the definition. Whether a paragraph opens a
-comment or holds display maths is read with the same scan the rewording uses, so `$$` or
-`<!--` inside backticks, a footnote or a closed comment holds nothing. Searched for as
-written, they held a paragraph that explained them in inline code.
+comment or holds display maths is read with its code spans and closed comments set aside,
+so `$$` or `<!--` inside backticks holds nothing. Searched for as written, they held a
+paragraph that explained them in inline code. The rewording's own scan of inline markup was
+tried next and set aside too much: it took `` `glmer` from $$…$$ `nlme`{.r} `` for one code
+span, and `~~ $$x$$ ~~` for struck-through text, so display maths went unseen and the first
+part of such a paragraph was moved without its equation. Setting aside too little only
+holds a paragraph that could have moved: `$$` inside a footnote does.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2363,7 +2367,11 @@ Closed since, and why each mattered:
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
   is a join. Rejecting a co-author's change means rejecting it in Word before sending it
   back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
-  the new one, so it is reported rather than applied.
+  the new one, so it is reported rather than applied. The same holds for a table, a figure
+  or an equation: a tracked deletion of one is a deletion, and a tracked move puts it where
+  it was moved to. A picture or an equation inside `w:del` or `w:moveFrom` used to be read
+  as if it were still there, and so did a table's deleted rows, so each came back as
+  "nothing came back".
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
@@ -2405,7 +2413,10 @@ Closed since, and why each mattered:
   Headings and captions are paired as a sequence, and then any text of which one copy is
   left over on each side. A pasted copy of a heading that is still in place is paired with
   nothing and is not reported; a heading dragged elsewhere while a copy of it was pasted is
-  paired with nothing either, so that drag, and a move past it, is not seen.
+  paired with nothing either, so that drag, and a move past it, is not seen. A heading
+  renamed while a new heading with its old text is pasted elsewhere reads as that heading
+  dragged there, and is reported as moved: text cannot tell a drag from a rename and a
+  paste, and a false report is the safer of the two mistakes.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
@@ -2414,7 +2425,10 @@ Closed since, and why each mattered:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
-  That is the price of never truncating a split paragraph.
+  That is the price of never truncating a split paragraph. A table, figure or equation the
+  document as sent did not have counts as new text: a paragraph split around a pasted
+  picture or a new equation was merged as its first half, because the search stopped at the
+  first block that was not prose.
 - **A join that lost its bookmark is recognised by resemblance, which is a judgement.** A
   join made by selecting across the boundary deletes the second paragraph's bookmark. When
   a paragraph changed and the one after it vanished, the import asks which the returned text

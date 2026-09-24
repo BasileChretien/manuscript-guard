@@ -75,8 +75,8 @@ It changes nothing and reports each paragraph:
 | `could not be found in the returned one` | a table, figure or display equation was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
 
-Anything refused, joined, deleted or moved between sections or files, and any heading, table
-or figure that was moved or could not be found, makes the command exit 1, with or without
+Anything refused, joined, deleted or moved between sections or files, and any heading, table,
+figure or equation that was moved or could not be found, makes the command exit 1, with or without
 `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT

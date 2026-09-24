@@ -205,10 +205,14 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
                 names.append(name)
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
-    picture = any(node.tag in _PICTURES for node in element.iter())
+    # What a reader sees once every tracked change is accepted. A picture or an equation
+    # deleted, or moved away, with Track Changes on is still in the XML, and read from there
+    # it came back as if untouched: the deletion or the move said "nothing came back".
+    seen = list(_visible(element))
+    picture = any(node.tag in _PICTURES for node in seen)
     embeds = tuple(
         rid
-        for node in element.iter()
+        for node in seen
         if (rid := node.get(_R + "embed") or (node.tag == _VML_IMAGE and node.get(_R + "id")))
     )
     mark = element.find(f"{W}pPr/{W}rPr")
@@ -217,16 +221,30 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
     )
     text, tokens = _read(element)
     maths = None
-    if element.find(f".//{_M}oMath") is not None:
-        maths = "".join(node.text or "" for node in element.iter(_M + "t"))
+    if any(node.tag == _M + "oMath" for node in seen):
+        # Word deletes an equation run by run with Track Changes on, leaving the `m:oMath`
+        # around nothing: an equation with no text left is gone.
+        maths = "".join(node.text or "" for node in seen if node.tag == _M + "t") or None
     return _Paragraph(
         tuple(names), text, tuple(comments), runs_on, table, picture, tokens, embeds, maths
     )
 
 
+def _visible(element: ET.Element):
+    """Every node under `element`, `element` included, outside the subtrees `_UNSEEN` hides."""
+    stack = [element]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(child for child in reversed(node) if child.tag not in _UNSEEN)
+
+
 def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
     out: list[_Paragraph] = []
     for child in node:
+        if child.tag == W + "tr" and child.find(f"{W}trPr/{W}del") is not None:
+            # A table row deleted with Track Changes on: gone once the change is accepted.
+            continue
         if child.tag == W + "p":
             out.append(_paragraph(child, table=table))
         elif child.tag == W + "tbl":

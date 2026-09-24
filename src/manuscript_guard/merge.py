@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import _SCAN, Alignment, align, moves
+from manuscript_guard.roundtrip import Alignment, align, moves
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,9 @@ def _same(a: str, b: str) -> bool:
     return spaced(a).strip() == spaced(b).strip()
 
 
-def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
+def _beside_new_text(
+    sent: list[Block], returned: list[Block], counterparts: dict[int, int] | None = None
+) -> set[str]:
     """Identifiers whose paragraph came back directly beside text the document did not have.
 
     A split leaves the second half as a paragraph with no identifier next to the first, and
@@ -107,6 +109,10 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     Compared by text rather than by position, because a move changes every neighbour and
     creates no text at all. An edited heading is new text too, which costs a refusal of the
     paragraph beside it when both were edited; the alternative is a split that truncates.
+
+    A table, figure or equation the document as sent did not have is new too. The search
+    stopped at any block that was not prose, so a paragraph split around a pasted picture or
+    a new equation was merged as its first half.
     """
     unchanged = Counter(b.text for b in sent if not b.table and not b.names and b.text)
     new: set[int] = set()
@@ -121,7 +127,9 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     def touches(indices: range) -> bool:
         for i in indices:
             block = returned[i]
-            if block.table or block.names:
+            if block.table:
+                return counterparts is not None and i not in counterparts
+            if block.names:
                 return False
             if i in new:
                 return True
@@ -152,20 +160,25 @@ _BLOCK_LINE = re.compile(
 )
 
 
-def _bare(para: str) -> tuple[str, bool]:
-    """A paragraph's source with every inline construct the rewording reads blanked out, and
-    whether one of them is display maths, which Word sets apart as a paragraph of its own.
+#: What `_bare` sets aside: a code span, by pandoc's rule that a run of backticks is closed
+#: by a run of the same length, and a comment that closes. Nothing more.
+_CODE_OR_COMMENT = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+_DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
-    Read with the same scan as a rewording, so that `$$` or `<!--` inside backticks, a
-    footnote or a closed comment is what it is. Searched for as written, they held a
-    paragraph explaining them in inline code, and refused its rewording as display maths or
-    as an open comment.
+
+def _bare(para: str) -> tuple[str, bool]:
+    """A paragraph's source with its code spans and closed comments blanked out, and whether
+    what is left holds display maths, which Word sets apart as a paragraph of its own.
+
+    Searched for as written, `$$` or `<!--` inside backticks held a paragraph that explained
+    them. The rewording's own scan of inline markup was tried next, and it sets aside more
+    than it should for this: taking `` `glmer` from $$..$$ `nlme`{.r} `` for one code span
+    with attributes, or `~~ $$x$$ ~~` for struck-through text, it hid display maths, and a
+    paragraph that was not held had its first part moved without its equation. Setting
+    aside too little only holds a paragraph that could have moved - `$$` in a footnote does.
     """
-    out, display = list(para), False
-    for match in _SCAN.finditer(para):
-        display = display or (match.lastgroup == "math" and match.group(0).startswith("$$"))
-        out[match.start() : match.end()] = " " * (match.end() - match.start())
-    return "".join(out), display
+    bare = _CODE_OR_COMMENT.sub(lambda match: " " * len(match.group(0)), para)
+    return bare, _DISPLAY_MATHS.search(bare) is not None
 
 
 def _held_in_place(
@@ -429,13 +442,14 @@ def _misplaced(
         elif block.text and boundaries.get(key := ("text", texts.get(index))):
             sequence.append((("text", block.text), boundaries[key].popleft(), 2))
 
-    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 2 if the diff
-    # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them. At
-    # 3 against 1 and 2, a held paragraph dragged past two paragraphs the diff had split
-    # between moved and not tied with them, and the tie named the two.
+    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 3 if the diff
+    # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them:
+    # any one paragraph is lighter than a held one, and any two are heavier. At 3 against 1
+    # and 2, and then 5 against 2 and 4, a held paragraph dragged past two paragraphs the diff
+    # called moved outweighed them, and the two were named instead of it.
     tiers = {0: 0, 1: 5, 2: 5 * len(sequence) + 1}
     weight = [
-        tiers[tier] or (2 if what in moved else 4) for what, _rank, tier in sequence
+        tiers[tier] or (3 if what in moved else 4) for what, _rank, tier in sequence
     ]
     best, back = list(weight), [-1] * len(sequence)
     for j in range(len(sequence)):
@@ -622,7 +636,9 @@ def plan_import(
     in_parts = _in_parts(reference, _sections(known))
     held = _held_in_place(known, rendered, in_parts)
     sections = _sections(known, held)
-    beside_new = _beside_new_text(reference, returned)
+    headings = _text_counterparts(reference, returned)
+    counterparts, lost = _counterparts(reference, returned, headings)
+    beside_new = _beside_new_text(reference, returned, counterparts)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
     missing = +untagged
@@ -671,10 +687,8 @@ def plan_import(
         return (files[path], section, 1)
 
     diffed = moves([n for n in rendered if n in set(order)], order)
-    texts = _text_counterparts(reference, returned)
-    counterparts, lost = _counterparts(reference, returned, texts)
     misplaced, strayed = _misplaced(
-        reference, returned, order, {m[0] for m in diffed}, rank, held, counterparts, texts
+        reference, returned, order, {m[0] for m in diffed}, rank, held, counterparts, headings
     )
     # What moved among the paragraphs that will be reordered. Taken from the diff above, a
     # paragraph passed by a misplaced one was reported as reordered, and nothing was written.

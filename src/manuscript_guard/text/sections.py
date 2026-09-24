@@ -20,30 +20,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import FRONTMATTER, mask
 
-_ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
-
-# Setext: a line of text underlined with `=` (level 1) or `-` (level 2). Pandoc renders
-# these, and nothing here saw them — so a manuscript written in that style had no sections
-# at all as far as G2, G4 and the reporting gate were concerned: no required-section check,
-# no abstract, and every `methods_only` rule silently inapplicable.
-#
-# The underline is `=+` or `-+`. One dash is enough for pandoc, and requiring three meant a
-# "Results" heading under `--` was invisible — so Results content inherited the enclosing
-# Methods chain and a fabricated `p < 0.001` passed as the pre-specified alpha. `---` closing
-# YAML front matter would read as an underline too, which is why `scannable` blanks the
-# front matter before any of this runs, and a thematic break is excluded because setext
-# needs its title on the line immediately above with no blank between.
-_SETEXT = re.compile(
-    r"^(?P<title>(?![ \t]*$)(?![ \t]*[-=]+[ \t]*$)(?![ \t]*[#>|])[^\n]+)\n"
-    r"(?P<under>=+|-+)[ \t]*$",
-    re.MULTILINE,
-)
-
-# Kept as the ATX pattern for callers that only ever meant `#` headings.
-HEADING = _ATX
+# Headings are found by `text.blocks`, which reads them as pandoc does: ATX and setext, and
+# only where a block starts. Setext mattered because a manuscript written in that style had
+# no sections at all as far as G2, G4 and the reporting gate were concerned: no
+# required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
@@ -82,81 +66,19 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
-def scannable(text: str) -> str:
-    """`text` with code fences and HTML comments blanked, offsets preserved.
-
-    Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
-    Python, R, shell and YAML. Once fenced code stopped being masked — correctly, because it
-    renders — an ordinary comment inside a listing became a heading:
-
-        ## Methods
-        ```python
-        # Methods          <- level 1, so it *pops* the real level-2 Methods
-        ```
-        ## Results
-        The excess was significant (p < 0.001).   <- nests under the fake heading
-
-    `is_methods` looks at the whole enclosing chain, so a threshold in the Results was
-    accepted as the alpha chosen in advance. No attacker required: that is a comment
-    character in a code block. An HTML comment does the same thing while being invisible in
-    the rendered document, which is worse.
-
-    Blanked rather than removed, because callers index back into the original text.
-    Newlines are kept so line numbers and `^` anchors still line up.
-    """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
-    # Front matter too, now that setext headings are recognised: its closing `---` sits
-    # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
-    # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
-    return blank(opening) + rest if opening else rest
-
-
-@dataclass(frozen=True)
-class _Found:
-    start: int
-    level: int
-    title: str
-
-
-def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order."""
-    rendered = scannable(text)
-    found = [
-        _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
-        for m in _ATX.finditer(rendered)
-    ]
-    found += [
-        _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
-        for m in _SETEXT.finditer(rendered)
-    ]
-    return sorted(found, key=lambda f: f.start)
-
-
-def heading_index(text: str) -> list[_Found]:
+def heading_index(text: str) -> list[Heading]:
     """Every heading, computed once so a caller can ask about many offsets cheaply.
 
     `section_chain` rescans the whole document — blanking fences, HTML comments and front
-    matter, then running two heading patterns over it. G2 called it once per atom, which is
-    quadratic: a paragraph written on one long line with 20,000 numbers spent three minutes
-    re-deriving the same heading list 20,000 times. The scan is unavoidable; doing it per
-    file rather than per number is not.
+    matter, then walking it line by line. G2 called it once per atom, which is quadratic: a
+    paragraph written on one long line with 20,000 numbers spent three minutes re-deriving
+    the same heading list 20,000 times. The scan is unavoidable; doing it per file rather
+    than per number is not.
     """
-    return _headings_in(text)
+    return find_headings(text)
 
 
-def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
+def chain_at(index: list[Heading], offset: int) -> tuple[str, ...]:
     """The enclosing heading chain at `offset`, from a precomputed index."""
     stack: list[tuple[int, str]] = []
     for found in index:
@@ -180,7 +102,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     different places: `p < 0.05` in Methods is the alpha the author chose, and in Results
     it is a finding.
     """
-    return chain_at(_headings_in(text), offset)
+    return chain_at(find_headings(text), offset)
 
 
 def split_sections(text: str) -> list[Section]:
@@ -193,7 +115,7 @@ def split_sections(text: str) -> list[Section]:
     was reported absent from the Methods. Both answers are carried now — `body` to sum,
     `enclosed` to read — so no caller has to guess which one it was given.
     """
-    matches = _headings_in(text)
+    matches = find_headings(text)
     if not matches:
         return [Section(title="", level=0, body=text, line=1, enclosed=text)]
 
@@ -208,9 +130,11 @@ def split_sections(text: str) -> list[Section]:
             (later.start for later in matches[index + 1 :] if later.level <= found.level),
             len(text),
         )
-        # Past the heading itself: the `#` line, or the title plus its underline.
+        # Past the heading itself: the `#` line, or the title plus its underline. Asked of the
+        # heading rather than its first character: `## Methods` over an underline is a
+        # setext title to pandoc.
         body_from = text.find("\n", found.start)
-        if body_from != -1 and found.level and text[found.start] != "#":
+        if body_from != -1 and found.setext:
             body_from = text.find("\n", body_from + 1)
         opens = body_from if body_from != -1 else found.start
         sections.append(
@@ -237,7 +161,7 @@ def subsections(sections: list[Section], index: int) -> list[Section]:
 
 
 def headings(text: str) -> list[str]:
-    return [found.title for found in _headings_in(text)]
+    return [found.title for found in find_headings(text)]
 
 
 def count_words(text: str) -> int:

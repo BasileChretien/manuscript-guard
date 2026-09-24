@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import spaced
+from manuscript_guard.text.blocks import find_headings
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -241,12 +242,19 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 
 
 def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+    """Headings, fences, and a lone placeholder (which becomes a table or a figure).
+
+    Any paragraph starting with `#` is left alone, heading or not: that is only a paragraph
+    the round trip does not carry, while a marker put in front of a heading unmakes it. A
+    setext heading does not start with `#`, and was tagged; pandoc keeps it a heading with
+    the paragraph's identifier inside it.
+    """
     return (
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        or any(found.start == 0 for found in find_headings(stripped))
     )
 
 

@@ -945,7 +945,17 @@ fix, not of the original code.**
   `## Methods`, and made everything after it — including the Results — read as Methods. A
   fabricated `p < 0.001` in the Results was then accepted as the pre-specified alpha. An
   HTML comment did the same thing while being invisible in the rendered document. Heading
-  detection now runs over text with fences and comments blanked.
+  detection now runs over text with fences and comments blanked. (Later: it still took any
+  `#` line for a heading, and pandoc does not let a heading interrupt a paragraph. `## Methods`
+  directly under a line of Results prose is printed as part of that prose, and the
+  `p < 0.001` below it passed as the alpha chosen in advance. A setext title was the same,
+  `numbered-heading` filed "## 3.84 times higher" in such a line as heading numbering, and
+  `\s+` let a lone `#`, an empty heading, take the next line for its title. A blank line is
+  not the rule either: a heading directly under a table, a fence, a div or another heading
+  needs none. `text/blocks.py` now walks the document a line at a time, knowing what the
+  line above left open, and `test_pandoc_agreement.py` holds it to pandoc on fifty-one
+  constructs. The round trip no longer tags a setext heading, and the audit starts a
+  reference list only at a heading pandoc prints but still ends one at any `#` line.)
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
   every threshold rule beneath it. Anchored at both ends now.
@@ -1986,8 +1996,8 @@ Closed since, and why each mattered:
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
   cannot. But a listing that is not fenced is not code as far as the reader can tell. In
-  Markdown, `# References` at the start of a line there is a heading, and pandoc prints it
-  as one. An indented block is not blanked, because `pdftotext -layout` indents real
+  Markdown, `# References` starting a block there is a heading, and pandoc prints it as
+  one. An indented block is not blanked, because `pdftotext -layout` indents real
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
@@ -2001,11 +2011,41 @@ Closed since, and why each mattered:
   enough, since any later real comment supplies the `-->`, and a draft often has one. The
   comment scanner would have to know code spans.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
-  indented `  # References`, or a Word paragraph typed as `# References` without a heading
-  style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
-  reference heading is read as having none. Its lines are then taken for reference entries
-  by their shape, as in any headingless paper, and a sentence with an entry's shape has its
-  unmatched numbers listed apart, where `--strict` does not count them.
+  indented `  # References`, one directly under a line of prose, or a Word paragraph typed
+  as `# References` without a heading style: pandoc or Word prints each as text, so nothing
+  is cut, and a paper with no other reference heading is read as having none. Its lines are
+  then taken for reference entries by their shape, as in any headingless paper, and a
+  sentence with an entry's shape has its unmatched numbers listed apart, where `--strict`
+  does not count them. Such a line still ends a list that a real heading started, so an
+  appendix heading written directly under the last entry stops the cut early rather than
+  hiding the appendix.
+- **A heading nested in a list item is not a section.** Pandoc prints `- Results` over an
+  underline as a list item holding a heading, and a `#` line that a list item's lazy lines
+  swallow (past a LaTeX environment or an HTML tag, say) as a heading inside the item. The
+  gates keep the first with its marker, so it ends the section above and "- Methods" never
+  opens Methods, and do not see the second. The same goes for a definition list, and for an
+  indented heading under a list item, which the old scan did not see either.
+- **A YAML block in the middle of a document is read as prose.** Pandoc takes `---` after a
+  blank line, a YAML mapping or nothing but comments, and a closing `---` or `...` for
+  metadata anywhere in a document, and prints none of it. The gates read it all. A number in
+  one is reported, which is only noise, but a `#` line in one is taken for a heading:
+  `---`, `# Methods`, `note: x`, `---` under a Results heading re-admits the `methods_only`
+  rules below it. Telling one from a rule, a sentence and a rule, which pandoc prints as a
+  table, needs a YAML parse. A bare `---` over `---` is read as a heading titled "---".
+- **A table written with lines of dashes can hide a heading-shaped row.** A multiline table,
+  or a simple table under a `Table:` caption, is not modelled, so a row reading `# Top` or a
+  title over its dashes is taken for a heading pandoc prints as a cell. The old scan did the
+  same.
+- **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
+  build writes the caption as a paragraph after the table, and a heading cannot interrupt a
+  paragraph, so the document loses the heading while G2 reads the one the source means. With
+  no caption the table ends at its last row and the two agree. A blank line avoids it, as
+  the example leaves one everywhere. A `{{figure.x}}` line is prose to both: the
+  build writes an image there, and a heading under it is printed as text.
+- **Raw HTML and LaTeX beside a heading are read approximately.** A line of nothing but LaTeX
+  commands is a block unless one of them is on a short list of inline ones; pandoc's list is
+  longer. Pandoc drops the indentation of the line after a raw block, and a setext title that
+  is only an HTML comment is an empty heading to pandoc and none to the gates.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

@@ -187,6 +187,16 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
     assert "}{{table.baseline}}" not in tagged
 
 
+def test_a_setext_heading_is_not_tagged() -> None:
+    """Only a paragraph starting with `#` counted as a heading. `[]{#id}Methods` over an
+    underline is still a heading to pandoc, with the paragraph's identifier inside it."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("Methods\n-------\n\nSome prose here.\n", "main")
+    assert tagged.startswith("Methods\n-------")
+    assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for

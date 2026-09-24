@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.text.blocks import find_headings
 from manuscript_guard.text.tokens import Atom
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -54,6 +55,10 @@ class Rule:
     # invariant. The rule cannot tell them apart by their text, because they have the same
     # text; it can tell them apart by where they are.
     methods_only: bool = False
+    # A rule about headings, which holds only where a match starts a line pandoc prints as
+    # one. A `#` line is a heading at the start of a block and text inside a paragraph, and
+    # no pattern can see the line above it.
+    heading_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,7 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
             kind=kind,
             audit_only=bool(item.get("audit_only", False)),
             methods_only=bool(item.get("methods_only", False)),
+            heading_only=bool(item.get("heading_only", False)),
         )
         for item in document[section]
     )
@@ -282,11 +288,17 @@ class Scan:
 def _scan(rules: Iterable[Rule], text: str) -> Scan:
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
+    headings: frozenset[int] | None = None
     for rule in rules:
         at: list[int] = []
         upto: list[int] = []
         furthest = -1
         for match in rule.pattern.finditer(text):
+            if rule.heading_only:
+                if headings is None:
+                    headings = frozenset(found.start for found in find_headings(text))
+                if match.start() not in headings:
+                    continue
             at.append(match.start())
             furthest = max(furthest, match.end())
             upto.append(furthest)

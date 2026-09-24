@@ -485,14 +485,14 @@ def test_bold_around_two_bindings_is_not_stretched_over_the_words_between() -> N
             r"Values \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             "Values <LLOQ and >ULOQ (n = 56) were excluded.",
             "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
-            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            r"Concentrations \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             id="escape",
         ),
         pytest.param(
             "Values &lt;LLOQ and &gt;ULOQ (n = {{results.n}}) were excluded.",
             "Values <LLOQ and >ULOQ (n = 56) were excluded.",
             "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
-            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            r"Concentrations \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             id="entity",
         ),
         pytest.param(
@@ -781,9 +781,10 @@ TYPED_IN_WORD = [
     pytest.param("A *real* change.", r"A \*real\* change.", id="emphasis"),
     pytest.param(
         "Samples <LLOQ in mg/L and >ULOQ were redone.",
-        r"Samples \<LLOQ in mg/L and >ULOQ were redone.",
+        r"Samples \<LLOQ in mg/L and \>ULOQ were redone.",
         id="tag-to-pandoc",
     ),
+    pytest.param("Age > 65 and p > 0.05.", "Age > 65 and p > 0.05.", id="nothing-to-close"),
     pytest.param("Ask @2020 or @_user.", r"Ask \@2020 or \@\_user.", id="odd-citation"),
     pytest.param("See [Methods] here.", r"See \[Methods] here.", id="header-reference"),
     pytest.param("Samples ~~5 and $$x$$.", r"Samples \~\~5 and \$\$x\$\$.", id="doubled"),
@@ -827,8 +828,22 @@ BESIDE_A_TOKEN = [
         "Patients took {{results.drug}} daily with water.",
         "Patients took aspirin daily with water.",
         "Patients took <aspirin daily and >placebo.",
-        r"Patients took \<{{results.drug}} daily and >placebo.",
+        r"Patients took \<{{results.drug}} daily and \>placebo.",
         id="angle-before-a-binding",
+    ),
+    pytest.param(
+        "Samples <LLOQ in {{results.unit}} and ULOQ were redone.",
+        "Samples <LLOQ in mg/L and ULOQ were redone.",
+        "Samples <LLOQ in mg/L and >ULOQ were redone.",
+        r"Samples <LLOQ in {{results.unit}} and \>ULOQ were redone.",
+        id="angle-kept-and-a-word-for-a-value",
+    ),
+    pytest.param(
+        "Levels {{results.cut}} were imputed and excluded.",
+        "Levels <LOD were imputed and excluded.",
+        "Levels <LOD were imputed and >ULOQ excluded.",
+        r"Levels {{results.cut}} were imputed and \>ULOQ excluded.",
+        id="angle-from-a-value",
     ),
     pytest.param(
         "Alpha beta {{results.drug}} gamma delta.",
@@ -870,6 +885,8 @@ BESIDE_A_TOKEN = [
 #: What the build fills each binding in with, and what Word showed for each citation.
 BESIDE_VALUES = {
     "results.drug": "aspirin",
+    "results.unit": "mg/L",
+    "results.cut": "<LOD",
     "results.x": "3.84",
     "results.y": "7.02",
     "results.ci": "(1.2-3.4)",
@@ -889,7 +906,12 @@ def test_text_beside_a_token_is_escaped_for_its_neighbour(
 
     Two were refused where they could merge. `\\{` before a binding's own `{{` reads as the
     binding `{{{results.drug}}`, which `check` refuses as malformed; and a `](` formed inside
-    an edited stretch, its `[` in the stretch before, was a link."""
+    an edited stretch, its `[` in the stretch before, was a link.
+
+    A `>` was never escaped. After a `<` the source kept bare, or one a binding's value
+    brought, a `>` typed in Word closed a tag around a value that is a word, and pandoc
+    deleted everything in between. `_reads_as` saw text, because it fills a binding with
+    digits and a digit is not an attribute name."""
     assert realign(source, rendered, returned) == expected
 
 
@@ -1026,14 +1048,14 @@ def test_an_escape_in_a_stretch_left_alone_is_kept() -> None:
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ dropped.",
-            r"Levels \<LOD were imputed as LOD/2 and >ULOQ dropped.",
+            r"Levels \<LOD were imputed as LOD/2 and \>ULOQ dropped.",
             id="angle-brackets",
         ),
         pytest.param(
             "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ dropped.",
-            "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ dropped.",
+            r"Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and \>ULOQ dropped.",
             id="angle-brackets-and-a-binding",
         ),
         pytest.param(

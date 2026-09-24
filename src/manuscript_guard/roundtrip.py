@@ -631,7 +631,11 @@ _MARKDOWN = re.compile(
 
 
 def _escaped(
-    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+    text: str,
+    opening: bool,
+    after_token: bool = False,
+    before_token: bool = False,
+    after_angle: bool = False,
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -651,9 +655,18 @@ def _escaped(
     own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
     refuses as malformed. The entity is a named one because `&#123;` puts the number 123
     into the prose, and `check` refuses that as a number bound to no source.
+
+    A `>` is escaped once Word's paragraph shows a `<` before it, in this text or, as
+    `after_angle` says, before it. That `<` need not be Word's: one the source kept bare, or
+    one a binding's value brings, opens a tag that a `>` typed later closes, and
+    `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples ULOQ". Pandoc's tags are
+    looser than `_read`'s, and `_read` fills a binding with digits, so the read-back saw
+    text. A `>` with nothing before it to close is left alone: `p > 0.05` stays as typed.
     """
     brace = before_token and text.endswith("{")
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    if (angle := 0 if after_angle else text.find("<")) >= 0:
+        text = text[:angle] + text[angle:].replace(">", "\\>")
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -889,6 +902,9 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
 
     sent, new_prose = _between(before, ranges), _between(after, placed)
+    # Whether Word's paragraph shows a `<` before each stretch: kept from the source, typed,
+    # or a binding's value, it can open a tag that a `>` in the stretch would close.
+    opened = ["<" in "".join(after[:at]) for at in [0] + [end for _start, end in placed]]
     out: list[str] = []
     lost: list[str] = []
     for index, piece in enumerate(new_prose):
@@ -904,7 +920,9 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         else:
             lost += [name for name in reading.lost[index] if name not in lost]
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            out.append(_escaped(piece, opening=index == 0, **beside))
+            out.append(
+                _escaped(piece, opening=index == 0, after_angle=opened[index], **beside)
+            )
         if index < len(protected):
             out.append(protected[index])
     if lost:

@@ -155,7 +155,10 @@ Read the whole diff. What to look for:
   Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
   bare and is curled: put the backslash back if the straight quote mattered. A `{` typed
   straight before a binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the
-  binding's braces, and `check` reports `{{{results.x}}` as malformed.
+  binding's braces, and `check` reports `{{{results.x}}` as malformed. A `>` typed anywhere
+  after a `<` in the same paragraph comes back as `\>`. Leave that too: pandoc can read a
+  bare `<` and `>` with words between them as an HTML tag, and drop everything from one to
+  the other.
 - Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
   abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
   itself. Each prints as it did, but a diff can show a line as changed where nothing

@@ -635,7 +635,8 @@ def _escaped(
 
     Its edges are read with what will stand beside them. A `(` straight after a citation's
     `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
-    binding whose value is a word opens a tag. At the end of the text neither looked like
+    binding whose value is a word opens a tag, and a `]` before one whose value opens with
+    `(` makes the value a link's address. At the end of the text none of them looked like
     markup, because the citation and the binding were not there to see.
 
     A `{` before a binding is written as an entity. Escaped, it still joined the binding's
@@ -647,7 +648,7 @@ def _escaped(
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
     if after_token and text.startswith("("):
         text = "\\" + text
-    if before_token and text.endswith(("<", "&")):
+    if before_token and text.endswith(("<", "&", "]")):
         text = text[:-1] + "\\" + text[-1]
     if brace:
         text = text.removesuffix("\\{") + "&lbrace;"

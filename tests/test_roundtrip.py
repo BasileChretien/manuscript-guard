@@ -742,6 +742,13 @@ BESIDE_A_TOKEN = [
         r"HR [{{results.x}}, {{results.y}}]\(p=0.01) overall.",
         id="parenthesis-after-a-bracket-inside-an-edit",
     ),
+    pytest.param(
+        "HR [{{results.x}}] {{results.ci}} overall.",
+        "HR [3.84] (1.2-3.4) overall.",
+        "HR [3.84](1.2-3.4) overall.",
+        r"HR [{{results.x}}\]{{results.ci}} overall.",
+        id="bracket-before-a-value-that-opens-a-parenthesis",
+    ),
 ]
 
 #: What the build fills each binding in with, and what Word showed for each citation.
@@ -749,6 +756,7 @@ BESIDE_VALUES = {
     "results.drug": "aspirin",
     "results.x": "3.84",
     "results.y": "7.02",
+    "results.ci": "(1.2-3.4)",
 }
 BESIDE_CITED = {"(Jones 2019)": "[@jones2019]"}
 
@@ -759,7 +767,9 @@ def test_text_beside_a_token_is_escaped_for_its_neighbour(
 ) -> None:
     """Each stretch was escaped as if it stood alone. `(see Table 2)` typed straight after a
     citation's `]` made a link of it, and the parenthesis became the link's address; a `<`
-    before a binding whose value is a word became the start of a tag.
+    before a binding whose value is a word became the start of a tag. A `]` before a value
+    that opens with `(` made a link of the value, which `_reads_as` cannot see: it reads a
+    binding as digits.
 
     Two were refused where they could merge. `\\{` before a binding's own `{{` reads as the
     binding `{{{results.drug}}`, which `check` refuses as malformed; and a `](` formed inside

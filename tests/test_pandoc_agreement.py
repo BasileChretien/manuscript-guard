@@ -390,6 +390,22 @@ TAGGING = {
     "a rule over text with a line of dots later": (
         "Before.\n\n---\nText.\n\nP1.\n...\n\nP2.\n\nMethods\n-------\n\nP3.\n"
     ),
+    "yaml block closing in the middle of a block": (
+        "Intro.\n\n---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n---\nPara A right after.\n"
+    ),
+    "yaml block closing on dots in the middle of a block": (
+        "Intro.\n\n---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n...\nPara A right after.\n"
+    ),
+    "a table whose header has a colon, with a row of dots": (
+        "Before.\n\n---\nRatio (a:b)    Value\n-------------- -----\nFirst          1.2\n\n"
+        "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"
+        "--------------------\n\nAfter.\n"
+    ),
+    "a table whose header starts with a hash, with a row of dots": (
+        "Before.\n\n---\n# of reports   Value\n-------------- -----\nFirst          1.2\n\n"
+        "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"
+        "--------------------\n\nAfter.\n"
+    ),
     "yaml block opening on a comment": (
         "Before.\n\n---\n# a comment\nkey: value\n\nother: value\n...\n\nAfter.\n"
     ),

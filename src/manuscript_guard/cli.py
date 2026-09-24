@@ -265,7 +265,7 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
-def _unexamined(document: Path, identified: int) -> str:
+def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     """How much of the returned document this command could not look at.
 
     Import compares paragraphs that carry an identifier. Table cells, headings, captions,
@@ -289,8 +289,13 @@ def _unexamined(document: Path, identified: int) -> str:
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
         f"not compared: table cells, headings, captions, list items, block quotes, and "
-        f"anything newly written. Those outside tables that changed are listed above; an "
-        f"edit inside a table is not reported at all."
+        f"anything newly written. "
+        + (
+            "Those outside tables that changed are listed above; "
+            if listed
+            else "None outside a table changed; "
+        )
+        + "an edit inside a table is not reported at all."
     )
 
 
@@ -375,7 +380,11 @@ def cmd_import(args: argparse.Namespace) -> int:
     # the co-author newly wrote - is invisible to this command, and saying nothing about
     # that let a co-author believe they had corrected a table when the correction went
     # nowhere.
-    unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
+    unexamined = _unexamined(
+        edited,
+        sum(1 for b in returned if b.names and not b.table),
+        listed=bool(plan.unidentified or plan.vanished or plan.reordered),
+    )
 
     if plan.empty and not comments:
         print("nothing came back: the document matches the manuscript on disk.")
@@ -458,6 +467,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    - {text[:120]}")
         for text in plan.unidentified[:12]:
             print(f"    + {text[:120]}")
+        for text in plan.reordered[:12]:
+            print(f"    ~ {text[:120]}")
         print(
             "    Not applied; make these edits in the .md. They also mark where sections "
             "begin, so a paragraph moved past one of them may not be reported as moved: "

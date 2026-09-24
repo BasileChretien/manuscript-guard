@@ -274,6 +274,22 @@ RULED = {
     "yaml whose first key is table": "---\ntable: x\nabstract: |\n  a\n\n  b\n...",
     "yaml opening on a comment": "---\n# a comment\nkey: value\n\nother: value\n...",
     "yaml opening on a quoted key": '---\n"key": value\n\nother: value\n...',
+    "yaml closing in the middle of a block": (
+        "---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n---\nPara A right after."
+    ),
+    "yaml closing on dots in the middle of a block": (
+        "---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n...\nPara A right after."
+    ),
+    "a table whose header has a colon, with a row of dots": (
+        "---\nRatio (a:b)    Value\n-------------- -----\nFirst          1.2\n\n"
+        "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"
+        "--------------------"
+    ),
+    "a table whose header starts with a hash, with a row of dots": (
+        "---\n# of reports   Value\n-------------- -----\nFirst          1.2\n\n"
+        "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"
+        "--------------------"
+    ),
     "a row reading dots": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
         "            ...\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
@@ -1221,6 +1237,8 @@ def test_reordered_list_items_are_not_called_a_match(
     out = capsys.readouterr().out
     assert "matches the manuscript" not in out, out
     assert "order" in out, out
+    named = "~ First, the reports." in out or "~ Third, the events." in out
+    assert named, "the reordered items are named, not only counted"
     assert source.read_text(encoding="utf-8") == before
 
 

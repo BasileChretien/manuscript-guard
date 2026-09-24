@@ -478,12 +478,51 @@ def _dash_rule(line: str) -> bool:
 
 
 # A table caption, `Table: x`, `table: x`, `: x` or `:x`, which pandoc takes straight under
-# the closing rule. A YAML block closes on `---` or `...`, and only a YAML block on `...`.
+# the closing rule.
 _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
-_YAML_OPEN = re.compile(r" {0,3}---[ \t]*")
-# What YAML can open with: a key, a quoted or complex key, a comment.
-_YAML_KEY = re.compile(r"[ \t]*(?:#|[\"'?]|[\w.-][^:\n]*:)")
-_YAML_CLOSE = re.compile(r" {0,3}(?:---|\.\.\.)[ \t]*")
+# A YAML block in the body: `---` in column 0 over a line YAML can open with - a key, a
+# quoted or complex key, a comment - and it ends on the first `---` or `...` in column 0.
+_YAML_OPEN = re.compile(r"---[ \t]*")
+_YAML_FIRST = re.compile(r"[ \t]*(?:#|[\"'?]|[\w.-][^:\n]*:(?:[ \t]|$))")
+_YAML_STOP = re.compile(r"(?:---|\.\.\.)[ \t]*")
+# How much text is parsed to decide whether a `---` opens YAML. A metadata block in the body
+# longer than this is read as not one, which costs at worst a build that pandoc refuses.
+_YAML_LIMIT = 4000
+
+
+def _yaml_mapping(text: str) -> bool:
+    import yaml
+
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    try:
+        return isinstance(yaml.load(text, Loader=loader), dict)
+    except yaml.YAMLError:
+        return False
+
+
+def _yaml_closes(pieces: list[str], index: int) -> int | None:
+    """The block a YAML block opened at `pieces[index]` stops in, if pandoc reads one there.
+
+    Pandoc stops at the first `---` or `...` in column 0, wherever in a block it falls, and
+    keeps what came before only if it is a YAML mapping; otherwise the `---` is a rule or a
+    table. Deciding by the look of the first line alone read a table headed `Ratio (a:b)` as
+    YAML, and a YAML block ending mid-block as still open.
+    """
+    lines = pieces[index].split("\n")
+    if not (_YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and _YAML_FIRST.match(lines[1])):
+        return None
+    body: list[str] = []
+    size = 0
+    for at in range(index, len(pieces)):
+        for line in lines[1:] if at == index else pieces[at].split("\n"):
+            if _YAML_STOP.fullmatch(line):
+                # Closed inside its own block: there is nothing after it to hide.
+                return at if at != index and _yaml_mapping("\n".join(body)) else None
+            body.append(line)
+            size += len(line) + 1
+            if size > _YAML_LIMIT:
+                return None
+    return None
 
 
 def _closes_table(lines: list[str]) -> bool:
@@ -504,33 +543,36 @@ def _ruled_spans(pieces: list[str]) -> dict[int, int]:
     were ordinary-looking blocks, and a marker printed into a cell. An opener with nothing
     after it to close it closes nothing.
 
-    A table closes only on a rule: a row that happens to read `...` is a row. A bare `---`
-    followed by a `key:` line may open either, so it closes on whichever comes first.
+    A table closes only on a rule: a row that happens to read `...` is a row. A `---` opens
+    YAML only when what follows it, up to where pandoc would stop, is a YAML mapping.
     """
     tables: dict[int, bool] = {}
-    yamls: dict[int, bool] = {}
-    opening: dict[int, str] = {}
+    opening: list[int] = []
     for index in range(0, len(pieces), 2):
         lines = [line for line in pieces[index].split("\n") if line.strip()]
         if not lines:
             continue
         tables[index] = _closes_table(lines)
-        yamls[index] = _YAML_CLOSE.fullmatch(lines[-1]) is not None
         if _dash_rule(lines[0]) and not tables[index]:
-            yaml = _YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and _YAML_KEY.match(lines[1])
-            opening[index] = "either" if yaml else "table"
-    spans: dict[int, int] = {}
-    next_table: int | None = None
-    next_either: int | None = None
+            opening.append(index)
+    next_table: dict[int, int] = {}
+    following: int | None = None
     for index in range(len(pieces) - 1, -1, -1):
-        kind = opening.get(index)
-        closer = next_either if kind == "either" else next_table if kind else None
+        if following is not None:
+            next_table[index] = following
+        if tables.get(index):
+            following = index
+    spans: dict[int, int] = {}
+    hidden_to = -1
+    for index in opening:
+        if index <= hidden_to:
+            continue  # inside a span already: pandoc never reads it as an opener
+        closer = _yaml_closes(pieces, index)
+        if closer is None:
+            closer = next_table.get(index)
         if closer is not None:
             spans[index] = closer
-        if tables.get(index):
-            next_table = index
-        if tables.get(index) or yamls.get(index):
-            next_either = index
+            hidden_to = closer
     return spans
 
 

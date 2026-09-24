@@ -69,8 +69,8 @@ class Plan:
     unidentified: tuple[str, ...] = ()
     #: Text of such paragraphs of the document as sent that did not come back as they were.
     vanished: tuple[str, ...] = ()
-    #: The same paragraphs without an identifier came back, in a different order.
-    reordered: bool = False
+    #: Text of such paragraphs that all came back unchanged, but out of their order.
+    reordered: tuple[str, ...] = ()
 
     @property
     def empty(self) -> bool:
@@ -439,7 +439,12 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         if left[text]:
             left[text] -= 1
             vanished.append(text)
-    reordered = not (unidentified or vanished) and sent_untagged != back_untagged
+    reordered: list[str] = []
+    if not (unidentified or vanished) and sent_untagged != back_untagged:
+        matcher = difflib.SequenceMatcher(a=sent_untagged, b=back_untagged, autojunk=False)
+        for kind, _a1, _a2, b1, b2 in matcher.get_opcodes():
+            if kind != "equal":
+                reordered.extend(back_untagged[b1:b2])
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -452,7 +457,7 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         sections=sections,
         unidentified=tuple(unidentified),
         vanished=tuple(vanished),
-        reordered=reordered,
+        reordered=tuple(reordered),
     )
 
 

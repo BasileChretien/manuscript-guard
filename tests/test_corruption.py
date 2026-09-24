@@ -1186,6 +1186,12 @@ def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[s
             "```r\nx <- 1\n```\n",
             {"9.99"},
         ),
+        # A code block in the abstract is still code: its `<!--` opens no comment.
+        (
+            "---\nabstract: |\n  Drafts were searched for\n\n  ```\n  <!--\n  ```\n\n"
+            "  and 9.99% held one. <!-- recheck -->\n---\n\n# Results\n\nIt was 3.84%.\n",
+            {"9.99%", "3.84%"},
+        ),
     ],
 )
 def test_nothing_opened_in_the_front_matter_hides_the_body(
@@ -1196,15 +1202,51 @@ def test_nothing_opened_in_the_front_matter_hides_the_body(
     and a fence opener in an abstract paired with a fence in the body, so everything between
     was hidden from G2 and the audit while pandoc printed it. Once the heading scan stopped
     at the front matter and the masking did not, a reference heading between the two cut the
-    body's `-->` away, and the title's comment ran on over an appendix."""
+    body's `-->` away, and the title's comment ran on over an appendix. The first fix looked
+    for fences in the body alone, so a `<!--` in a code block in the abstract opened a
+    comment again."""
     from manuscript_guard.audit import audit
-    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.masking import NUL, mask, masked_spans
 
     outputs = _outputs(tmp_path, '{"n": 1}')
     path = tmp_path / "paper.md"
     path.write_text(paper, encoding="utf-8")
     assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
     assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
+    hidden = {i for spans in masked_spans(paper).values() for a, b in spans for i in range(a, b)}
+    explained = "".join(NUL if i in hidden else ch for i, ch in enumerate(paper))
+    assert explained == mask(paper), "`explain` reports what G2 masks"
+
+
+def test_a_comment_opened_in_the_front_matter_hides_no_binding(project: Path) -> None:
+    """The binding parser blanked HTML comments across the whole file, so a `<!--` in a YAML
+    comment ran on to the next comment in the body, and no binding between was parsed: a
+    reversed interval passed and printed as "(95% CI 5.12 to 2.89)"."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("\n---\n", "\n# note <!-- keep the title in step\n---\n", 1)
+    text = text.replace(
+        "{{results.ror.ci_low}} to {{results.ror.ci_high}}",
+        "{{results.ror.ci_high}} to {{results.ror.ci_low}}",
+        1,
+    )
+    text = text.replace("# Introduction", "<!-- checked -->\n\n# Introduction", 1)
+    path.write_text(text, encoding="utf-8")
+    assert "interval-reversed" in codes(gate_report(project))
+
+
+def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:
+    """A fence opener in an abstract, with no closer there, paired with a fence in the body,
+    and the prose between was judged as R."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = (
+        '---\nabstract: |\n  ```r\n---\n\n## Results\n\nThe label read "ROR 9.99".\n\n'
+        "```r\nx <- 1\n```\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" not in {f.code for f in report.findings}
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:

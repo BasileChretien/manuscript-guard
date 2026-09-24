@@ -897,7 +897,9 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   YAML's first line read as a blank one and the front matter went unrecognised. And nothing
   opened in the front matter closes in the body, as pandoc reads it: a `<!--` in a title ran
   on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
-  below, hiding everything between from G2 and the audit. See `front_matter_end`.)
+  below, hiding everything between from G2 and the audit, and the bindings between from
+  G2's binding checks. The masking, `explain`, G2's fence and binding readers and the
+  heading scan all stop at `front_matter_end`, and look for fences on each side of it.)
 
 **Two were the same value compared the wrong way.**
 

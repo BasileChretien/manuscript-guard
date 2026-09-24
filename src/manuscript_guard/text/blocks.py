@@ -30,7 +30,7 @@ from bisect import bisect_right
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences, fenced_spans
-from manuscript_guard.text.masking import FRONTMATTER
+from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
 
@@ -69,8 +69,7 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     # for only after it. Blanked first, a comment on the YAML's first line read as a blank
     # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
     # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    skip = opening.end() if opening else 0
+    skip = front_matter_end(text)
     body = blank_fences(text[skip:])
     comments = _comments(body)
     head = _blank_out(text[:skip], [(0, skip)])
@@ -286,10 +285,14 @@ def _lines(text: str) -> list[_Line]:
 
 
 def _fences(text: str, lines: list[_Line]) -> dict[int, tuple[int, str, bool]]:
-    """Each fence's opening line: its closing line, its character, and whether indented."""
+    """Each fence's opening line: its closing line, its character, and whether indented.
+
+    Looked for only after the front matter, as `scannable` looks: an opener in a YAML value
+    paired with a fence in the body, and the walk stepped over every heading between.
+    """
     starts = [line.start for line in lines]
     found = {}
-    for fence in fenced_spans(text):
+    for fence in fenced_spans(text, front_matter_end(text)):
         first = bisect_right(starts, fence.start) - 1
         last = bisect_right(starts, fence.end - 1) - 1
         opener = text[fence.start : fence.body_start]

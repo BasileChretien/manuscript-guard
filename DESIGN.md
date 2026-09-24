@@ -1213,11 +1213,13 @@ let a paragraph moved from the Discussion to the Introduction push one paragraph
 every section in between, each into the next, with "reordered 1 paragraph(s)" printed and
 the tests comparing `sorted(...)` and seeing nothing. Import cannot change how many
 paragraphs a section holds, so a move past a heading, table or figure is reported and
-refused, like one into another file. Only a paragraph that moved is judged, and only
-against what did not move around it: the stable backbone of paragraphs and the headings as
-the document was sent. The file-level check it replaces judged every paragraph by its
-neighbours, and so reported the single paragraph of a one-paragraph file as moved into
-another file when nothing had moved at all.
+refused, like one into another file. What is out of place is found by keeping the largest
+set of paragraphs whose sections read in order, with the headings as the document was sent
+held fixed; the order diff only breaks ties. Judging only the paragraphs the diff called
+moved missed a paragraph dragged to just below the next heading, which keeps its place among
+the paragraphs, and blamed a neighbour when the diff preferred it. The file-level check
+before that reported the single paragraph of a one-paragraph file as moved into another
+file when nothing had moved at all.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation, and its prose reaches Word unchanged except for its
@@ -1949,10 +1951,10 @@ Closed since, and why each mattered:
   into its paragraph is recognised by its text vanishing from the document and turning up
   in the paragraph; a heading reworded in the same edit is not recognised.
 - **A move is applied only within its section.** A paragraph moved past a heading, table or
-  figure, or into another file, is reported and left where it was. Whether a move stayed in
-  its section is judged against the unmoved paragraphs and the headings as sent. An edited
-  heading is not one of them, so a move beside one is judged by the next thing that did not
-  change.
+  figure, or into another file, is reported and left where it was. Where each paragraph
+  now sits is read against the headings, tables and figures as the document was sent; an
+  edited or deleted heading is not one of them, so a paragraph that crossed only that
+  heading is not seen to have moved, and stays in its section.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

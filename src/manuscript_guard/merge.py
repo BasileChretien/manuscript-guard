@@ -150,16 +150,23 @@ def _sections(known: dict) -> dict[str, tuple[Path, int]]:
 
 def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     """The headings, tables and figures of the document as sent, each ranked as the opening
-    of the section after it, keyed by what they say (a table by its position among tables)."""
+    of the section after it, keyed by what they say (a table by its position among tables).
+
+    Only what stands between two sections counts. Pandoc can render an untagged paragraph
+    inside a section - display maths, say - and ranked as a boundary it would make every
+    untouched document look as if a paragraph had crossed it.
+    """
     found: dict[tuple, deque] = {}
     pending: list[tuple] = []
     tables = 0
+    previous: tuple | None = None
     for block in reference:
         if block.names and not block.table:
-            opening = (*rank(block.names[0])[:2], 0)
-            for key in pending:
-                found.setdefault(key, deque()).append(opening)
-            pending = []
+            here = rank(block.names[0])
+            if previous is None or previous[:2] != here[:2]:
+                for key in pending:
+                    found.setdefault(key, deque()).append((*here[:2], 0))
+            pending, previous = [], here
         elif block.table:
             pending.append(("table", tables))
             tables += 1
@@ -173,12 +180,16 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
 def _misplaced(
     reference: list[Block], returned: list[Block], order: list[str], moved: set[str], rank
 ) -> list[str]:
-    """Moved paragraphs that came back outside their own section or file.
+    """Paragraphs that came back outside their own section or file.
 
-    Only a moved paragraph is judged, and only against what did not move around it: the
-    paragraphs of the stable backbone and the headings, tables and figures the document was
-    sent with. A file holding a single paragraph used to be reported as moved into another
-    file when nothing had moved, because neither of its neighbours came from it.
+    Every paragraph is judged, not only those the order diff calls moved: a paragraph dragged
+    from the end of one section to just below the next heading keeps its place among the
+    paragraphs, so the diff saw nothing and the move was dropped with "nothing came back".
+    The largest set of paragraphs whose sections read in order - with the headings, tables and
+    figures as sent held fixed - is kept, and whatever falls outside it is out of place. The
+    order diff only breaks ties, so the paragraph that crossed the heading is the one named,
+    not a neighbour the diff happened to prefer. A file holding a single paragraph, which the
+    first version of this check reported as moved when nothing had moved, reads in order.
     """
     boundaries = _boundaries(reference, rank)
     same_tables = sum(b.table for b in reference) == sum(b.table for b in returned)
@@ -196,17 +207,21 @@ def _misplaced(
         elif block.text and boundaries.get(("text", block.text)):
             sequence.append((None, boundaries[("text", block.text)].popleft()))
 
-    out = []
-    for index, (name, place) in enumerate(sequence):
-        if name not in moved:
-            continue
-        before = [r for n, r in reversed(sequence[:index]) if n not in moved]
-        after = [r for n, r in sequence[index + 1 :] if n not in moved]
-        low = before[0] if before else (float("-inf"),)
-        high = after[0] if after else (float("inf"),)
-        if not low <= place <= high:
-            out.append(name)
-    return out
+    # The heaviest subsequence whose ranks never decrease. A heading outweighs every
+    # paragraph together, and a paragraph the diff did not call moved outweighs one it did.
+    anchor = 2 * len(sequence) + 1
+    weight = [anchor if n is None else (1 if n in moved else 2) for n, _r in sequence]
+    best, back = list(weight), [-1] * len(sequence)
+    for j in range(len(sequence)):
+        for i in range(j):
+            if sequence[i][1] <= sequence[j][1] and best[i] + weight[j] > best[j]:
+                best[j], back[j] = best[i] + weight[j], i
+    kept: set[int] = set()
+    at = max(range(len(sequence)), key=best.__getitem__, default=-1)
+    while at >= 0:
+        kept.add(at)
+        at = back[at]
+    return [n for i, (n, _r) in enumerate(sequence) if n is not None and i not in kept]
 
 
 def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
@@ -215,7 +230,10 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
     paragraph's identifier, reading "MethodsWe analysed...". It merged as prose, and the
     heading stayed in the file above it. The heading has no identifier to be joined by, so
-    it is recognised by having vanished while its text turned up in its neighbour.
+    it is recognised by having vanished while its text turned up in its neighbour - counted,
+    not merely found, because a paragraph often opens by naming its heading ("Statistical
+    analysis used..."), and requiring the text to be new let that join through as
+    "Statistical analysisStatistical analysis used...".
     """
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
@@ -228,7 +246,7 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
         if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
             continue
         text = " ".join(reference[i].text.split())
-        if missing[reference[i].text] and text in squashed_now and text not in squashed_was:
+        if missing[reference[i].text] and squashed_now.count(text) > squashed_was.count(text):
             return reference[i].text
     return ""
 

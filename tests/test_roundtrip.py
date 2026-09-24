@@ -525,6 +525,76 @@ def test_a_deletion_beside_a_move_keeps_every_paragraph_in_its_section(tmp_path:
     assert path.read_text(encoding="utf-8") == expected
 
 
+def _two_sections(tmp_path: Path):
+    """One file: '# Intro' with two paragraphs, then '# Methods' with two."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = "# Intro\n\nIntro one.\n\nIntro two.\n\n# Methods\n\nMethods one.\n\nMethods two.\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"i1": "Intro one.", "i2": "Intro two.", "m1": "Methods one.", "m2": "Methods two."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    blocks_ = {name: Block((name,), w) for name, w in words.items()}
+    return path, text, known, blocks_, Block((), "Intro"), Block((), "Methods")
+
+
+@pytest.mark.parametrize("landing", ["below-the-heading", "after-its-first-paragraph"])
+def test_a_move_past_a_heading_is_reported_even_when_the_order_is_unchanged(
+    tmp_path: Path, landing: str
+) -> None:
+    """Dragged from the end of the Introduction to just below the Methods heading, a
+    paragraph keeps its place among the tagged paragraphs, so the order diff saw no move and
+    the import said "nothing came back". Dragged one further, the diff broke its tie by
+    calling the Methods paragraph the moved one, and the report blamed that."""
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, b, intro, methods = _two_sections(tmp_path)
+    sent = [intro, b["i1"], b["i2"], methods, b["m1"], b["m2"]]
+    if landing == "below-the-heading":
+        returned = [intro, b["i1"], methods, b["i2"], b["m1"], b["m2"]]
+    else:
+        returned = [intro, b["i1"], methods, b["m1"], b["i2"], b["m2"]]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == ("i2",)
+    assert not plan.empty
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_text_pandoc_renders_between_two_paragraphs_of_a_section_is_no_boundary(
+    tmp_path: Path,
+) -> None:
+    """Only a heading, table or figure between two sections marks where one ends. An untagged
+    paragraph inside a section - display maths, say - must not make an untouched document
+    look moved."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, intro, methods = _two_sections(tmp_path)
+    from manuscript_guard.docxtext import Block
+
+    sent = [intro, b["i1"], Block((), "x = 1"), b["i2"], methods, b["m1"], b["m2"]]
+    assert plan_import(known, sent, list(sent)).empty
+
+
+def test_a_heading_its_paragraph_already_names_is_still_seen_joined(tmp_path: Path) -> None:
+    """"Statistical analysis" above "Statistical analysis used...": joined, the heading's
+    text was already in the paragraph, so it was not seen as taken in, and the source read
+    "Statistical analysisStatistical analysis used..."."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    body = "Statistical analysis used the reporting odds ratio."
+    path.write_text(f"## Statistical analysis\n\n{body}\n", encoding="utf-8")
+    known = {"p": (path, body, path.read_text(encoding="utf-8").index(body))}
+    heading = Block((), "Statistical analysis")
+    sent = [heading, Block(("p",), body)]
+    plan = plan_import(known, sent, [Block(("p",), "Statistical analysis" + body)])
+    assert not plan.merged
+    assert [refusal.name for refusal in plan.refused] == ["p"]
+
+
 @needs_pandoc
 def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]

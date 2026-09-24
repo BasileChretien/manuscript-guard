@@ -2643,11 +2643,14 @@ _LOCALISED = {"Heading1": "1", "BodyText": "a0", "Caption": "ac", "Bibliography"
 
 
 def _localised(document: Path, target: Path, change) -> Path:
-    """`rewrite`, with the style ids renamed as a localised Word renames them on saving."""
+    """`rewrite`, with the style ids renamed as a localised Word renames them on saving: the
+    id and every reference to it, never the style's name."""
 
-    def ids(xml: str, attribute: str) -> str:
+    def ids(xml: str, elements: tuple[str, ...]) -> str:
         for was, now in _LOCALISED.items():
-            xml = xml.replace(f'{attribute}="{was}"', f'{attribute}="{now}"')
+            xml = xml.replace(f'w:styleId="{was}"', f'w:styleId="{now}"')
+            for element in elements:
+                xml = xml.replace(f'<w:{element} w:val="{was}"', f'<w:{element} w:val="{now}"')
         return xml
 
     with zipfile.ZipFile(document) as zin, zipfile.ZipFile(
@@ -2656,10 +2659,9 @@ def _localised(document: Path, target: Path, change) -> Path:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == "word/document.xml":
-                data = ids(change(data.decode("utf-8")), "w:val").encode("utf-8")
+                data = ids(change(data.decode("utf-8")), ("pStyle",)).encode("utf-8")
             elif item.filename == "word/styles.xml":
-                styles = ids(data.decode("utf-8"), "w:styleId")
-                data = ids(styles, "w:val").encode("utf-8")
+                data = ids(data.decode("utf-8"), ("basedOn", "next", "link")).encode("utf-8")
             zout.writestr(item, data)
     return target
 
@@ -2669,9 +2671,9 @@ def _localised(document: Path, target: Path, change) -> Path:
 @pytest.mark.parametrize(
     "where",
     [
-        ("heading", 2, ">Methods</w:t>", ">Study design</w:t>"),
-        ("caption", 8, "Reports by drug group.", "Counts of reports by drug group."),
-        ("reference", 15, "Hepatic Injury in a", "Liver Injury in a"),
+        ("heading", 2, ">Methods</w:t>", ">Study design</w:t>", "Whether the signal"),
+        ("caption", 8, "Reports by drug group.", "Reports of each drug group.", "The database"),
+        ("reference", 15, "Hepatic Injury in a", "Liver Injury in a", "None declared."),
     ],
     ids=lambda where: where[0],
 )
@@ -2685,11 +2687,10 @@ def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
     localised Word saves Heading1 as "1"."""
     from manuscript_guard.cli import main
 
-    _kind, index, was, now = where
+    _kind, index, was, now, deleted = where
     document = built(project)
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
-    opening = re.sub(r"\s+", " ", before)
 
     def edit(xml: str) -> str:
         paragraph = tagged_xml(xml)[index]
@@ -2705,9 +2706,7 @@ def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     out = capsys.readouterr().out
     assert "merging" not in out and "comes from" not in out, out
-    assert "deleted in Word" in out, out
-    deleted = [p for p in blocks(opening) if p.startswith(("Whether", "The database", "None"))]
-    assert any(p[:40] in re.sub(r"\s+", " ", out) for p in deleted), out
+    assert f"deleted in Word, left in place here: {deleted}" in out, out
     assert source.read_text(encoding="utf-8") == before
 
 

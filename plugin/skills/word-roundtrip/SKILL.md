@@ -117,6 +117,9 @@ handled, and each has a test:
   moved paragraph pasted between the halves; that move is not applied either.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.
+- A paragraph deleted just before a heading, a table caption or the reference list is
+  reported deleted, even when that heading was retitled or that caption edited in the same
+  round; it used to be merged as the new title.
 - A tab or other Word layout in a paragraph no longer leaks XML into the merge.
 - A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
   (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit

@@ -1592,9 +1592,15 @@ Word, left in place here", with Word's copy shown and the advice to move it in t
 never retype it - and the skill asks co-authors to keep Track Changes on. Two exact rules
 stayed: an identifier left on an empty line goes back to the next paragraph when that reads
 exactly as the identified one was sent (Enter without Track Changes), and an identifier on a
-block reading exactly as a heading or caption is taken off it (the last paragraph of a
-section, deleted without Track Changes, used to merge the heading's text into itself when
-it named the heading, on `main` too).
+heading, a caption or a reference entry is taken off it (the last paragraph of a section,
+deleted without Track Changes, used to merge the heading's text into itself, on `main` too).
+Recognised by its text at first, a heading retitled in the same round was still merged -
+"Study design", exit 0, as Word's own saved file showed - so a paragraph's role is now read
+from its style: a heading by its outline level, a caption or a reference entry by its
+style's name, never by the id, which Word renames when it saves in another language (a
+Japanese Word saves pandoc's `Heading1` as `1`). A paragraph restyled as a heading in Word,
+its words mostly its own, keeps its identifier: reported deleted, it would invite deleting
+it.
 
 The checks that came out of the review rounds guard the tracked path as well:
 
@@ -2276,10 +2282,14 @@ Closed since, and why each mattered:
   - *A comment's anchor is read from the markup only.* After a paste made without Track
     Changes at the start of a paragraph, a comment on the pasted text is attached to the
     paragraph it landed in front of.
-  - *A heading retitled after the last paragraph of its section was deleted without Track
-    Changes* is merged as that paragraph's text, on `main` too. The paragraph's identifier
-    slides onto the heading, and only a heading that still reads exactly as it was sent is
-    recognised as one; paragraph styles are not read.
+  - *A heading is what its style says it is.* An identifier left on a heading, a caption or
+    a reference entry - the paragraph before it deleted without Track Changes - names a
+    paragraph that is gone, whatever the heading now says. A heading made by hand, bold and
+    larger with no heading style or outline level, is not a heading to Word's navigation
+    pane either, and not to `import`: retitled in the same round, it reads as the deleted
+    paragraph's new wording, as every heading did on `main`. So does a heading whose new
+    title shares most of its words with the paragraph deleted above it, which is read as
+    that paragraph restyled.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined

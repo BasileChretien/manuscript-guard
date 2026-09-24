@@ -1974,10 +1974,13 @@ Closed since, and why each mattered:
   is read as Markdown; and a listing pasted into Word as plain paragraphs is not code as
   far as the reader can tell, so a numpydoc `References` section in one starts a list. The
   cut is named under "Not audited".
-- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
-  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. It needs a paper that
-  writes both markers in backticks, and the comment scanner would have to know code spans.
+- **A code span is taken to end only at a blank line.** The comment scanner
+  (`text/comments.py`) reads code spans so that `` `<!--` `` stays code, but pandoc also
+  ends a span at the edge of a list item or a heading, and opens none inside a raw HTML tag
+  or TeX maths. So a stray backtick in one list item can pair with the one opening
+  `` `<!--` `` in the next, and the prose after it is hidden up to the next `-->`, as it
+  was for every `` `<!--` `` before. That needs an unmatched backtick as well as both
+  markers in backticks. The other way round, a real comment read as code, only adds noise.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

@@ -1350,6 +1350,48 @@ def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
     assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}
 
 
+COMMENT_MARKERS_IN_CODE = "We stripped `<!--` markers. The ROR was {}.\n\nNote: `-->` closes.\n"
+
+
+def test_audit_reads_prose_between_comment_markers_in_code(tmp_path: Path) -> None:
+    """Pandoc prints `` `<!--` `` as code. The masking took it for a comment and hid
+    everything up to the next `-->`, a later `` `-->` `` included: the audit reported 0
+    numeric tokens and `--strict` passed."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"), encoding="utf-8")
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 1
+
+
+def test_g2_reads_prose_between_comment_markers_in_code(project: Path) -> None:
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"),
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "9.99" in f.message for f in report.failures
+    ), report.render(project)
+
+
+def test_a_bad_binding_between_comment_markers_in_code_is_caught(project: Path) -> None:
+    """Skipped as commented out, it was neither resolved nor substituted, and the document
+    printed `{{results.no_such_key}}`."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n"
+        + COMMENT_MARKERS_IN_CODE.format("{{results.no_such_key}}"),
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     "bound",
     [

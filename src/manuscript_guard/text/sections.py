@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.comments import blank_comments
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import FRONTMATTER, mask
 
@@ -82,9 +83,6 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
@@ -107,16 +105,15 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
-    out = _HTML_COMMENT.sub(blank, blank_fences(text))
+    out = blank_fences(blank_comments(text))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter.
     opening = FRONTMATTER.match(out)
-    return blank(opening) + out[opening.end() :] if opening else out
+    if opening is None:
+        return out
+    blank = "".join("\n" if ch == "\n" else " " for ch in opening.group(0))
+    return blank + out[opening.end() :]
 
 
 @dataclass(frozen=True)

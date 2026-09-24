@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from manuscript_guard.text.comments import comment_spans
 from manuscript_guard.text.fences import fenced_spans
 
 NUL = "\x00"
@@ -43,7 +44,9 @@ _KEY_LINE = re.compile(
 
 # Ordered: earlier patterns win, because a URL inside a code fence is already gone.
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
-# that is partly machinery and partly prose.
+# that is partly machinery and partly prose. HTML comments are handled separately too, and
+# before any of these, by `text/comments.py`: whether `<!--` opens one depends on whether a
+# code span opened first, which no pattern here can see.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # A fenced block is masked *here* and read by a different reader. Inline code is not
     # masked at all.
@@ -57,7 +60,6 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # `check_numbers` runs the *code* checker over them instead, the same one G3 uses on
     # figure scripts: a number inside a string literal in the listing is still a claim, a
     # loop bound is not.
-    ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),
@@ -138,6 +140,9 @@ def mask(text: str) -> str:
     for start, end in _frontmatter_spans(text):
         for index in range(start, end):
             chars[index] = NUL
+    for start, end in comment_spans("".join(chars)):
+        for index in range(start, end):
+            chars[index] = NUL
     for _name, pattern in _PATTERNS:
         for match in pattern.finditer("".join(chars)):
             for index in range(match.start(), match.end()):
@@ -162,6 +167,14 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
         found["frontmatter"] = frontmatter
         chars = list(working)
         for start, end in frontmatter:
+            for index in range(start, end):
+                chars[index] = NUL
+        working = "".join(chars)
+    comments = comment_spans(working)
+    if comments:
+        found["html-comment"] = comments
+        chars = list(working)
+        for start, end in comments:
             for index in range(start, end):
                 chars[index] = NUL
         working = "".join(chars)

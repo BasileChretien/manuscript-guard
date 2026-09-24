@@ -484,6 +484,13 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "wording would be read as Markdown, or would change markup beside it. "
             "Make the edit in the .md.",
         )
+    if aligned.touching:
+        return (
+            "the text between two of its numbers or citations was deleted, so they would "
+            "touch: one could turn the other into a link, and the paragraph could not be "
+            "lined up with its source again. Make the edit in the .md, keeping at least a "
+            "space between them.",
+        )
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:

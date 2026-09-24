@@ -826,6 +826,7 @@ _MARKDOWN = re.compile(
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
+    r"|(?<=\])\("  # a link's address, whose `[` may stand in the source's own prose
 )
 
 
@@ -841,14 +842,24 @@ def _escaped(
 
     Its edges are read with what will stand beside them. A `(` straight after a citation's
     `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
-    binding whose value is a word opens a tag. At the end of the text neither looked like
-    markup, because the citation and the binding were not there to see.
+    binding whose value is a word opens a tag, and a `]` before one whose value opens with
+    `(` makes the value a link's address. At the end of the text none of them looked like
+    markup, because the citation and the binding were not there to see. The value is not
+    seen here either, so a `]` is escaped before any token, whatever follows it.
+
+    A `{` before a binding is written as an entity. Escaped, it still joined the binding's
+    own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
+    refuses as malformed. The entity is a named one because `&#123;` puts the number 123
+    into the prose, and `check` refuses that as a number bound to no source.
     """
+    brace = before_token and text.endswith("{")
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
     if after_token and text.startswith("("):
         text = "\\" + text
-    if before_token and text.endswith(("<", "&")):
+    if before_token and text.endswith(("<", "&", "]")):
         text = text[:-1] + "\\" + text[-1]
+    if brace:
+        text = text.removesuffix("\\{") + "&lbrace;"
     if opening and (block := _OPENER.match(text)):
         at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
         text = text[:at] + "\\" + text[at:]
@@ -923,6 +934,8 @@ class Alignment:
     #: Rebuilt, it would not read as what came back: Markdown the merge could not keep from
     #: being read as markup, or markup beside the edit that it would change.
     misread: bool = False
+    #: Everything between two tokens was deleted, so rebuilt they would touch.
+    touching: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -1103,6 +1116,12 @@ def align(
             out.append(protected[index])
     if lost:
         return Alignment(None, markup=tuple(lost))
+    # With nothing between them there is nothing to escape: a citation's `]` against a value
+    # that opens with `(` is a link, and the interval was its address. Nor can two touching
+    # tokens be lined up again, so every later edit to the paragraph would be refused. After
+    # the markup: a footnote deleted with the words around it is the reason to name.
+    if not all(new_prose[1:-1]):
+        return Alignment(None, touching=True)
     if unread:
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()

@@ -386,7 +386,8 @@ def test_a_hyphen_between_numbers_is_not_a_sign(tmp_path: Path) -> None:
         # A hyphen after a symbol that ends a number is still a separator.
         ("50%-60%", ["50", "60"]),
         # A minus after the separator is a sign: U+2212 always, a hyphen after a hyphen or a
-        # slash. Pandoc's "--" en dash is read as one only in Markdown, where it is written.
+        # slash, in every format. Markdown's "--" meaning pandoc's en dash is read this way
+        # too, which errs toward a false alarm.
         ("-0.72--0.30", ["-0.72", "-0.3"]),
         ("−0.72-−0.30", ["-0.72", "-0.3"]),
         ("−0.72/−0.30", ["-0.72", "-0.3"]),

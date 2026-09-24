@@ -111,6 +111,35 @@ def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
     return styled or props.find(W + "outlineLvl") is not None
 
 
+#: Layout elements that read as a space. A manual line break read as nothing ran the
+#: numbers either side of it together: "-0.51" over "-0.72 to -0.30" became "-0.51-0.72".
+_SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
+
+# The Symbol font's characters, by their code in that font, that can stand beside a number.
+_SYMBOL_FONT = {0x2D: "−", 0xB1: "\xb1", 0xA3: "≤", 0xB3: "≥", 0xB4: "\xd7"}
+
+
+def _symbol(node: ET.Element) -> str:
+    """A `w:sym` character: a minus inserted from the Symbol font is an element, not text."""
+    if node.get(W + "font", "").lower() != "symbol":
+        return " "
+    try:
+        code = int(node.get(W + "char", ""), 16)
+    except ValueError:
+        return " "
+    return _SYMBOL_FONT.get(code - 0xF000 if code >= 0xF000 else code, " ")
+
+
+#: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
+#: hyphen (Ctrl+Shift+-, used to keep a minus on its number) or a Symbol-font minus left
+#: "-0.30" as 0.30, and a flipped bound matched.
+_CHARACTERS = {
+    W + "noBreakHyphen": lambda node: "-",
+    W + "softHyphen": lambda node: "",
+    W + "sym": _symbol,
+}
+
+
 def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
     pieces: list[str] = []
@@ -125,8 +154,10 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
             pieces.append("\n" + heading + cell)
         elif node.tag == W + "tr":
             pieces.append("\n")
-        elif node.tag == W + "tab":
-            pieces.append("\t")
+        elif node.tag in _SPACES:
+            pieces.append(" ")
+        elif node.tag in _CHARACTERS and not _in_deletion(node, parents):
+            pieces.append(_CHARACTERS[node.tag](node))
         elif node.tag == W + "t" and node.text and not _in_deletion(node, parents):
             pieces.append(node.text)
 

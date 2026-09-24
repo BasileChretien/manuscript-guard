@@ -43,18 +43,21 @@ BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
 FIGURE_SUFFIXES = {".svg", ".pdf"}
 
 # A leading minus is part of the number. U+2212 is always one: it can only be a minus. A
-# hyphen is one only where it can be a sign: at the start, or after a space, an opening
-# bracket, a table pipe, `=`, `:`, `,`, a comparison, an en dash, or another hyphen or a
-# slash, as in "-0.72--0.30", which R's `paste0(lo, "-", hi)` writes. Anywhere else it joins
-# two things: "0.72-0.82" and "50%-60%" are ranges, "2019-03-04" a date, "x-5" a name.
-# Listed rather than excluded, because the first version excluded digits, letters and
-# points, and read "50%-60%" as 50 and -60; and the second left out the hyphen and the
-# slash, so "−0.72-−0.30" in a paper matched an interval running to +0.30.
+# hyphen or an en dash is one only where it can be a sign: at the start, or after a space,
+# an opening bracket, a table pipe, `=`, `:`, `,`, `$`, a comparison, a dash, or another
+# hyphen or a slash, as in "-0.72--0.30", which R's `paste0(lo, "-", hi)` writes. Anywhere
+# else it joins two things: "0.72-0.82", "0.72–0.82" and "50%-60%" are ranges, "2019-03-04"
+# a date, "x-5" a name. Listed rather than excluded, because the first version excluded
+# digits, letters and points, and read "50%-60%" as 50 and -60; the second left out the
+# hyphen and the slash, so "−0.72-−0.30" in a paper matched an interval running to +0.30;
+# and the third read an en dash only as a range, so "–0.51" copied from a typeset PDF, or
+# LaTeX's `$-0.51$`, went into the outputs as 0.51.
 # With no sign at all, -0.51 in the outputs went in as 0.51, so a paper quoting it correctly
 # never matched and a paper printing 0.51 for it did.
-_SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~/\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018\-"
+_SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~/$\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018\-"
 _NUMBER = re.compile(
-    rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])-|\u2212)?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
+    rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-\u2013]|\u2212)?"
+    r"\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
 )
 
 # `--` between digits is a separator and a minus in every format, Markdown included,
@@ -113,13 +116,14 @@ class AuditReport:
 def normalise_number(text: str) -> str:
     """A comparable form: no thousands separators, no trailing zeros, no sign noise.
 
-    Sign noise is how a sign is spelled — U+2212 or a hyphen, `+0.51`, `-0.00` — and never
-    the sign itself. -0.51 and 0.51 are different numbers, and a paper printing one for the
-    other is exactly what an audit is for.
+    Sign noise is how a sign is spelled — U+2212, a hyphen or a leading en dash, `+0.51`,
+    `-0.00` — and never the sign itself. -0.51 and 0.51 are different numbers, and a paper
+    printing one for the other is exactly what an audit is for.
     """
     cleaned = (
         text.replace(",", "").replace(" ", "").replace("\xa0", "").replace("−", "-")
     ).rstrip("%")
+    cleaned = re.sub(r"^\u2013(?=\d)", "-", cleaned)
     if len(cleaned) > _MAX_DIGITS:
         return cleaned
     try:
@@ -152,7 +156,7 @@ def normalise_number(text: str) -> str:
 #: per segment: 100 s for a 72-character hyphenated token.
 _LABELLED = re.compile(r"^[A-Za-z]{1,3}\s*=\s*")
 _COMPOUND = re.compile(
-    r"^[-−]?[.,%\s\xa0]*\d[\d.,%\s\xa0]*"
+    r"^[-−–]?[.,%\s\xa0]*\d[\d.,%\s\xa0]*"
     r"(?:[-–—/\xb1:x\xd7][-−]?[.,%\s\xa0]*\d[\d.,%\s\xa0]*)+$"
 )
 

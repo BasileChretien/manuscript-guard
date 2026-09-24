@@ -89,7 +89,7 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | From a source not in `--against` | Add the source, or check the number by hand |
 | Rounded, a percentage written as a fraction, or `×10⁻ⁿ` | Check by hand against the output |
 | A magnitude quoted without its sign, "fell by 0.51" for -0.51 | Check by hand. The sign is compared, so this is reported |
-| A minus written as an en dash, `–0.51` | Check by hand; only a hyphen or `−` is read as a sign |
+| A range written `2010--2019` in Markdown | Check by hand; `--` is read as a separator and a minus |
 | A label longer than three letters, `beta=0.4` | Check by hand |
 | Vocabulary: `3-core`, an ISSN, a dose schedule | Check by hand |
 | An axis tick | Nothing, if the axis is what it claims |

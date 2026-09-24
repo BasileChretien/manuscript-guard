@@ -1945,8 +1945,9 @@ Closed since, and why each mattered:
   ones are not distinguishable from a sentence break.
 - **The audit reads a sign, so a magnitude quoted without one is not found.** "Fell by
   0.51" against an output of -0.51 is reported. That is the price of catching a paper that
-  prints 0.51 for -0.51. Only a hyphen or U+2212 is a sign; an en dash used as a minus
-  ("–0.51") is not read as a number, and is reported. `--` between digits is read as a
+  prints 0.51 for -0.51. U+2212 is always a sign, and a hyphen or an en dash is one where
+  a sign can stand (after a space, a bracket, `$`, a dash), so "–0.51" copied from a
+  typeset PDF reads as -0.51 and "0.72–0.82" as a range. `--` between digits is read as a
   separator and a minus in every format, so a Markdown paper that writes a range as
   "2010--2019", which pandoc renders as an en dash, gets -2019 reported as not found. Three
   review rounds went into reading it as pandoc does, and each found a place where pandoc

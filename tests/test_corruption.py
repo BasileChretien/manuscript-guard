@@ -1289,3 +1289,60 @@ def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [
+        "<w:r><w:noBreakHyphen/><w:t>0.30</w:t></w:r>",
+        '<w:r><w:sym w:font="Symbol" w:char="F02D"/><w:t>0.30</w:t></w:r>',
+    ],
+)
+def test_audit_reads_a_minus_word_writes_as_an_element(tmp_path: Path, bound: str) -> None:
+    """A non-breaking hyphen (Ctrl+Shift+-) and a Symbol-font minus are elements, not
+    text, and the reader dropped them: "-0.72 to -0.30" read as "-0.72 to 0.30" and matched
+    an output interval running to +0.30."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"lo": -0.72, "hi": 0.30}')
+    body = f"<w:p><w:r><w:t xml:space=\"preserve\">CI -0.72 to </w:t></w:r>{bound}</w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.endswith("0.30") for t in unmatched), unmatched
+
+
+def test_audit_keeps_numbers_either_side_of_a_line_break_apart(tmp_path: Path) -> None:
+    """A manual line break was dropped, so a stacked cell "-0.51 / -0.72 to -0.30" read as
+    the range "-0.51-0.72", and -0.72 matched an output of +0.72."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.51, "lo": 0.72, "hi": -0.30}')
+    body = (
+        "<w:p><w:r><w:t>-0.51</w:t><w:br/><w:t xml:space=\"preserve\">-0.72 to -0.30</w:t>"
+        "</w:r></w:p>"
+    )
+    paper = _docx(tmp_path / "paper.docx", body)
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["-0.72"]
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("out.txt", "estimate –0.51 (95% CI –0.72 to –0.30)\n"),
+        ("out.md", "The estimate was $-0.51$, CI $-0.72$ to $-0.30$.\n"),
+    ],
+)
+def test_audit_reads_a_typeset_minus_in_the_outputs(
+    tmp_path: Path, name: str, content: str
+) -> None:
+    """Values copied from a typeset PDF carry an en dash for a minus, and LaTeX writes
+    `$-0.51$`; both went into the backing set as positive, so a paper that lost every sign
+    matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / name
+    outputs.write_text(content, encoding="utf-8")
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
+    shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
+    assert {"0.51", "0.72", "0.30"} <= shown, shown

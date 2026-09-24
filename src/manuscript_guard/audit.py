@@ -23,7 +23,9 @@ It is a triage tool for existing work. For a paper being written, bind the numbe
 
 from __future__ import annotations
 
+import codecs
 import csv
+import io
 import json
 import math
 import re
@@ -31,15 +33,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.text.docx import NotADocx, is_docx, read_docx
+from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
+from manuscript_guard.text.sections import heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
 FIGURE_SUFFIXES = {".svg", ".pdf"}
 
-_NUMBER = re.compile(r"\d[\d,  ]*(?:\.\d+)?(?:[eE][+-]?\d+)?")
+# A leading minus is part of the number, hyphen or U+2212, but only where it can be a sign:
+# at the start, or after a space, an opening bracket, a table pipe, `=`, `:`, `,`, a
+# comparison or an en dash. Anywhere else it joins two things: "0.72-0.82" and "50%-60%" are
+# ranges, "2019-03-04" a date, "x-5" a name, "2010--2019" pandoc's en dash. Listed rather
+# than excluded, because the first version excluded digits, letters and points, and read
+# "50%-60%" as 50 and -60.
+# With no sign at all, -0.51 in the outputs went in as 0.51, so a paper quoting it correctly
+# never matched and a paper printing 0.51 for it did.
+_SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018"
+_NUMBER = re.compile(
+    rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-\u2212])?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
+)
 
 
 # Digests, ids and hashes, stripped from backing text before numbers are extracted. Two
@@ -70,6 +84,10 @@ class AuditReport:
     unmatched: list[Candidate] = field(default_factory=list)
     classified: int = 0
     unreadable: list[str] = field(default_factory=list)
+    #: Outputs named in --against that were not read, or not read as what they claimed to be.
+    skipped: list[str] = field(default_factory=list)
+    #: Stretches of a paper that were read and deliberately not audited: the reference list.
+    not_audited: list[str] = field(default_factory=list)
 
     @property
     def examined(self) -> int:
@@ -77,8 +95,15 @@ class AuditReport:
 
 
 def normalise_number(text: str) -> str:
-    """A comparable form: no thousands separators, no trailing zeros, no sign noise."""
-    cleaned = text.replace(",", "").replace(" ", "").replace(" ", "").rstrip("%")
+    """A comparable form: no thousands separators, no trailing zeros, no sign noise.
+
+    Sign noise is how a sign is spelled — U+2212 or a hyphen, `+0.51`, `-0.00` — and never
+    the sign itself. -0.51 and 0.51 are different numbers, and a paper printing one for the
+    other is exactly what an audit is for.
+    """
+    cleaned = (
+        text.replace(",", "").replace(" ", "").replace("\xa0", "").replace("−", "-")
+    ).rstrip("%")
     if len(cleaned) > _MAX_DIGITS:
         return cleaned
     try:
@@ -102,8 +127,14 @@ def normalise_number(text: str) -> str:
 #: written closed up it is one atom that no longer looks like a number at all, and on a real
 #: paper's supplements thirty numbers were reported unexplained for that reason alone.
 #: Bounded to three letters, so it strips a label and never a word.
+#:
+#: Either bound may carry a sign, "−0.72–−0.30" or "-0.72–0.30", and `_NUMBER` reads a minus
+#: as a sign only where it cannot be the separator.
 _LABELLED = re.compile(r"^[A-Za-z]{1,3}\s*=\s*")
-_COMPOUND = re.compile(r"^[\d.,%\s ]*\d[\d.,%\s ]*(?:[-–—/±:x×][\d.,%\s ]*\d[\d.,%\s ]*)+$")
+_COMPOUND = re.compile(
+    r"^[-−]?[\d.,%\s\xa0]*\d[\d.,%\s\xa0]*"
+    r"(?:[-–—/\xb1:x\xd7][-−]?[\d.,%\s\xa0]*\d[\d.,%\s\xa0]*)+$"
+)
 
 
 def parts_of(text: str) -> list[str]:
@@ -123,51 +154,120 @@ def parts_of(text: str) -> list[str]:
 
 
 def _numbers_in(text: str) -> set[str]:
-    return {normalise_number(m.group(0)) for m in _NUMBER.finditer(_OPAQUE.sub(' ', text))}
+    return {normalise_number(m.group(0)) for m in _NUMBER.finditer(_OPAQUE.sub(" ", text))}
 
 
-def load_backing(paths: list[Path]) -> tuple[set[str], list[Path]]:
-    """Every number appearing anywhere in the supplied outputs."""
+class UnreadableText(ValueError):
+    """A file that holds text in no encoding the audit can name."""
+
+
+# Longest first: the UTF-32 little-endian mark begins with the UTF-16 one.
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32"),
+    (codecs.BOM_UTF32_BE, "utf-32"),
+    (codecs.BOM_UTF8, "utf-8-sig"),
+    (codecs.BOM_UTF16_LE, "utf-16"),
+    (codecs.BOM_UTF16_BE, "utf-16"),
+)
+
+
+def read_text(path: Path) -> str:
+    """A paper's or an output's text, in the encoding its byte-order mark names, else UTF-8.
+
+    Windows writes these marks: PowerShell 5.1's `Out-File -Encoding utf8` a UTF-8 one, and
+    its `>` and default `Out-File` UTF-16. Read as UTF-8, a UTF-8 mark stopped a .json
+    parsing, and UTF-16 put a NUL after every character, so "8393,3.84" went into the
+    backing set as 8, 3, 9 and 4 — and a paper printing 3 for anything matched. NUL bytes
+    with no mark could be UTF-16 or binary, so they are refused rather than guessed at.
+    """
+    data = path.read_bytes()
+    encoding = next((name for bom, name in _BOMS if data.startswith(bom)), None)
+    if encoding is None and b"\x00" in data:
+        raise UnreadableText(
+            f"{path.name}: NUL bytes and no byte-order mark, so not read; if it is UTF-16, "
+            f"save it as UTF-8"
+        )
+    return data.decode(encoding or "utf-8", errors="replace")
+
+
+def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
+    """Every number appearing anywhere in the supplied outputs, and what could not be used.
+
+    Nothing is passed over in silence. A path that does not exist, a spreadsheet or an .rds
+    among the outputs, a .json that is not one JSON document: each used to vanish, and every
+    number it held was then reported as missing from the *paper*, with nothing to say the
+    audit had never looked. A typo in --against produced "0 output file(s)", a paper full of
+    findings, and exit 0.
+    """
     values: set[str] = set()
     used: list[Path] = []
+    skipped: list[str] = []
+    readable = ", ".join(sorted(BACKING_SUFFIXES))
 
     def take(path: Path) -> None:
         suffix = path.suffix.lower()
-        if suffix not in BACKING_SUFFIXES:
-            return
         try:
+            raw = read_text(path)
             if suffix == ".json":
-                text = json.dumps(json.loads(path.read_text(encoding="utf-8", errors="replace")))
+                try:
+                    text = json.dumps(json.loads(raw))
+                except ValueError:
+                    # JSON Lines is the usual reason, and its numbers are all there as text.
+                    text = raw
+                    skipped.append(f"{path.name}: not valid JSON, so it was read as plain text")
             elif suffix in {".csv", ".tsv"}:
                 delimiter = "\t" if suffix == ".tsv" else ","
-                with path.open(encoding="utf-8", errors="replace", newline="") as handle:
-                    text = " ".join(
-                        " ".join(row) for row in csv.reader(handle, delimiter=delimiter)
-                    )
+                rows = csv.reader(io.StringIO(raw, newline=""), delimiter=delimiter)
+                text = " ".join(" ".join(row) for row in rows)
             else:
-                text = path.read_text(encoding="utf-8", errors="replace")
-        except (OSError, ValueError, json.JSONDecodeError):
+                text = raw
+        except UnreadableText as exc:
+            skipped.append(str(exc))
+            return
+        except (OSError, csv.Error) as exc:
+            skipped.append(f"{path.name}: could not be read ({exc})")
             return
         values.update(_numbers_in(text))
         used.append(path)
 
     for given in paths:
         if given.is_dir():
+            unread: dict[str, int] = {}
             for path in sorted(given.rglob("*")):
-                if path.is_file():
+                if not path.is_file():
+                    continue
+                if path.suffix.lower() in BACKING_SUFFIXES:
                     take(path)
+                else:
+                    kind = path.suffix.lower() or "no extension"
+                    unread[kind] = unread.get(kind, 0) + 1
+            if unread:
+                listed = ", ".join(f"{kind} ({n})" for kind, n in sorted(unread.items()))
+                skipped.append(
+                    f"{given.name}/: {sum(unread.values())} file(s) in formats the audit does "
+                    f"not read: {listed}"
+                )
         elif given.is_file():
-            take(given)
+            if given.suffix.lower() in BACKING_SUFFIXES:
+                take(given)
+            else:
+                kind = given.suffix.lower() or "a file with no extension"
+                skipped.append(f"{given.name}: {kind} is not a format the audit reads ({readable})")
+        else:
+            skipped.append(f"{given}: does not exist")
 
-    return values, used
+    return values, used, skipped
 
 
-# A line that is nothing but a bibliography heading. Everything after it is page ranges,
-# volume numbers and years belonging to other people's papers: not the author's claims, and
-# reporting them buries the findings that matter.
+# A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
+# there to the next heading is page ranges, volume numbers and years belonging to other
+# people's papers: not the author's claims, and reporting them buries the findings that
+# matter.
 _BIBLIOGRAPHY = re.compile(
-    r"^\s*(?:#+\s*)?(?:\d+[.)]\s*)?(?:references|bibliography|works cited|literature cited)"
-    r"\s*[:.]?\s*(?:\|\s*)*$",
+    r"^\s*(?:#+\s*)?(?:\d+[.)]?\s*)?[*_]{0,2}\s*"
+    r"(?:references(?:\s+cited)?|reference\s+list|list\s+of\s+references|cited\s+references"
+    r"|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
+    r"\s*[*_]{0,2}\s*[:.]?\s*[*_]{0,2}\s*(?:\|\s*)*$",
     re.IGNORECASE,
 )
 
@@ -175,27 +275,108 @@ _BIBLIOGRAPHY = re.compile(
 # A reference-list entry, recognised by its shape rather than by a heading. citeproc appends
 # the bibliography with no heading of its own, so there is often nothing to cut at, and every
 # volume number and page range in it would otherwise be reported as an unexplained figure.
+#
+# It was "a capitalised word, a comma, a capitalised word, a year within 200 characters", and
+# in a .docx a line is a paragraph: "Overall, Japanese patients accounted for 412 of 8,393
+# cases between 2010 and 2019." was a reference, and every number in it was counted among
+# the references and compared with nothing. So each half now has to look like a reference
+# and not merely like a sentence. The name after the comma is initials or given names that
+# the author list goes on from — a comma, "and", "&" — never a word running into prose.
+# The year is the one an entry carries: "(2019)." or "(2019, March 5)." closing the author
+# list, or ". 2021." standing alone between author and title. "However, Smith (2019)
+# reported" has the parenthesis without the full stop.
 _REFERENCE_ENTRY = re.compile(
-    r"^\s*[A-Z][\w'’-]+,\s+[A-Z][\w.'’-]*"        # "Fictional, Anne"
-    r".{0,200}?\b(?:19|20)\d{2}[a-z]?\b",          # ... and a year not far behind
+    r"^\s*[A-Z][\w'’-]+,\s+"                                         # "Fictional,"
+    r"(?:[A-Z]\.(?:\s?-?[A-Z]\.)*(?=\s*[,&(]|\s+and\s|\s+(?:19|20)\d{2})"  # "J. A." then more
+    r"|[A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"     # "Anne," "Anne and"
+    r".{0,200}?"
+    r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|\.\s+(?:19|20)\d{2}[a-z]?\.)",
 )
+
+# The numbered styles — Vancouver, AMA, ICMJE — put the surname before the initials with no
+# comma, "Smith J, Jones K.", which the author-year shape never matched. What a caption or a
+# sentence does not share is the journal signature "2019;393:100", year, volume, page:
+# "Figure A. Reports by year, 2015 to 2019" starts the same way and has none. "Stage III,
+# diagnosed in 2010-2020; 45 excluded" has a year and a semicolon, which is why the volume
+# must run on to its page, and the initials on to another author or the title. Recognising a
+# line as a reference hides every number on it, so the shape has to be one only a reference
+# has.
+_VANCOUVER_ENTRY = re.compile(
+    r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])?\s*"                # "12." / "[12]" / "12)"
+    r"(?:[a-z]{1,3}\s+){0,2}[A-Z][\w'’-]+\s+[A-Z](?:-?[A-Z]){0,3}"  # "Smith J", "van Berg AB"
+    r"[,.](?=\s+(?:[A-Z]|et\s+al\b))"                     # ... then an author or the title
+    r".{0,400}?\b(?:19|20)\d{2}[a-z]?"
+    r"(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"               # "2019 Mar", "2019 Mar 5"
+    r";\s?\d+(?:\(\d+\))?:\s?[A-Za-z]?\d"                 # ";393:100", ";42(3):100", ";372:n71"
+)
+
+# A Markdown footnote definition. It can sit after the bibliography heading, and it is the
+# author's text, not a reference.
+_FOOTNOTE = re.compile(r"^\s{0,3}\[\^[^\]]+\]:")
 
 
 def looks_like_reference(line: str) -> bool:
-    return bool(_REFERENCE_ENTRY.match(line))
+    return bool(_REFERENCE_ENTRY.match(line) or _VANCOUVER_ENTRY.match(line))
 
 
-def strip_bibliography(text: str) -> str:
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if _BIBLIOGRAPHY.match(line):
-            return "\n".join(lines[:index])
-    return text
+def _markdown_heading_lines(text: str) -> frozenset[int]:
+    return frozenset(text.count("\n", 0, found.start) for found in heading_index(text))
 
 
-def read_paper(path: Path) -> str:
-    text = read_docx(path) if is_docx(path) else path.read_text(encoding="utf-8", errors="replace")
-    return strip_bibliography(text)
+def bibliography_span(text: str, headings: frozenset[int] | None = None) -> tuple[int, int] | None:
+    """Where the reference list is, as 0-based lines `[start, end)`.
+
+    From a bibliography heading to the next heading of another kind, or to the end if there
+    is none. It used to run to the end regardless, so an appendix after the references was
+    never audited — a wrong number there passed, in a file reported as audited.
+
+    `headings` says which lines are headings when the text cannot: a .docx read as plain text
+    knows them only from paragraph styles. Omitted, they are read as Markdown.
+    """
+    lines = text.split("\n")
+    start = next((i for i, line in enumerate(lines) if _BIBLIOGRAPHY.match(line)), None)
+    if start is None:
+        return None
+    if headings is None:
+        headings = _markdown_heading_lines(text)
+    after = (i for i in sorted(headings) if i > start and not _BIBLIOGRAPHY.match(lines[i]))
+    # A final newline ends the last line; it does not start another.
+    return start, next(after, len(lines) - text.endswith("\n"))
+
+
+def strip_bibliography(text: str, headings: frozenset[int] | None = None) -> str:
+    """`text` with its reference list blanked, line for line, so line numbers still hold."""
+    span = bibliography_span(text, headings)
+    if span is None:
+        return text
+    start, end = span
+    lines = text.split("\n")
+    in_note = False
+    for index in range(start, end):
+        line = lines[index]
+        if _FOOTNOTE.match(line):
+            in_note = True
+            continue
+        if in_note and (not line.strip() or line.startswith(("    ", "\t"))):
+            continue
+        in_note = False
+        lines[index] = ""
+    return "\n".join(lines)
+
+
+def read_paper(path: Path) -> tuple[str, tuple[int, int] | None]:
+    """The paper's text with its reference list blanked, and which lines those were.
+
+    A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
+    through it: they were being dropped along with the bibliography.
+    """
+    if not is_docx(path):
+        text = read_text(path)
+        return strip_bibliography(text), bibliography_span(text)
+    document = read_docx_text(path)
+    body = strip_bibliography(document.body, document.headings)
+    span = bibliography_span(document.body, document.headings)
+    return (f"{body}\n{document.notes}" if document.notes else body), span
 
 
 def read_figure(path: Path) -> str | None:
@@ -214,15 +395,25 @@ def audit(
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
-    values, used = load_backing(backing)
-    report = AuditReport(backing_values=values, backing_files=tuple(used))
+    values, used, skipped = load_backing(backing)
+    report = AuditReport(backing_values=values, backing_files=tuple(used), skipped=skipped)
 
-    sources: list[tuple[Path, str]] = []
+    # Each source, and whether a line may be taken for a reference entry by its shape. Only
+    # where no heading said where the reference list is: once one has, the shape can only
+    # ever be wrong, and in Markdown a line is a physical line, so a wrapped paragraph can
+    # open on anything.
+    sources: list[tuple[Path, str, bool]] = []
     for path in papers:
         try:
-            sources.append((path, read_paper(path)))
-        except (NotADocx, OSError) as exc:
+            text, span = read_paper(path)
+        except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
+            continue
+        sources.append((path, text, span is None))
+        if span is not None:
+            report.not_audited.append(
+                f"{path.name}: lines {span[0] + 1}-{span[1]}, read as the reference list"
+            )
     for path in figures or []:
         text = read_figure(path)
         if text is None:
@@ -230,16 +421,24 @@ def audit(
                 f"{path.name}: no text layer, so its numbers cannot be audited"
             )
             continue
-        sources.append((path, text))
+        if not text.strip():
+            # matplotlib's default draws every label as outlines, so a figure full of numbers
+            # reads as empty — and was listed as audited, with nothing unmatched in it.
+            report.unreadable.append(
+                f"{path.name}: no text at all, so nothing in it was audited; labels drawn "
+                f"as outlines look like this (matplotlib: rcParams['svg.fonttype'] = 'none')"
+            )
+            continue
+        sources.append((path, text, False))
 
-    report.papers = tuple(path for path, _text in sources)
+    report.papers = tuple(path for path, _text, _shape in sources)
 
-    for path, text in sources:
+    for path, text, by_shape in sources:
         for atom in find_atoms(text, mask(text)):
             if classifier.classify(atom).kind != UNCLASSIFIED:
                 report.classified += 1
                 continue
-            if looks_like_reference(atom.line_text):
+            if by_shape and looks_like_reference(atom.line_text):
                 report.classified += 1
                 continue
             candidate = Candidate(
@@ -315,10 +514,15 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
         f"{len(report.matched)} found in the outputs, {len(report.unmatched)} not found."
     )
 
-    if report.unreadable:
-        lines.append("")
-        lines.append("Could not read:")
-        lines += [f"  {item}" for item in report.unreadable]
+    for heading, items in (
+        ("Could not read:", report.unreadable),
+        ("Outputs not read as given:", report.skipped),
+        ("Not audited:", report.not_audited),
+    ):
+        if items:
+            lines.append("")
+            lines.append(heading)
+            lines += [f"  {item}" for item in items]
 
     if report.unmatched:
         lines.append("")

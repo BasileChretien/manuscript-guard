@@ -273,3 +273,110 @@ def test_a_project_with_no_analysis_and_no_plan_is_quiet(tmp_path: Path) -> None
     report = check_design(load_project(root)[0])
     assert report.ok
     assert not report.findings
+
+
+def _replace_section(project: Path, heading: str, replacement: str) -> Path:
+    """Swap one `## heading` section of the example plan, body and all, for `replacement`."""
+    path = plan_path(load_project(project)[0])
+    text = path.read_text(encoding="utf-8")
+    start = text.index(f"## {heading}\n")
+    end = text.index("\n## ", start + 1) + 1
+    path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+    return path
+
+
+def test_a_section_whose_content_is_in_subsections_is_not_empty(project: Path) -> None:
+    """A section's body stopped at the next heading of any level, so a Population written
+    entirely under `### Inclusion` and `### Exclusion` was "a heading with nothing under it"."""
+    _replace_section(
+        project,
+        "Population and data source",
+        "## Population and data source\n\n### Inclusion\n\nEvery report in the database.\n\n"
+        "### Exclusion\n\nNone.\n\n",
+    )
+    report = check_design(load_project(project)[0])
+    assert "plan-section-empty" not in codes(report)
+    assert "plan-complete" in codes(report)
+
+
+def test_a_section_with_only_empty_subsections_is_still_empty(project: Path) -> None:
+    _replace_section(
+        project,
+        "Population and data source",
+        "## Population and data source\n\n### Inclusion\n\nTBD\n\n### Exclusion\n\n",
+    )
+    report = check_design(load_project(project)[0])
+    assert any(
+        f.code == "plan-section-empty" and "population" in f.message for f in report.findings
+    )
+
+
+def test_the_plans_own_title_does_not_answer_for_its_analysis(project: Path) -> None:
+    """`# Analysis plan` matched the "analysis" requirement, so an empty `## Analysis` —
+    exactly what `init` scaffolds — was never reported."""
+    _replace_section(project, "Analysis", "## Analysis\n\n")
+    report = check_design(load_project(project)[0])
+    assert any(
+        f.code == "plan-section-empty" and "analysis section" in f.message
+        for f in report.findings
+    ), [f.message for f in report.findings]
+
+
+def test_the_plans_own_title_does_not_stand_in_for_a_missing_analysis(project: Path) -> None:
+    _replace_section(project, "Analysis", "")
+    report = check_design(load_project(project)[0])
+    assert any(
+        f.code == "plan-section-missing" and f.message.endswith("about analysis")
+        for f in report.findings
+    ), [f.message for f in report.findings]
+
+
+def test_a_plan_that_is_only_its_title_has_no_analysis(project: Path) -> None:
+    """With nothing under it but prose, `# Analysis plan` still answered for "analysis"."""
+    path = plan_path(load_project(project)[0])
+    path.write_text("# Analysis plan\n\nWe will fit a model, and decide the rest later.\n", "utf-8")
+    report = check_design(load_project(project)[0])
+    missing = {f.message for f in report.findings if f.code == "plan-section-missing"}
+    assert "the plan says nothing about analysis" in missing
+    assert len(missing) == 7
+
+
+def test_a_freshly_scaffolded_plan_reports_its_analysis_as_empty(tmp_path: Path) -> None:
+    from manuscript_guard.scaffold import init_project
+
+    root = tmp_path / "fresh"
+    init_project(root, title="T")
+    report = check_design(load_project(root)[0])
+    empty = {f.message for f in report.findings if f.code == "plan-section-empty"}
+    assert "the plan's analysis section is a heading with nothing under it" in empty
+
+
+def test_a_plan_that_is_not_utf8_warns_and_is_still_read(project: Path) -> None:
+    """Saved from an editor in Windows-1252, the plan crashed G12 — and a crashed gate is
+    `gate-errored`, a failure at every stage, from a gate that is meant never to block."""
+    path = plan_path(load_project(project)[0])
+    text = path.read_text(encoding="utf-8").replace("Agreed", "Agrééd")
+    path.write_bytes(text.encode("cp1252", errors="replace"))
+    report = check_design(load_project(project)[0])
+    assert report.ok
+    assert "plan-not-utf8" in codes(report)
+    assert report.counts["design_sections"] == report.counts["design_expected"]
+
+
+def test_a_plan_with_a_byte_order_mark_is_read(project: Path) -> None:
+    """Notepad's UTF-8 puts U+FEFF before the first `#`, which then starts no heading."""
+    path = plan_path(load_project(project)[0])
+    path.write_text("﻿" + path.read_text(encoding="utf-8"), encoding="utf-8")
+    report = check_design(load_project(project)[0])
+    assert "plan-complete" in codes(report)
+    assert "plan-not-utf8" not in codes(report)
+
+
+def test_a_plan_that_is_not_utf8_does_not_fail_check(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    path = plan_path(load_project(project)[0])
+    text = path.read_text(encoding="utf-8").replace("Agreed", "Agréed")
+    path.write_bytes(text.encode("cp1252"))
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    assert "gate-errored" not in {f.code for f in report.findings}

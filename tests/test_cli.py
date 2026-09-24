@@ -345,6 +345,42 @@ def test_audit_with_nothing_to_read_exits_two(tmp_path: Path, capsys) -> None:
     assert "nothing to audit" in capsys.readouterr().err
 
 
+def test_audit_against_a_path_that_does_not_exist_exits_two(project: Path, capsys) -> None:
+    """A typo in --against gave "0 distinct numbers from 0 output file(s)", every number in
+    the paper reported missing, and exit 0."""
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    typo = project / "resluts"
+    assert run("audit", str(paper), "--against", str(project / "results"), str(typo)) == 2
+    assert "resluts" in capsys.readouterr().err
+
+
+def test_audit_of_a_paper_that_does_not_exist_exits_two(project: Path, capsys) -> None:
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    missing = project / "supplement.md"
+    assert run("audit", str(paper), str(missing), "--against", str(project / "results")) == 2
+    assert "supplement.md" in capsys.readouterr().err
+
+
+def test_audit_against_nothing_it_can_read_exits_two(project: Path, capsys) -> None:
+    paper = project / "loose.md"
+    paper.write_text("Hepatic injury was reported in 77 cases.\n", encoding="utf-8")
+    sheet = project / "results.xlsx"
+    sheet.write_bytes(b"PK\x03\x04")
+    assert run("audit", str(paper), "--against", str(sheet)) == 2
+    assert "results.xlsx" in capsys.readouterr().err
+
+
+def test_audit_help_names_every_format_it_reads(capsys) -> None:
+    from manuscript_guard.audit import BACKING_SUFFIXES
+
+    with pytest.raises(SystemExit):
+        run("audit", "--help")
+    helptext = " ".join(capsys.readouterr().out.split())
+    assert all(suffix in helptext for suffix in BACKING_SUFFIXES), helptext
+
+
 # ---------------------------------------------------------------- the rest
 
 

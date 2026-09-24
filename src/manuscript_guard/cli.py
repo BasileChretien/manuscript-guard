@@ -253,12 +253,18 @@ def cmd_bind(args: argparse.Namespace) -> int:
             print(f"    {route}")
         print(f"    hint: {item.hint}")
 
-    certain = sum(1 for item in items if item.certain)
+    certain = [item for item in items if item.certain]
     if certain and not args.apply:
+        # Real selectors from this list, not a fixed example: the example said `main.md:12`,
+        # a selector is the path from the project root, and the one command the tool
+        # suggested was refused.
+        chosen = [label(item, project.root) for item in certain[:2]]
+        only = " ".join(f"--only {selector}" for selector in chosen)
+        which = "just that one" if len(chosen) == 1 else "just those two"
         print(
-            f"\n{certain} of {len(items)} match exactly one published value. "
+            f"\n{len(certain)} of {len(items)} match exactly one published value. "
             f"`manuscript-guard bind --apply` replaces all of those; "
-            f"`--apply --only main.md:12 --only main.md:20` replaces just those two."
+            f"`--apply {only}` replaces {which}."
         )
     return 1
 
@@ -583,10 +589,25 @@ def cmd_respond(args: argparse.Namespace) -> int:
             # two different manuscripts - one command called that dangerous while the other
             # baked it into the revision record without a word.
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import stamp_of
+            from manuscript_guard.roundtrip import RoundTripError, stamp_of
 
-            carried = stamp_of(args.source)
-            if carried is None or (carried != document_digest(project) and not args.force):
+            try:
+                carried = stamp_of(args.source)
+            except RoundTripError as exc:
+                print(f"manuscript-guard: {exc}", file=sys.stderr)
+                return 2
+            if carried is None:
+                # Not offered --force: there is no baseline to override. The refusal used to
+                # suggest it, and then refused it.
+                print(
+                    f"{args.source.name} carries no record of the source it was built from, so "
+                    f"there is no telling which paragraphs its comments point at. Only a "
+                    f"document this tool built can seed a round, and --force does not change "
+                    f"that.\n  Run `manuscript-guard respond --open` without --from and type "
+                    f"the points into the round file."
+                )
+                return 1
+            if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "
                     f"so the paragraphs its comments point at are not the paragraphs on disk."
@@ -726,6 +747,15 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 found.append(path)
         return found
 
+    # A path that is not there is a typo, and auditing without it answers a different
+    # question: a missing output reports every number it held as absent from the paper.
+    given = [*args.paper, *(args.against or []), *(args.figures or [])]
+    missing = [path for path in given if not path.exists()]
+    if missing:
+        for path in missing:
+            print(f"manuscript-guard audit: {path} does not exist", file=sys.stderr)
+        return 2
+
     papers = expand(args.paper, PAPER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
     if not papers and not figures:
@@ -736,6 +766,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
         return 2
 
     report = audit(papers, args.against, figures=figures)
+    if not report.backing_files:
+        print("--against gave the audit nothing it can read:", file=sys.stderr)
+        for item in report.skipped:
+            print(f"  {item}", file=sys.stderr)
+        return 2
     print(render(report, measure_discrimination(report.backing_values), Path.cwd()))
     return 1 if (report.unmatched and args.strict) else 0
 
@@ -1309,10 +1344,15 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
 
 
 def cmd_init(args: argparse.Namespace) -> int:
+    from manuscript_guard.contracts.results import HOW_TO_EMIT
+
     created = init_project(args.path, title=args.title)
     for path in created:
         print(f"created {path}")
-    print("\nnext: describe your authors in authors.yaml, then write an analysis that calls emit()")
+    print(
+        "\nnext: describe your authors in authors.yaml, then write an analysis that "
+        f"publishes its results with {HOW_TO_EMIT}"
+    )
     return 0
 
 
@@ -1353,7 +1393,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         metavar="PATH",
-        help="analysis outputs: .json, .csv, .tsv, .txt, or directories of them",
+        help="analysis outputs: .json, .csv, .tsv, .txt, .yaml, .yml, .md, or directories "
+        "of them; anything else is named in the report as not read",
     )
     audit.add_argument(
         "--figures", nargs="+", type=Path, help="SVG or PDF figures to audit as well"

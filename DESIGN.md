@@ -132,7 +132,7 @@ manuscript-guard/
     data/          # the shipped convention, structural and term rules
     profiles/      # shipped, read-only: checklist recipes, journal profiles
     paths.py       # what is shipped vs what a project writes; see the note below
-  r/manuscriptguard/   # emit() -> results.json with provenance
+  r/manuscriptguard/   # mg_emitter() -> results fragment with provenance
   .claude-plugin/   # marketplace.json: the repository is its own plugin marketplace
   plugin/
     skills/  hooks/
@@ -230,7 +230,7 @@ survive every check.
 ## Build order
 
 1. ~~**Contracts.**~~ **Done.** Skeleton, packaging, CI. Schemas for results, ledger,
-   attested, authors, paper. `emit()` in Python and R with provenance stamping. Gate G1.
+   attested, authors, paper. An emitter in Python and R with provenance stamping. Gate G1.
 2. ~~**The number guarantee.**~~ **Done.** Placeholder syntax and substitution,
    numeric-token classifier, convention allowlist, figure-literal extraction,
    cross-artefact consistency. Gates G2, G3, G8, with the corruption harness below.
@@ -817,8 +817,10 @@ predecessor:
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
   reading it raw reports corrections as errors and misses what will be published.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
-  where there is not, because citeproc appends a reference list with no heading to cut at.
-  Otherwise every volume number and page range is reported.
+  where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
+  appends a reference list with no heading to cut at. It ends at the next heading, so an
+  appendix or a footnote after it is still read. Otherwise every volume number and page
+  range is reported.
 - **Rendered citations classified.** In source a citation is `[@key]` and gets masked; in a
   built document it has already become "(Smith and Jones 2019)", and without a rule for that
   every citation in the paper is an unexplained number.
@@ -1332,6 +1334,65 @@ The pattern is stable enough to name. **Every one of these is a claim that outra
 and the countermeasure that works is the one already in the repository: a test that executes
 the claim. `tests/test_round_five.py` holds one per finding.
 
+## Round six: running the commands, 2026-09-24
+
+Eleven defects, each found by running a command on a copy of `example/` and reading what came
+back, and a twelfth from a review of the same code. Round five's pattern again, in four
+shapes.
+
+**A claim that outran its code.** `normalise_number` promised "no sign noise" while the
+pattern that read the outputs had no sign at all: -0.51 went into the backing set as 0.51,
+so a paper quoting it correctly, with a hyphen or U+2212, was reported as not found, and a
+paper printing 0.51 for it was reported as found. The second half is the one that matters,
+and it is in the corruption harness. `split_sections` promised that "subsections stay inside
+their parent's body" and ended every body at the next heading of any level, so G12 called a
+Population written under `### Inclusion` a heading with nothing under it. Two more callers
+had the same defect: G9 reported software named under `## Statistical analysis` as absent
+from the Methods, and a structured abstract written with `##` headings had its words counted
+as main text, where the abstract's limit could not see them. This file said the bibliography
+was recognised "by entry shape"; the only shape was author-year, so every numbered style
+was missed, and so was a heading reading "Reference list". The `--against` help named four
+formats and the code read seven.
+
+**A check that could not look, reported as a check that looked.** A reference heading cut
+everything after it: an appendix after the references was never audited, and neither were
+a .docx's footnotes and endnotes, which are read after the body. The author-year entry shape
+was a capitalised word, a comma, another capitalised word and a year within 200 characters,
+and in a .docx a line is a paragraph, so "Overall, Japanese patients accounted for 412 of
+8,393 cases between 2010 and 2019." was a reference entry and none of its numbers was
+compared with anything (found by a separate review). Each entry shape now has to carry the
+year the way an entry does, "(2019)." or ". 2021." or "2019;393:100", and neither is
+consulted at all in a file whose reference list was found by its heading. An SVG with its
+labels drawn as outlines was listed among the audited files, with nothing unmatched in it. A path
+in `--against` that did not exist, or a format the audit does not read, vanished; a typo
+gave "0 output file(s)", every number in the paper reported missing, and exit 0. A .json
+written with a byte-order mark, as Windows PowerShell 5.1 writes UTF-8, failed to parse and
+was dropped the same way. Worse, an output in UTF-16, which PowerShell 5 writes for `>`, was
+read as UTF-8 with a NUL after every character, so "8393,3.84" went into the backing set as
+8, 3, 9 and 4, and a paper printing 3 for anything matched. A byte-order mark now names the
+encoding, and NUL bytes without one are refused rather than guessed at (both found by a
+review of the plugin that ships the audit skill).
+
+The first fix for the sign was reviewed before it landed, and read "50%-60%" as 50 and -60:
+it said where a minus could not be a sign, and a percent sign was not on the list. It now
+says where a minus can be one.
+
+**Advice that failed when followed.** `init` and two hints said to call `emit()`, which
+exists in neither language. `bind` suggested `--only main.md:12` for a selector that has to
+be `manuscript/main.md:12`, so the one command it printed exited 2. `respond --open --from`
+refused an unstamped document and said `--force` would help; `--force` was refused too.
+
+**The design gate failing at the one thing it does.** G12 warns and never blocks, by
+decision. A plan saved in Windows-1252 made it raise, and a gate that raises is
+`gate-errored`, which fails at every stage. And `# Analysis plan`, the title `init` writes,
+satisfied the "analysis" requirement, so the empty `## Analysis` scaffolded beneath it was
+never reported.
+
+The reference list now ends at the next heading, which a .docx gives only in paragraph
+styles, read by style name because a French Word's heading style id is `Titre1`. Notes are
+read after the cut rather than through it, and the report names the lines it did not audit,
+so a cut in the wrong place shows.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -1575,9 +1636,10 @@ Closed since, and why each mattered:
   refuses a number *because* it matches one, since nothing may pass by coincidence — so a
   `12` that happens to equal a published count while meaning twelve months of follow-up was
   applied along with the nine correct ones, and the only way to avoid it was to decline all
-  ten and retype them. `--only main.md:42` accepts one suggestion; naming an ambiguous one is
-  refused rather than treated as permission to guess, and an unmatched selector is an error
-  rather than a silent no-op. The command now also names every replacement it made — "replaced
+  ten and retype them. `--only manuscript/main.md:42` accepts one suggestion; naming an
+  ambiguous one is refused rather than treated as permission to guess, and an unmatched
+  selector is an error rather than a silent no-op. The command now also names every
+  replacement it made — "replaced
   7 literal(s)" said nothing about which seven, and each of them rewrote a sentence.
 - **The submission pack left out the response to reviewers.** `respond` wrote the letter into
   `build/` and nothing collected it, so a resubmission pack held the revised manuscript and no
@@ -1730,21 +1792,22 @@ Closed since, and why each mattered:
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a
   guarantee.
-- **The audit's reference-entry shape also matches body text.** Every line, whether or
-  not a bibliography heading was found, is a reference if it opens with a capitalised word,
-  a comma and another capitalised word, with four digits from 1900 to 2099 standing alone
-  within 200 characters (a year, or the decimals of `0.2013`). In a `.docx` a line is a paragraph and in Markdown a physical line, so
-  "Overall, Japanese patients accounted for 412 of 8,393 cases reported between 2010 and
-  2019." and a wrapped mid-paragraph line alike are classified as references, and none of
-  their numbers is compared, silently. This is the unsafe direction for an audit. Found by
-  an independent review of the plugin skills, 2026-09-24; the `paper-audit` skill tells the
-  reader to check such lines by hand until the shape is tightened.
-- **A bibliography heading in a `.docx` also cuts its footnotes and endnotes.** The reader
-  appends the notes after the body, and the audit drops everything after the heading, so
-  numbers in notes are neither compared nor counted.
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
   and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
   ones are not distinguishable from a sentence break.
+- **The audit reads a sign, so a magnitude quoted without one is not found.** "Fell by
+  0.51" against an output of -0.51 is reported. That is the price of catching a paper that
+  prints 0.51 for -0.51. Only a hyphen or U+2212 is a sign; an en dash used as a minus
+  ("–0.51") is not read as a number, and is reported.
+- **A .docx without heading styles gives its reference list no end.** The cut then runs to
+  the end of the body, as it always did, but the report names the lines, and footnotes and
+  endnotes are read regardless. Bold text that looks like a heading is not one.
+- **A headingless reference list is recognised by the signature of its year alone.**
+  "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
+  and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
+  volume in a numbered style is not, nor is a Harvard entry with no full stop after
+  "(2019)", so their numbers are reported: noise rather than a pass. Recognising a line as
+  a reference hides every number on it, so the shape has to be one a sentence never has.
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
@@ -1813,7 +1876,8 @@ Closed since, and why each mattered:
   built.** `respond --open --from <docx>` reads the comments, groups them by author,
   numbers them, and records which paragraph each was attached to. A journal that sends a
   PDF or an email still means typing the points in, which is where a point quietly becomes
-  the easier point next to it.
+  the easier point next to it. So does a document that has lost its build stamp: it is
+  refused, `--force` included, because there is no baseline to force past.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
   is the paragraph's position in the file, and applying a reorder moves text between slots -
   so a `where:` anchor recorded before the reorder afterwards names different text. Content

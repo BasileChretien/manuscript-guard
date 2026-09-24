@@ -173,6 +173,24 @@ def test_the_command_names_what_it_replaced(project: Path, capsys) -> None:
     assert "replaced 1 literal(s)" in out
 
 
+def test_the_advice_names_selectors_that_work(project: Path, capsys) -> None:
+    """The advice printed a fixed example, `--only main.md:12`, and a selector is the path
+    from the project root: the one command the tool suggested exited 2."""
+    import re
+
+    from manuscript_guard.cli import main
+
+    _two_typed(project)
+    assert main(["bind", str(project)]) == 1
+    advice = capsys.readouterr().out.strip().splitlines()[-1]
+    selectors = re.findall(r"--only ([^\s`]+)", advice)
+    assert selectors, advice
+
+    chosen = [arg for selector in selectors for arg in ("--only", selector)]
+    assert main(["bind", str(project), "--apply", *chosen]) == 0
+    assert unbound(*loaded(project)) == []
+
+
 def test_the_command_refuses_an_unknown_selector(project: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

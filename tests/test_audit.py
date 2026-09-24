@@ -98,7 +98,7 @@ def test_digests_are_kept_out_of_the_backing_set(tmp_path: Path) -> None:
     """Their digit fragments would match anything and inflate the honesty statistic."""
     path = tmp_path / "r.json"
     path.write_text('{"sha256": "451fb94f87f4e266abf6018bf1ca7204", "n": 77}', encoding="utf-8")
-    values, _used = load_backing([path])
+    values, _used, _skipped = load_backing([path])
     assert "77" in values
     assert not any(len(v) > 12 for v in values), values
 
@@ -176,14 +176,14 @@ def test_a_dense_backing_set_is_reported_as_worthless(tmp_path: Path) -> None:
     """
     raw = tmp_path / "raw.csv"
     raw.write_text("\n".join(",".join(str(n) for n in range(1, 101)) for _ in range(3)), "utf-8")
-    values, _used = load_backing([raw])
+    values, _used, _skipped = load_backing([raw])
     discrimination = measure_discrimination(values)
     assert discrimination.small_integers == 1.0
     assert "almost nothing" in discrimination.verdict()
 
 
 def test_a_sparse_backing_set_is_reported_as_informative(tmp_path: Path, outputs: Path) -> None:
-    values, _used = load_backing([outputs])
+    values, _used, _skipped = load_backing([outputs])
     discrimination = measure_discrimination(values)
     assert discrimination.small_integers < 0.2
     assert "real information" in discrimination.verdict()
@@ -337,3 +337,198 @@ def test_a_real_number_beside_all_of_that_is_still_reported(tmp_path: Path) -> N
         encoding="utf-8",
     )
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9999"]
+
+
+# ------------------------------------------------- a sign is part of the number
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("-0.51", "-0.51"), ("−0.51", "-0.51"), ("-0.00", "0"), ("+0.51", "0.51")],
+)
+def test_a_sign_is_kept_and_its_spelling_is_not(raw: str, expected: str) -> None:
+    """"No sign noise" means a typographic minus and a hyphen compare equal. It never meant
+    the sign could be dropped."""
+    assert normalise_number(raw) == expected
+
+
+def test_a_negative_output_keeps_its_sign(tmp_path: Path) -> None:
+    """The backing pattern had no sign at all, so -0.51 in the outputs went in as 0.51 and a
+    paper quoting the value correctly — with its minus, hyphen or U+2212 — never matched."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"log_ror": -0.51}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("It was -0.51 here.\n\nIt was −0.51 there.\n", encoding="utf-8")
+
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == []
+    assert len(report.matched) == 2
+
+
+def test_a_hyphen_between_numbers_is_not_a_sign(tmp_path: Path) -> None:
+    """Ranges and dates in the outputs must not grow negative numbers they never held."""
+    outputs = tmp_path / "out.txt"
+    outputs.write_text("range 0.72-0.82, run on 2019-03-04, id x-5, estimate -0.51\n", "utf-8")
+    values, _used, _skipped = load_backing([outputs])
+    assert {"0.72", "0.82", "2019", "3", "4", "5", "-0.51"} <= values
+    assert not {"-0.82", "-3", "-4", "-5"} & values
+
+
+@pytest.mark.parametrize(
+    ("atom", "expected"),
+    [
+        ("−0.72–−0.30", ["-0.72", "-0.3"]),
+        ("-0.72–0.30", ["-0.72", "0.3"]),
+        ("0.72-0.82", ["0.72", "0.82"]),
+        # A hyphen after a symbol that ends a number is still a separator, and "--" is how
+        # pandoc Markdown writes an en dash.
+        ("50%-60%", ["50", "60"]),
+        ("2010--2019", ["2010", "2019"]),
+    ],
+)
+def test_an_interval_with_a_negative_bound_is_split(atom: str, expected: list[str]) -> None:
+    assert parts_of(atom) == expected
+
+
+# ------------------------------------------------- what --against could not use
+
+
+def test_a_format_the_audit_cannot_read_is_named(tmp_path: Path) -> None:
+    """An .xlsx or .rds among the outputs used to vanish, and every number it held was then
+    reported as missing from the paper with no hint why."""
+    usable = tmp_path / "out.json"
+    usable.write_text('{"n": 77}', encoding="utf-8")
+    sheet = tmp_path / "results.xlsx"
+    sheet.write_bytes(b"PK\x03\x04")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 77.\n", encoding="utf-8")
+
+    report = audit([paper], [usable, sheet])
+    assert any("results.xlsx" in item for item in report.skipped)
+    assert "results.xlsx" in render(report, measure_discrimination(report.backing_values))
+
+
+def test_a_directory_says_what_it_skipped(tmp_path: Path) -> None:
+    folder = tmp_path / "outputs"
+    folder.mkdir()
+    (folder / "a.csv").write_text("n\n77\n", encoding="utf-8")
+    (folder / "model.rds").write_bytes(b"\x1f\x8b")
+    (folder / "fit.rds").write_bytes(b"\x1f\x8b")
+    _values, used, skipped = load_backing([folder])
+    assert [p.name for p in used] == ["a.csv"]
+    assert any(".rds (2)" in item for item in skipped), skipped
+
+
+def test_json_that_does_not_parse_is_read_as_text_and_said_so(tmp_path: Path) -> None:
+    """JSON Lines is the common case: one object per line is not one JSON document."""
+    lines = tmp_path / "fits.json"
+    lines.write_text('{"n": 77}\n{"n": 412}\n', encoding="utf-8")
+    values, used, skipped = load_backing([lines])
+    assert {"77", "412"} <= values
+    assert used == [lines]
+    assert any("fits.json" in item and "not valid JSON" in item for item in skipped)
+
+
+# ------------------------------------------------- the reference list, and what follows it
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["Reference list", "## Reference List", "**References**", "References cited", "5 References"],
+)
+def test_other_bibliography_headings_are_recognised(heading: str) -> None:
+    text = f"We found 77 cases.\n\n{heading}\n\n1. Smith J. Title. Lancet. 2019;393:45-52.\n"
+    assert "45-52" not in strip_bibliography(text)
+    assert "77" in strip_bibliography(text)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Smith J, Jones K. Hepatic injury in reports. Lancet. 2019;393:100-10.",
+        "1. Smith J, Jones K. Hepatic injury in reports. Lancet. 2019;393:100-10.",
+        "[12] Smith JA, Jones K, et al. Hepatic injury. Drug Saf. 2019 Mar;42(3):100-10.",
+        "Smith J. Hepatic injury in reports. BMJ. 2021;372:n71.",
+    ],
+)
+def test_a_vancouver_entry_is_recognised_without_a_heading(entry: str) -> None:
+    """DESIGN says entries are recognised by shape; the only shape was author-year."""
+    assert looks_like_reference(entry)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Figure A. Reports by year, 2015 to 2019: 412 cases.",
+        "Table S1. Characteristics in 2019; 412 reports.",
+        "Smith J reported 77 cases in 2019.",
+    ],
+)
+def test_a_caption_is_not_mistaken_for_a_vancouver_entry(line: str) -> None:
+    """Recognising a line as a reference hides every number on it, so the shape has to be
+    one that a caption or a sentence does not share."""
+    assert not looks_like_reference(line)
+
+
+def test_the_report_says_where_the_reference_list_was_cut(tmp_path: Path) -> None:
+    """Dropping text unannounced is how a cut in the wrong place stays invisible."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n", encoding="utf-8"
+    )
+    report = audit([paper], [outputs])
+    assert any("reference list" in item for item in report.not_audited)
+    assert "lines 3-5" in render(report, measure_discrimination(report.backing_values))
+
+
+# ------------------------------------------------- figures with nothing to read
+
+
+def test_a_pdf_with_no_text_is_not_counted_as_audited(tmp_path: Path, monkeypatch) -> None:
+    import manuscript_guard.audit as audit_module
+
+    monkeypatch.setattr(audit_module, "read_figure", lambda path: "  \n")
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    figure = tmp_path / "scan.pdf"
+    figure.write_bytes(b"%PDF-1.4")
+
+    report = audit([], [outputs], figures=[figure])
+    assert figure not in report.papers
+    assert any("scan.pdf" in item for item in report.unreadable)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Fictional, Anne, and Bernard Fictional. 2021. 'Hepatic Injury'. Journal 12: 101-9.",
+        "Smith, J. A., & Jones, K. (2019). Hepatic injury. Drug Safety, 42(3), 100-110.",
+        "Smith, J. (2019a). Hepatic injury. Drug Safety, 42, 100-110.",
+        "Smith, John, and Kate Jones. 2019. Hepatic Injury. London: Example Press.",
+    ],
+)
+def test_an_author_year_entry_is_still_recognised(entry: str) -> None:
+    """Tightened so a sentence opening "Overall, Japanese patients" is not one; the entries
+    citeproc actually writes must still be."""
+    assert looks_like_reference(entry)
+
+
+def test_json_with_a_byte_order_mark_is_json(tmp_path: Path) -> None:
+    """Windows PowerShell 5.1's `Out-File -Encoding utf8` writes a BOM, and the file was
+    reported as not being JSON at all."""
+    path = tmp_path / "out.json"
+    path.write_bytes(b'\xef\xbb\xbf{"n": 77}')
+    values, used, skipped = load_backing([path])
+    assert "77" in values and used == [path]
+    assert skipped == []
+
+
+def test_an_output_with_nul_bytes_and_no_bom_is_named_not_misread(tmp_path: Path) -> None:
+    """UTF-16 without a byte-order mark cannot be told from binary, so it is not guessed at."""
+    path = tmp_path / "out.txt"
+    path.write_bytes("8393 3.84".encode("utf-16-le"))
+    values, used, skipped = load_backing([path])
+    assert used == [] and values == set()
+    assert any("out.txt" in item and "NUL" in item for item in skipped)

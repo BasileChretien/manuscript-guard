@@ -863,3 +863,174 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     assert any(
         f.code == "citation-unresolved" and "ghostKey2020" in f.message for f in report.failures
     )
+
+
+# ------------------------------------------------------------------------------ audit
+# `audit` is the weak check, set membership against the outputs, and says so. These are the
+# ways it was weaker than it said: a wrong number that matched, and wrong numbers it never
+# looked at while reporting the file as audited.
+
+W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _p(text: str, style: str | None = None) -> str:
+    props = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+    return f"<w:p>{props}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def _docx(path: Path, body: str, parts: dict[str, str] | None = None) -> Path:
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as archive:
+        document = f"<w:document {W}><w:body>{body}</w:body></w:document>"
+        archive.writestr("word/document.xml", document)
+        for name, xml in (parts or {}).items():
+            archive.writestr(name, xml)
+    return path
+
+
+def _outputs(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "out.json"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_audit_catches_a_sign_flipped_estimate(tmp_path: Path) -> None:
+    """The outputs' minus was dropped when they were read, so a paper printing 0.51 for an
+    estimate of -0.51 matched, and was reported as found in the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"log_ror": -0.51}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("The log reporting odds ratio was 0.51.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["0.51"]
+
+
+def test_audit_reads_an_appendix_after_the_references(tmp_path: Path) -> None:
+    """Everything after the reference heading was dropped, appendices included."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n\n"
+        "# Appendix 1\n\nThe sensitivity estimate was 4.65.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert report.unmatched[0].line == 9, "line numbers must still point into the file"
+
+
+def test_audit_reads_the_footnotes_of_a_document_with_references(tmp_path: Path) -> None:
+    """A .docx is read body first and notes after, so the reference heading in the body cut
+    every footnote and endnote along with the bibliography."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "excluded": 12}')
+    footnote = _p("Twenty-one, or 21, were excluded.")
+    notes = f"<w:footnotes {W}><w:footnote>{footnote}</w:footnote></w:footnotes>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.") + _p("References") + _p("Smith J. T. Lancet. 2019;393:1-2."),
+        {"word/footnotes.xml": notes},
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["21"]
+
+
+def test_audit_reads_a_styled_appendix_after_the_references(tmp_path: Path) -> None:
+    """In Word the end of the reference list is the next heading, which only its style says."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Titre1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Titre1")
+        + _p("Smith J. T. Lancet. 2019;393:1-2.")
+        + _p("Supplementary appendix", "Titre1")
+        + _p("The sensitivity estimate was 4.65."),
+        {"word/styles.xml": styles},
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["4.65"]
+
+
+def test_audit_does_not_count_an_outlined_figure_as_audited(tmp_path: Path) -> None:
+    """matplotlib's default draws labels as paths: every number in the figure is there to
+    see, none is text, and the figure was listed as audited with nothing unmatched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    figure = tmp_path / "forest.svg"
+    figure.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0 L10 10"/></svg>', encoding="utf-8"
+    )
+    report = audit([], [outputs], figures=[figure])
+    assert figure not in report.papers
+    assert any("forest.svg" in item and "no text" in item for item in report.unreadable)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Overall, Japanese patients accounted for 99 of 8,393 cases reported in 2010-2019.",
+        "Finally, FAERS data from 2004 to 2023 showed 99 cases.",
+        "However, VigiBase showed 99/412 in 2021.",
+        "However, Smith (2019) reported 99 cases.",
+        "Previously, J. Smith et al. (2019) reported 99 cases.",
+        "However, Smith, Jones and Brown (2019) reported 99 cases.",
+        # The numbered-style shape: a word, one to four capitals, a comma, then "year;digit".
+        "Stage III, diagnosed between 2010 and 2020; 99 patients were excluded.",
+        "Group B, enrolled from January 2015 to December 2019; 99 completed follow-up.",
+    ],
+)
+def test_audit_does_not_take_a_body_paragraph_for_a_reference(
+    tmp_path: Path, sentence: str
+) -> None:
+    """The author-year shape was a capitalised word, a comma, another capitalised word and a
+    year within 200 characters. In a .docx a line is a whole paragraph, so a paragraph opening
+    "Overall, Japanese patients ..." was a reference entry, and every number in it was counted
+    among "conventions or references" and never compared with anything."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "total": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(sentence + "\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(text.split("/")[0] == "99" for text in unmatched), unmatched
+
+
+def test_audit_does_not_guess_at_references_once_a_heading_found_them(tmp_path: Path) -> None:
+    """In Markdown a line is a physical line, so a wrapped paragraph can open on anything.
+    Once a heading has said where the reference list is, nothing else is a reference."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "Reports came from three countries: Japan, Korea and China. Of those from\n"
+        "Japan, Korea. 1985. There were 99 cases among 412 reports.\n\n"
+        "# References\n\nSmith J, Jones K. Title. Lancet. 2019;393:1-2.\n",
+        encoding="utf-8",
+    )
+    assert "99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_reads_utf16_outputs_as_text_not_digits(tmp_path: Path) -> None:
+    """Windows PowerShell 5 writes UTF-16 for `>` and Out-File. Read as UTF-8, every digit
+    is followed by a NUL, so "8393,3.84" went into the backing set as 8, 3, 9 and 4: a paper
+    printing 3 for anything matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n,ror\n8393,3.84\n", encoding="utf-16")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 8393 reports and 3 cases.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["3"]
+    assert {"8393", "3.84"} <= report.backing_values

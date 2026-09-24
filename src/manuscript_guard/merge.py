@@ -108,22 +108,29 @@ def _unidentified(reference: list[Block]) -> Counter:
 def _off_headings(
     rendered: dict[str, str], returned: list[Block], expected: Counter
 ) -> list[Block]:
-    """Identifiers taken off a heading or caption they slid onto.
+    """Identifiers taken off a heading, caption or reference entry they slid onto.
 
     Deleted or cut without Track Changes, the last paragraph of a section leaves its
-    identifier on the heading after it. Read as the paragraph's text, the heading was merged
-    into it wherever the paragraph named the heading - "Methods", bindings intact. A block
-    that reads exactly as a heading or caption of the document as sent is that heading, and
-    an identifier on it names a paragraph that is no longer there.
+    identifier on the heading after it - above a table, on its caption; after the last
+    paragraph of all, on the first entry of the reference list. Read as the paragraph's text,
+    the heading was merged into it: "Methods", bindings intact. Recognised by its text alone,
+    a heading retitled in the same round was merged too - "Study design" - so it is
+    recognised by its style as well, and an identifier on it names a paragraph that is no
+    longer there.
+
+    Unless the block is plainly that paragraph: one restyled as a heading in Word, its words
+    mostly its own, is still the paragraph, and reported deleted it would invite deleting it.
     """
     out = []
     for block in returned:
         text = _squashed(block.text)
+        own = [rendered.get(name, "") for name in block.names]
+        restyled = any(was.strip() and _alike(was, block.text) for was in own)
         if (
             block.names
             and not block.table
-            and expected[text]
-            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+            and (expected[text] or (block.role and not restyled))
+            and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())
         out.append(block)

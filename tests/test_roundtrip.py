@@ -2630,6 +2630,182 @@ def test_a_document_built_before_moves_were_recorded_is_named(
     assert "record moves" in out and "rebuild" in out.lower(), out
 
 
+# --------------------------------------- an identifier left on a heading, caption or entry
+#
+# Deleted without Track Changes, a paragraph leaves its identifier - an empty bookmark - on
+# the paragraph after it (Word 365 over COM, 2026-09-25). After the last paragraph of a
+# section that is the heading, after the paragraph above a table its caption, after the last
+# paragraph of all the first entry of the reference list. Headings were recognised by their
+# text alone, so one retitled in the same round read as the paragraph's new wording.
+
+#: Style ids as a Japanese Word saves them: the names stay English, the ids do not.
+_LOCALISED = {"Heading1": "1", "BodyText": "a0", "Caption": "ac", "Bibliography": "a9"}
+
+
+def _localised(document: Path, target: Path, change) -> Path:
+    """`rewrite`, with the style ids renamed as a localised Word renames them on saving: the
+    id and every reference to it, never the style's name."""
+
+    def ids(xml: str, elements: tuple[str, ...]) -> str:
+        for was, now in _LOCALISED.items():
+            xml = xml.replace(f'w:styleId="{was}"', f'w:styleId="{now}"')
+            for element in elements:
+                xml = xml.replace(f'<w:{element} w:val="{was}"', f'<w:{element} w:val="{now}"')
+        return xml
+
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(
+        target, "w", zipfile.ZIP_DEFLATED
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = ids(change(data.decode("utf-8")), ("pStyle",)).encode("utf-8")
+            elif item.filename == "word/styles.xml":
+                data = ids(data.decode("utf-8"), ("basedOn", "next", "link")).encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+@pytest.mark.parametrize("ids", ["as-built", "localised"])
+@pytest.mark.parametrize(
+    "where",
+    [
+        ("heading", 2, ">Methods</w:t>", ">Study design</w:t>", "Whether the signal"),
+        ("caption", 8, "Reports by drug group.", "Reports of each drug group.", "The database"),
+        ("reference", 15, "Hepatic Injury in a", "Liver Injury in a", "None declared."),
+    ],
+    ids=lambda where: where[0],
+)
+def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ids: str, where: tuple
+) -> None:
+    """The paragraph before a heading, a caption or the reference list deleted without Track
+    Changes, and that heading retitled, that caption or that entry edited in the same round.
+    The paragraph merged as "Study design", bindings intact, or was refused with advice to
+    change the analysis. It was deleted, and is reported so. Read by the style's name, since a
+    localised Word saves Heading1 as "1"."""
+    from manuscript_guard.cli import main
+
+    _kind, index, was, now, deleted = where
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        paragraph = tagged_xml(xml)[index]
+        xml = _word_delete(xml, paragraph)
+        assert was in xml
+        return xml.replace(was, now, 1)
+
+    target = tmp_path / "retitled.docx"
+    returned = _localised(document, target, edit) if ids == "localised" else rewrite(
+        document, target, edit
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "merging" not in out and "comes from" not in out, out
+    assert f"deleted in Word, left in place here: {deleted}" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_paragraph_restyled_as_a_heading_is_not_reported_deleted(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An identifier on a heading has no place only when the heading is not its own
+    paragraph: one restyled as a heading in Word, its words unchanged, is still that
+    paragraph, and reporting it deleted would invite deleting it."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        paragraph = tagged_xml(xml)[2]
+        restyled = re.sub(r'<w:pStyle w:val="[^"]+" />', '<w:pStyle w:val="Heading2" />', paragraph)
+        assert restyled != paragraph
+        return xml.replace(paragraph, restyled, 1)
+
+    returned = rewrite(document, tmp_path / "restyled.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "deleted in Word" not in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before
+
+
+def _styled_docx(target: Path, styles: str, paragraphs: list[tuple[str, str, str]]) -> Path:
+    """A minimal document: `styles` as word/styles.xml, and one paragraph per (style id,
+    identifier, text), with the style applied directly when the id starts with "outline:"."""
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    body = ""
+    for index, (style, name, text) in enumerate(paragraphs):
+        if style.startswith("outline:"):
+            props = f'<w:pPr><w:outlineLvl w:val="{style.split(":")[1]}"/></w:pPr>'
+        else:
+            props = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+        mark = (
+            f'<w:bookmarkStart w:id="{index}" w:name="{name}"/><w:bookmarkEnd w:id="{index}"/>'
+            if name
+            else ""
+        )
+        body += f"<w:p>{props}{mark}<w:r><w:t>{text}</w:t></w:r></w:p>"
+    document = f"<w:document {w}><w:body>{body}</w:body></w:document>"
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr("word/document.xml", document)
+        if styles:
+            archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
+    return target
+
+
+def _style(style_id: str, name: str, based: str = "", outline: str = "") -> str:
+    parts = f'<w:name w:val="{name}"/>'
+    parts += f'<w:basedOn w:val="{based}"/>' if based else ""
+    parts += f'<w:pPr><w:outlineLvl w:val="{outline}"/></w:pPr>' if outline else ""
+    return f'<w:style w:type="paragraph" w:styleId="{style_id}">{parts}</w:style>'
+
+
+def test_a_paragraphs_role_is_read_from_its_style_name_not_its_id(tmp_path: Path) -> None:
+    """Heading by outline level, inherited through `basedOn`, and a table-of-contents heading
+    - built on heading 1, with its outline level set back to body text - is not one. Caption
+    by name, in either case, and through `basedOn`. The ids are whatever the Word that saved
+    it chose."""
+    from manuscript_guard.docxtext import blocks as read
+
+    styles = "".join(
+        [
+            _style("a", "Normal"),
+            _style("1", "heading 1", "a", "0"),
+            _style("custom", "My Section", "1"),
+            _style("af0", "TOC Heading", "1", "9"),
+            _style("ac", "caption", "a"),
+            _style("TableCaption", "Table Caption", "ac"),
+            _style("a9", "Bibliography", "a"),
+            _style("a0", "Body Text", "a"),
+        ]
+    )
+    document = _styled_docx(
+        tmp_path / "styled.docx",
+        styles,
+        [
+            ("1", "mg-p-x-1", "Heading one"),
+            ("custom", "mg-p-x-2", "Custom heading"),
+            ("af0", "mg-p-x-3", "Contents"),
+            ("TableCaption", "mg-p-x-4", "A table caption"),
+            ("a9", "mg-p-x-5", "An entry"),
+            ("a0", "mg-p-x-6", "Body text"),
+            ("outline:1", "mg-p-x-7", "Direct outline"),
+            ("unknown", "mg-p-x-8", "No such style"),
+        ],
+    )
+    roles = [block.role for block in read(document)]
+    assert roles == ["heading", "heading", "", "caption", "reference", "", "heading", ""]
+    bare = _styled_docx(tmp_path / "bare.docx", "", [("Heading1", "mg-p-x-1", "Heading")])
+    assert [block.role for block in read(bare)] == [""]
+
+
 @needs_pandoc
 def test_a_built_document_lets_word_record_a_move_as_a_move(project: Path) -> None:
     """Pandoc's reference document carries `w:doNotTrackMoves`, so with Track Changes on Word

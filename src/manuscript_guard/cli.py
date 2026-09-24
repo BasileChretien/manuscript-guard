@@ -413,7 +413,14 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
+    outstanding = bool(
+        plan.refused
+        or plan.gone
+        or plan.displaced
+        or plan.joined
+        or plan.misplaced
+        or plan.withheld
+    ) or (
         not args.apply and bool(plan.moved or plan.merged)
     )
     return 1 if outstanding else 0
@@ -433,15 +440,27 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table or a figure, or into another "
-            "file, changes how many paragraphs a section holds, and import only reorders "
-            "within one; move it in the .md yourself."
+            "    Not applied. A move past a heading, a table or a figure, into another file, or "
+            "into the middle of a paragraph - between its halves, or between the parts Word "
+            "shows display maths in - changes how many paragraphs a section holds, and import "
+            "only reorders within one; move it in the .md yourself."
         )
 
     if plan.moved:
         print(f"{len(plan.moved)} paragraph(s) came back in a different place:")
         for name, was_at, now_at in plan.moved:
             print(f"    position {was_at} -> {now_at}: {opening(name)}")
+
+    if plan.withheld:
+        print(f"{len(plan.withheld)} paragraph(s) came back in a different place, not applied:")
+        for name in plan.withheld:
+            print(f"    {opening(name)}")
+        print(
+            "    Their section also came back with text the document as sent did not have - a "
+            "paragraph split, or a new one - or with a paragraph whose identifier is on other "
+            "text (below), so where each of its paragraphs now stands cannot be read with "
+            "certainty. Move them in the .md yourself if the moves were intended."
+        )
 
     verb = "merging" if applying else "would merge"
     for name, rebuilt in plan.merged.items():
@@ -463,9 +482,24 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "if that was intended, and make any rewording there."
         )
 
+    for name, text in plan.displaced:
+        print(f"\nmoved in Word, left in place here: {known[name][1].strip()[:110]}")
+        print(f"    + {text.strip()[:150]}")
+        print(
+            "    Word did not record the move, and the copy that came back (above) cannot be "
+            "matched to this paragraph for certain: it was reworded, or reads like another "
+            "paragraph. Move the paragraph in the .md, and make any rewording there. Do not "
+            "delete it and retype Word's copy: its numbers and citations would come back as "
+            "typed text, not as bindings."
+        )
+
     for name in plan.gone:
         print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
-        print("    delete it in the .md yourself if that was intended.")
+        print(
+            "    delete it in the .md yourself if that was intended. If it was moved instead, "
+            "move it in the .md: retyped from Word's copy, its numbers and citations would "
+            "come back as typed text."
+        )
 
 
 def _seeded(source: Path) -> list[dict]:

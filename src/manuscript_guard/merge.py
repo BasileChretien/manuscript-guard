@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import difflib
 from collections import Counter, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
@@ -56,11 +56,19 @@ class Plan:
     refused: tuple[Refusal, ...] = ()
     #: Deleted in Word - outright or as a tracked change. Left in place in the source.
     gone: tuple[str, ...] = ()
+    #: Gone from its place, with its words back elsewhere, as (identifier, Word's text): moved
+    #: where Word did not record the move, and reworded or reading like another paragraph, so
+    #: the copy cannot be matched to it for certain. Left in place in the source.
+    displaced: tuple[tuple[str, str], ...] = ()
     #: Groups of identifiers that came back as one paragraph.
     joined: tuple[tuple[str, ...], ...] = ()
     moved: tuple[tuple[str, int, int], ...] = ()
     #: Moved into a different section or file; not applied.
     misplaced: tuple[str, ...] = ()
+    #: Moved within their section, and not applied: the section also gained text the
+    #: document as sent did not have, or holds an identifier on text not its own, so where
+    #: its paragraphs now stand cannot be read with certainty.
+    withheld: tuple[str, ...] = ()
     #: Identifier -> (file, section): the stretch between headings, tables and figures that
     #: the paragraph belongs to, which is what a move is applied within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
@@ -71,17 +79,272 @@ class Plan:
             self.merged
             or self.refused
             or self.gone
+            or self.displaced
             or self.joined
             or self.moved
             or self.misplaced
+            or self.withheld
         )
+
+
+def _squashed(text: str) -> str:
+    return spaced(text).strip()
 
 
 def _same(a: str, b: str) -> bool:
     """Word's text against Word's text, a no-break space compared as itself: split on every
     kind of space, a paragraph whose only change was one the co-author typed read as untouched,
     and the change was dropped with nothing reported."""
-    return spaced(a).strip() == spaced(b).strip()
+    return _squashed(a) == _squashed(b)
+
+
+def _unidentified(reference: list[Block]) -> Counter:
+    """What the document as sent held without an identifier - headings, captions - by text."""
+    return Counter(_squashed(b.text) for b in reference if not b.names and not b.table and b.text)
+
+
+def _off_headings(
+    rendered: dict[str, str], returned: list[Block], expected: Counter
+) -> list[Block]:
+    """Identifiers taken off a heading or caption they slid onto.
+
+    Deleted or cut without Track Changes, the last paragraph of a section leaves its
+    identifier on the heading after it. Read as the paragraph's text, the heading was merged
+    into it wherever the paragraph named the heading - "Methods", bindings intact. A block
+    that reads exactly as a heading or caption of the document as sent is that heading, and
+    an identifier on it names a paragraph that is no longer there.
+    """
+    out = []
+    for block in returned:
+        text = _squashed(block.text)
+        if (
+            block.names
+            and not block.table
+            and expected[text]
+            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+        ):
+            block = replace(block, names=())
+        out.append(block)
+    return out
+
+
+def _given_back(
+    rendered: dict[str, str], returned: list[Block], expected: Counter
+) -> list[Block]:
+    """Identifiers left on an empty line by Enter pressed at the start of their paragraph.
+
+    An identifier is an empty bookmark at the start of its paragraph, and Enter pressed there
+    puts the new line in front of the paragraph's text and behind its bookmark. Without Track
+    Changes nothing in the markup says so, and the paragraph was reported deleted, with the
+    advice to delete a paragraph nobody deleted. Given back only from a line with no text, to
+    the next paragraph when it reads exactly as the identified one was sent.
+
+    Not from text: a paste or a new paragraph typed there reads the same way as a paragraph
+    rewritten with a copy of its old text pasted after it, and a first version that gave
+    identifiers back from pasted text was beaten three times in review. Those are refused.
+    """
+    out = list(returned)
+    for index, block in enumerate(out):
+        if block.table or not block.names or block.text:
+            continue
+        after = index + 1
+        while after < len(out) and not (out[after].table or out[after].names or out[after].text):
+            after += 1
+        if after == len(out) or out[after].table or out[after].names:
+            continue
+        text = _squashed(out[after].text)
+        theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
+        if len(theirs) != 1 or expected[text]:
+            continue
+        out[after] = replace(out[after], names=block.names)
+        out[index] = replace(block, names=())
+    return out
+
+
+def _recovered(
+    rendered: dict[str, str], reference: list[Block], returned: list[Block]
+) -> list[Block]:
+    """The returned document with identifiers put back where only exact text can say.
+    `docxtext` has already put them back where the tracked changes say."""
+    expected = _unidentified(reference)
+    return _given_back(rendered, _off_headings(rendered, returned, expected), expected)
+
+
+def _pieces(reference: list[Block], name: str) -> list[str]:
+    """The untagged paragraphs Word shows after this one's first part, as sent."""
+    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
+    pieces = []
+    for block in reference[at + 1 :]:
+        if block.names or block.table:
+            break
+        if block.text:
+            pieces.append(block.text)
+    return pieces
+
+
+def _between_parts(
+    returned: list[Block], parts: dict[str, list[str]], expected: Counter
+) -> dict[str, set[str]]:
+    """Paragraphs that came back between one paragraph and another part of it.
+
+    Display maths reaches Word as three paragraphs. A paragraph moved between the parts is
+    inside the paragraph, a place the source does not have: reordered to after the whole of
+    it, the split the co-author made was dropped without a word. Only within a section: a
+    heading or caption ends the search. Returns, for each paragraph with something inside it,
+    what is. (A paragraph split in Word leaves new text in its section, and `_unsettled`
+    holds that section's moves.)
+    """
+    found: dict[str, set[str]] = {}
+    for index, block in enumerate(returned):
+        owner = next((name for name in block.names if parts.get(name)), None)
+        if owner is None:
+            continue
+        wanted = [_squashed(text) for text in parts[owner]]
+        passed: list[str] = []
+        for later in returned[index + 1 :]:
+            text = _squashed(later.text)
+            if not wanted or later.table:
+                break
+            if later.names:
+                passed += later.names
+            elif text in wanted:
+                wanted.remove(text)
+                if passed:
+                    found.setdefault(owner, set()).update(passed)
+            elif expected[text]:
+                break
+    return found
+
+
+def _not_its_own(
+    rendered: dict[str, str], texts: dict[str, str], returned: list[Block], expected: Counter
+) -> set[str]:
+    """Identifiers that came back on text that is not their paragraph's.
+
+    Their paragraph's own text came back as a paragraph with no identifier, or what they are
+    on reads word for word as another paragraph, a heading or a caption did. That is text
+    pasted or typed in front of them without Track Changes, where nothing in the markup says
+    so. Merged, the paste replaced the paragraph - a heading's text, or another paragraph with
+    its numbers typed in, under "bindings intact". It asks only whether the text an
+    identifier is on reads as something else's; an identifier on text that is new is left to
+    the split check, which refuses it beside the text that came back without one.
+    """
+    loose = Counter(_squashed(b.text) for b in returned if not b.table and not b.names and b.text)
+    readings = Counter(_squashed(text) for text in rendered.values())
+    found: set[str] = set()
+    for name, now in texts.items():
+        was = rendered[name]
+        if _same(was, now) or not was.strip():
+            continue
+        own, here = _squashed(was), _squashed(now)
+        if (loose[own] and not expected[own]) or (here and (readings[here] or expected[here])):
+            found.add(name)
+    return found
+
+
+def _swallowed(name: str, was: str, now: str, rendered: dict[str, str]) -> str:
+    """The whole of another paragraph, now inside this one and not before.
+
+    A join that lost the second paragraph's bookmark, or a paragraph pasted into another,
+    and not beside it: the paragraph came back holding the other's text, and merged, the
+    other's text was in the source twice. Only a paragraph of five words or more, so that a
+    short one ("None declared.") quoted in a rewording does not refuse it.
+    """
+    here, before = _squashed(now), _squashed(was)
+    for other, text in rendered.items():
+        whole = _squashed(text)
+        if other != name and len(whole.split()) >= 5 and whole in here and whole not in before:
+            return text
+    return ""
+
+
+def _unsettled(
+    returned: list[Block], sections: dict, expected: Counter, suspects: set[str]
+) -> set:
+    """Sections whose paragraphs cannot be placed with certainty.
+
+    One gained text the document as sent did not have - a split's second half, a paragraph
+    typed there - or holds an identifier on text not its own. A move there was reordered
+    among paragraphs import cannot see: a paragraph moved between the halves of a split went
+    to after the whole of it. The sections either side of the new text count, since which of
+    them it belongs to is not written anywhere.
+    """
+    found = {sections[name] for name in suspects if name in sections}
+    unchanged = Counter(expected)
+    for index, block in enumerate(returned):
+        if block.table or block.names or not block.text:
+            continue
+        key = _squashed(block.text)
+        if unchanged[key]:
+            unchanged[key] -= 1
+            continue
+        for step in (-1, 1):
+            i = index + step
+            while 0 <= i < len(returned) and not (returned[i].names or returned[i].table):
+                i += step
+            if 0 <= i < len(returned):
+                found.update(sections[n] for n in returned[i].names if n in sections)
+    return found
+
+
+def _kept_in_place(
+    order: list[str], rendered: dict[str, str], sections: dict, unsettled: set
+) -> list[str]:
+    """The returned order, with the paragraphs of each unsettled section in their sent order:
+    `apply_plan` sorts a section's slots by it, and those are not reordered."""
+    sent = {name: i for i, name in enumerate(rendered)}
+    held = [i for i, name in enumerate(order) if sections.get(name) in unsettled]
+    out = list(order)
+    for i, name in zip(held, sorted((order[i] for i in held), key=sent.__getitem__), strict=True):
+        out[i] = name
+    return out
+
+
+#: Most of the words, in order: a judgement, used only to choose the words of a refusal.
+_ALIKE = 0.6
+
+
+def _alike(a: str, b: str) -> bool:
+    return difflib.SequenceMatcher(a=a.split(), b=b.split(), autojunk=False).ratio() >= _ALIKE
+
+
+def _displaced(
+    gone: list[str], rendered: dict[str, str], reference: list[Block], returned: list[Block]
+) -> dict[str, str]:
+    """Paragraphs reported gone whose words came back elsewhere: moved where Word did not
+    record the move, and then reworded, or reading like another paragraph as well.
+
+    The text is new, with no identifier, or it sits on a paragraph whose identifier it does
+    not resemble - the one a paste landed in front of, when nothing gave that one back. Not
+    applied: nothing says which paragraph the text is, which is what the identifier is for.
+    But not reported as a deletion either. That advice was to delete the paragraph in the
+    .md, leaving Word's copy - numbers where the source has bindings - as the only one.
+    A judgement, and it only chooses the words of a refusal. Returns each with the text it most
+    resembles, for the author to port the rewording from.
+    """
+    expected = _unidentified(reference)
+    elsewhere = [
+        block.text
+        for block in returned
+        if not block.table
+        and block.text
+        and (
+            not any(_alike(rendered[n], block.text) for n in block.names if n in rendered)
+            if block.names
+            else not expected[_squashed(block.text)]
+        )
+    ]
+    found: dict[str, str] = {}
+    for name in gone:
+        words = rendered[name].split()
+        scored = [
+            (difflib.SequenceMatcher(a=words, b=text.split(), autojunk=False).ratio(), text)
+            for text in elsewhere
+        ]
+        best = max(scored, default=(0.0, ""))
+        if best[0] >= _ALIKE:
+            found[name] = best[1]
+    return found
 
 
 def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
@@ -90,7 +353,8 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     A split leaves the second half as a paragraph with no identifier next to the first, and
     that is the only trace it leaves: the first half is merely a shorter paragraph. So any
     untagged paragraph whose text was not in the document as sent is new, and a tagged
-    paragraph touching one - across nothing but empty paragraphs - may have been split.
+    paragraph touching one - across nothing but empty paragraphs - may have been split. So
+    may one touching a paragraph that arrived with Track Changes on, identifier or not.
     Compared by text rather than by position, because a move changes every neighbour and
     creates no text at all. An edited heading is new text too, which costs a refusal of the
     paragraph beside it when both were edited; the alternative is a split that truncates.
@@ -108,6 +372,10 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     def touches(indices: range) -> bool:
         for i in indices:
             block = returned[i]
+            # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
+            # stood where the second half of a split had, and the split merged as the whole.
+            if block.arrived and block.text:
+                return True
             if block.table or block.names:
                 return False
             if i in new:
@@ -351,6 +619,7 @@ def _joined_without_bookmark(
 def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph."""
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+    returned = _recovered(rendered, reference, returned)
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
     joined += _joined_without_bookmark(rendered, texts, in_join)
@@ -368,6 +637,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
     sections = _sections(known)
     in_parts = _in_parts(reference, sections)
     beside_new = _beside_new_text(reference, returned)
+    expected = _unidentified(reference)
+    not_its_own = _not_its_own(rendered, texts, returned, expected)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
     missing = +untagged
@@ -380,6 +651,9 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         was, now = rendered[name], texts.get(name)
         if counts[name] > 1:
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
+        elif name in not_its_own:
+            opening = _squashed(source)[:60]
+            refused.append(Refusal(name, now or "", (_NOT_ITS_OWN.format(opening=opening),)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now):
@@ -392,6 +666,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
+        elif other := _swallowed(name, was, now, rendered):
+            refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
         else:
             aligned = align(source, was, now)
             if aligned.rebuilt == source:
@@ -413,16 +689,30 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
 
     moved = moves([n for n in rendered if n in set(order)], order)
     misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
+    # A paragraph that came back inside another, and the one it is inside: which of the two
+    # the order says moved is a tie the diff breaks either way.
+    parts = {name: _pieces(reference, name) for name in in_parts}
+    inside = _between_parts(returned, parts, expected)
+    involved = set(inside).union(*inside.values())
+    shifted = {entry[0] for entry in moved}
+    misplaced += [n for n in rendered if n in shifted & involved and n not in misplaced]
     moved = [entry for entry in moved if entry[0] not in set(misplaced)]
+    unsettled = _unsettled(returned, sections, expected, not_its_own)
+    withheld = [entry[0] for entry in moved if sections[entry[0]] in unsettled]
+    moved = [entry for entry in moved if entry[0] not in set(withheld)]
+    order = _kept_in_place(order, rendered, sections, unsettled)
+    displaced = _displaced(gone, rendered, reference, returned)
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
         merged=merged,
         refused=tuple(refused),
-        gone=tuple(gone),
+        gone=tuple(name for name in gone if name not in displaced),
+        displaced=tuple((name, displaced[name]) for name in gone if name in displaced),
         joined=tuple(joined),
         moved=tuple(moved),
         misplaced=tuple(misplaced),
+        withheld=tuple(withheld),
         sections=sections,
     )
 
@@ -430,11 +720,13 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
 _SPLIT = (
     "it came back with a new paragraph beside it: split in two in Word, or new text written "
     "next to it. Merging it would replace the whole source paragraph with only part of it. "
-    "Make the split or the addition in the .md."
+    "Make the split or the addition in the .md. If the text shown is a paragraph moved "
+    "from elsewhere, move that paragraph in the .md rather than retyping it."
 )
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
-    "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+    "prints no text. Merging it would replace what is hidden there. Add the text in the .md; "
+    "if it is a paragraph moved from elsewhere, move that paragraph rather than retyping it."
 )
 _IN_PARTS = (
     "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "
@@ -445,6 +737,18 @@ _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "
     "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
     "make the edit in the .md."
+)
+_NOT_ITS_OWN = (
+    "the paragraph opening '{opening}' came back with its identifier on other text (shown): "
+    "text pasted or typed in front of it took the identifier, and its own text came back "
+    "without one, or the text shown reads exactly as another paragraph or a heading. Nothing "
+    "is merged into it, and nothing in its section is reordered. Make the edits in the .md; "
+    "if a paragraph was moved, move it there rather than retyping it."
+)
+_SWALLOWED = (
+    "it came back holding the whole of another paragraph ('{text}'): joined to it, or "
+    "pasted into it, in Word. Merging would put that paragraph's text in the source a second "
+    "time. Make the edit in the .md."
 )
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "

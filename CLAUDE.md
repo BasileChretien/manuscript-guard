@@ -104,3 +104,8 @@ Verified 2026-08-03 on the author's machine.
   databaseId` through anything that formats numbers turns it into `3.08e+10` and gets a 404;
   `--jq '.[0].databaseId'` returns it intact.
 - Multiple R versions are installed; use the newest unless a project pins one via renv.
+- **Word 365 is installed and scriptable over COM** (`New-Object -ComObject Word.Application`
+  in PowerShell, `Visible = $false`, `Quit(0)` in a `finally`). That is how to learn what
+  Word writes for an edit, rather than guessing: a move test that moved the whole `<w:p>`
+  with its bookmark passed for months, and Word never makes that edit. Selection-based
+  `Cut`/`Paste` borrows the clipboard; save and restore it.

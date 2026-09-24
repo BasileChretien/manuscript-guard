@@ -31,6 +31,9 @@ manuscript-guard build --offline
   an offline build in the default citation style, so a document built with a journal style
   comes back with every cited paragraph refused. A live Zotero build probably does the same.
 - Send `build/manuscript.docx`. `supplementary.docx` cannot be imported.
+- Send a document built by manuscript-guard 0.2.12 or later. Earlier builds told Word not
+  to record a move as a move, so no paragraph moved in them can be moved back: each is
+  refused and has to be moved in the `.md` by hand.
 - Do not send `manuscript.annotated.docx` to anyone who will edit it. It carries no source
   stamp and no paragraph identifiers, so nothing in it can come back. It is for someone who
   needs to see where each number came from.
@@ -43,8 +46,9 @@ Tell the co-author, in these words or better ones:
 
 > Edit the wording freely. Please do not change numbers, citations or tables in the text;
 > put what you want changed in a comment, because those come from the analysis and the
-> reference manager. Please do not split or merge paragraphs. Tracked changes are fine, but
-> reject any you do not want before sending it back.
+> reference manager. Please do not split or merge paragraphs. Please keep Track Changes on
+> throughout: to move a paragraph, cut the whole paragraph and paste it at the start of
+> another one. Reject any change you do not want before sending it back.
 
 ## 2. When it comes back
 
@@ -66,15 +70,18 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, its identifier came back on text that is not its own (a paste or a copy landed in front of it), a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
-| `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
+| `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended. If it was in fact moved, move it in the `.md`: never retype Word's copy, which has numbers where the source has bindings |
+| `moved in Word, left in place here` | cut and pasted where Word recorded no move: Track Changes off, a document built before 0.2.12, or move tracking turned off in Word. Word's copy is shown under it. Not applied; move it in the `.md` and make any rewording there. Never delete it and retype Word's copy |
+| `came back in a different place` | a move within one section (between the same two headings, tables or figures), made by cut and paste with Track Changes on, which Word records; `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `came back in a different place, not applied` | a recorded move in a section that also gained text - a paragraph split, or a new one - or holds a paragraph whose identifier came back on other text, so where its paragraphs now stand cannot be read with certainty. Move them in the `.md` yourself |
+| `moved into a different section or file` | a move past a heading, table or figure, into another file, or into the middle of a paragraph (between the halves of a split, or the parts display maths reaches Word in). Not applied; move it in the `.md` yourself |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted, moved without a record Word kept, moved but not
+applied, or moved between sections or files makes the command exit 1, with or without
+`--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -100,7 +107,14 @@ handled, and each has a test:
 - A move together with rewording is applied in one pass: the paragraph goes to its new
   place in its section, reworded if it was. A move into another section is reported and not
   applied, rather than pushing a paragraph out of every section in between.
-- A paragraph split in two in Word is refused, not cut down to its first half.
+- A paragraph cut and pasted with Track Changes on is moved, not reported deleted. Word
+  leaves a paragraph's identifier behind when it cuts the paragraph, and the move is read
+  from Word's record of it instead. Two paragraphs moved together are no longer reported as
+  a join, and Enter pressed at the start of a paragraph no longer reports that paragraph
+  deleted. A move made with Track Changes off is refused and named as a move, never
+  reported as a deletion to act on.
+- A paragraph split in two in Word is refused, not cut down to its first half, even with a
+  moved paragraph pasted between the halves; that move is not applied either.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.
 - A tab or other Word layout in a paragraph no longer leaks XML into the merge.
@@ -125,8 +139,13 @@ paragraph without an identifier. Port those edits from the dry run and the text 
 `--apply` takes all the safe changes at once; there is no way to pick among them, so if the
 dry run shows a merge you do not want, port the whole import by hand instead.
 
-Two things in this version still need care:
+Some things in this version still need care:
 
+- A paragraph moved where Word recorded no move - Track Changes off, a document built
+  before 0.2.12, or move tracking turned off in Word - is reported as `moved in Word` and
+  left where it was. Move it in the `.md` and port any rewording from the copy shown under
+  it. Do not delete it and paste Word's copy in: its numbers and citations would come back
+  as typed text, and `check` would then report each one as unbound.
 - A reworded paragraph that has a binding or a citation *and* an apostrophe, a quotation
   mark or a `--` in its prose is refused as "could not be lined up with its own source":
   pandoc typesets those characters, so the prose no longer matches. Port that edit by hand.

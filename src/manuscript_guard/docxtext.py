@@ -46,8 +46,10 @@ _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
 _PICTURES = {W + "drawing", W + "pict", W + "object"}
 #: The extent of one binding or citation, marked only in the build `import` compares with.
 TOKEN = "mg-t-"
-# Where a token opens and closes in the text as it is read, before whitespace is folded.
-_OPEN, _CLOSE = "\ue000", "\ue001"
+# Where a token opens and closes as the text is read, before whitespace is folded. Objects,
+# not characters: the markers were U+E000 and U+E001 inside the text, so a genuine one - a
+# glyph pasted from a PDF - vanished from every document read.
+_OPEN, _CLOSE = object(), object()
 
 
 class DocumentUnreadable(Exception):
@@ -89,7 +91,7 @@ def _text(element: ET.Element) -> str:
 
 def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
     """The visible text under `element`, and where each marked token sits in it."""
-    out: list[str] = []
+    out: list[object] = []
     marked: set[str] = set()
 
     def walk(node: ET.Element) -> None:
@@ -110,10 +112,10 @@ def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
             walk(child)
 
     walk(element)
-    return _extents("".join(out))
+    return _extents(out)
 
 
-def _extents(raw: str) -> tuple[str, tuple[tuple[int, int], ...]]:
+def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     """Fold whitespace as the rest of this module does, keeping each token's extent.
 
     A token's extent starts at its first visible character and ends after its last, so a
@@ -123,11 +125,11 @@ def _extents(raw: str) -> tuple[str, tuple[tuple[int, int], ...]]:
     spans: list[list[int]] = []
     open_: list[int] = []
     space = False
-    for char in raw:
-        if char == _OPEN:
+    for char in (c for piece in raw for c in ([piece] if piece in (_OPEN, _CLOSE) else piece)):
+        if char is _OPEN:
             spans.append([-1, -1])
             open_.append(len(spans) - 1)
-        elif char == _CLOSE:
+        elif char is _CLOSE:
             if open_:
                 span = spans[open_.pop()]
                 span[1] = len(out)

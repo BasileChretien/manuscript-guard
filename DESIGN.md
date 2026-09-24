@@ -1225,9 +1225,14 @@ file when nothing had moved at all.
 and protected tokens in alternation: bindings, and citations in every form pandoc reads,
 `[@key]`, `[see @key, p. 4]` and a narrative `@key`. Where each token's rendering begins
 and ends is not worked out. It is read from a second build of the same source in which
-every token is wrapped in a span, which pandoc turns into a bookmark around the token's
-rendered text. So nothing about how a number or a citation renders has to be known, which is
-what makes citations work: their rendering depends on a CSL style this code never sees.
+every token has a Word bookmark around it, written as raw OpenXML that pandoc passes
+through. So nothing about how a number or a citation renders has to be known, which is what
+makes citations work: their rendering depends on a CSL style this code never sees. The
+first marking was a `[token]{#id}` span, and a span adds brackets: beside an unbalanced one,
+as in "Scores in [low, high) … [@key]", pandoc paired them differently, the text still read
+the same, the extent lost its first character, and a rewording wrote the `[` twice. For the
+same reason a bracketed citation is the innermost bracket group holding an `@`, not
+everything from the first `[`.
 
 It used to be worked out, and the working was wrong in both directions. The source's prose
 was flattened and searched for in the rendered text, and the tokens were whatever lay
@@ -1259,9 +1264,12 @@ segment with the same segment of the build, quotes straightened on both sides, b
 co-author's Word curls or uncurls them without anyone editing anything. And an unchanged
 segment is rebuilt from the source rather than from Word, so only a segment the co-author
 actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
-that is the price of using the bookmark as identity. What plain text cannot carry at all, a
-footnote, a link's address, an equation or an HTML comment, makes the paragraph refused rather than merged:
-merging Word's text over it deleted them.
+that is the price of using the bookmark as identity. An edited segment holding half of some
+formatting that wraps a token - `[{{x}}]{.smallcaps}`, `**{{x}}**`, `<sup>{{x}}</sup>` - is
+refused, because its half would go and the other half stay: the first attempt merged `The
+new value {{x}}]{.smallcaps}`. What plain text cannot carry at all, a footnote, a link's
+address, an equation (wrapped across a line or not) or an HTML comment, makes the paragraph
+refused rather than merged: merging Word's text over it deleted them.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -2003,7 +2011,7 @@ Closed since, and why each mattered:
   read exactly like the plain one, paragraph by paragraph. If wrapping a token in a span
   changes a rendering, that paragraph is refused rather than aligned on extents that
   describe different text. One case is known: a binding inside inline code or an HTML
-  comment, where the span is printed rather than read. Such a paragraph can never take a
+  comment, where the bookmark is printed rather than read. Such a paragraph can never take a
   rewording, even far from the binding.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
   punctuation and merges; so does a unit or a percent sign added after a value. Both change

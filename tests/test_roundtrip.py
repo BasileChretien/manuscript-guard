@@ -487,6 +487,114 @@ def test_two_tokens_with_nothing_between_them_are_refused_as_unaligned() -> None
     assert aligned.unaligned and not aligned.changed
 
 
+def test_a_citation_is_its_own_brackets_and_no_more() -> None:
+    """The citation pattern started at the first `[` with an `@` before the next `]`, so the
+    prose "[low, high) were rescaled as in" became part of a citation token."""
+    assert segments("Scores in [low, high) were rescaled as in [@key].")[1] == ["[@key]"]
+    assert segments("Nested [see [@smith2020]] here.")[1] == ["[@smith2020]"]
+
+
+def test_tokens_are_marked_without_adding_brackets() -> None:
+    """Wrapped in `[...]{#id}`, a token next to an unbalanced bracket let pandoc pair the
+    brackets differently: the text read the same, the extent lost its first character, and
+    a rewording wrote the `[` twice."""
+    from manuscript_guard.roundtrip import tag
+
+    marked = tag("Scores in [low, high) and {{results.a}} [@key].\n", "main.md", mark=True)
+    assert "[[" not in marked and "]{#mg-t-" not in marked
+    assert marked.count("{=openxml}") == 4, "a start and an end for each of two tokens"
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        ("The value [{{results.x}}]{.smallcaps} here.", "The value ⟦3⟧ here.",
+         "The new value 3 here."),
+        ("It was ~~{{results.x}}~~ gone.", "It was ⟦3⟧ gone.", "It was 3 now gone."),
+        ("Per m^{{results.x}}^ units.", "Per m⟦3⟧ units.", "Per m3 square units."),
+        ("Per m<sup>{{results.x}}</sup> units.", "Per m⟦3⟧ units.", "Per m3 square units."),
+        ("It was **{{results.x}}** high.", "It was ⟦3⟧ high.", "It was 3 very high."),
+    ],
+    ids=["span", "strikeout", "superscript", "html", "strong"],
+)
+def test_formatting_that_wraps_a_token_is_not_left_half_open(
+    source: str, rendered: str, returned: str
+) -> None:
+    """An edited segment is taken from Word without its markdown, and the untouched segment
+    on the other side of the token kept its delimiter: `The new value {{x}}]{.smallcaps}`."""
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import align
+
+    plain, spans = unmark(rendered)
+    aligned = align(source, plain, returned, spans)
+    assert aligned.rebuilt is None
+    assert "formatting" in " ".join(why(aligned))
+
+
+def test_formatting_that_wraps_a_token_is_kept_when_that_side_is_untouched() -> None:
+    source = "It was **{{results.x}}** high, and {{results.y}} was low."
+    out = merged(
+        source, "It was ⟦3⟧ high, and ⟦4⟧ was low.", "It was 3 high, and 4 was very low."
+    )
+    assert out == "It was **{{results.x}}** high, and {{results.y}} was very low."
+
+
+@needs_pandoc
+def test_prose_before_a_stray_bracket_and_a_citation_merges_once(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end, as the review ran it: the edit before "[low, high)" merged as
+    `All scores in [[low, high) ...`."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    added = (
+        "Scores in [low, high) were rescaled as in [@fictionalClassSignal2019], giving "
+        "{{results.ror.point}}."
+    )
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Scales\n\n" + added + "\n", encoding="utf-8"
+    )
+    document = built(project)
+    returned = rewrite(
+        document,
+        tmp_path / "bracket.docx",
+        lambda xml: xml.replace("Scores in [low", "All scores in [low", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+    assert after.count("All scores in [low, high) were rescaled") == 1
+    assert "[[" not in after and closed(after)
+
+
+def test_inline_maths_wrapped_across_a_line_is_refused() -> None:
+    """pandoc reads `$p <\\n0.05$` as one equation, which Word holds as OMML, not text."""
+    from manuscript_guard.roundtrip import align
+
+    aligned = align("We required $p <\n0.05$ throughout.", "We required throughout.",
+                    "We always required throughout.", [])
+    assert aligned.rebuilt is None and aligned.markup
+
+
+def test_a_private_use_character_survives_being_read(tmp_path: Path) -> None:
+    """The token markers were U+E000 and U+E001 inside the text, so a genuine one - pasted
+    from a PDF, say - vanished from every document read."""
+    from manuscript_guard.docxtext import blocks as read
+
+    document = tmp_path / "glyph.docx"
+    body = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-1"/><w:bookmarkEnd w:id="1"/>'
+        "<w:r><w:t>Glyph x here.</w:t></w:r></w:p>"
+    )
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/'
+            f'main"><w:body>{body}</w:body></w:document>',
+        )
+    assert read(document)[0].text == "Glyph x here."
+
+
 def test_an_email_address_is_not_a_citation() -> None:
     prose, protected = segments("Write to data@example.org for access.")
     assert protected == []

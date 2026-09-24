@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN
-from manuscript_guard.zotero.citations import BRACKETED
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -257,10 +256,12 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     blocks, and paragraphs that are nothing but a placeholder, because those become a table
     or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
 
-    With `mark`, every binding and citation in a tagged paragraph is wrapped in a span of
-    its own as well, which pandoc also turns into a bookmark - around the token's rendered
-    text this time. Only the build `import` compares with is marked, and it is what tells
-    `align` exactly where each token's rendering begins and ends.
+    With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
+    around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
+    build `import` compares with is marked, and it is what tells `align` exactly where each
+    token's rendering begins and ends. It was a `[token]{#id}` span first, and a span adds
+    brackets: beside an unbalanced one, pandoc paired them differently, the text still read
+    the same, and the extent lost its first character - so a rewording wrote a `[` twice.
     """
     out = []
     counter = iter(range(1_000_000))
@@ -273,11 +274,19 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
         marker = _TAG.format(slug=slug, index=index)
         body = stripped
         if mark:
-            body = _PROTECTED.sub(
-                lambda token: f"[{token.group(0)}]{{#{TOKEN}{slug}-{next(counter)}}}", body
-            )
+            body = _PROTECTED.sub(lambda token: _bookmarked(token.group(0), slug, counter), body)
         out.append(para.replace(stripped, f"[]{{#{marker}}}{body}", 1))
     return "".join(out)
+
+
+def _bookmarked(token: str, slug: str, counter) -> str:
+    """`token` between a raw bookmark start and end, invisible in the built document."""
+    number = next(counter)
+    # Far above the identifiers pandoc numbers its own bookmarks with.
+    ident = 1_000_000 + number
+    start = f'`<w:bookmarkStart w:id="{ident}" w:name="{TOKEN}{slug}-{number}"/>`{{=openxml}}'
+    end = f'`<w:bookmarkEnd w:id="{ident}"/>`{{=openxml}}'
+    return f"{start}{token}{end}"
 
 
 def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
@@ -365,13 +374,19 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
 
 
 #: A binding or a citation: the parts of a paragraph the author does not own. Citations
-#: are read as the rest of the toolkit reads them - `[see @key, p. 4]` with its prefix and
+#: are read in every form pandoc reads them - `[see @key, p. 4]` with its prefix and
 #: locator, and a narrative `@key` - because only `[@key]` was protected, and a rewording of
 #: a paragraph citing `@smith2020` merged it back as the plain text "Smith (2020)". A
 #: narrative key ends on a word character, so a full stop after it stays prose.
+#:
+#: A bracketed citation is the innermost bracket group holding an `@`. The citation pattern
+#: the gates use starts at the first `[` with an `@` before the next `]`, which is right for
+#: finding keys and wrong here: in "Scores in [low, high) were rescaled as in [@key]" it made
+#: the prose from `[low` onwards part of the citation.
+_IN_GROUP = r"(?:[^\[\]\n]|\n(?![ \t]*\n))"
 _PROTECTED = re.compile(
     r"\{\{[^}]*\}\}"
-    rf"|{BRACKETED.pattern}"
+    rf"|\[{_IN_GROUP}*@{_IN_GROUP}*\]"
     r"|(?<![\w`\[@])-?@[A-Za-z][\w:.#$%&+?<>~/-]*(?<![:.#$%&+?<>~/-])"
 )
 
@@ -433,6 +448,8 @@ class Alignment:
     #: It carries markup that plain Word text cannot bring back: a footnote, a link, an
     #: image, an equation.
     markup: bool = False
+    #: An edited segment holds half of some formatting whose other half is across a token.
+    wraps: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -453,7 +470,7 @@ _SIGNS = frozenset({"Pd", "Sm"})
 #: paragraphs of their own; with inline TeX, the equation, which Word holds as OMML
 #: rather than as text; with an HTML comment, the comment.
 _MARKUP = re.compile(
-    r"\^\[|\]\(|\$\$|<!--|(?<![\\$])\$(?=\S)[^$\n]*?(?<=\S)\$(?!\d)"
+    r"\^\[|\]\(|\$\$|<!--|(?<![\\$])\$(?=\S)[^$]*?(?<=\S)\$(?!\d)"
 )
 
 
@@ -566,15 +583,73 @@ def align(
     # compared with. Both sides are rendered text, so nothing about markdown is modelled.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    wrapping = _wrapping(prose)
     out: list[str] = []
     for index, piece in enumerate(new_prose):
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
         # from Word, where inline formatting did not survive being read as plain text.
         same = _comparable(was_prose[index]) == _comparable(piece)
+        if not same and index in wrapping:
+            return Alignment(None, wraps=True)
         out.append(prose[index] if same else piece)
         if index < len(protected):
             out.append(protected[index])
     return Alignment("".join(out).strip() or None)
+
+
+#: Inline markup opened in one prose segment and closed in another, around a token.
+_PAIRED = (
+    r"\*\*",
+    r"__",
+    r"~~",
+    r"(?<![\w*])\*|\*(?![\w*])",
+    r"(?<!\w)_|_(?!\w)",
+    r"~",
+    r"\^",
+    r"`",
+)
+_TAG_OPEN = re.compile(r"<([A-Za-z][\w-]*)(?:\s[^<>]*)?(?<!/)>")
+_TAG_CLOSE = re.compile(r"</([A-Za-z][\w-]*)\s*>")
+
+
+def _wrapping(prose: list[str]) -> set[int]:
+    """The prose segments holding half of some formatting whose other half is across a token.
+
+    An edited segment is taken from Word without its markdown, so the half in it went and
+    the half in an untouched segment stayed: `[{{x}}]{.smallcaps}` with its first segment
+    edited merged as `The new value {{x}}]{.smallcaps}`, and the document printed the
+    brace. Such a segment cannot take a rewording; one on the far side of the paragraph can.
+    """
+    joined = "\x00".join(re.sub(r"\\.", "  ", part) for part in prose)
+    owner = [i for i, part in enumerate(prose) for _ in range(len(part) + 1)]
+    found: set[int] = set()
+
+    def across(a: int, b: int) -> None:
+        if "\x00" in joined[a:b]:
+            found.update((owner[a], owner[b]))
+
+    depth: list[int] = []
+    for at, char in enumerate(joined):
+        if char == "[":
+            depth.append(at)
+        elif char == "]" and depth:
+            across(depth.pop(), at)
+    for pattern in _PAIRED:
+        marks = [m.start() for m in re.finditer(pattern, joined)]
+        for a, b in zip(marks[::2], marks[1::2], strict=False):
+            across(a, b)
+        joined = re.sub(pattern, lambda m: " " * len(m.group(0)), joined)
+    opened: dict[str, list[int]] = {}
+    for tag in sorted(
+        [(m.start(), m.group(1).lower(), True) for m in _TAG_OPEN.finditer(joined)]
+        + [(m.start(), m.group(1).lower(), False) for m in _TAG_CLOSE.finditer(joined)]
+    ):
+        at, name, opening = tag
+        if opening:
+            opened.setdefault(name, []).append(at)
+        elif opened.get(name):
+            across(opened[name].pop(), at)
+    return found
 
 
 def _checked(

@@ -469,6 +469,12 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "Word's plain text cannot bring back: merging it would delete them. Make "
             "the edit in the .md.",
         )
+    if aligned.wraps:
+        return (
+            "its formatting wraps a number or a citation, and the edited side of it cannot "
+            "come back from Word's plain text: merging would leave the other half behind. "
+            "Make the edit in the .md.",
+        )
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:

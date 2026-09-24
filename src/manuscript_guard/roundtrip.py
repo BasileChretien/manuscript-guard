@@ -481,12 +481,11 @@ def _dash_rule(line: str) -> bool:
 # the closing rule.
 _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 # A YAML block in the body: pandoc tries every `---` in column 0 with text straight under
-# it, up to the first `---` or `...` in column 0, wherever in a block that falls.
+# it, up to the first `---` or `...` in column 0, wherever in a block that falls. Read to
+# the end without a limit: every attempt opens on an exact `---`, which is itself a stop
+# line, so no two attempts read the same text.
 _YAML_OPEN = re.compile(r"---[ \t]*")
 _YAML_STOP = re.compile(r"(?:---|\.\.\.)[ \t]*")
-# How much text is read to find where a `---` would stop. A metadata block in the body
-# longer than this is not followed, which costs at worst a build that pandoc refuses.
-_YAML_LIMIT = 4000
 _MAPPING, _OTHER = "mapping", "other"
 
 
@@ -495,6 +494,8 @@ def _yaml_kind(text: str) -> str:
 
     Composed, not loaded: constructing values raised on YAML pandoc accepts -
     `date: 2026-02-30` is a ValueError to PyYAML - and nothing here needs the values.
+    Nothing at all, a comment alone, is empty metadata to pandoc, not something it gives
+    up on.
     """
     import yaml
 
@@ -503,30 +504,28 @@ def _yaml_kind(text: str) -> str:
         node = yaml.compose(text, Loader=loader)
     except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
         return _OTHER
-    return _MAPPING if isinstance(node, yaml.MappingNode) else _OTHER
+    return _MAPPING if node is None or isinstance(node, yaml.MappingNode) else _OTHER
 
 
-def _yaml_stop(pieces: list[str], index: int) -> tuple[int, str] | None:
-    """Where a YAML block tried at `pieces[index]` stops, and what it holds.
+def _yaml_stop(pieces: list[str], index: int) -> tuple[int, bool, str] | None:
+    """Where a YAML block tried at `pieces[index]` stops, whether the stop line is the first
+    line of its block, and what it holds.
 
     Pandoc keeps a mapping as metadata. Anything else it gives up on quietly and reads as a
-    rule, a table or prose - but only while nothing in it breaks the YAML: a marker written
-    into the middle of it turns that fallback into a parse error, and the build fails. So
-    whatever pandoc tries as YAML is left unmarked, mapping or not.
+    rule, a table or prose - but only while nothing in it breaks the YAML: a marker at the
+    start of a line inside it turns that fallback into a parse error, and the build fails.
+    So whatever pandoc tries as YAML is left unmarked, mapping or not.
     """
     lines = pieces[index].split("\n")
     if not (_YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and lines[1].strip()):
         return None
     body: list[str] = []
-    size = 0
     for at in range(index, len(pieces)):
-        for line in lines[1:] if at == index else pieces[at].split("\n"):
+        chunk = lines[1:] if at == index else pieces[at].split("\n")
+        for position, line in enumerate(chunk):
             if _YAML_STOP.fullmatch(line):
-                return at, _yaml_kind("\n".join(body))
+                return at, at != index and position == 0, _yaml_kind("\n".join(body))
             body.append(line)
-            size += len(line) + 1
-            if size > _YAML_LIMIT:
-                return None
     return None
 
 
@@ -580,10 +579,13 @@ class _Ruled:
         tried = _yaml_stop(self._pieces, index)
         if tried is None:
             return table
-        stop, kind = tried
+        stop, opens_block, kind = tried
         if kind == _MAPPING:
             return stop if stop != index else None
-        ends = [end for end in (stop, table) if end is not None and end != index]
+        # Given up on, the stop line is not consumed: when it opens a block, that block is
+        # pandoc's next `---` to try, and hiding it skipped a real YAML block or table.
+        tried_to = stop - 2 if opens_block else stop
+        ends = [end for end in (tried_to, table) if end is not None and end > index]
         return max(ends) if ends else None
 
 

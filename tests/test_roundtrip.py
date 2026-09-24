@@ -287,6 +287,12 @@ RULED = {
     "yaml example inside a comment before real yaml": (
         "<!--\n---\nk: v\n\nj: w\n-->\n\n---\ntitle: x\n\nsubtitle: y\n..."
     ),
+    "yaml pandoc gives up on, stopping on a later yaml opener": (
+        "---\nText under.\n\n------\n\nMore.\n\n---\ntitle: x\n\nsubtitle: y\n..."
+    ),
+    "yaml longer than four thousand characters": (
+        "---\ntitle: x\nabstract: |\n  " + "\n\n  ".join(["word " * 300] * 4) + "\n..."
+    ),
     "yaml example inside a code fence before real yaml": (
         f"{FENCE}\n\n---\nk: v\n\nj: w\n{FENCE}\n\n---\ntitle: x\n\nsubtitle: y\n..."
     ),
@@ -331,6 +337,10 @@ def test_yaml_closed_in_its_own_block_hides_nothing_after_it() -> None:
     text = "Intro.\n\n---\ntitle: x\n...\n\nPara one.\n\nPara two.\n\nMethods\n-------\n\nP3.\n"
     marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(text, "main.md"))
     assert marked == ["Intro", "Para", "Para", "P3"]
+    # Nothing but a comment is empty metadata to pandoc, not something it gives up on.
+    note = "Intro.\n\n---\n# a private note\n...\n\nPara one.\n\nPara two.\n\nResults\n-------\n"
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(note + "\nAfter.\n", "main.md"))
+    assert marked == ["Intro", "Para", "Para", "After"]
 
 
 def test_a_table_closed_by_its_caption_does_not_hide_what_follows() -> None:

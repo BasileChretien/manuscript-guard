@@ -411,6 +411,23 @@ TAGGING = {
         f"Intro.\n\n{FENCE}\n\n---\nk: v\n\nj: w\n{FENCE}\n\n---\ntitle: x\n\nsubtitle: y\n...\n\n"
         "After.\n"
     ),
+    "yaml pandoc gives up on, stopping on a later yaml opener": (
+        "Intro.\n\n---\nText under.\n\n------\n\nMore.\n\n---\ntitle: x\n\nsubtitle: y\n...\n\n"
+        "After.\n"
+    ),
+    "yaml pandoc gives up on, over a setext heading, before a later yaml opener": (
+        "Intro.\n\n---\nText under.\n\nResults\n-------\n\nMore.\n\n---\ntitle: x\n\n"
+        "subtitle: y\n...\n\nAfter.\n"
+    ),
+    "yaml pandoc gives up on, stopping on a later table": (
+        "Intro.\n\n---\nText under.\n\n------\n\nMore.\n\n---\n Drug   Signal\n------ ------\n"
+        "First  1.2\n\nSecond 2.3\n---------------\n\nAfter.\n"
+    ),
+    "yaml longer than four thousand characters": (
+        "Intro.\n\n---\ntitle: x\nabstract: |\n  "
+        + "\n\n  ".join(["word " * 300] * 4)
+        + "\n...\n\nAfter.\n"
+    ),
     "yaml closed in its own block, then prose and a setext heading": (
         "Intro.\n\n---\ntitle: x\n...\n\nPara one.\n\nPara two.\n\nMethods\n-------\n\nP3.\n"
     ),

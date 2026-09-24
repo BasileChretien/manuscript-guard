@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from manuscript_guard.contracts import load_project
+from manuscript_guard.findings import INFO
 from manuscript_guard.gates import check_review, manuscript_digest, open_panel, panels
 
 PANEL_1 = Path("review") / "panel-1.yaml"
@@ -375,3 +376,118 @@ def test_editing_the_bibliography_makes_the_built_document_stale(project: Path) 
         bib.read_text(encoding="utf-8") + "\n@misc{extra, title={X}}\n", encoding="utf-8"
     )
     assert document_digest(projekt) != before
+
+
+# ------------------------------------------------ after a revision: a later round supersedes
+
+
+def revise(root: Path) -> None:
+    path = root / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nAdded in revision.\n", "utf-8")
+
+
+def record_round(root: Path, number: int, *reviewers: str) -> None:
+    from manuscript_guard.record import write_review
+
+    for reviewer in reviewers:
+        write_review(
+            load_project(root)[0],
+            reviewer,
+            verdict="minor-revision",
+            round_number=number,
+            remit="the revised manuscript as it now stands",
+        )
+    edit_yaml(project_panel(root, number), lambda d: d.update(blinded=True))
+
+
+def project_panel(root: Path, number: int) -> Path:
+    return root / "review" / f"panel-{number}.yaml"
+
+
+def test_a_complete_later_round_supersedes_the_stale_ones(project: Path) -> None:
+    """Editing the manuscript made every earlier record stale, and recording a new round —
+    what `review --record` tells the author to do instead of re-stamping one — cleared none
+    of them. The only ways to pass were hand-editing a digest or deleting a round."""
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+    superseded = [f for f in report.findings if f.code == "review-superseded"]
+    assert len(superseded) == 5, [f.message for f in report.findings]
+    assert all(f.severity == INFO and "round 3" in f.message for f in superseded)
+    assert report.counts["review_rounds_complete"] == 3
+
+
+def test_a_superseding_round_must_itself_be_current(project: Path) -> None:
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+    revise(project)
+
+    report = report_for(project, submission=True)
+    stale = [f for f in report.failures if f.code == "review-stale"]
+    assert len(stale) == 6, "rounds one, two and three all describe an earlier manuscript"
+    assert "review-superseded" not in codes(report)
+
+
+def test_an_incomplete_later_round_supersedes_nothing(project: Path) -> None:
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+    edit_yaml(
+        project_panel(project, 3),
+        lambda d: d["reviewers"].append({"id": "absent-reader", "remit": "the Discussion"}),
+    )
+
+    report = report_for(project, submission=True)
+    assert "review-missing" in failures(report)
+    assert len([f for f in report.failures if f.code == "review-stale"]) == 5
+
+
+def test_a_superseded_rounds_unanswered_major_finding_still_blocks(project: Path) -> None:
+    """History is not absolution: what a reviewer raised still needs an answer."""
+    edit_yaml(
+        project / BIOSTAT,
+        lambda d: d["findings"].append(
+            {"id": "b-99", "severity": "major", "where": "Methods", "finding": "No model."}
+        ),
+    )
+    revise(project)
+    record_round(project, 3, "fresh-reader")
+
+    report = report_for(project, submission=True)
+    assert "open-major-finding" in failures(report)
+    assert "review-stale" not in failures(report)
+
+
+def test_a_file_added_in_revision_does_not_void_the_earlier_rounds(project: Path) -> None:
+    """Scoped records cannot list a file written after them, so every earlier round was
+    `review-uncovered` for ever, and `rounds_required` could not be met by one new round."""
+    scope_reviews(project)
+    split_manuscript(project)
+    assert "review-uncovered" in failures(report_for(project, submission=True))
+
+    record_round(project, 3, "fresh-reader")
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+    assert "review-superseded" in codes(report)
+
+
+def test_following_the_refusal_to_restamp_leads_somewhere(project: Path, capsys) -> None:
+    """End to end, through the commands: the advice `review --record` gives when it refuses
+    to re-stamp a record has to be advice that works."""
+    from manuscript_guard.cli import main
+
+    revise(project)
+    args = ["review", str(project), "--record", "biostatistician", "--verdict", "pass"]
+    assert main(args) == 2
+    assert "further round" in capsys.readouterr().err
+
+    assert main([*args, "--round", "3"]) == 0
+    assert main(["check", str(project), "--submission"]) == 0, capsys.readouterr().out
+
+
+def test_the_stale_hint_is_a_command_that_runs(project: Path) -> None:
+    """The hint left out --verdict, which the command requires, so following it exited 2."""
+    revise(project)
+    stale = next(f for f in report_for(project).findings if f.code == "review-stale")
+    assert "--verdict" in stale.hint

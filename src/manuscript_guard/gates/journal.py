@@ -209,7 +209,7 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
                 )
             )
         else:
-            body = abstract.body.lower()
+            body = abstract.enclosed.lower()
             missing = [h for h in wanted if h.lower() not in body]
             if missing:
                 report = report.with_findings(

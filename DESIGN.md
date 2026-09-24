@@ -1743,8 +1743,8 @@ Added by the adversarial review, verified and **not** fixed:
   a line of dashes with text under it, hides the paragraphs down to the next line of
   dashes. Such lines sit inside code, a comment or a table's rows, or in prose such as
   `A -->`, `\end{x}`, `...` or a line opening on `|`. The block where that span ends is
-  read again as any block is, or from where its code closes when it starts inside code, so
-  a real table the span runs into is still followed. Read only for tables opening further
+  read again as any block is - below its first line when it starts inside code, since
+  that line is code - so a real table the span runs into is still followed. Read only for tables opening further
   down it, the block missed a real table's own top rule, and the table's rows were marked.
   Four layouts are still not covered, all contrived. A span that ends on the underline of
   a header split by a blank line leaves the table's rows marked. A span that ends on a line

@@ -493,8 +493,8 @@ def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
     pandoc does not have. Run on to the next table, it ended on that table's header
     underline, and the block it ended in was read only for tables opening further down it,
     not on its own first line: the real table went unfollowed and its rows were marked.
-    The block a span ends in is now read as any block is, or from where its code closes
-    when it starts inside code. DESIGN.md lists the layouts this still misses."""
+    The block a span ends in is now read as any block is, below its first line when it
+    starts inside code. DESIGN.md lists the layouts this still misses."""
     from manuscript_guard.roundtrip import tag
 
     headed = (

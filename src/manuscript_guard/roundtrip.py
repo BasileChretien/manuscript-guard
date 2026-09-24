@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
+from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -241,12 +242,22 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 
 
 def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+    """Headings, fences, and a lone placeholder that becomes a table or a figure.
+
+    Not a lone value, which is a paragraph printing a number. Every lone placeholder used to
+    be skipped, so a co-author who cut a paragraph down to its number merged as
+    `{{results.ror.point}}` alone, the next build gave it no identifier, and its next edit in
+    Word was skipped with "nothing came back".
+    """
+    value = PLACEHOLDER.fullmatch(stripped)
     return (
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
-        or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        or (
+            re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+            and not (value and value.group("ns") in VALUE_NAMESPACES)
+        )
     )
 
 
@@ -254,8 +265,9 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
-    blocks, and paragraphs that are nothing but a placeholder, because those become a table
-    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+    blocks, and paragraphs that are nothing but a table or figure placeholder, because those
+    become a table or a figure rather than a paragraph, and a bookmark would attach to the
+    wrong thing.
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -964,6 +976,10 @@ class Alignment:
     misread: bool = False
     #: Everything between two tokens was deleted, so rebuilt they would touch.
     touching: bool = False
+    #: Rebuilt, it would be only this, which `tag` gives no identifier because it builds as
+    #: a table or a figure: `"{{table.cases}}"`. A later edit to it in Word could not come
+    #: back, and would be skipped with "nothing came back".
+    alone: str = ""
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -1153,6 +1169,12 @@ def align(
     if unread:
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
+    # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
+    # unless the token is a table or a figure. Merged, that would build without one. A
+    # paragraph with no token needs no such check: `_escaped` keeps a heading, a fence or a
+    # placeholder typed in Word from reading as one.
+    if _untagged(rebuilt):
+        return Alignment(None, alone=rebuilt)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

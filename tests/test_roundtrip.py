@@ -19,6 +19,7 @@ from manuscript_guard.roundtrip import (
     segments,
     stamp_into,
     stamp_of,
+    tag,
 )
 
 PANDOC = shutil.which("pandoc") is not None
@@ -229,9 +230,7 @@ def test_moves_is_silent_when_the_order_is_unchanged() -> None:
 
 
 def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
-    """`[]{#id}# Methods` is not a heading, and a placeholder alone becomes a table."""
-    from manuscript_guard.roundtrip import tag
-
+    """`[]{#id}# Methods` is not a heading, and a table placeholder alone becomes a table."""
     tagged = tag("# Methods\n\nSome prose here.\n\n{{table.baseline}}\n", "main")
     assert tagged.startswith("# Methods")
     assert "[]{#mg-p-" in tagged
@@ -1979,6 +1978,76 @@ def test_a_paragraph_whose_text_word_does_not_show_is_refused() -> None:
     assert aligned.unaligned
 
 
+# ------------------------------------------- a paragraph that is only its binding keeps its name
+
+
+def test_a_paragraph_that_is_only_a_value_is_tagged() -> None:
+    """`tag` took every placeholder standing alone for a table or a figure and gave it no
+    identifier. A value alone is a paragraph that prints a number, and a Word edit to it was
+    never compared: nothing named it, so nothing could come back."""
+    lone = ["{{results.ror.point}}", "{{lit.agency.withdrawn}}", "{{table.cases}}", "{{figure.a}}"]
+    tagged = tag("\n\n".join(lone), "main.md").split("\n\n")
+    assert [p.startswith("[]{#mg-p-") for p in tagged] == [True, True, False, False]
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "The final ratio was {{results.ror.point}} overall.",
+            "The final ratio was 3.84 overall.",
+            "3.84",
+            "{{results.ror.point}}",
+            id="value",
+        ),
+        pytest.param(
+            "As shown [@jones2019] before.",
+            "As shown (Jones 2019) before.",
+            "(Jones 2019)",
+            "[@jones2019]",
+            id="citation",
+        ),
+    ],
+)
+def test_a_paragraph_cut_down_to_its_token_keeps_its_identifier(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """A co-author deleted everything but the number. It merged as `{{results.ror.point}}`
+    alone and `check` passed, but the next build gave the paragraph no identifier, so its
+    next edit in Word was skipped with "nothing came back"."""
+    merged = realign(source, rendered, returned)
+    assert merged == expected
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), "the next build names it"
+
+
+def test_a_rewording_that_leaves_only_a_table_is_refused_and_named() -> None:
+    """A table placeholder is a table only on its own. Cut down to one, a paragraph would
+    build as a table with no identifier, and the merge that made it would be the last edit
+    to it that Word could bring back."""
+    from manuscript_guard.merge import why
+
+    aligned = align(
+        "Counts are in {{table.cases}} here.", "Counts are in | a | b | here.", "| a | b |"
+    )
+    assert aligned.rebuilt is None
+    assert aligned.alone == "{{table.cases}}"
+    assert "{{table.cases}}" in why(aligned)[0]
+
+
+@pytest.mark.parametrize(
+    "returned",
+    ["{{results.x}}", "{{table.cases}}", "# Results", "::: note", "``` code", "~~~"],
+    ids=["value", "table", "heading", "div-fence", "code-fence", "tilde-fence"],
+)
+def test_a_plain_paragraph_retyped_in_word_keeps_its_identifier(returned: str) -> None:
+    """A paragraph without bindings is replaced whole by Word's text, and `tag` gives no
+    identifier to a heading, a fence, or a table or figure standing alone. Each, typed in
+    Word, is escaped into text, so the paragraph still has one at the next build."""
+    merged = realign("Costs were low.", "Costs were low.", returned)
+    assert merged is not None
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
 # ------------------------------------------------ what an import must not do to the source
 
 
@@ -3206,3 +3275,42 @@ def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert "a footnote" in capsys.readouterr().out
     assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------ end to end: a paragraph cut down to its number stays named
+
+
+@needs_pandoc
+def test_a_paragraph_cut_down_to_its_number_can_be_edited_again(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end, the way the review found it. A co-author deleted everything but the number;
+    it merged as `{{results.ror.point}}` alone and `check` passed. The next build gave that
+    paragraph no identifier, so when it was edited again in Word, import skipped the edit and
+    said "nothing came back"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    with_paragraphs(project, "The final ratio was {{results.ror.point}} overall.")
+    cut = edit_docx(
+        built(project), tmp_path / "cut.docx", {"The final ratio was 3.84 overall.": "3.84"}
+    )
+    assert main(["import", str(cut), str(project), "--apply"]) == 0
+    source = project / "manuscript" / "main.md"
+    assert "\n\n{{results.ror.point}}\n\n" in source.read_text(encoding="utf-8")
+
+    named = [
+        name
+        for name, (_path, text, _start) in tagged_paragraphs(load_project(project)[0]).items()
+        if text == "{{results.ror.point}}"
+    ]
+    assert named, "the paragraph has an identifier for its next edit to come back by"
+
+    def reworded(xml: str) -> str:
+        (paragraph,) = [p for p in tagged_xml(xml) if f'"{named[0]}"' in p]
+        return xml.replace(paragraph, paragraph.replace(">3.84<", ">About 3.84.<"), 1)
+
+    again = rewrite(built(project), tmp_path / "again.docx", reworded)
+    assert main(["import", str(again), str(project), "--apply"]) == 0
+    assert "\n\nAbout {{results.ror.point}}.\n\n" in source.read_text(encoding="utf-8")

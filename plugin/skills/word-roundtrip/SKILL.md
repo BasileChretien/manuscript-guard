@@ -112,12 +112,15 @@ handled, and each has a test:
   and dashes no longer stop a paragraph with a binding from taking a rewording.
 - A rewording is refused, not merged, when the edited text carries something Word's text
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a non-breaking space, a
-  hard line break, or emphasis or code wrapped around a binding. The reason names it. In a
-  paragraph with a binding, markup of those kinds on one side of the binding does not stop
-  an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
-  to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
-  one piece, so one `kg/m^2^` in it refuses every edit to it.
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break, or
+  emphasis or code wrapped around a binding. The reason names it. In a paragraph with a
+  binding, markup of those kinds on one side of the binding does not stop an edit on the
+  other side. Markup the import does not recognise does: `[Methods]`, a link to the heading,
+  refuses every edit to its paragraph. A paragraph without a binding is all one piece, so
+  one `kg/m^2^` in it refuses every edit to it.
+- A no-break space comes back as the character it is, so a rewording around it merges and
+  keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
+  put before a colon or inside « ».
 - An edit that would make pandoc read a citation differently is refused: a space deleted
   after a full stop before a citation, or between two citations, or text deleted between a
   citation and a number.
@@ -152,6 +155,10 @@ Read the whole diff. What to look for:
   escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
   Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
   bare and is curled: put the backslash back if the straight quote mattered.
+- Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
+  abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
+  itself. Each prints as it did, but a diff can show a line as changed where nothing
+  visible changed.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

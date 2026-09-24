@@ -32,10 +32,13 @@ def guessed(source: str, rendered: str) -> list[tuple[int, int]] | None:
     A test fixture, for the plain strings these unit tests use, where the guess is right.
     Import itself reads the extents from a build with every token bookmarked, because the
     guess is wrong in general - "(Smith et al. 2020)." ending a paragraph was cut at "al.".
+    Pandoc's no-break space after "e.g." reads as the source's space, one for one, so the
+    spans found are spans of `rendered` itself.
     """
     from manuscript_guard.roundtrip import _read
 
-    flat = [shown.strip() for shown in _read(source).shown]
+    rendered = rendered.replace(" ", " ")
+    flat = [shown.strip().replace(" ", " ") for shown in _read(source).shown]
     spans: list[tuple[int, int]] = []
     cursor = 0
     if flat[0]:
@@ -1209,37 +1212,152 @@ def test_what_word_shows_unescaped_goes_back_reading_the_same(
     assert realign(source, rendered, returned) == expected
 
 
+def test_a_line_break_word_reads_back_as_a_space_is_refused() -> None:
+    """A line break reaches Word's text as a space, so nothing in it says a line was broken."""
+    aligned = align(
+        "Line one  \nline two here.", "Line one line two here.", "Line one line two there."
+    )
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("a line break",)
+
+
+NO_BREAK = [
+    pytest.param(
+        "The dose was 5\u00a0mg/kg in all.",
+        "The dose was 5\u00a0mg/kg in all.",
+        "The dose was 5\u00a0mg/kg in most.",
+        "The dose was 5\u00a0mg/kg in most.",
+        id="no-break-space",
+    ),
+    pytest.param(
+        "Le seuil\u202f: 5\u202fmg, «\u00a0au plus\u00a0».",
+        "Le seuil\u202f: 5\u202fmg, «\u00a0au plus\u00a0».",
+        "Le seuil\u202f: 5\u202fmg, «\u00a0au maximum\u00a0».",
+        "Le seuil\u202f: 5\u202fmg, «\u00a0au maximum\u00a0».",
+        id="french",
+    ),
+    pytest.param(
+        "The ratio was {{results.x}}\u00a0% in all.",
+        "The ratio was 3.84\u00a0% in all.",
+        "The ratio was 3.84\u00a0% in most.",
+        "The ratio was {{results.x}}\u00a0% in most.",
+        id="after-a-binding",
+    ),
+    pytest.param(
+        "At p\u00a0=\u00a0{{results.x}} it held.",
+        "At p\u00a0=\u00a03.84 it held.",
+        "Where p\u00a0=\u00a03.84 it held.",
+        "Where p\u00a0=\u00a0{{results.x}} it held.",
+        id="before-a-binding",
+    ),
+    pytest.param(
+        r"The dose was 5\ mg in all.",
+        "The dose was 5\u00a0mg in all.",
+        "The dose was 5\u00a0mg in most.",
+        "The dose was 5\u00a0mg in most.",
+        id="escaped-space",
+    ),
+    pytest.param(
+        "The dose was 5&nbsp;mg in all.",
+        "The dose was 5\u00a0mg in all.",
+        "The dose was 5\u00a0mg in most.",
+        "The dose was 5\u00a0mg in most.",
+        id="entity",
+    ),
+    pytest.param(
+        "Le mot : clair.", "Le mot : clair.", "Le mot\u00a0: clair.", "Le mot\u00a0: clair.",
+        id="typed-in-word",
+    ),
+    pytest.param(
+        "Le mot : {{results.x}} ici.",
+        "Le mot : 3.84 ici.",
+        "Le mot\u00a0: 3.84 ici.",
+        "Le mot\u00a0: {{results.x}} ici.",
+        id="typed-in-word-beside-a-binding",
+    ),
+    pytest.param(
+        "As Smith et al. 2020 showed, e.g. {{results.x}} was high.",
+        "As Smith et al.\u00a02020 showed, e.g.\u00a03.84 was high.",
+        "As Smith et al.\u00a02020 showed, e.g.\u00a03.84 was very high.",
+        "As Smith et al. 2020 showed, e.g. {{results.x}} was very high.",
+        id="pandoc-abbreviation",
+    ),
+    pytest.param(
+        "Smith et al. 2020 found it.",
+        "Smith et al.\u00a02020 found it.",
+        "Smith et al.\u00a02020 found this.",
+        "Smith et al.\u00a02020 found this.",
+        id="pandoc-abbreviation-edited",
+    ),
+    pytest.param(
+        "The *mot\u00a0* here gave {{results.x}} in all cases.",
+        "The mot\u00a0 here gave 3.84 in all cases.",
+        "The mot\u00a0 here gave 3.84 in most cases.",
+        "The *mot\u00a0* here gave {{results.x}} in most cases.",
+        id="emphasis-beside-it",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), NO_BREAK)
+def test_a_no_break_space_merges_as_typed(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Word's text was read with every space made plain, so a no-break space could not come
+    back and a stretch holding one was refused. Word's French AutoCorrect puts one before `:`
+    and inside « », and authors put one in "5 mg", so a French manuscript refused almost every
+    edit. The character comes back now, however the source wrote it: `\\ ` and `&nbsp;` return
+    as the character itself, which prints the same.
+
+    Pandoc adds one of its own after an abbreviation it knows ("et al.", "e.g.", "p."), where
+    the source has a plain space. That is typesetting, not an edit: a stretch left alone keeps
+    the source's space, and an edited one carries pandoc's character, which prints the same."""
+    assert realign(source, rendered, returned) == expected
+
+
 @pytest.mark.parametrize(
-    ("source", "rendered", "returned", "named"),
+    ("source", "rendered"),
     [
         pytest.param(
-            "A&nbsp;B here.", "A B here.", "A B there.", "a non-breaking space", id="entity"
+            "Expression of *BRCA1* in tumours, e.g. breast, was {{results.x}} overall.",
+            "Expression of BRCA1 in tumours, e.g.\u00a0breast, was 3.84 overall.",
+            id="beside-a-binding",
         ),
         pytest.param(
-            "The dose was 5 mg/kg in all.",
-            "The dose was 5 mg/kg in all.",
-            "The dose was 5 mg/kg in most.",
-            "a non-breaking space",
-            id="character",
-        ),
-        pytest.param(
-            "Line one  \nline two here.",
-            "Line one line two here.",
-            "Line one line two there.",
-            "a line break",
-            id="hard-break",
+            "Expression of *BRCA1* in tumours, e.g. breast.",
+            "Expression of BRCA1 in tumours, e.g.\u00a0breast.",
+            id="plain",
         ),
     ],
 )
-def test_what_word_reads_back_as_a_plain_space_is_refused(
-    source: str, rendered: str, returned: str, named: str
-) -> None:
-    """Word's text comes back with its spaces normalised, so nothing in it says a space was
-    non-breaking or a line was broken."""
+def test_pandocs_no_break_space_taken_out_in_word_is_no_edit(source: str, rendered: str) -> None:
+    """Compared only with what was sent, a stretch whose no-break space after "e.g." came back
+    plain read as edited, was rebuilt from Word's text, and lost its italics - for a change
+    the next build undoes. It came back as the source reads, so the source is kept."""
+    assert realign(source, rendered, rendered.replace("\u00a0", " ")) == source
 
-    aligned = align(source, rendered, returned)
-    assert aligned.rebuilt is None
-    assert aligned.markup == (named,)
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), NO_BREAK)
+def test_a_no_break_space_prints_as_it_came_back(
+    source: str, rendered: str, returned: str, expected: str, tmp_path: Path
+) -> None:
+    """The artefact: pandoc prints the source as it was as what the test says Word was sent,
+    and the merged source as what came back."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    def printed(markdown: str, name: str) -> str:
+        path = tmp_path / f"{name}.md"
+        path.write_text(
+            f"[]{{#mg-p-x-0}}{markdown.replace('{{results.x}}', '3.84')}\n", encoding="utf-8"
+        )
+        subprocess.run(["pandoc", str(path), "-o", str(tmp_path / f"{name}.docx")], check=True)
+        return paragraph_text(tmp_path / f"{name}.docx")["mg-p-x-0"]
+
+    assert printed(source, "sent") == rendered
+    assert printed(realign(source, rendered, returned), "merged") == returned
 
 
 @pytest.mark.parametrize(
@@ -2356,6 +2474,97 @@ def test_a_deletion_beside_a_small_rewording_is_not_a_join(tmp_path: Path) -> No
     assert plan.merged == {"b": edited}
 
 
+def test_a_no_break_space_typed_in_word_is_an_edit(tmp_path: Path) -> None:
+    """Compared with its spaces made plain, a paragraph whose only change was a no-break space
+    read as untouched, and the co-author's typography was dropped with nothing reported."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "Le mot : clair."})
+    sent, returned = [Block(("a",), "Le mot : clair.")], [Block(("a",), "Le mot\u00a0: clair.")]
+    plan = plan_import(known, sent, returned)
+    assert plan.merged == {"a": "Le mot\u00a0: clair."}
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "named"),
+    [
+        pytest.param(
+            "See the note[^missing] for how the cohort was defined.",
+            "See the note[^missing] for how the cohort was defined.",
+            "See the note for how the cohort was defined.",
+            ("a footnote",),
+            id="footnote-without-a-definition",
+        ),
+        pytest.param(
+            "See ![Forest plot](nowhere.png) for the estimates.",
+            "See Forest plot for the estimates.",
+            "See for the estimates.",
+            ("an image",),
+            id="image-without-a-file",
+        ),
+        pytest.param(
+            "The ratio was {{results.x}} in all adults.[^missing]",
+            "The ratio was 3.84 in all adults.[^missing]",
+            "The ratio was 3.84 in all adults.",
+            ("a footnote",),
+            id="after-a-binding",
+        ),
+        pytest.param(
+            "[^missing] The ratio was {{results.x}} in all adults.",
+            "[^missing] The ratio was 3.84 in all adults.",
+            "The ratio was 3.84 in all adults.",
+            ("a footnote",),
+            id="before-a-binding",
+        ),
+    ],
+)
+def test_an_edit_that_matches_a_wrong_reading_of_the_source_is_refused(
+    source: str, rendered: str, returned: str, named: tuple[str, ...]
+) -> None:
+    """Keeping the source whenever Word's text read as the source does was meant for pandoc's
+    no-break space taken out again. But the reading is wrong where pandoc prints as text what
+    it takes for markup - a footnote reference with no note, an image with no file - and a
+    co-author deleting that text matched the reading: the source was kept, the edit dropped,
+    and import said "nothing came back". The reading counts only where it agrees with what
+    was sent."""
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == named
+
+
+def test_pandocs_no_break_space_taken_out_in_word_is_not_reported(tmp_path: Path) -> None:
+    """A paragraph whose only change undoes pandoc's typesetting has nothing to merge, and
+    reporting it as merged made a dry run exit 1 asking for an `--apply` that did nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    source = "See *this*, e.g. here."
+    _path, known = source_of(tmp_path, {"a": source})
+    sent = [Block(("a",), "See this, e.g.\u00a0here.")]
+    plan = plan_import(known, sent, [Block(("a",), "See this, e.g. here.")])
+    assert plan.empty
+
+
+def test_word_text_keeps_a_no_break_space_and_collapses_layout(tmp_path: Path) -> None:
+    """A tab, a line break and a run of spaces are layout, and read as one space. A no-break
+    space is a character somebody chose, and is read as the character it is."""
+    from manuscript_guard.docxtext import blocks
+
+    main = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xml = (
+        f'<w:document xmlns:w="{main}"><w:body><w:p>'
+        '<w:bookmarkStart w:id="0" w:name="mg-p-x-0"/><w:r>'
+        '<w:t xml:space="preserve">5\u00a0mg  and\u202f:</w:t><w:tab/>'
+        '<w:t xml:space="preserve"> «\u00a0x\u2007y\u00a0» \n end</w:t>'
+        "</w:r></w:p></w:body></w:document>"
+    )
+    document = tmp_path / "a.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    assert [b.text for b in blocks(document)] == ["5\u00a0mg and\u202f: «\u00a0x\u2007y\u00a0» end"]
+
+
 @pytest.mark.parametrize("bookmark", ["kept", "lost"])
 def test_a_move_elsewhere_does_not_land_inside_a_join(tmp_path: Path, bookmark: str) -> None:
     """A paragraph that is not applied - joined, deleted, moved to another file - used to keep
@@ -2524,3 +2733,73 @@ def test_import_does_not_flatten_a_narrative_citation(project: Path, tmp_path: P
     assert paragraph.replace("plain.", "clear.") in (project / "manuscript" / "main.md").read_text(
         encoding="utf-8"
     ), "the rewording lands, and the citation is still a citation"
+
+
+# -------------------------------------------- end to end: a no-break space comes back as typed
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("paragraph", "was", "now", "expected"),
+    [
+        pytest.param(
+            "Patients received {{results.ror.point}}\u00a0mg daily in the first week.",
+            "in the first week.",
+            "in the second week.",
+            "Patients received {{results.ror.point}}\u00a0mg daily in the second week.",
+            id="dose",
+        ),
+        pytest.param(
+            "Le rapport vaut {{results.ror.point}}\u00a0: «\u202fnet\u202f» selon nous.",
+            "selon nous.",
+            "à notre avis.",
+            "Le rapport vaut {{results.ror.point}}\u00a0: «\u202fnet\u202f» à notre avis.",
+            id="french-beside-a-binding",
+        ),
+        pytest.param(
+            "Le mot : clair dans le texte.",
+            "Le mot : clair",
+            "Le mot\u00a0: clair",
+            "Le mot\u00a0: clair dans le texte.",
+            id="typed-in-word",
+        ),
+        pytest.param(
+            "As Smith et al. reported, e.g. in {{results.ror.point}} of such cohorts.",
+            "of such cohorts.",
+            "of most such cohorts.",
+            "As Smith et al. reported, e.g. in {{results.ror.point}} of most such cohorts.",
+            id="pandoc-abbreviation",
+        ),
+    ],
+)
+def test_import_carries_a_no_break_space(
+    project: Path, tmp_path: Path, paragraph: str, was: str, now: str, expected: str
+) -> None:
+    """End to end, the way it was found: a paragraph with "5 mg" or a French "mot :" is
+    reworded in Word, and `import --apply` refused it, because Word's text was read with the
+    no-break space made plain and merging would have lost it."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {was: now})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the way the review found it: `[^missing]` prints as text, the co-author
+    deletes it, and import exited 0 with "nothing came back"."""
+    from manuscript_guard.cli import main
+
+    paragraph = "See the note[^missing] for how the cohort was defined."
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"note[^missing]": "note"})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "a footnote" in capsys.readouterr().out
+    assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")

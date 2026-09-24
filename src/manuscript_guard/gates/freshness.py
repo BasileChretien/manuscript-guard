@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.contracts.results import Results
+from manuscript_guard.contracts.results import HOW_TO_EMIT, Results
 from manuscript_guard.emit import DIGEST_SUFFIX, read_digest, sha256_of, source_digest_matches
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.paths import SOURCE_SUFFIXES
@@ -213,8 +213,8 @@ def _check_digest(path: Path) -> Report:
                     message=f"{path.name} has no {DIGEST_SUFFIX} sidecar, so nothing shows an "
                     f"analysis wrote it",
                     path=path,
-                    hint="re-run the analysis through emit(); a fragment written by hand "
-                    "cannot be a result",
+                    hint=f"re-run the analysis, which writes it through {HOW_TO_EMIT}; a "
+                    "fragment written by hand cannot be a result",
                 ),
             )
         )

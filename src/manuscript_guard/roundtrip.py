@@ -35,7 +35,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.docxtext import TOKEN
+from manuscript_guard.docxtext import TOKEN, spaced
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -500,8 +500,9 @@ def paragraph_text(document: Path) -> dict[str, str]:
 _INLINE: dict[str, tuple[str, str, str | None]] = {
     # A hard line break reaches Word's text as a space, and nothing in it says there was one.
     "break": ("a line break", r"(?:\\|[ ]{2,})(?P<break_text>\n)", "break_text"),
-    # Word's text is read with its spaces normalised, so a non-breaking one comes back plain.
-    "nbsp": ("a non-breaking space", r"\\ |[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]", None),
+    # Pandoc's no-break space, which Word's text carries as the character; see `_shows`. The
+    # character itself, and every other space but layout, is text and needs no kind.
+    "nbsp": ("", r"\\ ", None),
     "escape": ("", r"\\(?P<escape_text>[!-/:-@\[-`{-~])", "escape_text"),
     "raw": ("a raw inline", r"(?P<raw_ticks>`+).+?(?<!`)(?P=raw_ticks)\{=[^}]*\}", None),
     "coded": (
@@ -564,8 +565,6 @@ _LITERAL = frozenset({"code", "coded", "autolink"})
 #: Kinds whose shown text is itself Markdown, so emphasis inside it is read as emphasis.
 _MARKDOWN_INSIDE = frozenset({"link", "span", "struck", "sup", "sub"})
 
-_NBSP = re.compile(_INLINE["nbsp"][1])
-
 #: Emphasis, strong before single so `***x***` and `*a **b** c*` pair up as pandoc pairs
 #: them: no space just inside a delimiter, and an underscore inside a word is a letter.
 _EMPHASIS = (
@@ -581,6 +580,14 @@ _EMPHASIS = (
 #: the document, where the author had bold.
 _HALF_SPAN = "one end of an emphasis or code span"
 
+#: Every space but layout, as a character that is neither a space nor a letter, for pairing
+#: emphasis. Pandoc reads a no-break space as text, so a `*` with one just inside it still
+#: opens or closes italics; `_EMPHASIS` reads `\s`, took it for a space, and the paragraph
+#: was refused as unaligned.
+_TEXT_SPACES = str.maketrans(
+    {chr(code): "." for code in range(0x80, 0x3001) if chr(code).isspace()}
+)
+
 
 def _shows(match: re.Match[str]) -> str:
     """What Word's paragraph shows of one construct `_SCAN` found."""
@@ -588,17 +595,14 @@ def _shows(match: re.Match[str]) -> str:
     if kind == "entity":
         return html.unescape(match.group(0))
     if kind == "nbsp":
-        return " "
+        return "\u00a0"
     group = _INLINE[kind][2]
     return match.group(group) if group else ""
 
 
 def _named(match: re.Match[str]) -> str:
     """What a refusal calls it; empty for what a merge brings back."""
-    kind = match.lastgroup or ""
-    if kind == "entity" and _NBSP.fullmatch(html.unescape(match.group(0))):
-        return _INLINE["nbsp"][0]
-    return _INLINE[kind][0]
+    return _INLINE[match.lastgroup or ""][0]
 
 
 @dataclass(frozen=True)
@@ -696,9 +700,10 @@ def _left_open(stretch: str, first: bool, was_open: bool) -> bool:
 
 
 def _spaced(text: str) -> str:
-    """Runs of whitespace as one space, kept at the ends: a stretch retyped from `3.84%` to
-    `3.84 %` differs only there, and stripping it made the edit disappear."""
-    return re.sub(r"\s+", " ", text)
+    """Runs of layout whitespace as one space, kept at the ends: a stretch retyped from
+    `3.84%` to `3.84 %` differs only there, and stripping it made the edit disappear. A
+    no-break space is kept, as Word's text keeps it; see `docxtext.spaced`."""
+    return spaced(text)
 
 
 def _emphasis(text: str) -> list[tuple[int, int, int]]:
@@ -776,7 +781,7 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
         if not any(s <= m.start() < e for s, e in quiet)
     ]
 
-    for start, end, width in _emphasis("".join(plain)):
+    for start, end, width in _emphasis("".join(plain).translate(_TEXT_SPACES)):
         shows[start : start + width] = [""] * width
         shows[end - width : end] = [""] * width
         if any(start < t.start() < end for t in tokens):
@@ -880,18 +885,25 @@ def _reads_as(
     return _untypeset(reading.whole) == _untypeset(returned)
 
 
+#: Pandoc's `smart` typesetting puts a no-break space after an abbreviation it knows - "e.g.",
+#: "et al.", "p." - where the source has a plain one. So where the source is read against
+#: Word's text, that character stands for a space. Word's text read against Word's text
+#: compares it as itself, so one the co-author typed is an edit.
+_PANDOC_SPACE = {"\u00a0": " "}
+
 #: Pandoc typesets prose: quotes curl, `--` becomes an en dash. None of that is an edit, and
 #: none of it is something the source holds that Word's text lost.
 _TYPESET = str.maketrans(
     {
         "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
         "\u2013": "--", "\u2014": "---", "\u2026": "...",
+        **_PANDOC_SPACE,
     }
 )
 
 
 def _untypeset(text: str) -> str:
-    return re.sub(r"\s+", " ", text.translate(_TYPESET)).strip()
+    return _spaced(text.translate(_TYPESET)).strip()
 
 
 @dataclass(frozen=True)
@@ -943,6 +955,28 @@ def _words(rendered: str, spans: list[tuple[int, int]]) -> tuple[list[str], list
         cursor = end
     words += _WORD.findall(rendered[cursor:])
     return words, ranges
+
+
+def _undone(returned: str, shown: str, sent: str) -> bool:
+    """Whether Word's text only undid pandoc's typesetting: it reads as the source does, and
+    the source reads as what was sent, but for typesetting.
+
+    The second half is the guard. The reading is wrong where pandoc prints as text what it
+    takes for markup - a footnote reference with no note, an image with no file - and a
+    co-author who deleted that text matched it: the source was kept and the edit dropped.
+    """
+    return _spaced(returned) == shown and _untypeset(shown) == _untypeset(sent)
+
+
+def _between(words: list[str], tokens: list[tuple[int, int]]) -> list[str]:
+    """The prose either side of each token, given the range of words each token occupies."""
+    prose: list[str] = []
+    cursor = 0
+    for start, end in tokens:
+        prose.append("".join(words[cursor:start]))
+        cursor = end
+    prose.append("".join(words[cursor:]))
+    return prose
 
 
 def _place(
@@ -1029,12 +1063,7 @@ def align(
     if missing:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
 
-    new_prose: list[str] = []
-    cursor = 0
-    for start, end in placed:
-        new_prose.append("".join(after[cursor:start]))
-        cursor = end
-    new_prose.append("".join(after[cursor:]))
+    new_prose = _between(after, placed)
 
     # Each stretch as the build rendered it, between the same tokens: what a returned piece
     # is compared with, rendered text against rendered text.
@@ -1050,7 +1079,12 @@ def align(
     for index, piece in enumerate(new_prose):
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
         # from Word, where inline formatting did not survive being read as plain text.
-        if _unchanged(was_prose[index], piece):
+        # Unchanged means it came back as it was sent, which catches a no-break space the
+        # co-author typed, or as the source reads, which lets pandoc's own after "e.g." be
+        # taken out again in Word without costing the stretch its formatting. See `_undone`.
+        if _unchanged(was_prose[index], piece) or _undone(
+            piece, reading.shown[index], was_prose[index]
+        ):
             out.append(prose[index])
             # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
             opened = quote_open or "\u2018" in was_prose[index]
@@ -1086,7 +1120,10 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
     what Word does show, part of the source did not reach Word as text, and a rewording
     rebuilt from Word's text would delete it.
     """
-    if _spaced(returned).strip() == _spaced(rendered).strip():
+    # As it was sent, or as the source reads; see `align`.
+    if _spaced(returned).strip() == _spaced(rendered).strip() or _undone(
+        returned.strip(), reading.shown[0].strip(), rendered
+    ):
         return Alignment(source)
     if reading.lost[0]:
         return Alignment(None, markup=reading.lost[0])

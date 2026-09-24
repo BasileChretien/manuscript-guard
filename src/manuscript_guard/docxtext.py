@@ -51,6 +51,22 @@ TOKEN = "mg-t-"
 # glyph pasted from a PDF - vanished from every document read.
 _OPEN, _CLOSE = object(), object()
 
+#: Whitespace that is layout, not text: a source line wrapped by its author, a tab or a line
+#: break in Word. A no-break space is not in it. Read as `\s`, one came back as a plain space,
+#: so a merge could not carry it and refused every edited stretch that held one - and Word's
+#: French AutoCorrect puts one before `:` and inside « », and authors put one in "5 mg".
+_LAYOUT_CHARACTERS = " \t\n\r\f\v"
+_LAYOUT = re.compile(f"[{_LAYOUT_CHARACTERS}]+")
+
+
+def spaced(text: str) -> str:
+    """Runs of layout whitespace as one space; every other space kept as the character it is.
+
+    The ends are left alone. A paragraph's own are stripped by its reader, with every kind of
+    space: the source paragraph is spliced without them, so they are not its text either.
+    """
+    return _LAYOUT.sub(" ", text)
+
 
 class DocumentUnreadable(Exception):
     """The file is not a Word document this module can read safely."""
@@ -62,7 +78,8 @@ class Block:
 
     #: The paragraph identifiers it carries. More than one means paragraphs were joined.
     names: tuple[str, ...] = ()
-    #: What it says, whitespace-normalised, with every tracked change accepted.
+    #: What it says, with every tracked change accepted: layout whitespace as single spaces,
+    #: a no-break space as itself. See `spaced`.
     text: str = ""
     #: A table or a figure: a block that is not prose, and not compared.
     table: bool = False
@@ -119,7 +136,9 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     """Fold whitespace as the rest of this module does, keeping each token's extent.
 
     A token's extent starts at its first visible character and ends after its last, so a
-    space pandoc put inside the bookmark belongs to the prose around it.
+    space pandoc put inside the bookmark belongs to the prose around it. Only layout
+    whitespace is folded, as `spaced` folds it: a no-break space is a character of the text.
+    The ends are stripped of every kind of space, as a paragraph's text is.
     """
     out: list[str] = []
     spans: list[list[int]] = []
@@ -135,7 +154,7 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
                 span[1] = len(out)
                 if span[0] < 0:
                     span[0] = len(out)
-        elif char.isspace():
+        elif char in _LAYOUT_CHARACTERS:
             space = True
         else:
             if space and out:
@@ -145,7 +164,12 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
                 if spans[index][0] < 0:
                     spans[index][0] = len(out)
             out.append(char)
-    return "".join(out), tuple((start, end) for start, end in spans if start >= 0)
+    text = "".join(out)
+    lead = len(text) - len(text.lstrip())
+    text = text.strip()
+    return text, tuple(
+        (max(start - lead, 0), min(end - lead, len(text))) for start, end in spans if start >= 0
+    )
 
 
 def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
@@ -235,7 +259,7 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
         return []
     kept = [p for p in run if p.text or p is run[-1]]
     names = tuple(dict.fromkeys(n for p in kept for n in p.names))
-    text = re.sub(r"\s+", " ", " ".join(p.text for p in kept if p.text)).strip()
+    text = spaced(" ".join(p.text for p in kept if p.text)).strip()
     # Token extents are read from the build import compares with, which has no tracked
     # changes to fold; offsets into a joined paragraph would need shifting, so none are kept.
     tokens = kept[0].tokens if len(kept) == 1 else ()
@@ -265,5 +289,5 @@ def comment_texts(document: Path) -> list[tuple[dict[str, str], str]]:
     for comment in root.iter(W + "comment"):
         attributes = {key.removeprefix(W): value for key, value in comment.attrib.items()}
         text = " ".join(_text(p) for p in comment.iter(W + "p"))
-        out.append((attributes, re.sub(r"\s+", " ", text).strip()))
+        out.append((attributes, spaced(text).strip()))
     return out

@@ -280,10 +280,17 @@ def test_segments_splits_prose_from_what_the_author_does_not_own() -> None:
 
 
 def test_a_number_that_grew_a_digit_is_refused() -> None:
-    """Substring search found '3.84' inside '13.84' and merged `1{{results.ror.point}}`."""
+    """Substring search found '3.84' inside '13.84' and merged `1{{results.ror.point}}`.
+
+    And a sign or a comparison glued in front changes the value too - including the en and
+    em dashes Word's AutoCorrect makes of a hyphen, which merged as `\u2013{{results.ror.point}}`
+    and turned a ratio negative in the next build."""
     source = "The ratio was {{results.ror.point}} overall."
     rendered = "The ratio was 3.84 overall."
-    for edited in ("13.84", "3.845", "-3.84", "3.84.1"):
+    for edited in (
+        "13.84", "3.845", "-3.84", "3.84.1",
+        "\u20133.84", "\u20143.84", "\u22123.84", "<3.84", "\u22643.84", "~3.84", "\u22483.84",
+    ):
         returned = f"The ratio was {edited} overall."
         assert realign(source, rendered, returned) is None, edited
 

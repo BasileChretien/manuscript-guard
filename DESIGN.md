@@ -1217,8 +1217,9 @@ with a number counting as one word. The first version searched for each as a sub
 from the start of the paragraph: '3.84' was found inside '13.84' and merged as
 `1{{results.ror.point}}`, and in "Table 1 shows 1 events" the binding landed on the table
 number. Now each token must come back whole, in order, inside a stretch of words the
-co-author left alone, and a sign typed directly in front of a value counts as changing it.
-If one does not, the co-author changed a number or a citation, and the paragraph is refused
+co-author left alone. Any dash or mathematical symbol typed directly in front of a value
+counts as changing it: a list of the four obvious signs missed the en dash Word's
+AutoCorrect makes of a hyphen, and "–3.84" merged as a negative ratio. If one does not, the co-author changed a number or a citation, and the paragraph is refused
 naming each one: "'3.84' comes from results.ror.point", as this section promised long
 before the command did it. Otherwise the text between them is the new wording, and the
 paragraph is rebuilt from the *source's* tokens and the *co-author's* words. Alignment is

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -409,8 +410,12 @@ class Alignment:
 #: '13.84' can never contain '3.84'.
 _WORD = re.compile(r"\d+(?:[.,]\d+)*|[^\W\d_]+|\s+|.", re.DOTALL)
 
-#: A sign put directly in front of a value changes it.
-_SIGNS = {"-", "−", "+", "±"}
+#: A sign or a comparison put directly in front of a value changes it: any dash, which
+#: covers the en and em dashes Word's AutoCorrect makes of a hyphen, and any mathematical
+#: symbol (minus, plus, plus-minus, <, less-or-equal, ~, approximately-equal). Listing
+#: the four obvious ones missed the dashes, and `-{{results.ror.point}}` typed through
+#: AutoCorrect merged as a negative ratio.
+_SIGNS = frozenset({"Pd", "Sm"})
 
 #: Markdown that renders to something plain `w:t` text does not carry. Merging Word's text
 #: over a paragraph with a footnote in it deleted the footnote; with a link, the address.
@@ -490,7 +495,9 @@ def _place(
             missing.append(index)
             continue
         at = first + block[3] - block[1]
-        if first == block[1] and at > 0 and after[at - 1] in _SIGNS and tokens[index][:1].isdigit():
+        glued = after[at - 1] if at > 0 else ""
+        signed = len(glued) == 1 and unicodedata.category(glued) in _SIGNS
+        if first == block[1] and signed and tokens[index][:1].isdigit():
             missing.append(index)
             continue
         placed.append((at, at + last - first))

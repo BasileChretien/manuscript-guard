@@ -70,7 +70,7 @@ It changes nothing and reports each paragraph:
 | `deleted in Word, left in place here` | not applied; delete it in the `.md` yourself if that was intended |
 | `came back in a different place` | a move within one file; `--apply` reorders from the text on disk, so bindings stay intact |
 | `moved into a different file` | not applied; move it in the `.md` yourself |
-| `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
+| `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared** |
 
 The preview shows the Word text, not the Markdown that will be written. The stamp check
 refuses a document built from a different version of the source; see step 6.
@@ -84,8 +84,8 @@ pandoc returned.docx -t plain -o returned.txt
 git diff --no-index sent.txt returned.txt
 ```
 
-A new paragraph, a changed heading or a table edit is typed into the `.md`, or taken back to
-the analysis if it touched a number.
+A new paragraph, a changed heading, a list or quotation edit, or a table edit is typed into
+the `.md`, or taken back to the analysis if it touched a number.
 
 ## 4. Do not apply when the dry run shows any of these
 

@@ -1710,14 +1710,16 @@ Added by the adversarial review, verified and **not** fixed:
   `...` in column 0, and a marker at the start of a line inside turns its quiet fallback (to
   a rule, a table or prose) into a parse error that fails the build. So everything it tries
   is left unmarked, mapping or not. Two cases are not followed, and neither corrupts the
-  source. A `---` that opens mid-block, straight after a code fence or inside a fenced div
-  with no blank line before it, fails the build. An attempt that opens in one source file
+  source. A `---` that opens mid-block, straight after a code fence, straight under a
+  table's closing rule or inside a fenced div with no blank line before it, fails the build
+  when its YAML holds a blank line. An attempt that opens in one source file
   and stops in the next - each file is tagged on its own and the build joins them - builds,
   with the second file's paragraphs read into a table whose bookmarks `import` ignores, so
   their edits go uncompared.
 - **A block that opens on a line of dashes is taken for a table whatever surrounds it.**
-  From such a block, `tag` leaves everything up to the table's closing line of dashes
-  unmarked. Pandoc reads no table there when the line continues a list item, sits inside a
+  When the line has text straight under it, `tag` leaves everything up to the table's
+  closing line of dashes unmarked; with a blank line under it, the line is a rule and opens
+  nothing. Pandoc reads no table there when the line continues a list item, sits inside a
   fenced div after a blank line, follows a no-break-space line inside a paragraph, or starts
   a simple table (`--\n----\nText.`). The paragraphs in between then go uncompared although
   pandoc reads them as paragraphs, and nothing is corrupted. Lines of three dashes or more

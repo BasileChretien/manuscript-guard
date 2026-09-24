@@ -342,6 +342,11 @@ RULED = {
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
         "            ...\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
     ),
+    "a top rule over a line holding only a no-break space": (
+        "----------  ----------\n\N{NO-BREAK SPACE}\n----------  ----------\n"
+        "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
+        "----------  ----------"
+    ),
     "caption with no space after the colon": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n:Caption."
@@ -389,6 +394,30 @@ def test_a_no_break_space_line_away_from_a_rule_does_not_stretch_a_table() -> No
     )
     marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
     assert "Para" in marked and "End." in marked, marked
+
+
+def test_a_rule_with_a_blank_line_under_it_opens_nothing() -> None:
+    """A table and a YAML block both need text straight under their first line, so a line
+    of dashes with a blank line under it is a rule to pandoc. Taken for an opener, a lone
+    `---` hid every paragraph up to the next line of dashes, and put a marker into the rows
+    of a table after it; straight under a table, it chained into the next table."""
+    from manuscript_guard.roundtrip import tag
+
+    table = (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
+    )
+    for rule in ("---", "----------", "- - -"):
+        for after in ("Methods\n-------", table):
+            text = f"Intro.\n\n{rule}\n\nPara A.\n\nPara B.\n\n{after}\n\nEnd.\n"
+            marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+            assert marked == ["Intro.", "Para", "Para", "End."], (rule, after, marked)
+    text = (
+        "Intro.\n\n----------  ----------\nWarfarin    Bleeding\n----------  ----------\n"
+        f"----------\n\nPara A.\n\n{table}\n\nEnd.\n"
+    )
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+    assert marked == ["Intro.", "Para", "End."], marked
 
 
 def test_yaml_after_a_blank_first_line_is_recognised() -> None:

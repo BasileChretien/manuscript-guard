@@ -475,6 +475,25 @@ TAGGING = {
     "a table opened by two dashes, then a setext heading": (
         "Intro.\n\n--\nA note.\n\nPara A.\n\nMethods\n-------\n\nEnd.\n"
     ),
+    "a rule with a blank line under it, then a headed table": (
+        "Intro.\n\n---\n\nPara A.\n\n---------- ----------\n Drug      Signal\n"
+        "---------- ----------\nWarfarin   Bleeding\n\nApixaban   Bleeding\n\n"
+        "Heparin    HIT\n---------- ----------\n\nAfter.\n"
+    ),
+    "a rule with a blank line under it, then yaml with a blank line": (
+        "Intro.\n\n---\n\nPara A.\n\n---\ntitle: x\n\nsubtitle: y\n...\n\nAfter.\n"
+    ),
+    "a table, a rule straight under it, then a headed table": (
+        "Intro.\n\n----------  ----------\nWarfarin    Bleeding\n----------  ----------\n"
+        "----------\n\nPara A.\n\n---------- ----------\n Drug      Signal\n"
+        "---------- ----------\nWarfarin   Bleeding\n\nApixaban   Bleeding\n\n"
+        "Heparin    HIT\n---------- ----------\n\nAfter.\n"
+    ),
+    "a top rule over a line holding only a no-break space": (
+        "Intro.\n\n----------  ----------\n\N{NO-BREAK SPACE}\n----------  ----------\n"
+        "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
+        "----------  ----------\n\nAfter.\n"
+    ),
     "a header underline over a line holding only a no-break space": (
         "Intro.\n\n-------------------\n Drug     Signal\n--------  --------\n \n"
         "Warfarin  Bleeding\n\nApixaban  Bleeding\n\nHeparin   HIT\n-------------------\n\n"

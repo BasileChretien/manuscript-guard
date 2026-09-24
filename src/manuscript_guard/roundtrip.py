@@ -568,6 +568,8 @@ class _Row:
 
     block: int
     dashes: bool
+    #: A line that can open a table, with text straight under it. A table and a YAML block
+    #: both need that text, so a line of dashes with a blank line under it is only a rule.
     opens: bool
     #: The last line of its block, with a blank line under it.
     ends_block: bool
@@ -599,17 +601,20 @@ class _Ruled:
             )
             self._first_row[index] = len(self._rows)
             for at, line in enumerate(lines):
-                last = at == len(lines) - 1
+                ends_block = at == len(lines) - 1 and not joined
                 dashes = _DASH_GROUPS.fullmatch(line) is not None
                 self._rows.append(
                     _Row(
                         block=index,
                         dashes=dashes,
-                        opens=dashes and _opens_table(line),
-                        ends_block=last and not joined,
-                        joined=last and joined,
+                        opens=dashes and not ends_block and _opens_table(line),
+                        ends_block=ends_block,
+                        joined=at == len(lines) - 1 and joined,
                     )
                 )
+        # Where the table read from each opening row ends, filled in as asked. Tables that
+        # open straight under one another share an end, so each chain is walked once.
+        self._ends: dict[int, int | None] = {}
         # The next line of dashes after each row, for finding where a table ends.
         self._next_dashes: list[int | None] = [None] * len(self._rows)
         following: int | None = None
@@ -628,16 +633,21 @@ class _Ruled:
 
         Pandoc tries a headed multiline table first. Its header runs down to the next line
         of dashes, and when there is a header above that line and text straight under it,
-        the rows run on to the line of dashes after. Otherwise the table is headless and
-        ends on the first line of dashes. Where a line that can open a table follows the
-        end straight away, another table begins there. Ending always on the first line of
-        dashes printed a marker into the rows of a headed table.
+        the rows run on to the line of dashes after. A line holding only a no-break space
+        is a header line too. Otherwise the table is headless and ends on the first line of
+        dashes. Where a line that can open a table follows the end straight away, another
+        table begins there. Ending always on the first line of dashes printed a marker into
+        the rows of a headed table.
         """
         rows = self._rows
-        while True:
+        walked: list[int] = []
+        end: int | None = None
+        while start not in self._ends:
+            walked.append(start)
             first = self._next_dashes[start]
             if first is None:
-                return None
+                break
+            headed = first > start + 1 or rows[start].joined
             under = rows[first].joined or (
                 not rows[first].ends_block
                 and first + 1 < len(rows)
@@ -645,17 +655,21 @@ class _Ruled:
                 and not rows[first + 1].dashes
             )
             end = first
-            if first > start + 1 and under and self._next_dashes[first] is not None:
+            if headed and under and self._next_dashes[first] is not None:
                 end = self._next_dashes[first]
             after = end + 1
-            if (
+            if not (
                 after < len(rows)
                 and rows[after].block == rows[end].block
                 and rows[after].opens
             ):
-                start = after
-                continue
-            return end
+                break
+            start = after
+        else:
+            end = self._ends[start]
+        for row in walked:
+            self._ends[row] = end
+        return end
 
     def _closed_in(self, block: int, row: int) -> bool:
         """Whether the table read from the block's opening line ends inside the block."""

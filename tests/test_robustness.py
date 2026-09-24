@@ -88,13 +88,21 @@ def test_the_fence_scanner_is_linear() -> None:
 
 @pytest.mark.parametrize(
     "opener",
-    ["Para <!-- open ", "\\begin{figure}\n", "\\begin{e#}\n", "<pre>\n", "---\nkey#: "],
+    [
+        "Para <!-- open ",
+        "\\begin{figure}\n",
+        "\\begin{e#}\n",
+        "<pre>\n",
+        "---\nkey#: ",
+        "--\nT\n--\n--\nT\n",
+    ],
     ids=[
         "comment",
         "latex environment",
         "latex environments, all different",
         "pre",
         "yaml that never closes",
+        "tables that each open straight under the last",
     ],
 )
 def test_paragraph_tagging_is_linear(opener: str) -> None:

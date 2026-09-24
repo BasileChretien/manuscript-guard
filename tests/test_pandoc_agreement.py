@@ -453,6 +453,19 @@ TAGGING = {
     "a setext underline with text straight under it, then a later rule": (
         "Intro.\n\nHeading\n---\nText straight under.\n\nPara B.\n\n-----\n\nEnd.\n"
     ),
+    "a one-block headless table with its caption straight under, then a setext heading": (
+        "Intro.\n\n----------  ----------\nWarfarin    Bleeding\nApixaban    Bleeding\n"
+        "----------  ----------\nTable: Signals of interest.\n\nWe found two signals in total.\n\n"
+        "Both concern bleeding.\n\nDiscussion\n----------\n"
+    ),
+    "a table opened by two dashes, then a setext heading": (
+        "Intro.\n\n--\nA note.\n\nPara A.\n\nMethods\n-------\n\nEnd.\n"
+    ),
+    "a header underline over a line holding only a no-break space": (
+        "Intro.\n\n-------------------\n Drug     Signal\n--------  --------\n \n"
+        "Warfarin  Bleeding\n\nApixaban  Bleeding\n\nHeparin   HIT\n-------------------\n\n"
+        "After.\n"
+    ),
     "a rule over text, then a line of two dashes": (
         "Intro.\n\n---\nText under.\n\nPara A.\n\n--\n\nPara B.\n"
     ),

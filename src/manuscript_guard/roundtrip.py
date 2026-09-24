@@ -562,17 +562,35 @@ def _yaml_stop(pieces: list[str], index: int) -> tuple[int, bool, str] | None:
     return None
 
 
-def _closes_table(lines: list[str]) -> bool:
-    """Whether a block that opens on a rule is a whole table: it ends on a rule, or on a
-    rule with the caption straight under it. Not on its first line - `---\\ntable: x` opens
-    a YAML block."""
-    rules = [i for i, line in enumerate(lines) if _dash_rule(line)]
+def _closes_table(lines: list[str], joined: bool = False) -> bool:
+    """Whether a block that opens on a rule is a whole table: it ends on a line of dashes,
+    or on one with the caption straight under it. Not on its first line - `---\\ntable: x`
+    opens a YAML block.
+
+    A caption closes only a headed table, one with a header underline between the top and
+    the bottom. Without one, pandoc reads the closing rule as the underline of a header,
+    the caption as the first of its rows, and runs on to the next line of dashes. And a
+    block `joined` to the next by a line pandoc does not call blank does not end there.
+    """
+    rules = [i for i, line in enumerate(lines) if _DASH_GROUPS.fullmatch(line) is not None]
     if not rules:
         return False
     last = rules[-1]
     if last == len(lines) - 1:
-        return True
-    return last > 0 and _TABLE_CAPTION.match(lines[last + 1]) is not None
+        return not joined
+    return (
+        last > 0
+        and len(rules) > 2
+        and _TABLE_CAPTION.match(lines[last + 1]) is not None
+    )
+
+
+def _opens_table(line: str) -> bool:
+    """A line of dashes that can open a multiline table: its first run two dashes or more.
+    A lone `-` is an empty list item, which pandoc tries first."""
+    if _DASH_GROUPS.fullmatch(line) is None:
+        return False
+    return len(line.strip().split()[0]) >= 2
 
 
 class _Ruled:
@@ -594,10 +612,14 @@ class _Ruled:
             lines = [line for line in pieces[index].split("\n") if line.strip()]
             if not lines:
                 continue
+            # A "blank" line holding a no-break space is text to pandoc, so a line of dashes
+            # before one is not the end of its block, however the text was split.
+            joined = index + 1 < len(pieces) and bool(re.search(r"[^ \t\n]", pieces[index + 1]))
             for at, line in enumerate(lines):
                 if _DASH_GROUPS.fullmatch(line) is not None:
-                    self._dashes.append((index, at, at == len(lines) - 1))
-            if _dash_rule(lines[0]) and not _closes_table(lines):
+                    last = at == len(lines) - 1 and not joined
+                    self._dashes.append((index, at, last))
+            if _opens_table(lines[0]) and not _closes_table(lines, joined):
                 self._opens.add(index)
 
     def _table_end(self, index: int) -> int | None:

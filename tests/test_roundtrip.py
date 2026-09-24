@@ -301,6 +301,14 @@ RULED = {
         "---\nText under.\n\nPara A.\n\n---\ntitle: x\n...\n\nPara C.\n\n-----"
     ),
     "a rule over text, then a line of two dashes": "---\nText under.\n\nPara A.\n\n--",
+    "a one-block headless table with its caption straight under, then a setext heading": (
+        "----------  ----------\nWarfarin    Bleeding\nApixaban    Bleeding\n"
+        "----------  ----------\nTable: Signals.\n\nWe found two.\n\nBoth bleed.\n\n"
+        "Discussion\n----------"
+    ),
+    "a table opened by two dashes, then a setext heading": (
+        "--\nA note.\n\nPara A.\n\nMethods\n-------"
+    ),
     "a multiline table with a paragraph straight under its closing rule": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\nListed above."

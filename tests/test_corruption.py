@@ -1217,3 +1217,31 @@ def test_audit_never_drops_a_number_on_a_line_read_as_a_reference(
     shown = [c.text for c in [*report.unmatched, *report.reference_like]]
     assert "413" in shown, shown
     assert "413" in render(report, measure_discrimination(report.backing_values))
+
+
+def test_audit_keeps_a_negative_bound_after_a_hyphen(tmp_path: Path) -> None:
+    """A minus after the separator was never read as a sign: an output written by R's
+    `paste0(lo, "-", hi)` as "-0.72--0.30" went in as -0.72 and 0.3, so a paper printing a
+    confidence interval of -0.72 to 0.30, one crossing zero, matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "table.csv"
+    outputs.write_text("term,estimate,ci\nexposure,-0.51,-0.72--0.30\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The estimate was -0.51 (95% CI -0.72 to 0.30).\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert len(unmatched) == 1 and unmatched[0].startswith("0.30"), unmatched
+
+
+@pytest.mark.parametrize("interval", ["−0.72-−0.30", "(−0.72/−0.30)"])
+def test_audit_catches_a_flipped_upper_bound_written_with_a_minus_sign(
+    tmp_path: Path, interval: str
+) -> None:
+    """U+2212 can only be a minus, and after a hyphen or slash it was read as nothing, so a
+    paper printing -0.30 for an output of +0.30 matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"lo": -0.72, "hi": 0.30}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"The interval was {interval} in this analysis.\n", encoding="utf-8")
+    assert len(audit([paper], [outputs]).unmatched) == 1

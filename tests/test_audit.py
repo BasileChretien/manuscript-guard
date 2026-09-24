@@ -383,10 +383,13 @@ def test_a_hyphen_between_numbers_is_not_a_sign(tmp_path: Path) -> None:
         ("−0.72–−0.30", ["-0.72", "-0.3"]),
         ("-0.72–0.30", ["-0.72", "0.3"]),
         ("0.72-0.82", ["0.72", "0.82"]),
-        # A hyphen after a symbol that ends a number is still a separator, and "--" is how
-        # pandoc Markdown writes an en dash.
+        # A hyphen after a symbol that ends a number is still a separator.
         ("50%-60%", ["50", "60"]),
-        ("2010--2019", ["2010", "2019"]),
+        # A minus after the separator is a sign: U+2212 always, a hyphen after a hyphen or a
+        # slash. Pandoc's "--" en dash is read as one only in Markdown, where it is written.
+        ("-0.72--0.30", ["-0.72", "-0.3"]),
+        ("−0.72-−0.30", ["-0.72", "-0.3"]),
+        ("−0.72/−0.30", ["-0.72", "-0.3"]),
     ],
 )
 def test_an_interval_with_a_negative_bound_is_split(atom: str, expected: list[str]) -> None:
@@ -661,3 +664,14 @@ def test_a_long_chain_of_numbers_does_not_stall_the_interval_split() -> None:
 )
 def test_a_numbered_entry_named_in_known_gaps_as_recognised_is(entry: str) -> None:
     assert looks_like_reference(entry)
+
+
+def test_a_pandoc_en_dash_in_markdown_is_a_range(tmp_path: Path) -> None:
+    """Pandoc renders "--" between digits as an en dash, so in a Markdown paper
+    "2010--2019" is a range and "-0.72--0.30" runs from -0.72 to 0.30, as the reader sees."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"a": 2010, "b": 2019, "lo": -0.72, "hi": 0.30}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("Reports from 2010--2019 gave -0.72--0.30.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], [c.text for c in report.unmatched]

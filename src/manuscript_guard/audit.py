@@ -42,18 +42,32 @@ PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
 FIGURE_SUFFIXES = {".svg", ".pdf"}
 
-# A leading minus is part of the number, hyphen or U+2212, but only where it can be a sign:
-# at the start, or after a space, an opening bracket, a table pipe, `=`, `:`, `,`, a
-# comparison or an en dash. Anywhere else it joins two things: "0.72-0.82" and "50%-60%" are
-# ranges, "2019-03-04" a date, "x-5" a name, "2010--2019" pandoc's en dash. Listed rather
-# than excluded, because the first version excluded digits, letters and points, and read
-# "50%-60%" as 50 and -60.
+# A leading minus is part of the number. U+2212 is always one: it can only be a minus. A
+# hyphen is one only where it can be a sign: at the start, or after a space, an opening
+# bracket, a table pipe, `=`, `:`, `,`, a comparison, an en dash, or another hyphen or a
+# slash, as in "-0.72--0.30", which R's `paste0(lo, "-", hi)` writes. Anywhere else it joins
+# two things: "0.72-0.82" and "50%-60%" are ranges, "2019-03-04" a date, "x-5" a name.
+# Listed rather than excluded, because the first version excluded digits, letters and
+# points, and read "50%-60%" as 50 and -60; and the second left out the hyphen and the
+# slash, so "−0.72-−0.30" in a paper matched an interval running to +0.30.
 # With no sign at all, -0.51 in the outputs went in as 0.51, so a paper quoting it correctly
 # never matched and a paper printing 0.51 for it did.
-_SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018"
+_SIGN_MAY_FOLLOW = r"\s(\[{|*=:;,<>~/\u00b1\u2264\u2265\u2013\u2014\"'\u201c\u2018\-"
 _NUMBER = re.compile(
-    rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])[-\u2212])?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
+    rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])-|\u2212)?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
 )
+
+# Pandoc renders "--" between two digits as an en dash, so in Markdown "2010--2019" is a
+# range and "-0.72--0.30" runs from -0.72 to 0.30, which is what its reader sees. Read that
+# way in Markdown only: anywhere else "--" is a separator followed by a minus.
+_PANDOC_EN_DASH = re.compile(r"(?<=\d)--(?=\d)")
+MARKDOWN_SUFFIXES = {".md", ".markdown"}
+
+
+def _as_rendered(text: str, path: Path) -> str:
+    if path.suffix.lower() in MARKDOWN_SUFFIXES:
+        return _PANDOC_EN_DASH.sub("\u2013", text)
+    return text
 
 
 # Digests, ids and hashes, stripped from backing text before numbers are extracted. Two
@@ -251,7 +265,7 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
                 rows = csv.reader(io.StringIO(raw, newline=""), delimiter=delimiter)
                 text = " ".join(" ".join(row) for row in rows)
             else:
-                text = raw
+                text = _as_rendered(raw, path)
         except UnreadableText as exc:
             skipped.append(str(exc))
             return
@@ -481,7 +495,7 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
     through it: they were being dropped along with the bibliography.
     """
     if not is_docx(path):
-        text = read_text(path)
+        text = _as_rendered(read_text(path), path)
         spans = bibliography_spans(text)
         return _blank(text, spans), spans
     document = read_docx_text(path)

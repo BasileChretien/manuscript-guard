@@ -57,10 +57,13 @@ manuscript-guard audit manuscript.docx supplement.docx \
 
 It needs no project and reads no `paper.yaml`. A `.docx` is read with tracked changes
 accepted and table cells kept apart, from the body, footnotes and endnotes; headers,
-footers and comments are not read. One tracked change is not accepted: two paragraphs
-joined by deleting or moving the mark between them are still read as two, so check by hand
-the numbers either side of such a join. The notes are read after the reference list has been
-cut from the body, so they are always audited. Markdown and text files are read as written,
+footers and comments are not read. Two paragraphs joined by deleting or moving the mark
+between them are read as one, in the second one's style, as Word shows them once the change
+is accepted. A join is not read across a table or a content control: Word runs a paragraph
+into the first cell of a table after it, and the audit reads the two apart, so check by hand
+the numbers either side of a deleted mark just before either. The
+notes are read after the reference list has been cut from the body, so they are always
+audited. Markdown and text files are read as written,
 and `--` between digits is read as a separator and a minus in every format: `-0.72--0.30`
 runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
 `2010--2019`, meaning pandoc's en dash, gets `-2019` reported as not found; check such

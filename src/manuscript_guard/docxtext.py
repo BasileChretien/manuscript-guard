@@ -94,6 +94,18 @@ def _text(element: ET.Element) -> str:
     return re.sub(r"\s+", " ", "".join(out)).strip()
 
 
+def runs_on(paragraph: ET.Element) -> bool:
+    """Whether a paragraph's mark was deleted, or moved away, as a tracked change.
+
+    Once the change is accepted the paragraph runs on into the next one, with nothing
+    between them: Word joins "-0.5" and "1" into "-0.51". The audit's reader uses this too.
+    """
+    mark = paragraph.find(f"{W}pPr/{W}rPr")
+    return mark is not None and (
+        mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
+    )
+
+
 def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -105,11 +117,9 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
     picture = any(node.tag in _PICTURES for node in element.iter())
-    mark = element.find(f"{W}pPr/{W}rPr")
-    runs_on = mark is not None and (
-        mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
+    return _Paragraph(
+        tuple(names), _text(element), tuple(comments), runs_on(element), table, picture
     )
-    return _Paragraph(tuple(names), _text(element), tuple(comments), runs_on, table, picture)
 
 
 def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:

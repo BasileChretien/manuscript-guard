@@ -1426,6 +1426,107 @@ def test_audit_does_not_read_text_moved_away(tmp_path: Path) -> None:
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["-0.5"]
 
 
+def _gone(change: str, style: str | None = None) -> str:
+    """The properties of a paragraph whose mark was deleted or moved away."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    return f'<w:pPr>{styled}<w:rPr><w:{change} w:id="1" w:author="a"/></w:rPr></w:pPr>'
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+@pytest.mark.parametrize(
+    "between",
+    ["", '<w:bookmarkStart w:id="9" w:name="_Ref1"/><w:bookmarkEnd w:id="9"/>'],
+    ids=["adjacent", "bookmark-between"],
+)
+def test_audit_joins_paragraphs_whose_mark_was_removed(
+    tmp_path: Path, change: str, between: str
+) -> None:
+    """A paragraph whose mark was deleted, or moved away, as a tracked change runs on into
+    the next once the change is accepted, and the audit read the two as separate lines: "−"
+    ending one and "0.30" starting the next matched an output of +0.30, and "-0.5" then "1"
+    matched -0.5 and 1 where the paper prints -0.51. A bookmark between them does not part
+    them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "hi": 0.30}')
+
+    def joined(before: str, after: str) -> str:
+        run = f'<w:r><w:t xml:space="preserve">{before}</w:t></w:r>'
+        return f"<w:p>{_gone(change)}{run}</w:p>{between}{_p(after)}"
+
+    paper = _docx(
+        tmp_path / "paper.docx",
+        joined("The estimate was -0.5", "1.") + joined("Its upper bound was −", "0.30."),
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51", "−0.30"}, shown
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        '<w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs>',
+        '<w:pPrChange w:id="2" w:author="a"><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/>'
+        "</w:tabs></w:pPr></w:pPrChange>",
+    ],
+    ids=["tab-stops", "tab-stops-before-the-change"],
+)
+def test_audit_joins_a_paragraph_that_sets_tab_stops(tmp_path: Path, props: str) -> None:
+    """A tab stop is `w:tab` too, under `w:pPr/w:tabs`, and was read as a typed tab: a
+    space at the start of the paragraph's line, where it did no harm until a join put it
+    between "-0.5" and "1". Word writes the old tab stops into `w:pPrChange` when it copies
+    the first paragraph's formatting onto the second."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    after = f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{after}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize("joined", [False, True])
+def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined: bool) -> None:
+    """A text box's paragraphs were read where its anchor sits, in the middle of the paragraph
+    holding it, so the rest of that paragraph, or the one it runs on into, landed on the text
+    box's line: "-0.5", a text box, then "1" read as -0.5, which matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    box = (
+        '<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml"><v:textbox>'
+        f"<w:txbxContent>{_p('Panel A')}</w:txbxContent></v:textbox></v:shape></w:pict></w:r>"
+    )
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    if joined:
+        body = f"<w:p>{_gone('del')}{before}{box}</w:p>{_p('1.')}"
+    else:
+        body = f"<w:p>{before}{box}<w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
+    """A paragraph run on into a heading takes the heading's style, which is what Word shows
+    once the change is accepted. Taking the first paragraph's instead read the appendix as
+    part of the reference list, and a wrong number in it went unaudited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    entry = "<w:r><w:t>Smith J. T. Lancet. 2019;393:1-2.</w:t></w:r>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Heading1")
+        + f"<w:p>{_gone('del')}{entry}</w:p>"
+        + _p("Supplementary appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+    )
+    assert "4.65" in [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched]
+
+
 @pytest.mark.parametrize(
     ("name", "content"),
     [

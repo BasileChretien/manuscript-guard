@@ -35,12 +35,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from manuscript_guard.docxtext import runs_on
+from manuscript_guard.docxtext import W16SE, extended_symbol, runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
-W16SE = "{http://schemas.microsoft.com/office/word/2015/wordml/symex}"
 
 PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml")
 BODY, NOTES = PARTS[0], PARTS[1:]
@@ -161,20 +160,6 @@ def _symbol(node: ET.Element) -> str:
     return _SYMBOL_FONT.get(code - 0xF000 if code >= 0xF000 else code, " ")
 
 
-def _symbol_extended(node: ET.Element) -> str:
-    """A `w16se:symEx` character: an emoji Word inserts itself, by its code point.
-
-    Only a character that document text could hold. A control character would pass for the
-    mark put on a heading's line, and a lone surrogate cannot be printed in the report.
-    """
-    try:
-        code = int(node.get(W16SE + "char", ""), 16)
-    except ValueError:
-        return " "
-    text = 0x20 <= code < 0xD800 or 0xE000 <= code <= 0xFFFD or 0x10000 <= code <= 0x10FFFF
-    return chr(code) if text else " "
-
-
 #: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
 #: hyphen (Ctrl+Shift+-, used to keep a minus on its number) or a Symbol-font minus left
 #: "-0.30" as 0.30, and a flipped bound matched. An emoji Word inserts is one too, in an
@@ -184,7 +169,7 @@ _CHARACTERS = {
     W + "noBreakHyphen": lambda node: "-",
     W + "softHyphen": lambda node: "",
     W + "sym": _symbol,
-    W16SE + "symEx": _symbol_extended,
+    W16SE + "symEx": extended_symbol,
 }
 
 

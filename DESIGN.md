@@ -1292,7 +1292,13 @@ paragraph that explained them in inline code. The rewording's own scan of inline
 tried next and set aside too much: it took `` `glmer` from $$…$$ `nlme`{.r} `` for one code
 span, and `~~ $$x$$ ~~` for struck-through text, so display maths went unseen and the first
 part of such a paragraph was moved without its equation. Setting aside too little only
-holds a paragraph that could have moved: `$$` inside a footnote does.
+holds a paragraph that could have moved: `$$` inside a footnote does. A backtick escaped with
+a backslash opens no code span; taken for one, it swallowed the `$$` or `<!--` up to the next
+real code span. Display maths is also read from the document as sent, which says it
+outright: an equation directly after a paragraph is part of that paragraph, however its
+source is written. And a held paragraph whose only change is a no-break space pandoc put in
+and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
+refused instead.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2395,7 +2401,11 @@ Closed since, and why each mattered:
   not recognised. A co-author who drags the empty line past the one paragraph beside it sees
   that paragraph reported as moved; dragged past two or more, or past a heading, the line
   itself is reported. A paragraph with display maths is held too, so dragging it whole,
-  equation and all, is refused like dragging its first part.
+  equation and all, is refused like dragging its first part. A comment opened in a
+  paragraph is found by reading the source with its code spans set aside, and a backtick in
+  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
+  one that opens a code span; a comment opened after it and closed past a blank line is then
+  not seen, and that paragraph can be moved.
 - **A table or figure is recognised by what it holds, and failing that by its place.** A
   table with a corrected cell, or a picture Word stored again, no longer matches by content,
   and is taken to be the one in its place among its kind, between the same two headings,

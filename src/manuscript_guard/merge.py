@@ -97,6 +97,21 @@ def _same(a: str, b: str) -> bool:
     return spaced(a).strip() == spaced(b).strip()
 
 
+_NBSP = chr(0xA0)
+
+
+def _typeset_only(was: str, now: str) -> bool:
+    """Whether Word's text differs from the text sent only where a no-break space pandoc put
+    in ("e.g." then a space) was taken out again. The next build puts it back, so there is
+    nothing to merge. Decided by the rewording for an ordinary paragraph, it was never asked
+    for a paragraph held in place, which refused the edit instead.
+    """
+    was, now = spaced(was).strip(), spaced(now).strip()
+    return len(was) == len(now) and all(
+        a == b or (a == _NBSP and b == " ") for a, b in zip(was, now, strict=True)
+    )
+
+
 def _beside_new_text(
     sent: list[Block], returned: list[Block], counterparts: dict[int, int] | None = None
 ) -> set[str]:
@@ -161,8 +176,10 @@ _BLOCK_LINE = re.compile(
 
 
 #: What `_bare` sets aside: a code span, by pandoc's rule that a run of backticks is closed
-#: by a run of the same length, and a comment that closes. Nothing more.
-_CODE_OR_COMMENT = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+#: by a run of the same length, and a comment that closes. Nothing more. A backtick escaped
+#: with a backslash opens nothing: taken for an opener, it began a "code span" that ran to the
+#: next real one and swallowed the `$$` or the `<!--` between them.
+_CODE_OR_COMMENT = re.compile(r"(?<![`\\])(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
@@ -480,12 +497,17 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     found: set[str] = set()
     last: str | None = None
     between = False
-    for block in reference:
+    for index, block in enumerate(reference):
         if block.names and not block.table:
             name = block.names[0]
             if last and between and sections.get(last, 0) == sections.get(name, 1):
                 found.add(last)
             last, between = name, False
+            # An equation directly after it is its own, wherever the paragraph stands: the
+            # document as sent says so, where reading the source for `$$` can be fooled.
+            following = reference[index + 1] if index + 1 < len(reference) else None
+            if block.text and following is not None and following.kind == "equation":
+                found.add(name)
         else:
             between = True
     return found
@@ -653,7 +675,7 @@ def plan_import(
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
-        elif _same(was, now):
+        elif _same(was, now) or _typeset_only(was, now):
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))

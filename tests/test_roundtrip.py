@@ -3083,8 +3083,16 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "Models were fitted with `glmer` from\n$$y = X b$$\nusing the `nlme`{.r} package.",
         "Units ~~ $$x = y$$ ~~ after.",
         "See `a` here <!-- a note `b`{.x}",
+        "Commands are quoted in backticks (\\`); the estimate is $$x = u / w$$ as in `metafor`.",
+        "Commands are quoted in backticks (\\`). <!-- an earlier draft, which quoted `grep`:",
     ],
-    ids=["maths-after-a-code-span", "maths-inside-strikeout", "comment-after-code-spans"],
+    ids=[
+        "maths-after-a-code-span",
+        "maths-inside-strikeout",
+        "comment-after-code-spans",
+        "maths-after-an-escaped-backtick",
+        "comment-after-an-escaped-backtick",
+    ],
 )
 def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
     tmp_path: Path, para: str
@@ -3096,6 +3104,50 @@ def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
 
     _path, known = source_of(tmp_path, {"p": para})
     assert _held_in_place(known, {"p": para.split("\n")[0]}).get("p") in ("in-parts", "runs-on")
+
+
+def test_an_equation_after_a_paragraph_in_the_document_as_sent_holds_that_paragraph(
+    tmp_path: Path,
+) -> None:
+    """Display maths was only found by reading the source, and every reading of Markdown
+    short of pandoc's can miss one: an escaped backtick opened what was taken for a code
+    span, which swallowed the `$$`. The document as sent says it outright: an equation
+    directly after a paragraph is part of that paragraph, even at the end of its section."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = "# A\n\nFirst paragraph.\n\nSecond, however it is written.\n\n# B\n\nBeta.\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"p1": "First paragraph.", "p2": "Second, however it is written.", "b": "Beta."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    heading_a, heading_b = Block((), "A"), Block((), "B")
+    p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second,")
+    equation, tail = Block(kind="equation", key="x=y"), Block((), "however it is written.")
+    beta = Block(("b",), "Beta.")
+    sent = [heading_a, p1, p2, equation, tail, heading_b, beta]
+
+    plan = plan_import(known, sent, [heading_a, p2, p1, equation, tail, heading_b, beta])
+    assert plan.misplaced and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_pandocs_no_break_space_taken_out_of_a_held_paragraph_is_no_edit(tmp_path: Path) -> None:
+    """Pandoc puts a no-break space after "e.g.", and Word's text shows it. Taken out again,
+    the next build puts it back, so an ordinary paragraph merges as nothing; a paragraph held
+    for the fence under it was refused instead, exit 1."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    nbsp = chr(0xA0)
+    paragraphs = {"z": "Zeta, e.g. this one, last inside the div.\n:::", "o": "Omega."}
+    _path, known = source_of(tmp_path, paragraphs)
+    was = f"Zeta, e.g.{nbsp}this one, last inside the div."
+    sent = [Block(("z",), was), Block(("o",), "Omega.")]
+    returned = [Block(("z",), was.replace(nbsp, " ")), sent[1]]
+    plan = plan_import(known, sent, returned)
+    assert plan.empty, plan.refused
 
 
 @pytest.mark.parametrize("inserted", ["equation", "figure"])

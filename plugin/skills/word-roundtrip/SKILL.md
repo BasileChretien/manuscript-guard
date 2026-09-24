@@ -108,8 +108,9 @@ handled, and each has a test:
   definition or a heading's underline written directly under a paragraph stays where it
   is: that paragraph is neither moved nor reworded.
 - Tables and figures are recognised by what they hold, so deleting a table or pasting in a
-  picture no longer hides a paragraph moved past a figure, and a heading, table, figure or
-  display equation dragged elsewhere or deleted is reported rather than passed over.
+  picture no longer hides a paragraph moved past a figure. A heading, table, figure or
+  display equation dragged elsewhere, and a table, figure or equation deleted, is reported
+  rather than passed over. A deleted heading or caption is not: look for one in the diff.
 - A paragraph split in two in Word is refused, not cut down to its first half.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.

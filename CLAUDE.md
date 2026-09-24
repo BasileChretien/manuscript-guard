@@ -12,7 +12,7 @@ Two layers:
 
 - `src/manuscript_guard/` — pip package. The deterministic gates, the build pipeline and
   the Zotero client. Must run in CI with no LLM involved.
-- `plugin/` — Claude Code plugin. Skills, agents and hooks that help draft, verify and
+- `plugin/` — Claude Code plugin. Skills and hooks that help set up, draft, verify and
   review.
 
 The separation is load-bearing: **an agent may help write a sentence but never decides
@@ -23,9 +23,15 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # 1065 tests, ~6 min (R and Zotero tests skip if absent)
+pytest -q                    # 1073 tests, ~7 min (R, Zotero and Claude Code tests skip if absent)
 ruff check src tests
+claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```
+
+The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
+`./plugin`). Bump `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace
+entry whenever a skill or hook changes, or `claude plugin update` reports the old copy as
+current. `tests/test_plugin.py` holds the two equal.
 
 The example doubles as the test fixture. To see the whole loop:
 

@@ -1345,7 +1345,11 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--figures", nargs="+", type=Path, help="SVG or PDF figures to audit as well"
     )
-    audit.add_argument("--strict", action="store_true", help="exit 1 if anything is unmatched")
+    audit.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 if anything is unmatched or a paper or figure could not be read",
+    )
     audit.set_defaults(func=cmd_audit)
 
     verify = sub.add_parser(

@@ -1262,3 +1262,30 @@ def test_audit_reads_code_in_a_markdown_output_as_written(tmp_path: Path) -> Non
     unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
     assert any(t.startswith("0.30") for t in unmatched), unmatched
     assert any(t.startswith("0.10") for t in unmatched), unmatched
+
+
+def test_audit_reads_an_indented_code_block_as_written(tmp_path: Path) -> None:
+    """knitr's md_document writes R's console output as four-space indented code, where
+    pandoc renders "--" as written: the bound is -0.30, not 0.30."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "model.md"
+    outputs.write_text('Output:\n\n    ## [1] "-0.72--0.30"\n', encoding="utf-8")
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The interval was -0.72 to 0.30.\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.startswith("0.30") for t in unmatched), unmatched
+
+
+def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
+    """Rewriting "2-->" as an en dash broke the comment's close, and the masking then ran to
+    the next comment's end and swallowed the sentence between them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "<!--Table 2-->\n\nThe ROR was 9.99 in 413 cases.\n\n<!-- end of results -->\n",
+        encoding="utf-8",
+    )
+    assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}

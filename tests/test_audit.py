@@ -666,22 +666,13 @@ def test_a_numbered_entry_named_in_known_gaps_as_recognised_is(entry: str) -> No
     assert looks_like_reference(entry)
 
 
-def test_a_pandoc_en_dash_in_markdown_is_a_range(tmp_path: Path) -> None:
-    """Pandoc renders "--" between digits as an en dash, so in a Markdown paper
-    "2010--2019" is a range and "-0.72--0.30" runs from -0.72 to 0.30, as the reader sees."""
+def test_a_double_hyphen_in_markdown_errs_toward_a_false_alarm(tmp_path: Path) -> None:
+    """Pandoc renders "--" in Markdown prose as an en dash, but not in code, where R's
+    output puts "-0.72--0.30" meaning -0.30. Emulating pandoc took three review rounds and
+    kept flipping signs in code; reading "--" as a minus everywhere errs the safe way, so a
+    Markdown range written "2010--2019" is reported, not matched."""
     outputs = tmp_path / "out.json"
-    outputs.write_text('{"a": 2010, "b": 2019, "lo": -0.72, "hi": 0.30}', encoding="utf-8")
+    outputs.write_text('{"a": 2010, "b": 2019}', encoding="utf-8")
     paper = tmp_path / "paper.md"
-    paper.write_text("Reports from 2010--2019 gave -0.72--0.30.\n", encoding="utf-8")
-    report = audit([paper], [outputs])
-    assert report.unmatched == [], [c.text for c in report.unmatched]
-
-
-def test_pandoc_dashes_in_markdown_invent_no_minus(tmp_path: Path) -> None:
-    """Pandoc renders `---` as an em dash and `--` as an en dash wherever they fall, so
-    neither gives the number after it a sign."""
-    outputs = tmp_path / "notes.md"
-    outputs.write_text("Total 2010---2019 and n--413.\n", encoding="utf-8")
-    values, _used, _skipped = load_backing([outputs])
-    assert {"2010", "2019", "413"} <= values
-    assert not {"-2019", "-413"} & values
+    paper.write_text("Reports from 2010--2019 were read.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["2010--2019"]

@@ -34,7 +34,6 @@ from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
-from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -58,30 +57,12 @@ _NUMBER = re.compile(
     rf"(?:(?<![^{_SIGN_MAY_FOLLOW}])-|\u2212)?\d[\d,\u202f\xa0]*(?:\.\d+)?(?:[eE][+-]?\d+)?"
 )
 
-# Pandoc renders "---" as an em dash and "--" as an en dash, so in Markdown "2010--2019" is a
-# range, "-0.72--0.30" runs from -0.72 to 0.30 and "2010---2019" is two years: what its
-# reader sees. Read that way in Markdown only, where pandoc applies it; anywhere else "--" is
-# a separator followed by a minus. Only beside a digit, the one place the difference changes
-# a number, and never inside code, which pandoc leaves as written. knitr puts R's console
-# output in code blocks, and "-0.72--0.30" there runs to -0.30: rewriting it made a paper
-# printing an upper bound of 0.30 match.
-_PANDOC_EM_DASH = re.compile(r"(?<=\d)---(?=[^\s-])|(?<=[^\s-])---(?=\d)")
-_PANDOC_EN_DASH = re.compile(r"(?<=\d)--(?=[^\s-])|(?<=[^\s-])--(?=\d)")
-_INLINE_CODE = re.compile(r"`[^`\n]+`")
-MARKDOWN_SUFFIXES = {".md", ".markdown"}
-
-
-def _as_rendered(text: str, path: Path) -> str:
-    """Markdown with pandoc's dashes applied outside code; anything else unchanged."""
-    if path.suffix.lower() not in MARKDOWN_SUFFIXES:
-        return text
-    # The same text with code blanked, offsets kept: matched there, applied to both.
-    visible = _INLINE_CODE.sub(lambda m: " " * len(m.group(0)), blank_fences(text))
-    for pattern, dash in ((_PANDOC_EM_DASH, "\u2014"), (_PANDOC_EN_DASH, "\u2013")):
-        for begin, finish in reversed([m.span() for m in pattern.finditer(visible)]):
-            text = text[:begin] + dash + text[finish:]
-            visible = visible[:begin] + dash + visible[finish:]
-    return text
+# `--` between digits is a separator and a minus in every format, Markdown included,
+# although pandoc renders it as an en dash in Markdown prose. Reading it as pandoc does meant
+# knowing where pandoc does and does not: fenced, indented and inline code, HTML comments.
+# Each gap in that knowledge flipped a sign in code, where R's output puts "-0.72--0.30"
+# meaning -0.30, or swallowed prose. This way every misreading is a false alarm: a Markdown
+# range written "2010--2019" reports -2019 as not found.
 
 
 # Digests, ids and hashes, stripped from backing text before numbers are extracted. Two
@@ -279,7 +260,7 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
                 rows = csv.reader(io.StringIO(raw, newline=""), delimiter=delimiter)
                 text = " ".join(" ".join(row) for row in rows)
             else:
-                text = _as_rendered(raw, path)
+                text = raw
         except UnreadableText as exc:
             skipped.append(str(exc))
             return
@@ -509,7 +490,7 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
     through it: they were being dropped along with the bibliography.
     """
     if not is_docx(path):
-        text = _as_rendered(read_text(path), path)
+        text = read_text(path)
         spans = bibliography_spans(text)
         return _blank(text, spans), spans
     document = read_docx_text(path)

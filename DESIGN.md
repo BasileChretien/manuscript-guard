@@ -1910,12 +1910,12 @@ Closed since, and why each mattered:
 - **The audit reads a sign, so a magnitude quoted without one is not found.** "Fell by
   0.51" against an output of -0.51 is reported. That is the price of catching a paper that
   prints 0.51 for -0.51. Only a hyphen or U+2212 is a sign; an en dash used as a minus
-  ("–0.51") is not read as a number, and is reported. `--` between digits means two
-  things: in Markdown prose it is pandoc's en dash (and `---` its em dash), so
-  "-0.72--0.30" in a `.md` file runs to +0.30 as its reader sees it; inside Markdown code,
-  which pandoc leaves alone, and in every other format, it is a separator and a minus,
-  running to -0.30. A `.docx` or `.txt` written with pandoc's convention in mind is read
-  the second way.
+  ("–0.51") is not read as a number, and is reported. `--` between digits is read as a
+  separator and a minus in every format, so a Markdown paper that writes a range as
+  "2010--2019", which pandoc renders as an en dash, gets -2019 reported as not found. Three
+  review rounds went into reading it as pandoc does, and each found a place where pandoc
+  does not (fenced code, indented code, HTML comments) and a sign flipped or prose
+  vanished. A false alarm is the cheaper mistake.
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.

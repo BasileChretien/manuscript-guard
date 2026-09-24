@@ -488,6 +488,24 @@ _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 _YAML_OPEN = re.compile(r"---[ \t]*")
 _YAML_STOP = re.compile(r"(?:---|\.\.\.)[ \t]*")
 _MAPPING, _OTHER = "mapping", "other"
+_YAML_DEPTH = 100
+_SEQUENCE_ITEMS = re.compile(r"(?:[ \t]*-(?:[ \t]+|$))+")
+
+
+def _nesting(text: str) -> int:
+    """How deep YAML's flow brackets or block sequences nest, read without parsing."""
+    depth = deepest = 0
+    for char in text:
+        if char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth = max(depth - 1, 0)
+    for line in text.split("\n"):
+        items = _SEQUENCE_ITEMS.match(line)
+        if items:
+            deepest = max(deepest, items.group(0).count("-"))
+    return deepest
 
 
 def _yaml_kind(text: str) -> str:
@@ -502,6 +520,10 @@ def _yaml_kind(text: str) -> str:
     """
     import yaml
 
+    if _nesting(text) > _YAML_DEPTH:
+        # Composing thousands of levels ran into the recursion limit only after seconds,
+        # once per opener. Too deep to be anyone's metadata; left unmarked all the same.
+        return _OTHER
     try:
         node = yaml.compose(text, Loader=yaml.SafeLoader)
     except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
@@ -541,22 +563,16 @@ def _yaml_stop(pieces: list[str], index: int) -> tuple[int, bool, str] | None:
 
 
 def _closes_table(lines: list[str]) -> bool:
-    """Whether a block ends a table: on its last rule, or on a rule with the caption
-    straight under it. Not on its first line - `---\\ntable: x` opens a YAML block.
-
-    In a block that does not open on a rule, any rule closes the table, whatever follows
-    it: pandoc ends the table there and reads a paragraph under it as a paragraph. Only a
-    block that opens on a rule has one that is not a closer, the underline of its header.
-    """
+    """Whether a block that opens on a rule is a whole table: it ends on a rule, or on a
+    rule with the caption straight under it. Not on its first line - `---\\ntable: x` opens
+    a YAML block."""
     rules = [i for i, line in enumerate(lines) if _dash_rule(line)]
     if not rules:
         return False
     last = rules[-1]
     if last == len(lines) - 1:
         return True
-    if last > 0 and _TABLE_CAPTION.match(lines[last + 1]) is not None:
-        return True
-    return rules[0] > 0
+    return last > 0 and _TABLE_CAPTION.match(lines[last + 1]) is not None
 
 
 class _Ruled:
@@ -571,41 +587,56 @@ class _Ruled:
     def __init__(self, pieces: list[str]) -> None:
         self._pieces = pieces
         self._opens: set[int] = set()
-        # The next block holding a line of dashes anywhere: where a table that opened
-        # earlier ends, since pandoc takes the first such line as its bottom border.
-        self._next_rule: dict[int, int] = {}
-        following: int | None = None
-        for index in range(len(pieces) - 1 - (len(pieces) - 1) % 2, -1, -2):
+        # Every line of dashes, however short - pandoc ends a table on `--` or `-` too - as
+        # (block, line, whether it is the last line of its block), in document order.
+        self._dashes: list[tuple[int, int, bool]] = []
+        for index in range(0, len(pieces), 2):
             lines = [line for line in pieces[index].split("\n") if line.strip()]
-            if following is not None:
-                self._next_rule[index] = following
             if not lines:
                 continue
-            if any(_dash_rule(line) for line in lines):
-                following = index
+            for at, line in enumerate(lines):
+                if _DASH_GROUPS.fullmatch(line) is not None:
+                    self._dashes.append((index, at, at == len(lines) - 1))
             if _dash_rule(lines[0]) and not _closes_table(lines):
                 self._opens.add(index)
+
+    def _table_end(self, index: int) -> int | None:
+        """The block where the table pandoc reads from the rule opening `index` ends.
+
+        Pandoc tries a headed multiline table first: everything down to the next line of
+        dashes is its header, and when text follows that line straight away, the rows run
+        on to the line of dashes after it. Otherwise the table is headless and ends on the
+        first line of dashes. Ending always on the first one printed a marker into the
+        rows of a headed table.
+        """
+        at = bisect.bisect_right(self._dashes, (index, 0, True))
+        if at >= len(self._dashes):
+            return None
+        block, _line, last = self._dashes[at]
+        if not last and at + 1 < len(self._dashes):
+            return self._dashes[at + 1][0]
+        return block
 
     def end(self, index: int) -> int | None:
         """The block a span opened at `index` ends in, or None if it opens none.
 
-        A table runs to the next line of dashes: a row that happens to read `...` is a
-        row. A `---` pandoc tries as YAML is hidden up to where the YAML stops; a mapping
-        ends there, and anything else pandoc reads again as a table from the same `---`.
+        A table runs to a line of dashes: a row that happens to read `...` is a row. A
+        `---` pandoc tries as YAML is hidden up to where the YAML stops; a mapping ends
+        there, and anything else pandoc reads again as a table from the same `---`.
         """
         if index not in self._opens:
             return None
-        rule = self._next_rule.get(index)
+        rule = self._table_end(index)
         tried = _yaml_stop(self._pieces, index)
         if tried is None:
             return rule
         stop, opens_block, kind = tried
         if kind == _MAPPING:
             return stop if stop != index else None
-        # Given up on, the tried text must stay unbroken up to the stop, and the table
-        # pandoc falls back to runs to the next line of dashes. When that line is the
-        # stop's own `---`, the table takes it as its border. When an earlier line ended the
-        # table, the stop's `---` is pandoc's next opener to try, and it has to be asked.
+        # Given up on, the tried text must stay unbroken up to the stop, and pandoc reads a
+        # table from the same `---` instead. When that table ends on the stop's own `---`, or
+        # past it, the line is part of the table. When it ended earlier, the stop's `---` is
+        # pandoc's next opener to try, and it has to be asked.
         tried_to = stop - 2 if opens_block and rule is not None and rule < stop else stop
         ends = [end for end in (tried_to, rule) if end is not None and end > index]
         return max(ends) if ends else None

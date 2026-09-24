@@ -293,6 +293,14 @@ RULED = {
     "yaml given up on whose stop of dots opens a block": (
         "---\n- item\n\n...\nMore.\n\nAfter the list.\n\n---\ntitle: x\n..."
     ),
+    "a rule over text, then a headed table's underline with rows under it": (
+        "---\nText under.\n\nPara A.\n\n  Drug     Signal\n--------  --------\n"
+        "Warfarin  Bleeding\n\nAfter the table.\n\nMethods\n-------"
+    ),
+    "yaml given up on, stopping on a yaml opener, then a later rule": (
+        "---\nText under.\n\nPara A.\n\n---\ntitle: x\n...\n\nPara C.\n\n-----"
+    ),
+    "a rule over text, then a line of two dashes": "---\nText under.\n\nPara A.\n\n--",
     "a multiline table with a paragraph straight under its closing rule": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\nListed above."

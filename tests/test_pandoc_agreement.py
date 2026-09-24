@@ -435,6 +435,27 @@ TAGGING = {
         "The signals are listed above.\n"
     ),
     "yaml after a blank first line": "\n---\ntitle: x\n\nabstract: y\n...\n\nIntro.\n",
+    # Pandoc tries a headed multiline table first: a header down to the first line of
+    # dashes, then rows to the next one, when text follows the first straight away.
+    "a rule over text, then a headed table's underline with rows under it": (
+        "Intro.\n\n---\nText under.\n\nPara A.\n\n  Drug     Signal\n--------  --------\n"
+        "Warfarin  Bleeding\n\nAfter the table, a long paragraph.\n\nMethods\n-------\n\nEnd.\n"
+    ),
+    "a headless table whose closing rule has prose under it, then a setext heading": (
+        "Intro.\n\n---------- ----------\nWarfarin   Bleeding\n\nApixaban   Bleeding\n"
+        "---------- ----------\nThe signals are listed above.\n\nPara X.\n\nMethods\n-------\n\n"
+        "End.\n"
+    ),
+    "yaml given up on, stopping on a yaml opener, then a later rule": (
+        "Intro.\n\n---\nText under.\n\nPara A.\n\n---\ntitle: x\n...\n\nPara C.\n\n-----\n\n"
+        "End.\n"
+    ),
+    "a setext underline with text straight under it, then a later rule": (
+        "Intro.\n\nHeading\n---\nText straight under.\n\nPara B.\n\n-----\n\nEnd.\n"
+    ),
+    "a rule over text, then a line of two dashes": (
+        "Intro.\n\n---\nText under.\n\nPara A.\n\n--\n\nPara B.\n"
+    ),
     "yaml longer than four thousand characters": (
         "Intro.\n\n---\ntitle: x\nabstract: |\n  "
         + "\n\n  ".join(["word " * 300] * 4)

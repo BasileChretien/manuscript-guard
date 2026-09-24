@@ -380,3 +380,21 @@ def test_a_plan_that_is_not_utf8_does_not_fail_check(project: Path) -> None:
     path.write_bytes(text.encode("cp1252"))
     report, _project, _stage, _deferred = _run_gates(project, stage="design")
     assert "gate-errored" not in {f.code for f in report.findings}
+
+
+def test_a_crlf_plan_with_underlined_headings_is_read(project: Path) -> None:
+    """Decoding the bytes by hand kept the carriage returns, and a setext underline followed
+    by one is not an underline: every section was reported missing."""
+    path = plan_path(load_project(project)[0])
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            title = line[3:]
+            lines += [title, "-" * len(title)]
+        elif line.startswith("# "):
+            lines += [line[2:], "=" * len(line[2:])]
+        else:
+            lines.append(line)
+    path.write_bytes("\r\n".join(lines).encode("utf-8"))
+    report = check_design(load_project(project)[0])
+    assert "plan-complete" in codes(report), [f.message for f in report.findings]

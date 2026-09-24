@@ -987,6 +987,10 @@ def test_audit_does_not_count_an_outlined_figure_as_audited(tmp_path: Path) -> N
         # The numbered-style shape: a word, one to four capitals, a comma, then "year;digit".
         "Stage III, diagnosed between 2010 and 2020; 99 patients were excluded.",
         "Group B, enrolled from January 2015 to December 2019; 99 completed follow-up.",
+        # A narrative citation ends a sentence with the signature "(2019).", so the words
+        # between the name and the year have to be names, not prose.
+        "Notably, Japan and Korea contributed 99 of 8,393 cases, in line with Smith (2019).",
+        "Similarly, Smith and colleagues found 99 cases in Japan (2019).",
     ],
 )
 def test_audit_does_not_take_a_body_paragraph_for_a_reference(
@@ -1034,3 +1038,86 @@ def test_audit_reads_utf16_outputs_as_text_not_digits(tmp_path: Path) -> None:
     report = audit([paper], [outputs])
     assert [c.text for c in report.unmatched] == ["3"]
     assert {"8393", "3.84"} <= report.backing_values
+
+
+def test_audit_does_not_take_a_wrapped_line_for_a_references_heading(tmp_path: Path) -> None:
+    """A heading may carry a bare number, "5 References", and a hard-wrapped line that
+    happened to read "12 references." then hid the rest of the section."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 12, "ror": 3.84}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We drew on the literature, citing\n12 references.\n"
+        "The pooled reporting odds ratio was 9.99.\n\n## Discussion\n\nText.\n",
+        encoding="utf-8",
+    )
+    assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: Path) -> None:
+    """A .docx table cell is its own line, so a column headed "References" read as the
+    start of the bibliography and hid everything up to the next styled heading."""
+    from manuscript_guard.audit import audit
+
+    def cell(text: str) -> str:
+        return f"<w:tc>{_p(text)}</w:tc>"
+
+    table = (
+        "<w:tbl>"
+        f"<w:tr>{cell('Study')}{cell('References')}</w:tr>"
+        f"<w:tr>{cell('Cohort A')}{cell('12')}</w:tr>"
+        "</w:tbl>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 12, "ror": 3.84}')
+    paper = _docx(tmp_path / "paper.docx", table + _p("The pooled ratio was 9.99."))
+    assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:
+    """Only the first heading was used, so a second reference list (an appendix's own) was
+    read as prose, and the first list's shape detection was off for the whole file."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n\n"
+        "# Appendix\n\nThe estimate was 9.99.\n\n## References\n\n"
+        "Jones K. T. BMJ. 2020;368:m1.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["9.99"]
+    assert len(report.not_audited) == 2
+
+
+def test_audit_does_not_turn_json_escapes_into_numbers(tmp_path: Path) -> None:
+    """Outputs were re-serialised with every non-ASCII character escaped, so "β" became
+    "\u03b2" and put 3 and 2 in the backing set, and "0.72–0.82" gave 20130.82."""
+    import json as json_module
+
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.json"
+    document = {"ci": "0.72–0.82", "term": "β (age)", "n": 77}
+    outputs.write_text(json_module.dumps(document, ensure_ascii=False), encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 77 reports and 3 cases, 0.72-0.82.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["3"]
+    assert "20130.82" not in report.backing_values
+
+
+def test_audit_reads_an_appendix_after_the_references_in_a_crlf_file(tmp_path: Path) -> None:
+    """Bytes decoded by hand keep their carriage returns, and a setext underline followed
+    by one is not an underline: the appendix under it was cut with the references."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_bytes(
+        b"We saw 77.\r\n\r\nReferences\r\n----------\r\n\r\nSmith J. T. Lancet. 2019;393:1-2."
+        b"\r\n\r\nAppendix\r\n--------\r\n\r\nThe estimate was 4.65.\r\n"
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["4.65"]

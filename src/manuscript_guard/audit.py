@@ -187,7 +187,11 @@ def read_text(path: Path) -> str:
             f"{path.name}: NUL bytes and no byte-order mark, so not read; if it is UTF-16, "
             f"save it as UTF-8"
         )
-    return data.decode(encoding or "utf-8", errors="replace")
+    # Decoding bytes skips the newline translation `read_text` did, and a setext underline
+    # followed by "\r" is not an underline: a CRLF paper lost the heading that ends its
+    # reference list.
+    text = data.decode(encoding or "utf-8", errors="replace")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
@@ -210,7 +214,9 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
             raw = read_text(path)
             if suffix == ".json":
                 try:
-                    text = json.dumps(json.loads(raw))
+                    # Unescaped: with `ensure_ascii` "β" became "β", and its digits
+                    # joined the backing set as 3 and 2.
+                    text = json.dumps(json.loads(raw), ensure_ascii=False)
                 except ValueError:
                     # JSON Lines is the usual reason, and its numbers are all there as text.
                     text = raw
@@ -264,12 +270,27 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
 # people's papers: not the author's claims, and reporting them buries the findings that
 # matter.
 _BIBLIOGRAPHY = re.compile(
-    r"^\s*(?:#+\s*)?(?:\d+[.)]?\s*)?[*_]{0,2}\s*"
-    r"(?:references(?:\s+cited)?|reference\s+list|list\s+of\s+references|cited\s+references"
-    r"|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
-    r"\s*[*_]{0,2}\s*[:.]?\s*[*_]{0,2}\s*(?:\|\s*)*$",
+    r"^\s*(?:#+\s*)?(?:(?P<numbered>\d+[.)])\s*|(?P<bare>\d+)\s+)?[*_]{0,2}\s*"
+    r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
+    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
+    r"\s*[*_]{0,2}\s*(?P<stop>[:.]?)\s*[*_]{0,2}\s*(?:\|\s*)*$",
     re.IGNORECASE,
 )
+
+
+def is_bibliography_heading(line: str) -> bool:
+    """A bibliography heading, including a bare-numbered one only where it reads as one.
+
+    "5 References" is a heading. "12 references." is the end of a sentence that a hard wrap
+    left on a line of its own, and taking it for a heading hid the rest of the section: so a
+    bare number needs a capital and no full stop.
+    """
+    found = _BIBLIOGRAPHY.match(line)
+    if not found:
+        return False
+    if found.group("bare"):
+        return found.group("word")[0].isupper() and found.group("stop") != "."
+    return True
 
 
 # A reference-list entry, recognised by its shape rather than by a heading. citeproc appends
@@ -279,18 +300,27 @@ _BIBLIOGRAPHY = re.compile(
 # It was "a capitalised word, a comma, a capitalised word, a year within 200 characters", and
 # in a .docx a line is a paragraph: "Overall, Japanese patients accounted for 412 of 8,393
 # cases between 2010 and 2019." was a reference, and every number in it was counted among
-# the references and compared with nothing. So each half now has to look like a reference
+# the references and compared with nothing. So each part now has to look like a reference
 # and not merely like a sentence. The name after the comma is initials or given names that
-# the author list goes on from — a comma, "and", "&" — never a word running into prose.
-# The year is the one an entry carries: "(2019)." or "(2019, March 5)." closing the author
-# list, or ". 2021." standing alone between author and title. "However, Smith (2019)
-# reported" has the parenthesis without the full stop.
+# the author list goes on from. Between it and the year there is nothing but more names:
+# capitalised words, initials, "and", "&", "et al.", a particle such as "van". The year is
+# the one an entry carries, "(2019)." or "(2019, March 5)." closing the author list, or
+# ". 2021." standing between author and title. "Notably, Japan and Korea contributed 413 …,
+# in line with Smith (2019)." has the signature, and a lower-case word before it.
+#
+# Each token of the author list is unambiguous, one separator character or one whole word,
+# so a line that fails costs a single pass rather than a backtracking search.
+_AUTHOR_LIST = (
+    r"(?:[\s,.&]"
+    r"|[A-Z][\w'’-]*(?![\w'’-])"
+    r"|(?:and|et\s+al|van|von|der|den|de|du|da|di|del|la|le)(?![\w'’-]))*?"
+)
 _REFERENCE_ENTRY = re.compile(
     r"^\s*[A-Z][\w'’-]+,\s+"                                         # "Fictional,"
     r"(?:[A-Z]\.(?:\s?-?[A-Z]\.)*(?=\s*[,&(]|\s+and\s|\s+(?:19|20)\d{2})"  # "J. A." then more
     r"|[A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"     # "Anne," "Anne and"
-    r".{0,200}?"
-    r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|\.\s+(?:19|20)\d{2}[a-z]?\.)",
+    + _AUTHOR_LIST
+    + r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|(?:\.|(?<=\.))\s+(?:19|20)\d{2}[a-z]?\.)",
 )
 
 # The numbered styles — Vancouver, AMA, ICMJE — put the surname before the initials with no
@@ -298,9 +328,7 @@ _REFERENCE_ENTRY = re.compile(
 # sentence does not share is the journal signature "2019;393:100", year, volume, page:
 # "Figure A. Reports by year, 2015 to 2019" starts the same way and has none. "Stage III,
 # diagnosed in 2010-2020; 45 excluded" has a year and a semicolon, which is why the volume
-# must run on to its page, and the initials on to another author or the title. Recognising a
-# line as a reference hides every number on it, so the shape has to be one only a reference
-# has.
+# must run on to its page, and the initials on to another author or the title.
 _VANCOUVER_ENTRY = re.compile(
     r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])?\s*"                # "12." / "[12]" / "12)"
     r"(?:[a-z]{1,3}\s+){0,2}[A-Z][\w'’-]+\s+[A-Z](?:-?[A-Z]){0,3}"  # "Smith J", "van Berg AB"
@@ -316,6 +344,8 @@ _FOOTNOTE = re.compile(r"^\s{0,3}\[\^[^\]]+\]:")
 
 
 def looks_like_reference(line: str) -> bool:
+    """Whether a line has the shape of a reference entry. A shape can be wrong, and every
+    number on a line it accepts goes uncompared, so the audit names the lines it accepted."""
     return bool(_REFERENCE_ENTRY.match(line) or _VANCOUVER_ENTRY.match(line))
 
 
@@ -323,60 +353,72 @@ def _markdown_heading_lines(text: str) -> frozenset[int]:
     return frozenset(text.count("\n", 0, found.start) for found in heading_index(text))
 
 
-def bibliography_span(text: str, headings: frozenset[int] | None = None) -> tuple[int, int] | None:
-    """Where the reference list is, as 0-based lines `[start, end)`.
+def bibliography_spans(
+    text: str,
+    headings: frozenset[int] | None = None,
+    cells: frozenset[int] = frozenset(),
+) -> list[tuple[int, int]]:
+    """Where the reference lists are, as 0-based lines `[start, end)`.
 
-    From a bibliography heading to the next heading of another kind, or to the end if there
-    is none. It used to run to the end regardless, so an appendix after the references was
-    never audited — a wrong number there passed, in a file reported as audited.
+    Each runs from a bibliography heading to the next heading of another kind, or to the end
+    if there is none. The first version ran to the end regardless, so an appendix after the
+    references was never audited, and it used only the first heading, so an appendix's own
+    reference list was read as prose.
 
     `headings` says which lines are headings when the text cannot: a .docx read as plain text
-    knows them only from paragraph styles. Omitted, they are read as Markdown.
+    knows them only from paragraph styles. Omitted, they are read as Markdown. `cells` are
+    lines inside a table, where "References" is a column header and not a heading.
     """
     lines = text.split("\n")
-    start = next((i for i, line in enumerate(lines) if _BIBLIOGRAPHY.match(line)), None)
-    if start is None:
-        return None
     if headings is None:
         headings = _markdown_heading_lines(text)
-    after = (i for i in sorted(headings) if i > start and not _BIBLIOGRAPHY.match(lines[i]))
     # A final newline ends the last line; it does not start another.
-    return start, next(after, len(lines) - text.endswith("\n"))
+    last = len(lines) - text.endswith("\n")
+    spans: list[tuple[int, int]] = []
+    for start, line in enumerate(lines):
+        if start in cells or not is_bibliography_heading(line):
+            continue
+        if spans and start < spans[-1][1]:
+            continue
+        after = (i for i in sorted(headings) if i > start and not is_bibliography_heading(lines[i]))
+        spans.append((start, next(after, last)))
+    return spans
 
 
-def strip_bibliography(text: str, headings: frozenset[int] | None = None) -> str:
-    """`text` with its reference list blanked, line for line, so line numbers still hold."""
-    span = bibliography_span(text, headings)
-    if span is None:
-        return text
-    start, end = span
+def strip_bibliography(
+    text: str,
+    headings: frozenset[int] | None = None,
+    cells: frozenset[int] = frozenset(),
+) -> str:
+    """`text` with its reference lists blanked, line for line, so line numbers still hold."""
     lines = text.split("\n")
-    in_note = False
-    for index in range(start, end):
-        line = lines[index]
-        if _FOOTNOTE.match(line):
-            in_note = True
-            continue
-        if in_note and (not line.strip() or line.startswith(("    ", "\t"))):
-            continue
+    for start, end in bibliography_spans(text, headings, cells):
         in_note = False
-        lines[index] = ""
+        for index in range(start, end):
+            line = lines[index]
+            if _FOOTNOTE.match(line):
+                in_note = True
+                continue
+            if in_note and (not line.strip() or line.startswith(("    ", "\t"))):
+                continue
+            in_note = False
+            lines[index] = ""
     return "\n".join(lines)
 
 
-def read_paper(path: Path) -> tuple[str, tuple[int, int] | None]:
-    """The paper's text with its reference list blanked, and which lines those were.
+def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
+    """The paper's text with its reference lists blanked, and which lines those were.
 
     A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
     through it: they were being dropped along with the bibliography.
     """
     if not is_docx(path):
         text = read_text(path)
-        return strip_bibliography(text), bibliography_span(text)
+        return strip_bibliography(text), bibliography_spans(text)
     document = read_docx_text(path)
-    body = strip_bibliography(document.body, document.headings)
-    span = bibliography_span(document.body, document.headings)
-    return (f"{body}\n{document.notes}" if document.notes else body), span
+    body = strip_bibliography(document.body, document.headings, document.cells)
+    spans = bibliography_spans(document.body, document.headings, document.cells)
+    return (f"{body}\n{document.notes}" if document.notes else body), spans
 
 
 def read_figure(path: Path) -> str | None:
@@ -405,15 +447,15 @@ def audit(
     sources: list[tuple[Path, str, bool]] = []
     for path in papers:
         try:
-            text, span = read_paper(path)
+            text, spans = read_paper(path)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
-        sources.append((path, text, span is None))
-        if span is not None:
-            report.not_audited.append(
-                f"{path.name}: lines {span[0] + 1}-{span[1]}, read as the reference list"
-            )
+        sources.append((path, text, not spans))
+        report.not_audited += [
+            f"{path.name}: lines {start + 1}-{end}, read as the reference list"
+            for start, end in spans
+        ]
     for path in figures or []:
         text = read_figure(path)
         if text is None:
@@ -434,12 +476,14 @@ def audit(
     report.papers = tuple(path for path, _text, _shape in sources)
 
     for path, text, by_shape in sources:
+        shaped: set[int] = set()
         for atom in find_atoms(text, mask(text)):
             if classifier.classify(atom).kind != UNCLASSIFIED:
                 report.classified += 1
                 continue
             if by_shape and looks_like_reference(atom.line_text):
                 report.classified += 1
+                shaped.add(atom.line)
                 continue
             candidate = Candidate(
                 text=atom.text,
@@ -455,8 +499,22 @@ def audit(
                 report.matched.append(candidate)
             else:
                 report.unmatched.append(candidate)
+        if shaped:
+            report.not_audited.append(_shaped_note(path, sorted(shaped)))
 
     return report
+
+
+def _shaped_note(path: Path, lines: list[int]) -> str:
+    """Which lines were taken for reference entries by their shape, and so not compared.
+
+    Named rather than folded into a count: a shape can be wrong, and the number it hides is
+    never compared, so the lines have to be where a reader can check them.
+    """
+    shown = ", ".join(str(n) for n in lines[:12]) + (" …" if len(lines) > 12 else "")
+    if len(lines) == 1:
+        return f"{path.name}: line {shown}, read as a reference entry by its shape"
+    return f"{path.name}: lines {shown}, read as reference entries by their shape"
 
 
 # --------------------------------------------------------------------------- discrimination

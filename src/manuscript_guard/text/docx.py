@@ -39,9 +39,11 @@ W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml")
 BODY, NOTES = PARTS[0], PARTS[1:]
 
-# Put in front of a heading paragraph while the text is assembled, and taken out once its
-# line is known. XML 1.0 cannot carry this character, so no document text contains it.
+# Put in front of a heading paragraph, or one inside a table cell, while the text is
+# assembled, and taken out once its line is known. XML 1.0 cannot carry these characters,
+# so no document text contains them.
 _HEADING_MARK = "\x1e"
+_CELL_MARK = "\x1f"
 _HEADING_NAME = re.compile(r"heading\s*[1-9]", re.IGNORECASE)
 
 
@@ -57,19 +59,26 @@ class DocxText:
     notes: str
     #: 0-based indexes of the lines of `body` whose paragraph is styled as a heading.
     headings: frozenset[int]
+    #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
+    #: column header rather than the start of a bibliography.
+    cells: frozenset[int] = frozenset()
 
     @property
     def text(self) -> str:
         return _tidy(f"{self.body}\n{self.notes}") if self.notes else self.body
 
 
-def _in_deletion(node: ET.Element, parents: dict) -> bool:
+def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
     current = parents.get(node)
     while current is not None:
-        if current.tag == W + "del":
+        if current.tag == tag:
             return True
         current = parents.get(current)
     return False
+
+
+def _in_deletion(node: ET.Element, parents: dict) -> bool:
+    return _inside(node, parents, W + "del")
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -111,7 +120,9 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")
         elif node.tag == W + "p":
-            pieces.append("\n" + (_HEADING_MARK if _is_heading(node, headings) else ""))
+            heading = _HEADING_MARK if _is_heading(node, headings) else ""
+            cell = _CELL_MARK if _inside(node, parents, W + "tc") else ""
+            pieces.append("\n" + heading + cell)
         elif node.tag == W + "tr":
             pieces.append("\n")
         elif node.tag == W + "tab":
@@ -150,11 +161,12 @@ def read_docx_text(path: Path) -> DocxText:
             raise NotADocx(str(exc)) from exc
 
     marked = _tidy(text_of(BODY, _heading_styles(archive, names, path.name)))
-    headings = frozenset(
-        index for index, line in enumerate(marked.split("\n")) if line.startswith(_HEADING_MARK)
-    )
+    lines = marked.split("\n")
+    headings = frozenset(i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK))
+    cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
     notes = _tidy("\n".join(text_of(part) for part in NOTES if part in names))
-    return DocxText(body=marked.replace(_HEADING_MARK, ""), notes=notes, headings=headings)
+    body = marked.replace(_HEADING_MARK, "").replace(_CELL_MARK, "")
+    return DocxText(body=body, notes=notes, headings=headings, cells=cells)
 
 
 def read_docx(path: Path) -> str:

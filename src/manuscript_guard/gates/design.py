@@ -60,13 +60,19 @@ def _read_plan(path: Path) -> tuple[str, Finding | None]:
     fails at every stage — from the one gate that is meant never to block. The headings
     are what this gate reads, and they survive a replaced accent; the warning is for
     everything else that will read the file. A byte-order mark is stripped, since in front
-    of the first `#` it stops the title being a heading.
+    of the first `#` it stops the title being a heading, and line endings are made `\\n`,
+    since decoding bytes does not translate them and a setext underline followed by `\\r`
+    is not an underline.
     """
     raw = path.read_bytes()
+
+    def lines(text: str) -> str:
+        return text.replace("\r\n", "\n").replace("\r", "\n")
+
     try:
-        return raw.decode("utf-8-sig"), None
+        return lines(raw.decode("utf-8-sig")), None
     except UnicodeDecodeError as exc:
-        return raw.decode("utf-8", errors="replace"), Finding(
+        return lines(raw.decode("utf-8", errors="replace")), Finding(
             gate=GATE,
             code="plan-not-utf8",
             severity=WARN,

@@ -532,3 +532,16 @@ def test_an_output_with_nul_bytes_and_no_bom_is_named_not_misread(tmp_path: Path
     values, used, skipped = load_backing([path])
     assert used == [] and values == set()
     assert any("out.txt" in item and "NUL" in item for item in skipped)
+
+
+def test_lines_read_as_references_by_their_shape_are_named(tmp_path: Path) -> None:
+    """A shape can be wrong, and a number it hides is never compared, so the report says
+    which lines it took for reference entries instead of folding them into a count."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\nSmith J, Jones K. Title. Lancet. 2019;393:100-10.\n", "utf-8"
+    )
+    report = audit([paper], [outputs])
+    assert any("line 3" in item and "shape" in item for item in report.not_audited)

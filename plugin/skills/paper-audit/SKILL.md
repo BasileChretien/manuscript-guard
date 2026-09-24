@@ -92,18 +92,22 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | A reference entry | See below |
 | `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
 
-The reference list starts at a line that is only a heading such as `References`,
+A reference list starts at a line that is only a heading such as `References`,
 `Reference list`, `Bibliography`, `Works cited` or `Literature cited`, with or without a
-leading `#`, a number (`5`, `5.`, `5)`), bold, or a trailing colon. It ends at the next
-heading: a Markdown heading, or in a `.docx` a paragraph styled as one. The report names the
-lines it skipped under `Not audited`. Check that range. In a `.docx` whose headings are only
-bold text, the list runs to the end of the body, and an appendix after it goes unread.
+leading `#`, a number (`5.`, `5)`, or a bare `5` before a capitalised heading), bold, or a
+trailing colon. A table cell reading `References` is a column header, not a heading. The
+list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
+Every such list is cut, and the report names the lines under `Not audited`. Check each
+range. In a `.docx` whose headings are only bold text, the list runs to the end of the body,
+and an appendix after it goes unread.
 
 Only when there is no such heading is a line taken for a reference entry by its shape, and
 only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
 2021.", or the numbered styles' "Smith J, Jones K. … 2019;393:100-10.". A Harvard entry with
 no full stop after "(2019)", or a book, web page or online-first article in a numbered
-style, is not recognised, and its numbers show up as unmatched: noise, not a hidden number.
+style, is not recognised, and its numbers show up as unmatched. The shape can also accept a
+line that is not a reference, so the report names every line it took for one, under
+`Not audited`. Read those lines.
 
 ## 5. Say what a clean report does not mean
 

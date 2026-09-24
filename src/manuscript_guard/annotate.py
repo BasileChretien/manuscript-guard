@@ -193,6 +193,7 @@ def annotate(
             marks_from_tables.extend(table_marks)
         elif placeholder.namespace == "figure" and project is not None:
             from manuscript_guard.build.assemble import find_figure
+            from manuscript_guard.build.document import relative_to_root
 
             figure = find_figure(project, placeholder.key)
             if figure is None:
@@ -203,7 +204,7 @@ def annotate(
                 (
                     placeholder.start,
                     placeholder.end,
-                    Mark("", "", f"![]({shown.resolve().as_posix()})", "", ""),
+                    Mark("", "", f"![]({relative_to_root(project, shown)})", "", ""),
                 )
             )
 
@@ -344,6 +345,7 @@ def figure_sheet(project, results) -> str:
     the figure, but the declared presentational values, the review verdict and the date. A
     sheet holds all of that; an overlay holds one of them badly.
     """
+    from manuscript_guard.build.document import relative_to_root
     from manuscript_guard.contracts._schema import read_structured
     from manuscript_guard.gates.figures import _declared
     from manuscript_guard.paths import FIGURE_SCRIPT_SUFFIXES
@@ -380,7 +382,7 @@ def figure_sheet(project, results) -> str:
         # is the artefact of record; this sheet only needs the picture to be visible.
         raster = (figure.with_suffix(ext) for ext in (".png", ".jpg"))
         shown = next((path for path in raster if path.exists()), figure)
-        out.append(f"![]({shown.resolve().as_posix()})\n")
+        out.append(f"![]({relative_to_root(project, shown)})\n")
 
         declared = figure.with_name(f"{figure.stem}.guard.yaml")
         review = figure.with_name(f"{figure.stem}.review.yaml")

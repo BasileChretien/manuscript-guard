@@ -26,11 +26,14 @@ from manuscript_guard.text.docx import NotADocx, read_docx
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
+# A fixed timestamp, so the same body always gives the same bytes (see test_transcribe).
+FIXED_TIME = (2020, 1, 1, 0, 0, 0)
+
 
 def make_docx(path: Path, body: str) -> Path:
     document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("word/document.xml", document)
+        archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
     return path
 
 

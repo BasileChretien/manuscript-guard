@@ -16,9 +16,9 @@ later, the first time the analysis changed. So a paragraph where a number or a c
 changed is refused, and the co-author's point has to be made at its source, in the analysis
 or the ledger.
 
-**The round trip has never been through a real co-author round, and running it has shown it
-can lose text** (step 4). Treat every `--apply` as something to check, not something that
-has been checked.
+**The round trip has never been through a real co-author round.** Earlier versions lost text
+while reporting success (step 4 lists what is now refused instead). Treat every `--apply` as
+something to check, not something that has been checked.
 
 ## 1. Before sending
 
@@ -66,14 +66,19 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | a number or citation in the paragraph changed. The whole paragraph is refused, including any rewording in it |
-| `deleted in Word, left in place here` | not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one file; `--apply` reorders from the text on disk, so bindings stay intact |
-| `moved into a different file` | not applied; move it in the `.md` yourself |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, it has a footnote, a link, display maths or an HTML comment, text was typed where it renders nothing, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
+| `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
+| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared** |
 
-The preview shows the Word text, not the Markdown that will be written. The stamp check
-refuses a document built from a different version of the source; see step 6.
+Anything refused, joined, deleted or moved between sections or files makes the command exit
+1, with or without `--apply`; the safe changes are still applied.
+
+A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
+merged` line shows what came back from Word. The stamp check refuses a document built from
+a different version of the source; see step 6.
 
 For the paragraphs nobody compared, look yourself. Converting both documents to text shows
 every difference, compared or not:
@@ -87,21 +92,35 @@ git diff --no-index sent.txt returned.txt
 A new paragraph, a changed heading, a list or quotation edit, or a table edit is typed into
 the `.md`, or taken back to the analysis if it touched a number.
 
-## 4. Do not apply when the dry run shows any of these
+## 4. What `import` refuses on its own, and what still needs you
 
-Each has been seen to corrupt the source while `import` reported success:
+Each of these once corrupted the source while `import` reported success. They are now
+handled, and each has a test:
 
-- **A move together with any rewording.** The rewordings are written at positions measured
-  before the reorder, so text lands inside the wrong paragraph and a binding can be cut in
-  half. `check` may not notice. Port the edits by hand instead.
-- **A paragraph split in two in Word.** The first half keeps the identity, and the source
-  paragraph is cut down to it.
-- **Two paragraphs joined in Word.** The text is duplicated.
-- **Anything that looks like XML in a preview line** (`</w:r>`, `<w:t`): a tab in Word
-  leaks raw markup into the merge.
+- A move together with rewording is applied in one pass: the paragraph goes to its new
+  place in its section, reworded if it was. A move into another section is reported and not
+  applied, rather than pushing a paragraph out of every section in between.
+- A paragraph split in two in Word is refused, not cut down to its first half.
+- Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
+  So is a heading joined into the paragraph under it.
+- A tab or other Word layout in a paragraph no longer leaks XML into the merge.
+- A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
+  (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit
+  added after the number, is not caught: read those in the diff.
 
-There is no way to apply some hunks and not others, so in these cases port the edits by hand
-from the dry run and the text diff above.
+What is still yours to do by hand: every refused, joined or deleted paragraph, and every
+paragraph without an identifier. Port those edits from the dry run and the text diff above.
+`--apply` takes all the safe changes at once; there is no way to pick among them, so if the
+dry run shows a merge you do not want, port the whole import by hand instead.
+
+Two things in this version still need care:
+
+- A reworded paragraph that has a binding or a citation *and* an apostrophe, a quotation
+  mark or a `--` in its prose is refused as "could not be lined up with its own source":
+  pandoc typesets those characters, so the prose no longer matches. Port that edit by hand.
+- A paragraph with a narrative citation (`@key`, no brackets) and no binding merges the
+  citation back as plain text, "Smith (2020)", and one with inline math loses the equation.
+  Before applying, find those paragraphs in the dry run and port them by hand.
 
 ## 5. Apply, then read what was written
 
@@ -113,13 +132,16 @@ manuscript-guard check
 
 Read the whole diff. What to look for:
 
-- A binding cut short: a `{{` without its `}}`.
-- Formatting lost. An edited stretch of text comes back as plain text, so bold and italics in
-  it are gone. A paragraph with no bindings or citations is replaced whole, and loses its
-  footnotes and link targets too.
+- Formatting lost. An edited stretch of text comes back as plain text, so bold, italics and
+  inline code in it are gone. (A paragraph with a footnote or a link is refused instead,
+  because merging it would delete them.)
+- A citation that became text: `Smith (2020)` where the source had `@smith2020`.
+- Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
+  paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
-- A changed number that got through as a digit next to a binding: `1{{results.ror.point}}`.
+- A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed
+  placeholder; it should not happen, and if it does, it is a bug to report.
 
 After an import the internal review records covering the edited files are stale, and the
 built document is out of date. Rebuild before sending anything on.
@@ -148,8 +170,9 @@ be read.
 ## If you are a model doing this
 
 Never run `--apply` without having read the dry run in full, and never report an import as
-done without having read `git diff`. The command's exit code and its "bindings intact" line
-have both been seen alongside a corrupted source.
+done without having read `git diff`. In earlier versions the command's exit code and its
+"bindings intact" line were both seen alongside a corrupted source, and the round trip has
+still not been through a real co-author round.
 
 When a co-author changed a number, do not type their number into the source to make the
 paragraph merge. Ask whether the analysis should change, and if so, change it there.

@@ -19,12 +19,10 @@ heading or what is code, the toolkit is wrong by definition.
 
 from __future__ import annotations
 
-import html
 import json
 import re
 import shutil
 import subprocess
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -460,13 +458,11 @@ def pandoc_docx(markdown: str, output: Path) -> Path:
 
 
 def word_paragraphs(document: Path) -> list[str]:
-    """The text of every paragraph in the body, read the way `import` reads one."""
-    xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
-    return [
-        re.sub(r"\s+", " ", html.unescape("".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p))))
-        .strip()
-        for p in re.findall(r"<w:p(?:\s[^>]*)?(?:/>|>.*?</w:p>)", xml, re.DOTALL)
-    ]
+    """The text of every block in the body, read by the reader `import` uses. A table is
+    one block, and reads as the marker `<table>` so that it cannot pass for a paragraph."""
+    from manuscript_guard.roundtrip import read_blocks
+
+    return ["<table>" if block.table else block.text for block in read_blocks(document)]
 
 
 @pytest.mark.parametrize("name", sorted(TAGGING))

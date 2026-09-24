@@ -293,87 +293,26 @@ def _unexamined(document: Path, identified: int) -> str:
     )
 
 
-def _crossed_files(known: dict, order: list[str]) -> list[str]:
-    """Identifiers that came back sitting among a different file's paragraphs.
-
-    `_reorder` groups by the *original* file, so a paragraph cut from one file and pasted
-    into another was silently repositioned inside the file it came from and never applied
-    to the file it went to. The docstring promised it would be "left alone and reported";
-    it was neither.
-    """
-    present = [name for name in order if name in known]
-    crossed = []
-    for position, name in enumerate(present):
-        home = known[name][0]
-        neighbours = [
-            known[other][0]
-            for other in present[max(0, position - 1) : position + 2]
-            if other != name
-        ]
-        if neighbours and home not in neighbours:
-            crossed.append(name)
-    return crossed
-
-
-def _reorder(project, known: dict, order: list[str]) -> None:
-    """Put the source paragraphs back in the order the returned document has them.
-
-    Per file, and only among the paragraphs that moved: the text is taken from disk, never
-    from Word, so a paragraph full of bindings survives a move intact. A paragraph that
-    moved between files is left alone and reported, because splicing across files is a
-    different operation from reordering within one.
-    """
-    from pathlib import Path as _Path
-
-    by_file: dict[_Path, list[str]] = {}
-    for name in order:
-        if name in known:
-            by_file.setdefault(known[name][0], []).append(name)
-
-    for path, names in by_file.items():
-        text = path.read_text(encoding="utf-8")
-        # Only the paragraphs that actually reached the document. A source paragraph that
-        # renders to nothing - an HTML comment, for instance - has no bookmark to come
-        # back, and counting it made every reorder look like a paragraph leaving the file.
-        present = set(names)
-        mine = [n for n in known if known[n][0] == path and n in present]
-        wanted = [n for n in names if n in set(mine)]
-        if len(wanted) != len(mine):
-            continue  # a paragraph left this file; not a reordering
-        blocks = [known[n][1] for n in wanted]
-        # Right to left, at the offsets the identifiers carry, so an earlier splice cannot
-        # move a later one and a repeated paragraph cannot be confused for its twin.
-        for name, replacement in sorted(
-            zip(mine, blocks, strict=True), key=lambda pair: known[pair[0]][2], reverse=True
-        ):
-            _p, para, start = known[name]
-            text = text[:start] + replacement + text[start + len(para) :]
-        path.write_text(text, encoding="utf-8", newline="\n")
-
-
 def cmd_import(args: argparse.Namespace) -> int:
     """Bring a co-author's edits back from Word, without losing the bindings.
 
     Everything is keyed on the invisible identifier each paragraph carries, so "which
     paragraph is this" is an exact question. That makes moves and wording changes orthogonal:
-    a paragraph can be reordered, reworded, or both, and each is handled on its own terms.
+    a paragraph can be reordered, reworded, or both, and `merge` applies all of it in one
+    pass from one reading of the file.
     """
     import tempfile
 
-    from manuscript_guard.build.document import pandoc as _pandoc
     from manuscript_guard.gates.review import document_digest
+    from manuscript_guard.merge import apply_plan, plan_import
     from manuscript_guard.roundtrip import (
         RoundTripError,
         comments_in,
-        moves,
-        paragraph_order,
-        paragraph_text,
-        realign,
+        read_blocks,
         stamp_of,
         tagged_paragraphs,
     )
 
-    _ = _pandoc
     project, _loaded = load_project(args.path)
     edited = args.document
     if not edited.exists():
@@ -406,104 +345,51 @@ def cmd_import(args: argparse.Namespace) -> int:
     namespace, results, _literature, _r = load_namespace(project)
     assembled, _ar = assemble(project, namespace, results)
 
+    # The document as it was sent, rebuilt from the source, is what the returned one is
+    # compared with - so import needs everything a build needs, pandoc first.
     with tempfile.TemporaryDirectory() as scratch:
         reference = Path(scratch) / "reference.docx"
-        build_document(project, assembled, mode=OFFLINE, output=reference)
-        rendered = paragraph_text(reference)
-        original_order = paragraph_order(reference)
+        try:
+            build_document(project, assembled, mode=OFFLINE, output=reference)
+        except BuildError as exc:
+            print(
+                f"manuscript-guard: import compares {edited.name} with a fresh build of the "
+                f"source, and the build failed: {exc}",
+                file=sys.stderr,
+            )
+            return 2
+        sent = read_blocks(reference)
 
-    returned = paragraph_text(edited)
+    try:
+        returned = read_blocks(edited)
+        comments = comments_in(edited)
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     known = tagged_paragraphs(project)
-    comments = comments_in(edited)
-
-    # A move needs no content from Word - the text is already on disk - so it is safe even
-    # for a paragraph solid with bindings, and it is handled separately from any rewording.
-    moved = moves([n for n in original_order if n in returned], paragraph_order(edited))
-
-    merged, refused, gone = [], [], []
-    for name, source in known.items():
-        was, now = rendered.get(name), returned.get(name)
-        if was is None:
-            continue
-        if now is None:
-            gone.append((name, source[1]))
-            continue
-        if re.sub(r"\s+", " ", was).strip() == re.sub(r"\s+", " ", now).strip():
-            continue
-        rebuilt = realign(source[1], was, now)
-        (merged if rebuilt else refused).append((name, source, was, now, rebuilt))
+    plan = plan_import(known, sent, returned)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything
     # the co-author newly wrote - is invisible to this command, and saying nothing about
     # that let a co-author believe they had corrected a table when the correction went
     # nowhere.
-    unexamined = _unexamined(edited, len(returned))
+    unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
 
-    if not (moved or merged or refused or gone or comments):
+    if plan.empty and not comments:
         print("nothing came back: the document matches the manuscript on disk.")
         if unexamined:
             print(f"  {unexamined}")
         return 0
 
-    crossed = set(_crossed_files(known, paragraph_order(edited)))
-    moved = [entry for entry in moved if entry[0] not in crossed]
-    if crossed:
-        print(f"{len(crossed)} paragraph(s) were moved into a different file:")
-        for name in sorted(crossed):
-            print(f"    {known[name][1].strip()[:80]}")
-        print(
-            "    Not applied. Moving a paragraph between files is a different operation "
-            "from reordering within one; do it in the .md yourself."
-        )
-
-    if moved:
-        print(f"{len(moved)} paragraph(s) came back in a different place:")
-        for name, was_at, now_at in moved:
-            print(f"    position {was_at} -> {now_at}: {known[name][1].strip()[:80]}")
-
-    verb = "merging" if args.apply else "would merge"
-    for _name, source, _was, now, _rebuilt in merged:
-        where = source[0].relative_to(project.root).as_posix()
-        print(f"\n{verb} into {where}:")
-        print(f"    + {now.strip()[:150]}")
-
-    for _name, _source, _was, now, _rebuilt in refused:
-        print("\nNOT merged:")
-        print(f"    + {now.strip()[:150]}")
-        print(
-            "    a number or a citation in this paragraph changed. Those come from the "
-            "analysis and the ledger; change them there, not in the document."
-        )
-
-    for _name, text in gone:
-        print(f"\ndeleted in Word, left in place here: {text.strip()[:110]}")
-        print("    delete it in the .md yourself if that was intended.")
+    _report_plan(project, known, plan, applying=args.apply)
 
     if args.apply:
-        if moved:
-            _reorder(project, known, paragraph_order(edited))
-            print(f"\nreordered {len(moved)} paragraph(s) in the manuscript source.")
-        # By offset, never by text. `text.replace(original, rebuilt, 1)` rewrote the
-        # *first* paragraph reading that way, and a limitation restated in the Abstract and
-        # the Discussion is ordinary in a paper - so an edit to the Discussion copy silently
-        # rewrote the Abstract and left the Discussion alone. Two corruptions, nothing
-        # reported, after the identifier had been established precisely to avoid guessing.
-        # Spliced at the offset the identifier carries, never by searching for the text.
-        # `text.replace(original, rebuilt, 1)` rewrote the *first* paragraph reading that
-        # way, so an edit to a sentence restated later in the paper corrupted the earlier
-        # copy and left the edited one alone - with nothing reported either time.
-        by_path: dict[Path, list[tuple[int, int, str]]] = {}
-        for _name, source, _was, _now, rebuilt in merged:
-            path, original, start = source
-            by_path.setdefault(path, []).append((start, start + len(original), rebuilt))
-        for path, spans in by_path.items():
-            text = path.read_text(encoding="utf-8")
-            for start, end, rebuilt in sorted(spans, reverse=True):
-                text = text[:start] + rebuilt + text[end:]
-            path.write_text(text, encoding="utf-8", newline="\n")
-        if merged:
-            print(f"merged {len(merged)} reworded paragraph(s), bindings intact.")
+        apply_plan(known, plan)
+        if plan.moved:
+            print(f"\nreordered {len(plan.moved)} paragraph(s) in the manuscript source.")
+        if plan.merged:
+            print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
     for comment in comments:
         print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
@@ -516,15 +402,66 @@ def cmd_import(args: argparse.Namespace) -> int:
     if unexamined:
         print(f"\n{unexamined}")
 
-    if not args.apply and (moved or merged):
+    if not args.apply and (plan.moved or plan.merged):
         print(f"\n`manuscript-guard import {edited} --apply` applies the safe changes.")
 
     # Comments alone are not a failure. Exit 1 meant a hook or a CI step keyed on the code
-    # reported a problem when a co-author had done nothing but leave notes.
-    outstanding = bool(refused or gone) or (not args.apply and (moved or merged))
+    # reported a problem when a co-author had done nothing but leave notes. Anything not
+    # applied is: a paragraph moved into another file was reported "not applied" and still
+    # exited 0.
+    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
+        not args.apply and bool(plan.moved or plan.merged)
+    )
     return 1 if outstanding else 0
 
 
+def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
+    """Say what the returned document changed and what will, or will not, be applied."""
+
+    def where(name: str) -> str:
+        return known[name][0].relative_to(project.root).as_posix()
+
+    def opening(name: str) -> str:
+        return known[name][1].strip()[:80]
+
+    if plan.misplaced:
+        print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
+        for name in sorted(plan.misplaced):
+            print(f"    {opening(name)}")
+        print(
+            "    Not applied. A move past a heading, a table or a figure, or into another "
+            "file, changes how many paragraphs a section holds, and import only reorders "
+            "within one; move it in the .md yourself."
+        )
+
+    if plan.moved:
+        print(f"{len(plan.moved)} paragraph(s) came back in a different place:")
+        for name, was_at, now_at in plan.moved:
+            print(f"    position {was_at} -> {now_at}: {opening(name)}")
+
+    verb = "merging" if applying else "would merge"
+    for name, rebuilt in plan.merged.items():
+        print(f"\n{verb} into {where(name)}:")
+        print(f"    + {rebuilt.strip()[:150]}")
+
+    for refusal in plan.refused:
+        print(f"\nNOT merged into {where(refusal.name)}:")
+        print(f"    + {refusal.text.strip()[:150]}")
+        for line in refusal.why:
+            print(f"    {line}")
+
+    for group in plan.joined:
+        print(f"\n{len(group)} paragraphs came back joined into one, in {where(group[0])}:")
+        for name in group:
+            print(f"    {opening(name)}")
+        print(
+            "    Not applied: each of them is left as it was. Join them in the .md yourself "
+            "if that was intended, and make any rewording there."
+        )
+
+    for name in plan.gone:
+        print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
+        print("    delete it in the .md yourself if that was intended.")
 
 
 def _seeded(source: Path) -> list[dict]:
@@ -1645,11 +1582,16 @@ def _survive_the_console() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from manuscript_guard.roundtrip import RoundTripError
+
     args = build_parser().parse_args(argv)
     _survive_the_console()
+    # Every error this toolkit raises on purpose says what went wrong in words. Catching
+    # only the contract errors here meant `import` without pandoc, or `respond --from` a
+    # file that is not a .docx, ended in a traceback instead of that sentence.
     try:
         return int(args.func(args))
-    except ContractError as exc:
+    except (ContractError, BuildError, RoundTripError) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 

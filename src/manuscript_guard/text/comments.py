@@ -21,9 +21,11 @@ first wins, so the only way to know is to read from the left.
 What counts, as pandoc 3.9.0.2 reads it (`-f markdown -t native`):
 
 * A run of N backticks opens a code span closed by the next run of exactly N, which may
-  not lie past a blank line or into a fenced block. A run with no closer gives up one
-  backtick as text and the rest try again: in `` ```<!--`` `` the last two open a span
-  around `<!--`. Inside a code span a backslash is only a backslash.
+  not lie past a blank line. It may lie past a fence line: a fence interrupts a paragraph,
+  but not a code span that is already open, and the listing becomes part of the span. A
+  run with no closer gives up one backtick as text and the rest try again: in
+  `` ```<!--`` `` the last two open a span around `<!--`. Inside a code span a backslash
+  is only a backslash.
 * A backslash outside code escapes the character after it, so `` \\` `` opens nothing and
   neither does `\\<!--`.
 * A fenced block that starts first is code, and a `<!--` inside it opens nothing. A comment
@@ -53,7 +55,8 @@ _RUN = re.compile(r"`+")
 _BLANK_LINE = re.compile(r"\n(?=[ \t\r]*\n)")
 _NUL = re.compile("\x00")
 _CLOSE = re.compile("-->")
-_EARLY_END = re.compile(r"--(?:\s+|!)>")
+# HTML's whitespace, not Python's: a no-break space there does not end the comment.
+_EARLY_END = re.compile(r"--(?:[ \t\n\f\r]+|!)>")
 
 
 class _Next:
@@ -120,7 +123,7 @@ def comment_spans(text: str, fences: Sequence[Fence] | None = None) -> list[tupl
         fences = fenced_spans(text)
     nuls = [found.start() for found in _NUL.finditer(text)]
     stops = [found.start() for found in _BLANK_LINE.finditer(text)]
-    runs = _Runs(text, sorted(stops + nuls + [fence.start for fence in fences]))
+    runs = _Runs(text, sorted(stops + nuls))
     closes = _Next(_CLOSE, text)
     early = _Next(_EARLY_END, text)
 

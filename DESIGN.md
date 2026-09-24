@@ -1976,8 +1976,8 @@ Closed since, and why each mattered:
   cut is named under "Not audited".
 - **The comment scanner knows code spans, fences and the front matter, and no other
   Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
-  does, but it ends a code span only at a blank line, a fence or a front-matter value's
-  edge, where pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  does, but it ends a code span only at a blank line or a front-matter value's edge, where
+  pandoc also ends one at the edge of a list item, a blockquote or a heading.
   And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
   or TeX maths as its own, where pandoc reads the enclosing construct first. So
   ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
@@ -1985,6 +1985,12 @@ Closed since, and why each mattered:
   `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
   list item, and a `<!--` in an indented code block is read as a comment, though pandoc
   prints it as code. The old regex did all of this and more.
+- **Only a front-matter block at the very first character keeps a comment in its value.**
+  Each rendered value is read on its own, so a `<!--` in the title stops at the title's
+  end. But a block behind a byte-order mark, or a second metadata block further down, which
+  pandoc also reads, is prose to the toolkit, and so are the YAML boundaries inside a value
+  it keeps: a `<!--` in one keyword runs through the next to a `-->`, and a `# -->` YAML
+  comment after a quoted title closes one opened in it.
 - **A fence opened inside a comment still pairs with a closer after it.** A comment that
   starts first runs over a listing, as pandoc reads it, but `text/fences.py` does not know
   about comments. So the opening fence of a half-commented listing pairs with the next fence

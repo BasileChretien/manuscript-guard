@@ -150,9 +150,14 @@ def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[in
     return comment_spans(view, fenced_spans(text) if fences is None else fences)
 
 
+def blank(text: str, spans: list[tuple[int, int]]) -> str:
+    """`text` with `spans` replaced by spaces, offsets and newlines kept."""
+    return _filled(text, spans, " ")
+
+
 def blank_comments(text: str) -> str:
     """`text` with the comments `mask` drops replaced by spaces, offsets and newlines kept."""
-    return _filled(text, html_comments(text), " ")
+    return blank(text, html_comments(text))
 
 
 def mask(text: str) -> str:

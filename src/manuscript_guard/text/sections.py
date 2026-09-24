@@ -20,8 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, blank_comments, mask
+from manuscript_guard.text.fences import blank_fences, fenced_spans
+from manuscript_guard.text.masking import FRONTMATTER, blank, html_comments, mask
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -104,15 +104,18 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-    out = blank_fences(blank_comments(text))
+    # Both found in the text as written. Blanking the comments first made a line like
+    # "```<!-- TODO -->" a bare closing fence, which paired with an earlier opener and
+    # blanked the headings between them.
+    fences = fenced_spans(text)
+    out = blank(text, [(f.start, f.end) for f in fences] + html_comments(text, fences))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter.
     opening = FRONTMATTER.match(out)
     if opening is None:
         return out
-    blank = "".join("\n" if ch == "\n" else " " for ch in opening.group(0))
-    return blank + out[opening.end() :]
+    return blank(out, [(0, opening.end())])
 
 
 @dataclass(frozen=True)

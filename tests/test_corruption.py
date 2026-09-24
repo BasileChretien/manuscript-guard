@@ -1373,13 +1373,20 @@ def test_audit_reads_prose_between_comment_markers_in_code(tmp_path: Path) -> No
         "<!-- draft\n```r\nx <- 1 # -->\n```\n\nThe ROR was 9.99. <!-- a -->\n",
         "---\ntitle: Stripping <!-- markers\n---\n\nThe ROR was 9.99. <!-- note -->\n",
         "<!-- Cut after review --\n> The pilot ROR was 9.99.\n-->\n",
+        "Set `<!-- ROR 9.99\n```\n-->\n```\n` in the template.\n",
     ],
-    ids=["closed in a listing", "opened in the title", "cut short by --, newline, >"],
+    ids=[
+        "closed in a listing",
+        "opened in the title",
+        "cut short by --, newline, >",
+        "code across a fence line",
+    ],
 )
-def test_audit_reads_prose_after_a_comment_pandoc_ends_early(tmp_path: Path, paper: str) -> None:
-    """Each comment ends before the next `-->` for pandoc, which prints 9.99: at a `-->`
-    inside a listing, at the end of the title it was opened in, or nowhere at all, because
-    pandoc's HTML reader stops at `--` and `>` and then prints the whole thing."""
+def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, paper: str) -> None:
+    """Pandoc prints 9.99 in each. The first three comments end before the next `-->`: at
+    one inside a listing, at the end of the title they were opened in, or nowhere, because
+    pandoc's HTML reader stops at `--` and `>` and then prints the whole thing. In the last
+    the `<!--` is code, and a code span already open runs across the fence lines."""
     from manuscript_guard.audit import audit
 
     outputs = _outputs(tmp_path, '{"n": 1}')

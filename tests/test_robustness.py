@@ -92,6 +92,25 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
+    """The shortcut that fixed the test above rejected only openers *wider* than one already
+    known to have no closer. Openers each narrower than the last still read to the end of
+    the file, and 400 KB of them took 33 seconds: the binding parser now reads fences
+    whenever a paper holds `<!--`, so that reached `parse` too."""
+    from manuscript_guard.text.fences import fenced_spans
+
+    def measure(openers: int) -> float:
+        text = "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
+        started = time.perf_counter()
+        fenced_spans(text)
+        return time.perf_counter() - started
+
+    measure(5)  # warm the caches
+    small = max(measure(25), 1e-3)
+    large = measure(100)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 # ---------------------------------------------------------------- hostile files
 
 

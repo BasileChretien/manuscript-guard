@@ -102,6 +102,9 @@ CONSTRUCTS = {
     "hash after a comment opened in the front matter": (
         '---\nnote: "<!-- legacy"\n---\n\n## Real\n\nProse. <!-- a -->\n'
     ),
+    "hash before a fence line that ends in a comment": (
+        f"## Real\n\nWe used\n{FENCE}\n\n## Also real\n\nProse.\n\n{FENCE}<!-- TODO -->\n"
+    ),
     "setext inside a blockquote": "## Real\n\n> Fake\n> ----\n\nProse.\n",
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
@@ -237,6 +240,9 @@ COMMENT_CASES = {
     "closed in a listing": f"<!-- draft\n{FENCE}r\nx # -->\n{FENCE}\n\nROR 9.99. <!-- a -->\n",
     "around a listing": f"<!--\n{FENCE}r\nx <- 1\n{FENCE}\n9.99 -->\n",
     "opened in the title": "---\ntitle: Strip <!-- markers\n---\n\nROR 9.99. <!-- note -->\n",
+    "code across a fence line": f"Set `<!-- ROR 9.99\n{FENCE}\n-->\n{FENCE}\n` in it.\n",
+    "code across a listing": f"a `<!--\n{FENCE}\ncode\n{FENCE}\nb`\n\nROR 9.99. -->\n",
+    "no-break space is not an end": "a <!-- x -- > 9.99 --> b\n",
 }
 
 

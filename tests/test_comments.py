@@ -57,6 +57,10 @@ PRINTED = {
     "code opened in the title": (
         "---\ntitle: A stray `\n---\n\nStrip `<!--` first; 9.99; then `-->`.\n"
     ),
+    # A fence interrupts a paragraph, but not a code span already open: the listing becomes
+    # part of the span, and the `-->` in it closes no comment.
+    "code across a fence line": f"Set `<!-- ROR 9.99\n{FENCE}\n-->\n{FENCE}\n` in the template.\n",
+    "code across a listing": f"a `<!--\n{FENCE}\ncode\n{FENCE}\nb`\n\nThe ROR was 9.99. -->\n",
 }
 
 
@@ -77,6 +81,8 @@ HIDDEN = {
     "a double dash inside a comment": "a <!-- x -- y 9.99 --> b\n",
     "a double dash before other text and >": "a <!-- x --x> 9.99 --> b\n",
     "a comment around a listing": f"<!--\n{FENCE}r\nx <- 1\n{FENCE}\n9.99 -->\n",
+    # HTML's whitespace is not Python's: `--`, a no-break space, `>` does not end it.
+    "a double dash, a no-break space and >": "a <!-- x -- > 9.99 --> b\n",
 }
 
 
@@ -106,6 +112,16 @@ def test_a_heading_after_code_that_names_a_comment_is_a_heading() -> None:
 )
 def test_a_comment_that_pandoc_ends_early_hides_no_heading(opening: str) -> None:
     text = f"{opening}\n# Methods\n\nx\n\n# Results\n\ny <!-- z -->\n"
+    assert headings(text) == ["Methods", "Results"]
+
+
+def test_a_comment_after_a_fence_does_not_make_it_a_closer() -> None:
+    """Comments were blanked before fences were looked for, so "```<!-- TODO -->" became a
+    bare closing fence. It paired with the stray opener above and blanked `## Results`."""
+    text = (
+        f"## Methods\n\nWe used\n{FENCE}\n\n## Results\n\nThe ROR was 9.99.\n\n"
+        f"{FENCE}<!-- TODO: listing -->\n"
+    )
     assert headings(text) == ["Methods", "Results"]
 
 

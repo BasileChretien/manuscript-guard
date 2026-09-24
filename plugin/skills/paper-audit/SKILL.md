@@ -120,15 +120,15 @@ and neither is `# References` as a comment in a fenced R listing or typed into a
 paragraph with no heading style. In Markdown, nothing in a fenced block, an HTML comment or
 the front matter starts a list. A table cell
 reading `References` is a column header, not a heading. The
-list ends at the next heading: a Markdown heading (or a `#` line pandoc prints as prose, so
-an appendix written that way is not read as more references), or in a `.docx` a paragraph
-styled as one.
+list ends at the next heading: a Markdown heading (or a `#` or underlined line that pandoc
+prints as prose, so an appendix written that way is not read as more references), or in a
+`.docx` a paragraph styled as one.
 Every such list is cut, and the report names the lines under `Not audited`. Check each
 range. Code that is not fenced is not recognised as code, whether it is an unfenced or
 indented listing in Markdown or a listing pasted into Word. A `References` line in it does
 start a list, and in Markdown so does a `# References` comment that starts a block (after
-a blank line, say), which pandoc prints as a heading. In a `.docx` whose headings are only bold text, the list
-runs to the end of the body, and an appendix after it goes unread.
+a blank line, say), which pandoc prints as a heading. In a `.docx` whose headings are only
+bold text, the list runs to the end of the body, and an appendix after it goes unread.
 
 Only when there is no such heading is a line taken for a reference entry by its shape, and
 only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.

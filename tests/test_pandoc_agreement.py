@@ -271,6 +271,9 @@ CONSTRUCTS = {
     "atx under a fence in a paragraph starting p. 12": "p. 12 of it\n~~~\nx\n~~~\n## Methods\n",
     "atx under a div with a colon in its class": "::: fig:one\nProse.\n:::\n## Results\n",
     "setext titled with a block tag": "Some text.<pre>\n-------\n",
+    "atx under a fence opened in the front matter": (
+        f"---\ntitle: T\nabstract: |\n  {FENCE}\n---\n\n## Results\n\n{FENCE}\n"
+    ),
 }
 
 

@@ -1988,6 +1988,9 @@ Closed since, and why each mattered:
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. It needs a paper that
   writes both markers in backticks, and the comment scanner would have to know code spans.
+  The heading scan also blanks comments before it looks for front matter, so a `<!--`
+  inside a YAML value, closed after the front matter ends, hides the closing `---` from
+  it: a `# Methods` line in the YAML then heads the body, which the build prints without it.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2171,6 +2174,15 @@ Closed since, and why each mattered:
 - **Two protected tokens with nothing between them cannot be aligned.**
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
   one rendering ends and the next begins. The paragraph is refused.
+- **Paragraph identifiers move when the rules that split a source change.** An identifier
+  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
+  the stamp records the sources' digest but not the rules that split them. A document sent
+  out before such a change and imported after it has its identifiers pointing at other
+  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
+  wrong one. 0.2.9 is such a change for a source whose front matter has a blank line after
+  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
+  none of these; a document built from one before 0.2.9 has to be rebuilt and sent again.
+  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

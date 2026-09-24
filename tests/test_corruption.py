@@ -216,6 +216,24 @@ def test_malformed_binding_is_caught(project: Path) -> None:
     assert "malformed-placeholder" in codes(gate_report(project))
 
 
+def test_a_binding_cut_in_half_is_caught(project: Path) -> None:
+    """The shape a bad merge leaves: an opening `{{` and a key with no closing brace at all.
+
+    `import --apply` once spliced a reworded paragraph at an offset a reorder had already
+    moved, and left `{{lit.agency.withdrawnWhether the signal extends...` in the source.
+    The loose pattern needed at least one closing brace to call anything a placeholder, so
+    `check` reported nothing wrong and `build` printed the fragment into the document.
+    """
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "{{lit.agency.withdrawn_estimate}}", "{{lit.agency.withdrawn"
+        ),
+        encoding="utf-8",
+    )
+    assert "malformed-placeholder" in codes(gate_report(project))
+
+
 def test_unreferenced_result_is_caught(project: Path) -> None:
     """Direction two: a value the analysis declares as quoted that nothing quotes."""
     path = main_md(project)

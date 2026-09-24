@@ -167,9 +167,12 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
                         )
                     )
                     continue
-                # Absolute, because the rendered file lives in build/ and pandoc resolves
-                # relative paths against the input's directory.
-                replacement = f"![]({figure.resolve().as_posix()})"
+                # Relative to the project root, which pandoc runs from. It was absolute, and
+                # pandoc records an image's path as the picture's description - so every
+                # document sent to a co-author carried the builder's home directory.
+                from manuscript_guard.build.document import relative_to_root
+
+                replacement = f"![]({relative_to_root(project, figure)})"
 
             if replacement is not None:
                 rendered = (

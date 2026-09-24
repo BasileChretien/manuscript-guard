@@ -36,6 +36,11 @@ RELS = f"""<?xml version="1.0" encoding="UTF-8"?>
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
+# `writestr` given a bare name stamps the entry with the current time, to two seconds, so
+# two writes of the same table that straddle a tick differ byte for byte, and a test that
+# checksums one write and builds from the next fails now and then.
+FIXED_TIME = (2020, 1, 1, 0, 0, 0)
+
 
 def make_docx(path: Path, rows: list[list[str]], split_runs: bool = False) -> Path:
     """A .docx with one table. `split_runs` chops each cell across several w:t elements,
@@ -58,10 +63,14 @@ def make_docx(path: Path, rows: list[list[str]], split_runs: bool = False) -> Pa
         f"<?xml version='1.0' encoding='UTF-8'?><w:document {NS}><w:body>"
         f"<w:tbl>{''.join(body)}</w:tbl></w:body></w:document>"
     )
+    parts = {
+        "[Content_Types].xml": CONTENT_TYPES,
+        "_rels/.rels": RELS,
+        "word/document.xml": document,
+    }
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("[Content_Types].xml", CONTENT_TYPES)
-        archive.writestr("_rels/.rels", RELS)
-        archive.writestr("word/document.xml", document)
+        for name, data in parts.items():
+            archive.writestr(zipfile.ZipInfo(name, FIXED_TIME), data)
     return path
 
 
@@ -360,6 +369,37 @@ def test_a_matching_checksum_passes(tmp_path: Path) -> None:
     recipe = _recipe_with(tmp_path, sha256=digest)
     _path, count, _unverified = build_profile(recipe, tmp_path, tmp_path / "out")
     assert count == 1
+
+
+def test_make_docx_gives_the_same_bytes_across_a_clock_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test above checksums one make_docx write and builds from a second.
+
+    Entries stamped with the clock made the two differ whenever they straddled a two-second
+    tick, and the checksum test failed now and then. Here the clock jumps two seconds every
+    time zipfile reads it, so going back to stamped entries fails every run.
+    """
+    import itertools
+    import time
+    import types
+
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)  # Python 3.14 prefers it
+    ticks = itertools.count(1_600_000_000, 2)
+    clock = types.SimpleNamespace(time=lambda: next(ticks), localtime=time.localtime)
+    monkeypatch.setattr(zipfile, "time", clock)
+
+    def stamped(path: Path) -> bytes:
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", "<w:document/>")
+        return path.read_bytes()
+
+    assert stamped(tmp_path / "s1.zip") != stamped(tmp_path / "s2.zip"), "the clock never ticked"
+
+    rows = [["", "Item No.", "Recommendation"], ["Title", "1", "Identify the study design", ""]]
+    first = make_docx(tmp_path / "a.docx", rows).read_bytes()
+    second = make_docx(tmp_path / "b.docx", rows).read_bytes()
+    assert first == second
 
 
 def test_the_licence_notice_names_the_source_and_terms() -> None:

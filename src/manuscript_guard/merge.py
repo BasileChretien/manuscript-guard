@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import Alignment, align, moves
+from manuscript_guard.roundtrip import _SCAN, Alignment, align, moves
 
 
 @dataclass(frozen=True)
@@ -67,12 +67,13 @@ class Plan:
     #: paragraphs held in place that the paragraph belongs to, which is what a move is applied
     #: within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
-    #: The kind of each table or figure of the document as sent that the returned one could
-    #: not be matched with: deleted, pasted twice, or changed while others of its kind were
-    #: added or removed. A move past one of them cannot be seen.
+    #: The kind of each table, figure or equation of the document as sent that the returned
+    #: one could not be matched with: deleted, pasted twice, or changed while others of its
+    #: kind were added or removed. A move past one of them cannot be seen.
     lost: tuple[str, ...] = ()
-    #: Headings, tables and figures that came back in another place, as (kind, text): kind is
-    #: "table", "figure", or "text" for a heading or caption. None of them moves in the .md.
+    #: Headings, tables, figures and equations that came back in another place, as (kind,
+    #: text): kind is "table", "figure", "equation", or "text" for a heading or caption. None
+    #: of them moves in the .md.
     strayed: tuple[tuple[str, str], ...] = ()
 
     @property
@@ -149,8 +150,22 @@ _BLOCK_LINE = re.compile(
     r"|^[ \t]{0,3}(?:=+|-+)[ \t]*$",
     re.MULTILINE | re.IGNORECASE,
 )
-#: Display maths, which Word sets apart as a paragraph of its own wherever it stands.
-_DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
+
+
+def _bare(para: str) -> tuple[str, bool]:
+    """A paragraph's source with every inline construct the rewording reads blanked out, and
+    whether one of them is display maths, which Word sets apart as a paragraph of its own.
+
+    Read with the same scan as a rewording, so that `$$` or `<!--` inside backticks, a
+    footnote or a closed comment is what it is. Searched for as written, they held a
+    paragraph explaining them in inline code, and refused its rewording as display maths or
+    as an open comment.
+    """
+    out, display = list(para), False
+    for match in _SCAN.finditer(para):
+        display = display or (match.lastgroup == "math" and match.group(0).startswith("$$"))
+        out[match.start() : match.end()] = " " * (match.end() - match.start())
+    return "".join(out), display
 
 
 def _held_in_place(
@@ -191,13 +206,14 @@ def _held_in_place(
                 found.setdefault(before[path][0], "runs-on")
         elif not rendered[name].strip():
             found[name] = "empty"
-        elif para.rfind("<!--") > para.rfind("-->"):
+        elif "<!--" in (bare := _bare(para))[0]:
             # Found by what it opens, not by what follows it: whatever the comment holds
             # after the blank line - a heading, a fence - comes before any tagged paragraph.
+            # A closed comment is blanked out of `bare`, so an opening left in it is unclosed.
             found[name] = "runs-on"
         elif _BLOCK_LINE.search(para):
             found[name] = "glued"
-        elif name in in_parts or _DISPLAY_MATHS.search(para):
+        elif name in in_parts or bare[1]:
             found[name] = "in-parts"
         before[path] = (name, start + len(para))
     return found
@@ -208,8 +224,8 @@ def _text_counterparts(reference: list[Block], returned: list[Block]) -> dict[in
 
     Matched as a sequence, so that of two headings reading "Outcome" each is paired with its
     own. Matched one text at a time, first come first served, renaming or deleting the first
-    made the second stand in for it, and the second was reported as moved. A text the sequence
-    leaves over that is unique in both documents is paired too, which is how a heading
+    made the second stand in for it, and the second was reported as moved. A text of which the
+    sequence leaves exactly one copy over on each side is paired too, which is how a heading
     dragged elsewhere is still recognised.
     """
 
@@ -225,13 +241,21 @@ def _text_counterparts(reference: list[Block], returned: list[Block]) -> dict[in
         for a, b, size in matcher.get_matching_blocks()
         for k in range(size)
     }
-    in_sent = Counter(text for _i, text in sent)
-    in_back = Counter(text for _j, text in back)
-    where = {text: i for i, text in sent}
     taken = set(found.values())
+    left_sent: dict[str, list[int]] = {}
+    for i, text in sent:
+        if i not in taken:
+            left_sent.setdefault(text, []).append(i)
+    left_back: dict[str, list[int]] = {}
     for j, text in back:
-        if j not in found and in_sent[text] == 1 == in_back[text] and where[text] not in taken:
-            found[j] = where[text]
+        if j not in found:
+            left_back.setdefault(text, []).append(j)
+    # One copy left over on each side is the same heading, wherever it now is. Paired only
+    # when its text was unique in the whole document, a dragged "Outcome" with another
+    # "Outcome" elsewhere in the paper was paired with nothing, and the drag went unreported.
+    for text, js in left_back.items():
+        if len(js) == 1 and len(left_sent.get(text, ())) == 1:
+            found[js[0]] = left_sent[text][0]
     return found
 
 
@@ -405,11 +429,13 @@ def _misplaced(
         elif block.text and boundaries.get(key := ("text", texts.get(index))):
             sequence.append((("text", block.text), boundaries[key].popleft(), 2))
 
-    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 1 if the diff
-    # called it moved and 2 otherwise, a held one 3, and a boundary more than all of them.
-    tiers = {0: 0, 1: 3, 2: 3 * len(sequence) + 1}
+    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 2 if the diff
+    # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them. At
+    # 3 against 1 and 2, a held paragraph dragged past two paragraphs the diff had split
+    # between moved and not tied with them, and the tie named the two.
+    tiers = {0: 0, 1: 5, 2: 5 * len(sequence) + 1}
     weight = [
-        tiers[tier] or (1 if what in moved else 2) for what, _rank, tier in sequence
+        tiers[tier] or (2 if what in moved else 4) for what, _rank, tier in sequence
     ]
     best, back = list(weight), [-1] * len(sequence)
     for j in range(len(sequence)):

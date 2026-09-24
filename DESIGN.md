@@ -1285,12 +1285,19 @@ paragraphs together, so dragged to the top of the Methods it had the four paragr
 passed reported instead. It now outweighs one paragraph and not two. Whether a paragraph
 reaches Word in parts is still judged within the sections the source has. Judged within the
 finer sections that holding creates, a one-line comment after a definition list hid the
-split, and a rewording of the term deleted the definition.
+split, and a rewording of the term deleted the definition. Whether a paragraph opens a
+comment or holds display maths is read with the same scan the rewording uses, so `$$` or
+`<!--` inside backticks, a footnote or a closed comment holds nothing. Searched for as
+written, they held a paragraph that explained them in inline code.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
 made the second stand in for the first once the first was renamed or deleted. The second
-was then reported as having moved, and a real move in the same document went unnamed.
+was then reported as having moved, and a real move in the same document went unnamed. A
+text the sequence leaves exactly one copy of on each side is then paired too, which is how
+a dragged heading is still found: paired only when its text was unique in the whole paper,
+a dragged "Outcome" with another "Outcome" elsewhere was paired with nothing, and the drag
+went unreported.
 
 A table or a figure is a boundary only if it can be found again in the returned document.
 They were matched by position, both kinds together, and only while their total was
@@ -1305,7 +1312,9 @@ from the Results and another pasted into the Funding were taken for one table, a
 deletion went unreported. One that cannot be found is reported and makes the command exit
 1, because a move past it cannot be seen. A heading, table or figure that is found but came
 back somewhere else is reported too. It had been the anchor the ordering dropped, which
-named nothing.
+named nothing. A display equation is a block of the same kind, known by its text. Word
+keeps it as OMML, whose text is not `w:t`, so it was read as an empty paragraph: dragged
+into another section or deleted, it came back as "nothing came back".
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
@@ -2393,9 +2402,10 @@ Closed since, and why each mattered:
   another reason and that ends its section is not recognised: a rewording of its first part
   would replace the rest, and a move of its first part would carry the rest along.
 - **A duplicated heading is matched with the one it copies only when that is unambiguous.**
-  Headings and captions are paired as a sequence. A pasted copy of one, or a heading
-  that shares its text with another and left the sequence, is paired with nothing, so a move
-  past it is not seen and the copy is not reported.
+  Headings and captions are paired as a sequence, and then any text of which one copy is
+  left over on each side. A pasted copy of a heading that is still in place is paired with
+  nothing and is not reported; a heading dragged elsewhere while a copy of it was pasted is
+  paired with nothing either, so that drag, and a move past it, is not seen.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section

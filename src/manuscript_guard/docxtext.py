@@ -32,6 +32,7 @@ W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _VML_IMAGE = "{urn:schemas-microsoft-com:vml}imagedata"
+_M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 _RELS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 
 #: Subtrees whose text is not on the page once every tracked change is accepted, or is not
@@ -91,17 +92,17 @@ class Block:
     #: Where each marked binding or citation sits in `text`, as (start, end). Only a
     #: document built with the tokens marked has any.
     tokens: tuple[tuple[int, int], ...] = ()
-    #: "table" or "figure" for a block that is not prose, "" for a paragraph.
+    #: "table", "figure" or "equation" for a block that is not prose, "" for a paragraph.
     kind: str = ""
-    #: What tells a table or a figure apart from the others in another copy of the document:
-    #: a digest of a table's text, or of the picture a figure shows. Word renumbers and
-    #: renames the parts a picture is stored in when it saves; the picture stays the same.
-    #: Empty when the picture could not be read.
+    #: What tells a table, a figure or an equation apart from the others in another copy of
+    #: the document: a digest of a table's text, of the picture a figure shows, or of the
+    #: equation. Word renumbers and renames the parts a picture is stored in when it saves;
+    #: the picture stays the same. Empty when the picture could not be read.
     key: str = ""
 
     @property
     def table(self) -> bool:
-        """A table or a figure: a block that is not prose, and not compared."""
+        """A table, a figure or an equation: a block that is not prose, and not compared."""
         return bool(self.kind)
 
 
@@ -118,6 +119,9 @@ class _Paragraph:
     tokens: tuple[tuple[int, int], ...] = ()
     #: The relationship ids of the pictures it shows, in order.
     embeds: tuple[str, ...] = ()
+    #: The text of the equation it holds, None when it holds none. Word keeps maths as
+    #: OMML, whose text is not `w:t`.
+    maths: str | None = None
 
 
 def _text(element: ET.Element) -> str:
@@ -212,8 +216,11 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
     )
     text, tokens = _read(element)
+    maths = None
+    if element.find(f".//{_M}oMath") is not None:
+        maths = "".join(node.text or "" for node in element.iter(_M + "t"))
     return _Paragraph(
-        tuple(names), text, tuple(comments), runs_on, table, picture, tokens, embeds
+        tuple(names), text, tuple(comments), runs_on, table, picture, tokens, embeds, maths
     )
 
 
@@ -274,6 +281,13 @@ def blocks(document: Path) -> list[Block]:
             seen = [pictures.get(rid) for rid in paragraph.embeds]
             key = _digest(seen) if seen and all(seen) else ""
             out.append(Block(kind="figure", key=key))
+            continue
+        if paragraph.maths is not None and not paragraph.names and not paragraph.text:
+            # Display maths: an equation and no text. Read as an empty paragraph, it could be
+            # dragged into another section or deleted and import said "nothing came back".
+            out.extend(_fold(pending))
+            pending = []
+            out.append(Block(kind="equation", key=_digest([paragraph.maths])))
             continue
         pending.append(paragraph)
         if not paragraph.runs_on:

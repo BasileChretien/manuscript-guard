@@ -72,7 +72,7 @@ It changes nothing and reports each paragraph:
 | `came back in a different place` | a move within one section (between the same two headings, tables, figures, HTML comments or fences); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
 | `moved into a different section or file` | a move past a heading, table or figure, past a paragraph import holds in place (an HTML comment, which Word shows as an empty line; a paragraph that opens a comment or holds display maths; or one with a fence or other such line directly under it), or into another file. A held paragraph dragged past two paragraphs or more is named here itself; dragged past one, that one is named. Not applied; move it in the `.md` yourself |
 | `came back somewhere else` | a heading, table or figure was dragged to another place in Word, or a caption or the equation of a display-maths paragraph was. Not applied; move the heading, the table's or figure's placeholder, or the paragraph the caption or equation belongs to, in the `.md` yourself |
-| `could not be found in the returned one` | a table or figure was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
+| `could not be found in the returned one` | a table, figure or display equation was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
 
 Anything refused, joined, deleted or moved between sections or files, and any heading, table
@@ -108,8 +108,8 @@ handled, and each has a test:
   definition or a heading's underline written directly under a paragraph stays where it
   is: that paragraph is neither moved nor reworded.
 - Tables and figures are recognised by what they hold, so deleting a table or pasting in a
-  picture no longer hides a paragraph moved past a figure, and a heading, table or figure
-  dragged elsewhere is reported rather than passed over.
+  picture no longer hides a paragraph moved past a figure, and a heading, table, figure or
+  display equation dragged elsewhere or deleted is reported rather than passed over.
 - A paragraph split in two in Word is refused, not cut down to its first half.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.

@@ -432,7 +432,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         return known[name][0].relative_to(project.root).as_posix()
 
     def opening(name: str) -> str:
-        return known[name][1].strip()[:80]
+        # On one line: a held comment's source runs over several.
+        return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
@@ -447,9 +448,13 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         )
 
     if plan.strayed:
-        print(f"{len(plan.strayed)} heading(s), table(s) or figure(s) came back somewhere else:")
+        print(
+            f"{len(plan.strayed)} heading(s), table(s), figure(s) or equation(s) came back "
+            f"somewhere else:"
+        )
         for kind, text in plan.strayed:
-            print(f"    '{text[:80]}'" if kind == "text" else f"    a {kind}")
+            article = "an" if kind == "equation" else "a"
+            print(f"    '{text[:80]}'" if kind == "text" else f"    {article} {kind}")
         print(
             "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
             "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
@@ -465,7 +470,7 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Nothing about them is applied, and a paragraph moved past one cannot be seen. "
             "Tables and figures are built from the analysis: change them there, or remove "
-            "the placeholder from the .md."
+            "the placeholder from the .md. An equation is edited in the .md."
         )
 
     if plan.moved:

@@ -2563,6 +2563,7 @@ def test_a_line_that_opens_or_closes_a_block_is_never_merged_or_moved_away(
 WORDML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main"
+OMML = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 
 def word_document(path: Path, body: str, pictures: dict[str, bytes] | None = None) -> Path:
@@ -2575,7 +2576,8 @@ def word_document(path: Path, body: str, pictures: dict[str, bytes] | None = Non
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             "word/document.xml",
-            f'<w:document xmlns:w="{WORDML}" xmlns:r="{RELS}" xmlns:a="{DRAWINGML}">'
+            f'<w:document xmlns:w="{WORDML}" xmlns:r="{RELS}" xmlns:a="{DRAWINGML}" '
+            f'xmlns:m="{OMML}">'
             f"<w:body>{body}</w:body></w:document>",
         )
         archive.writestr(
@@ -2862,7 +2864,8 @@ def test_a_paragraph_with_display_maths_is_held_where_it_ends_its_section(
     known = {name: (path, w, text.index(w)) for name, w in words.items()}
     intro, methods = Block((), "Intro"), Block((), "Methods")
     p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second, using")
-    parts = [Block((), "x = y"), Block((), "as the measure.")]
+    # The equation is a paragraph of its own in Word, with no text a reader of `w:t` sees.
+    parts = [Block(kind="equation", key="x=y"), Block((), "as the measure.")]
     m1 = Block(("m1",), "Methods one.")
     sent = [intro, p1, p2, *parts, methods, m1]
 
@@ -2870,6 +2873,173 @@ def test_a_paragraph_with_display_maths_is_held_where_it_ends_its_section(
     assert plan.misplaced and not plan.moved
     apply_plan(known, plan)
     assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_display_equation_is_a_block_of_its_own(tmp_path: Path) -> None:
+    """Word keeps display maths as OMML, which has no `w:t`, so the equation's paragraph was
+    read as an empty untagged block: neither a boundary nor anything a report could name."""
+    from manuscript_guard.docxtext import blocks as read
+
+    equation = (
+        "<w:p><m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r><m:r><m:t>=y</m:t></m:r>"
+        "</m:oMath></m:oMathPara></w:p>"
+    )
+    other = equation.replace("=y", "=z")
+    found = read(word_document(tmp_path / "maths.docx", equation + equation + other))
+    assert [b.kind for b in found] == ["equation"] * 3
+    assert found[0].key == found[1].key != found[2].key
+
+
+def _display_maths(tmp_path: Path):
+    """'# A': 'Alpha.', a paragraph with display maths in it, 'Omega.'; '# B': 'Beta.'."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = (
+        "# A\n\nAlpha.\n\nThe ratio is\n$$x = y$$\nwhere x counts.\n\nOmega.\n\n"
+        "# B\n\nBeta.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {
+        "alpha": "Alpha.",
+        "p": "The ratio is\n$$x = y$$\nwhere x counts.",
+        "omega": "Omega.",
+        "beta": "Beta.",
+    }
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), w) for name, w in words.items()}
+    b["p"] = Block(("p",), "The ratio is")
+    b.update(
+        a=Block((), "A"),
+        equation=Block(kind="equation", key="x=y"),
+        tail=Block((), "where x counts."),
+        B=Block((), "B"),
+    )
+    order = ["a", "alpha", "p", "equation", "tail", "omega", "B", "beta"]
+    return path, text, known, b, [b[n] for n in order]
+
+
+@pytest.mark.parametrize("change", ["equation-dragged", "equation-deleted", "part-below-it"])
+def test_a_display_equation_moved_or_deleted_in_word_is_reported(
+    tmp_path: Path, change: str
+) -> None:
+    """Dragged into another section or deleted, the equation came back as "nothing came
+    back", exit 0; so did the first part of its paragraph dragged below it."""
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, b, sent = _display_maths(tmp_path)
+    if change == "equation-dragged":
+        returned = [block for block in sent if block is not b["equation"]] + [b["equation"]]
+    elif change == "equation-deleted":
+        returned = [block for block in sent if block is not b["equation"]]
+    else:
+        at = sent.index(b["p"])
+        returned = [*sent[:at], b["equation"], b["p"], *sent[at + 2 :]]
+
+    plan = plan_import(known, sent, returned)
+    assert not plan.empty
+    if change == "equation-dragged":
+        assert plan.strayed == (("equation", ""),)
+    elif change == "equation-deleted":
+        assert plan.lost == ("equation",)
+    else:
+        assert plan.misplaced == ("p",)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+@needs_pandoc
+def test_a_display_equation_dragged_elsewhere_in_a_real_build_is_reported(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, because the unit tests gave the equation block text a real build does not
+    have: dragged alone into the Introduction, the equation came back as "nothing came
+    back", exit 0."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    maths = (
+        "The ratio itself is\n$$\\mathrm{ROR} = \\frac{a d}{b c}$$\n"
+        "where a to d are counts.\n\n"
+    )
+    text = source.read_text(encoding="utf-8")
+    anchor = "Reporting follows the checklist"
+    source.write_text(text.replace(anchor, maths + anchor, 1), encoding="utf-8")
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+
+    def edit(xml: str) -> str:
+        equation = re.search(r"<w:p>(?:(?!<w:p>).)*?<m:oMathPara>.*?</w:p>", xml, re.DOTALL)
+        assert equation, "display maths reaches Word as a paragraph of its own"
+        tagged = tagged_xml(xml)
+        xml = xml.replace(equation.group(0), "", 1)
+        return xml.replace(tagged[1], tagged[1] + equation.group(0), 1)
+
+    returned = rewrite(document, tmp_path / "equation.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    assert "an equation" in capsys.readouterr().out
+
+
+def test_a_dragged_heading_that_shares_its_text_is_still_reported(tmp_path: Path) -> None:
+    """Paired as a sequence, a dragged heading drops out of the sequence; paired afterwards
+    only when its text was unique, a dragged "Outcome" with another "Outcome" in the paper
+    was paired with nothing, and the drag came back as "nothing came back"."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, sent = _two_outcomes(tmp_path)
+    returned = [b["o1"], *[block for block in sent if block is not b["o1"]]]
+    plan = plan_import(known, sent, returned)
+    assert plan.strayed == (("text", "Outcome"),)
+    assert not plan.misplaced
+
+
+def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) -> None:
+    """The source was searched for `$$` and `<!--` as written, so a paragraph explaining them
+    in inline code was held in place: its rewording refused as display maths or as an open
+    comment, and a move past it refused."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "maths": "Display maths goes between `$$` signs.",
+        "comment": "An HTML comment opens with `<!--` and a note.",
+        "plain": "A plain paragraph after them.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    shown = {name: text.replace("`", "") for name, text in paragraphs.items()}
+    sent = [Block((name,), shown[name]) for name in paragraphs]
+
+    reworded = [Block(b.names, b.text.replace(".", ", as ever.")) for b in sent]
+    plan = plan_import(known, sent, reworded)
+    assert not plan.refused, [r.why for r in plan.refused]
+    assert set(plan.merged) == set(paragraphs)
+
+    moved = plan_import(known, sent, [sent[2], sent[0], sent[1]])
+    assert not moved.misplaced and moved.moved
+
+
+def test_a_held_paragraph_dragged_past_two_that_were_swapped_is_the_one_named(
+    tmp_path: Path,
+) -> None:
+    """A held paragraph weighed exactly as much as the two it passed when the diff called one
+    of them moved, and the tie named the two."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "# A\n\nA one.\n\nA two.\n\n<!-- a note -->\n\n# B\n\nB one.\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"a1": "A one.", "a2": "A two.", "c": "<!-- a note -->", "b1": "B one."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), "" if name == "c" else w) for name, w in words.items()}
+    heading_a, heading_b = Block((), "A"), Block((), "B")
+    sent = [heading_a, b["a1"], b["a2"], b["c"], heading_b, b["b1"]]
+    returned = [heading_a, b["c"], b["a2"], b["a1"], heading_b, b["b1"]]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == ("c",)
 
 
 def test_a_held_paragraph_dragged_past_several_is_the_one_named(tmp_path: Path) -> None:

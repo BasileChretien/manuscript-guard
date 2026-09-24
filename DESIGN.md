@@ -1321,7 +1321,13 @@ Word's text is literal, and the source is Markdown, so every character in what c
 that Markdown could read as markup is escaped, its edges read with the binding or citation
 that will stand beside them: `(see Table 2)` typed straight after a citation's `]` was a
 link. `CYP2D6\*4` is shown in Word as `CYP2D6*4`; written back bare it opened italics, and a
-co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. Two other ways
+co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. A `(` straight
+after any `]` is escaped, because the `]` may close a `[` of the source's own, in a stretch
+kept as it was. A `{` typed before a binding is written `&lbrace;`: escaped as `\{`, it
+joined the binding's own braces into `{{{results.x}}`, which `check` refuses as malformed,
+and `&#123;` put a 123 into the prose for G2 to refuse. A `]` typed straight before a
+binding or a citation is escaped too, whatever follows it: the build fills a value in as it
+is, and one that opened with `(` became a link's address. Two other ways
 were tried and beaten in review. Refusing every escape refused most of a paper converted
 from Word by pandoc, which escapes by habit. Escaping only what this module's reading took
 for markup trusted a reading that is close to pandoc's and not the same: `<LLOQ in mg/L and
@@ -2197,6 +2203,13 @@ Closed since, and why each mattered:
     link here, so an edit to it is refused. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
+  - *The read-back reads a binding as digits, and a `>` is never escaped.* What a binding's
+    value makes of the text beside it is seen only by the escaper, at the edges it knows: a
+    `<`, `&`, `]` or `{` before a binding, a `(` after one. A `<` in a stretch kept as it
+    was, a binding whose value is a word, and a `>` typed after it in Word make a tag:
+    `Samples <LLOQ in {{results.unit}} and >ULOQ were redone.` merges, and pandoc prints
+    "Samples ULOQ were redone." A number in between is not an attribute, so pandoc prints
+    the text.
   - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
     in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
     `import` reads none of them. An edit inside a footnote or an equation, a changed link
@@ -2224,7 +2237,11 @@ Closed since, and why each mattered:
     when it is the only change to the paragraph.
 - **Two protected tokens with nothing between them cannot be aligned.**
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
-  one rendering ends and the next begins. The paragraph is refused.
+  one rendering ends and the next begins. The paragraph is refused. A rewording that deletes
+  everything between two tokens is refused for the same reason, and because nothing is left
+  to escape: `[@jones2019]{{results.ci}}` with a value of `(1.2-3.4)` printed as a link. One
+  that leaves only a space between them merges, prints as typed, and cannot be aligned
+  after that, so the paragraph's next rewording is refused.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

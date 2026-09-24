@@ -476,37 +476,57 @@ def _dash_rule(line: str) -> bool:
     return _DASH_GROUPS.fullmatch(line) is not None and line.count("-") >= 3
 
 
-def _closes_ruled(lines: list[str]) -> bool:
-    """Whether a block ends a table or a YAML block: on its last rule, or on a rule with the
-    table's caption straight under it, which pandoc takes without a blank line between."""
-    edges = [i for i, line in enumerate(lines) if _dash_rule(line) or line.strip() == "..."]
-    if not edges:
+# A table caption, `Table: x`, `table: x`, `: x` or `:x`, which pandoc takes straight under
+# the closing rule. A YAML block closes on `---` or `...`, and only a YAML block on `...`.
+_TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
+_YAML_OPEN = re.compile(r" {0,3}---[ \t]*")
+_YAML_CLOSE = re.compile(r" {0,3}(?:---|\.\.\.)[ \t]*")
+
+
+def _closes_table(lines: list[str]) -> bool:
+    """Whether a block ends a table: on its last rule, or on a rule with the caption
+    straight under it. Not on its first line - `---\\ntable: x` opens a YAML block."""
+    rules = [i for i, line in enumerate(lines) if _dash_rule(line)]
+    if not rules:
         return False
-    after = lines[edges[-1] + 1 :]
-    return not after or _CAPTION.match(after[0]) is not None or (
-        _DEFINITION.match(after[0]) is not None
-    )
+    last = rules[-1]
+    if last == len(lines) - 1:
+        return True
+    return last > 0 and _TABLE_CAPTION.match(lines[last + 1]) is not None
 
 
 def _ruled_spans(pieces: list[str]) -> dict[int, int]:
     """Each block that opens a table or a YAML block running across blank lines, mapped to
     the block that closes it. Without this the middle rows of a three-row multiline table
     were ordinary-looking blocks, and a marker printed into a cell. An opener with nothing
-    after it to close it closes nothing."""
-    opening: dict[int, bool] = {}
-    closing: dict[int, bool] = {}
+    after it to close it closes nothing.
+
+    A table closes only on a rule: a row that happens to read `...` is a row. A bare `---`
+    followed by text may open either, so it closes on whichever comes first.
+    """
+    tables: dict[int, bool] = {}
+    yamls: dict[int, bool] = {}
+    opening: dict[int, str] = {}
     for index in range(0, len(pieces), 2):
         lines = [line for line in pieces[index].split("\n") if line.strip()]
-        if lines:
-            closing[index] = _closes_ruled(lines)
-            opening[index] = _dash_rule(lines[0]) and not closing[index]
+        if not lines:
+            continue
+        tables[index] = _closes_table(lines)
+        yamls[index] = _YAML_CLOSE.fullmatch(lines[-1]) is not None
+        if _dash_rule(lines[0]) and not tables[index]:
+            opening[index] = "either" if _YAML_OPEN.fullmatch(lines[0]) else "table"
     spans: dict[int, int] = {}
-    following: int | None = None
+    next_table: int | None = None
+    next_either: int | None = None
     for index in range(len(pieces) - 1, -1, -1):
-        if opening.get(index) and following is not None:
-            spans[index] = following
-        if closing.get(index):
-            following = index
+        kind = opening.get(index)
+        closer = next_either if kind == "either" else next_table if kind else None
+        if closer is not None:
+            spans[index] = closer
+        if tables.get(index):
+            next_table = index
+        if tables.get(index) or yamls.get(index):
+            next_either = index
     return spans
 
 

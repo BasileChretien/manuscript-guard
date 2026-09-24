@@ -387,6 +387,20 @@ TAGGING = {
         "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
         "-- ---------- ----------\n\nAfter.\n"
     ),
+    "yaml block whose first key is table": (
+        "Before.\n\n---\ntable: x\nabstract: |\n  a\n\n  b\n...\n\nAfter.\n"
+    ),
+    "multiline table with a row reading dots": (
+        "Before.\n\n"
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
+        "            ...\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n\n"
+        "After.\n"
+    ),
+    "multiline table with a caption and no space after the colon": (
+        "Before.\n\n"
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n:Caption.\n\nAfter.\n"
+    ),
     "one-row table with its caption straight under it, then prose": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
         "---------- ----------\nTable: One row.\n\nP1.\n\nP2.\n\nMethods\n-------\n\nP3.\n"

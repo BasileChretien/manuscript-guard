@@ -271,6 +271,15 @@ RULED = {
         "-- ---------- ----------"
     ),
     "yaml closed by dots": "---\ntitle: x\nabstract: |\n  a\n\n  b\n...",
+    "yaml whose first key is table": "---\ntable: x\nabstract: |\n  a\n\n  b\n...",
+    "a row reading dots": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
+        "            ...\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
+    ),
+    "caption with no space after the colon": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n:Caption."
+    ),
 }
 
 
@@ -331,6 +340,24 @@ def test_a_bookmark_in_a_table_cell_is_not_an_identity(tmp_path: Path) -> None:
     )
     assert paragraph_text(document) == {"mg-p-a-3": "Prose."}
     assert paragraph_order(document) == ["mg-p-a-3"]
+
+
+def test_a_comment_in_a_table_cell_is_not_anchored_to_the_cell(tmp_path: Path) -> None:
+    """A reviewer's point anchored to a cell's bookmark would name a block the cell is
+    never the whole of; it stays unanchored, like any other comment on a table."""
+    from manuscript_guard.docxtext import comment_anchors
+
+    def commented(name: str, text: str, ident: str) -> str:
+        return _para(name, text).replace(
+            "<w:r>", f'<w:commentRangeStart w:id="{ident}"/><w:r>', 1
+        )
+
+    cell = f"<w:tc>{commented('mg-p-a-1', 'Apixaban', '7')}</w:tc>"
+    document = _docx_with_body(
+        tmp_path / "returned.docx",
+        f"<w:tbl><w:tr>{cell}</w:tr></w:tbl>{commented('mg-p-a-3', 'Prose.', '8')}",
+    )
+    assert comment_anchors(document) == {"8": "mg-p-a-3"}
 
 
 def test_paragraphs_joined_by_a_line_pandoc_does_not_call_blank_are_not_marked() -> None:

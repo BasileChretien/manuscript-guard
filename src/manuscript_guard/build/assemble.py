@@ -12,7 +12,6 @@ that the Zotero filter can turn it into a live field.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.placeholders import parse
 
 GATE = "BUILD"
@@ -74,9 +74,6 @@ def find_figure(project: Project, key: str) -> Path | None:
     return None
 
 
-_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
-
-
 def strip_front_matter(text: str) -> tuple[str, str]:
     """The body without its YAML header, and the title the header declared.
 
@@ -87,12 +84,15 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     the title page and the manifest from `paper.yaml`, so nothing anywhere reports the
     contradiction. It reproduces in the shipped example, where the two happen to match and
     the stray line reads as a harmless duplicate.
+
+    The block is the one the gates mask, found by the same pattern, so a heading G2 reads is
+    a heading the build prints.
     """
-    found = _FRONT.match(text)
+    found = FRONTMATTER.match(text)
     if not found:
         return text, ""
     declared = ""
-    for line in found.group(1).splitlines():
+    for line in found.group("yaml").splitlines():
         if line.strip().startswith("title:"):
             declared = line.split(":", 1)[1].strip().strip("\"'")
             break

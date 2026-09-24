@@ -888,7 +888,11 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   most-read part of the paper was outside every check. Rendered keys are now read; `lang`,
   `zotero` and the rest of the machinery stay masked. (Later: a `---` followed by a blank
   line was taken for the opening of front matter too. Pandoc prints it as a horizontal rule,
-  with the prose after it, which went unread up to the next `---`.)
+  with the prose after it, which went unread up to the next `---`. The build found the end
+  of the front matter with a pattern of its own, and the two had to be made one: fixed in
+  the gates alone, G2 read a `## Methods` heading that the build still stripped, and
+  `p < 0.001` under it passed as the alpha chosen in advance. There is one pattern now, and
+  `test_pandoc_agreement.py` holds it to pandoc's reading.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1967,13 +1971,19 @@ Closed since, and why each mattered:
   then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
   (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
   take one of two styles, and a heading style is what ends a reference list.
-- **A bare `References` line in code can start a reference list.** In Markdown a line in a
-  fenced block, an HTML comment or the front matter never starts one, and an unmarked
-  `# References` never does anywhere, so an R or Python comment cannot. But an indented
-  block is not blanked, because `pdftotext -layout` indents real headings and a text file
-  is read as Markdown; and a listing pasted into Word as plain paragraphs is not code as
-  far as the reader can tell, so a numpydoc `References` section in one starts a list. The
-  cut is named under "Not audited".
+- **A `References` line in code that is not fenced can start a reference list.** In
+  Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
+  and an unmarked `# References` never does, so an R or Python comment in a fenced listing
+  cannot. But a listing that is not fenced is not code as far as the reader can tell. In
+  Markdown, `# References` at the start of a line there is a heading, and pandoc prints it
+  as one. An indented block is not blanked, because `pdftotext -layout` indents real
+  headings and a text file is read as Markdown. A listing pasted into Word as plain
+  paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
+  named under "Not audited".
+- **A `---` block at the top that is not YAML is taken for front matter.** Pandoc wants a
+  YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
+  gates mask it and the build strips it, so for a paper built here they agree and nothing
+  unread prints. The audit of a Markdown paper rendered some other way does not read it.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. It needs a paper that

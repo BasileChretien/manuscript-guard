@@ -18,10 +18,15 @@ from manuscript_guard.text.fences import fenced_spans
 
 NUL = "\x00"
 
-# Pandoc's rule: the opening `---` must not be followed by a blank line. One that is, is a
-# horizontal rule, and the prose after it prints; read as front matter up to the next
-# `---`, every number in it went unread.
-FRONTMATTER = re.compile(r"\A---\r?\n(?![ \t]*\r?\n).*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
+# Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
+# opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
+# and the prose after it prints. Either delimiter may carry trailing spaces, and `...`
+# closes the block as well as `---`. The build had a copy of its own that differed on each
+# of these, and where the two disagreed a heading could be read by G2 and stripped by the
+# build: `p < 0.001` under it passed as the alpha chosen in advance and printed without it.
+FRONTMATTER = re.compile(
+    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n", re.DOTALL
+)
 
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of

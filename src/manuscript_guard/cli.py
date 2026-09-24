@@ -314,6 +314,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         RoundTripError,
         comments_in,
         read_blocks,
+        records_moves,
         stamp_of,
         tagged_paragraphs,
     )
@@ -387,6 +388,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 0
 
     _report_plan(project, known, plan, applying=args.apply)
+    if not records_moves(edited):
+        print(
+            f"\n{edited.name} was built before manuscript-guard let Word record moves: its "
+            f"settings ask Word not to. A paragraph moved in it comes back as a deletion and new "
+            f"text, and is refused. Rebuild and resend the document for moves to come back."
+        )
 
     if args.apply:
         apply_plan(known, plan)
@@ -457,10 +464,13 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {opening(name)}")
         print(
             "    Their section also came back with text the document as sent did not have - a "
-            "paragraph split, or a new one - or with a paragraph whose identifier is on other "
-            "text (below), so where each of its paragraphs now stands cannot be read with "
-            "certainty. Move them in the .md yourself if the moves were intended."
+            "paragraph split, a new one, a heading or caption edited - or with a paragraph "
+            "whose identifier is on other text, or whose display maths came apart, so where "
+            "each of its paragraphs now stands cannot be read with certainty. Move them in "
+            "the .md yourself if the moves were intended."
         )
+        for text in plan.held_by[:3]:
+            print(f"    new text: {text.strip()[:110]}")
 
     verb = "merging" if applying else "would merge"
     for name, rebuilt in plan.merged.items():
@@ -486,11 +496,11 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(f"\nmoved in Word, left in place here: {known[name][1].strip()[:110]}")
         print(f"    + {text.strip()[:150]}")
         print(
-            "    Word did not record the move, and the copy that came back (above) cannot be "
-            "matched to this paragraph for certain: it was reworded, or reads like another "
-            "paragraph. Move the paragraph in the .md, and make any rewording there. Do not "
-            "delete it and retype Word's copy: its numbers and citations would come back as "
-            "typed text, not as bindings."
+            "    Nothing in the returned document says which paragraph the copy above is - "
+            "Word did not record the move, or recorded one that did not take whole "
+            "paragraphs - so it is not applied. Move the paragraph in the .md, and make any "
+            "rewording there. Do not delete it and retype Word's copy: its numbers and "
+            "citations would come back as typed text, not as bindings."
         )
 
     for name in plan.gone:

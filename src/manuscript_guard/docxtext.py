@@ -270,7 +270,8 @@ def _settled(paragraphs: list[_Paragraph]) -> list[_Paragraph]:
     for move in dict.fromkeys(name for paragraph in out for name in paragraph.moves):
         involved = [i for i, paragraph in enumerate(out) if move in paragraph.moves]
         left = [i for i in involved if out[i].mark == "moveFrom" and not out[i].text]
-        arrived = [i for i in involved if out[i].mark == "moveTo" and out[i].arrived]
+        # Enter at the end of the moved copy marks its mark inserted, not moved.
+        arrived = [i for i in involved if out[i].mark in ("moveTo", "ins") and out[i].arrived]
         if not left or len(left) != len(arrived) or len(left) + len(arrived) != len(involved):
             continue
         for was, now in zip(left, arrived, strict=True):

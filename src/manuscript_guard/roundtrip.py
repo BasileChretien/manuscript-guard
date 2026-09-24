@@ -150,6 +150,23 @@ def stamp_into(document: Path, digest: str) -> None:
     scratch.replace(document)
 
 
+def records_moves(document: Path) -> bool:
+    """Whether Word was free to record a move as a move in this document.
+
+    A document built before the build removed pandoc's setting still asks Word not to, and
+    every paragraph moved in it comes back as a deletion and new text. The document says so
+    itself, which a version number printed nowhere in it could not.
+    """
+    try:
+        with zipfile.ZipFile(document) as archive:
+            if "word/settings.xml" not in archive.namelist():
+                return True
+            settings = archive.read("word/settings.xml").decode("utf-8", "replace")
+    except (OSError, zipfile.BadZipFile):
+        return True
+    return _NO_MOVES.search(settings) is None
+
+
 def stamp_of(document: Path) -> str | None:
     """The source digest a returned document carries, if it carries one."""
     try:

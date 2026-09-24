@@ -1718,7 +1718,7 @@ def _word_paste(
 
     `how` is "tracked-move" (Track Changes on, and Word recording moves), "tracked" (Track
     Changes on, and a move recorded as a deletion and an insertion, which is what Word did
-    with every document built before 0.2.12) or "untracked".
+    with every document built before the build let it record moves) or "untracked".
     """
     removal, arrival = {"tracked-move": ("moveFrom", "moveTo"), "tracked": ("del", "ins")}.get(
         how, ("", "")

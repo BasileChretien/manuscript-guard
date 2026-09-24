@@ -1601,12 +1601,24 @@ The checks that came out of the review rounds guard the tracked path as well:
 - A paragraph that arrived with Track Changes on vouches for nothing beside it. The split
   check looks for new text beside a changed paragraph, and a moved paragraph pasted between
   the halves of a split, carrying its identifier, stood where the second half had.
-- A move is not applied in a section that gained text the document as sent did not have,
-  or that holds an identifier on text that is not its own: where its paragraphs now stand
-  cannot be read with certainty. A paragraph moved between the parts display maths reaches
-  Word in is reported as moved into it, not reordered after the whole paragraph.
-- A rewording that holds the whole of another paragraph is refused, and so is an identifier
-  on text that reads exactly as another paragraph, a heading or a caption did.
+- A move is not applied in a section that gained text the document as sent did not have
+  (a split's second half, a new paragraph, an edited heading or caption, which the report
+  quotes), or that holds an identifier on text that is not its own: where its paragraphs now
+  stand cannot be read with certainty. A paragraph moved in from another section standing
+  beside the new text does not hide which section that is.
+- Display maths reaches Word in parts. A paragraph that came back between the parts, or one
+  whose first part moved without the rest, is reported as moved into the middle of a
+  paragraph, not reordered: the first version moved the whole paragraph, equation and all,
+  when only the line before the equation had moved, and exited 0.
+- A rewording that holds the whole of another paragraph is refused, and so is one that
+  gained most of the words of a paragraph gone from its place, and an identifier on text
+  that reads exactly as another paragraph, a heading or a caption did.
+
+A fourth round, on the tracked path alone, found the display-maths move above, the hidden
+section, and a paragraph pasted onto the end of another merged with it while the report
+advised keeping the vanished original: the text in the source twice. Each is refused now.
+A document built before this change still asks Word not to record moves, and `import` says
+so when one comes back, rather than naming a version the author has no way to check.
 
 `tests/test_roundtrip.py` builds each case from the markup Word wrote, with a helper whose
 documents read the same as Word's own saved files, checked block by block. The pattern is
@@ -2232,8 +2244,9 @@ Closed since, and why each mattered:
   back. A tracked move is read as the move it is; see the next entry for where that stops.
 - **A move is applied only when Word recorded it.** Word does not carry a paragraph's
   identifier when it cuts it (see "A move, the way Word makes one"). What is left:
-  - *A move made with Track Changes off, in a document built before 0.2.12 (which asked Word
-    not to record moves), or with move tracking turned off in Word, is refused.* It is
+  - *A move made with Track Changes off, in a document built before this change (which asked
+    Word not to record moves, and which `import` names), or with move tracking turned off in
+    Word, is refused.* It is
     reported as moved in Word when its words came back elsewhere - most of them in order,
     a judgement that only chooses the words of the refusal - and otherwise as deleted, with
     the advice to move it rather than retype it if it was moved. The author moves it in the
@@ -2245,7 +2258,12 @@ Closed since, and why each mattered:
     in the source twice until the author deletes one, and `check` reports the typed numbers
     as unbound. That is how any number typed in Word arrives, on `main` too.
   - *A section that gained text keeps its order.* A recorded move in a section where a
-    paragraph was also split, or a new one typed, is reported and not applied.
+    paragraph was also split, a new one typed, or a heading or caption beside it edited, is
+    reported with the new text and not applied. So is one in a section whose display maths
+    came apart.
+  - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
+    words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
+    and paraphrased into another, both in one round, has its rewording refused.
   - *A paragraph moved beside a reworded one refuses the rewording*, as new text beside it
     would: it cannot be told from the second half of a split.
   - *A paragraph typed in front of one that is then deleted*, with Track Changes on,

@@ -12,12 +12,11 @@ with the literal it currently renders to — turning a checked manuscript into a
 one that still *passes*, because the literals match what the analysis said at that moment.
 It would fail silently, months later, the first time the analysis changed.
 
-So: **prose comes back; generated things do not.** A hunk that touches a binding, a
-citation, a table or a figure is refused and reported — "Sophie changed 3.84 to 4.02; that
-number is results.ror.point, so change the analysis" — and the refusal is the feature rather
-than a limitation. Comments become review findings, because a co-author's comment is the
-most valuable thing in the returned file and losing it on import would be worse than not
-importing at all.
+So: **prose comes back; generated things do not.** A hunk that touches a binding or a
+citation is refused and reported — "'3.84' comes from results.ror.point. Change the
+analysis, not the document." — and the refusal is the feature rather than a limitation.
+Comments become review findings, because a co-author's comment is the most valuable thing
+in the returned file and losing it on import would be worse than not importing at all.
 
 Everything is keyed on an invisible per-paragraph identifier carried into the document as
 a Word bookmark, so "which paragraph is this" is exact rather than a similarity score.
@@ -75,21 +74,27 @@ class Comment:
 
 _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 
+#: Pandoc's own inputs, which it writes into the document as properties because they are
+#: metadata. They are paths on the machine that built it, and useless to anyone reading it.
+_BUILD_INPUTS = ("bibliography", "csl")
+
 
 def _custom_properties(existing: str | None, digest: str) -> str:
     """The custom-properties part with the source stamp added, every other property kept.
 
     It used to be replaced whole. Pandoc writes metadata there, and Word's Zotero plugin
     keeps a document's citation style there (ZOTERO_PREF_1, ...): the stamp erased the
-    style, and Word asked for one again after every build.
+    style, and Word asked for one again after every build. Kept, except pandoc's own inputs:
+    `bibliography` carried the absolute path of references.bib to every co-author.
     """
     ours = _CUSTOM_XML.format(name=PROPERTY, value=digest)
     if not existing:
         return ours
+    dropped = (PROPERTY, *_BUILD_INPUTS)
     kept = [
         element
         for element in _PROPERTY_ELEMENT.findall(existing)
-        if f'name="{PROPERTY}"' not in element
+        if not any(f'name="{name}"' in element for name in dropped)
     ]
     elements = kept + _PROPERTY_ELEMENT.findall(ours)
     # Property ids must be unique, and custom properties number from 2.
@@ -152,53 +157,33 @@ def comments_in(document: Path) -> list[Comment]:
     Straight out of `word/comments.xml`, because that is where the author and the date are.
     A co-author's comment is the most useful thing in a returned document and the easiest
     to lose.
-    """
-    with zipfile.ZipFile(document) as archive:
-        if "word/comments.xml" not in archive.namelist():
-            return []
-        xml = archive.read("word/comments.xml").decode("utf-8")
 
-    anchors = _comment_anchors(document)
+    The anchor lives in `document.xml`, as a `w:commentRangeStart` inside the paragraph it
+    marks. Paired with the invisible paragraph identifiers, that turns "reviewer 2 said
+    something about the Methods" into a point that knows which paragraph it is about - and
+    a claimed revision can then be checked against *that* paragraph rather than against the
+    file containing it.
+    """
+    from manuscript_guard.docxtext import DocumentUnreadable, comment_anchors, comment_texts
+
+    try:
+        found = comment_texts(document)
+        anchors = comment_anchors(document) if found else {}
+    except DocumentUnreadable as exc:
+        raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
+
     out: list[Comment] = []
-    for block in re.findall(r"<w:comment\b(.*?)</w:comment>", xml, re.DOTALL):
-        author = re.search(r'w:author="([^"]*)"', block)
-        date = re.search(r'w:date="([^"]*)"', block)
-        ident = re.search(r'w:id="([^"]*)"', block)
-        text = " ".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", block, re.DOTALL))
-        if text.strip():
+    for attributes, text in found:
+        if text:
             out.append(
                 Comment(
-                    author=author.group(1) if author else "an unnamed reviewer",
-                    date=(date.group(1)[:10] if date else ""),
-                    text=re.sub(r"\s+", " ", _unescape(text)).strip(),
-                    where=anchors.get(ident.group(1), "") if ident else "",
+                    author=attributes.get("author") or "an unnamed reviewer",
+                    date=attributes.get("date", "")[:10],
+                    text=text,
+                    where=anchors.get(attributes.get("id", ""), ""),
                 )
             )
     return out
-
-
-def _comment_anchors(document: Path) -> dict[str, str]:
-    """Which paragraph each comment is attached to.
-
-    `word/comments.xml` holds the text; the anchor lives in `document.xml`, as a
-    `w:commentRangeStart` inside the paragraph it marks. Paired with the invisible paragraph
-    identifiers, that turns "reviewer 2 said something about the Methods" into a point that
-    knows which paragraph it is about — and a claimed revision can then be checked against
-    *that* paragraph rather than against the file containing it.
-    """
-    with zipfile.ZipFile(document) as archive:
-        if "word/document.xml" not in archive.namelist():
-            return {}
-        xml = archive.read("word/document.xml").decode("utf-8")
-
-    found: dict[str, str] = {}
-    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
-        names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
-        if not names:
-            continue
-        for ident in re.findall(r'<w:commentRangeStart[^>]*w:id="([^"]*)"', block):
-            found[ident] = names[0]
-    return found
 
 
 def _plain(text: str) -> str:
@@ -316,15 +301,23 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
     return found
 
 
+def read_blocks(document: Path):
+    """The body of a document as a reader sees it; see `docxtext.blocks`."""
+    from manuscript_guard.docxtext import DocumentUnreadable, blocks
+
+    try:
+        return blocks(document)
+    except DocumentUnreadable as exc:
+        raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
+
+
 def paragraph_order(document: Path) -> list[str]:
     """The identifiers a returned document carries, in the order they now appear.
 
     Read from the XML because pandoc discards bookmarks on the way back to markdown. This is
     what makes a move visible: the same identifier, in a different place.
     """
-    with zipfile.ZipFile(document) as archive:
-        xml = archive.read("word/document.xml").decode("utf-8")
-    return re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', xml)
+    return [name for block in read_blocks(document) for name in block.names]
 
 
 def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
@@ -366,23 +359,11 @@ def paragraph_text(document: Path) -> dict[str, str]:
     plain text, so a merged segment loses its bold. `realign` limits that to the segments
     that actually changed.
     """
-    with zipfile.ZipFile(document) as archive:
-        xml = archive.read("word/document.xml").decode("utf-8")
-
-    found: dict[str, str] = {}
-    for block in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL):
-        names = re.findall(r'<w:bookmarkStart[^>]*w:name="(mg-p-[^"]+)"', block)
-        if not names:
-            continue
-        text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", block, re.DOTALL))
-        found[names[0]] = re.sub(r"\s+", " ", _unescape(text)).strip()
-    return found
-
-
-def _unescape(text: str) -> str:
-    for entity, char in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"')):
-        text = text.replace(entity, char)
-    return text
+    return {
+        block.names[0]: block.text
+        for block in read_blocks(document)
+        if block.names and not block.table
+    }
 
 
 def segments(paragraph: str) -> tuple[list[str], list[str]]:
@@ -407,40 +388,43 @@ def _flatten(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def realign(source: str, rendered: str, returned: str) -> str | None:
-    """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
+@dataclass(frozen=True)
+class Alignment:
+    """What `align` made of one reworded paragraph, and why not when it made nothing."""
 
-    The paragraph-level merge had to refuse anything carrying a binding, because splicing
-    the returned text in would replace `{{results.ror.point}}` with `3.84`. Refusing is safe
-    and, in a paper where most paragraphs quote a number, refuses almost everything.
+    rebuilt: str | None
+    #: The protected tokens that did not come back as they rendered, as (rendered, token):
+    #: `("3.84", "{{results.ror.point}}")`. This is what lets a refusal name the value and
+    #: where it comes from instead of saying that something, somewhere, changed.
+    changed: tuple[tuple[str, str], ...] = ()
+    #: The paragraph could not be lined up with its own rendering, so nothing can be said
+    #: about which part of it is a number.
+    unaligned: bool = False
+    #: It carries markup that plain Word text cannot bring back: a footnote, a link, an image.
+    markup: bool = False
 
-    Alignment makes the finer move possible. A source paragraph is prose and protected
-    tokens in alternation. Its prose appears verbatim in the rendered form — rendering only
-    changes the protected parts — so locating the prose segments in `rendered` reveals what
-    each token rendered to, *without needing to know how it renders*. That matters for
-    citations, whose rendering depends on a CSL style this code never sees.
 
-    Those rendered forms are then located in the returned text. If any is missing, or they
-    come back in a different order, the co-author changed a number or a citation and the
-    paragraph is refused. Otherwise the text between them is the new prose, and the
-    paragraph is rebuilt from the *source's* tokens and the *co-author's* words.
+#: A word for alignment: a number with its decimal and thousands separators, a run of
+#: letters, a run of whitespace, or one other character. Numbers are whole words so that
+#: '13.84' can never contain '3.84'.
+_WORD = re.compile(r"\d+(?:[.,]\d+)*|[^\W\d_]+|\s+|.", re.DOTALL)
 
-    Searching is sequential, so a paragraph quoting two values that render the same string
-    still pairs them up in order rather than matching both to the first occurrence.
+#: A sign put directly in front of a value changes it.
+_SIGNS = {"-", "−", "+", "±"}
 
-    An unchanged prose segment is kept exactly as the source has it, which preserves its
-    markdown — only a segment the co-author actually edited loses its inline formatting.
+#: Markdown that renders to something plain `w:t` text does not carry. Merging Word's text
+#: over a paragraph with a footnote in it deleted the footnote; with a link, the address.
+_MARKUP = re.compile(r"\^\[|\]\(")
+
+
+def _token_spans(prose: list[str], rendered: str) -> list[tuple[int, int]] | None:
+    """Where each protected token sits in the rendered paragraph: the gaps between the prose.
+
+    Found without knowing how anything renders, which is what makes citations work - their
+    rendering depends on a CSL style this code never sees.
     """
-    prose, protected = segments(source)
-    if not protected:
-        return returned.strip() or None
-
     flat = [_flatten(piece) for piece in prose]
-
-    # What each protected token rendered to: the gaps between the prose segments. Found
-    # without knowing how anything renders, which is what makes citations work - their
-    # rendering depends on a CSL style this code never sees.
-    rendered_tokens: list[str] = []
+    spans: list[tuple[int, int]] = []
     cursor = 0
     if flat[0]:
         at = rendered.find(flat[0])
@@ -453,28 +437,113 @@ def realign(source: str, rendered: str, returned: str) -> str | None:
             at = rendered.find(piece, cursor)
             if at < 0:
                 return None
-            rendered_tokens.append(rendered[cursor:at].strip())
-            cursor = at + len(piece)
+            start, end, cursor = cursor, at, at + len(piece)
         elif index == len(prose) - 1:
-            rendered_tokens.append(rendered[cursor:].strip())
-            cursor = len(rendered)
+            start, end, cursor = cursor, len(rendered), len(rendered)
         else:
             # Two protected tokens with nothing between them: there is no way to say where
             # one rendering ends and the next begins.
             return None
-    if len(rendered_tokens) != len(protected) or any(not token for token in rendered_tokens):
-        return None
+        while start < end and rendered[start].isspace():
+            start += 1
+        while end > start and rendered[end - 1].isspace():
+            end -= 1
+        if start == end:
+            return None
+        spans.append((start, end))
+    return spans
 
-    # The same rendered forms, in the same order, in what came back.
+
+def _words(rendered: str, spans: list[tuple[int, int]]) -> tuple[list[str], list[tuple[int, int]]]:
+    """The rendered paragraph as words, with a word boundary forced at every token's edge.
+
+    Returns the words and, for each token, the range of word indices it occupies.
+    """
+    words: list[str] = []
+    ranges: list[tuple[int, int]] = []
+    cursor = 0
+    for start, end in spans:
+        words += _WORD.findall(rendered[cursor:start])
+        first = len(words)
+        words += _WORD.findall(rendered[start:end])
+        ranges.append((first, len(words)))
+        cursor = end
+    words += _WORD.findall(rendered[cursor:])
+    return words, ranges
+
+
+def _place(
+    tokens: list[str], ranges: list[tuple[int, int]], before: list[str], after: list[str]
+) -> tuple[list[tuple[int, int]], list[int]]:
+    """Where each token's words landed in `after`, and which tokens did not come back whole.
+
+    A token must sit inside one stretch the two texts share, so none of its words changed; a
+    sign typed directly in front of a value that starts that stretch is a change to it.
+    """
+    matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    equal = [op for op in matcher.get_opcodes() if op[0] == "equal"]
+    placed: list[tuple[int, int]] = []
+    missing: list[int] = []
+    for index, (first, last) in enumerate(ranges):
+        block = next((op for op in equal if op[1] <= first and last <= op[2]), None)
+        if block is None:
+            missing.append(index)
+            continue
+        at = first + block[3] - block[1]
+        if first == block[1] and at > 0 and after[at - 1] in _SIGNS and tokens[index][:1].isdigit():
+            missing.append(index)
+            continue
+        placed.append((at, at + last - first))
+    return placed, missing
+
+
+def align(source: str, rendered: str, returned: str) -> Alignment:
+    """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
+
+    The paragraph-level merge had to refuse anything carrying a binding, because splicing
+    the returned text in would replace `{{results.ror.point}}` with `3.84`. Refusing is safe
+    and, in a paper where most paragraphs quote a number, refuses almost everything.
+
+    Alignment makes the finer move possible. A source paragraph is prose and protected
+    tokens in alternation. Its prose appears verbatim in the rendered form - rendering only
+    changes the protected parts - so locating the prose segments in `rendered` reveals what
+    each token rendered to, *without needing to know how it renders*.
+
+    Those rendered forms are then found in the returned text by aligning the two word by
+    word. The first version searched for each rendered form as a substring from the start of
+    the paragraph: '3.84' was found inside '13.84' and merged as `1{{results.ror.point}}`,
+    and in "Table 1 shows 1 events" the binding went onto the table number. Here a number is
+    one word and cannot be found inside a longer one, and each token is placed where the
+    unchanged words around it say it is. Tokens that come back out of order cannot both sit
+    in shared stretches, so a transposed interval is still refused.
+
+    Otherwise the text between the tokens is the new prose, and the paragraph is rebuilt from
+    the *source's* tokens and the *co-author's* words. An unchanged prose segment is kept
+    exactly as the source has it, which preserves its markdown - only a segment the
+    co-author actually edited loses its inline formatting.
+    """
+    if _MARKUP.search(source):
+        return Alignment(None, markup=True)
+    prose, protected = segments(source)
+    if not protected:
+        return Alignment(returned.strip() or None)
+
+    spans = _token_spans(prose, rendered)
+    if spans is None:
+        return Alignment(None, unaligned=True)
+    tokens = [rendered[start:end] for start, end in spans]
+    before, ranges = _words(rendered, spans)
+    after = _WORD.findall(returned)
+    placed, missing = _place(tokens, ranges, before, after)
+    if missing:
+        return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
+
     new_prose: list[str] = []
     cursor = 0
-    for token in rendered_tokens:
-        at = returned.find(token, cursor)
-        if at < 0:
-            return None  # the co-author changed a number or a citation
-        new_prose.append(returned[cursor:at])
-        cursor = at + len(token)
-    new_prose.append(returned[cursor:])
+    for start, end in placed:
+        new_prose.append("".join(after[cursor:start]))
+        cursor = end
+    new_prose.append("".join(after[cursor:]))
 
     out: list[str] = []
     for index, piece in enumerate(new_prose):
@@ -485,4 +554,9 @@ def realign(source: str, rendered: str, returned: str) -> str | None:
         out.append(original if same else piece)
         if index < len(protected):
             out.append(protected[index])
-    return "".join(out).strip() or None
+    return Alignment("".join(out).strip() or None)
+
+
+def realign(source: str, rendered: str, returned: str) -> str | None:
+    """The rebuilt paragraph, or None when it cannot be merged. See `align`."""
+    return align(source, rendered, returned).rebuilt

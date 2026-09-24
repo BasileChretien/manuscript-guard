@@ -1174,14 +1174,14 @@ analysis, not the document." Rewording *around* a number is fine, because the va
 the edit; only a hunk that drops it is refused. Comments become findings to answer, since a
 co-author's comment is the most valuable thing in the returned file.
 
-Three things make it safe rather than clever. Both sides of the diff go through the same
-`docx → markdown` conversion, so what remains is the edit and not pandoc's formatting
+Three things make it safe rather than clever. Both sides of the comparison are read the
+same way: the document as it was sent is rebuilt from the source and read by the same parser
+as the document that came back, so what remains is the edit and not pandoc's formatting
 habits. A returned document must carry the digest of the source it was built from — stored
 *inside* the `.docx` as a custom property, because a sidecar cannot survive being emailed —
-and a mismatch is refused as a merge conflict rather than resolved. And a paragraph that
-cannot be located unambiguously in the source is left alone: splicing an edit into the wrong
-paragraph is the failure this command must not have, and a near-tie between two candidates
-is exactly when a guess would be wrong.
+and a mismatch is refused as a merge conflict rather than resolved. And a paragraph whose
+identity the identifier cannot vouch for is left alone: splicing an edit into the wrong
+paragraph is the failure this command must not have.
 
 **A move needs no content from Word at all**, and that is the one thing the round trip can
 do perfectly. Each source paragraph is tagged with an invisible identifier before
@@ -1194,10 +1194,17 @@ can be moved without a binding going anywhere near Word.
 
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
-true and useless. And a moved paragraph is excluded from the content diff, which otherwise
-sees it as a deletion here and an insertion there and applies it a second time on top of the
-reordering — compared on the flattened form, since the source carries bindings and the
-returned text carries what they rendered to, so the two are never equal as strings.
+true and useless. And a move and a rewording are applied together. The identifier makes
+them separate questions (where does this paragraph go, what does it now say), but both
+answers are written to the same file, and the first version wrote them one after the other:
+it reordered the file, then spliced each rewording in at the offset it had recorded *before*
+the reorder. A co-author who moved one paragraph and reworded another produced
+`{{lit.agency.withdrawnWhether the signal extends...`: a binding cut in half, a sentence
+gone, the edit lost. (An earlier draft of this section said a moved paragraph was "excluded
+from the content diff". Nothing excluded it; with identifiers nothing needs to.) The import
+is now planned first, from one reading of each document, and written in one pass from one
+snapshot of the offsets: every paragraph slot in a file receives the paragraph that now
+belongs there, reworded if it was.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation, and its prose reaches Word unchanged except for its
@@ -1205,18 +1212,45 @@ markdown — so locating the prose segments in the rendered form reveals what ea
 rendered to *without knowing how anything renders*. That last part is what makes citations
 work: their rendering depends on a CSL style this code never sees, and it does not need to.
 
-Those rendered forms are then found in the returned text. If one is missing, or they come
-back out of order, the co-author changed a number or a citation and the paragraph is
-refused. Otherwise the text between them is the new wording, and the paragraph is rebuilt
-from the *source's* tokens and the *co-author's* words. Searching is sequential, so a
-paragraph quoting two values that render the same string pairs them up in order rather than
-matching both to the first occurrence — the same collision that `bind` refuses to guess at.
+Those rendered forms are then found in the returned text by aligning the two word by word,
+with a number counting as one word. The first version searched for each as a substring,
+from the start of the paragraph: '3.84' was found inside '13.84' and merged as
+`1{{results.ror.point}}`, and in "Table 1 shows 1 events" the binding landed on the table
+number. Now each token must come back whole, in order, inside a stretch of words the
+co-author left alone, and a sign typed directly in front of a value counts as changing it.
+If one does not, the co-author changed a number or a citation, and the paragraph is refused
+naming each one: "'3.84' comes from results.ror.point", as this section promised long
+before the command did it. Otherwise the text between them is the new wording, and the
+paragraph is rebuilt from the *source's* tokens and the *co-author's* words. Alignment is
+monotonic, so a paragraph quoting two values that render the same string pairs them up in
+order rather than matching both to the first occurrence — the same collision that `bind`
+refuses to guess at.
 
 Two details are load-bearing. Prose is compared flattened, because `**striking**` reaches
 Word as `striking` and matching verbatim failed on any paragraph with emphasis in it, which
 is most of them. And an unchanged segment is rebuilt from the source rather than from Word,
 so only a segment the co-author actually edited loses its inline formatting — Word text is
-read as plain `<w:t>` runs, and that is the price of using the bookmark as identity.
+read as plain `<w:t>` runs, and that is the price of using the bookmark as identity. What
+plain text cannot carry at all, a footnote or a link's address, makes the paragraph refused
+rather than merged: merging Word's text over it deleted them.
+
+**The identifier marks where a paragraph starts, not where it ends.** Word keeps a
+paragraph's bookmark at its start, so a split leaves the first half carrying it and the
+second half anonymous, and merging "the paragraph" replaced the whole source paragraph with
+its first sentence. A join puts two identifiers in one paragraph, and the first used to
+absorb the second while the second was reported deleted and left in place, so its text was
+in the source twice. Neither is guessed at now. A tagged paragraph touching text the sent
+document did not have may have been split, and a rewording of it is refused; a paragraph
+carrying two identifiers, or one that took in a run of a vanished neighbour's words (a join
+made by selecting across the boundary deletes the second bookmark), is reported as a join
+and nothing in it is applied.
+
+The returned document is parsed, not searched. `<w:t[^>]*>` also matches `<w:tab/>`,
+`<w:tabs>` and `<w:textAlignment/>`, and the lazy match then ran on to the next `</w:t>`: a
+paragraph with a tab in it merged `</w:r><w:r><w:t xml:space="preserve">` into the source.
+A paragraph's text is its `w:t` elements read with every tracked change accepted, so a
+paragraph deleted with Track Changes on is reported as deleted. It used to come back empty
+and be refused as "a number or a citation changed".
 
 ## An exemption has to prove itself
 
@@ -1330,6 +1364,30 @@ in the letter that goes to the journal.
 The pattern is stable enough to name. **Every one of these is a claim that outran its code**,
 and the countermeasure that works is the one already in the repository: a test that executes
 the claim. `tests/test_round_five.py` holds one per finding.
+
+## The round trip, edited the way Word edits
+
+A read-only review built the example, edited `word/document.xml` the way Word does (a move
+and a rewording together, a split, a join, a tab, a tracked deletion, a digit added to a
+number) and imported each. Every one either damaged the Markdown source or misreported what
+happened, and most exited 0. The source of truth was being rewritten by the command whose
+whole purpose is to protect it.
+
+The tests had only ever edited text *inside* a paragraph, one edit per document. Every
+failure was at a boundary those tests never crossed: between two operations applied to one
+file (offsets taken before a reorder, used after it), between paragraphs (a split, a join),
+between a regex and the XML it was guessing at (`<w:t[^>]*>` matching `<w:tab/>`), between
+a value and the digit next to it (`3.84` found in `13.84`). And one was the recurring defect
+in its purest form: DESIGN.md and the module docstring promised a refusal naming the value
+and its key, and the test named `..._refused_and_named` checked only the exit code.
+
+Two findings were not in the importer. The broken placeholder it wrote passed `check`,
+because the loose pattern needed a closing brace to call anything a placeholder; it now
+needs only the namespace-and-key shape. And the document sent to co-authors carried the
+builder's home directory twice: the bibliography's path as a document property, and the
+figure's as the picture's description. Pandoc now runs from the project root with
+relative paths. `tests/test_roundtrip.py` holds each case as a document edited the way Word
+would edit it.
 
 ## Known gaps
 
@@ -1849,8 +1907,36 @@ Closed since, and why each mattered:
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
   one rendering ends and the next begins. The paragraph is refused.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
-  revision had been accepted. Rejecting a co-author's change means rejecting it in Word
-  before sending it back.
+  revision had been accepted: inserted text counts, deleted and moved-away text does not, a
+  paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
+  is a join. Rejecting a co-author's change means rejecting it in Word before sending it
+  back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
+  the new one, so it is reported rather than applied.
+- **A split or a join is refused, not applied.** Both change how many paragraphs there are,
+  and the identifier only says where a paragraph starts. Doing the split or the join in the
+  `.md` is the way through; the refusal names the paragraphs.
+- **A split is recognised by the new text beside it, and that is coarse.** An untagged
+  paragraph whose text the document did not have when it was sent makes the tagged paragraph
+  touching it a possible split. An edited heading is new text too, so when a heading and the
+  paragraph under it are both edited in one round, that paragraph's rewording is refused.
+  That is the price of never truncating a split paragraph.
+- **A join that lost its bookmark is recognised by resemblance, which is a judgement.** A
+  join made by selecting across the boundary deletes the second paragraph's bookmark. When
+  a paragraph changed and the one after it vanished, the import asks which the returned text
+  resembles more: the paragraph as it was, or the paragraph followed by its neighbour. A tie
+  counts as a join. Two counting rules came before this one and each was beaten in review by
+  an ordinary edit. A join that also rewrote most of the second paragraph still reads as a
+  rewording of the first and a deletion of the second: the first is merged with the combined
+  text, and the second is reported deleted and left in place for the author to remove.
+- **A paragraph that is not applied travels with the one before it.** Deleted in Word,
+  moved into another file, absorbed by a join, or present twice, it has no position of its
+  own in the returned document, so a reorder keeps it after the paragraph it followed in
+  the source. That is a choice, not something the document says.
+- **Typographic punctuation defeats alignment.** Pandoc typesets prose - `drug's` reaches
+  Word as `drug’s`, `--` as an en dash - so in a paragraph with a binding or a citation the
+  source prose is not found verbatim in the rendered text, and a rewording of that paragraph
+  is refused as "could not be lined up with its own source". Safe, and a refusal in any such
+  paragraph with an apostrophe in it.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact

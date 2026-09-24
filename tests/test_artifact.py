@@ -122,3 +122,36 @@ def test_an_unchecked_build_says_so_in_its_name(project: Path) -> None:
     built = {p.name for p in (project / "build").glob("*.docx")}
     assert "manuscript.UNCHECKED.docx" in built
     assert "manuscript.docx" not in built
+
+
+@needs_pandoc
+@pytest.mark.parametrize("annotated", [False, True], ids=["as-sent", "annotated"])
+def test_a_built_document_carries_no_path_from_the_machine_that_built_it(
+    project: Path, annotated: bool
+) -> None:
+    """The document goes to co-authors, and it carried the builder's home directory twice.
+
+    Pandoc writes every metadata field it does not recognise into docProps/custom.xml, and
+    `--bibliography` is metadata, so an offline build shipped the absolute path of
+    references.bib as a property called `bibliography`. The figure did the same thing in
+    `word/document.xml`: it was linked by absolute path, and pandoc records the link as the
+    picture's description. Both name the user's account and folder layout, and neither is
+    visible in Word unless somebody goes looking.
+    """
+    from manuscript_guard.cli import main
+
+    command = ["build", str(project), "--offline"] + (["--annotated"] if annotated else [])
+    assert main(command) == 0
+    names = ["manuscript.annotated.docx"] if annotated else [
+        "manuscript.docx",
+        "supplementary.docx",
+    ]
+    local = {str(project), project.as_posix(), str(Path.home()), Path.home().as_posix()}
+    for name in names:
+        with zipfile.ZipFile(project / "build" / name) as archive:
+            for member in archive.namelist():
+                if not member.endswith((".xml", ".rels")):
+                    continue
+                text = archive.read(member).decode("utf-8", errors="replace")
+                leaked = sorted(path for path in local if path in text)
+                assert not leaked, f"{name}:{member} carries {leaked}"

@@ -699,6 +699,53 @@ def test_what_word_typed_prints_as_typed(returned: str, expected: str, tmp_path:
     assert printed.replace("\u2013", "--") == " ".join(returned.split())
 
 
+BESIDE_A_TOKEN = [
+    pytest.param(
+        "Alpha beta [@jones2019] gamma delta.",
+        "Alpha beta (Jones 2019) gamma delta.",
+        "Alpha beta (Jones 2019)(see Table 2) gamma delta.",
+        r"Alpha beta [@jones2019]\(see Table 2) gamma delta.",
+        id="parenthesis-after-a-citation",
+    ),
+    pytest.param(
+        "Patients took {{results.drug}} daily with water.",
+        "Patients took aspirin daily with water.",
+        "Patients took <aspirin daily and >placebo.",
+        r"Patients took \<{{results.drug}} daily and >placebo.",
+        id="angle-before-a-binding",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
+def test_text_beside_a_token_is_escaped_for_its_neighbour(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Each stretch was escaped as if it stood alone. `(see Table 2)` typed straight after a
+    citation's `]` made a link of it, and the parenthesis became the link's address; a `<`
+    before a binding whose value is a word became the start of a tag."""
+    assert realign(source, rendered, returned) == expected
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
+def test_text_beside_a_token_prints_as_typed(
+    source: str, rendered: str, returned: str, expected: str, tmp_path: Path
+) -> None:
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    # The binding filled in as the build fills it; the citation left for pandoc to read.
+    merged = realign(source, rendered, returned).replace("{{results.drug}}", "aspirin")
+    path = tmp_path / "a.md"
+    path.write_text(f"[]{{#mg-p-x-0}}{merged}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")["mg-p-x-0"]
+    kept = "(see Table 2)" if "Table" in returned else "<aspirin daily and >placebo"
+    assert kept in printed
+
+
 @pytest.mark.parametrize(("returned", "expected"), TYPED_IN_WORD)
 def test_markdown_typed_in_word_goes_back_as_text(returned: str, expected: str) -> None:
     """A co-author types text, not Markdown. Put into the source as it was, `@admin` became a

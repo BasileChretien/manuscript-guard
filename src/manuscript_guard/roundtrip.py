@@ -611,7 +611,8 @@ _OPENER = re.compile(
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
 #: and was text to it, so the words were merged bare and deleted at the next build. A
 #: backslash before punctuation never changes what pandoc prints, except before a quote, a
-#: hyphen or a full stop, which it would stop typesetting; those are never escaped.
+#: hyphen or a full stop, which it would stop typesetting; those are left alone here, and
+#: only `_OPENER` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
     r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
@@ -621,15 +622,26 @@ _MARKDOWN = re.compile(
 )
 
 
-def _escaped(text: str, opening: bool) -> str:
+def _escaped(
+    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
     Word's text is literal. Put into the source as it is, a `*` typed there opens italics,
     an `@name` is a citation, a `{{results.x}}` is a binding - a number the co-author typed,
     entering the manuscript as though the analysis had produced it - and `CYP2D6\\*4`, shown
     in Word as `CYP2D6*4`, came back as the start of an emphasis span.
+
+    Its edges are read with what will stand beside them. A `(` straight after a citation's
+    `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
+    binding whose value is a word opens a tag. At the end of the text neither looked like
+    markup, because the citation and the binding were not there to see.
     """
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    if after_token and text.startswith("("):
+        text = "\\" + text
+    if before_token and text.endswith(("<", "&")):
+        text = text[:-1] + "\\" + text[-1]
     if opening and (block := _OPENER.match(text)):
         at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
         text = text[:at] + "\\" + text[at:]
@@ -803,11 +815,10 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     raised 9 in 10^9 - refuses the paragraph and names it. Only the edited segment counts:
     a footnote in a stretch the co-author left alone is kept from the source, where it was.
 
-    Then the rebuilt paragraph is read back the way Word will show it, and it must read as
-    what the co-author wrote. That is the guarantee, and the list of named markup is only
-    how a refusal explains itself: whatever the list misses and the merge would change -
-    an asterisk that came to open italics, a delimiter left without its partner - fails
-    here instead of reaching the source.
+    Then the rebuilt paragraph is read back, by this module's reading of Markdown, and must
+    read as what the co-author wrote. That catches what the reading can see - a delimiter
+    left without its partner, a span stretched over new words - and not where it and
+    pandoc disagree, which is why `_escaped` does not consult it.
     """
     reading = _read(source)
     prose, protected = reading.prose, reading.protected
@@ -840,7 +851,8 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
             out.append(prose[index])
         else:
             lost += [name for name in reading.lost[index] if name not in lost]
-            out.append(_escaped(piece, opening=index == 0))
+            beside = {"after_token": index > 0, "before_token": index < len(protected)}
+            out.append(_escaped(piece, opening=index == 0, **beside))
         if index < len(protected):
             out.append(protected[index])
     if lost:

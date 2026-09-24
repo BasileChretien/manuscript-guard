@@ -1265,15 +1265,18 @@ is depends on its neighbours: `*{{results.x}}*` is italics around a number, and
 neither was either.
 
 Word's text is literal, and the source is Markdown, so every character in what comes back
-that Markdown could read as markup is escaped. `CYP2D6\*4` is shown in Word as `CYP2D6*4`;
-written back bare it opened italics, and a co-author's `@admin` became a citation and a
-typed `{{results.x}}` a binding. Two other ways were tried and beaten in review. Refusing
-every escape refused most of a paper converted from Word by pandoc, which escapes by habit.
-Escaping only what this module's reading took for markup trusted a reading that is close to
-pandoc's and not the same: `<LLOQ in mg/L and >` is a tag to pandoc, was text to it, and the
-words were deleted at the next build. Escaping never depends on that reading now. A
-backslash before punctuation does not change what pandoc prints, except before a quote, a
-hyphen or a full stop, and those are never escaped.
+that Markdown could read as markup is escaped, its edges read with the binding or citation
+that will stand beside them: `(see Table 2)` typed straight after a citation's `]` was a
+link. `CYP2D6\*4` is shown in Word as `CYP2D6*4`; written back bare it opened italics, and a
+co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. Two other ways
+were tried and beaten in review. Refusing every escape refused most of a paper converted
+from Word by pandoc, which escapes by habit. Escaping only what this module's reading took
+for markup trusted a reading that is close to pandoc's and not the same: `<LLOQ in mg/L and
+>` is a tag to pandoc, was text to it, and the words were deleted at the next build.
+Escaping never depends on that reading now. A backslash before punctuation does not change
+what pandoc prints, except before a quote, a hyphen or a full stop, which it would stop
+typesetting; those are escaped only where they open a paragraph as a list would (`1990.`,
+`- `), and there nothing is typeset.
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it catches

@@ -1247,8 +1247,17 @@ Word as `striking` and matching verbatim failed on any paragraph with emphasis i
 is most of them. And an unchanged segment is rebuilt from the source rather than from Word,
 so only a segment the co-author actually edited loses its inline formatting — Word text is
 read as plain `<w:t>` runs, and that is the price of using the bookmark as identity. What
-plain text cannot carry at all, a footnote or a link's address, makes the paragraph refused
-rather than merged: merging Word's text over it deleted them.
+plain text cannot carry at all, a footnote, a link's address or an HTML comment, makes the
+paragraph refused rather than merged: merging Word's text over it deleted them.
+
+Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
+one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
+carrying the identifier, and a rewording of that first part replaced the whole source
+paragraph with it. Such a paragraph is refused, recognised by the `$$` and, more generally,
+by anything untagged standing between two paragraphs of one section in the document as
+sent. And a paragraph that renders nothing - the example's HTML comment reaches Word as an
+empty line - has nowhere to put text typed there: merged, it replaced the comment's first
+half, and the second half built into the Methods. Text typed on such a line is refused.
 
 **The identifier marks where a paragraph starts, not where it ends.** Word keeps a
 paragraph's bookmark at its start, so a split leaves the first half carrying it and the
@@ -1952,9 +1961,14 @@ Closed since, and why each mattered:
   in the paragraph; a heading reworded in the same edit is not recognised.
 - **A move is applied only within its section.** A paragraph moved past a heading, table or
   figure, or into another file, is reported and left where it was. Where each paragraph
-  now sits is read against the headings, tables and figures as the document was sent; an
+  now sits is read against the headings, tables and figures as the document was sent. An
   edited or deleted heading is not one of them, so a paragraph that crossed only that
-  heading is not seen to have moved, and stays in its section.
+  heading is not seen to leave its section: with the order unchanged the move is dropped
+  unreported, and with it changed the paragraph goes to the edge of its own section.
+- **The tail of a split paragraph at the end of a section reads as a boundary.** Display
+  maths ending the last paragraph of a section leaves untagged text just before the next
+  heading, and it is taken for part of that heading's boundary. A move inside the section
+  past that text is then refused as a move into another section. Safe, and a refusal.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

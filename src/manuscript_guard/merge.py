@@ -224,6 +224,29 @@ def _misplaced(
     return [n for i, (n, _r) in enumerate(sequence) if n is not None and i not in kept]
 
 
+def _in_parts(reference: list[Block], sections: dict) -> set[str]:
+    """Paragraphs that reach Word as more than one paragraph.
+
+    Display maths splits one: pandoc renders "Before $$y = z$$ after." as three Word
+    paragraphs, and only the first carries the identifier. Merging a rewording of that first
+    part replaced the whole source paragraph with it, deleting the equation and everything
+    after. Within a section nothing stands between two paragraphs, so anything untagged
+    between them in the document as sent is part of the one before.
+    """
+    found: set[str] = set()
+    last: str | None = None
+    between = False
+    for block in reference:
+        if block.names and not block.table:
+            name = block.names[0]
+            if last and between and sections.get(last, 0) == sections.get(name, 1):
+                found.add(last)
+            last, between = name, False
+        else:
+            between = True
+    return found
+
+
 def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
@@ -339,6 +362,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         if name not in slid and counts[name] == 1
     ]
 
+    sections = _sections(known)
+    in_parts = _in_parts(reference, sections)
     beside_new = _beside_new_text(reference, returned)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
@@ -356,6 +381,10 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             gone.append(name)
         elif _same(was, now):
             continue
+        elif not was.strip():
+            refused.append(Refusal(name, now, (_HIDDEN,)))
+        elif name in in_parts:
+            refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
@@ -367,7 +396,6 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             else:
                 refused.append(Refusal(name, now, why(aligned)))
 
-    sections = _sections(known)
     files: dict[Path, int] = {}
     for name in rendered:
         files.setdefault(known[name][0], len(files))
@@ -397,6 +425,15 @@ _SPLIT = (
     "next to it. Merging it would replace the whole source paragraph with only part of it. "
     "Make the split or the addition in the .md."
 )
+_HIDDEN = (
+    "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
+    "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+)
+_IN_PARTS = (
+    "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "
+    "- and only its first part carries its identifier. Merging would replace the whole "
+    "paragraph with that part. Make the edit in the .md."
+)
 _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "
     "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
@@ -412,8 +449,9 @@ def why(aligned: Alignment) -> tuple[str, ...]:
     """The reason a reworded paragraph was not merged, in the author's terms."""
     if aligned.markup:
         return (
-            "it carries a footnote or a link, which Word's plain text cannot bring back: "
-            "merging it would delete them. Make the edit in the .md.",
+            "it carries a footnote, a link, display maths or an HTML comment, which Word's "
+            "plain text cannot bring back: merging it would delete them. Make the edit in the "
+            ".md.",
         )
     if aligned.changed:
         lines = []

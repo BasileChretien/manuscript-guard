@@ -43,6 +43,7 @@ _UNSEEN = {
 _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 
 _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
+_PICTURES = {W + "drawing", W + "pict", W + "object"}
 
 
 class DocumentUnreadable(Exception):
@@ -57,6 +58,7 @@ class Block:
     names: tuple[str, ...] = ()
     #: What it says, whitespace-normalised, with every tracked change accepted.
     text: str = ""
+    #: A table or a figure: a block that is not prose, and not compared.
     table: bool = False
 
 
@@ -68,6 +70,8 @@ class _Paragraph:
     #: Its paragraph mark was deleted as a tracked change, so it runs on into the next one.
     runs_on: bool
     table: bool
+    #: It holds a picture: a figure, when it has no text and no identifier.
+    picture: bool = False
 
 
 def _text(element: ET.Element) -> str:
@@ -100,11 +104,12 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
                 names.append(name)
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
+    picture = any(node.tag in _PICTURES for node in element.iter())
     mark = element.find(f"{W}pPr/{W}rPr")
     runs_on = mark is not None and (
         mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
     )
-    return _Paragraph(tuple(names), _text(element), tuple(comments), runs_on, table)
+    return _Paragraph(tuple(names), _text(element), tuple(comments), runs_on, table, picture)
 
 
 def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
@@ -153,6 +158,13 @@ def blocks(document: Path) -> list[Block]:
             table_open = True
             continue
         table_open = False
+        if paragraph.picture and not paragraph.names and not paragraph.text:
+            # A figure: a picture and no text. Read as an empty paragraph it was no boundary
+            # at all, and a paragraph moved past it went unseen.
+            out.extend(_fold(pending))
+            pending = []
+            out.append(Block(table=True))
+            continue
         pending.append(paragraph)
         if not paragraph.runs_on:
             out.extend(_fold(pending))

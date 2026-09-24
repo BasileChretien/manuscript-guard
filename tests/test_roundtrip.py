@@ -330,7 +330,7 @@ def test_a_paragraph_whose_markup_word_cannot_carry_is_refused(source: str) -> N
     rendered = "See the agency report for details."
     aligned = align(source, rendered, "See the agency report for more details.")
     assert aligned.rebuilt is None
-    assert "footnote or a link" in why(aligned)[0]
+    assert "a footnote, a link" in why(aligned)[0]
 
 
 def test_a_value_is_found_in_its_own_place_not_in_the_prose_before_it() -> None:
@@ -575,6 +575,100 @@ def test_text_pandoc_renders_between_two_paragraphs_of_a_section_is_no_boundary(
 
     sent = [intro, b["i1"], Block((), "x = 1"), b["i2"], methods, b["m1"], b["m2"]]
     assert plan_import(known, sent, list(sent)).empty
+
+
+def test_a_figure_reads_as_a_block_of_its_own(tmp_path: Path) -> None:
+    """A figure reaches Word as a paragraph holding a picture and no text. Read as an empty
+    paragraph, it was no boundary at all, and a move past it went unseen."""
+    from manuscript_guard.docxtext import blocks as read
+
+    body = (
+        '<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-1"/><w:bookmarkEnd w:id="1"/>'
+        "<w:r><w:t>Alpha.</w:t></w:r></w:p>"
+        "<w:p><w:r><w:drawing/></w:r></w:p>"
+    )
+    document = tmp_path / "figure.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/'
+            f'main"><w:body>{body}</w:body></w:document>',
+        )
+    found = read(document)
+    assert [(b.names, b.table) for b in found] == [(("mg-p-main-1",), False), ((), True)]
+
+
+@pytest.mark.parametrize("dragged", ["beta", "alpha"])
+def test_a_move_past_a_figure_is_reported_not_applied(tmp_path: Path, dragged: str) -> None:
+    """Dragged below the figure, Beta was dropped with "nothing came back"; Alpha was
+    applied as "Beta / Alpha / figure", neither the original order nor the co-author's."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = "Alpha.\n\nBeta.\n\n{{figure.forest}}\n\nGamma.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {n: (path, w, text.index(w)) for n, w in (("alpha", "Alpha."), ("beta", "Beta."),
+                                                      ("gamma", "Gamma."))}
+    b = {n: Block((n,), known[n][1]) for n in known}
+    figure = Block(table=True)
+    sent = [b["alpha"], b["beta"], figure, b["gamma"]]
+    others = [b[n] for n in ("alpha", "beta") if n != dragged]
+    returned = [*others, figure, b[dragged], b["gamma"]]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == (dragged,)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_paragraph_that_reaches_word_in_parts_is_not_reworded(tmp_path: Path) -> None:
+    """Display maths splits a paragraph: pandoc renders "Before $$y = z$$ after." as three
+    Word paragraphs, and only the first carries the identifier. Its rewording was merged over
+    the whole source paragraph, deleting the equation and everything after it."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "Alpha text here.\n\nBeta text here.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {"a": (path, "Alpha text here.", 0), "b": (path, "Beta text here.", 18)}
+    tail = Block((), "and the rest of it.")
+    sent = [Block(("a",), "Alpha text"), tail, Block(("b",), "Beta text here.")]
+    returned = [Block(("a",), "Alpha text, reworded"), tail, sent[2]]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    assert [refusal.name for refusal in plan.refused] == ["a"]
+
+
+def test_text_typed_where_a_paragraph_renders_nothing_is_not_merged(tmp_path: Path) -> None:
+    """An HTML comment is tagged and reaches Word as an empty line. Text typed on it replaced
+    the comment's first half, `<!--` included, and the second half built into the Methods."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    comment = "<!--\nA note to self.\n"
+    text = f"Before.\n\n{comment}\nStill hidden.\n-->\n"
+    path.write_text(text, encoding="utf-8")
+    known = {"p": (path, "Before.", 0), "c": (path, comment.strip(), text.index("<!--"))}
+    sent = [Block(("p",), "Before."), Block(("c",), "")]
+    plan = plan_import(known, sent, [sent[0], Block(("c",), "We also checked it.")])
+    assert not plan.merged and [r.name for r in plan.refused] == ["c"]
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["Before $$y = z$$ and after.", "Before <!-- a note --> and after."],
+    ids=["display-maths", "html-comment"],
+)
+def test_markup_that_word_text_cannot_carry_is_refused(source: str) -> None:
+    from manuscript_guard.roundtrip import align
+
+    aligned = align(source, "Before and after.", "Before and just after.")
+    assert aligned.rebuilt is None and aligned.markup
 
 
 def test_a_heading_its_paragraph_already_names_is_still_seen_joined(tmp_path: Path) -> None:

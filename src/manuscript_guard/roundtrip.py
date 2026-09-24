@@ -418,8 +418,10 @@ _WORD = re.compile(r"\d+(?:[.,]\d+)*|[^\W\d_]+|\s+|.", re.DOTALL)
 _SIGNS = frozenset({"Pd", "Sm"})
 
 #: Markdown that renders to something plain `w:t` text does not carry. Merging Word's text
-#: over a paragraph with a footnote in it deleted the footnote; with a link, the address.
-_MARKUP = re.compile(r"\^\[|\]\(")
+#: over a paragraph with a footnote in it deleted the footnote; with a link, the address;
+#: with display maths, the equation and everything after it, which pandoc sets apart as
+#: paragraphs of their own; with an HTML comment, the comment.
+_MARKUP = re.compile(r"\^\[|\]\(|\$\$|<!--")
 
 
 def _token_spans(prose: list[str], rendered: str) -> list[tuple[int, int]] | None:

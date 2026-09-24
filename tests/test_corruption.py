@@ -1528,6 +1528,26 @@ def test_audit_joins_paragraphs_whose_mark_was_removed(
     assert shown == {"-0.51", "−0.30"}, shown
 
 
+@pytest.mark.parametrize(("part", "note"), [("footnotes", "footnote"), ("endnotes", "endnote")])
+def test_audit_joins_paragraphs_within_a_note(tmp_path: Path, part: str, note: str) -> None:
+    """Footnotes and endnotes go through the same reader as the body. A deleted mark joins
+    two paragraphs of one note, so "-0.5" and "1" there are -0.51, and the last paragraph
+    of a note does not run on into the next note: "2" and "3" stay two numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "a": 2, "b": 3}')
+    joined = f"<w:p>{_gone('del')}<w:r><w:t>The estimate was -0.5</w:t></w:r></w:p>{_p('1.')}"
+    last = f"<w:p>{_gone('del')}<w:r><w:t>Group 2</w:t></w:r></w:p>"
+    notes = "".join(f"<w:{note}>{body}</w:{note}>" for body in (joined, last, _p("3 more.")))
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("See the notes."),
+        {f"word/{part}.xml": f"<w:{part} {W}>{notes}</w:{part}>"},
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
 @pytest.mark.parametrize(
     "props",
     [

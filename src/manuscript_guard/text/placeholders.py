@@ -26,7 +26,13 @@ PLACEHOLDER = re.compile(
 # nor "malformed" — it travelled all the way into the built document as literal text, in
 # the place where a number was supposed to be. A stray `{{` on its own line is left alone;
 # this needs the namespace-and-key shape before it will call anything a placeholder.
-LOOSE = re.compile(r"\{\{\s*[a-z]+\.[^}\n]*\}{1,2}|\{\{[^}\n]*\}\}")
+#
+# The last alternative takes no closing brace at all. A binding cut in half by a bad merge -
+# `{{lit.agency.withdrawnWhether the signal extends` - has none on its line, so the first
+# alternative never matched it and `check` passed a paragraph that `build` then printed.
+LOOSE = re.compile(
+    r"\{\{\s*[a-z]+\.[^}\n]*\}{1,2}|\{\{[^}\n]*\}\}|\{\{\s*[a-z]+\.[A-Za-z0-9_.]+"
+)
 
 
 @dataclass(frozen=True)

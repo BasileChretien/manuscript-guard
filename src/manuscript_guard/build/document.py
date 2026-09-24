@@ -75,6 +75,19 @@ def pandoc() -> str:
     return found
 
 
+def relative_to_root(project, path: Path) -> str:
+    """`path` as pandoc should see it when run from the project root: relative, if it can be.
+
+    Relative because pandoc writes some of what it is given into the document, and a path
+    that names the builder's home directory is not something to send to co-authors. Falls
+    back to the absolute path for a file on another drive, which has no relative form.
+    """
+    try:
+        return Path(os.path.relpath(path.resolve(), project.root.resolve())).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
 def ensure_zotero_lua(cache_dir: Path) -> Path:
     """Fetch and cache Better BibTeX's pandoc filter.
 
@@ -242,27 +255,34 @@ def build_document(
 
     cites = bool(find_citations(body, source))
 
-    command = [pandoc(), "--standalone", str(source), "-o", str(output)]
+    # Pandoc runs from the project root and is given paths relative to it wherever it may
+    # write them into the document. The document goes to co-authors, and it used to carry
+    # the builder's home directory twice: `--bibliography` is metadata, which the Word writer
+    # stores as a document property, and a figure linked by absolute path is recorded as the
+    # picture's description. Everything else it is handed is made absolute, so the change of
+    # directory cannot make a relative argument mean a different file.
+    root = project.root.resolve()
+    command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
     if reference_doc is not None:
-        command += [f"--reference-doc={reference_doc}"]
+        command += [f"--reference-doc={reference_doc.resolve()}"]
     report = Report()
 
     if mode == LIVE:
-        command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache')}"]
+        command += [f"--lua-filter={ensure_zotero_lua(build_dir / '.cache').resolve()}"]
         # A document with no citations gets no bibliography field (a supplement of tables).
         if cites:
-            command += [f"--lua-filter={ZOTERO_WORD_LUA}"]
+            command += [f"--lua-filter={ZOTERO_WORD_LUA.resolve()}"]
     else:
         bib = project.path("literature") / "references.bib"
         if not bib.exists():
             raise BuildError(
                 f"{bib} does not exist; run `manuscript-guard sync-bib` with Zotero open"
             )
-        command += ["--citeproc", f"--bibliography={bib}"]
+        command += ["--citeproc", f"--bibliography={relative_to_root(project, bib)}"]
         if csl is not None:
-            command += [f"--csl={csl}"]
+            command += [f"--csl={relative_to_root(project, csl.resolve())}"]
 
-    finished = subprocess.run(command, capture_output=True, text=True)
+    finished = subprocess.run(command, capture_output=True, text=True, cwd=root)
     if finished.returncode != 0:
         raise BuildError(f"pandoc failed:\n{finished.stderr.strip()}")
     if finished.stderr.strip():

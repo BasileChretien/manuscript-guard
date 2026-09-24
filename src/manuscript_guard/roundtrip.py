@@ -854,12 +854,6 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         new_prose.append("".join(after[cursor:start]))
         cursor = end
     new_prose.append("".join(after[cursor:]))
-    # With nothing between them there is nothing to escape: a citation's `]` against a value
-    # that opens with `(` is a link, and the interval was its address. Nor can two touching
-    # tokens be lined up again, so every later edit to the paragraph would be refused.
-    if not all(new_prose[1:-1]):
-        return Alignment(None, touching=True)
-
     out: list[str] = []
     lost: list[str] = []
     for index, piece in enumerate(new_prose):
@@ -875,6 +869,12 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
             out.append(protected[index])
     if lost:
         return Alignment(None, markup=tuple(lost))
+    # With nothing between them there is nothing to escape: a citation's `]` against a value
+    # that opens with `(` is a link, and the interval was its address. Nor can two touching
+    # tokens be lined up again, so every later edit to the paragraph would be refused. After
+    # the markup: a footnote deleted with the words around it is the reason to name.
+    if not all(new_prose[1:-1]):
+        return Alignment(None, touching=True)
     rebuilt = "".join(out).strip()
     if not _reads_as(rebuilt, tokens, returned):
         return Alignment(None, misread=True)

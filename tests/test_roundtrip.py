@@ -855,6 +855,27 @@ def test_text_deleted_from_between_two_tokens_is_refused(
     assert "would touch" in why(aligned)[0]
 
 
+@pytest.mark.parametrize(
+    ("source", "named"),
+    [
+        ("See [@jones2019], as noted^[A note.] {{results.ci}} here.", "a footnote"),
+        ("See [@jones2019], as noted <!-- aside --> {{results.ci}} here.", "an HTML comment"),
+    ],
+    ids=["footnote", "comment"],
+)
+def test_markup_deleted_from_between_two_tokens_is_named(source: str, named: str) -> None:
+    """The deleted stretch held a footnote, and the refusal said only that the tokens would
+    touch: an author who kept a space, as it advised, was refused again for the footnote."""
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import align
+
+    rendered = "See (Jones 2019), as noted (1.2-3.4) here."
+    aligned = align(source, rendered, "See (Jones 2019)(1.2-3.4) here.")
+    assert aligned.rebuilt is None
+    assert aligned.markup == (named,)
+    assert named in why(aligned)[0]
+
+
 def test_a_space_left_between_two_tokens_still_merges() -> None:
     """A space keeps them apart for pandoc, so this is a clean edit and merges. The paragraph
     cannot be lined up after it, which DESIGN.md records."""

@@ -520,24 +520,68 @@ TAGGING = {
             ("a code block", "```\ncode\n```", ""),
             ("a yaml block", "---\ntitle: x\n---", ""),
             ("a pipe table", "| a | b |\n|---|---|\n| 1 | 2 |", ""),
-            ("a reference definition", "[a]: https://example.org", ""),
             ("a yaml block closed by dots", "---\ntitle: x\n...", ""),
+            ("a comment's closing line", "<!-- a\nnote -->", ""),
+            ("the end of an environment", "\\begin{landscape}\n\\end{landscape}", ""),
+            ("a grid table", "+---+---+\n| a | b |\n+---+---+", ""),
+            ("a pipe table without outer pipes", "a | b\n--|--\n1 | 2", ""),
+            ("a heading of seven hashes", "####### x", ""),
         )
     },
+    **{
+        f"a one-column table straight under {name}": (
+            f"Intro.\n\n{above}\n----------\nWarfarin\n\nApixaban\n\nHeparin\n"
+            f"----------{closer}\n\nAfter.\n"
+        )
+        for name, above, closer in (
+            ("a div tag", '<div class="x">', "\n</div>"),
+            ("a comment's closing line", "<!-- a\nnote -->", ""),
+            ("the end of an environment", "\\begin{landscape}\n\\end{landscape}", ""),
+            ("a pipe table without outer pipes", "a | b\n--|--\n1 | 2", ""),
+            ("a code block", "```\ncode\n```", ""),
+        )
+    },
+    "a table opening in the block where another ends, under a heading": (
+        "Intro.\n\n---------- ----------\n Drug      Signal\n---------- ----------\n"
+        "Warfarin   Bleeding\n\nApixaban   Bleeding\n---------- ----------\n## Table 2\n"
+        "----------  ----------\nRivaroxaban Bleeding\n\nEdoxaban    Bleeding\n\n"
+        "Dabigatran  Bleeding\n----------  ----------\n\nAfter.\n"
+    ),
+    "two table divs back to back": (
+        "Intro.\n\n::: {#tbl-a}\n----------  ----------\nWarfarin    Bleeding\n\n"
+        "Apixaban    Bleeding\n----------  ----------\n:::\n::: {#tbl-b}\n"
+        "----------  ----------\nHeparin     HIT\n\nEdoxaban    Bleeding\n\n"
+        "Dabigatran  Bleeding\n----------  ----------\n:::\n\nAfter.\n"
+    ),
+    "a table opening in the block where another ends, under a comment": (
+        "Intro.\n\n---------- ----------\n Drug      Signal\n---------- ----------\n"
+        "Warfarin   Bleeding\n\nApixaban   Bleeding\n---------- ----------\n<!-- next -->\n"
+        "----------  ----------\nHeparin     HIT\n\nEdoxaban    Bleeding\n\n"
+        "Dabigatran  Bleeding\n----------  ----------\n\nAfter.\n"
+    ),
+    "a table straight under yaml that holds a blank line": (
+        "Intro.\n\n---\ntitle: x\n\nsubtitle: y\n---\n----------  ----------\n"
+        "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
+        "----------  ----------\n\nAfter.\n"
+    ),
     # Under these pandoc opens no table, and the rows are paragraphs.
     **{
         f"a line of dashes straight under {name}": (
-            f"Intro.\n\n{above}\n----------  ----------\nWarfarin    Bleeding\n\n"
-            "Apixaban    Bleeding\n\nHeparin     HIT\n----------  ----------\n\nAfter.\n"
+            f"Intro.\n\n{above}\n{rule}\nWarfarin    Bleeding\n\n"
+            f"Apixaban    Bleeding\n\nHeparin     HIT\n{rule}\n\nAfter.\n"
         )
-        for name, above in (
-            ("prose", "Some text."),
-            ("a list item", "- item"),
-            ("a block quote", "> quoted"),
-            ("a definition", "Term\n:   definition"),
-            ("a caption", "Table: Signals."),
-            ("a TeX command", "\\newpage"),
-            ("an image", "![Figure](f.png)"),
+        for name, above, rule in (
+            ("prose", "Some text.", "----------  ----------"),
+            ("prose holding a pipe", "P(A|B) was high.", "----------  ----------"),
+            ("a list item", "- item", "----------  ----------"),
+            ("a block quote", "> quoted", "----------  ----------"),
+            ("a definition", "Term\n:   definition", "----------  ----------"),
+            ("a caption", "Table: Signals.", "----------  ----------"),
+            ("a TeX command", "\\newpage", "----------  ----------"),
+            ("an image", "![Figure](f.png)", "----------  ----------"),
+            ("a reference definition", "[a]: https://example.org", "----------  ----------"),
+            ("a heading, as one run", "## Title", "----------"),
+            ("a one-line comment, as one run", "<!-- a note -->", "----------"),
         )
     },
     "a top rule over a line holding only a no-break space": (
@@ -704,7 +748,8 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
     returned = paragraph_text(pandoc_docx(tagged, tmp_path / "tagged.docx"))
     pieces = re.split(r"\n\s*\n", tagged)
     # A footnote or a link resolves against definitions anywhere in the document, so a
-    # paragraph read on its own is read with them - up to a table straight under one.
+    # paragraph read on its own is read with them. Not with a line of dashes under one: over
+    # it the definition is a simple table's header, which would come back as a table.
     definitions = "\n\n".join(
         re.split(r"\n(?= {0,3}-+(?:[ \t]+-+)*[ \t]*(?:\n|$))", p)[0]
         for p in pieces

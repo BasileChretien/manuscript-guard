@@ -1728,13 +1728,20 @@ Added by the adversarial review, verified and **not** fixed:
   nothing is corrupted. Lines of three dashes or more had these cases already; since two
   dashes can open a table, `--` has them too.
 - **A table that opens mid-block is followed only under the lines it was seen to open
-  under.** Pandoc 3.9 opens one straight under a heading, a code or div fence, a whole line
-  of block-level HTML or a comment, a setext underline, a pipe-table row, a reference
-  definition or a YAML stop, and `tag` follows it from there; under prose, a list item, a
-  quote, a definition, a caption, a TeX command or an image it opens none. A line of any
-  other kind is taken to open none, and a table pandoc does open under it gets a marker in
-  its rows, visible in the document; `import` then reports that paragraph as deleted in
-  Word and leaves the source alone.
+  under.** Pandoc 3.9 opens one straight under a code or div fence, a whole line of
+  block-level HTML, a setext underline, a grid table's border, a pipe-table row, a line
+  opening on `|`, `\end{...}`, a comment's closing `-->` or a YAML stop, and under a
+  heading or a one-line comment when the dashes hold two runs or more; `tag` follows it
+  from there. Under prose, a list item, a quote, a definition, a caption, a TeX command, an
+  image or a one-line reference definition it opens none: over a line of dashes, most of
+  those are a simple table's header. A line of any other kind is taken to open none, among
+  them a reference definition whose title continues on the next line, a line block's
+  continuation and an HTML tag split over two lines. A table pandoc does open under one
+  gets a marker in its rows, visible in the document; `import` then reports that paragraph
+  as deleted in Word and leaves the source alone. The other way round costs only
+  comparisons: a line inside code, a comment or a table's rows that looks like one of
+  these, over a line of dashes with text under it, hides the paragraphs down to the next
+  line of dashes.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

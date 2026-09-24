@@ -562,19 +562,31 @@ def _opens_table(line: str) -> bool:
     return len(line.strip().split()[0]) >= 2 or line.count("-") >= 3
 
 
-# A line after which pandoc starts a new block whatever the next line holds, so a table can
-# open straight under it: an ATX heading, a setext `=` underline, a pipe-table row or a YAML
-# block's closing `...`. Fences, reference definitions and whole lines of block-level HTML
-# or comments are tested below. Under prose, a list item, a quote, a definition, a caption,
-# a TeX command or an image, pandoc 3.9 opens no table.
-_ENDS_LINE = re.compile(r" {0,3}(?:#{1,6}(?:[ \t].*)?|=+[ \t]*|\|.*)|\.\.\.[ \t]*")
+# Lines after which pandoc starts a new block whatever the next line holds, so a table can
+# open straight under them: a setext `=` underline, a grid table's border, a line opening on
+# `|`, `\end{...}`, a comment's closing `-->` and a YAML block's closing `...`. Fences, pipe
+# rows and whole lines of block-level HTML are tested in `_ends_line`. Under prose, a list
+# item, a quote, a definition, a caption, a TeX command, an image or a one-line reference
+# definition, pandoc 3.9 opens no table: over a line of dashes, most of those are the header
+# of a simple table, whose rows end at the next blank line.
+_ENDS_LINE = re.compile(
+    r" {0,3}(?:=+[ \t]*|\+[-=:+]+[ \t]*|\|.*|\\end[ \t]*\{.*)|\.\.\.[ \t]*|.*-->[ \t]*"
+)
+# A heading or a whole-line comment ends a block too, but over a single run of dashes pandoc
+# reads it as the text of a setext heading, and no table opens.
+_HEADING_OR_COMMENT = re.compile(r" {0,3}(?:#+(?:[ \t].*)?|<[!?].*>[ \t]*)")
+# A pipe table's separator row. The rows under it end a block without a leading `|` too.
+_PIPE_SEPARATOR = re.compile(r" {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*")
 
 
-def _ends_line(line: str) -> bool:
-    if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or _REFERENCE.match(line):
+def _ends_line(line: str, opener: str, piped: bool) -> bool:
+    """Whether a table can open on `opener`, straight under `line`. `piped` says a pipe
+    table's separator row sits above `line` in the block."""
+    if _HEADING_OR_COMMENT.fullmatch(line):
+        return len(opener.split()) > 1
+    if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or (piped and "|" in line):
         return True
-    html = _HTML_TAG.match(line) or _HTML_LEAD.match(line)
-    return html is not None and line.rstrip().endswith(">")
+    return _HTML_TAG.match(line) is not None and line.rstrip().endswith(">")
 
 
 @dataclass(frozen=True)
@@ -653,15 +665,17 @@ class _Ruled:
         heading printed a marker into its rows. Wrong here, a table is followed that pandoc
         does not read, and paragraphs go unmarked, which corrupts nothing."""
         rows = self._rows
-        return [
-            first + at
-            for at in range(1, len(lines))
-            if rows[first + at].opens
-            and (
-                _ends_line(lines[at - 1])
-                or (at >= 2 and rows[first + at - 1].dashes and not rows[first + at - 2].dashes)
-            )
-        ]
+        found: list[int] = []
+        piped = False
+        for at in range(1, len(lines)):
+            row, above = first + at, lines[at - 1]
+            if rows[row].opens and (
+                _ends_line(above, lines[at], piped)
+                or (at >= 2 and rows[row - 1].dashes and not rows[row - 2].dashes)
+            ):
+                found.append(row)
+            piped = piped or _PIPE_SEPARATOR.fullmatch(above) is not None
+        return found
 
     def _end_row(self, start: int) -> int | None:
         """The row where the table pandoc reads from the opening line at row `start` ends.
@@ -805,6 +819,11 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
             # What hid this block can end inside it, and raw content opened after that point
             # swallows the blocks that follow just the same.
             resume = max(fence.end if inside else 0, hidden)
+            if not inside and resume == end:
+                # The block where a table or YAML span ends: something can open after the
+                # span in it. Read from the block's start, which only hides more; missed, a
+                # second table's rows were marked.
+                resume = start
             if resume < end:
                 hidden = max(hidden, _raw_end(text, resume, end, closers))
                 # And so does a table opening straight under a closing fence. One that seems

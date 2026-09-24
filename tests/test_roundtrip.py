@@ -366,10 +366,49 @@ RULED = {
             ("a code block", f"{FENCE}\ncode\n{FENCE}", ""),
             ("a yaml block", "---\ntitle: x\n---", ""),
             ("a pipe table", "| a | b |\n|---|---|\n| 1 | 2 |", ""),
-            ("a reference definition", "[a]: https://example.org", ""),
             ("a yaml block closed by dots", "---\ntitle: x\n...", ""),
+            ("a comment's closing line", "<!-- a\nnote -->", ""),
+            ("the end of an environment", "\\begin{landscape}\n\\end{landscape}", ""),
+            ("a grid table", "+---+---+\n| a | b |\n+---+---+", ""),
+            ("a pipe table without outer pipes", "a | b\n--|--\n1 | 2", ""),
+            ("a heading of seven hashes", "####### x", ""),
         )
     },
+    # A single run of dashes opens a table here too, where under a heading it is a setext
+    # underline.
+    **{
+        f"a one-column table straight under {name}": (
+            f"{above}\n----------\nWarfarin\n\nApixaban\n\nHeparin\n----------{closer}"
+        )
+        for name, above, closer in (
+            ("a div tag", '<div class="x">', "\n</div>"),
+            ("a comment's closing line", "<!-- a\nnote -->", ""),
+            ("the end of an environment", "\\begin{landscape}\n\\end{landscape}", ""),
+            ("a pipe table without outer pipes", "a | b\n--|--\n1 | 2", ""),
+            ("a code block", f"{FENCE}\ncode\n{FENCE}", ""),
+        )
+    },
+    "a table opening in the block where another ends, under a heading": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n---------- ----------\n## Table 2\n----------  ----------\n"
+        "Rivaroxaban Bleeding\n\nEdoxaban    Bleeding\n\nDabigatran  Bleeding\n"
+        "----------  ----------"
+    ),
+    "two table divs back to back": (
+        "::: {#tbl-a}\n----------  ----------\nWarfarin    Bleeding\n\nApixaban    Bleeding\n"
+        "----------  ----------\n:::\n::: {#tbl-b}\n----------  ----------\nHeparin     HIT\n\n"
+        "Edoxaban    Bleeding\n\nDabigatran  Bleeding\n----------  ----------\n:::"
+    ),
+    "a table opening in the block where another ends, under a comment": (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n---------- ----------\n<!-- next -->\n----------  ----------\n"
+        "Heparin     HIT\n\nEdoxaban    Bleeding\n\nDabigatran  Bleeding\n"
+        "----------  ----------"
+    ),
+    "a table straight under yaml that holds a blank line": (
+        "---\ntitle: x\n\nsubtitle: y\n---\n----------  ----------\nWarfarin    Bleeding\n\n"
+        "Apixaban    Bleeding\n\nHeparin     HIT\n----------  ----------"
+    ),
     "caption with no space after the colon": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n:Caption."
@@ -421,22 +460,29 @@ def test_a_no_break_space_line_away_from_a_rule_does_not_stretch_a_table() -> No
 
 def test_a_line_of_dashes_under_prose_or_a_list_item_opens_no_table() -> None:
     """Mid-block, pandoc opens a table straight under a heading or a fence, but not under
-    prose, a list item, a quote, a definition, a caption, a TeX command or an image. The
-    rows after such a line are paragraphs to pandoc, and keep their identifiers."""
+    prose, a list item, a quote, a definition, a caption, a TeX command, an image or a
+    one-line reference definition, and not under a heading or a one-line comment when the
+    dashes are a single run: that is a setext underline. The rows after such a line are
+    paragraphs to pandoc, and keep their identifiers."""
     from manuscript_guard.roundtrip import tag
 
-    for above in (
-        "Some text.",
-        "- item",
-        "> quoted",
-        "Term\n:   definition",
-        "Table: Signals.",
-        "\\newpage",
-        "![Figure](f.png)",
+    two_runs, one_run = "----------  ----------", "----------"
+    for above, rule in (
+        ("Some text.", two_runs),
+        ("P(A|B) was high.", two_runs),
+        ("- item", two_runs),
+        ("> quoted", two_runs),
+        ("Term\n:   definition", two_runs),
+        ("Table: Signals.", two_runs),
+        ("\\newpage", two_runs),
+        ("![Figure](f.png)", two_runs),
+        ("[a]: https://example.org", two_runs),
+        ("## Title", one_run),
+        ("<!-- a note -->", one_run),
     ):
         text = (
-            f"Intro.\n\n{above}\n----------  ----------\nWarfarin    Bleeding\n\n"
-            "Apixaban    Bleeding\n\nHeparin     HIT\n----------  ----------\n\nAfter.\n"
+            f"Intro.\n\n{above}\n{rule}\nWarfarin    Bleeding\n\n"
+            f"Apixaban    Bleeding\n\nHeparin     HIT\n{rule}\n\nAfter.\n"
         )
         marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
         assert "Apixaban" in marked, (above, marked)

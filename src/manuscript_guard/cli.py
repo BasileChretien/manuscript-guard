@@ -270,9 +270,9 @@ def _unexamined(document: Path, identified: int) -> str:
 
     Import compares paragraphs that carry an identifier. Table cells, headings, captions,
     list items, block quotes and any paragraph the co-author newly wrote carry none, so an
-    edit to one is not merged, not refused, and not reported - it simply does not exist as
-    far as the tool is concerned. A co-author who corrects a number in a table has every
-    reason to believe it landed.
+    edit to one is not merged and not refused. Outside tables such an edit is at least
+    listed; inside one it is only counted here. A co-author who corrects a number in a table
+    has every reason to believe it landed.
     """
     import re as _re
     import zipfile as _zip
@@ -289,7 +289,8 @@ def _unexamined(document: Path, identified: int) -> str:
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
         f"not compared: table cells, headings, captions, list items, block quotes, and "
-        f"anything newly written. An edit to one of those is not reported here."
+        f"anything newly written. Those outside tables that changed are listed above; an "
+        f"edit inside a table is not reported at all."
     )
 
 
@@ -416,6 +417,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.misplaced
         or plan.unidentified
         or plan.vanished
+        or plan.reordered
     ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
 
@@ -440,12 +442,20 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             ".md yourself."
         )
 
-    if plan.unidentified or plan.vanished:
-        changed = len(plan.unidentified) or plan.vanished
-        print(
-            f"\n{changed} paragraph(s) without an identifier - a heading, a list item, a "
-            f"quotation, a caption or new text - came back different and were not compared:"
-        )
+    if plan.unidentified or plan.vanished or plan.reordered:
+        if plan.reordered:
+            print(
+                "\nParagraphs without an identifier - headings, list items, quotations, "
+                "captions - came back in a different order, and were not compared:"
+            )
+        else:
+            print(
+                f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
+                f"an identifier - a heading, a list item, a quotation, a caption or new "
+                f"text - came back different and were not compared:"
+            )
+        for text in plan.vanished[:12]:
+            print(f"    - {text[:120]}")
         for text in plan.unidentified[:12]:
             print(f"    + {text[:120]}")
         print(

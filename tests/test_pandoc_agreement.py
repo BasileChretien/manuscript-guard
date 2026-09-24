@@ -390,6 +390,12 @@ TAGGING = {
     "a rule over text with a line of dots later": (
         "Before.\n\n---\nText.\n\nP1.\n...\n\nP2.\n\nMethods\n-------\n\nP3.\n"
     ),
+    "yaml block opening on a comment": (
+        "Before.\n\n---\n# a comment\nkey: value\n\nother: value\n...\n\nAfter.\n"
+    ),
+    "yaml block opening on a quoted key": (
+        'Before.\n\n---\n"key": value\n\nother: value\n...\n\nAfter.\n'
+    ),
     "yaml block whose first key is table": (
         "Before.\n\n---\ntable: x\nabstract: |\n  a\n\n  b\n...\n\nAfter.\n"
     ),

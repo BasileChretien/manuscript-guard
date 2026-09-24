@@ -74,8 +74,9 @@ It changes nothing and reports each paragraph:
 | `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption or new paragraph was edited or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared** |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted or moved between sections or files, and any paragraph
+without an identifier that came back different or in a different order, makes the command
+exit 1, with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from

@@ -67,8 +67,10 @@ class Plan:
     #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
     #: caption, a new paragraph - that the document did not have when it was sent.
     unidentified: tuple[str, ...] = ()
-    #: How many such paragraphs of the document as sent did not come back as they were.
-    vanished: int = 0
+    #: Text of such paragraphs of the document as sent that did not come back as they were.
+    vanished: tuple[str, ...] = ()
+    #: The same paragraphs without an identifier came back, in a different order.
+    reordered: bool = False
 
     @property
     def empty(self) -> bool:
@@ -81,6 +83,7 @@ class Plan:
             or self.misplaced
             or self.unidentified
             or self.vanished
+            or self.reordered
         )
 
 
@@ -419,15 +422,24 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
     # section: once a quotation or a list item was reworded it no longer marked where its
     # section began, a paragraph moved past it read as in order, and import said the
     # document matched the manuscript. What changed is at least said.
-    unchanged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    # In order, not as a bag: list items swapped in Word were all still there, and the
+    # document was said to match.
+    sent_untagged = [b.text for b in reference if not b.names and not b.table and b.text]
+    back_untagged = [b.text for b in returned if not b.names and not b.table and b.text]
+    unchanged = Counter(sent_untagged)
     unidentified: list[str] = []
-    for block in returned:
-        if block.names or block.table or not block.text:
-            continue
-        if unchanged[block.text]:
-            unchanged[block.text] -= 1
+    for text in back_untagged:
+        if unchanged[text]:
+            unchanged[text] -= 1
         else:
-            unidentified.append(block.text)
+            unidentified.append(text)
+    left = Counter(missing)
+    vanished: list[str] = []
+    for text in sent_untagged:
+        if left[text]:
+            left[text] -= 1
+            vanished.append(text)
+    reordered = not (unidentified or vanished) and sent_untagged != back_untagged
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -439,7 +451,8 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         misplaced=tuple(misplaced),
         sections=sections,
         unidentified=tuple(unidentified),
-        vanished=sum(missing.values()),
+        vanished=tuple(vanished),
+        reordered=reordered,
     )
 
 

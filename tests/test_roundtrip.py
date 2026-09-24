@@ -272,6 +272,8 @@ RULED = {
     ),
     "yaml closed by dots": "---\ntitle: x\nabstract: |\n  a\n\n  b\n...",
     "yaml whose first key is table": "---\ntable: x\nabstract: |\n  a\n\n  b\n...",
+    "yaml opening on a comment": "---\n# a comment\nkey: value\n\nother: value\n...",
+    "yaml opening on a quoted key": '---\n"key": value\n\nother: value\n...',
     "a row reading dots": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n"
         "            ...\n\nApixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
@@ -1186,6 +1188,61 @@ def test_an_edit_to_a_paragraph_without_an_identifier_is_not_called_a_match(
     assert "matches the manuscript" not in out, out
     assert "never a measure of risk" in out, "the changed quotation is named"
     assert source.read_text(encoding="utf-8") == before, "nothing it cannot place is applied"
+
+
+@needs_pandoc
+def test_reordered_list_items_are_not_called_a_match(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Counted as a bag of texts, list items swapped in Word were all still there, and
+    import said the document matched while the reorder went nowhere."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    block = "- First, the reports.\n- Second, the drugs.\n- Third, the events.\n\n"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("# Funding", block + "# Funding", 1),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        items = [
+            p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            if "First, the reports." in p or "Third, the events." in p
+        ]
+        first, third = items
+        return xml.replace(first, "\0", 1).replace(third, first, 1).replace("\0", third, 1)
+
+    returned = rewrite(document, tmp_path / "swapped.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "matches the manuscript" not in out, out
+    assert "order" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_deleted_paragraph_without_an_identifier_is_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Counted but not named, a deleted heading printed a heading with nothing under it."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+
+    def edit(xml: str) -> str:
+        heading = next(
+            p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if ">Funding<" in p
+        )
+        return xml.replace(heading, "", 1)
+
+    returned = rewrite(document, tmp_path / "no-heading.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    assert "- Funding" in capsys.readouterr().out
 
 
 def blocks(text: str) -> list[str]:

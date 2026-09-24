@@ -1577,10 +1577,14 @@ Added by the adversarial review, verified and **not** fixed:
 - **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
   captions, list items, block quotes, definitions (the term of a loose definition list is
   one paragraph and keeps its identifier), footnote text, code, and anything the co-author
-  newly wrote carry none. Those edits are not merged, not refused, and until
-  now were not mentioned; the count of what went unexamined is printed, which is a report
-  rather than a fix. A number corrected in a table is the case that matters, because that is
-  where a stale number is likeliest to be. Lists and quotes are on the list by choice: a
+  newly wrote carry none. Those edits are not merged and not refused. Outside tables they
+  are listed - reworded, deleted or reordered - and import exits 1; inside a table only the
+  count of what went unexamined is printed, which is a report rather than a fix. A number
+  corrected in a table is the case that matters, because that is where a stale number is
+  likeliest to be. A document built before identifiers moved off lists and quotations comes
+  back listing them as changed even untouched: the fresh build it is compared with sets
+  them out as lists and quotations, where it had run them into paragraphs. Nothing is
+  applied, and a current build sent out ends it. Lists and quotes are on the list by choice: a
   marker in front of one rewrote it, and a marker inside its first item would let `import`
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
@@ -2106,9 +2110,9 @@ Closed since, and why each mattered:
   paragraph that crossed only that block is not seen to leave its section: with the order
   unchanged the move is not reported as a move, and with it changed the paragraph goes to
   the edge of its own section. Since lists and quotations lost their identifiers this is
-  no rare case, so any block without an identifier that came back different is now listed,
-  import no longer says the document matches, and it exits 1 - but the move itself is
-  still not named.
+  no rare case, so any block without an identifier that came back reworded, deleted or in a
+  different order is now listed, import no longer says the document matches, and it exits
+  1 - but the move itself is still not named.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section

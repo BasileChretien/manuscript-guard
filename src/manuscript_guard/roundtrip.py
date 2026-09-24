@@ -481,7 +481,8 @@ def _dash_rule(line: str) -> bool:
 # the closing rule. A YAML block closes on `---` or `...`, and only a YAML block on `...`.
 _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 _YAML_OPEN = re.compile(r" {0,3}---[ \t]*")
-_YAML_KEY = re.compile(r"[ \t]*[\w.-]+[ \t]*:")
+# What YAML can open with: a key, a quoted or complex key, a comment.
+_YAML_KEY = re.compile(r"[ \t]*(?:#|[\"'?]|[\w.-][^:\n]*:)")
 _YAML_CLOSE = re.compile(r" {0,3}(?:---|\.\.\.)[ \t]*")
 
 

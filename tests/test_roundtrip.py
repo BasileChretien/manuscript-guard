@@ -517,9 +517,10 @@ def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
 
 
 def test_code_that_looks_like_an_opener_hides_nothing_after_its_close() -> None:
-    """A block that starts inside code is read for tables opening after the code closes,
-    not from its first line: that line is code, and read as an opener it hid the
-    paragraphs after the code down to the next line of dashes."""
+    """A block that starts inside code is read for tables opening below its first line,
+    not on it: that line is code, and read as an opener it hid the paragraphs after the
+    code down to the next line of dashes. A code line further down that looks like one
+    still counts, which only hides more."""
     from manuscript_guard.roundtrip import tag
 
     text = (

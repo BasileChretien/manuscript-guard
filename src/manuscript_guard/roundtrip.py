@@ -831,12 +831,12 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
             if resume < end:
                 hidden = max(hidden, _raw_end(text, resume, end, closers))
                 # A table can open in it too and is followed as in any block: on its first
-                # line or further down, or, when the block starts inside code, under the
-                # code's close - its first line is code. A span pandoc does not have, from a
-                # line taken for an opener, ran on to a real table's header underline and
-                # ended there; read only further down, the block missed the real table's
-                # own top rule, and its rows were marked. What seems to open inside the
-                # span only hides more.
+                # line or further down, or only further down when the block starts inside
+                # code - its first line is code. A span pandoc does not have, from a line
+                # taken for an opener, ran on to a real table's header underline and ended
+                # there; read only further down, the block missed the real table's own top
+                # rule, and its rows were marked. What seems to open inside the span, or in
+                # the code above the close, only hides more.
                 table = ruled.inner_end(index) if inside else ruled.end(index)
                 if table is not None:
                     hidden = max(hidden, ends[table])

@@ -1746,12 +1746,22 @@ Added by the adversarial review, verified and **not** fixed:
   read again as any block is, or from where its code closes when it starts inside code, so
   a real table the span runs into is still followed. Read only for tables opening further
   down it, the block missed a real table's own top rule, and the table's rows were marked.
-  Three layouts are still not covered, all contrived. A span that ends on the underline of
+  Four layouts are still not covered, all contrived. A span that ends on the underline of
   a header split by a blank line leaves the table's rows marked. A span that ends on a line
-  of dashes inside a YAML block scalar leaves a marker in the YAML, and the build fails.
-  And a real table that pandoc ends on a `---` inside a code block pairs every later fence
-  differently from `tag`, so a paragraph after it can be marked inside code; that one is
-  older than this reading.
+  of dashes inside a YAML block scalar leaves a marker in the YAML, and the build fails. A
+  real table that pandoc ends on a line of dashes inside a code block pairs every later
+  fence differently from `tag`, so a paragraph after it can be marked inside code; that
+  one is older than this reading. And a block a span hides is not read for raw content, so
+  a comment or an environment opened in a paragraph the span hides, and closed after the
+  span, goes unfollowed: a paragraph inside it is marked, and the identifier names nothing
+  in the document.
+- **Code fences are paired by `text/fences.py`, not by pandoc.** Where the two pair them
+  differently, a paragraph can be marked inside code, and the marker prints there. Known
+  cases: an opener whose info string pandoc rejects (`python title="x"`,
+  `{code-cell} ipython3`), a `~~~` straight under a paragraph line, since pandoc lets only a
+  backtick fence interrupt a paragraph, and a fence line with no partner inside an HTML
+  comment. The same pairing decides which blocks start inside code, so a table under such a
+  fence can go unfollowed as well.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

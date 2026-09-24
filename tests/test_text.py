@@ -369,6 +369,13 @@ SPOOFS = {
         "## Results\n\nSignificant (p < 0.05).\n"
     ),
     "html comment": "## Results\n\n<!--\n## Methods\n-->\n\nSignificant (p < 0.05).\n",
+    # Pandoc prints each of these as prose: a heading cannot interrupt a paragraph, and a
+    # lone `#` is an empty heading rather than the first half of one.
+    "atx continuing a paragraph": "## Results\n\nIt was significant\n## Methods\n(p < 0.05).\n",
+    "setext continuing a paragraph": (
+        "## Results\n\nIt was significant\nMethods\n-------\n\n(p < 0.05).\n"
+    ),
+    "lone hash": "## Results\n\n#\nMethods\n\nSignificant (p < 0.05).\n",
 }
 
 

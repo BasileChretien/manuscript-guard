@@ -193,8 +193,13 @@ structural:
   numbered-heading:
     accepts:
       - {text: "## 2.1 Statistical analysis", atom: "2.1"}
+      - {text: "# 2 Methods\n## 2.1 Statistical analysis", atom: "2.1"}
     rejects:
       - {text: "The ratio was 2.1 overall.", atom: "2.1"}
+      # Pandoc prints both as prose: a heading cannot interrupt a paragraph, and a lone `#`
+      # is an empty heading, so the number on the next line is not part of it.
+      - {text: "The ratio was\n## 2.1 times the background rate.", atom: "2.1"}
+      - {text: "#\n2.1 times the background rate.", atom: "2.1"}
 
   author-year-citation:
     audit_only: true

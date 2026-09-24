@@ -375,6 +375,32 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+@pytest.mark.parametrize(
+    ("tail", "number"),
+    [
+        ("# Results\n\nThe excess was significant\n# Methods\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe excess was significant\nMethods\n=======\n\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe reporting odds ratio was\n## 3.84 times the background.\n", "3.84"),
+        ("# Results\n\n#\n3.84 times the background rate was reported.\n", "3.84"),
+    ],
+    ids=["atx", "setext", "numbered atx", "lone hash"],
+)
+def test_a_heading_pandoc_prints_as_prose_does_not_excuse_a_number(
+    project: Path, tail: str, number: str
+) -> None:
+    """Pandoc does not let a heading interrupt a paragraph, so a `# Methods` line directly
+    under Results prose is printed as part of that prose. G2 took it for a heading, and the
+    `p < 0.001` under it passed as the alpha chosen in advance. The same line starting with a
+    number was taken for heading numbering, and so was a number on the line after a lone `#`,
+    which pandoc prints as an empty heading above an ordinary paragraph."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and repr(number) in f.message for f in report.failures
+    )
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -1574,6 +1600,41 @@ def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Pa
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:
+    """`# References` directly under a line of prose is printed as part of that paragraph,
+    not as a heading. It cut everything after it, so the number below was never compared."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The sources are listed below\n# References\n\nThe pooled ROR was 9.99.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(
+    tmp_path: Path,
+) -> None:
+    """The other side of the test above. `# Appendix` directly under a reference entry is
+    printed as part of it, and pandoc gives the appendix no heading. Ending the cut only at
+    headings pandoc prints would hide the appendix as more references. An early end costs a
+    false alarm; a late one hides numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n"
+        "# Appendix\n\nThe estimate was 9.99.\n",
+        encoding="utf-8",
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
 def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:

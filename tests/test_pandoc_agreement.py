@@ -12,6 +12,10 @@ have been caught by a unit test of the regex, because the regex was self-consist
 disagreed with was pandoc. So this asks pandoc directly, for every structural construct
 worth arguing about, and fails when the two views differ.
 
+A third came from asking pandoc: a `## Methods` line directly under a line of Results prose.
+Pandoc does not let a heading interrupt a paragraph and printed it as text. The toolkit took
+it for a heading, and the `p < 0.001` below it passed as the alpha chosen in advance.
+
 The point is not that pandoc is a specification. It is that pandoc is *the thing that builds
 the document the reader receives*, so where the toolkit and pandoc disagree about what is a
 heading or what is code, the toolkit is wrong by definition.
@@ -164,6 +168,58 @@ CONSTRUCTS = {
     "atx quoted value opening with a zero-width space": (
         '# Results {title="\N{ZERO WIDTH SPACE}x y"}\n\nProse.\n'
     ),
+    # A heading cannot interrupt a paragraph (pandoc's `blank_before_header`), so each of
+    # these is printed as text inside the paragraph above it.
+    "atx continuing a paragraph": (
+        "## Results\n\nThe excess was significant\n## Methods\n(p < 0.001).\n"
+    ),
+    "setext continuing a paragraph": (
+        "## Results\n\nThe excess was significant\nMethods\n-------\n\n(p < 0.001).\n"
+    ),
+    "setext with equals continuing a paragraph": (
+        "## Results\n\nThe excess was significant\nMethods\n=======\n\n(p < 0.001).\n"
+    ),
+    "atx continuing a list item": "- An item\n## Methods\n",
+    "atx continuing a list paragraph": "- An item\n\n  More of it\n## Methods\n",
+    "atx continuing a block quote": "> A quotation\n## Methods\n",
+    "atx continuing a block quote past an html tag": "> A quotation\n<p>\n## Methods\n",
+    "atx directly under a fence after a block quote": (
+        f"> A quotation\n{FENCE}\nx\n{FENCE}\n## Results\n"
+    ),
+    "atx continuing a caption": "| a |\n|---|\n| 1 |\n\n: A caption\n## Methods\n",
+    "setext continuing a caption under its table": "| a |\n|---|\n| 1 |\n: A caption\n-------\n",
+    "atx after an inline html comment": "Prose.\n<!-- a note -->\n## Methods\n",
+    "atx after an inline tex command": "Prose.\n\\newpage\n## Methods\n",
+    "atx after a line of inline tex": "\\textbf{Note}\n## Methods\n",
+    "atx after a tilde fence inside a paragraph": "Prose.\n~~~\nx\n~~~\n## Methods\n",
+    # A lone `#` is an empty heading, not the first half of one spread over two lines.
+    "lone hash above a line": "#\nMethods\n\nProse.\n",
+    # ...and needs no blank line after any block that is not a paragraph.
+    "atx directly under atx": "# Title\n## Methods\n\nProse.\n",
+    "atx directly under a table": "| a | b |\n|---|---|\n| 1 | 2 |\n## Results\n\nProse.\n",
+    "atx directly under a fenced listing": f"{FENCE}r\nx <- 1\n{FENCE}\n## Results\n\nProse.\n",
+    "atx directly under a fence after prose": f"Prose.\n{FENCE}\nx\n{FENCE}\n## Results\n",
+    "atx directly under a tilde fence after a list item": "- An item\n~~~\nx\n~~~\n## Results\n",
+    "atx directly under an html comment": "<!-- a note -->\n## Results\n\nProse.\n",
+    "atx directly under front matter": "---\ntitle: T\n---\n## Results\n\nProse.\n",
+    "atx directly under a thematic break": "Prose.\n\n***\n## Results\n\nProse.\n",
+    "atx directly under a setext heading": "Title\n=====\n## Results\n\nProse.\n",
+    "atx directly under a fenced div": "::: note\nProse.\n:::\n## Results\n\nProse.\n",
+    "atx directly under a page break": "\\newpage\n## Results\n\nProse.\n",
+    "atx directly under an indented listing": "Prose.\n\n    x <- 1\n## Results\n\nProse.\n",
+    "atx directly under an html block": "<div>\nProse.\n</div>\n## Results\n\nProse.\n",
+    "atx directly under an html tag after prose": "Prose.\n<p>\n## Results\n",
+    "atx directly under a line block": "| A line of verse\n## Results\n\nProse.\n",
+    "atx directly under a tex environment after prose": (
+        "Prose.\n\\begin{landscape}\nx\n\\end{landscape}\n## Results\n"
+    ),
+    "atx inside a tex environment": "\\begin{landscape}\n## Methods\n\\end{landscape}\n",
+    "setext directly under atx": "# Title\nMethods\n-------\n\nProse.\n",
+    "setext directly under a table": "| a |\n|---|\n| 1 |\nMethods\n-------\n",
+    "setext directly under a page break": "\\newpage\nMethods\n-------\n",
+    # Pandoc tries a setext heading before an ATX one, and takes any line as its title.
+    "setext titled like atx": "## Methods\n-------\n\nProse.\n",
+    "setext titled like a quotation": "> Methods\n-------\n",
 }
 
 
@@ -245,6 +301,53 @@ def test_a_quoted_heading_is_deliberately_not_a_section() -> None:
     atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
     chain = section_chain(markdown, atom.start)
     assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
+
+
+def test_a_heading_in_a_list_item_ends_a_section_and_opens_none() -> None:
+    """A second divergence, for the same reason as the quoted one.
+
+    Pandoc reads `- Results` over an underline as a list item holding a heading titled
+    "Results". The toolkit keeps the marker in the title. It still ends the section above,
+    and is printed as a heading, so the p-value under it is not taken for Methods. But a
+    title of "- Methods" never matches Methods, so `- Methods` over an underline cannot
+    re-admit the `methods_only` rules below a Results section.
+    """
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import section_chain
+    from manuscript_guard.text.tokens import find_atoms
+
+    ended = "## Methods\n\n- Results\n---------\n\nThe excess was significant (p < 0.001).\n"
+    opened = "## Results\n\n- Methods\n---------\n\nThe excess was significant (p < 0.001).\n"
+    for markdown in (ended, opened):
+        atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
+        chain = section_chain(markdown, atom.start)
+        assert chain[-1].startswith("- ")
+        assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
+
+
+def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it() -> None:
+    """The gates read `{{table.t}}`; pandoc reads the pipe table the build puts in its place,
+    and a table ends at its last row. Read as a line of prose, the placeholder hid the
+    `## Results` under it: the heading the document prints was lost to G2, and a p-value
+    below it would have passed as Methods."""
+    from pathlib import Path
+
+    from manuscript_guard.build.assemble import render_table
+    from manuscript_guard.contracts.results import Table
+
+    table = Table(
+        key="t",
+        columns=("Arm", "Reports"),
+        rows=(("Drug", "412"),),
+        caption=None,
+        align=("left", "right"),
+        quoted=True,
+        source=Path("t.json"),
+    )
+    source = "## Methods\n\n{{table.t}}\n## Results\n\nProse.\n"
+    built = source.replace("{{table.t}}", render_table(table))
+    assert headings(source) == pandoc_headings(built) == ["Methods", "Results"]
 
 
 # ---------------------------------------------------------------- fences

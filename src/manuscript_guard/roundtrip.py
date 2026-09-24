@@ -415,7 +415,14 @@ def _bracket_groups(text: str) -> list[tuple[int, int]]:
     return sorted(groups)
 
 
-def _protected_spans(text: str) -> list[tuple[int, int]]:
+#: What may stand between a narrative key and the bracket after it, for pandoc to read the
+#: two as one citation: spaces, and a line break in a hard-wrapped source.
+_LOCATOR = re.compile(r"(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)\[")
+
+
+def _protected_spans(
+    text: str, literal: Sequence[tuple[int, int]] = ()
+) -> list[tuple[int, int]]:
     """Where the bindings and citations of a source paragraph are, in order.
 
     A bracketed citation is a balanced bracket group with a key at its own level, not only
@@ -423,32 +430,40 @@ def _protected_spans(text: str) -> list[tuple[int, int]]:
     "[@key, p. 3 [emphasis added]]" is one citation. Found by balance, because a pattern
     either stopped at the first inner bracket - and protected nothing - or started at the
     first `[` of the paragraph, and made the prose "[low, high) were rescaled as in" part of
-    a citation.
+    a citation. A narrative key takes the bracket group after it, as pandoc does: `@key
+    [p. 33]` is a key and its locator, and `@a [see @b]` is one citation.
+
+    A citation is one token with any binding inside it, `[@key, table {{results.t}}]`:
+    found as a binding first, it dropped the citation, which then stayed in the prose. None
+    is read in code or an autolink, `literal`, where pandoc reads none either.
     """
-    spans = [m.span() for m in _BINDING.finditer(text)]
-
-    def free(start: int, end: int) -> bool:
-        return not any(s < end and start < e for s, e in spans)
-
     groups = _bracket_groups(text)
-    for start, end in groups:
+
+    def within(at: int, spans: Sequence[tuple[int, int]]) -> bool:
+        return any(s <= at < e for s, e in spans)
+
+    cites: list[tuple[int, int]] = []
+    for start, end in groups:  # in order of start, so a group comes before those inside it
+        if within(start, cites) or within(start, literal):
+            continue
         inner = [(s, e) for s, e in groups if start < s and e < end]
         own = list(text[start + 1 : end - 1])
         for s, e in inner:
             own[s - start - 1 : e - start - 1] = " " * (e - s)
-        if _OWN_KEY.search("".join(own)) and free(start, end):
-            spans.append((start, end))
+        if _OWN_KEY.search("".join(own)):
+            cites.append((start, end))
     for match in _NARRATIVE.finditer(text):
         start, end = match.span()
-        if not free(start, end):
+        if within(start, cites) or within(start, literal):
             continue
-        locator = re.match(r"[ \t]+\[", text[end:])
-        if locator:
-            group = next((g for g in groups if g[0] == end + locator.end() - 1), None)
-            if group and not _OWN_KEY.search(text[group[0] + 1 : group[1] - 1]):
-                end = group[1]
-        spans.append((start, end))
-    return sorted(spans)
+        locator = _LOCATOR.match(text, end)
+        group = locator and next((g for g in groups if g[0] == locator.end() - 1), None)
+        if group:
+            cites = [(s, e) for s, e in cites if not (group[0] <= s and e <= group[1])]
+            end = group[1]
+        cites.append((start, end))
+    bindings = [m.span() for m in _BINDING.finditer(text) if not within(m.start(), cites)]
+    return sorted(cites + bindings)
 
 
 def paragraph_text(document: Path) -> dict[str, str]:
@@ -536,6 +551,9 @@ _SCAN = re.compile(
 #: of the paragraph's own tokens: it is printed in a footnote, or dropped with the comment.
 _OPAQUE = frozenset({"raw", "comment", "note", "note_ref", "image", "math", "tex", "html"})
 
+#: Where pandoc reads no citation, though a binding inside is filled in all the same.
+_LITERAL = frozenset({"code", "coded", "autolink"})
+
 #: Kinds whose shown text is itself Markdown, so emphasis inside it is read as emphasis.
 _MARKDOWN_INSIDE = frozenset({"link", "span", "struck", "sup", "sub"})
 
@@ -598,11 +616,14 @@ class _Token:
 
 
 def _tokens(paragraph: str) -> list[_Token]:
-    """The paragraph's own bindings and citations: not those inside a footnote or comment."""
-    opaque = [m.span() for m in _SCAN.finditer(paragraph) if m.lastgroup in _OPAQUE]
+    """The paragraph's own bindings and citations: not those inside a footnote or comment,
+    and no citation in code or an autolink."""
+    scanned = [(m.lastgroup, m.span()) for m in _SCAN.finditer(paragraph)]
+    opaque = [span for kind, span in scanned if kind in _OPAQUE]
+    literal = [span for kind, span in scanned if kind in _LITERAL]
     return [
         _Token(a, b, paragraph[a:b])
-        for a, b in _protected_spans(paragraph)
+        for a, b in _protected_spans(paragraph, literal)
         if not any(start <= a < end for start, end in opaque)
     ]
 
@@ -711,9 +732,12 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     shows = list(paragraph)  # what each character of the source puts into Word's text
     plain = list(filled_text)  # where emphasis is read: constructs set aside, as digits
     marks: list[tuple[int, int, str]] = []
+    quiet: list[tuple[int, int]] = []  # where an `@` is not a key: code, a footnote, ...
     for m in _SCAN.finditer(filled_text):
         kind = m.lastgroup or ""
         start, end = m.span()
+        if kind in _OPAQUE | _LITERAL:
+            quiet.append((start, end))
         group = _INLINE[kind][2]
         inner = m.span(group) if group else (start, start)
         shows[start:end] = [""] * (end - start)
@@ -731,6 +755,13 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             ticks = len(m.group(f"{kind}_ticks"))
             closing = m.end(f"{kind}_text")
             marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
+
+    # A key the token patterns missed: Word's text holds its rendering, not the key.
+    marks += [
+        (m.start(), m.end(), "a citation")
+        for m in _LOOSE_KEY.finditer(paragraph)
+        if not any(s <= m.start() < e for s, e in quiet)
+    ]
 
     for start, end, width in _emphasis("".join(plain)):
         shows[start : start + width] = [""] * width
@@ -977,6 +1008,7 @@ def align(
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
     out: list[str] = []
     lost: list[str] = []
+    unread = False
     # A straight ' kept from the source that opens a quotation closed in an edited stretch:
     # Word's closing ’ there is written straight, or pandoc reads the kept one as an
     # apostrophe and prints "’a ratio of 3.84’". Only that one; the rest stay as typed.
@@ -986,12 +1018,15 @@ def align(
         # from Word, where inline formatting did not survive being read as plain text.
         if _unchanged(was_prose[index], piece):
             out.append(prose[index])
-            quote_open = _left_open(prose[index], index == 0, quote_open)
+            # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
+            opened = quote_open or "\u2018" in was_prose[index]
+            quote_open = opened and _left_open(prose[index], index == 0, quote_open)
         else:
-            names = list(reading.lost[index])
-            if _LOOSE_KEY.search(prose[index]):
-                names.append("a citation")
-            lost += [name for name in names if name not in lost]
+            lost += [name for name in reading.lost[index] if name not in lost]
+            # What the build printed of the stretch must be what the source reads as, or
+            # part of it is something Word's text does not hold: `[Methods]` is a link to
+            # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
+            unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
             if quote_open and _WORD_CLOSES.search(piece):
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
@@ -1001,6 +1036,8 @@ def align(
             out.append(protected[index])
     if lost:
         return Alignment(None, markup=tuple(lost))
+    if unread:
+        return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
     if not _reads_as(rebuilt, tokens, returned):
         return Alignment(None, misread=True)
@@ -1019,8 +1056,6 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
         return Alignment(source)
     if reading.lost[0]:
         return Alignment(None, markup=reading.lost[0])
-    if _LOOSE_KEY.search(source):
-        return Alignment(None, markup=("a citation",))
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
     rebuilt = _escaped(returned.strip(), opening=True)

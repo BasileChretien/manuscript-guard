@@ -1225,8 +1225,12 @@ file when nothing had moved at all.
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and
 `@key [p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and
-`@{10.1000/xyz}` as well as `@smith2020`. A key left in the prose all the same refuses the
-paragraph, since Word's text holds the citation's rendering and not the key. Where each token's rendering begins
+`@{10.1000/xyz}` as well as `@smith2020`. A narrative key takes the bracket group after it,
+across a line break too, because pandoc reads `@a [see @b]` as one citation; a binding
+inside a citation is part of it; and nothing in code or an autolink is a citation. Each of
+these was once split or found where pandoc finds none, and marking then broke the paragraph
+for good. A key left in the prose all the same refuses the paragraph, since Word's text
+holds the citation's rendering and not the key. Where each token's rendering begins
 and ends is not worked out. It is read from a second build of the same source in which
 every token has a Word bookmark around it, written as raw OpenXML that pandoc passes
 through. So nothing about how a number or a citation renders has to be known, which is what
@@ -1310,10 +1314,14 @@ typesetting; those are escaped only where they open a paragraph as a list would 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
 what this module can see - a delimiter left unpaired, a span stretched over new words - and
-not where the reading and pandoc disagree. A paragraph without bindings has one more
-backstop, for what renders nothing and the list does not name: if its source, read as Word
-should show it, is not what Word does show, something in it never reached Word as text, and
-the rewording is refused rather than rebuilt from what did.
+not where the reading and pandoc disagree. Every edited stretch has one more backstop, for
+what the list does not name: if its source, read as Word should show it, is not what the
+build printed of that stretch, something in it never reached Word as text, and the
+rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
+was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to pandoc, was deleted.
+At first only a paragraph without bindings had this check. With bindings, looking for the
+source's prose in the build did that work, and when marked extents replaced that search the
+check went with it.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -2040,8 +2048,9 @@ Closed since, and why each mattered:
   knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
   '1' and '2' come back as '12'. The paragraph is refused.
 - **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
-  punctuation and before a non-space opens a quotation; the first `’` of the edited stretch
-  that closes it is written straight. Where that rule and pandoc disagree, one quote prints
+  punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
+  stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
+  closes it is written straight. Where that rule and pandoc disagree, one quote prints
   the wrong way round, and no word changes. Stretches also compare quotes as quotes, so one
   in which only their style changed, “x” to „x“, reads as untouched and keeps the source's.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
@@ -2086,9 +2095,10 @@ Closed since, and why each mattered:
   read exactly like the plain one, paragraph by paragraph. If a bookmark changes a
   rendering, that paragraph is refused rather than aligned on extents that describe
   different text, and it can never take a rewording, even far from the token. Known cases:
-  a binding inside inline code or an HTML comment, where the bookmark is printed rather than
-  read; super- or subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks;
-  `@a [-@b]`; and quotes that pandoc pairs differently around a bookmark.
+  a binding inside inline code, where the bookmark is printed rather than read; super- or
+  subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; and quotes that
+  pandoc pairs differently around a bookmark. A binding in an HTML comment is never marked,
+  and `@a [-@b]`, once two tokens that marking split, is one.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
   punctuation and merges; so does a unit or a percent sign added after a value. Both change
   what the sentence claims, and neither is caught here; `check` sees the binding intact.

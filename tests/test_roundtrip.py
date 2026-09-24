@@ -574,6 +574,107 @@ def test_a_key_pandoc_reads_is_a_citation_here_too(citation: str) -> None:
     assert segments(f"Rates rose {citation} in all.")[1] == [citation]
 
 
+@pytest.mark.parametrize(
+    ("paragraph", "expected"),
+    [
+        pytest.param(
+            "As shown [@key, table {{results.t}}], it was {{results.x}} here.",
+            ["[@key, table {{results.t}}]", "{{results.x}}"],
+            id="binding-inside-a-citation",
+        ),
+        pytest.param(
+            "As @key [table {{results.t}}] shows, it was {{results.x}} here.",
+            ["@key [table {{results.t}}]", "{{results.x}}"],
+            id="binding-in-a-locator",
+        ),
+        pytest.param(
+            "As @key\n[p. 33] says, it was {{results.x}} here.",
+            ["@key\n[p. 33]", "{{results.x}}"],
+            id="locator-on-the-next-line",
+        ),
+        pytest.param(
+            "As @a [@b] and @c [see @d, p. 4] say, it was {{results.x}}.",
+            ["@a [@b]", "@c [see @d, p. 4]", "{{results.x}}"],
+            id="narrative-and-bracketed-read-as-one",
+        ),
+        pytest.param(
+            "Run `fit(@cohort)` or <https://www.npmjs.com/package/@zfish/ror> on {{results.x}}.",
+            ["{{results.x}}"],
+            id="code-and-autolink",
+        ),
+        pytest.param(
+            "Version `v{{results.version}}` was used.",
+            ["{{results.version}}"],
+            id="binding-in-code",
+        ),
+    ],
+)
+def test_tokens_are_what_pandoc_reads_as_one(paragraph: str, expected: list[str]) -> None:
+    """A binding inside a citation dropped the citation, which then stayed in the prose and
+    refused every edit; `@a [@b]` is one citation to pandoc and was two tokens here, and a
+    key in code or an autolink was a token that marking broke. Each refused its paragraph
+    for good."""
+    assert segments(paragraph)[1] == expected
+
+
+def test_a_citation_holding_a_binding_takes_a_rewording() -> None:
+    source = "As shown [@key, table {{results.t}}], it was {{results.x}} in zebrafish."
+    out = merged(
+        source,
+        "As shown ⟦(Key 2019, table 10)⟧, it was ⟦3.84⟧ in zebrafish.",
+        "As shown (Key 2019, table 10), it was 3.84 in all zebrafish.",
+    )
+    assert out == source.replace("in zebrafish", "in all zebrafish")
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "As detailed in [Methods], the ratio was {{results.x}} in zebrafish.",
+            "As detailed in Methods, the ratio was ⟦3.84⟧ in zebrafish.",
+            "As described in Methods, the ratio was 3.84 in zebrafish.",
+            id="header-reference",
+        ),
+        pytest.param(
+            "Values <LLOQ in mg/L and >ULOQ (n = {{results.n}}) were redone.",
+            "Values ULOQ (n = ⟦56⟧) were redone.",
+            "Values ULOQ only (n = 56) were redone.",
+            id="tag-to-pandoc",
+        ),
+        pytest.param(
+            "As per @@key, the ratio was {{results.x}} here.",
+            "As per @Key (2019), the ratio was ⟦3.84⟧ here.",
+            "As in @Key (2019), the ratio was 3.84 here.",
+            id="citation-after-an-at",
+        ),
+        pytest.param(
+            "As per a_@key, the ratio was {{results.x}} here.",
+            "As per a_Key (2019), the ratio was ⟦3.84⟧ here.",
+            "As in a_Key (2019), the ratio was 3.84 here.",
+            id="citation-after-an-underscore",
+        ),
+    ],
+)
+def test_an_edited_stretch_the_build_printed_differently_is_refused(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Rebuilt from Word's text, these deleted the link to the heading, the text pandoc read
+    as a tag, or the citation. A paragraph with no token was already checked this way; one
+    with a token was not, once its extents stopped being found by looking for its prose."""
+    assert merged(source, rendered, returned) is None
+
+
+def test_a_rewording_beside_code_holding_an_at_sign_merges() -> None:
+    source = "Run `fit(@cohort)` first; the ratio was {{results.x}} in zebrafish."
+    out = merged(
+        source,
+        "Run fit(@cohort) first; the ratio was ⟦3.84⟧ in zebrafish.",
+        "Run fit(@cohort) first; the ratio was 3.84 in all zebrafish.",
+    )
+    assert out == source.replace("in zebrafish", "in all zebrafish")
+
+
 def test_a_citation_with_a_key_starting_with_a_digit_survives_a_rewording() -> None:
     source = "Rates rose [@2019who] in all regions."
     out = merged(source, "Rates rose ⟦(WHO 2019)⟧ in all regions.",
@@ -821,6 +922,18 @@ def test_quotes_from_word_are_straightened_for_pandoc_to_curl() -> None:
         "The agency called it ‘a ratio of 3’ in its last review.",
     )
     assert out == "The agency called it 'a ratio of {{results.x}}' in its last review."
+
+
+def test_an_elision_opens_no_quotation() -> None:
+    """Pandoc printed `'Tis` as ’Tis, so nothing was open; straightening the co-author's
+    "keepers’" made pandoc pair the two, and print ‘Tis."""
+    source = "'Tis true that {{results.x}} keepers agreed."
+    out = merged(
+        source,
+        "’Tis true that ⟦3⟧ keepers agreed.",
+        "’Tis true that 3 keepers’ union agreed.",
+    )
+    assert out == "'Tis true that {{results.x}} keepers’ union agreed."
 
 
 def test_a_quote_opened_right_before_a_token_is_closed_straight_too() -> None:
@@ -1755,6 +1868,15 @@ MARKUP = {
     "narrative-with-locator": "As @fictionalClassSignal2019 [p. 3] found, it was "
     "{{results.ror.point}}.",
     "interval": "The interval was [{{results.ror.ci_low}}, {{results.ror.ci_high}}] here.",
+    "binding-inside-citation": "As shown [@fictionalClassSignal2019, table "
+    "{{results.cohort.n_years}}], it was {{results.ror.point}}.",
+    "narrative-then-bracketed": "As @fictionalClassSignal2019 [@fictionalHepaticCohort2021] "
+    "found, it was {{results.ror.point}}.",
+    "locator-on-the-next-line": "As @fictionalClassSignal2019\n[p. 3] found, it was "
+    "{{results.ror.point}}.",
+    "at-sign-in-code": "Run `fit(@cohort)` and the ratio was {{results.ror.point}}.",
+    "narrative-then-suppressed": "As @fictionalClassSignal2019 [-@fictionalHepaticCohort2021] "
+    "found, it was {{results.ror.point}}.",
 }
 
 
@@ -1795,6 +1917,10 @@ def test_every_way_pandoc_renders_prose_still_takes_a_rewording(project: Path) -
         aligned = align(source, rendered, rendered + " Indeed.", extents[name].tokens)
         assert aligned.rebuilt is not None, f"{label}: {aligned}"
         assert aligned.rebuilt.startswith(source[:-1]), f"{label}: {aligned.rebuilt}"
+        # An edit at the start, where the markup is: what the build printed of that stretch
+        # is checked against the source, and typesetting alone must not fail that check.
+        opened = align(source, rendered, "Indeed. " + rendered, extents[name].tokens)
+        assert not opened.unaligned, f"{label}: an edit at the start was refused as unread"
     for name, block in sent.items():
         assert extents[name].text == block.text, f"marking changed {block.text[:60]!r}"
 
@@ -1821,6 +1947,29 @@ def test_a_value_ending_a_sentence_takes_a_rewording_end_to_end(
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     after = source.read_text(encoding="utf-8")
     assert "The odds ratio for major bleeding was {{results.ror.point}}." in after
+
+
+@needs_pandoc
+def test_a_link_to_a_heading_beside_a_binding_is_not_deleted_end_to_end(
+    project: Path, tmp_path: Path
+) -> None:
+    """`[Bleeding]` is a link to the heading, and Word's text holds only its words: an edit
+    beside it wrote the paragraph back without the link, with exit 0."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    sentence = "As detailed in [Bleeding], the ratio was {{results.ror.point}} overall."
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Bleeding\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project),
+        tmp_path / "bleeding.docx",
+        lambda xml: xml.replace("As detailed in", "As described in", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert sentence in source.read_text(encoding="utf-8")
 
 
 @needs_pandoc

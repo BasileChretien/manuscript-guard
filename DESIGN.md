@@ -1256,6 +1256,29 @@ the paragraphs, and blamed a neighbour when the diff preferred it. The file-leve
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
 
+Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
+refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
+first reaches Word as an empty line, the second does not reach it at all. Filled like any
+other slot, the first half moved and the second stayed, and a paragraph dragged below the
+empty line that ends the example's Methods was written inside the comment and vanished from
+the next build. A `:::` or a code fence written directly under a paragraph belongs to that
+paragraph's source but not to its Word text, so it travelled with the paragraph, and a
+rewording deleted it: the div then ran to the end of the document. Four kinds of paragraph
+are now held in place, each a section of its own, so a move past one is reported like a move
+past a heading: one that never reaches Word, one whose comment or raw markup runs on into
+it, one that renders nothing, and one that runs straight on into a fence. The last two are
+never reworded either.
+
+A table or a figure is a boundary only if it can be found again in the returned document.
+They were matched by position, both kinds together, and only while their total was
+unchanged, so a co-author who deleted one table or pasted in any picture switched every
+boundary off, and a paragraph dragged below a figure came back as "nothing came back". Each
+is now matched within its own kind by what it holds: a table by its text, a figure by the
+bytes of its picture, because Word renumbers and renames the part a picture is stored in
+every time it saves. What is left is paired by position when as many of that kind came back
+as were sent. One that cannot be found is reported and makes the command exit 1, because a
+move past it cannot be seen.
+
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and `@key
@@ -2310,11 +2333,26 @@ Closed since, and why each mattered:
   into its paragraph is recognised by its text vanishing from the document and turning up
   in the paragraph; a heading reworded in the same edit is not recognised.
 - **A move is applied only within its section.** A paragraph moved past a heading, table or
-  figure, or into another file, is reported and left where it was. Where each paragraph
-  now sits is read against the headings, tables and figures as the document was sent. An
-  edited or deleted heading is not one of them, so a paragraph that crossed only that
-  heading is not seen to leave its section: with the order unchanged the move is dropped
-  unreported, and with it changed the paragraph goes to the edge of its own section.
+  figure, past a paragraph held in place, or into another file, is reported and left where
+  it was. Where each paragraph now sits is read against the headings, tables and figures as
+  the document was sent. An edited or deleted heading is not one of them, so a paragraph
+  that crossed only that heading is not seen to leave its section: with the order unchanged
+  the move is dropped unreported, and with it changed the paragraph goes to the edge of its
+  own section. A table or figure that cannot be found in the returned document is not one of
+  them either. That one is reported, but a move past it is not.
+- **A paragraph is held in place by its source, not by what the co-author meant.** A
+  one-line comment, a `
+ewpage` or anything else Word shows as an empty line is held, so a
+  move across it is refused where nothing would have broken. A paragraph written directly
+  above a `:::` or a code fence is never moved or reworded by `import`; a blank line before
+  the fence frees it on the next build. A co-author who drags the empty line itself sees the
+  paragraphs it passed reported as moved, not the line.
+- **A table or figure is recognised by what it holds, and failing that by its place.** A
+  table with a corrected cell, or a picture Word stored again, no longer matches by content,
+  and is taken to be the one in its place among its kind when as many came back as were
+  sent. If a table is deleted and another pasted in while a third is edited, the wrong two
+  can be paired, and a move is then judged against the wrong boundary. A figure pasted twice
+  matches neither copy and is reported as not found.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section

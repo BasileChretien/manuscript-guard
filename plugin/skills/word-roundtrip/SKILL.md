@@ -66,15 +66,17 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, it runs straight on into a `:::` or code fence with no blank line between, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
+| `came back in a different place` | a move within one section (between the same two headings, tables, figures, HTML comments or fences); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table or figure, past an HTML comment (Word shows it as an empty line) or a `:::` or code fence with no blank line above it, or into another file. Not applied; move it in the `.md` yourself |
+| `could not be found in the returned one` | a table or figure was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted or moved between sections or files, and any table or figure
+that could not be found, makes the command exit 1, with or without `--apply`; the safe
+changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -100,6 +102,11 @@ handled, and each has a test:
 - A move together with rewording is applied in one pass: the paragraph goes to its new
   place in its section, reworded if it was. A move into another section is reported and not
   applied, rather than pushing a paragraph out of every section in between.
+- A move beside an HTML comment with a blank line in it is refused rather than splitting the
+  comment, which wrote the moved paragraph inside it. A `:::` or code fence written directly
+  under a paragraph stays where it is: that paragraph is neither moved nor reworded.
+- Tables and figures are recognised by what they hold, so deleting a table or pasting in a
+  picture no longer hides a paragraph moved past a figure.
 - A paragraph split in two in Word is refused, not cut down to its first half.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.

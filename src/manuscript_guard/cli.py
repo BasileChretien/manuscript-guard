@@ -419,9 +419,9 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
-        not args.apply and bool(plan.moved or plan.merged)
-    )
+    outstanding = bool(
+        plan.refused or plan.gone or plan.joined or plan.misplaced or plan.lost
+    ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
 
 
@@ -439,9 +439,22 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table or a figure, or into another "
-            "file, changes how many paragraphs a section holds, and import only reorders "
-            "within one; move it in the .md yourself."
+            "    Not applied: import only reorders paragraphs within a section, and a heading, "
+            "a table, a figure, another file, an HTML comment (an empty line in Word) or a "
+            "`:::` or code fence with no blank line above it ends one. Move it in the .md "
+            "yourself."
+        )
+
+    if plan.lost:
+        what = " and ".join(f"{plan.lost.count(k)} {k}(s)" for k in sorted(set(plan.lost)))
+        print(
+            f"{what} of the document as sent could not be found in the returned one: deleted, "
+            f"pasted twice, or changed while others were added or removed."
+        )
+        print(
+            "    Nothing about them is applied, and a paragraph moved past one cannot be seen. "
+            "Tables and figures are built from the analysis: change them there, or remove "
+            "the placeholder from the .md."
         )
 
     if plan.moved:

@@ -17,7 +17,11 @@ changed".
 
 from __future__ import annotations
 
+import hashlib
+import posixpath
 import re
+import zipfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -26,6 +30,9 @@ from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+_R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+_VML_IMAGE = "{urn:schemas-microsoft-com:vml}imagedata"
+_RELS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 
 #: Subtrees whose text is not on the page once every tracked change is accepted, or is not
 #: this paragraph's text at all: a text box holds paragraphs of its own, and an
@@ -74,18 +81,28 @@ class DocumentUnreadable(Exception):
 
 @dataclass(frozen=True)
 class Block:
-    """One paragraph of the body, or one table, in document order."""
+    """One paragraph of the body, or one table or figure, in document order."""
 
     #: The paragraph identifiers it carries. More than one means paragraphs were joined.
     names: tuple[str, ...] = ()
     #: What it says, with every tracked change accepted: layout whitespace as single spaces,
     #: a no-break space as itself. See `spaced`.
     text: str = ""
-    #: A table or a figure: a block that is not prose, and not compared.
-    table: bool = False
     #: Where each marked binding or citation sits in `text`, as (start, end). Only a
     #: document built with the tokens marked has any.
     tokens: tuple[tuple[int, int], ...] = ()
+    #: "table" or "figure" for a block that is not prose, "" for a paragraph.
+    kind: str = ""
+    #: What tells a table or a figure apart from the others in another copy of the document:
+    #: a digest of a table's text, or of the picture a figure shows. Word renumbers and
+    #: renames the parts a picture is stored in when it saves; the picture stays the same.
+    #: Empty when the picture could not be read.
+    key: str = ""
+
+    @property
+    def table(self) -> bool:
+        """A table or a figure: a block that is not prose, and not compared."""
+        return bool(self.kind)
 
 
 @dataclass(frozen=True)
@@ -99,6 +116,8 @@ class _Paragraph:
     #: It holds a picture: a figure, when it has no text and no identifier.
     picture: bool = False
     tokens: tuple[tuple[int, int], ...] = ()
+    #: The relationship ids of the pictures it shows, in order.
+    embeds: tuple[str, ...] = ()
 
 
 def _text(element: ET.Element) -> str:
@@ -183,13 +202,18 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
     picture = any(node.tag in _PICTURES for node in element.iter())
+    embeds = tuple(
+        rid
+        for node in element.iter()
+        if (rid := node.get(_R + "embed") or (node.tag == _VML_IMAGE and node.get(_R + "id")))
+    )
     mark = element.find(f"{W}pPr/{W}rPr")
     runs_on = mark is not None and (
         mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
     )
     text, tokens = _read(element)
     return _Paragraph(
-        tuple(names), text, tuple(comments), runs_on, table, picture, tokens
+        tuple(names), text, tuple(comments), runs_on, table, picture, tokens, embeds
     )
 
 
@@ -227,31 +251,72 @@ def blocks(document: Path) -> list[Block]:
     Word shows it. If nothing of it is left, it was deleted outright and its identifier goes
     with it rather than being carried into its neighbour, where it would read as a join.
     """
+    paragraphs = paragraphs_of(document)
+    pictures = _pictures(document, {r for p in paragraphs for r in p.embeds})
     out: list[Block] = []
     pending: list[_Paragraph] = []
-    table_open = False
-    for paragraph in paragraphs_of(document):
+    cells: list[str] | None = None
+    for paragraph in paragraphs:
         if paragraph.table:
-            if not table_open:
+            if cells is None:
                 out.extend(_fold(pending))
-                pending = []
-                out.append(Block(table=True))
-            table_open = True
+                pending, cells = [], []
+            cells.append(paragraph.text)
             continue
-        table_open = False
+        if cells is not None:
+            out.append(Block(kind="table", key=_digest(cells)))
+            cells = None
         if paragraph.picture and not paragraph.names and not paragraph.text:
             # A figure: a picture and no text. Read as an empty paragraph it was no boundary
             # at all, and a paragraph moved past it went unseen.
             out.extend(_fold(pending))
             pending = []
-            out.append(Block(table=True))
+            seen = [pictures.get(rid) for rid in paragraph.embeds]
+            key = _digest(seen) if seen and all(seen) else ""
+            out.append(Block(kind="figure", key=key))
             continue
         pending.append(paragraph)
         if not paragraph.runs_on:
             out.extend(_fold(pending))
             pending = []
+    if cells is not None:
+        out.append(Block(kind="table", key=_digest(cells)))
     out.extend(_fold(pending))
     return out
+
+
+def _digest(parts: Iterable[str | None]) -> str:
+    return hashlib.sha256("\x00".join(part or "" for part in parts).encode("utf-8")).hexdigest()
+
+
+def _pictures(document: Path, wanted: set[str]) -> dict[str, str]:
+    """A digest of each picture the body shows, by relationship id.
+
+    What tells one figure from another in a document Word has saved. The relationship id and
+    the file it names are not: Word renumbers and renames them on every save.
+    """
+    if not wanted:
+        return {}
+    rels = "word/_rels/document.xml.rels"
+    try:
+        with open_archive(document) as archive:
+            if rels not in archive.namelist():
+                return {}
+            found = {}
+            for rel in read_part(archive, rels, what=f"{document.name}:{rels}").iter(_RELS):
+                rid, target = rel.get("Id", ""), rel.get("Target", "")
+                if rid not in wanted or rel.get("TargetMode") == "External" or not target:
+                    continue
+                part = target[1:] if target.startswith("/") else posixpath.normpath(
+                    f"word/{target}"
+                )
+                try:
+                    found[rid] = hashlib.sha256(archive.read(part)).hexdigest()
+                except (KeyError, OSError, zipfile.BadZipFile):
+                    continue
+            return found
+    except UnsafeDocument as exc:
+        raise DocumentUnreadable(str(exc)) from exc
 
 
 def _fold(run: list[_Paragraph]) -> list[Block]:

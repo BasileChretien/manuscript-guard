@@ -2248,7 +2248,7 @@ def test_a_move_past_a_figure_is_reported_not_applied(tmp_path: Path, dragged: s
     known = {n: (path, w, text.index(w)) for n, w in (("alpha", "Alpha."), ("beta", "Beta."),
                                                       ("gamma", "Gamma."))}
     b = {n: Block((n,), known[n][1]) for n in known}
-    figure = Block(table=True)
+    figure = Block(kind="figure")
     sent = [b["alpha"], b["beta"], figure, b["gamma"]]
     others = [b[n] for n in ("alpha", "beta") if n != dragged]
     returned = [*others, figure, b[dragged], b["gamma"]]
@@ -2294,6 +2294,369 @@ def test_text_typed_where_a_paragraph_renders_nothing_is_not_merged(tmp_path: Pa
     assert not plan.merged and [r.name for r in plan.refused] == ["c"]
     apply_plan(known, plan)
     assert path.read_text(encoding="utf-8") == text
+
+
+# ------------------------------------------------- what no move may carry anything across
+
+
+@pytest.mark.parametrize("dragged", ["into-it", "out-past-it"])
+def test_a_move_beside_a_comment_across_a_blank_line_leaves_the_comment_whole(
+    tmp_path: Path, dragged: str
+) -> None:
+    """An HTML comment with a blank line in it is two paragraphs of source. The first is
+    tagged and reaches Word as an empty line; the second never reaches Word at all. The first
+    was a slot like any other, so a move around it moved half a comment: a paragraph dragged
+    below the empty line landed inside the comment and vanished from the build, and one
+    dragged above it put the comment's halves the wrong way round and printed them."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {
+        "a": "Alpha comes first.",
+        "b": "Beta comes second.",
+        "c1": "<!--\nA note to self,",
+        "c2": "carried on past a blank line.\n-->",
+        "d": "Delta comes last.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    b = {name: Block((name,), paragraphs[name]) for name in ("a", "b", "d")}
+    empty = Block(("c1",), "")
+    sent = [b["a"], b["b"], empty, b["d"]]
+    if dragged == "into-it":
+        returned, crossed = [b["a"], empty, b["b"], b["d"]], "b"
+    else:
+        returned, crossed = [b["a"], b["b"], b["d"], empty], "d"
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == (crossed,)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_a_paragraph_a_comment_runs_on_from_is_neither_moved_nor_merged(tmp_path: Path) -> None:
+    """A comment opened inside a paragraph and closed past a blank line takes the next
+    paragraph of source into itself. Moved, the opening travelled and the closing stayed, so
+    whatever landed in its slot was swallowed by the comment."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {
+        "a": "Alpha comes first.",
+        "b": "Beta opens a note <!-- that runs on",
+        "c": "past a blank line --> and Beta ends.",
+        "d": "Delta comes last.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    alpha, delta = Block(("a",), paragraphs["a"]), Block(("d",), paragraphs["d"])
+    beta = Block(("b",), "Beta opens a note and Beta ends.")
+    sent = [alpha, beta, delta]
+
+    moved = plan_import(known, sent, [beta, alpha, delta])
+    assert moved.misplaced == ("a",)
+    apply_plan(known, moved)
+    assert path.read_text(encoding="utf-8") == before
+
+    reworded = plan_import(known, sent, [alpha, Block(("b",), "Beta now ends."), delta])
+    assert not reworded.merged and [r.name for r in reworded.refused] == ["b"]
+
+
+def _fenced(tmp_path: Path):
+    """A div whose last paragraph runs straight on into the closing fence."""
+    from manuscript_guard.docxtext import Block
+
+    paragraphs = {
+        "open": "::: {.note}\nAlpha, first inside the div.",
+        "z": "Zeta, last inside the div.\n:::",
+        "o": "Omega, after the div.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    del known["open"]  # it opens with a fence, so it carries no identifier
+    sent = [
+        Block((), "Alpha, first inside the div."),
+        Block(("z",), "Zeta, last inside the div."),
+        Block(("o",), "Omega, after the div."),
+    ]
+    return path, known, sent
+
+
+def test_the_last_paragraph_of_a_div_is_not_reworded_over_its_closing_fence(
+    tmp_path: Path,
+) -> None:
+    """With no blank line before it, the `:::` closing a div is part of the div's last
+    paragraph of source, and Word shows only the paragraph. A rewording was written over both,
+    and on the next build the div ran to the end of the document."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, known, sent = _fenced(tmp_path)
+    before = path.read_text(encoding="utf-8")
+    returned = [sent[0], Block(("z",), "Zeta, now the last one inside the div."), sent[2]]
+
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    assert [r.name for r in plan.refused] == ["z"]
+    assert any("fence" in line for line in plan.refused[0].why)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_no_move_carries_a_fence_line_with_it(tmp_path: Path) -> None:
+    """The closing fence travelled with the paragraph it is glued to, so a paragraph moved
+    across it changed which paragraphs the div holds."""
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, known, sent = _fenced(tmp_path)
+    before = path.read_text(encoding="utf-8")
+
+    plan = plan_import(known, sent, [sent[0], sent[2], sent[1]])
+    assert plan.misplaced == ("o",)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+WORDML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def word_document(path: Path, body: str, pictures: dict[str, bytes] | None = None) -> Path:
+    """A minimal .docx: `body`, and each picture stored under its relationship id."""
+    pictures = pictures or {}
+    rels = "".join(
+        f'<Relationship Id="{rid}" Type="{RELS}/image" Target="media/{rid}.png"/>'
+        for rid in pictures
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{WORDML}" xmlns:r="{RELS}" xmlns:a="{DRAWINGML}">'
+            f"<w:body>{body}</w:body></w:document>",
+        )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+            f'relationships">{rels}</Relationships>',
+        )
+        for rid, data in pictures.items():
+            archive.writestr(f"word/media/{rid}.png", data)
+    return path
+
+
+def _picture(rid: str) -> str:
+    return f'<w:p><w:r><w:drawing><a:blip r:embed="{rid}"/></w:drawing></w:r></w:p>'
+
+
+def test_a_figure_is_known_by_its_picture_and_a_table_by_what_it_holds(tmp_path: Path) -> None:
+    """Tables and figures were one kind, told apart by position alone and only while their
+    total was unchanged. A figure is known by the picture it shows, which survives Word
+    renaming the file inside the package; a picture pasted in is a different one."""
+    from manuscript_guard.docxtext import blocks as read
+
+    table = "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>426</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    sent = read(
+        word_document(tmp_path / "sent.docx", _picture("rId7") + table, {"rId7": b"forest"})
+    )
+    # Saved by Word, which renumbers and renames what the package holds; a picture pasted in.
+    back = read(
+        word_document(
+            tmp_path / "back.docx",
+            _picture("rId3") + _picture("rId4") + table,
+            {"rId3": b"a pasted photograph", "rId4": b"forest"},
+        )
+    )
+
+    assert [b.kind for b in sent] == ["figure", "table"]
+    assert [b.kind for b in back] == ["figure", "figure", "table"]
+    assert all(b.table for b in back), "neither is prose"
+    assert back[1].key == sent[0].key != back[0].key
+    assert back[2].key == sent[1].key
+
+
+def _figure_and_table(tmp_path: Path):
+    """'Alpha.', a table, 'Beta.' and 'Gamma.', a figure, 'Delta.': three sections."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = "Alpha.\n\n{{table.t}}\n\nBeta.\n\nGamma.\n\n{{figure.f}}\n\nDelta.\n"
+    path.write_text(text, encoding="utf-8")
+    words = {"alpha": "Alpha.", "beta": "Beta.", "gamma": "Gamma.", "delta": "Delta."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), w) for name, w in words.items()}
+    return path, text, known, b, Block(kind="table", key="t"), Block(kind="figure", key="f")
+
+
+@pytest.mark.parametrize("change", ["a-table-deleted", "a-picture-pasted"])
+def test_a_move_past_a_figure_is_seen_when_the_tables_and_figures_changed(
+    tmp_path: Path, change: str
+) -> None:
+    """Tables and figures were matched by position only while their total was unchanged. A
+    co-author who deleted a table or pasted in any picture turned every one of them off, and a
+    paragraph dragged below a figure, which keeps its place among the paragraphs, came back
+    as "nothing came back"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, b, table, figure = _figure_and_table(tmp_path)
+    sent = [b["alpha"], table, b["beta"], b["gamma"], figure, b["delta"]]
+    dragged = [b["beta"], figure, b["gamma"], b["delta"]]  # Gamma below the figure
+    if change == "a-table-deleted":
+        returned = [b["alpha"], *dragged]
+    else:
+        returned = [b["alpha"], Block(kind="figure", key="pasted"), table, *dragged]
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == ("gamma",)
+    assert plan.lost == (("table",) if change == "a-table-deleted" else ())
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_figure_word_stored_differently_is_still_that_figure(tmp_path: Path) -> None:
+    """A picture Word re-encoded no longer matches by what it holds. With as many figures back
+    as were sent, it is still that figure, by its place among them."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, table, _figure = _figure_and_table(tmp_path)
+    figure, stored = Block(kind="figure", key="f"), Block(kind="figure", key="re-encoded")
+    sent = [b["alpha"], table, b["beta"], b["gamma"], figure, b["delta"]]
+    untouched = [b["alpha"], table, b["beta"], b["gamma"], stored, b["delta"]]
+    assert plan_import(known, sent, untouched).empty
+
+    dragged = [b["alpha"], table, b["beta"], stored, b["gamma"], b["delta"]]
+    assert plan_import(known, sent, dragged).misplaced == ("gamma",)
+
+
+def test_a_table_or_figure_that_did_not_come_back_is_reported(tmp_path: Path) -> None:
+    """A deleted table is an edit the import does not apply, and every move past it goes
+    unseen. It said "nothing came back"."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, table, figure = _figure_and_table(tmp_path)
+    sent = [b["alpha"], table, b["beta"], b["gamma"], figure, b["delta"]]
+    plan = plan_import(known, sent, [b["alpha"], b["beta"], b["gamma"], figure, b["delta"]])
+    assert plan.lost == ("table",)
+    assert not plan.empty
+
+
+@needs_pandoc
+def test_a_move_to_the_end_of_the_methods_does_not_land_inside_its_comment(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end on the example, whose Methods end with a comment that spans a blank line.
+    Dragged below the comment's empty line, "The reporting odds ratio was computed..." was
+    written inside the comment and the rebuilt document no longer contained it, exit 0."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        moved = tagged_xml(xml)[5]
+        assert "was computed from a 2 x 2 table" in moved
+        results = re.search(r"<w:p>(?:(?!<w:p>).)*?>Results</w:t></w:r></w:p>", xml, re.DOTALL)
+        assert results, "the Results heading"
+        # The last thing in the Methods, just above the next heading: below the empty line.
+        return xml.replace(moved, "", 1).replace(results.group(0), moved + results.group(0), 1)
+
+    returned = rewrite(document, tmp_path / "comment.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    after = source.read_text(encoding="utf-8")
+    comment = re.search(r"<!--.*?-->", before, re.DOTALL).group(0)
+    assert comment in after, "the comment is whole"
+    assert "was computed" in re.sub(r"<!--.*?-->", "", after, flags=re.DOTALL)
+    assert after == before
+    assert "different section" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_of_a_div_s_last_paragraph_keeps_the_div_closed(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: the closing `:::` glued to the div's last paragraph was deleted with the
+    rewording, and the div ran to the end of the document on the next build, exit 0."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    div = "::: {.note}\nAlpha one inside the div.\n\nZeta two inside the div, last.\n:::\n\n"
+    heading = "# Data availability"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(heading, div + heading, 1), encoding="utf-8"
+    )
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    returned = rewrite(
+        document,
+        tmp_path / "div.docx",
+        lambda xml: xml.replace("Zeta two inside the div, last.", "Zeta two, reworded, last.", 1),
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    assert "fence" in capsys.readouterr().out
+
+
+def repackage(document: Path, target: Path, changes: dict, added: dict[str, bytes]) -> Path:
+    """A co-author, simulated at the package level: each named part passed through its change,
+    and new parts added, as Word does when a picture is pasted in."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(
+        target, "w", zipfile.ZIP_DEFLATED
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename in changes:
+                data = changes[item.filename](data.decode("utf-8")).encode("utf-8")
+            zout.writestr(item, data)
+        for name, data in added.items():
+            zout.writestr(name, data)
+    return target
+
+
+@needs_pandoc
+def test_a_move_past_a_figure_is_reported_after_a_picture_is_pasted_in(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: with a picture pasted into the Introduction, a Discussion paragraph dragged
+    below the figure beside it came back as "nothing came back", exit 0."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8").replace("\n\n{{figure.forest}}", "", 1)
+    first = "reporting period.\n"
+    source.write_text(text.replace(first, first + "\n{{figure.forest}}\n", 1), encoding="utf-8")
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        moved = next(p for p in tagged if "exceeds the class-level estimate" in p)
+        figure = re.search(r"<w:p>(?:(?!<w:p>).)*?<w:drawing>.*?</w:p>", xml, re.DOTALL).group(0)
+        assert xml.index(moved) < xml.index(figure) < xml.index(tagged[tagged.index(moved) + 1])
+        pasted = re.sub(r'r:embed="[^"]*"', 'r:embed="rIdPasted"', figure)
+        xml = xml.replace(moved, "", 1).replace(figure, figure + moved, 1)
+        return xml.replace(tagged[1], tagged[1] + pasted, 1)
+
+    def rels(xml: str) -> str:
+        return xml.replace(
+            "</Relationships>",
+            f'<Relationship Id="rIdPasted" Type="{RELS}/image" Target="media/pasted.png" />'
+            "</Relationships>",
+        )
+
+    returned = repackage(
+        document,
+        tmp_path / "pasted.docx",
+        {"word/document.xml": edit, "word/_rels/document.xml.rels": rels},
+        {"word/media/pasted.png": b"\x89PNG\r\n\x1a\n a photograph of the ward"},
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    assert "different section" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(

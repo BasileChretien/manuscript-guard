@@ -26,7 +26,9 @@ Both are refused, and named, rather than guessed at.
 from __future__ import annotations
 
 import difflib
+import re
 from collections import Counter, deque
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,9 +63,14 @@ class Plan:
     moved: tuple[tuple[str, int, int], ...] = ()
     #: Moved into a different section or file; not applied.
     misplaced: tuple[str, ...] = ()
-    #: Identifier -> (file, section): the stretch between headings, tables and figures that
-    #: the paragraph belongs to, which is what a move is applied within.
+    #: Identifier -> (file, section): the stretch between headings, tables, figures and
+    #: paragraphs held in place that the paragraph belongs to, which is what a move is applied
+    #: within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
+    #: The kind of each table or figure of the document as sent that the returned one could
+    #: not be matched with: deleted, pasted twice, or changed while others of its kind were
+    #: added or removed. A move past one of them cannot be seen.
+    lost: tuple[str, ...] = ()
 
     @property
     def empty(self) -> bool:
@@ -74,6 +81,7 @@ class Plan:
             or self.joined
             or self.moved
             or self.misplaced
+            or self.lost
         )
 
 
@@ -125,9 +133,51 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     return found
 
 
-def _sections(known: dict) -> dict[str, tuple[Path, int]]:
+#: A line opening or closing a fenced div or a code block. Written directly under a paragraph,
+#: with no blank line between, it is part of that paragraph's source but not of its Word text.
+_FENCE_LINE = re.compile(r"^[ \t]*(?::::|```|~~~)", re.MULTILINE)
+
+
+def _held_in_place(known: dict, rendered: dict[str, str]) -> dict[str, str]:
+    """Paragraphs of source whose slot no move may refill, each with why.
+
+    A move rewrites slots, and a slot is only safe to refill when what it holds is the
+    paragraph Word showed, all of it and nothing more. An HTML comment with a blank line in
+    it is two paragraphs of source: the first reaches Word as an empty line, and the second
+    does not reach it at all. As a slot, the first half moved and the second stayed, so a
+    paragraph dragged below the empty line was written inside the comment and vanished from
+    the build. Four kinds of paragraph are held where they are:
+
+    - `hidden`: it never reached Word, because something opened before it holds it.
+    - `runs-on`: it opens that something. Moved, the opening went and the close stayed.
+    - `empty`: it reaches Word as an empty line, like a comment's first line.
+    - `fenced`: it runs straight on into a `:::` or a code fence, which then went with it.
+
+    Each is a section of its own, so a move is never applied across one.
+    """
+    found: dict[str, str] = {}
+    texts: dict[Path, str] = {}
+    before: dict[Path, tuple[str, int]] = {}
+    for name, (path, para, start) in sorted(
+        known.items(), key=lambda item: (str(item[1][0]), item[1][2])
+    ):
+        if path not in texts:
+            texts[path] = path.read_text(encoding="utf-8")
+        if name not in rendered:
+            found[name] = "hidden"
+            if path in before and not texts[path][before[path][1] : start].strip():
+                found.setdefault(before[path][0], "runs-on")
+        elif not rendered[name].strip():
+            found[name] = "empty"
+        elif _FENCE_LINE.search(para):
+            found[name] = "fenced"
+        before[path] = (name, start + len(para))
+    return found
+
+
+def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, int]]:
     """Which section of its file each paragraph is in: how many headings, tables or figures
-    come before it there.
+    come before it there, or paragraphs held in place, each of which is a section of its own.
 
     Import fills paragraph slots, and a heading is not a slot: it cannot change how many
     paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
@@ -138,22 +188,64 @@ def _sections(known: dict) -> dict[str, tuple[Path, int]]:
     texts: dict[Path, str] = {}
     section: dict[Path, int] = {}
     end: dict[Path, int] = {}
+    alone: dict[Path, bool] = {}
     for name, (path, para, start) in sorted(
         known.items(), key=lambda item: (str(item[1][0]), item[1][2])
     ):
         if path not in texts:
             texts[path] = path.read_text(encoding="utf-8")
             section[path] = 0
-        elif texts[path][end[path] : start].strip():
+        elif name in held or alone[path] or texts[path][end[path] : start].strip():
             section[path] += 1
         out[name] = (path, section[path])
         end[path] = start + len(para)
+        alone[path] = name in held
     return out
+
+
+def _counterparts(
+    reference: list[Block], returned: list[Block]
+) -> tuple[dict[int, int], tuple[str, ...]]:
+    """Which table or figure of the document as sent each returned one is, by index, and
+    the kinds of those sent that could not be found.
+
+    By what it holds first, where that is unique on both sides: a table by its text, a figure
+    by its picture. Word renumbers the relationship a picture hangs on and renames its file
+    when it saves, so neither says which figure it is; the picture's bytes do. What is left is
+    paired by position among its own kind, when as many of that kind are left on both sides: a
+    table with a corrected cell, or a picture Word stored anew, is the one in that place.
+    Tables and figures used to be paired by position alone, both kinds together, and only
+    while their total was unchanged. A co-author who deleted one table or pasted in one
+    picture turned every one of them off, and a paragraph dragged past a figure went unseen.
+    """
+    def ident(block: Block) -> tuple[str, str]:
+        return block.kind, block.key
+
+    sent = [i for i, block in enumerate(reference) if block.table]
+    back = [j for j, block in enumerate(returned) if block.table]
+    in_sent = Counter(ident(reference[i]) for i in sent)
+    in_back = Counter(ident(returned[j]) for j in back)
+    where = {ident(reference[i]): i for i in sent}
+    found = {
+        j: where[ident(returned[j])]
+        for j in back
+        if returned[j].key and in_sent[ident(returned[j])] == in_back[ident(returned[j])] == 1
+    }
+    lost: list[str] = []
+    taken = set(found.values())
+    for kind in dict.fromkeys(reference[i].kind for i in sent):
+        left = [i for i in sent if reference[i].kind == kind and i not in taken]
+        right = [j for j in back if returned[j].kind == kind and j not in found]
+        if len(left) == len(right):
+            found.update(zip(right, left, strict=True))
+        else:
+            lost += [kind] * len(left)
+    return found, tuple(lost)
 
 
 def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     """The headings, tables and figures of the document as sent, each ranked as the opening
-    of the section after it, keyed by what they say (a table by its position among tables).
+    of the section after it, keyed by what they say (a table or figure by its index).
 
     Only what stands between two sections counts. Pandoc can render an untagged paragraph
     inside a section - display maths, say - and ranked as a boundary it would make every
@@ -161,9 +253,8 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     """
     found: dict[tuple, deque] = {}
     pending: list[tuple] = []
-    tables = 0
     previous: tuple | None = None
-    for block in reference:
+    for index, block in enumerate(reference):
         if block.names and not block.table:
             here = rank(block.names[0])
             if previous is None or previous[:2] != here[:2]:
@@ -171,8 +262,7 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
                     found.setdefault(key, deque()).append((*here[:2], 0))
             pending, previous = [], here
         elif block.table:
-            pending.append(("table", tables))
-            tables += 1
+            pending.append(("block", index))
         elif block.text:
             pending.append(("text", block.text))
     for key in pending:
@@ -181,7 +271,13 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
 
 
 def _misplaced(
-    reference: list[Block], returned: list[Block], order: list[str], moved: set[str], rank
+    reference: list[Block],
+    returned: list[Block],
+    order: list[str],
+    moved: set[str],
+    rank,
+    held: Collection[str] = (),
+    counterparts: dict[int, int] | None = None,
 ) -> list[str]:
     """Paragraphs that came back outside their own section or file.
 
@@ -189,24 +285,28 @@ def _misplaced(
     from the end of one section to just below the next heading keeps its place among the
     paragraphs, so the diff saw nothing and the move was dropped with "nothing came back".
     The largest set of paragraphs whose sections read in order - with the headings, tables and
-    figures as sent held fixed - is kept, and whatever falls outside it is out of place. The
-    order diff only breaks ties, so the paragraph that crossed the heading is the one named,
-    not a neighbour the diff happened to prefer. A file holding a single paragraph, which the
-    first version of this check reported as moved when nothing had moved, reads in order.
+    figures as sent, and the paragraphs held in place, fixed - is kept, and whatever falls
+    outside it is out of place. The order diff only breaks ties, so the paragraph that crossed
+    the heading is the one named, not a neighbour the diff happened to prefer. A file holding a
+    single paragraph, which the first version of this check reported as moved when nothing had
+    moved, reads in order.
     """
     boundaries = _boundaries(reference, rank)
-    same_tables = sum(b.table for b in reference) == sum(b.table for b in returned)
+    if counterparts is None:
+        counterparts = _counterparts(reference, returned)[0]
     ordered = set(order)
     sequence: list[tuple[str | None, tuple]] = []
-    tables = 0
-    for block in returned:
+    for index, block in enumerate(returned):
         if block.table:
-            key = ("table", tables)
-            tables += 1
-            if same_tables and boundaries.get(key):
+            key = ("block", counterparts.get(index))
+            if boundaries.get(key):
                 sequence.append((None, boundaries[key].popleft()))
         elif block.names:
-            sequence += [(name, rank(name)) for name in block.names if name in ordered]
+            sequence += [
+                (None if name in held else name, rank(name))
+                for name in block.names
+                if name in ordered
+            ]
         elif block.text and boundaries.get(("text", block.text)):
             sequence.append((None, boundaries[("text", block.text)].popleft()))
 
@@ -389,7 +489,8 @@ def plan_import(
         if name not in slid and counts[name] == 1
     ]
 
-    sections = _sections(known)
+    held = _held_in_place(known, rendered)
+    sections = _sections(known, held)
     in_parts = _in_parts(reference, sections)
     beside_new = _beside_new_text(reference, returned)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
@@ -410,6 +511,10 @@ def plan_import(
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))
+        elif held.get(name) == "runs-on":
+            refused.append(Refusal(name, now, (_RUNS_ON,)))
+        elif held.get(name) == "fenced":
+            refused.append(Refusal(name, now, (_FENCED,)))
         elif name in in_parts:
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
@@ -436,8 +541,13 @@ def plan_import(
         return (files[path], section, 1)
 
     moved = moves([n for n in rendered if n in set(order)], order)
-    misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
-    moved = [entry for entry in moved if entry[0] not in set(misplaced)]
+    counterparts, lost = _counterparts(reference, returned)
+    misplaced = _misplaced(
+        reference, returned, order, {m[0] for m in moved}, rank, held, counterparts
+    )
+    # A paragraph held in place is never moved, whatever the diff made of it.
+    stays = {*misplaced, *held}
+    moved = [entry for entry in moved if entry[0] not in stays]
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -448,6 +558,7 @@ def plan_import(
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         sections=sections,
+        lost=lost,
     )
 
 
@@ -459,6 +570,17 @@ _SPLIT = (
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
     "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+)
+_RUNS_ON = (
+    "an HTML comment or other markup opened in it closes only after a blank line, in the "
+    "next paragraph of the .md. Merging Word's text over it would delete the opening and "
+    "leave the close to print as text. Make the edit in the .md."
+)
+_FENCED = (
+    "in the .md it runs straight on into a fence line (`:::` or a code fence) with no blank "
+    "line between, and Word shows only the paragraph. Merging would delete the fence, and "
+    "anything it opens, along with it. Make the edit in the .md, or put a blank line before "
+    "the fence so the next build shows the paragraph on its own."
 )
 _IN_PARTS = (
     "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "

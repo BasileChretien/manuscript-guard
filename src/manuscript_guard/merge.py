@@ -30,7 +30,7 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard.docxtext import Block
+from manuscript_guard.docxtext import Block, spaced
 from manuscript_guard.roundtrip import Alignment, align, moves
 
 
@@ -78,7 +78,10 @@ class Plan:
 
 
 def _same(a: str, b: str) -> bool:
-    return " ".join(a.split()) == " ".join(b.split())
+    """Word's text against Word's text, a no-break space compared as itself: split on every
+    kind of space, a paragraph whose only change was one the co-author typed read as untouched,
+    and the change was dropped with nothing reported."""
+    return spaced(a).strip() == spaced(b).strip()
 
 
 def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
@@ -391,6 +394,10 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
             aligned = align(source, was, now)
+            if aligned.rebuilt == source:
+                # Only pandoc's typesetting was undone in Word - a no-break space it put after
+                # "e.g." taken out again - and the next build puts it back. Nothing to merge.
+                continue
             if aligned.rebuilt:
                 merged[name] = aligned.rebuilt
             else:

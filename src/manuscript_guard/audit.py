@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.text.blocks import ATX_LINE, scannable
+from manuscript_guard.text.blocks import heading_shaped, scannable
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import heading_index
@@ -455,11 +455,12 @@ def bibliography_spans(
         headings = _markdown_heading_lines(text)
         # Blanked in place, so the lines still count the same.
         lines = scannable(text).split("\n")
-        # A `#` line continuing a paragraph is printed as text, so it starts no list. It
-        # still ends one: `# Appendix` directly under the last entry has no heading in the
-        # printed paper, and running the cut on past it would hide the appendix as more
-        # references. An early end costs a false alarm; a late one hides numbers.
-        ends = headings | {i for i, line in enumerate(lines) if ATX_LINE.match(line.rstrip())}
+        # A heading continuing a paragraph is printed as text, so it starts no list. It
+        # still ends one: `# Appendix`, or `Appendix` underlined, directly under the last
+        # entry has no heading in the printed paper, and running the cut on past it would
+        # hide the appendix as more references. An early end costs a false alarm; a late
+        # one hides numbers.
+        ends = headings | heading_shaped(lines)
     else:
         ends = headings
     # A final newline ends the last line; it does not start another.

@@ -154,6 +154,33 @@ CONSTRUCTS = {
     # Pandoc tries a setext heading before an ATX one, and takes any line as its title.
     "setext titled like atx": "## Methods\n-------\n\nProse.\n",
     "setext titled like a quotation": "> Methods\n-------\n",
+    # Found by review: what ends a paragraph, a list item or a block quote, and what only
+    # looks as though it might.
+    "atx under a div closing a list": (
+        '## Methods\n\n<div custom-style="Key points">\n- One\n- Two\n</div>\n## Results\n'
+    ),
+    "atx under a div closing a block quote": "<div>\n> A quotation\n</div>\n## Results\n",
+    "atx under a line ending in a block tag": (
+        'Prose. <div style="page-break-after: always"></div>\n## Results\n'
+    ),
+    "atx under prose ending in a closing tag": "<div>\nSome text</div>\n## Results\n",
+    "atx under a block tag inside a line of prose": "Prose <div>x</div> more\n## Methods\n",
+    "atx under a textarea tag": "Prose.\n<textarea>\n## Results\n",
+    "atx under a noscript tag": "Prose.\n<noscript>\n## Methods\n",
+    "atx under an indented fence in a paragraph": (
+        f"The excess\n  {FENCE}\n  x\n  {FENCE}\n## Methods\n"
+    ),
+    "atx under a comment holding a blank line": "The excess\n<!--\n\n-->\n## Methods\n",
+    "atx under a block comment holding a blank line": "<!--\n\n-->\n## Results\n",
+    "atx under a line of no-break spaces": f"The excess\n{chr(0xA0)}\n## Methods\n",
+    "atx under a line starting with a plus": "+12% more reports\n## Methods\n",
+    "atx under a line starting with a pipe": "|d| exceeded the bound\n## Methods\n",
+    "atx under colons that open no div": "::: note text here\nThe excess\n:::\n## Methods\n",
+    "atx under a citation shaped like a link": "[@smith2020]: they found it\n## Methods\n",
+    "atx under a link definition with a title": '[a]: http://x.org "T"\n## Results\n',
+    "atx under a page reference": "\\pageref{x}\n## Results\n",
+    "atx under a fence closing a roman list item": "(ii) An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence in a paragraph starting A.": "A. Smith agreed\n~~~\nx\n~~~\n## Methods\n",
 }
 
 

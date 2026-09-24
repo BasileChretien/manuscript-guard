@@ -33,7 +33,48 @@ from manuscript_guard.text.fences import blank_fences, fenced_spans
 from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+
+def _comments(text: str) -> list[tuple[int, int]]:
+    """Every `<!-- ... -->`, as offsets. `<!--.*?-->` read to the end of the text for each
+    opener that never closed, which is quadratic in them; once one never closes, none after
+    it can, so the scan stops there."""
+    found = []
+    position = 0
+    while (opening := text.find("<!--", position)) != -1:
+        closing = text.find("-->", opening + 4)
+        if closing == -1:
+            break
+        found.append((opening, closing + 3))
+        position = closing + 3
+    return found
+
+
+def _blank_out(text: str, spans: list[tuple[int, int]]) -> str:
+    pieces = []
+    position = 0
+    for start, end in spans:
+        pieces.append(text[position:start])
+        pieces.append("".join("\n" if ch == "\n" else " " for ch in text[start:end]))
+        position = end
+    pieces.append(text[position:])
+    return "".join(pieces)
+
+
+def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """`scannable(text)`, and where its comments were in `text`."""
+    # Front matter too, now that setext headings are recognised: its closing `---` sits
+    # directly under a YAML line, which would otherwise read as `key: value` underlined —
+    # a level-2 heading conjured out of the document's own delimiter. It is found in the
+    # text as written, as the build and `mask` find it, and fences and comments are looked
+    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
+    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # headed a body the build printed without it.
+    opening = FRONTMATTER.match(text)
+    skip = opening.end() if opening else 0
+    body = blank_fences(text[skip:])
+    comments = _comments(body)
+    head = _blank_out(text[:skip], [(0, skip)])
+    return head + _blank_out(body, comments), [(skip + a, skip + b) for a, b in comments]
 
 
 def scannable(text: str) -> str:
@@ -58,20 +99,7 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
-    # Front matter too, now that setext headings are recognised: its closing `---` sits
-    # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
-    # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
-    return blank(opening) + rest if opening else rest
+    return _scanned(text)[0]
 
 
 @dataclass(frozen=True)
@@ -95,27 +123,77 @@ ATX_LINE = re.compile(r"^(?P<hashes>#{1,6})(?:[ \t]+(?P<title>.*?))?[ \t]*#*[ \t
 _UNDERLINE = re.compile(r"^(?:=+|-+)[ \t]*$")
 
 _THEMATIC_BREAK = re.compile(r"^[ ]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
+# Pandoc's markers: bullets, numbers, letters, roman numerals, `#` and example `@`, closed by
+# a full stop or a bracket. A capital and a full stop need two spaces after them, so
+# "A. Smith agreed" and "I. Introduction" are prose.
 _LIST_ITEM = re.compile(
-    r"^(?P<marker>[ ]{0,3}(?:[-*+]|\d{1,9}[.)]|\(\d{1,9}\)|#[.)]|[a-z][.)]|\([a-z]\)))"
+    r"^(?P<marker>[ ]{0,3}(?:[-*+]"
+    r"|\((?:\d{1,9}|#|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+|@[\w-]*)\)"
+    r"|(?:\d{1,9}|#|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,}|@[\w-]*)[.)]"
+    r"|[A-Z]\)|[A-Z]\.(?=[ \t]{2}|\t)))"
     r"(?P<gap>[ \t]+|$)"
 )
 _QUOTE = re.compile(r"^[ ]{0,3}>")
-_DIV_OPEN = re.compile(r"^:{3,}[ \t]*[^\s:]")
+# A class or attributes and nothing else: "::: note text here" is a paragraph.
+_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}:]+)[ \t]*:*[ \t]*$")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
-_GRID_OR_LINE_BLOCK = re.compile(r"^[ ]{0,3}[|+]")
+# A grid table opens on `+-` or `+=`, a line block on a pipe and a space: "+12% more reports"
+# and "|d| exceeded" are prose.
+_GRID_TOP = re.compile(r"^[ ]{0,3}\+[-=:]")
+_GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
+_LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
 _CAPTION = re.compile(r"^[ ]{0,3}(?:[Tt]able:|:(?![^\w\s]))")
-_REFERENCE = re.compile(r"^[ ]{0,3}\[(?!\^)[^\]]+\]:")
+# A link definition: a destination and at most a title. "[@smith2020]: they found it" is
+# prose.
+_REFERENCE = re.compile(
+    r"""^[ ]{0,3}\[(?!\^)[^\]]+\]:[ \t]*\S+(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$"""
+)
 
-# Tags pandoc will not read inline. A line starting with one ends a paragraph and is a block.
+# Tags pandoc will not read inline, checked against pandoc 3.9 one by one. A line starting
+# with one is a block, and one ending with one ends the paragraph it closes.
 _BLOCK_TAGS = (
     "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|dir|"
-    "div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hgroup|hr|html|li|"
-    "main|menu|meta|nav|noscript|ol|p|pre|script|section|style|summary|table|tbody|td|tfoot|"
-    "th|thead|tr|ul"
+    "div|dl|dt|fieldset|figcaption|figure|footer|form|frameset|h[1-6]|head|header|hgroup|hr|"
+    "html|isindex|li|main|menu|meta|nav|noframes|ol|output|p|pre|script|section|summary|"
+    "table|tbody|td|textarea|tfoot|th|thead|title|tr|ul"
 )
 _BLOCK_TAG = re.compile(rf"^[ ]{{0,3}}</?(?:{_BLOCK_TAGS})(?=[\s/>]|$)", re.IGNORECASE)
+_A_BLOCK_TAG = re.compile(rf"</?(?:{_BLOCK_TAGS})(?=[\s/>]|$)", re.IGNORECASE)
+_DIV_END = re.compile(r"^[ ]{0,3}</div\s*>", re.IGNORECASE)
+
+
+def _blank(line: str) -> bool:
+    """Blank as pandoc means it: spaces and tabs. A no-break space is a character."""
+    return not line.strip(" \t\r")
+
+
+def _ends_on_block_tag(line: str) -> bool:
+    """A line whose last word is a run of tags holding a block-level one.
+
+    Pandoc will not read a block-level tag inline, so the paragraph ends where one starts,
+    and when nothing but tags follow it on the line the next line starts a block:
+    "Last sentence.<hr>" over `## Results` leaves the heading a heading. Read from the end,
+    a tag at a time, so a line of many tags costs one pass.
+    """
+    rest = line.rstrip(" \t")
+    found = False
+    while rest.endswith(">"):
+        opening = rest.rfind("<")
+        if opening == -1:
+            return False
+        found = found or _A_BLOCK_TAG.match(rest, opening) is not None
+        rest = rest[:opening].rstrip(" \t")
+    return found
+
+
+def _div_balance(line: str) -> int:
+    """HTML divs this line opens, less those it closes."""
+    if "<" not in line:
+        return 0
+    lowered = line.lower()
+    return len(re.findall(r"<div(?=[\s>])", lowered)) - lowered.count("</div")
 
 # Raw LaTeX. A line of nothing but commands is a block unless a command is one pandoc reads
 # inline, so `\newpage` over `# References` leaves the heading a heading, and `\textbf{Note}`
@@ -128,9 +206,9 @@ _TEX_BEGIN = re.compile(r"^\\begin\{(?P<env>[^}\n]+)\}")
 _TEX_INLINE = frozenset(
     {
         "emph", "underline", "uline", "sout", "noindent", "newline", "url", "href", "label",
-        "ref", "eqref", "autoref", "cref", "Cref", "pageref", "nameref", "footnote",
-        "footnotemark", "includegraphics", "mbox", "hbox", "fbox", "ensuremath", "LaTeX",
-        "TeX", "ldots", "dots", "today", "hyperref", "hyperlink", "hypertarget",
+        "ref", "eqref", "autoref", "cref", "Cref", "footnote", "footnotemark",
+        "includegraphics", "mbox", "hbox", "ensuremath", "LaTeX", "TeX", "ldots", "dots",
+        "today", "hyperref", "hyperlink", "hypertarget",
     }
 )
 
@@ -168,14 +246,24 @@ class _Line:
     #: Blank in the source, not merely blanked. A comment inside a paragraph is blanked and
     #: the paragraph goes on; a blank line ends it.
     blank: bool
+    #: Inside a comment that opened on an earlier line. Pandoc reads a comment in a paragraph
+    #: inline, blank lines and all, so nothing in one ends the paragraph.
+    commented: bool = False
 
 
 def _lines(text: str) -> list[_Line]:
+    shown_text, comments = _scanned(text)
     out = []
     offset = 0
-    for source, shown in zip(text.split("\n"), scannable(text).split("\n"), strict=True):
-        out.append(_Line(offset, shown.rstrip("\r"), not source.strip()))
+    for source, shown in zip(text.split("\n"), shown_text.split("\n"), strict=True):
+        out.append(_Line(offset, shown.rstrip("\r"), _blank(source)))
         offset += len(source) + 1
+    starts = [line.start for line in out]
+    for opening, closing in comments:
+        first = bisect_right(starts, opening)
+        last = bisect_right(starts, closing - 1)
+        for number in range(first, last):
+            out[number] = _Line(out[number].start, out[number].shown, out[number].blank, True)
     return out
 
 
@@ -194,12 +282,12 @@ def _fences(text: str, lines: list[_Line]) -> dict[int, tuple[int, str, bool]]:
 # What the line above left open, which decides what the next line can be. Each carries on
 # through a `#` line or an underline, and each stops somewhere different:
 #
-#   _PARAGRAPH  at a blank line, a backtick fence, a block-level HTML tag, a LaTeX
-#               environment, or the fence closing its div;
-#   _QUOTE_LINES  a block quote's lazy lines: at a blank line or a backtick fence. The rest is
-#               the quotation's own, and a heading in it is quoted, not this paper's;
-#   _ITEM       a list item's lazy lines: at a blank line or any fence. The rest is nested in
-#               the item.
+#   _PARAGRAPH    at a blank line, a backtick fence at the margin, a block-level HTML tag, a
+#                 LaTeX environment, or the fence closing its div;
+#   _ITEM         a list item's lazy lines: where a paragraph stops, or at any fence;
+#   _QUOTE_LINES  a block quote's lazy lines: at a blank line, a backtick fence at the margin,
+#                 or the tag closing an HTML div it sits in. The rest is the quotation's own,
+#                 and a heading in it is quoted, not this paper's.
 _PARAGRAPH, _QUOTE_LINES, _ITEM = "paragraph", "quote", "item"
 
 
@@ -214,6 +302,8 @@ class _Walk:
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
         self.divs = 0
+        #: HTML divs open around this line, which a block quote's lazy lines stop to close.
+        self.html_divs = 0
         self._ends: dict[str, list[int]] | None = None
 
     def run(self) -> list[Heading]:
@@ -227,22 +317,32 @@ class _Walk:
         if fence is not None:
             return self._fence(*fence)
         line = self.lines[index]
-        if not line.shown.strip():
-            if line.blank:
+        if _blank(line.shown):
+            if line.blank and not line.commented:
                 self.open = None
             return index + 1
+        after = self._line(index)
+        self.html_divs = max(0, self.html_divs + _div_balance(line.shown))
+        return after
+
+    def _line(self, index: int) -> int:
+        shown = self.lines[index].shown
         if self.open is not None and self._continues(index):
+            if self.open != _QUOTE_LINES and _ends_on_block_tag(shown):
+                self.open = None
             return index + 1
         self.open = None
         return self._block(index)
 
     def _fence(self, last: int, char: str, indented: bool) -> int:
-        # A backtick fence interrupts a paragraph. A tilde one does not: pandoc prints it as
-        # text inside the paragraph, which goes on past it. Either one ends a list item.
-        if not (self.open in (_PARAGRAPH, _QUOTE_LINES) and char == "~"):
-            self.open = None
-            if not indented:
-                self.list_indent = None
+        # A backtick fence at the margin interrupts a paragraph. A tilde one, or an indented
+        # one, does not: pandoc prints it as text inside the paragraph, which goes on past it.
+        # Any fence ends a list item's lazy lines.
+        if self.open in (_PARAGRAPH, _QUOTE_LINES) and (char == "~" or indented):
+            return last + 1
+        self.open = None
+        if not indented:
+            self.list_indent = None
         return last + 1
 
     def _continues(self, index: int) -> bool:
@@ -250,24 +350,25 @@ class _Walk:
         shown = self.lines[index].shown
         if self.divs and _DIV_CLOSE.match(shown):
             return False
-        if self.open != _PARAGRAPH:
-            return True
+        if self.open == _QUOTE_LINES:
+            return not (self.html_divs and _DIV_END.match(shown))
         return not _BLOCK_TAG.match(shown) and self._environment(index) is None
 
     def _block(self, index: int) -> int:
-        if self.list_indent is not None and self._in_list(self.lines[index].shown):
+        shown = self.lines[index].shown
+        if self.list_indent is not None and self._in_list(shown):
             return index + 1
         for opens in (self._container, self._heading, self._leaf):
             after = opens(index)
             if after is not None:
                 return after
-        self.open = _PARAGRAPH
+        self.open = None if _ends_on_block_tag(shown) else _PARAGRAPH
         return index + 1
 
     def _in_list(self, shown: str) -> bool:
         """An indented line under a list item belongs to it: a paragraph, or code if it is
         indented four more. Anything else at the margin closes the list."""
-        indent = len(shown.expandtabs(4)) - len(shown.expandtabs(4).lstrip())
+        indent = len(shown.expandtabs(4)) - len(shown.expandtabs(4).lstrip(" "))
         if indent == 0:
             if not _LIST_ITEM.match(shown):
                 self.list_indent = None
@@ -329,15 +430,20 @@ class _Walk:
             while end < len(self.lines) and "|" in self.lines[end].shown:
                 end += 1
             return self._caption(end)
-        if not _GRID_OR_LINE_BLOCK.match(shown):
+        if _GRID_TOP.match(shown):
+            end = index + 1
+            while end < len(self.lines) and _GRID_ROW.match(self.lines[end].shown):
+                end += 1
+            return self._caption(end)
+        if not _LINE_BLOCK.match(shown):
             return None
         end = index + 1
         while end < len(self.lines) and (
-            _GRID_OR_LINE_BLOCK.match(self.lines[end].shown)
+            _LINE_BLOCK.match(self.lines[end].shown)
             or _CONTINUATION.match(self.lines[end].shown)
         ):
             end += 1
-        return self._caption(end) if shown.lstrip().startswith("+") else end
+        return end
 
     def _caption(self, end: int) -> int:
         if end < len(self.lines) and _CAPTION.match(self.lines[end].shown):
@@ -366,4 +472,15 @@ def find_headings(text: str) -> list[Heading]:
     return _Walk(text).run()
 
 
-__all__ = ["ATX_LINE", "Heading", "find_headings", "scannable"]
+def heading_shaped(lines: list[str]) -> set[int]:
+    """The lines that look like headings wherever they stand: `#` lines, and titles over an
+    underline. For a caller that must stop at a heading whether or not pandoc prints it."""
+    shaped = set()
+    for number, line in enumerate(lines):
+        below = lines[number + 1].rstrip("\r") if number + 1 < len(lines) else ""
+        if ATX_LINE.match(line.rstrip("\r")) or (not _blank(line) and _UNDERLINE.match(below)):
+            shaped.add(number)
+    return shaped
+
+
+__all__ = ["ATX_LINE", "Heading", "find_headings", "heading_shaped", "scannable"]

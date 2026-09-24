@@ -953,9 +953,10 @@ fix, not of the original code.**
   `\s+` let a lone `#`, an empty heading, take the next line for its title. A blank line is
   not the rule either: a heading directly under a table, a fence, a div or another heading
   needs none. `text/blocks.py` now walks the document a line at a time, knowing what the
-  line above left open, and `test_pandoc_agreement.py` holds it to pandoc on fifty-one
-  constructs. The round trip no longer tags a setext heading, and the audit starts a
-  reference list only at a heading pandoc prints but still ends one at any `#` line.)
+  line above left open, and `test_pandoc_agreement.py` holds it to pandoc construct by
+  construct. The round trip no longer tags a setext heading. The audit no longer starts a
+  reference list at a heading line pandoc prints as prose, and still ends one at any line
+  shaped like a heading.)
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
   every threshold rule beneath it. Anchored at both ends now.
@@ -2019,12 +2020,18 @@ Closed since, and why each mattered:
   does not count them. Such a line still ends a list that a real heading started, so an
   appendix heading written directly under the last entry stops the cut early rather than
   hiding the appendix.
-- **A heading nested in a list item is not a section.** Pandoc prints `- Results` over an
-  underline as a list item holding a heading, and a `#` line that a list item's lazy lines
-  swallow (past a LaTeX environment or an HTML tag, say) as a heading inside the item. The
-  gates keep the first with its marker, so it ends the section above and "- Methods" never
-  opens Methods, and do not see the second. The same goes for a definition list, and for an
-  indented heading under a list item, which the old scan did not see either.
+- **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
+  `- Results` over an underline as a list item holding a heading titled "Results". The
+  gates keep the marker in the title, so it ends the section above and "- Methods" never
+  opens Methods. They do not see a heading pandoc finds further into an item: an indented
+  one, or one under a later item's own underline. The same goes for a definition list. The
+  old scan saw none of these either.
+- **A fence directly under a line of prose is code to the gates and prose to pandoc.**
+  Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
+  one indented a space or more, is printed as text, until a blank line ends the paragraph,
+  after which a `# Results` still inside the "fence" is a heading. `fenced_spans` does not
+  know about paragraphs and blanks the whole span, so the numbers in it go unread by G2, and
+  that heading is missed. The old scan did the same.
 - **A YAML block in the middle of a document is read as prose.** Pandoc takes `---` after a
   blank line, a YAML mapping or nothing but comments, and a closing `---` or `...` for
   metadata anywhere in a document, and prints none of it. The gates read it all. A number in
@@ -2042,10 +2049,16 @@ Closed since, and why each mattered:
   no caption the table ends at its last row and the two agree. A blank line avoids it, as
   the example leaves one everywhere. A `{{figure.x}}` line is prose to both: the
   build writes an image there, and a heading under it is printed as text.
-- **Raw HTML and LaTeX beside a heading are read approximately.** A line of nothing but LaTeX
-  commands is a block unless one of them is on a short list of inline ones; pandoc's list is
-  longer. Pandoc drops the indentation of the line after a raw block, and a setext title that
-  is only an HTML comment is an empty heading to pandoc and none to the gates.
+- **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
+  line of nothing but LaTeX commands is a block unless one of them is on a list of inline
+  commands, and a line starting or ending with a tag ends a paragraph if the tag is on a list
+  of block-level ones. Every entry was checked against pandoc 3.9, and a name on neither
+  list is read as pandoc reads most unknown ones: a LaTeX command as a block, a tag as
+  inline. A block quote's lazy lines stop at `</div>` only while the gates count an HTML div
+  open around them, and a `<div>` inside a table or a LaTeX environment is not counted.
+  Pandoc also drops the indentation of the line after a raw block, and
+  reads a setext title that is only an HTML comment as an empty heading, where the gates see
+  none.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

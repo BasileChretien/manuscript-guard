@@ -1614,12 +1614,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   chosen in advance.
 - **A required statement can be met by text that does not print.** G4 matches a journal's
   statement patterns against the main text with its HTML comments and fenced code still in
-  it, so `# Funding` inside `<!-- -->` satisfies the funding statement of a paper whose
-  .docx has none.
-- **G4 reads the main-text files in path order, and the build prints `main.md` first.** A
-  section's words count where the headings above it put them, so an `abstract.md` beside a
-  `main.md` written in `##` headings makes the whole paper abstract as far as G4 can tell. A
-  project with one main-text file, which is what `init` writes, is unaffected.
+  it, so a `# Funding` line inside a multi-line `<!-- -->` satisfies the funding statement
+  of a paper whose .docx has none. On one line, `<!-- # Funding -->`, it does not satisfy
+  the example's pattern, which is anchored at the start of a line; an unanchored pattern
+  would match it there too.
+- **G4 reads the main-text files in path order, and the build prints them in another.** The
+  build puts `main.md` first and sorts the rest by file name, not by path. A section's words
+  count where the headings above it put them, so an `abstract.md` beside a `main.md` written
+  in `##` headings makes the whole paper abstract as far as G4 can tell. A project with one
+  main-text file, which is what `init` writes, is unaffected.
 
 Added by the adversarial review, verified and **not** fixed:
 

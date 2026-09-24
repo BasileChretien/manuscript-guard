@@ -37,10 +37,10 @@ analysis, figures taken from a protocol: anything not in `--against` comes back 
 
 **It reads `.json .csv .tsv .txt .yaml .yml .md`, and skips everything else in silence**,
 including `.xlsx`, `.rds`, `.log` and `.html`, any `.json` that does not parse (JSON
-Lines saved as `.json`, and any file with a byte-order mark: UTF-8 with BOM, or UTF-16, which
-Windows PowerShell 5 writes by default), and paths that do not exist. A UTF-16 `.csv`,
-`.tsv`, `.txt` or `.md` is worse: it is read, as single digits, and counted. Re-save such
-files as UTF-8.
+Lines saved as `.json` among them), and paths that do not exist. Save every backing file as
+UTF-8 without a byte-order mark. Anything else (UTF-16, which Windows PowerShell 5 writes
+by default, or a BOM, which its `-Encoding UTF8` adds) is skipped, misread as single
+digits, or stops the audit, depending on the file type and the Python version.
 Export spreadsheets to CSV first. Then read the first line of the report: `against 0
 distinct numbers from 0 output file(s)` means no supported file was read, whether from a
 typo, an empty folder or a folder of unsupported files. It never means a clean paper.

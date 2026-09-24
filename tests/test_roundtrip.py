@@ -257,67 +257,93 @@ def test_a_footnote_definition_is_left_for_pandoc_to_read(tmp_path: Path) -> Non
     assert list(paragraph_text(document).values()) == ["Doses were capped."]
 
 
-#: (block, whether pandoc reads it as a definition) - each answer read off pandoc 3.9.
-DEFINITION_OR_NOT = [
-    pytest.param(f"[reg]: {REGISTRY}", True, id="link"),
-    pytest.param("[^cap]: Capped at 40 mg.", True, id="footnote"),
-    pytest.param(f"[a [b] c]: {REGISTRY}", True, id="nested-label"),
-    pytest.param(f"[mail@example.org]: {REGISTRY}", True, id="address-in-label"),
-    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", True, id="wrapped-label"),
-    pytest.param(f"[]: {REGISTRY}", True, id="empty-label"),
-    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", True, id="attributes"),
-    pytest.param(f"[reg]: {REGISTRY}\n  \"The registry\"\n  {{.external}}", True, id="next-lines"),
-    pytest.param(f"[a\\]b]: {REGISTRY}", True, id="escaped-bracket"),
-    pytest.param("[josé@example.org]: mailto:jose@example.org", True, id="accented-address"),
-    pytest.param("[^@cap]: A note.", True, id="footnote-with-at"),
-    # The words run together into an address: pandoc prints nothing of this line.
-    pytest.param("[Methods]: patients were enrolled.", True, id="prose-shaped"),
+#: How pandoc 3.9 reads a block: as nothing but definitions, as a paragraph, or as a link
+#: definition whose address is several words run together - which it swallows, printing
+#: nothing, and which `tag` marks on purpose so that it prints as it was written.
+DEFINITION, PROSE, SWALLOWED = "definition", "prose", "swallowed"
+
+BLOCKS = [
+    pytest.param(f"[reg]: {REGISTRY}", DEFINITION, id="link"),
+    pytest.param("[^cap]: Capped at 40 mg.", DEFINITION, id="footnote"),
+    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", DEFINITION, id="note-lines"),
+    pytest.param(f"[a]: {REGISTRY}\n[b]: {REGISTRY}/b", DEFINITION, id="several"),
+    pytest.param(f"[a [b] c]: {REGISTRY}", DEFINITION, id="nested-label"),
+    pytest.param(f"[mail@example.org]: {REGISTRY}", DEFINITION, id="address-in-label"),
+    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", DEFINITION, id="wrapped-label"),
+    pytest.param(f"[]: {REGISTRY}", DEFINITION, id="empty-label"),
+    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", DEFINITION, id="attributes"),
+    pytest.param(f"[reg]: {REGISTRY}\n  'Registry'\n  {{.ext}}", DEFINITION, id="next-lines"),
+    pytest.param(f"[a\\]b]: {REGISTRY}", DEFINITION, id="escaped-bracket"),
+    pytest.param("[josé@example.org]: mailto:jose@example.org", DEFINITION, id="accented-address"),
+    pytest.param("[^@cap]: A note.", DEFINITION, id="footnote-with-at"),
+    pytest.param("[Methods]: patients were enrolled.", SWALLOWED, id="prose-shaped"),
+    pytest.param("[1]: Smith J, Doe A. A cohort study. Lancet. 2020;395:1.", SWALLOWED, id="refs"),
     # Words after what pandoc takes for a title, or a bracket in the address, make it prose.
-    pytest.param("[Methods]: patients (n = 200) were enrolled.", False, id="words-after-title"),
-    pytest.param('[Box 1]: Patients described as "frail" were excluded.', False, id="quoted"),
-    pytest.param("[Methods]: see [reg] for the protocol.", False, id="bracket-in-address"),
-    pytest.param("[Note]: [see Figure 2] for this.", False, id="address-is-bracketed"),
-    pytest.param(f"[reg]: <{REGISTRY}> and more words", False, id="words-after-address"),
-    pytest.param(f"[reg]: {REGISTRY}\n(which is public) and more.", False, id="title-then-words"),
-    pytest.param("See [Methods] here.", False, id="bracket-inside"),
-    pytest.param("[Methods] describes the cohort.", False, id="no-colon"),
-    pytest.param(f"[reg] : {REGISTRY}", False, id="space-before-colon"),
+    pytest.param("[Methods]: patients (n = 200) were enrolled.", PROSE, id="words-after-title"),
+    pytest.param('[Box 1]: Patients described as "frail" were excluded.', PROSE, id="quoted"),
+    pytest.param('[Note]: answers were coded "yes", "(blank)"', PROSE, id="two-quotes"),
+    pytest.param("[Methods]: see [reg] for the protocol.", PROSE, id="bracket-in-address"),
+    pytest.param("[Note]: [see Figure 2] for this.", PROSE, id="address-is-bracketed"),
+    pytest.param(f"[reg]: <{REGISTRY}> and more words", PROSE, id="words-after-address"),
+    pytest.param(f"[reg]: {REGISTRY}\n(which is public) and more.", PROSE, id="title-then-words"),
+    # A first line pandoc swallows, and the paragraph it reads under it.
+    pytest.param(
+        "[Box 1]: Definitions. Injury was an ALT above three times\nthe upper limit of normal.",
+        PROSE,
+        id="wrapped-prose",
+    ),
+    pytest.param(f"[reg]: {REGISTRY}\nIt is public.", PROSE, id="definition-then-prose"),
+    pytest.param("See [Methods] here.", PROSE, id="bracket-inside"),
+    pytest.param("[Methods] describes the cohort.", PROSE, id="no-colon"),
+    pytest.param(f"[reg] : {REGISTRY}", PROSE, id="space-before-colon"),
     # A definition cannot interrupt a paragraph.
-    pytest.param(f"See [reg] for details.\n[reg]: {REGISTRY}", False, id="second-line"),
-    pytest.param("[@fictionalClassSignal2019]: a cohort of 1,200.", False, id="citation"),
-    pytest.param("[see @fictionalClassSignal2019]: a cohort.", False, id="prefixed-citation"),
-    pytest.param("[see\n@fictionalClassSignal2019]: a cohort.", False, id="wrapped-citation"),
+    pytest.param(f"See [reg] for details.\n[reg]: {REGISTRY}", PROSE, id="second-line"),
+    pytest.param("[@fictionalClassSignal2019]: a cohort of 1,200.", PROSE, id="citation"),
+    pytest.param("[see @fictionalClassSignal2019]: a cohort.", PROSE, id="prefixed-citation"),
+    pytest.param("[see\n@fictionalClassSignal2019]: a cohort.", PROSE, id="wrapped-citation"),
 ]
 
 
-@pytest.mark.parametrize(("block", "defines"), DEFINITION_OR_NOT)
-def test_only_a_definition_is_left_without_an_identifier(block: str, defines: bool) -> None:
-    """A paragraph that opens with a bracket, or with a citation and a colon, is still a
-    paragraph and keeps its identifier."""
+@pytest.mark.parametrize(("block", "reads"), BLOCKS)
+def test_only_a_block_of_definitions_is_left_without_an_identifier(
+    block: str, reads: str
+) -> None:
+    """A paragraph keeps its identifier however it opens: with a bracket, with a citation and
+    a colon, or with a line pandoc would swallow as a definition."""
     from manuscript_guard.roundtrip import tag
 
     tagged = tag(block, "main.md")
-    assert (tagged == block) is defines, tagged
-    assert tagged.startswith("[]{#mg-p-") is not defines, tagged
+    assert (tagged == block) is (reads == DEFINITION), tagged
+    assert tagged.startswith("[]{#mg-p-") is (reads != DEFINITION), tagged
 
 
-@needs_pandoc
-@pytest.mark.parametrize(("block", "defines"), DEFINITION_OR_NOT)
-def test_pandoc_reads_a_definition_where_tag_expects_one(block: str, defines: bool) -> None:
-    """The expectations above are pandoc's, not this module's: a definition is a block that
-    renders nothing."""
+def _renders_nothing(text: str) -> bool:
     import json
     import subprocess
 
     read = subprocess.run(
         ["pandoc", "-f", "markdown", "-t", "json"],
-        input=block,
+        input=text,
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=True,
     )
-    assert (json.loads(read.stdout)["blocks"] == []) is defines
+    return json.loads(read.stdout)["blocks"] == []
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("block", "reads"), BLOCKS)
+def test_what_is_left_unmarked_renders_nothing(block: str, reads: str) -> None:
+    """The readings above are pandoc's, and the property that matters is checked on the
+    artefact. A block left without an identifier renders nothing, so no paragraph goes
+    without one; a marked block renders something, so its identifier reaches Word."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(block, "main.md")
+    assert tagged != block or _renders_nothing(block), "a paragraph went without an identifier"
+    assert _renders_nothing(block) is (reads != PROSE)
+    assert _renders_nothing(tagged) is (reads == DEFINITION)
 
 
 @needs_pandoc
@@ -2227,17 +2253,37 @@ def test_import_leaves_a_link_definition_where_it_was(project: Path, tmp_path: P
 
 
 @needs_pandoc
+@pytest.mark.parametrize(
+    ("paragraph", "was", "now"),
+    [
+        pytest.param(
+            "[Note]: patients (all adults) were enrolled.",
+            "enrolled.",
+            "recruited.",
+            id="words-after-title",
+        ),
+        pytest.param(
+            "[Box 1]: Definitions. Injury was an ALT above three times\n"
+            "the upper limit of normal.",
+            "limit of normal.",
+            "limit of normal (ULN).",
+            id="first-line-swallowed",
+        ),
+        # Not `[Methods]`: the example has that heading, and `[Methods]` is a link to it.
+        pytest.param("[Aim]: to estimate the risk.", "the risk.", "its risk.", id="swallowed"),
+    ],
+)
 def test_import_merges_prose_that_only_opens_like_a_definition(
-    project: Path, tmp_path: Path
+    project: Path, tmp_path: Path, paragraph: str, was: str, now: str
 ) -> None:
-    """Pandoc gives up on a definition when words follow its title, and prints a paragraph.
-    Taken for a definition anyway, the paragraph lost its identifier, and a co-author's edit
-    to it was dropped while `import` said nothing came back."""
+    """End to end, the way two rounds of review found it. Each of these was taken for a
+    definition and left without an identifier - where pandoc prints it, or would print the
+    lines under the first - and a co-author's edit to it was dropped while `import` said
+    nothing came back."""
     from manuscript_guard.cli import main
 
-    with_paragraphs(project, "[Note]: patients (all adults) were enrolled.")
-    returned = edit_docx(built(project), tmp_path / "back.docx", {"enrolled.": "recruited."})
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {was: now})
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
-    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
-    assert "patients (all adults) were recruited." in text
+    assert now in (project / "manuscript" / "main.md").read_text(encoding="utf-8")

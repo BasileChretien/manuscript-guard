@@ -86,6 +86,28 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("[x]: u {" + "a=b" * 15, id="attribute-that-splits"),
+        pytest.param("[x]: a" + " " * 1000 + "b", id="run-of-spaces"),
+        pytest.param("[x]: a" + " " * 1000 + "\n b c", id="spaces-then-a-line"),
+        pytest.param('[x]: u "' + 'a "b ' * 8000, id="unclosed-quotes"),
+        pytest.param("[x]: u\n" * 8000 + "prose", id="many-definitions"),
+    ],
+)
+def test_a_link_definition_is_recognised_quickly(block: str) -> None:
+    """`tag` asks of every block of every file whether it is a link definition, in build,
+    check and import. As first written, an attribute that could be split two ways made
+    `{a=ba=b...` exponential - 15 of them took six seconds, 18 a minute and a half - and
+    optional spaces stacked on optional spaces made a run of a thousand take as long."""
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(block, "main.md")
+    assert time.perf_counter() - started < 2.0
+
+
 # ---------------------------------------------------------------- hostile files
 
 

@@ -242,67 +242,82 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 # reads only at the start of a block. With a marker in front it was a paragraph: every
 # `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
 # definition printed as a line of text, on every build.
-_REFERENCE = re.compile(r"\[(?P<label>(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*)\]:")
+#
+# Only a block that is nothing but definitions goes without a marker, and only a link
+# whose address is one token, as every real one is. Pandoc takes almost any words for an
+# address - `[Methods]: patients were enrolled.` is a definition to it, and prints nothing -
+# and a version that followed it left a paragraph opening that way, or whose first line
+# did, without an identifier: a co-author's edit to it was dropped while `import` said
+# nothing came back. Marked, such a paragraph prints as written, as it always had.
+_REFERENCE = re.compile(r" {0,3}\[(?P<label>(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*)\]:")
 # What pandoc reads as a citation key inside the label, which makes the line a citation:
 # `[@smith2020]: they found` is a paragraph. After a letter, a digit, `.`, `;` or `*` an `@`
 # is not one to pandoc 3.9, which is how `[josé@example.org]:` stays a definition.
 _CITATION_KEY = re.compile(r"(?<![^\W_])(?<![.;*])@[\w{]")
 _UNREAD_IN_LABEL = re.compile(r"\\[!-/:-@\[-`{-~]|`[^`]*`|\[[^\]]*\]")
 
-# What pandoc wants after a link definition's `]:`. The address is `<...>`, or words up to a
-# title, attributes or a bracket; then a title and attributes if there are any, each of them
-# allowed onto the next line; then the end of the line. Almost any words make an address -
-# `[Methods]: patients were enrolled.` is a definition, run together, and prints nothing -
-# but a line that goes on after a title or a bracket is prose: `[Methods]: patients (n =
-# 200) were enrolled.` is a paragraph, and taking it for a definition lost its identifier.
-_GAP = r"[ \t]*\n?[ \t]*"
-# A quote closes a title unless a letter or digit follows it; one that does opens a quote
-# inside the title, which must close in turn.
+# After a link's address pandoc takes a title and attributes, each allowed onto the next
+# line, and then wants the end of the line. Each piece is written so that it can match in
+# only one way: stacked optional spaces, or an attribute that could split in two, made a
+# line that failed take cubic or exponential time to say so.
+_GAP = re.compile(r"[ \t]*(?:\n[ \t]*)?")
+# A quote closes a title unless a letter or digit follows it. One that is followed by one
+# opens a quote inside the title if that quote closes, and is a plain character if not.
+_QUOTED = (
+    r"{q}(?!\s)(?:\\.|[^{q}\\]"
+    r"|{q}(?=[^\W_]){body}{q}(?![^\W_])"
+    r"|{q}(?=[^\W_])(?!{body}{q}(?![^\W_])))*"
+    r"{q}(?![^\W_])"
+)
 _TITLE = "|".join(
-    rf"{q}(?!\s)(?:\\.|[^{q}\\]|{q}(?!\s)(?:\\.|[^{q}\\])*{q}(?![^\W_]))*{q}(?![^\W_])"
-    for q in ('"', "'")
+    _QUOTED.format(q=q, body=rf"(?:\\.|[^{q}\\])*") for q in ('"', "'")
 ) + r"|\((?:\\.|[^()\\]|\((?:\\.|[^()\\])*\))*\)"
 _ATTRIBUTES = (
-    r"\{\s*(?:(?:[#.][^\s{}=]+|[^\s{}=]+=(?:\"[^\"]*\"|'[^']*'|[^\s{}]*)|-)\s*)*\}"
+    r"\{\s*(?:(?:[#.][^\s{}=]+|[^\s{}=]+=(?:\"[^\"]*\"|'[^']*'|[^\s{}]*)|-)(?=[\s}])\s*)*\}"
 )
-_BRACKETED = r"\[(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*\]"
-_ADDRESS_ENDS = re.compile(rf"[ \t]*(?:{_GAP}(?:{_TITLE})|{_ATTRIBUTES}|{_BRACKETED})")
-_ADDRESS_WORD = re.compile(r"[ \t]*\S+")
-_ANGLED = re.compile(rf"{_GAP}<[^>]*>")
-_TITLE_AFTER = re.compile(rf"{_GAP}(?:{_TITLE})")
-_ATTRIBUTES_AFTER = re.compile(rf"{_GAP}{_ATTRIBUTES}")
+_NOT_AN_ADDRESS = re.compile(rf"\[|{_TITLE}|{_ATTRIBUTES}")
+_ADDRESS = re.compile(r"<[^>]*>|\S+")
+_TITLE_AFTER = re.compile(rf"{_GAP.pattern}(?:{_TITLE})")
+_ATTRIBUTES_AFTER = re.compile(rf"{_GAP.pattern}{_ATTRIBUTES}")
 _LINE_END = re.compile(r"[ \t]*(?:\n|\Z)")
 
 
-def _link_definition(rest: str) -> bool:
-    """Whether `rest`, what follows a label's `]:`, completes a link definition."""
-    at = re.match(_GAP, rest).end()
-    if rest.startswith("[", at):
-        return False
-    if angled := _ANGLED.match(rest):
-        at = angled.end()
-    else:
-        while not _ADDRESS_ENDS.match(rest, at) and (word := _ADDRESS_WORD.match(rest, at)):
-            at = word.end()
+def _link_line(block: str, at: int) -> int | None:
+    """Where a link definition whose label ends at `at` ends, if its address is one token."""
+    at = _GAP.match(block, at).end()
+    if _NOT_AN_ADDRESS.match(block, at):
+        return None
+    address = _ADDRESS.match(block, at)
+    if address is None:
+        return None
+    at = address.end()
     for after in (_TITLE_AFTER, _ATTRIBUTES_AFTER):
-        if found := after.match(rest, at):
+        if found := after.match(block, at):
             at = found.end()
-    return _LINE_END.match(rest, at) is not None
+    end = _LINE_END.match(block, at)
+    return end.end() if end else None
 
 
-def _defines(stripped: str) -> bool:
-    """Whether a block opens with a link or footnote definition, as pandoc reads one."""
-    found = _REFERENCE.match(stripped)
-    if found is None:
-        return False
-    label = found["label"]
-    # A footnote takes anything after its colon, and is never read as a citation.
-    if re.fullmatch(r"\^\S+", label):
-        return True
-    # Only a key at the label's own level counts, and not one escaped or in code.
-    if _CITATION_KEY.search(_UNREAD_IN_LABEL.sub("", label)):
-        return False
-    return _link_definition(stripped[found.end() :])
+def _only_definitions(block: str) -> bool:
+    """Whether a block is nothing but link and footnote definitions, as pandoc reads them."""
+    at = 0
+    while at < len(block):
+        found = _REFERENCE.match(block, at)
+        if found is None:
+            return False
+        label = found["label"]
+        # A footnote takes everything after its colon, the lines below included, and is
+        # never read as a citation.
+        if re.fullmatch(r"\^\S+", label):
+            return True
+        # Only a key at the label's own level counts, and not one escaped or in code.
+        if _CITATION_KEY.search(_UNREAD_IN_LABEL.sub("", label)):
+            return False
+        end = _link_line(block, found.end())
+        if end is None:
+            return False
+        at = end
+    return True
 
 
 def _untagged(stripped: str) -> bool:
@@ -312,7 +327,7 @@ def _untagged(stripped: str) -> bool:
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
-        or _defines(stripped)
+        or _only_definitions(stripped)
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 

@@ -25,10 +25,11 @@ SKILLS = PLUGIN / "skills"
 MARKETPLACE = REPO / ".claude-plugin" / "marketplace.json"
 MANIFEST = PLUGIN / ".claude-plugin" / "plugin.json"
 
-# "the review-panel skill", in a hint or a message. Hints are split across lines as adjacent
-# string literals, which is exactly how the broken one hid, so literals are joined first.
-SKILL_MENTION = re.compile(r"\b([a-z]+(?:-[a-z]+)+) skill\b")
-ADJACENT_LITERALS = re.compile(r"\"\s*\n\s*[rbfu]*\"")
+# "the review-panel skill", "the `journal-profile` skill", "the x and y-z skills". Hints are
+# split across lines as adjacent string literals, which is exactly how the broken one hid,
+# so in Python source the literals are joined first. "X and Y skills" catches only Y.
+SKILL_MENTION = re.compile(r"`?\b([a-z]+(?:-[a-z]+)+)`? skills?\b")
+ADJACENT_LITERALS = re.compile(r"[\"']\s*\n\s*[rbfuRBFU]*[\"']")
 
 
 def skill_names() -> set[str]:
@@ -52,22 +53,38 @@ def test_every_skill_names_itself_and_says_when_it_applies():
         assert len(description) <= 1024, f"{name}: description too long to be loaded"
 
 
-def test_every_skill_the_code_points_to_exists():
+def test_every_skill_the_project_points_to_exists():
+    sources = [
+        *(REPO / "src").rglob("*.py"),
+        *(REPO / "example").rglob("*.yaml"),
+        *(REPO / "example").rglob("*.md"),
+        *SKILLS.glob("*/SKILL.md"),
+        REPO / "README.md",
+        REPO / "DESIGN.md",
+        REPO / "CLAUDE.md",
+    ]
     named: dict[str, Path] = {}
-    for path in (REPO / "src").rglob("*.py"):
-        source = ADJACENT_LITERALS.sub("", path.read_text(encoding="utf-8"))
-        for name in SKILL_MENTION.findall(source):
+    for path in sources:
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".py":
+            text = ADJACENT_LITERALS.sub("", text)
+        for name in SKILL_MENTION.findall(text):
             named.setdefault(name, path)
-    assert named, "no skill is named anywhere in src/; the pattern no longer matches"
+    assert named, "no skill is named anywhere; the pattern no longer matches"
     missing = {name: str(path.relative_to(REPO)) for name, path in named.items()
                if name not in skill_names()}
-    assert not missing, f"hints name skills that do not exist: {missing}"
+    assert not missing, f"these name skills that do not exist: {missing}"
 
 
-def test_every_link_between_skills_resolves():
+def test_every_link_between_skills_resolves_inside_the_plugin():
+    # Installing copies plugin/ alone into Claude Code's cache, so a link that climbs out of
+    # it resolves here and is dead for every user.
+    plugin = PLUGIN.resolve()
     for skill in SKILLS.glob("*/SKILL.md"):
         for target in re.findall(r"\]\((\.\./[^)#]+)\)", skill.read_text(encoding="utf-8")):
-            assert (skill.parent / target).resolve().is_file(), f"{skill.parent.name} -> {target}"
+            resolved = (skill.parent / target).resolve()
+            assert resolved.is_file(), f"{skill.parent.name} -> {target}"
+            assert resolved.is_relative_to(plugin), f"{skill.parent.name} -> {target} leaves plugin/"
 
 
 def test_the_readme_lists_exactly_the_skills_that_ship():
@@ -103,6 +120,8 @@ def test_the_marketplace_installs_the_plugin_it_describes():
     assert entry.get("version") == manifest["version"]
 
 
+# Skipped where Claude Code is absent. CI's plugin-manifests job installs it and runs the
+# same validation, so the check that motivated this file does run on every pull request.
 @pytest.mark.skipif(shutil.which("claude") is None, reason="Claude Code is not installed")
 @pytest.mark.parametrize("target", [REPO, PLUGIN], ids=["marketplace", "plugin"])
 def test_claude_code_accepts_the_manifest(target):

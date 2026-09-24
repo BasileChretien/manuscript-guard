@@ -25,6 +25,20 @@ jobs:
       - run: ruff check src tests
       - run: pytest -q
 
+  plugin-manifests:
+    # A marketplace manifest with one key Claude Code refuses cannot be installed by anyone,
+    # and every other job skips the test that would notice. Validation reads JSON only: no
+    # model and no credentials are involved.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate .
+      - run: claude plugin validate plugin
+
   r-interop:
     # The results contract is only a contract if a second language can honour it.
     runs-on: ubuntu-latest

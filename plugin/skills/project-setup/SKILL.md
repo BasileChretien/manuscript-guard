@@ -40,11 +40,12 @@ nothing.
 ## 2. Scaffold
 
 ```bash
-manuscript-guard init my-paper --title "Working title"
+manuscript-guard init my-paper --title "Working title"   # a new project
+manuscript-guard init . --title "Working title"          # an existing analysis repository
 ```
 
-It never overwrites an existing file, so it is also how manuscript-guard is added to a
-repository that already holds an analysis. It creates:
+It never overwrites an existing file, so the second form adds manuscript-guard to a
+repository that already holds an analysis, with `paper.yaml` at its root. It creates:
 
 ```
 paper.yaml             stage, English variant, target journal, reporting guideline

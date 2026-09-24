@@ -26,8 +26,9 @@ the row-level data, 100% do, and at the same time every odds ratio and percentag
 reported missing, because raw rows contain no derived statistics. Raw data therefore fails
 twice: every count passes and every estimate fails.
 
-**Match what the paper prints.** Matching is exact after removing separators, a trailing
-`%` and trailing zeros. `3.84` in the paper does not match `3.843972469205093` in a log,
+**Match what the paper prints.** Separators, a trailing `%` and trailing zeros are removed,
+and non-integers are compared to 10 decimal places. `3.84` in the paper does not match
+`3.843972469205093` in a log,
 and `36.4%` does not match `0.364`. Point it at rounded tables and formatted output where
 they exist.
 
@@ -37,7 +38,8 @@ analysis, figures taken from a protocol: anything not in `--against` comes back 
 **It reads `.json .csv .tsv .txt .yaml .yml .md`, and skips everything else in silence**,
 including `.xlsx`, `.rds`, `.log` and `.html`, and including paths that do not exist.
 Export spreadsheets to CSV first. Then read the first line of the report: `against 0
-distinct numbers from 0 output file(s)` means a typo, not a clean paper.
+distinct numbers from 0 output file(s)` means no supported file was read, whether from a
+typo, an empty folder or a folder of unsupported files. It never means a clean paper.
 
 Keep it narrow. A directory is read recursively, READMEs and notes included, and every
 extra number raises the chance of a coincidental match.
@@ -82,11 +84,12 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | A reference entry | See below |
 | `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
 
-The bibliography is dropped from the first line that is exactly `References`,
-`Bibliography`, `Works cited` or `Literature cited`. A heading like `Reference list` is not
-recognised, and Vancouver-style entries with no heading are not recognised either, so every
-volume and page number is reported. Add a heading to a copy of the document rather than
-reading past forty spurious findings.
+The bibliography is dropped from the first line that is a heading reading `References`,
+`Bibliography`, `Works cited` or `Literature cited`, with or without a leading `#`, a
+section number or a trailing colon. `Reference list` is not recognised. Without a heading,
+only author-year entries (`Surname, Given … 2019`) are recognised as references; Vancouver
+entries are not, so their volume and page numbers are reported. Add a recognised heading to
+a copy of the document rather than reading past forty spurious findings.
 
 ## 5. Say what a clean report does not mean
 

@@ -18,7 +18,10 @@ from manuscript_guard.text.fences import fenced_spans
 
 NUL = "\x00"
 
-FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
+# Pandoc's rule: the opening `---` must not be followed by a blank line. One that is, is a
+# horizontal rule, and the prose after it prints; read as front matter up to the next
+# `---`, every number in it went unread.
+FRONTMATTER = re.compile(r"\A---\r?\n(?![ \t]*\r?\n).*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
 
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of

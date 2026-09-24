@@ -33,7 +33,7 @@ _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 # The underline is `=+` or `-+`. One dash is enough for pandoc, and requiring three meant a
 # "Results" heading under `--` was invisible — so Results content inherited the enclosing
 # Methods chain and a fabricated `p < 0.001` passed as the pre-specified alpha. `---` closing
-# YAML front matter would read as an underline too, which is why `_scannable` blanks the
+# YAML front matter would read as an underline too, which is why `scannable` blanks the
 # front matter before any of this runs, and a thematic break is excluded because setext
 # needs its title on the line immediately above with no blank between.
 _SETEXT = re.compile(
@@ -85,7 +85,7 @@ class Section:
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
-def _scannable(text: str) -> str:
+def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
     Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
@@ -128,14 +128,14 @@ class _Found:
 
 def _headings_in(text: str) -> list[_Found]:
     """Every heading, ATX and setext, in document order."""
-    scannable = _scannable(text)
+    rendered = scannable(text)
     found = [
         _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
-        for m in _ATX.finditer(scannable)
+        for m in _ATX.finditer(rendered)
     ]
     found += [
         _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
-        for m in _SETEXT.finditer(scannable)
+        for m in _SETEXT.finditer(rendered)
     ]
     return sorted(found, key=lambda f: f.start)
 

@@ -35,7 +35,7 @@ from pathlib import Path
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import heading_index
+from manuscript_guard.text.sections import heading_index, scannable
 from manuscript_guard.text.tokens import find_atoms
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -335,12 +335,18 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     capitalised, and not ending in a full stop. "12 references." and "references." are where
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
+
+    An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
+    and YAML, and `# References` in a code listing cut everything after it; where `#` does
+    make a heading, the document has marked it.
     """
     found = _BIBLIOGRAPHY.match(line.strip())
     if not found:
         return False
-    if marked or found.group("hashes"):
+    if marked:
         return True
+    if found.group("hashes"):
+        return False
     return found.group("word")[0].isupper() and "." not in found.group("tail")
 
 
@@ -438,12 +444,16 @@ def bibliography_spans(
     reference list was read as prose.
 
     `headings` says which lines are headings when the text cannot: a .docx read as plain text
-    knows them only from paragraph styles. Omitted, they are read as Markdown. `cells` are
-    lines inside a table, where "References" is a column header and not a heading.
+    knows them only from paragraph styles. Omitted, they are read as Markdown, and nothing
+    pandoc does not print as text starts a list: a line in a fenced block, an HTML comment
+    or the front matter is code, a note or metadata, whatever it says. `cells` are lines
+    inside a table, where "References" is a column header and not a heading.
     """
     lines = text.split("\n")
     if headings is None:
         headings = _markdown_heading_lines(text)
+        # Blanked in place, so the lines still count the same.
+        lines = scannable(text).split("\n")
     # A final newline ends the last line; it does not start another.
     last = len(lines) - text.endswith("\n")
     spans: list[tuple[int, int]] = []

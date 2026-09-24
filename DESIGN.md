@@ -832,7 +832,9 @@ predecessor:
   read turns `39 | 20 | 26 | 16` into 39,202,616 and silently skips every table. A wrong
   count in Table 1 survived every check for exactly that reason.
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
-  reading it raw reports corrections as errors and misses what will be published.
+  reading it raw reports corrections as errors and misses what will be published. Text moved
+  away goes with the deletions, and so does a deleted line break or tab: read as a space, it
+  parted a minus from its number.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -884,7 +886,9 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   checked*. It now has a companion that asserts G2 and G6 actually ran.
 - YAML front matter was masked whole. Pandoc renders `title` and `abstract` from it, so the
   most-read part of the paper was outside every check. Rendered keys are now read; `lang`,
-  `zotero` and the rest of the machinery stay masked.
+  `zotero` and the rest of the machinery stay masked. (Later: a `---` followed by a blank
+  line was taken for the opening of front matter too. Pandoc prints it as a horizontal rule,
+  with the prose after it, which went unread up to the next `---`.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1956,6 +1960,30 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
+- **The audit reads a deleted paragraph mark as a paragraph break.** Once the change is
+  accepted Word joins the two paragraphs, and it does the same for a mark moved away; the
+  audit reads them as two lines, so the numbers either side of the join are read apart:
+  "−", a deleted mark, then "0.30" matches an output of +0.30, and "-0.5", a deleted mark,
+  then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
+  (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
+  take one of two styles, and a heading style is what ends a reference list.
+- **A bare `References` line in code can start a reference list.** In Markdown a line in a
+  fenced block, an HTML comment or the front matter never starts one, and an unmarked
+  `# References` never does anywhere, so an R or Python comment cannot. But an indented
+  block is not blanked, because `pdftotext -layout` indents real headings and a text file
+  is read as Markdown; and a listing pasted into Word as plain paragraphs is not code as
+  far as the reader can tell, so a numpydoc `References` section in one starts a list. The
+  cut is named under "Not audited".
+- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
+  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
+  everything up to the next `-->`, from G2 and the audit alike. It needs a paper that
+  writes both markers in backticks, and the comment scanner would have to know code spans.
+- **An unmarked `#` heading counts as no heading.** `#References` with no space, an
+  indented `  # References`, or a Word paragraph typed as `# References` without a heading
+  style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
+  reference heading is read as having none. Its lines are then taken for reference entries
+  by their shape, as in any headingless paper, and a sentence with an entry's shape has its
+  unmatched numbers listed apart, where `--strict` does not count them.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

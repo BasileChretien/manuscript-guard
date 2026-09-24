@@ -1097,6 +1097,65 @@ def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: P
     assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
 
 
+@pytest.mark.parametrize(
+    "opening",
+    [
+        "## Methods\n\n```r\n# References\nlibrary(stats)\n```\n",
+        "## Methods\n\n~~~\nReferences\n~~~\n",
+        "## Methods\n\n<!--\n# References\n-->\n",
+        "## Methods\n\n<!--\nReferences\n-->\n",
+        "---\ntitle: A study\n# References\nbibliography: refs.bib\n---\n",
+    ],
+)
+def test_audit_does_not_start_a_reference_list_in_code_or_a_comment(
+    tmp_path: Path, opening: str
+) -> None:
+    """`#` is a comment character in R, Python and YAML, and a line starting with it was a
+    heading wherever it stood: `# References` in a code listing, an HTML comment or the
+    front matter cut everything after it as a reference list, so no number there was
+    compared and `--strict` passed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"{opening}\nThe pooled ROR was 9.99, from 413 cases.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert {c.text.rstrip(".,") for c in report.unmatched} == {"9.99", "413"}
+    assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "references", ["", "References\n\nSmith J, Jones K. A study. Lancet. 2019;393:100-10.\n\n"]
+)
+def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: str) -> None:
+    """`---` followed by a blank line is a horizontal rule, and pandoc prints what follows.
+    It was read as front matter running to the next `---`, so the prose between was never
+    audited; a reference heading inside it used to cut the closing `---` by accident."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"---\n\nThe pooled ROR was 9.99.\n\n{references}---\n\nEnd.\n", encoding="utf-8"
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
+def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
+    """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
+    plain paragraphs, with `# References` among its comments, cut everything after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("# References") + _p("library(stats)") + _p("The pooled ROR was 9.99."),
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
 def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:
     """Only the first heading was used, so a second reference list (an appendix's own) was
     read as prose, and the first list's shape detection was off for the whole file."""
@@ -1323,6 +1382,48 @@ def test_audit_keeps_numbers_either_side_of_a_line_break_apart(tmp_path: Path) -
     )
     paper = _docx(tmp_path / "paper.docx", body)
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["-0.72"]
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+@pytest.mark.parametrize(
+    "layout", ["<w:br/>", "<w:cr/>", "<w:tab/>", '<w:ptab w:alignment="left"/>']
+)
+def test_audit_reads_nothing_for_a_deleted_line_break(
+    tmp_path: Path, change: str, layout: str
+) -> None:
+    """A line break or a tab deleted, or moved away, as a tracked change read as a space
+    where Word shows nothing. A minus before one lost its number, so "−0.30" matched an
+    output of +0.30, and "-0.51" read as -0.5 and 1, which matched two outputs the paper
+    never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "hi": 0.30}')
+
+    def around(before: str, after: str) -> str:
+        gone = f'<w:{change} w:id="1" w:author="a"><w:r>{layout}</w:r></w:{change}>'
+        return (
+            f'<w:p><w:r><w:t xml:space="preserve">{before}</w:t></w:r>{gone}'
+            f"<w:r><w:t>{after}</w:t></w:r></w:p>"
+        )
+
+    paper = _docx(
+        tmp_path / "paper.docx",
+        around("The estimate was -0.5", "1.") + around("Its upper bound was −", "0.30."),
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51", "−0.30"}, shown
+
+
+def test_audit_does_not_read_text_moved_away(tmp_path: Path) -> None:
+    """A tracked move leaves the text at its old place as well as its new one, and the old
+    one ran into its neighbours: "-0.5" beside a "1" moved elsewhere read as -0.51."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.51}')
+    moved = '<w:moveFrom w:id="1" w:author="a"><w:r><w:t>1</w:t></w:r></w:moveFrom>'
+    body = f"<w:p><w:r><w:t>The estimate was -0.5</w:t></w:r>{moved}<w:r><w:t>.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["-0.5"]
 
 
 @pytest.mark.parametrize(

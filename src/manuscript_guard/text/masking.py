@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from manuscript_guard.text.comments import comment_spans
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import Fence, fenced_spans
 
 NUL = "\x00"
 
@@ -128,19 +128,49 @@ def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
     return [(a, b) for a, b in spans if b > a]
 
 
+def _filled(text: str, spans: list[tuple[int, int]], fill: str) -> str:
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if fill == NUL or chars[index] != "\n":
+                chars[index] = fill
+    return "".join(chars)
+
+
+def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[int, int]]:
+    """The HTML comments pandoc drops from a manuscript source. See text/comments.py.
+
+    Read with the front matter's machinery blanked to NUL, which neither a comment nor a
+    code span crosses, because pandoc reads each rendered value on its own. Read whole, a
+    `<!--` in a title ran on to the first `-->` in the body and hid everything between.
+    """
+    if "<!--" not in text:
+        return []
+    view = _filled(text, _frontmatter_spans(text), NUL)
+    return comment_spans(view, fenced_spans(text) if fences is None else fences)
+
+
+def blank_comments(text: str) -> str:
+    """`text` with the comments `mask` drops replaced by spaces, offsets and newlines kept."""
+    return _filled(text, html_comments(text), " ")
+
+
 def mask(text: str) -> str:
     """Return `text` with non-claim regions replaced by NUL, preserving length."""
     chars = list(text)
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    for fence in fenced_spans(text):
+    fences = fenced_spans(text)
+    for fence in fences:
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
         for index in range(start, end):
             chars[index] = NUL
-    for start, end in comment_spans("".join(chars)):
+    # Found in the source, not in what is left once fences are gone: a comment opened
+    # before a listing ends at a `-->` inside it, and the prose after it is printed.
+    for start, end in html_comments(text, fences):
         for index in range(start, end):
             chars[index] = NUL
     for _name, pattern in _PATTERNS:
@@ -154,7 +184,9 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     """What each pattern matched. Used by the test suite and by `explain` output."""
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
-    fences = [(f.start, f.end) for f in fenced_spans(text)]
+    blocks = fenced_spans(text)
+    comments = html_comments(text, blocks)
+    fences = [(f.start, f.end) for f in blocks]
     if fences:
         found["fenced-code"] = fences
         chars = list(working)
@@ -170,7 +202,6 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
             for index in range(start, end):
                 chars[index] = NUL
         working = "".join(chars)
-    comments = comment_spans(working)
     if comments:
         found["html-comment"] = comments
         chars = list(working)

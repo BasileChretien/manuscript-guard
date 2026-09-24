@@ -20,9 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.comments import blank_comments
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import FRONTMATTER, blank_comments, mask
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 

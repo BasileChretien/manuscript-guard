@@ -96,6 +96,12 @@ CONSTRUCTS = {
     "hash after comment markers in code": (
         "## Real\n\nStrip `<!--` first.\n\n## Also real\n\nThen `-->`.\n"
     ),
+    "hash after a comment closed in a listing": (
+        f"<!-- draft\n{FENCE}r\nx # -->\n{FENCE}\n\n## Real\n\nProse. <!-- a -->\n"
+    ),
+    "hash after a comment opened in the front matter": (
+        '---\nnote: "<!-- legacy"\n---\n\n## Real\n\nProse. <!-- a -->\n'
+    ),
     "setext inside a blockquote": "## Real\n\n> Fake\n> ----\n\nProse.\n",
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
@@ -222,6 +228,15 @@ COMMENT_CASES = {
     "<!--> opens nothing": "a <!--> 9.99 --> b\n",
     "<!---> opens nothing": "a <!---> 9.99 --> b\n",
     "<!----> is a comment": "a <!----> b <!-- 9.99 ---> c\n",
+    "cut short by -- >": "a <!-- was 9.99 -- > 5 --> b\n",
+    "cut short by --, a newline and >": "<!-- Cut --\n> The pilot ROR was 9.99.\n-->\n",
+    "cut short by --!>": "a <!-- x --!> 9.99 --> b\n",
+    "-- then other text and > is no end": "a <!-- x --x> 9.99 --> b\n",
+    "commented-out blockquote": "<!--\n> quoted 9.99\n-->\n\nafter\n",
+    "opened in a listing": f"{FENCE}html\n<!-- a template\n{FENCE}\n\nROR 9.99. -->\n",
+    "closed in a listing": f"<!-- draft\n{FENCE}r\nx # -->\n{FENCE}\n\nROR 9.99. <!-- a -->\n",
+    "around a listing": f"<!--\n{FENCE}r\nx <- 1\n{FENCE}\n9.99 -->\n",
+    "opened in the title": "---\ntitle: Strip <!-- markers\n---\n\nROR 9.99. <!-- note -->\n",
 }
 
 

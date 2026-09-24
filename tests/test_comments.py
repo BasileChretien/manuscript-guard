@@ -41,6 +41,22 @@ PRINTED = {
     "an unclosed comment": "`x` <!-- 9.99\n",
     "<!--> opens nothing": "a <!--> 9.99 --> b\n",
     "<!---> opens nothing": "a <!---> 9.99 --> b\n",
+    # Pandoc's HTML reader ends the comment at `-- >`, finds no `-->`, and prints it all.
+    "a comment cut short by -- >": "a <!-- was 9.99 -- > 5 --> b\n",
+    "a comment cut short by --, a newline and >": (
+        "<!-- Cut after review --\n> The pilot ROR was 9.99.\n-->\n"
+    ),
+    "a comment cut short by --!>": "a <!-- x --!> 9.99 --> b\n",
+    "a comment opened in a listing": f"{FENCE}html\n<!-- a template\n{FENCE}\n\nROR 9.99. -->\n",
+    "a comment closed in a listing": (
+        f"<!-- draft\n{FENCE}r\nx <- 1 # -->\n{FENCE}\n\nThe ROR was 9.99. <!-- a -->\n"
+    ),
+    "a comment opened in the title": (
+        "---\ntitle: Stripping <!-- markers\n---\n\nThe ROR was 9.99. <!-- note -->\n"
+    ),
+    "code opened in the title": (
+        "---\ntitle: A stray `\n---\n\nStrip `<!--` first; 9.99; then `-->`.\n"
+    ),
 }
 
 
@@ -57,6 +73,10 @@ HIDDEN = {
     "code does not cross a CRLF blank line": "A `x\r\n \r\ny` <!-- 9.99 --> z\r\n",
     "an escaped backtick before a comment": f"a {BACKSLASH}`<!-- 9.99 --> b\n",
     "a comment across a blank line": "a <!-- x\n\n9.99 --> b\n",
+    "a commented-out blockquote": "<!--\n> quoted 9.99\n-->\n\nafter\n",
+    "a double dash inside a comment": "a <!-- x -- y 9.99 --> b\n",
+    "a double dash before other text and >": "a <!-- x --x> 9.99 --> b\n",
+    "a comment around a listing": f"<!--\n{FENCE}r\nx <- 1\n{FENCE}\n9.99 -->\n",
 }
 
 
@@ -74,6 +94,26 @@ def test_a_heading_after_code_that_names_a_comment_is_a_heading() -> None:
         "Significant (p < 0.05).\n\nThey end at `-->`.\n"
     )
     assert headings(text) == ["Methods", "Results"]
+
+
+@pytest.mark.parametrize(
+    "opening",
+    [
+        f"<!-- draft\n{FENCE}r\nx <- 1 # -->\n{FENCE}\n",
+        '---\nnote: "<!-- legacy"\n---\n',
+    ],
+    ids=["closed in a listing", "opened in the front matter"],
+)
+def test_a_comment_that_pandoc_ends_early_hides_no_heading(opening: str) -> None:
+    text = f"{opening}\n# Methods\n\nx\n\n# Results\n\ny <!-- z -->\n"
+    assert headings(text) == ["Methods", "Results"]
+
+
+def test_a_binding_after_a_comment_closed_in_a_listing_is_substituted() -> None:
+    """The old regex read the raw text and ended this comment where pandoc does. Reading it
+    with the fences already blanked ran it on to the next `-->`, over the binding."""
+    text = f"<!-- draft\n{FENCE}r\nx <- 1 # -->\n{FENCE}\n\nn = {{{{results.n}}}}. <!-- a -->\n"
+    assert [p.ref for p in parse(text)[0]] == ["results.n"]
 
 
 def test_a_binding_after_code_that_names_a_comment_is_substituted() -> None:
@@ -97,21 +137,26 @@ def _unmatched_runs(size: int) -> str:
     """One paragraph of about `size` characters of backtick runs, each of a length no later
     run shares, so none closes and every one gives up a backtick at a time, as pandoc does."""
     count = int((2 * size) ** 0.5)
-    return " ".join("`" * length + "x" for length in range(1, count + 1)) + "\n"
+    return " ".join("`" * length + "x" for length in range(1, count + 1)) + " <!-- x\n"
 
 
 @pytest.mark.parametrize(
     ("name", "build"),
     [
+        ("one long backtick run", lambda size: "a " + "`" * size + " <!-- x\n"),
         ("unmatched backtick runs", _unmatched_runs),
         ("comment openers with no closer", lambda size: "<!-- " * (size // 5) + "\n"),
         ("code between unclosed comments", lambda size: "`a` <!-- " * (size // 9) + "\n"),
+        ("comments cut short", lambda size: "<!-- -- > " * (size // 10) + "-->\n"),
+        ("listings between openers", lambda size: "<!--\n```\nx\n```\n" * (size // 16)),
     ],
 )
 def test_the_comment_scanner_is_linear(name: str, build) -> None:
     """`<!--.*?-->` read to the end of the text for every opener that never closed: 5,000
-    of them kept `mask` busy for over two minutes. Four times the input must not take much
-    more than four times as long."""
+    of them kept `mask` busy for over two minutes, and the first version of this scanner
+    re-read a long backtick run once per backtick it gave up. Every input here holds a
+    `<!--`, or the scanner returns before reading anything. Four times the input must not
+    take much more than four times as long."""
     from manuscript_guard.text.comments import comment_spans
 
     def measure(size: int) -> float:

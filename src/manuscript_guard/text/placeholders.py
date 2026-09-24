@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.comments import blank_comments
+from manuscript_guard.text.masking import blank_comments
 
 VALUE_NAMESPACES = ("results", "lit")
 BLOCK_NAMESPACES = ("table", "figure")

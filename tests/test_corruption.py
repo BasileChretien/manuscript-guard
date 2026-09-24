@@ -1367,6 +1367,40 @@ def test_audit_reads_prose_between_comment_markers_in_code(tmp_path: Path) -> No
     assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 1
 
 
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "<!-- draft\n```r\nx <- 1 # -->\n```\n\nThe ROR was 9.99. <!-- a -->\n",
+        "---\ntitle: Stripping <!-- markers\n---\n\nThe ROR was 9.99. <!-- note -->\n",
+        "<!-- Cut after review --\n> The pilot ROR was 9.99.\n-->\n",
+    ],
+    ids=["closed in a listing", "opened in the title", "cut short by --, newline, >"],
+)
+def test_audit_reads_prose_after_a_comment_pandoc_ends_early(tmp_path: Path, paper: str) -> None:
+    """Each comment ends before the next `-->` for pandoc, which prints 9.99: at a `-->`
+    inside a listing, at the end of the title it was opened in, or nowhere at all, because
+    pandoc's HTML reader stops at `--` and `>` and then prints the whole thing."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+
+
+def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
+    """The old binding parser got this right and the first version of the shared scanner
+    did not: it read with the fences blanked, so the comment ran on over the binding."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n<!-- draft\n```r\nx <- 1 # -->\n```\n\n"
+        + "The ROR was {{results.no_such_key}}. <!-- a -->\n",
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
+
+
 def test_g2_reads_prose_between_comment_markers_in_code(project: Path) -> None:
     path = main_md(project)
     path.write_text(

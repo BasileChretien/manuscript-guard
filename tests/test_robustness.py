@@ -54,7 +54,11 @@ def timed_check(project: Path) -> float:
         ("many headings", "".join(f"## Section {i}\n\nProse.\n\n" for i in range(1500))),
         ("setext underlines", "".join(f"Heading {i}\n---\n\nProse.\n\n" for i in range(1500))),
         ("comment openers, no closer", "<!-- " * 5000 + "\n"),
-        ("unmatched backtick runs", " ".join("`" * n + "x" for n in range(1, 400)) + "\n"),
+        (
+            "unmatched backtick runs",
+            " ".join("`" * n + "x" for n in range(1, 400)) + " <!-- x\n",
+        ),
+        ("one long backtick run", "a " + "`" * 200_000 + " <!-- x\n"),
     ],
     # Explicit ids: pytest builds one from the parameters otherwise, and puts it in
     # PYTEST_CURRENT_TEST — which Windows refuses past 32767 characters, so a 60 KB body

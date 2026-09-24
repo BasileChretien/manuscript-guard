@@ -1974,13 +1974,25 @@ Closed since, and why each mattered:
   is read as Markdown; and a listing pasted into Word as plain paragraphs is not code as
   far as the reader can tell, so a numpydoc `References` section in one starts a list. The
   cut is named under "Not audited".
-- **A code span is taken to end only at a blank line.** The comment scanner
-  (`text/comments.py`) reads code spans so that `` `<!--` `` stays code, but pandoc also
-  ends a span at the edge of a list item or a heading, and opens none inside a raw HTML tag
-  or TeX maths. So a stray backtick in one list item can pair with the one opening
-  `` `<!--` `` in the next, and the prose after it is hidden up to the next `-->`, as it
-  was for every `` `<!--` `` before. That needs an unmatched backtick as well as both
-  markers in backticks. The other way round, a real comment read as code, only adds noise.
+- **The comment scanner knows code spans, fences and the front matter, and no other
+  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+  does, but it ends a code span only at a blank line, a fence or a front-matter value's
+  edge, where pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
+  or TeX maths as its own, where pandoc reads the enclosing construct first. So
+  ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
+  prints, as a stray backtick in one list item does when it pairs with the one opening
+  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
+  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints it as code. The old regex did all of this and more.
+- **A fence opened inside a comment still pairs with a closer after it.** A comment that
+  starts first runs over a listing, as pandoc reads it, but `text/fences.py` does not know
+  about comments. So the opening fence of a half-commented listing pairs with the next fence
+  line after the `-->`, and the prose between is read as code: G2 runs the listing checker
+  over it instead of the prose rules.
+- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
+  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
+  mentions both markers hides everything between them.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

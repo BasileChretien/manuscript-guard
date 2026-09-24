@@ -1991,11 +1991,19 @@ Closed since, and why each mattered:
   pandoc also reads, is prose to the toolkit, and so are the YAML boundaries inside a value
   it keeps: a `<!--` in one keyword runs through the next to a `-->`, and a `# -->` YAML
   comment after a quoted title closes one opened in it.
-- **A fence opened inside a comment still pairs with a closer after it.** A comment that
-  starts first runs over a listing, as pandoc reads it, but `text/fences.py` does not know
-  about comments. So the opening fence of a half-commented listing pairs with the next fence
-  line after the `-->`, and the prose between is read as code: G2 runs the listing checker
-  over it instead of the prose rules.
+- **Fences are found without knowing what a comment or a code span swallowed.**
+  `text/fences.py` reads the file for fences before anything else. So a fence line that
+  pandoc reads as part of a comment or of an open code span is still an opener there, and
+  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
+  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
+  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
+  such a fence for itself, but it does not look for the fences pandoc finds after it. One
+  case follows from that, the only one where this branch reads worse than the regex did: a
+  code span holding a line of four backticks, followed by a listing that holds `<!--`,
+  hides the prose after the listing up to the next `-->`. Separately, a `~~~` fence, or a
+  backtick fence indented one to three spaces, does not interrupt a paragraph in pandoc,
+  which prints it as prose. One pass that finds fences, code spans and comments together
+  would close all of these.
 - **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
   typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
   mentions both markers hides everything between them.

@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.text.masking import ESCAPED_COMPARISON
 from manuscript_guard.text.tokens import Atom
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -280,6 +281,8 @@ class Scan:
 
 
 def _scan(rules: Iterable[Rule], text: str) -> Scan:
+    # `ROR \> 2` prints as `ROR > 2`; see `ESCAPED_COMPARISON`. A space keeps every offset.
+    text = ESCAPED_COMPARISON.sub(" ", text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
     for rule in rules:

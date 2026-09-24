@@ -785,6 +785,12 @@ TYPED_IN_WORD = [
         id="tag-to-pandoc",
     ),
     pytest.param("Age > 65 and p > 0.05.", "Age > 65 and p > 0.05.", id="nothing-to-close"),
+    pytest.param(
+        "Set at p < 0.05, <18 years and ROR > 2.",
+        "Set at p < 0.05, <18 years and ROR > 2.",
+        id="nothing-a-tag-opens-with",
+    ),
+    pytest.param("Values <µg/L and >ULOQ.", r"Values \<µg/L and \>ULOQ.", id="tag-in-any-script"),
     pytest.param("Ask @2020 or @_user.", r"Ask \@2020 or \@\_user.", id="odd-citation"),
     pytest.param("See [Methods] here.", r"See \[Methods] here.", id="header-reference"),
     pytest.param("Samples ~~5 and $$x$$.", r"Samples \~\~5 and \$\$x\$\$.", id="doubled"),
@@ -844,6 +850,20 @@ BESIDE_A_TOKEN = [
         "Levels <LOD were imputed and >ULOQ excluded.",
         r"Levels {{results.cut}} were imputed and \>ULOQ excluded.",
         id="angle-from-a-value",
+    ),
+    pytest.param(
+        "Values {{results.drug}} ok and >ULOQ excluded.",
+        "Values aspirin ok and >ULOQ excluded.",
+        "Values <µg aspirin ok and >ULOQ excluded.",
+        r"Values \<µg {{results.drug}} ok and >ULOQ excluded.",
+        id="angle-before-a-letter-of-any-script",
+    ),
+    pytest.param(
+        "At p < 0.05, {{results.x}} signals had ROR > 2 overall.",
+        "At p < 0.05, 3.84 signals had ROR > 2 overall.",
+        "At p < 0.05, 3.84 signals had ROR > 2 in all.",
+        "At p < 0.05, {{results.x}} signals had ROR > 2 in all.",
+        id="comparison-that-opens-nothing",
     ),
     pytest.param(
         "Alpha beta {{results.drug}} gamma delta.",
@@ -911,7 +931,9 @@ def test_text_beside_a_token_is_escaped_for_its_neighbour(
     A `>` was never escaped. After a `<` the source kept bare, or one a binding's value
     brought, a `>` typed in Word closed a tag around a value that is a word, and pandoc
     deleted everything in between. `_reads_as` saw text, because it fills a binding with
-    digits and a digit is not an attribute name."""
+    digits and a digit is not an attribute name. Escaped after any `<`, the `>` of `ROR > 2`
+    became `\\>` after `p < 0.05`, and G2 no longer read the threshold; only a `<` a tag can
+    open with counts, and that is any letter: `<µg` was left bare, and opened one."""
     assert realign(source, rendered, returned) == expected
 
 

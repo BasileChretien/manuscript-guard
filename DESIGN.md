@@ -2113,15 +2113,17 @@ Closed since, and why each mattered:
     refuses. Where it misjudges a span around a binding, nothing does.
   - *The read-back reads a binding as digits.* What a binding's value makes of the text
     beside it is seen only by the escaper, at the edges it knows: a `<`, `&`, `]` or `{`
-    before a binding, a `(` after one, and a `>` typed anywhere after a `<` in Word's
-    paragraph, whether the source kept that `<` bare or a value brought it. A `<` and a `>`
+    before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
+    once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
+    of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
+    G2 reads `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `<` and a `>`
     both kept from the source are not Word's to escape. Pandoc read them as text only
     because something between them was not an attribute name, and an edit that deletes it
-    makes a tag: `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}}
-    and >ULOQ were redone.`, with "(see Table 2)" deleted in Word, merges, and pandoc
-    prints "Samples ULOQ were redone." A `>` in a binding's value is the same case. The
-    read-back does not see it: a digit is not an attribute name, and pandoc's tags are
-    looser than its own reading, which does not take `mg/L` for an attribute.
+    makes a tag: with values that are words, `Samples <LLOQ in {{results.unit}} (see
+    Table 2) at {{results.site}} and >ULOQ were redone.`, with "(see Table 2)" deleted in
+    Word, merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value
+    is the same case. The read-back does not see it: a digit is not an attribute name, and
+    pandoc's tags are looser than its own reading, which does not take `mg/L` for one.
   - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
     in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
     `import` reads none of them. An edit inside a footnote or an equation, a changed link

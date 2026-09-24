@@ -352,6 +352,34 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+def _in_methods(project: Path, sentence: str) -> None:
+    path = main_md(project)
+    anchor = "Reporting follows the checklist"
+    text = path.read_text(encoding="utf-8")
+    assert anchor in text
+    path.write_text(text.replace(anchor, f"{sentence}\n\n{anchor}", 1), encoding="utf-8")
+
+
+def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
+    """Pandoc's Markdown writer escapes every comparison, so a Methods section converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` escapes a `>` that a `<` earlier in the
+    paragraph could close as a tag. Each prints the bare character. G2 read neither: the
+    threshold rules never matched, and `\\>3` was an atom no rule began at."""
+    _in_methods(
+        project,
+        r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
+    )
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+@pytest.mark.parametrize("claim", [r"ROR \> 7", r"p \< 0.37", r"\>9 cases"])
+def test_an_escaped_comparison_does_not_launder_a_number(project: Path, claim: str) -> None:
+    """Read as the bare character, and no further: a value no convention names is a claim."""
+    _in_methods(project, f"A signal needed {claim} in this sentence.")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

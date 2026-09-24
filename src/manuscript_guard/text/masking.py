@@ -38,6 +38,14 @@ _KEY_LINE = re.compile(
     r"^(?P<indent>[ \t]*)(?P<key>" + "|".join(RENDERED_KEYS) + r")[ \t]*:[ \t]*(?P<value>.*)$"
 )
 
+# A backslash before `<` or `>`. Pandoc's Markdown writer puts one before every comparison,
+# so a paper converted from Word reads `p \< 0.05` and `ROR \> 2`; `import` puts one before
+# a `>` that a `<` earlier in the paragraph could close as a tag. Both print the bare
+# character, and G2 read neither: the threshold rules never matched, and `\>3` was an atom
+# no rule began at. Masked here so an atom starts where the printed one does, and read as a
+# space by the classifier, whose rules match the text itself.
+ESCAPED_COMPARISON = re.compile(r"\\(?=[<>])")
+
 # Ordered: earlier patterns win, because a URL inside a code fence is already gone.
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
 # that is partly machinery and partly prose.
@@ -75,6 +83,7 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # already read, because the old pattern was anchored at `[@`; the asymmetry was accidental.
     ("citation-bare", re.compile(r"(?<![\w`])-?@[A-Za-z][\w:.#$%&+?<>~/-]*")),
     ("pandoc-attr", re.compile(r"\{[.#][^}\n]*\}")),
+    ("escaped-comparison", ESCAPED_COMPARISON),
 )
 
 

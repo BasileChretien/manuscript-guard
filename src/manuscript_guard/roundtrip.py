@@ -613,6 +613,12 @@ _OPENER = re.compile(
     r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
 )
 
+#: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
+#: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
+#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for.
+_TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
+_TAG_OPENS = re.compile(_TAG_OPEN)
+
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
@@ -622,7 +628,7 @@ _OPENER = re.compile(
 #: only `_OPENER` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
-    r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
+    rf"|{_TAG_OPEN}"  # a tag, a comment or an autolink; "p < 0.05" is not one
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
@@ -656,17 +662,20 @@ def _escaped(
     refuses as malformed. The entity is a named one because `&#123;` puts the number 123
     into the prose, and `check` refuses that as a number bound to no source.
 
-    A `>` is escaped once Word's paragraph shows a `<` before it, in this text or, as
-    `after_angle` says, before it. That `<` need not be Word's: one the source kept bare, or
-    one a binding's value brings, opens a tag that a `>` typed later closes, and
-    `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples ULOQ". Pandoc's tags are
-    looser than `_read`'s, and `_read` fills a binding with digits, so the read-back saw
-    text. A `>` with nothing before it to close is left alone: `p > 0.05` stays as typed.
+    A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
+    this text, or before it, as `after_angle` says. That `<` need not be Word's: one the
+    source kept bare, or one a binding's value brings, opens a tag that a `>` later in Word's
+    text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples ULOQ".
+    Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits, so the
+    read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and ROR > 2`
+    stays as typed.
     """
     brace = before_token and text.endswith("{")
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
-    if (angle := 0 if after_angle else text.find("<")) >= 0:
-        text = text[:angle] + text[angle:].replace(">", "\\>")
+    opens = _TAG_OPENS.search(text)
+    cut = 0 if after_angle else opens.start() if opens else None
+    if cut is not None:
+        text = text[:cut] + text[cut:].replace(">", "\\>")
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -902,9 +911,12 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
 
     sent, new_prose = _between(before, ranges), _between(after, placed)
-    # Whether Word's paragraph shows a `<` before each stretch: kept from the source, typed,
-    # or a binding's value, it can open a tag that a `>` in the stretch would close.
-    opened = ["<" in "".join(after[:at]) for at in [0] + [end for _start, end in placed]]
+    # Whether Word's paragraph shows a `<` that can open a tag before each stretch: kept from
+    # the source, typed, or a binding's value, a `>` in the stretch would close it. Looked for
+    # in the whole text, so a `<` at an edge is read with the character after it.
+    first = _TAG_OPENS.search(returned)
+    starts = [len("".join(after[:at])) for at in [0] + [end for _start, end in placed]]
+    opened = [first is not None and first.start() < start for start in starts]
     out: list[str] = []
     lost: list[str] = []
     for index, piece in enumerate(new_prose):

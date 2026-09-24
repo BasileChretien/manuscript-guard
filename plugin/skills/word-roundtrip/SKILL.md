@@ -109,11 +109,14 @@ handled, and each has a test:
   added after the number, is not caught: read those in the diff.
 - A rewording is refused, not merged, when the edited text carries something Word's text
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a non-breaking space, a
-  hard line break, or emphasis or code wrapped around a binding. The reason names it. In a
-  paragraph with a binding, markup on one side of the binding does not stop an edit on the
-  other side. A paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses
-  every edit to it.
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break, or
+  emphasis or code wrapped around a binding. The reason names it. In a paragraph with a
+  binding, markup on one side of the binding does not stop an edit on the other side. A
+  paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses every edit to
+  it.
+- A no-break space comes back as the character it is, so a rewording around it merges and
+  keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
+  put before a colon or inside « ».
 - What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
   co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
 
@@ -151,6 +154,10 @@ Read the whole diff. What to look for:
   escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
   Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
   bare and is curled: put the backslash back if the straight quote mattered.
+- Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
+  abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
+  itself. Each prints as it did, but a diff can show a line as changed where nothing
+  visible changed.
 - Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
   paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then

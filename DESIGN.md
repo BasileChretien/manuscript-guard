@@ -1986,9 +1986,12 @@ Closed since, and why each mattered:
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
   footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
   HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
-  struck-through text, a non-breaking space, a hard line break, or one end of emphasis or
-  code wrapped around a binding. What comes back is escaped, and a merge that this module
-  reads differently from what came back is refused. What remains:
+  struck-through text, a hard line break, or one end of emphasis or code wrapped around a
+  binding. What comes back is escaped, and a merge that this module reads differently from
+  what came back is refused. A no-break space is no longer on that list: Word's text keeps
+  it (U+00A0, U+202F and every other space except layout whitespace), so it merges back as
+  typed, whether the source had it or the co-author's French AutoCorrect put it before a
+  colon. What remains:
   - *The refusal costs the edit.* The markup is never carried over into the new wording, even
     where the words either side of a footnote came back unchanged and its place is certain.
     In a paragraph without bindings the whole paragraph is one stretch, so one `kg/m^2^` or
@@ -2004,9 +2007,21 @@ Closed since, and why each mattered:
     address, or a footnote deleted in Word leaves the paragraph's text as it was, and
     nothing is merged or reported.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
-    the source's own way of writing a character: `&lt;` comes back as `\<`, which prints the
-    same. An escaped straight quote, `\"`, comes back bare and pandoc curls it: a pandoc
-    conversion from Word writes those.
+    the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
+    `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
+    straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
+    Word writes those.
+  - *Pandoc's own no-break spaces come back as characters.* Pandoc puts one after an
+    abbreviation it knows ("e.g.", "et al.", "p.", "vs."), where the source has a plain
+    space. A stretch the co-author left alone keeps the source's space, but an edited one is
+    Word's text, and puts pandoc's character into the `.md`. It prints the same and `check`
+    reads it the same, but it cannot be seen in an editor, and a diff shows the line as
+    changed there. Where the source is read against Word's text, U+00A0 therefore counts
+    as a space; Word's text against Word's text compares it exactly, so one the co-author
+    typed is an edit.
+  - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
+    without its own, so a no-break space the co-author added there is dropped: silently,
+    when it is the only change to the paragraph.
 - **Two protected tokens with nothing between them cannot be aligned.**
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
   one rendering ends and the next begins. The paragraph is refused.

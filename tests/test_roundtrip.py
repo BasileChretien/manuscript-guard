@@ -243,6 +243,26 @@ def by_heading(text: str) -> dict[str, list[str]]:
 # ------------------------------------------- alignment inside a paragraph with bindings
 
 
+def unmark(marked: str) -> tuple[str, list[tuple[int, int]]]:
+    """A rendering with each token ⟦marked⟧, as the comparison build reports it: the plain
+    text, and where each token sits in it."""
+    plain: list[str] = []
+    spans: list[tuple[int, int]] = []
+    at = 0
+    for part in re.split(r"(⟦[^⟧]*⟧)", marked):
+        if part.startswith("⟦"):
+            spans.append((at, at + len(part) - 2))
+            part = part[1:-1]
+        plain.append(part)
+        at += len(part)
+    return "".join(plain), spans
+
+
+def merged(source: str, marked: str, returned: str) -> str | None:
+    plain, spans = unmark(marked)
+    return realign(source, plain, returned, spans)
+
+
 def test_a_rewording_keeps_every_binding() -> None:
     """The move the paragraph-level merge could not make.
 
@@ -251,49 +271,49 @@ def test_a_rewording_keeps_every_binding() -> None:
     source's tokens and the co-author's words instead.
     """
     source = "The ratio was {{results.ror.point}} overall [@smith2020]."
-    rendered = "The ratio was 3.84 overall (Smith 2020)."
-    out = realign(source, rendered, "The ratio was notably 3.84 overall (Smith 2020).")
+    rendered = "The ratio was ⟦3.84⟧ overall ⟦(Smith 2020)⟧."
+    out = merged(source, rendered, "The ratio was notably 3.84 overall (Smith 2020).")
     assert out == "The ratio was notably {{results.ror.point}} overall [@smith2020]."
 
 
 def test_an_edited_number_refuses_the_whole_paragraph() -> None:
     source = "The ratio was {{results.ror.point}} overall."
-    assert realign(source, "The ratio was 3.84 overall.", "The ratio was 4.02 overall.") is None
+    assert merged(source, "The ratio was ⟦3.84⟧ overall.", "The ratio was 4.02 overall.") is None
 
 
 def test_a_removed_citation_refuses_the_paragraph() -> None:
-    """A citation's rendering depends on a CSL style this code never sees. It is located by
-    the gap between the prose segments, so it is protected without being understood."""
     source = "The ratio was high [@smith2020]."
-    assert realign(source, "The ratio was high (Smith 2020).", "The ratio was high.") is None
+    assert merged(source, "The ratio was high ⟦(Smith 2020)⟧.", "The ratio was high.") is None
 
 
 def test_transposed_bounds_are_refused() -> None:
-    """Sequential search is what catches this: the bounds come back out of order."""
+    """Alignment is in order, so bounds that come back swapped cannot both be placed."""
     source = "({{results.ror.ci_low}} to {{results.ror.ci_high}})"
-    assert realign(source, "(2.10 to 7.02)", "(7.02 to 2.10)") is None
+    assert merged(source, "(⟦2.10⟧ to ⟦7.02⟧)", "(7.02 to 2.10)") is None
 
 
 def test_two_bindings_that_render_the_same_are_paired_in_order() -> None:
-    """The collision case again: searching sequentially pairs them up rather than matching
+    """The collision case again: alignment pairs them up in order rather than matching
     both to the first occurrence."""
     source = "{{results.a}} and {{results.b}}"
-    out = realign(source, "1 and 1", "1 and, notably, 1")
+    out = merged(source, "⟦1⟧ and ⟦1⟧", "1 and, notably, 1")
     assert out == "{{results.a}} and, notably, {{results.b}}"
 
 
 def test_unchanged_prose_keeps_its_own_markdown() -> None:
     """Word text loses inline formatting, so only an edited segment is taken from it."""
     source = "The **striking** ratio was {{results.ror.point}} here."
-    out = realign(source, "The striking ratio was 3.84 here.", "The striking ratio was 3.84 there.")
+    out = merged(
+        source, "The striking ratio was ⟦3.84⟧ here.", "The striking ratio was 3.84 there."
+    )
     assert out is not None
     assert "**striking**" in out, "the untouched segment keeps its emphasis"
     assert "there" in out
 
 
 def test_segments_splits_prose_from_what_the_author_does_not_own() -> None:
-    prose, protected = segments("a {{results.x}} b [@key] c")
-    assert protected == ["{{results.x}}", "[@key]"]
+    prose, protected = segments("a {{results.x}} b [@key] c @other d")
+    assert protected == ["{{results.x}}", "[@key]", "@other"]
     assert len(prose) == len(protected) + 1
 
 
@@ -301,16 +321,15 @@ def test_a_number_that_grew_a_digit_is_refused() -> None:
     """Substring search found '3.84' inside '13.84' and merged `1{{results.ror.point}}`.
 
     And a sign or a comparison glued in front changes the value too - including the en and
-    em dashes Word's AutoCorrect makes of a hyphen, which merged as `\u2013{{results.ror.point}}`
+    em dashes Word's AutoCorrect makes of a hyphen, which merged as `–{{results.ror.point}}`
     and turned a ratio negative in the next build."""
     source = "The ratio was {{results.ror.point}} overall."
-    rendered = "The ratio was 3.84 overall."
     for edited in (
         "13.84", "3.845", "-3.84", "3.84.1",
-        "\u20133.84", "\u20143.84", "\u22123.84", "<3.84", "\u22643.84", "~3.84", "\u22483.84",
+        "–3.84", "—3.84", "−3.84", "<3.84", "≤3.84", "~3.84", "≈3.84",
     ):
         returned = f"The ratio was {edited} overall."
-        assert realign(source, rendered, returned) is None, edited
+        assert merged(source, "The ratio was ⟦3.84⟧ overall.", returned) is None, edited
 
 
 @pytest.mark.parametrize(
@@ -318,19 +337,85 @@ def test_a_number_that_grew_a_digit_is_refused() -> None:
     [
         "See the [agency report](https://example.org/r) for details.",
         "See the agency report.^[Withdrawn in 2019.] It has details.",
+        "See the agency report, $n = 3$, for details.",
     ],
-    ids=["link", "footnote"],
+    ids=["link", "footnote", "math"],
 )
 def test_a_paragraph_whose_markup_word_cannot_carry_is_refused(source: str) -> None:
-    """Word's plain text has the link's words but not its address, and a footnote's
-    reference mark but not its text. Merging it over the source deleted both."""
+    """Word's plain text has the link's words but not its address, a footnote's reference
+    mark but not its text, and none of an equation. Merging it over the source deleted
+    them."""
     from manuscript_guard.merge import why
     from manuscript_guard.roundtrip import align
 
     rendered = "See the agency report for details."
-    aligned = align(source, rendered, "See the agency report for more details.")
+    aligned = align(source, rendered, "See the agency report for more details.", [])
     assert aligned.rebuilt is None
     assert "a footnote, a link" in why(aligned)[0]
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "The drug's ratio was {{results.x}} here.",
+            "The drug’s ratio was ⟦3.84⟧ here.",
+            "The drug’s ratio was 3.84 there.",
+            "The drug's ratio was {{results.x}} there.",
+            id="apostrophe",
+        ),
+        pytest.param(
+            'The so-called "signal" was {{results.x}} here.',
+            "The so-called “signal” was ⟦3.84⟧ here.",
+            "The so-called “signal” was 3.84 there.",
+            'The so-called "signal" was {{results.x}} there.',
+            id="double-quotes",
+        ),
+        pytest.param(
+            "Rates -- and odds --- were {{results.x}} here.",
+            "Rates – and odds — were ⟦3.84⟧ here.",
+            "Rates – and odds — were 3.84 there.",
+            "Rates -- and odds --- were {{results.x}} there.",
+            id="dashes",
+        ),
+        pytest.param(
+            "Odds... were {{results.x}} here.",
+            "Odds… were ⟦3.84⟧ here.",
+            "Odds… were 3.84 there.",
+            "Odds... were {{results.x}} there.",
+            id="ellipsis",
+        ),
+        pytest.param(
+            "Run with `--offline_mode`, the ratio was {{results.x}} here.",
+            "Run with --offline_mode, the ratio was ⟦3.84⟧ here.",
+            "Run with --offline_mode, the ratio was 3.84 there.",
+            "Run with `--offline_mode`, the ratio was {{results.x}} there.",
+            id="code",
+        ),
+        pytest.param(
+            "Per m^2^ and H~2~O, the \\*raw\\* ratio was {{results.x}} here.",
+            "Per m2 and H2O, the *raw* ratio was ⟦3.84⟧ here.",
+            "Per m2 and H2O, the *raw* ratio was 3.84 there.",
+            "Per m^2^ and H~2~O, the \\*raw\\* ratio was {{results.x}} there.",
+            id="other-markup",
+        ),
+        pytest.param(
+            "The drug's ratio was {{results.x}} here.",
+            "The drug’s ratio was ⟦3.84⟧ here.",
+            "The drug's ratio was 3.84 there.",
+            "The drug's ratio was {{results.x}} there.",
+            id="a-quote-retyped-straight-is-not-an-edit",
+        ),
+    ],
+)
+def test_how_pandoc_renders_prose_does_not_stop_a_rewording(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Pandoc typesets prose - `drug's` reaches Word as `drug’s`, `--` as an en dash - and
+    renders its markup. The source's prose was looked for verbatim in the rendered text, so a
+    paragraph with a binding and an apostrophe was refused as "could not be lined up". With
+    the tokens' extents known, prose is only ever compared with rendered prose."""
+    assert merged(source, rendered, returned) == expected
 
 
 def test_a_value_is_found_in_its_own_place_not_in_the_prose_before_it() -> None:
@@ -338,8 +423,73 @@ def test_a_value_is_found_in_its_own_place_not_in_the_prose_before_it() -> None:
     from the start of the paragraph moved the binding onto the table number and left the
     value behind as a literal."""
     source = "Table 1 shows {{results.x}} events."
-    out = realign(source, "Table 1 shows 1 events.", "Table 1 now shows 1 events.")
+    out = merged(source, "Table 1 shows ⟦1⟧ events.", "Table 1 now shows 1 events.")
     assert out == "Table 1 now shows {{results.x}} events."
+
+
+def test_a_citation_ending_a_paragraph_keeps_its_own_full_stop() -> None:
+    """'(Smith et al. 2020).' - the source's last prose piece is '.', and searching for it
+    found the one after 'al', so the rest of the citation became prose and merged as
+    `[@smith2020]. 2020).`"""
+    source = "Earlier work agreed on this point [@smith2020]."
+    out = merged(
+        source,
+        "Earlier work agreed on this point ⟦(Smith et al. 2020)⟧.",
+        "Earlier studies agreed on this point (Smith et al. 2020).",
+    )
+    assert out == "Earlier studies agreed on this point [@smith2020]."
+
+
+def test_a_value_ending_a_sentence_is_not_cut_at_its_decimal_point() -> None:
+    """The same search found the final '.' inside '3.84' and refused the paragraph as
+    "'3' comes from results.ror.point" - a value that had not changed, cut in half."""
+    source = "The reporting odds ratio was {{results.ror.point}}."
+    out = merged(
+        source, "The reporting odds ratio was ⟦3.84⟧.", "The odds ratio was 3.84."
+    )
+    assert out == "The odds ratio was {{results.ror.point}}."
+
+
+def test_an_edit_inside_a_citation_is_refused_not_merged_as_prose() -> None:
+    """'Both (Smith and Jones 2020) and (Lee 2021)': the prose ' and ' was found inside the
+    first citation, so a co-author's 'and' -> '&' in the citation merged as prose, between
+    the two citations."""
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import align
+
+    source = "Both [@a] and [@b] agree."
+    plain, spans = unmark("Both ⟦(Smith and Jones 2020)⟧ and ⟦(Lee 2021)⟧ agree.")
+    aligned = align(source, plain, "Both (Smith & Jones 2020) and (Lee 2021) agree.", spans)
+    assert aligned.rebuilt is None
+    assert "[@a]" in " ".join(why(aligned))
+
+
+def test_a_narrative_citation_is_protected_like_any_other() -> None:
+    """`@smith2020` without brackets was not protected at all: in a paragraph with no other
+    binding, a rewording merged it back as the plain text "Smith (2020)"."""
+    source = "As @smith2020 found, this holds."
+    rendered = "As ⟦Smith (2020)⟧ found, this holds."
+    assert merged(source, rendered, "As Smith (2020) found, this clearly holds.") == (
+        "As @smith2020 found, this clearly holds."
+    )
+    assert merged(source, rendered, "As Smith (2021) found, this holds.") is None
+
+
+def test_two_tokens_with_nothing_between_them_are_refused_as_unaligned() -> None:
+    """Their extents are known in the build, but Word's text has no seam between '1' and
+    '2'. Refused, and not as "'1' comes from results.a", which would say a value that had
+    not changed was changed."""
+    from manuscript_guard.roundtrip import align
+
+    aligned = align("Values {{results.a}}{{results.b}} here.", "Values 12 here.",
+                    "Values 12 there.", [(7, 8), (8, 9)])
+    assert aligned.rebuilt is None
+    assert aligned.unaligned and not aligned.changed
+
+
+def test_an_email_address_is_not_a_citation() -> None:
+    prose, protected = segments("Write to data@example.org for access.")
+    assert protected == []
 
 
 # ------------------------------------------------ what an import must not do to the source
@@ -667,7 +817,7 @@ def test_text_typed_where_a_paragraph_renders_nothing_is_not_merged(tmp_path: Pa
 def test_markup_that_word_text_cannot_carry_is_refused(source: str) -> None:
     from manuscript_guard.roundtrip import align
 
-    aligned = align(source, "Before and after.", "Before and just after.")
+    aligned = align(source, "Before and after.", "Before and just after.", [])
     assert aligned.rebuilt is None and aligned.markup
 
 
@@ -720,6 +870,94 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
     assert "heading" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_merges_in_a_paragraph_pandoc_typeset(project: Path, tmp_path: Path) -> None:
+    """End to end, through pandoc's own smart punctuation rather than a guess at it."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    typeset = "restriction on age or sex -- the generator's only rule."
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            "restriction on age or sex.", typeset, 1
+        ),
+        encoding="utf-8",
+    )
+    document = built(project)
+    returned = rewrite(
+        document,
+        tmp_path / "typeset.docx",
+        lambda xml: xml.replace("Reports were included", "Reports were all included", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+    assert "Reports were all included" in after
+    assert "{{results.cohort.n_years}}" in after
+    assert closed(after)
+
+
+MARKUP = {
+    "apostrophe": "The drug's ratio was {{results.ror.point}} overall.",
+    "quotes": 'The so-called "signal" was {{results.ror.point}}.',
+    "dashes": "Rates -- and odds --- were {{results.ror.point}} here.",
+    "ellipsis": "Odds... were {{results.ror.point}} here.",
+    "emphasis": "The *striking* and **strong** ratio was {{results.ror.point}}.",
+    "code": "Run with `--offline_mode`, the ratio was {{results.ror.point}}.",
+    "escape": "The ratio \\*was\\* {{results.ror.point}} here.",
+    "super-and-subscript": "Per m^2^ of H~2~O, the ratio was {{results.ror.point}}.",
+    "intraword-underscore": "The file_name ratio was {{results.ror.point}}.",
+    "abbreviations": "As Dr. Smith noted, e.g. here, the ratio was {{results.ror.point}}.",
+    "narrative-citation": "As @fictionalClassSignal2019 found, it was {{results.ror.point}}.",
+    "prefixed-citation": "It was {{results.ror.point}} [see @fictionalClassSignal2019, p. 3].",
+    "span": "The [ratio]{.smallcaps} was {{results.ror.point}}.",
+    "strikeout": "The ~~old~~ ratio was {{results.ror.point}}.",
+    "citations-in-a-row": "Both [@fictionalClassSignal2019], [@fictionalHepaticCohort2021] "
+    "agree on {{results.ror.point}}.",
+    "value-ends-it": "The reporting odds ratio was {{results.ror.point}}.",
+}
+
+
+@needs_pandoc
+def test_every_way_pandoc_renders_prose_still_takes_a_rewording(project: Path) -> None:
+    """Asserted on pandoc's own output rather than on a guess at it.
+
+    The token extents come from a second build with every binding and citation bookmarked,
+    so two things must hold for each paragraph: marking changed nothing a co-author sees,
+    and a rewording merges with every token back in the source.
+    """
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.roundtrip import align, read_blocks, tagged_paragraphs
+
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(
+        main_md.read_text(encoding="utf-8") + "\n\n# More\n\n" + "\n\n".join(MARKUP.values()),
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    namespace, results, _lit, _r = load_namespace(projekt)
+    plain = project / "build" / "plain.docx"
+    marked = project / "build" / "marked.docx"
+    build_document(projekt, assemble(projekt, namespace, results)[0], mode=OFFLINE, output=plain)
+    build_document(
+        projekt, assemble(projekt, namespace, results, mark=True)[0], mode=OFFLINE, output=marked
+    )
+    sent = {b.names[0]: b for b in read_blocks(plain) if b.names}
+    extents = {b.names[0]: b for b in read_blocks(marked) if b.names}
+    assert sent.keys() == extents.keys()
+
+    by_source = {entry[1]: name for name, entry in tagged_paragraphs(projekt).items()}
+    for label, source in MARKUP.items():
+        name = by_source[source]
+        assert extents[name].text == sent[name].text, f"{label}: marking changed the text"
+        rendered = sent[name].text
+        aligned = align(source, rendered, rendered + " Indeed.", extents[name].tokens)
+        assert aligned.rebuilt is not None, f"{label}: {aligned}"
+        assert aligned.rebuilt.startswith(source[:-1]), f"{label}: {aligned.rebuilt}"
+    for name, block in sent.items():
+        assert extents[name].text == block.text, f"marking changed {block.text[:60]!r}"
 
 
 @needs_pandoc

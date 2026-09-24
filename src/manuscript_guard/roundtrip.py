@@ -30,8 +30,12 @@ import difflib
 import re
 import unicodedata
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from manuscript_guard.docxtext import TOKEN
+from manuscript_guard.zotero.citations import BRACKETED
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -246,21 +250,33 @@ def _untagged(stripped: str) -> bool:
     )
 
 
-def tag(text: str, relative: str) -> str:
+def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
     blocks, and paragraphs that are nothing but a placeholder, because those become a table
     or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+
+    With `mark`, every binding and citation in a tagged paragraph is wrapped in a span of
+    its own as well, which pandoc also turns into a bookmark - around the token's rendered
+    text this time. Only the build `import` compares with is marked, and it is what tells
+    `align` exactly where each token's rendering begins and ends.
     """
     out = []
+    counter = iter(range(1_000_000))
+    slug = paragraph_slug(relative)
     for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
         stripped = para.strip()
         if para.strip("\n") == "" or _untagged(stripped):
             out.append(para)
             continue
-        marker = _TAG.format(slug=paragraph_slug(relative), index=index)
-        out.append(para.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
+        marker = _TAG.format(slug=slug, index=index)
+        body = stripped
+        if mark:
+            body = _PROTECTED.sub(
+                lambda token: f"[{token.group(0)}]{{#{TOKEN}{slug}-{next(counter)}}}", body
+            )
+        out.append(para.replace(stripped, f"[]{{#{marker}}}{body}", 1))
     return "".join(out)
 
 
@@ -348,8 +364,16 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
     ]
 
 
-#: A binding or a citation: the parts of a paragraph the author does not own.
-_PROTECTED = re.compile(r"\{\{[^}]*\}\}|\[@[^\]]*\]")
+#: A binding or a citation: the parts of a paragraph the author does not own. Citations
+#: are read as the rest of the toolkit reads them - `[see @key, p. 4]` with its prefix and
+#: locator, and a narrative `@key` - because only `[@key]` was protected, and a rewording of
+#: a paragraph citing `@smith2020` merged it back as the plain text "Smith (2020)". A
+#: narrative key ends on a word character, so a full stop after it stays prose.
+_PROTECTED = re.compile(
+    r"\{\{[^}]*\}\}"
+    rf"|{BRACKETED.pattern}"
+    r"|(?<![\w`\[@])-?@[A-Za-z][\w:.#$%&+?<>~/-]*(?<![:.#$%&+?<>~/-])"
+)
 
 
 def paragraph_text(document: Path) -> dict[str, str]:
@@ -373,20 +397,25 @@ def segments(paragraph: str) -> tuple[list[str], list[str]]:
     Returns `(prose, protected)` with `len(prose) == len(protected) + 1`, so the paragraph is
     `prose[0] + protected[0] + prose[1] + ...`.
     """
-    protected = _PROTECTED.findall(paragraph)
-    prose = _PROTECTED.split(paragraph)
-    return prose, protected
+    # By position rather than `split`, which also returns every group a pattern captures,
+    # and the citation pattern captures its body.
+    matches = list(_PROTECTED.finditer(paragraph))
+    edges = [0] + [edge for m in matches for edge in m.span()] + [len(paragraph)]
+    prose = [paragraph[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    return prose, [m.group(0) for m in matches]
 
 
-def _flatten(text: str) -> str:
-    """Prose as it will appear in the document: emphasis markers gone, spaces normalised.
+#: Quotes are compared as quotes, whichever way they curl. Pandoc curls them, Word's
+#: autocorrect curls them again, and a co-author with autocorrect off types them straight -
+#: none of which is an edit.
+_STRAIGHT = str.maketrans(
+    "\u2018\u2019\u201a\u201b\u201c\u201d\u201e\u201f", "''''" + '""""'
+)
 
-    Prose is unchanged by rendering *except* for its markdown. `**striking**` reaches Word
-    as `striking`, so locating the source segment verbatim failed on any paragraph with
-    emphasis in it — which is most of them. Compared flattened, rebuilt from the original.
-    """
-    text = re.sub(r"(\*\*|__|\*|_|`)", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+
+def _comparable(text: str) -> str:
+    """Rendered text reduced to what an edit could change: straight quotes, single spaces."""
+    return re.sub(r"\s+", " ", text.translate(_STRAIGHT)).strip()
 
 
 @dataclass(frozen=True)
@@ -398,10 +427,11 @@ class Alignment:
     #: `("3.84", "{{results.ror.point}}")`. This is what lets a refusal name the value and
     #: where it comes from instead of saying that something, somewhere, changed.
     changed: tuple[tuple[str, str], ...] = ()
-    #: The paragraph could not be lined up with its own rendering, so nothing can be said
-    #: about which part of it is a number.
+    #: Where its bindings and citations were rendered is not known - the build compared
+    #: with did not mark them all - so nothing can be said about which part is a number.
     unaligned: bool = False
-    #: It carries markup that plain Word text cannot bring back: a footnote, a link, an image.
+    #: It carries markup that plain Word text cannot bring back: a footnote, a link, an
+    #: image, an equation.
     markup: bool = False
 
 
@@ -420,45 +450,11 @@ _SIGNS = frozenset({"Pd", "Sm"})
 #: Markdown that renders to something plain `w:t` text does not carry. Merging Word's text
 #: over a paragraph with a footnote in it deleted the footnote; with a link, the address;
 #: with display maths, the equation and everything after it, which pandoc sets apart as
-#: paragraphs of their own; with an HTML comment, the comment.
-_MARKUP = re.compile(r"\^\[|\]\(|\$\$|<!--")
-
-
-def _token_spans(prose: list[str], rendered: str) -> list[tuple[int, int]] | None:
-    """Where each protected token sits in the rendered paragraph: the gaps between the prose.
-
-    Found without knowing how anything renders, which is what makes citations work - their
-    rendering depends on a CSL style this code never sees.
-    """
-    flat = [_flatten(piece) for piece in prose]
-    spans: list[tuple[int, int]] = []
-    cursor = 0
-    if flat[0]:
-        at = rendered.find(flat[0])
-        if at < 0:
-            return None
-        cursor = at + len(flat[0])
-    for index in range(1, len(prose)):
-        piece = flat[index]
-        if piece:
-            at = rendered.find(piece, cursor)
-            if at < 0:
-                return None
-            start, end, cursor = cursor, at, at + len(piece)
-        elif index == len(prose) - 1:
-            start, end, cursor = cursor, len(rendered), len(rendered)
-        else:
-            # Two protected tokens with nothing between them: there is no way to say where
-            # one rendering ends and the next begins.
-            return None
-        while start < end and rendered[start].isspace():
-            start += 1
-        while end > start and rendered[end - 1].isspace():
-            end -= 1
-        if start == end:
-            return None
-        spans.append((start, end))
-    return spans
+#: paragraphs of their own; with inline TeX, the equation, which Word holds as OMML
+#: rather than as text; with an HTML comment, the comment.
+_MARKUP = re.compile(
+    r"\^\[|\]\(|\$\$|<!--|(?<![\\$])\$(?=\S)[^$\n]*?(?<=\S)\$(?!\d)"
+)
 
 
 def _words(rendered: str, spans: list[tuple[int, int]]) -> tuple[list[str], list[tuple[int, int]]]:
@@ -506,7 +502,12 @@ def _place(
     return placed, missing
 
 
-def align(source: str, rendered: str, returned: str) -> Alignment:
+def align(
+    source: str,
+    rendered: str,
+    returned: str,
+    tokens: Sequence[tuple[int, int]] | None,
+) -> Alignment:
     """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
 
     The paragraph-level merge had to refuse anything carrying a binding, because splicing
@@ -514,9 +515,16 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     and, in a paper where most paragraphs quote a number, refuses almost everything.
 
     Alignment makes the finer move possible. A source paragraph is prose and protected
-    tokens in alternation. Its prose appears verbatim in the rendered form - rendering only
-    changes the protected parts - so locating the prose segments in `rendered` reveals what
-    each token rendered to, *without needing to know how it renders*.
+    tokens in alternation, and `tokens` says where each token's rendering sits in `rendered`
+    - read from bookmarks pandoc put around them in the build compared with, so nothing about
+    how a number or a citation renders has to be known or guessed.
+
+    It used to be guessed: the source's prose was flattened and searched for in the rendered
+    text, and the tokens were whatever lay between. Pandoc typesets prose (`drug's` reaches
+    Word as `drug’s`), so every paragraph with a binding and an apostrophe was refused; and a
+    short piece of prose could be found inside a token's rendering. "(Smith et al. 2020)."
+    ending a paragraph had its citation cut at "al.", and a rewording merged as
+    `[@smith2020]. 2020).`.
 
     Those rendered forms are then found in the returned text by aligning the two word by
     word. The first version searched for each rendered form as a substring from the start of
@@ -537,15 +545,15 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     if not protected:
         return Alignment(returned.strip() or None)
 
-    spans = _token_spans(prose, rendered)
+    spans = _checked(tokens, len(protected), len(rendered))
     if spans is None:
         return Alignment(None, unaligned=True)
-    tokens = [rendered[start:end] for start, end in spans]
+    shown = [rendered[start:end] for start, end in spans]
     before, ranges = _words(rendered, spans)
     after = _WORD.findall(returned)
-    placed, missing = _place(tokens, ranges, before, after)
+    placed, missing = _place(shown, ranges, before, after)
     if missing:
-        return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
+        return Alignment(None, changed=tuple((shown[i], protected[i]) for i in missing))
 
     new_prose: list[str] = []
     cursor = 0
@@ -554,18 +562,46 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         cursor = end
     new_prose.append("".join(after[cursor:]))
 
+    # The prose as it was rendered, between the same tokens: what each returned piece is
+    # compared with. Both sides are rendered text, so nothing about markdown is modelled.
+    edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
+    was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
     out: list[str] = []
     for index, piece in enumerate(new_prose):
-        original = prose[index]
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
         # from Word, where inline formatting did not survive being read as plain text.
-        same = _flatten(original) == _flatten(piece)
-        out.append(original if same else piece)
+        same = _comparable(was_prose[index]) == _comparable(piece)
+        out.append(prose[index] if same else piece)
         if index < len(protected):
             out.append(protected[index])
     return Alignment("".join(out).strip() or None)
 
 
-def realign(source: str, rendered: str, returned: str) -> str | None:
+def _checked(
+    tokens: Sequence[tuple[int, int]] | None, count: int, length: int
+) -> list[tuple[int, int]] | None:
+    """The token extents, if there is one per token and they read in order with a seam.
+
+    Two tokens with nothing between them - `{{results.a}}{{results.b}}` - are known apart in
+    the build, but not in Word's text, where '1' and '2' come back as '12'. Refused here, as
+    what it is, rather than further on as a value that changed when none had.
+    """
+    if tokens is None or len(tokens) != count:
+        return None
+    spans = [(int(start), int(end)) for start, end in tokens]
+    edges = [edge for span in spans for edge in span]
+    if any(start >= end for start, end in spans) or edges != sorted(edges) or edges[-1] > length:
+        return None
+    if any(first[1] == second[0] for first, second in zip(spans, spans[1:], strict=False)):
+        return None
+    return spans
+
+
+def realign(
+    source: str,
+    rendered: str,
+    returned: str,
+    tokens: Sequence[tuple[int, int]] | None,
+) -> str | None:
     """The rebuilt paragraph, or None when it cannot be merged. See `align`."""
-    return align(source, rendered, returned).rebuilt
+    return align(source, rendered, returned, tokens).rebuilt

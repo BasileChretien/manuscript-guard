@@ -66,7 +66,7 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, it has a footnote, a link, display maths or an HTML comment, text was typed where it renders nothing, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, it has a footnote, a link, an equation or an HTML comment, text was typed where it renders nothing, or two of its numbers or citations touch with no text between them. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
 | `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
@@ -107,20 +107,14 @@ handled, and each has a test:
 - A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
   (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit
   added after the number, is not caught: read those in the diff.
+- A citation ending a paragraph, "(Smith et al. 2020).", is no longer cut at "al."; a
+  narrative `@key` comes back as `@key`, not as the text "Smith (2020)"; and apostrophes
+  and dashes no longer stop a paragraph with a binding from taking a rewording.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
 paragraph without an identifier. Port those edits from the dry run and the text diff above.
 `--apply` takes all the safe changes at once; there is no way to pick among them, so if the
 dry run shows a merge you do not want, port the whole import by hand instead.
-
-Two things in this version still need care:
-
-- A reworded paragraph that has a binding or a citation *and* an apostrophe, a quotation
-  mark or a `--` in its prose is refused as "could not be lined up with its own source":
-  pandoc typesets those characters, so the prose no longer matches. Port that edit by hand.
-- A paragraph with a narrative citation (`@key`, no brackets) and no binding merges the
-  citation back as plain text, "Smith (2020)", and one with inline math loses the equation.
-  Before applying, find those paragraphs in the dry run and port them by hand.
 
 ## 5. Apply, then read what was written
 
@@ -133,11 +127,8 @@ manuscript-guard check
 Read the whole diff. What to look for:
 
 - Formatting lost. An edited stretch of text comes back as plain text, so bold, italics and
-  inline code in it are gone. (A paragraph with a footnote or a link is refused instead,
-  because merging it would delete them.)
-- A citation that became text: `Smith (2020)` where the source had `@smith2020`.
-- Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
-  paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
+  inline code in it are gone. (A paragraph with a footnote, a link or an equation is refused
+  instead, because merging it would delete them.)
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

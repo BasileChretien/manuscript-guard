@@ -44,6 +44,10 @@ _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 
 _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
 _PICTURES = {W + "drawing", W + "pict", W + "object"}
+#: The extent of one binding or citation, marked only in the build `import` compares with.
+TOKEN = "mg-t-"
+# Where a token opens and closes in the text as it is read, before whitespace is folded.
+_OPEN, _CLOSE = "\ue000", "\ue001"
 
 
 class DocumentUnreadable(Exception):
@@ -60,6 +64,9 @@ class Block:
     text: str = ""
     #: A table or a figure: a block that is not prose, and not compared.
     table: bool = False
+    #: Where each marked binding or citation sits in `text`, as (start, end). Only a
+    #: document built with the tokens marked has any.
+    tokens: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -72,11 +79,18 @@ class _Paragraph:
     table: bool
     #: It holds a picture: a figure, when it has no text and no identifier.
     picture: bool = False
+    tokens: tuple[tuple[int, int], ...] = ()
 
 
 def _text(element: ET.Element) -> str:
     """The visible text under `element`, tracked changes accepted."""
+    return _read(element)[0]
+
+
+def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
+    """The visible text under `element`, and where each marked token sits in it."""
     out: list[str] = []
+    marked: set[str] = set()
 
     def walk(node: ET.Element) -> None:
         if node.tag in _UNSEEN:
@@ -87,11 +101,49 @@ def _text(element: ET.Element) -> str:
             out.append(" ")
         elif node.tag == W + "noBreakHyphen":
             out.append("-")
+        elif node.tag == W + "bookmarkStart" and node.get(W + "name", "").startswith(TOKEN):
+            marked.add(node.get(W + "id", ""))
+            out.append(_OPEN)
+        elif node.tag == W + "bookmarkEnd" and node.get(W + "id", "") in marked:
+            out.append(_CLOSE)
         for child in node:
             walk(child)
 
     walk(element)
-    return re.sub(r"\s+", " ", "".join(out)).strip()
+    return _extents("".join(out))
+
+
+def _extents(raw: str) -> tuple[str, tuple[tuple[int, int], ...]]:
+    """Fold whitespace as the rest of this module does, keeping each token's extent.
+
+    A token's extent starts at its first visible character and ends after its last, so a
+    space pandoc put inside the bookmark belongs to the prose around it.
+    """
+    out: list[str] = []
+    spans: list[list[int]] = []
+    open_: list[int] = []
+    space = False
+    for char in raw:
+        if char == _OPEN:
+            spans.append([-1, -1])
+            open_.append(len(spans) - 1)
+        elif char == _CLOSE:
+            if open_:
+                span = spans[open_.pop()]
+                span[1] = len(out)
+                if span[0] < 0:
+                    span[0] = len(out)
+        elif char.isspace():
+            space = True
+        else:
+            if space and out:
+                out.append(" ")
+            space = False
+            for index in open_:
+                if spans[index][0] < 0:
+                    spans[index][0] = len(out)
+            out.append(char)
+    return "".join(out), tuple((start, end) for start, end in spans if start >= 0)
 
 
 def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
@@ -109,7 +161,10 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
     runs_on = mark is not None and (
         mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
     )
-    return _Paragraph(tuple(names), _text(element), tuple(comments), runs_on, table, picture)
+    text, tokens = _read(element)
+    return _Paragraph(
+        tuple(names), text, tuple(comments), runs_on, table, picture, tokens
+    )
 
 
 def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
@@ -179,7 +234,10 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
     kept = [p for p in run if p.text or p is run[-1]]
     names = tuple(dict.fromkeys(n for p in kept for n in p.names))
     text = re.sub(r"\s+", " ", " ".join(p.text for p in kept if p.text)).strip()
-    return [Block(names=names, text=text)]
+    # Token extents are read from the build import compares with, which has no tracked
+    # changes to fold; offsets into a joined paragraph would need shifting, so none are kept.
+    tokens = kept[0].tokens if len(kept) == 1 else ()
+    return [Block(names=names, text=text, tokens=tokens)]
 
 
 def comment_anchors(document: Path) -> dict[str, str]:

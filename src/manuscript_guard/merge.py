@@ -345,9 +345,25 @@ def _joined_without_bookmark(
     return found
 
 
-def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> Plan:
-    """Compare the document as sent with the document as returned, paragraph by paragraph."""
+def plan_import(
+    known: dict,
+    reference: list[Block],
+    returned: list[Block],
+    marked: list[Block] | None = None,
+) -> Plan:
+    """Compare the document as sent with the document as returned, paragraph by paragraph.
+
+    `marked` is the same document built with each binding and citation bookmarked, which is
+    where `align` learns each token's extent. It is trusted only for a paragraph that reads
+    exactly as it does in `reference`: if marking changed a rendering, that paragraph is
+    refused rather than aligned on extents that describe different text.
+    """
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+    extents = {
+        b.names[0]: b.tokens
+        for b in marked or ()
+        if b.names and not b.table and rendered.get(b.names[0]) == b.text
+    }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
     joined += _joined_without_bookmark(rendered, texts, in_join)
@@ -390,7 +406,7 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
-            aligned = align(source, was, now)
+            aligned = align(source, was, now, extents.get(name))
             if aligned.rebuilt:
                 merged[name] = aligned.rebuilt
             else:
@@ -449,9 +465,9 @@ def why(aligned: Alignment) -> tuple[str, ...]:
     """The reason a reworded paragraph was not merged, in the author's terms."""
     if aligned.markup:
         return (
-            "it carries a footnote, a link, display maths or an HTML comment, which Word's "
-            "plain text cannot bring back: merging it would delete them. Make the edit in the "
-            ".md.",
+            "it carries a footnote, a link, an equation or an HTML comment, which "
+            "Word's plain text cannot bring back: merging it would delete them. Make "
+            "the edit in the .md.",
         )
     if aligned.changed:
         lines = []
@@ -466,8 +482,9 @@ def why(aligned: Alignment) -> tuple[str, ...]:
                 )
         return tuple(lines)
     return (
-        "it could not be lined up with its own source, so its numbers and citations cannot be "
-        "told apart from its prose. Make the edit in the .md.",
+        "its numbers and citations could not be told apart from its prose, or from each "
+        "other where two touch, so nothing in it can be merged safely. Make the edit in the "
+        ".md.",
     )
 
 

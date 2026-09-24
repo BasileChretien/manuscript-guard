@@ -1222,10 +1222,22 @@ before that reported the single paragraph of a one-paragraph file as moved into 
 file when nothing had moved at all.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
-and protected tokens in alternation, and its prose reaches Word unchanged except for its
-markdown — so locating the prose segments in the rendered form reveals what each token
-rendered to *without knowing how anything renders*. That last part is what makes citations
-work: their rendering depends on a CSL style this code never sees, and it does not need to.
+and protected tokens in alternation: bindings, and citations in every form pandoc reads,
+`[@key]`, `[see @key, p. 4]` and a narrative `@key`. Where each token's rendering begins
+and ends is not worked out. It is read from a second build of the same source in which
+every token is wrapped in a span, which pandoc turns into a bookmark around the token's
+rendered text. So nothing about how a number or a citation renders has to be known, which is
+what makes citations work: their rendering depends on a CSL style this code never sees.
+
+It used to be worked out, and the working was wrong in both directions. The source's prose
+was flattened and searched for in the rendered text, and the tokens were whatever lay
+between. Pandoc typesets prose (`drug's` reaches Word as `drug’s`, `--` as a dash), so every
+paragraph with a binding and an apostrophe was refused. And a short piece of prose could be
+found inside a token: in "(Smith et al. 2020)." ending a paragraph the final "." was found
+after "al", and a rewording merged as `[@smith2020]. 2020).`; in "(Smith and Jones 2020)
+and (Lee 2021)" the " and " was found inside the first citation, so a co-author's edit to
+the citation merged as prose. A narrative `@key` was not protected at all, and came back as
+the plain text "Smith (2020)". The marked build costs a second run of pandoc per import.
 
 Those rendered forms are then found in the returned text by aligning the two word by word,
 with a number counting as one word. The first version searched for each as a substring,
@@ -1242,13 +1254,14 @@ monotonic, so a paragraph quoting two values that render the same string pairs t
 order rather than matching both to the first occurrence — the same collision that `bind`
 refuses to guess at.
 
-Two details are load-bearing. Prose is compared flattened, because `**striking**` reaches
-Word as `striking` and matching verbatim failed on any paragraph with emphasis in it, which
-is most of them. And an unchanged segment is rebuilt from the source rather than from Word,
-so only a segment the co-author actually edited loses its inline formatting — Word text is
-read as plain `<w:t>` runs, and that is the price of using the bookmark as identity. What
-plain text cannot carry at all, a footnote, a link's address or an HTML comment, makes the
-paragraph refused rather than merged: merging Word's text over it deleted them.
+Two details are load-bearing. Prose is only ever compared with rendered prose: a returned
+segment with the same segment of the build, quotes straightened on both sides, because a
+co-author's Word curls or uncurls them without anyone editing anything. And an unchanged
+segment is rebuilt from the source rather than from Word, so only a segment the co-author
+actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
+that is the price of using the bookmark as identity. What plain text cannot carry at all, a
+footnote, a link's address, an equation or an HTML comment, makes the paragraph refused rather than merged:
+merging Word's text over it deleted them.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -1945,9 +1958,9 @@ Closed since, and why each mattered:
   because the bookmark that identifies the paragraph is discarded by pandoc's markdown
   writer. Only a segment the co-author actually edited is affected; unchanged prose is
   rebuilt from the source.
-- **Two protected tokens with nothing between them cannot be aligned.**
-  `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
-  one rendering ends and the next begins. The paragraph is refused.
+- **Two protected tokens with nothing between them cannot be aligned.** The marked build
+  knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
+  '1' and '2' come back as '12'. The paragraph is refused.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -1986,13 +1999,15 @@ Closed since, and why each mattered:
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in
   the source. That is a choice, not something the document says.
-- **Where a token's rendering begins and ends is guessed, and the guess fails both ways.**
-  The source's prose is flattened and searched for in the rendered text, and each binding or
-  citation is whatever lies between. Pandoc typesets prose (`drug's` reaches Word as
-  `drug’s`), so a paragraph with a binding and an apostrophe is refused. Worse, a short piece
-  of prose can be found inside a citation: "(Smith et al. 2020)." ending a paragraph is cut
-  at "al.", and a rewording merges as `[@smith2020]. 2020).`. A narrative `@key` is not
-  protected at all and merges back as the text "Smith (2020)", and inline math is deleted.
+- **Token extents are trusted only where marking changed nothing.** The marked build must
+  read exactly like the plain one, paragraph by paragraph. If wrapping a token in a span
+  changes a rendering, that paragraph is refused rather than aligned on extents that
+  describe different text. One case is known: a binding inside inline code or an HTML
+  comment, where the span is printed rather than read. Such a paragraph can never take a
+  rewording, even far from the binding.
+- **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
+  punctuation and merges; so does a unit or a percent sign added after a value. Both change
+  what the sentence claims, and neither is caught here; `check` sees the binding intact.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact

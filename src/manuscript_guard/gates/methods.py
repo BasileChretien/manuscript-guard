@@ -99,7 +99,7 @@ def methods_text(project: Project) -> str:
     for path in source_files(project.path("manuscript")):
         for section in split_sections(path.read_text(encoding="utf-8")):
             if _METHODS_HEADING.match(section.title):
-                return section.body
+                return section.enclosed
     return ""
 
 

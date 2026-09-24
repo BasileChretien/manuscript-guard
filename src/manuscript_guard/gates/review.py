@@ -27,7 +27,7 @@ findings. So the gate warns during ordinary work and fails for a submission buil
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_structured, validate
@@ -161,6 +161,52 @@ class Open:
     text: str
 
 
+#: What a round says when it no longer describes the manuscript: a record is stale, or a
+#: file is on nobody's list. Both are superseded by a later round that is complete.
+OUTDATED = frozenset({"review-stale", "review-uncovered"})
+
+
+@dataclass(frozen=True)
+class _Round:
+    number: int
+    report: Report
+    #: A record is missing or malformed: the round never happened in full.
+    unfinished: bool
+    #: Finished when it was read, but not of the manuscript as it now stands.
+    outdated: bool
+    unresolved: tuple[Open, ...]
+
+    @property
+    def current(self) -> bool:
+        return not self.unfinished and not self.outdated
+
+
+def _superseded(round_: _Round, latest: int) -> Report:
+    """An earlier round's staleness, as history rather than as a failure.
+
+    Editing the manuscript made every earlier record stale, and recording a new round —
+    what `review --record` says to do, since it will not re-stamp a record — cleared none
+    of them. `check --submission` then passed only if somebody hand-edited a digest or
+    deleted a round, the two things a record exists to prevent. Once a later round is
+    complete and current, the earlier ones are the history of the review: still listed,
+    still counted, and their unanswered major findings still bind.
+    """
+    findings = tuple(
+        replace(
+            finding,
+            code="review-superseded",
+            severity=INFO,
+            message=f"{finding.message}  [superseded by round {latest}]",
+            hint=f"round {latest} read the manuscript as it stands; this record stays as "
+            "the history of the review",
+        )
+        if finding.code in OUTDATED
+        else finding
+        for finding in round_.report.findings
+    )
+    return replace(round_.report, findings=findings)
+
+
 def rounds_required(project: Project) -> int:
     return int(project.paper.get("review", {}).get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
 
@@ -188,8 +234,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
 
     report = Report()
     current = manuscript_digest(project)
-    complete_rounds = 0
-    open_major: list[Open] = []
+    checked: list[_Round] = []
 
     for number, path in found:
         document = read_structured(path)
@@ -218,12 +263,19 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
                 )
             )
 
-        round_report, complete, unresolved = _check_round(
-            project, number, document, current, severity
-        )
-        report = report.merge(round_report)
-        complete_rounds += int(complete)
-        open_major.extend(unresolved)
+        checked.append(_check_round(project, number, document, current, severity))
+
+    # The latest round that describes the manuscript as it stands supersedes every outdated
+    # round before it. A round that never finished is not rescued: a missing record is a
+    # remit nobody answered, whenever it was.
+    latest = max((r.number for r in checked if r.current), default=0)
+    complete_rounds = 0
+    open_major: list[Open] = []
+    for round_ in checked:
+        superseded = round_.outdated and round_.number < latest
+        report = report.merge(_superseded(round_, latest) if superseded else round_.report)
+        complete_rounds += int(round_.current or (superseded and not round_.unfinished))
+        open_major.extend(round_.unresolved)
 
     if complete_rounds < required:
         report = report.with_findings(
@@ -259,11 +311,11 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
 
 def _check_round(
     project: Project, number: int, panel: dict, current: str, severity: str
-) -> tuple[Report, bool, list[Open]]:
+) -> _Round:
     report = Report()
     directory = round_dir(project, number)
     unresolved: list[Open] = []
-    complete = True
+    unfinished = behind = False
     # A record that lists no files read the whole manuscript, so one of those settles
     # coverage for the round. Otherwise coverage is the union of what the records listed.
     covered: set[str] = set()
@@ -273,7 +325,7 @@ def _check_round(
     for reviewer in panel["reviewers"]:
         path = directory / f"{reviewer['id']}.yaml"
         if not path.exists():
-            complete = False
+            unfinished = True
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -290,7 +342,7 @@ def _check_round(
         schema_report = validate(document, "review", path, gate=GATE)
         report = report.merge(schema_report)
         if not schema_report.ok or not isinstance(document, dict):
-            complete = False
+            unfinished = True
             continue
 
         # Per file when the record says which files it read, whole-manuscript otherwise.
@@ -308,7 +360,7 @@ def _check_round(
             outdated = document["manuscript_sha256"] != current
             read_everything = True
         if outdated:
-            complete = False
+            behind = True
             named = f" ({', '.join(changed)})" if changed else ""
             report = report.with_findings(
                 Finding(
@@ -319,8 +371,9 @@ def _check_round(
                     f"manuscript{named}",
                     path=path,
                     context=f"reviewed {document['reviewed_on']} by {document['reviewed_by']}",
-                    hint="the text has changed since; re-review, or accept that the finding "
-                    "list describes a version nobody will read",
+                    hint="the text has changed since. Record a further round that reads it "
+                    "as it stands (`manuscript-guard review --record <reviewer> --round <n> "
+                    "--verdict <verdict>`); once that round is complete it supersedes this one",
                 )
             )
 
@@ -342,7 +395,7 @@ def _check_round(
     if records and not read_everything:
         uncovered = sorted(set(file_digests(project)) - covered)
         if uncovered:
-            complete = False
+            behind = True
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -355,7 +408,7 @@ def _check_round(
                 )
             )
 
-    return report, complete, unresolved
+    return _Round(number, report, unfinished, behind, tuple(unresolved))
 
 
 def _check_blinding(project: Project, found: list[tuple[int, Path]], severity: str) -> Report:

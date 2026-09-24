@@ -137,6 +137,19 @@ def test_the_methods_section_is_found_by_heading(project: Path) -> None:
     assert "Introduction" not in text
 
 
+def test_a_parameter_stated_in_a_methods_subsection_is_found(project: Path) -> None:
+    """The Methods ended at their first subsection, so software named under `## Statistical
+    analysis` was reported absent from the Methods."""
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    added = "## Statistical analysis\n\nRun in Python 3.99.\n\n# Results\n"
+    main.write_text(text.replace("# Results\n", added, 1), encoding="utf-8")
+    projekt, _ = load_project(project)
+    reconcile(projekt, parameters={"software": "Python 3.99"})
+    assert "Python 3.99" in methods_text(projekt)
+    assert "methods-parameter-absent" not in codes(report_for(project))
+
+
 # ---------------------------------------------------------------- comparison helper
 
 

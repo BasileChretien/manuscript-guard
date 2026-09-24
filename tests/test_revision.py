@@ -349,3 +349,32 @@ def test_the_letter_a_person_reads_is_the_letter_that_is_sent(project: Path) -> 
     assert main(["respond", str(project)]) in (0, 1)
     written = (project / "build" / "response-to-reviewers.md").read_text(encoding="utf-8")
     assert written == response_letter(load_project(project)[0])
+
+
+def test_force_is_not_offered_for_a_document_with_no_stamp(project: Path, capsys) -> None:
+    """The refusal said "--force" would seed from a document it could not place; --force
+    was then refused too. A document this tool did not build has nothing --force overrides."""
+    import zipfile
+
+    from manuscript_guard.cli import main
+
+    foreign = project / "returned.docx"
+    with zipfile.ZipFile(foreign, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            "<w:body/></w:document>",
+        )
+    assert main(["respond", str(project), "--open", "--from", str(foreign)]) == 1
+    refusal = capsys.readouterr().out
+    assert "--force" not in refusal.replace("--force does not", ""), refusal
+    assert main(["respond", str(project), "--open", "--from", str(foreign), "--force"]) == 1
+    assert not (project / "revision").exists()
+
+
+def test_a_returned_document_that_is_missing_is_an_error(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    missing = project / "nowhere.docx"
+    assert main(["respond", str(project), "--open", "--from", str(missing), "--force"]) == 2
+    assert "nowhere.docx" in capsys.readouterr().err

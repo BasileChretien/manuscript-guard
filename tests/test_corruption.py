@@ -881,3 +881,468 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     assert any(
         f.code == "citation-unresolved" and "ghostKey2020" in f.message for f in report.failures
     )
+
+
+# ------------------------------------------------------------------------------ audit
+# `audit` is the weak check, set membership against the outputs, and says so. These are the
+# ways it was weaker than it said: a wrong number that matched, and wrong numbers it never
+# looked at while reporting the file as audited.
+
+W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _p(text: str, style: str | None = None) -> str:
+    props = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+    return f"<w:p>{props}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def _docx(path: Path, body: str, parts: dict[str, str] | None = None) -> Path:
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as archive:
+        document = f"<w:document {W}><w:body>{body}</w:body></w:document>"
+        archive.writestr("word/document.xml", document)
+        for name, xml in (parts or {}).items():
+            archive.writestr(name, xml)
+    return path
+
+
+def _outputs(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "out.json"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_audit_catches_a_sign_flipped_estimate(tmp_path: Path) -> None:
+    """The outputs' minus was dropped when they were read, so a paper printing 0.51 for an
+    estimate of -0.51 matched, and was reported as found in the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"log_ror": -0.51}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("The log reporting odds ratio was 0.51.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["0.51"]
+
+
+def test_audit_reads_an_appendix_after_the_references(tmp_path: Path) -> None:
+    """Everything after the reference heading was dropped, appendices included."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n\n"
+        "# Appendix 1\n\nThe sensitivity estimate was 4.65.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert report.unmatched[0].line == 9, "line numbers must still point into the file"
+
+
+def test_audit_reads_the_footnotes_of_a_document_with_references(tmp_path: Path) -> None:
+    """A .docx is read body first and notes after, so the reference heading in the body cut
+    every footnote and endnote along with the bibliography."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "excluded": 12}')
+    footnote = _p("Twenty-one, or 21, were excluded.")
+    notes = f"<w:footnotes {W}><w:footnote>{footnote}</w:footnote></w:footnotes>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.") + _p("References") + _p("Smith J. T. Lancet. 2019;393:1-2."),
+        {"word/footnotes.xml": notes},
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["21"]
+
+
+def test_audit_reads_a_styled_appendix_after_the_references(tmp_path: Path) -> None:
+    """In Word the end of the reference list is the next heading, which only its style says."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Titre1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Titre1")
+        + _p("Smith J. T. Lancet. 2019;393:1-2.")
+        + _p("Supplementary appendix", "Titre1")
+        + _p("The sensitivity estimate was 4.65."),
+        {"word/styles.xml": styles},
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["4.65"]
+
+
+def test_audit_does_not_count_an_outlined_figure_as_audited(tmp_path: Path) -> None:
+    """matplotlib's default draws labels as paths: every number in the figure is there to
+    see, none is text, and the figure was listed as audited with nothing unmatched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    figure = tmp_path / "forest.svg"
+    figure.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0 L10 10"/></svg>', encoding="utf-8"
+    )
+    report = audit([], [outputs], figures=[figure])
+    assert figure not in report.papers
+    assert any("forest.svg" in item and "no text" in item for item in report.unreadable)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Overall, Japanese patients accounted for 99 of 8,393 cases reported in 2010-2019.",
+        "Finally, FAERS data from 2004 to 2023 showed 99 cases.",
+        "However, VigiBase showed 99/412 in 2021.",
+        "However, Smith (2019) reported 99 cases.",
+        "Previously, J. Smith et al. (2019) reported 99 cases.",
+        "However, Smith, Jones and Brown (2019) reported 99 cases.",
+        # The numbered-style shape: a word, one to four capitals, a comma, then "year;digit".
+        "Stage III, diagnosed between 2010 and 2020; 99 patients were excluded.",
+        "Group B, enrolled from January 2015 to December 2019; 99 completed follow-up.",
+        # A narrative citation ends a sentence with the signature "(2019).", so the words
+        # between the name and the year have to be names, not prose.
+        "Notably, Japan and Korea contributed 99 of 8,393 cases, in line with Smith (2019).",
+        "Similarly, Smith and colleagues found 99 cases in Japan (2019).",
+        # A caption ending a clause with "Dec. 2019; 2:1" has a full stop before the year and a
+        # volume-and-page shape after it. An entry ends at its pages; a caption goes on.
+        "Figure A. Enrolment from Jan. 2017 to Dec. 2019; 2:1 randomisation. Events 99 of 8,393.",
+        "Table B. Cases diagnosed in 2020 vs. 2019; 1:4 matched controls; 99 of 8,393.",
+        "Panel B. Follow-up ended Dec. 2019; 3:1 allocation; 99 events.",
+    ],
+)
+def test_audit_does_not_take_a_body_paragraph_for_a_reference(
+    tmp_path: Path, sentence: str
+) -> None:
+    """The author-year shape was a capitalised word, a comma, another capitalised word and a
+    year within 200 characters. In a .docx a line is a whole paragraph, so a paragraph opening
+    "Overall, Japanese patients ..." was a reference entry, and every number in it was counted
+    among "conventions or references" and never compared with anything."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "total": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(sentence + "\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(text.split("/")[0] == "99" for text in unmatched), unmatched
+
+
+def test_audit_does_not_guess_at_references_once_a_heading_found_them(tmp_path: Path) -> None:
+    """In Markdown a line is a physical line, so a wrapped paragraph can open on anything.
+    Once a heading has said where the reference list is, nothing else is a reference."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "Reports came from three countries: Japan, Korea and China. Of those from\n"
+        "Japan, Korea. 1985. There were 99 cases among 412 reports.\n\n"
+        "# References\n\nSmith J, Jones K. Title. Lancet. 2019;393:1-2.\n",
+        encoding="utf-8",
+    )
+    assert "99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_reads_utf16_outputs_as_text_not_digits(tmp_path: Path) -> None:
+    """Windows PowerShell 5 writes UTF-16 for `>` and Out-File. Read as UTF-8, every digit
+    is followed by a NUL, so "8393,3.84" went into the backing set as 8, 3, 9 and 4: a paper
+    printing 3 for anything matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("n,ror\n8393,3.84\n", encoding="utf-16")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 8393 reports and 3 cases.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["3"]
+    assert {"8393", "3.84"} <= report.backing_values
+
+
+def test_audit_does_not_take_a_wrapped_line_for_a_references_heading(tmp_path: Path) -> None:
+    """A heading may carry a bare number, "5 References", and a hard-wrapped line that
+    happened to read "12 references." then hid the rest of the section."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 12, "ror": 3.84}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We drew on the literature, citing\n12 references.\n"
+        "The pooled reporting odds ratio was 9.99.\n\n## Discussion\n\nText.\n",
+        encoding="utf-8",
+    )
+    assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: Path) -> None:
+    """A .docx table cell is its own line, so a column headed "References" read as the
+    start of the bibliography and hid everything up to the next styled heading."""
+    from manuscript_guard.audit import audit
+
+    def cell(text: str) -> str:
+        return f"<w:tc>{_p(text)}</w:tc>"
+
+    table = (
+        "<w:tbl>"
+        f"<w:tr>{cell('Study')}{cell('References')}</w:tr>"
+        f"<w:tr>{cell('Cohort A')}{cell('12')}</w:tr>"
+        "</w:tbl>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 12, "ror": 3.84}')
+    paper = _docx(tmp_path / "paper.docx", table + _p("The pooled ratio was 9.99."))
+    assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
+
+
+def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:
+    """Only the first heading was used, so a second reference list (an appendix's own) was
+    read as prose, and the first list's shape detection was off for the whole file."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n\n"
+        "# Appendix\n\nThe estimate was 9.99.\n\n## References\n\n"
+        "Jones K. T. BMJ. 2020;368:m1.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["9.99"]
+    assert len(report.not_audited) == 2
+
+
+def test_audit_does_not_turn_json_escapes_into_numbers(tmp_path: Path) -> None:
+    """Outputs were re-serialised with every non-ASCII character escaped, so "β" became
+    "\u03b2" and put 3 and 2 in the backing set, and "0.72–0.82" gave 20130.82."""
+    import json as json_module
+
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.json"
+    document = {"ci": "0.72–0.82", "term": "β (age)", "n": 77}
+    outputs.write_text(json_module.dumps(document, ensure_ascii=False), encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 77 reports and 3 cases, 0.72-0.82.\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["3"]
+    assert "20130.82" not in report.backing_values
+
+
+def test_audit_reads_an_appendix_after_the_references_in_a_crlf_file(tmp_path: Path) -> None:
+    """Bytes decoded by hand keep their carriage returns, and a setext underline followed
+    by one is not an underline: the appendix under it was cut with the references."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_bytes(
+        b"We saw 77.\r\n\r\nReferences\r\n----------\r\n\r\nSmith J. T. Lancet. 2019;393:1-2."
+        b"\r\n\r\nAppendix\r\n--------\r\n\r\nThe estimate was 4.65.\r\n"
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["4.65"]
+
+
+def test_audit_does_not_take_a_wrapped_sentence_end_for_a_references_heading(
+    tmp_path: Path,
+) -> None:
+    """"references." alone on a line is where a hard wrap left the end of a sentence."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"screened": 1204, "kept": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "## Results\n\nWe screened 1,204 records and kept 412 after removing duplicate\n"
+        "references.\nThe pooled reporting odds ratio was 9.99.\n\n## Discussion\n\nText.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+def test_audit_keeps_the_sign_of_a_number_inside_a_json_string(tmp_path: Path) -> None:
+    """Re-serialised, a tab in a string became the text "\t", and the "t" before "-0.51"
+    stopped the minus being read as a sign: 0.51 in the paper matched."""
+    import json as json_module
+
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.json"
+    outputs.write_text(json_module.dumps({"table": "term\tlog_ror\nage\t-0.51"}), "utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The log reporting odds ratio for age was 0.51.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["0.51"]
+
+
+def test_audit_does_not_take_a_caption_for_a_numbered_reference(tmp_path: Path) -> None:
+    """"Figure A." reads as "Smith J." and "2019; 1:4" as "2019;393:100": in a file with no
+    references heading, the caption's numbers were never compared."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "cases": 412}')
+    paper = tmp_path / "supplement.md"
+    paper.write_text(
+        "Figure A. Case-control design, 2010 to 2019; 1:4 matching on age and sex. "
+        "Cases 413 of 8,393; ROR 9.99.\n",
+        encoding="utf-8",
+    )
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert "413" in unmatched and "9.99" in unmatched, unmatched
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Figure A. Events 413 of 8,393 from Jan. 2017 to Dec. 2019; 2:1.",
+        "Figure A. Enrolment Jan. 2017 to Dec. 2019; 2:1 [@smith2019]. Events 413 of 8,393.",
+    ],
+)
+def test_audit_never_drops_a_number_on_a_line_read_as_a_reference(
+    tmp_path: Path, caption: str
+) -> None:
+    """Four review rounds each found a caption the reference shapes accepted, and every
+    number on an accepted line went uncompared. However the shapes are tuned, a caption can
+    be written to fit one, so an accepted line is now compared like any other and its
+    unmatched numbers are listed apart."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "cases": 412}')
+    paper = tmp_path / "supplement.md"
+    paper.write_text(caption + "\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    shown = [c.text for c in [*report.unmatched, *report.reference_like]]
+    assert "413" in shown, shown
+    assert "413" in render(report, measure_discrimination(report.backing_values))
+
+
+def test_audit_keeps_a_negative_bound_after_a_hyphen(tmp_path: Path) -> None:
+    """A minus after the separator was never read as a sign: an output written by R's
+    `paste0(lo, "-", hi)` as "-0.72--0.30" went in as -0.72 and 0.3, so a paper printing a
+    confidence interval of -0.72 to 0.30, one crossing zero, matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "table.csv"
+    outputs.write_text("term,estimate,ci\nexposure,-0.51,-0.72--0.30\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The estimate was -0.51 (95% CI -0.72 to 0.30).\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert len(unmatched) == 1 and unmatched[0].startswith("0.30"), unmatched
+
+
+@pytest.mark.parametrize("interval", ["−0.72-−0.30", "(−0.72/−0.30)"])
+def test_audit_catches_a_flipped_upper_bound_written_with_a_minus_sign(
+    tmp_path: Path, interval: str
+) -> None:
+    """U+2212 can only be a minus, and after a hyphen or slash it was read as nothing, so a
+    paper printing -0.30 for an output of +0.30 matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"lo": -0.72, "hi": 0.30}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"The interval was {interval} in this analysis.\n", encoding="utf-8")
+    assert len(audit([paper], [outputs]).unmatched) == 1
+
+
+def test_audit_reads_code_in_a_markdown_output_as_written(tmp_path: Path) -> None:
+    """Pandoc leaves `--` alone inside code, and knitr puts R's console output in code
+    blocks, so "-0.72--0.30" there runs to -0.30: rewriting it as an en dash made a paper
+    printing an upper bound of 0.30 match."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "model.md"
+    outputs.write_text(
+        '```\n## [1] "-0.72--0.30"\n```\n\nInline `-0.51--0.10` too.\n', encoding="utf-8"
+    )
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The interval was -0.72 to 0.30, and -0.51 to 0.10.\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.startswith("0.30") for t in unmatched), unmatched
+    assert any(t.startswith("0.10") for t in unmatched), unmatched
+
+
+def test_audit_reads_an_indented_code_block_as_written(tmp_path: Path) -> None:
+    """knitr's md_document writes R's console output as four-space indented code, where
+    pandoc renders "--" as written: the bound is -0.30, not 0.30."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "model.md"
+    outputs.write_text('Output:\n\n    ## [1] "-0.72--0.30"\n', encoding="utf-8")
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The interval was -0.72 to 0.30.\n", encoding="utf-8")
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.startswith("0.30") for t in unmatched), unmatched
+
+
+def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
+    """Rewriting "2-->" as an en dash broke the comment's close, and the masking then ran to
+    the next comment's end and swallowed the sentence between them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "<!--Table 2-->\n\nThe ROR was 9.99 in 413 cases.\n\n<!-- end of results -->\n",
+        encoding="utf-8",
+    )
+    assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}
+
+
+@pytest.mark.parametrize(
+    "bound",
+    [
+        "<w:r><w:noBreakHyphen/><w:t>0.30</w:t></w:r>",
+        '<w:r><w:sym w:font="Symbol" w:char="F02D"/><w:t>0.30</w:t></w:r>',
+    ],
+)
+def test_audit_reads_a_minus_word_writes_as_an_element(tmp_path: Path, bound: str) -> None:
+    """A non-breaking hyphen (Ctrl+Shift+-) and a Symbol-font minus are elements, not
+    text, and the reader dropped them: "-0.72 to -0.30" read as "-0.72 to 0.30" and matched
+    an output interval running to +0.30."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"lo": -0.72, "hi": 0.30}')
+    body = f"<w:p><w:r><w:t xml:space=\"preserve\">CI -0.72 to </w:t></w:r>{bound}</w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert any(t.endswith("0.30") for t in unmatched), unmatched
+
+
+def test_audit_keeps_numbers_either_side_of_a_line_break_apart(tmp_path: Path) -> None:
+    """A manual line break was dropped, so a stacked cell "-0.51 / -0.72 to -0.30" read as
+    the range "-0.51-0.72", and -0.72 matched an output of +0.72."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.51, "lo": 0.72, "hi": -0.30}')
+    body = (
+        "<w:p><w:r><w:t>-0.51</w:t><w:br/><w:t xml:space=\"preserve\">-0.72 to -0.30</w:t>"
+        "</w:r></w:p>"
+    )
+    paper = _docx(tmp_path / "paper.docx", body)
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["-0.72"]
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("out.txt", "estimate –0.51 (95% CI –0.72 to –0.30)\n"),
+        ("out.md", "The estimate was $-0.51$, CI $-0.72$ to $-0.30$.\n"),
+    ],
+)
+def test_audit_reads_a_typeset_minus_in_the_outputs(
+    tmp_path: Path, name: str, content: str
+) -> None:
+    """Values copied from a typeset PDF carry an en dash for a minus, and LaTeX writes
+    `$-0.51$`; both went into the backing set as positive, so a paper that lost every sign
+    matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / name
+    outputs.write_text(content, encoding="utf-8")
+    paper = tmp_path / "paper.txt"
+    paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
+    shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
+    assert {"0.51", "0.72", "0.30"} <= shown, shown

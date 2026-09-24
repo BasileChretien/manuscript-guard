@@ -177,6 +177,129 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
     assert "}{{table.baseline}}" not in tagged
 
 
+FENCE = "`" * 3
+
+#: Blocks a marker would rewrite, or would sit in only part of. The reasons, and pandoc's own
+#: verdict on each, are in `tests/test_pandoc_agreement.py`; this copy runs without pandoc.
+NOT_PARAGRAPHS = {
+    "bullet list": "- item one\n- item two",
+    "numbered list": "1. first\n2. second",
+    "numbered list in parentheses": "(1) first",
+    "capital letters with two spaces": "A.  first",
+    "capital roman numerals": "II. first",
+    "example list": "(@) first",
+    "block quote": "> quoted",
+    "line block": "| line one\n| line two",
+    "pipe table": "| a | b |\n|---|---|\n| 1 | 2 |",
+    "pipe table without edges": "a | b\n--|--\n1 | 2",
+    "grid table": "+---+---+\n| a | b |\n+===+===+",
+    "table caption": "Table: Cap",
+    "definition list": "Term\n: definition",
+    "definition": ":   definition",
+    "setext heading": "Title\n=====",
+    "thematic break": "***",
+    "footnote definition": "[^1]: A footnote.",
+    "figure": "![A figure](fig.png){width=50%}",
+    "indented code": "    code line",
+    "html block": "<div>\nhello\n</div>",
+    "html comment": "<!-- a note -->",
+    "paragraph interrupted by a fence": f"text\n{FENCE}\ncode\n{FENCE}",
+    "paragraph interrupted by an html block": "text\n<table>\n</table>",
+    "paragraph closing a fenced div": "Inner paragraph here.\n:::",
+    "continuation followed by a nested list": "  Matched on:\n  - age\n- Drugs were mapped.",
+    "continuation followed by the next item": "   cont\n3. three",
+    "figure with brackets two deep": "![Caption^[Source: [@k].]](f.png)",
+    "figure with a parenthesis in its path": "![A](fig(1).png)",
+    "page break": "\\newpage",
+    "latex environment after a paragraph's first line": "text\n\\begin{x}\nrow\n\\end{x}",
+    "latex environment opened mid-line": "text \\begin{x}\nrow\n\\end{x} more",
+    "example list without parentheses": "@good. second",
+    "a capital and a period alone": "A.",
+    "a valid roman numeral": "mix. up",
+}
+
+#: Prose that opens like a block and is not one, to pandoc.
+PARAGRAPHS = {
+    "an initial": "C. difficile was isolated.",
+    "a decimal": "1.5 mg was given.",
+    "a negative number": "-5 is below zero.",
+    "a plus-minus": "+/- two units.",
+    "emphasis": "*Emphasis* opens this.",
+    "inline html": "<span>x</span> text.",
+    "an autolink": "<https://example.org> is a link.",
+    "a dash on a later line": "text\n- not a list",
+    "a word made of roman letters": "dim. lights were used.",
+}
+
+
+@pytest.mark.parametrize("name", sorted(NOT_PARAGRAPHS))
+def test_a_block_that_is_not_a_paragraph_carries_no_marker(name: str) -> None:
+    """In front of a list, the marker made it a paragraph: the document printed every list
+    as one run-on line with its dashes in it."""
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Prose before.\n\n{NOT_PARAGRAPHS[name]}\n\nProse after.\n"
+    tagged = tag(text, "main.md")
+    assert tagged.count("[]{#mg-p-") == 2, f"{name}: only the prose around it: {tagged!r}"
+    assert NOT_PARAGRAPHS[name] in tagged, f"{name} was rewritten"
+
+
+@pytest.mark.parametrize("name", sorted(PARAGRAPHS))
+def test_prose_that_only_looks_like_a_block_keeps_its_marker(name: str) -> None:
+    """Leaving a paragraph unmarked is safe and not free: its edits are never compared."""
+    from manuscript_guard.roundtrip import tag
+
+    assert tag(PARAGRAPHS[name], "main.md").startswith("[]{#mg-p-"), name
+
+
+def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
+    """A blank line inside either one splits it into blocks that look like paragraphs. The
+    marker printed inside the code, or named a paragraph that reaches no document."""
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"{FENCE}r\nx <- 1\n\ny <- 2\n{FENCE}\n\n"
+        "<!--\nA note.\n\nMore of the note.\n-->\n\n"
+        "Some prose <!-- opened here\n\nand closed -->\n\n"
+        "<!-- one\n\nmore --> text <!-- two, opened where one closed\n\ninside two\n\n-->\n\n"
+        "\\begin{figure}\nx\n\nmiddle\n\n\\end{figure}\n\n"
+        "Shown below.\n\\begin{table}\nrow\n\nrow\n\\end{table}\n\n"
+        "\\begin{itemize}\n\\begin{itemize}\na\n\\end{itemize}\n\nb\n\n\\end{itemize}\n\n"
+        "<pre>\ncode\n\nmore\n</pre>\n\n"
+        "text\n<pre>\ncode\n\nmore\n</pre>\n\n"
+        "After.\n"
+    )
+    tagged = tag(text, "main.md")
+    assert tagged.count("[]{#mg-p-") == 1, tagged
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}After\.", tagged), "the prose after them keeps its"
+
+
+def test_tagged_paragraphs_names_what_tag_marks_at_the_right_offsets(project: Path) -> None:
+    """`tag` writes the identifiers and `import` splices at the offsets `tagged_paragraphs`
+    gives them. Sharing `_blocks` keeps the two lists the same; this pins that down, and
+    checks each offset against the file on disk, front matter included, with every kind of
+    block in it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    source = project / "manuscript" / "main.md"
+    blocks = "\n\n".join(NOT_PARAGRAPHS.values()) + "\n\n" + "\n\n".join(PARAGRAPHS.values())
+    source.write_text(source.read_text(encoding="utf-8") + "\n" + blocks + "\n", "utf-8")
+
+    body, _title = strip_front_matter(source.read_text(encoding="utf-8"))
+    written = re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(body, "main.md"))
+    known = {
+        name: entry
+        for name, entry in tagged_paragraphs(load_project(project)[0]).items()
+        if entry[0] == source
+    }
+    assert written == sorted(known, key=lambda name: known[name][2])
+    raw = source.read_text(encoding="utf-8")
+    for _path, text, start in known.values():
+        assert raw[start : start + len(text)] == text, "an offset names the wrong text"
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for

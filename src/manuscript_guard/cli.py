@@ -268,10 +268,11 @@ def cmd_bind(args: argparse.Namespace) -> int:
 def _unexamined(document: Path, identified: int) -> str:
     """How much of the returned document this command could not look at.
 
-    Import compares paragraphs that carry an identifier. Table cells, headings, captions and
-    any paragraph the co-author newly wrote carry none, so an edit to one is not merged, not
-    refused, and not reported - it simply does not exist as far as the tool is concerned.
-    A co-author who corrects a number in a table has every reason to believe it landed.
+    Import compares paragraphs that carry an identifier. Table cells, headings, captions,
+    list items, block quotes and any paragraph the co-author newly wrote carry none, so an
+    edit to one is not merged, not refused, and not reported - it simply does not exist as
+    far as the tool is concerned. A co-author who corrects a number in a table has every
+    reason to believe it landed.
     """
     import re as _re
     import zipfile as _zip
@@ -287,8 +288,8 @@ def _unexamined(document: Path, identified: int) -> str:
         return ""
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
-        f"not compared: table cells, headings, captions, and anything newly written. An "
-        f"edit to one of those is not reported here."
+        f"not compared: table cells, headings, captions, list items, block quotes, and "
+        f"anything newly written. An edit to one of those is not reported here."
     )
 
 
@@ -433,9 +434,10 @@ def cmd_import(args: argparse.Namespace) -> int:
         (merged if rebuilt else refused).append((name, source, was, now, rebuilt))
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
-    # cells, headings, captions, the reference list, and anything the co-author newly wrote
-    # - is invisible to this command, and saying nothing about that let a co-author believe
-    # they had corrected a table when the correction went nowhere.
+    # cells, headings, captions, list items, block quotes, the reference list, and anything
+    # the co-author newly wrote - is invisible to this command, and saying nothing about
+    # that let a co-author believe they had corrected a table when the correction went
+    # nowhere.
     unexamined = _unexamined(edited, len(returned))
 
     if not (moved or merged or refused or gone or comments):

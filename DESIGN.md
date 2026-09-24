@@ -1193,6 +1193,29 @@ a reordering of text already on disk rather than anything imported. That makes i
 precisely the paragraphs the content merge has to refuse: a paragraph solid with bindings
 can be moved without a binding going anywhere near Word.
 
+**Only a paragraph carries an identifier.** The marker first went in front of every block
+that was not a heading, a fence or a lone placeholder, and in front of a list it stopped
+being a list: pandoc read `[]{#mg-p-a-1}- item one` as a paragraph, so every bulleted and
+numbered list in a manuscript reached Word as one run-on line with its dashes and numbers in
+it, and a block quote became a paragraph opening with ">". Nothing reported it, because
+nothing looked at the document. Line blocks, grid and multiline tables, rules, footnote
+definitions and lone images (which stopped being figures) broke the same way. The marker
+could instead have gone inside the first list item, where pandoc still parses the list —
+and that was rejected, for the same reason a pipe table and a definition list are refused a
+marker even though they survive one: the bookmark then sits in *one* Word paragraph (the
+first item, the first cell, the term) while it names the *whole* source block, and `import`
+splices the returned paragraph over the block it names. A co-author's edit to the first
+item would have replaced the list with that item. That was not hypothetical: a paragraph
+closing a fenced div without a blank line (`Inner paragraph.\n:::`), a list item's
+continuation followed directly by a nested list or the next item, and a paragraph with a
+LaTeX environment opening on its second line were each marked as one block, and
+`import --apply` deleted the `:::`, flattened the items into the paragraph, or deleted the
+environment's opening and first row — and exited 0. So a block is
+marked only when pandoc reads the whole of it as one paragraph, and
+`tests/test_pandoc_agreement.py` asks pandoc directly, for each construct in its table,
+whether that holds. Lists and quotes cost their identifiers, and their edits are counted as
+unexamined rather than merged; see Known gaps.
+
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
 true and useless. And a moved paragraph is excluded from the content diff, which otherwise
@@ -1421,6 +1444,42 @@ Added by the adversarial review, verified and **not** fixed:
   paper has yet been through one with them in place. Until then, `audit` — the weaker
   question, asked of a document nobody bound — is not a fallback for awkward cases. It is the
   command that meets the situation a real paper is most likely to be in.
+- **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
+  captions, list items, block quotes, definition lists, footnote text, code, and anything
+  the co-author newly wrote carry none. Those edits are not merged, not refused, and until
+  now were not mentioned; the count of what went unexamined is printed, which is a report
+  rather than a fix. A number corrected in a table is the case that matters, because that is
+  where a stale number is likeliest to be. Lists and quotes are on the list by choice: a
+  marker in front of one rewrote it, and a marker inside its first item would let `import`
+  splice that item over the whole block (see "The round trip carries prose"). Comparing
+  them needs an identifier per item and a merge that puts the list marker back, and neither
+  exists.
+- **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
+  pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
+  a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
+  and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI skips because
+  CI has no pandoc. Where the patterns are unsure they leave a block unmarked, which costs a
+  comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
+  tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
+  one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
+  after a `<!--` written inside inline code, up to the next `-->`. Two review rounds found
+  holes in earlier versions of these patterns, every one by running pandoc on a construct
+  the table did not yet hold, so the table is evidence for what is in it and no more.
+- **Two block boundaries are drawn where pandoc draws none.** A line holding only a
+  non-breaking space splits the text into two blocks, each marked, where pandoc reads one
+  paragraph carrying both bookmarks; fixing it renumbers every identifier after it. And a
+  YAML block in the middle of the document with a blank line inside and closed by `...`
+  gets a marker inside it, which pandoc then refuses to parse — loudly, so the build fails
+  rather than the document.
+- **A review point anchored to a list or a quote before identifiers moved off them names
+  nothing.** A `where:` recorded from a document built earlier can hold the identifier the
+  flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
+  longer in the manuscript rather than checking the response against it.
+- **Merging a reworded paragraph drops an inline comment or an inline footnote.** Only
+  bindings and citations are protected tokens in `realign`. `Text <!-- note --> with a
+  note^[the footnote] here.` renders to "Text with a note here.", and a co-author's edit to
+  that comes back as a source paragraph with the comment and the footnote gone. Nothing is
+  reported.
 
 Closed since, and why each mattered:
 
@@ -1820,11 +1879,6 @@ Closed since, and why each mattered:
   is not the answer either: hashing the text means editing the paragraph a reviewer asked
   about invalidates the anchor to it, which is the opposite failure. The real fix is to
   persist the identifier in the source rather than derive it, and it is not done.
-- **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
-  captions and anything the co-author newly wrote carry none. Those edits are not merged,
-  not refused, and until now were not mentioned; the count of what went unexamined is
-  printed, which is a report rather than a fix. A number corrected in a table is the case
-  that matters, because that is where a stale number is likeliest to be.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval

@@ -20,6 +20,7 @@ heading or what is code, the toolkit is wrong by definition.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 
@@ -197,3 +198,223 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
         f"code block; the toolkit thinks the opposite"
     )
+
+
+# ---------------------------------------------------------------- paragraph identifiers
+
+#: Every block construct pandoc's markdown reader distinguishes, and prose openings that
+#: look like one and are not. `tag` may mark a paragraph and nothing else.
+TAGGING = {
+    "prose": "Just prose, with a figure of 3.84.\n",
+    "prose opening with emphasis": "*Emphasis* opens this.\n",
+    "prose opening with a plus sign": "+/- two units either way.\n",
+    "prose opening with a negative number": "-5 is below zero.\n",
+    "prose opening with a decimal": "1.5 mg was given.\n",
+    "prose opening with an initial": "C. difficile was isolated.\n",
+    "prose opening with a capital roman one": "I. first, in one sense.\n",
+    "prose opening with i.e.": "i.e. this one.\n",
+    "prose opening with a citation": "[@k] reported this.\n",
+    "prose opening with an in-text citation": "@k reported this.\n",
+    "prose opening with a quotation mark": '"Quoted" words open this.\n',
+    "prose opening with inline html": "<span>x</span> and <sup>a</sup> text.\n",
+    "prose opening with an autolink": "<https://example.org> is a link.\n",
+    "prose opening with a less-than": "<0.001 was the smallest value.\n",
+    "prose with a hard line break": "line one  \nline two\n",
+    "prose with an inline footnote": "Text^[a note] here.\n",
+    "prose with display math": "The model:\n$$y = x$$\n",
+    "a line starting with a dash does not end a paragraph": "text\n- item\n",
+    "a line starting with a number does not end a paragraph": "text\n1. item\n",
+    "a line starting with > does not end a paragraph": "text\n> quote\n",
+    "a three-line paragraph ending in a colon line": "one\ntwo\n: three\n",
+    "an image with text is not a figure": "![a](x.png) and text.\n",
+    "bullet list": "- item one\n- item two\n",
+    "bullet list with stars": "* item one\n* item two\n",
+    "bullet list with pluses": "+ item one\n+ item two\n",
+    "bullet list after a tab": "-\titem\n",
+    "loose bullet list": "- item one\n\n- item two\n",
+    "nested list": "- a\n    - b\n- c\n",
+    "list item continued at two spaces": "- item\n\n  continuation\n",
+    "list item continued at four spaces": "- item\n\n    continuation\n",
+    "numbered list": "1. first\n2. second\n",
+    "numbered list with parentheses": "1) first\n2) second\n",
+    "numbered list in parentheses": "(1) first\n(2) second\n",
+    "lettered list": "a. first\nb. second\n",
+    "capital letters with two spaces": "A.  first\nB.  second\n",
+    "capital letter with a parenthesis": "C) first\n",
+    "roman numerals": "i. first\nii. second\n",
+    "capital roman numerals": "II. first\nIII. second\n",
+    "example list": "(@) first\n(@good) second\n",
+    "a year is a list marker to pandoc": "2020. was a year\n",
+    "block quote": "> quoted\n> more\n",
+    "block quote, lazy": "> quoted\nlazy\n",
+    "block quotes, loose": "> a\n\n> b\n",
+    "line block": "| line one\n| line two\n",
+    "pipe table": "| a | b |\n|---|---|\n| 1 | 2 |\n",
+    "pipe table without edges": "a | b\n--|--\n1 | 2\n",
+    "simple table": "  a     b\n ---   ---\n  1     2\n",
+    "grid table": "+---+---+\n| a | b |\n+===+===+\n| 1 | 2 |\n+---+---+\n",
+    "multiline table": "-------------\n a     b\n------ ------\n 1     2\n-------------\n",
+    "table with a caption above": "Table: Cap\n\n| a | b |\n|---|---|\n| 1 | 2 |\n",
+    "table with a caption below": "| a | b |\n|---|---|\n| 1 | 2 |\n\n: Cap\n",
+    "definition list": "Term\n: definition\n",
+    "definition list with tildes": "Term\n~ definition\n",
+    "definition list, loose": "Term\n\n:   definition\n",
+    "setext heading": "Title\n=====\n",
+    "setext heading, short underline": "Title\n--\n",
+    "thematic break": "---\n",
+    "thematic break with stars": "* * *\n",
+    "thematic break with underscores": "___\n",
+    "yaml block mid-document": "---\nkey: v\n---\n",
+    "footnote definition": "Text[^1].\n\n[^1]: A footnote.\n",
+    "link definition": "[a link][r]\n\n[r]: https://example.org\n",
+    "figure": "![A figure](fig.png)\n",
+    "figure with attributes": "![Cap [@k]](f.png){width=50%}\n",
+    "indented code": "    code line\n    more\n",
+    "fenced code with a blank line": f"{FENCE}\ncode\n\nmore code\n{FENCE}\n",
+    "paragraph interrupted by a fence": f"text\n{FENCE}\ncode\n{FENCE}\n",
+    "fenced div": "::: note\n\nInner paragraph.\n\n:::\n",
+    "html block": "<div>\nhello\n</div>\n",
+    "html block around markdown": "<div>\n\nInner paragraph.\n\n</div>\n",
+    "html block opened by a tag pandoc treats as block": "<del>x</del> text\n",
+    "paragraph interrupted by an html block": "text\n<div>\nx\n</div>\n",
+    "html comment": "<!-- a note -->\n",
+    "html comment across a blank line": "Before.\n\n<!--\nA note.\n\nMore of it.\n-->\n\nAfter.\n",
+    "comment opened inside a paragraph": "text <!-- note\n\nmore -->\n\nafter\n",
+    "raw openxml": f"{FENCE}{{=openxml}}\n<w:p/>\n{FENCE}\n",
+    # Found by review after the first version of the fix, each by running pandoc.
+    "fenced div closed without a blank line": (
+        "::: {.note}\n\nInner paragraph here.\n:::\n\nAfter the note.\n"
+    ),
+    "nested fenced divs closed without a blank line": "::: a\n::: b\n\nInner.\n:::\n:::\n",
+    "nested list straight after a continuation": (
+        "- Reports were deduplicated.\n\n  Duplicates were matched on case identifier:\n"
+        "  - by age\n  - by sex\n- Drugs were mapped.\n"
+    ),
+    "next item after a lazy continuation": "- a\n\n  cont\nlazy\n- b\n",
+    "numbered item after a continuation": "1. a\n\n   cont\n3. three\n",
+    "figure with brackets two deep": "![Caption^[Source: [@k].]](f.png)\n",
+    "figure with a parenthesis in its path": "![A](fig(1).png)\n",
+    "figure with a title": '![A](fig.png "Figure (a)")\n',
+    "page break": "\\newpage\n",
+    "page break then prose": "\\newpage\ntext after\n",
+    "latex environment across a blank line": (
+        "\\begin{figure}\nx\n\nmiddle\n\n\\end{figure}\n\nAfter.\n"
+    ),
+    "pre across a blank line": "<pre>\ncode\n\nmore\n</pre>\n\nAfter.\n",
+    "a comment opened in the block where another closes": (
+        "Before.\n\n<!-- one\n\nmore --> text <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
+    ),
+    "latex environment opened after a paragraph's first line": (
+        "Results are shown below.\n\\begin{table}\nrow one\n\nrow two\n\\end{table}\n\n"
+        "After the table.\n"
+    ),
+    "latex environment opened mid-line": "text \\begin{x}\nrow\n\nrow two\n\\end{x}\n\nAfter.\n",
+    "latex environment closed inside a paragraph": (
+        "text \\begin{x}\nrow one\n\\end{x} more text\n\nAfter.\n"
+    ),
+    "nested latex environments of one name": (
+        "\\begin{itemize}\n\\begin{itemize}\na\n\\end{itemize}\n\nb\n\n\\end{itemize}\n\n"
+        "After.\n"
+    ),
+    "pre on a paragraph's second line": "text\n<pre>\ncode\n\nmore\n</pre>\n\nAfter.\n",
+    "pre indented": "Before.\n\n  <pre>\na\n\nb\n\nc\n</pre>\n\nAfter.\n",
+    "a closing tag that only starts like the right one": (
+        "<pre>\ncode\n</preamble>\n\nmore\n</pre>\n\nAfter.\n"
+    ),
+    "a latex environment opened where a comment closes": (
+        "<!-- one\n\nmore --> \\begin{x}\n\nrow\n\n\\end{x}\n\nAfter.\n"
+    ),
+    "a comment opened in the block where a fence closes": (
+        f"{FENCE}\ncode\n\nmore\n{FENCE}\ntext <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
+    ),
+    "example list without parentheses": "@good. second\n",
+    "example list closed by a parenthesis": "@k) reported\n",
+    "a capital and a period alone": "A.\n",
+    "a capital and a period, then a line": "C.\nmore text\n",
+    "a word made of roman letters": "dim. lights were used.\n",
+    "a valid roman numeral": "mix. up\n",
+}
+
+
+def pandoc_ast(markdown: str) -> list:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)["blocks"]
+
+
+def _is_marker(node) -> bool:
+    return (
+        isinstance(node, dict)
+        and node.get("t") == "Span"
+        and node["c"][0][0].startswith("mg-p-")
+        and node["c"][1] == []
+    )
+
+
+def _unmarked(node):
+    """The AST with the identifiers' empty spans taken out."""
+    if isinstance(node, list):
+        return [_unmarked(item) for item in node if not _is_marker(item)]
+    if isinstance(node, dict):
+        return {key: _unmarked(value) for key, value in node.items()}
+    return node
+
+
+def _holders(node, found: dict) -> None:
+    """Each identifier, mapped to the run of inlines that carries it."""
+    if isinstance(node, list):
+        for item in node:
+            if _is_marker(item):
+                found[item["c"][0][0]] = node
+            _holders(item, found)
+    elif isinstance(node, dict):
+        for value in node.values():
+            _holders(value, found)
+
+
+@pytest.mark.parametrize("name", sorted(TAGGING))
+def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(name: str) -> None:
+    """Two things, both about what pandoc makes of the marked source.
+
+    The marker must change nothing but itself. In front of a list it did: pandoc read
+    `[]{#mg-p-...}- item one` as a paragraph, and the document printed the list as one
+    run-on line with its dashes in it.
+
+    And the paragraph carrying it must be the whole of the block it names, because `import`
+    splices that paragraph's text over the block. A marker in a pipe table's first cell
+    changes nothing pandoc reads, and a co-author's edit to that cell would have replaced
+    the table.
+    """
+    from manuscript_guard.roundtrip import tag
+
+    markdown = TAGGING[name]
+    tagged = tag(markdown, "main.md")
+    ast = pandoc_ast(tagged)
+    assert _unmarked(ast) == pandoc_ast(markdown), f"{name}: the marker changed {tagged!r}"
+
+    held: dict = {}
+    _holders(ast, held)
+    written = re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged)
+    assert set(held) == set(written), f"{name}: a marker reached no paragraph in {tagged!r}"
+
+    pieces = re.split(r"\n\s*\n", tagged)
+    # A footnote or a link resolves against definitions anywhere in the document, so a
+    # paragraph read on its own is read with them.
+    definitions = "\n\n".join(p for p in pieces if re.match(r" {0,3}\[[^\]]+\]:", p))
+    for piece in pieces:
+        marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)
+        if marker is None:
+            continue
+        alone = pandoc_ast(piece.replace(marker.group(0), "", 1) + "\n\n" + definitions)
+        assert [block["t"] for block in alone] in (["Para"], ["Plain"]), (
+            f"{name}: {piece!r} is marked and is not one paragraph"
+        )
+        assert _unmarked(held[marker.group(1)]) == alone[0]["c"], (
+            f"{name}: the marked paragraph holds only part of {piece!r}"
+        )

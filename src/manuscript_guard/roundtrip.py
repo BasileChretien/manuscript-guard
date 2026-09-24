@@ -27,11 +27,15 @@ possible: a paragraph can be reworded around its bindings without them being tou
 
 from __future__ import annotations
 
+import bisect
 import difflib
 import re
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+from manuscript_guard.text.fences import fenced_spans
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -244,37 +248,274 @@ def paragraph_slug(relative: str) -> str:
     return f"{stem}{hashlib.sha256(relative.encode('utf-8')).hexdigest()[:6]}"
 _TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
 
+#: What an identifier numbers: the blocks between blank lines, and the blank runs between
+#: them, so the pieces join back into the text they came from.
+_BREAK = re.compile(r"(\n\s*\n)")
+
 # Blocks that are not paragraphs of prose. A marker in front of a fence turns it into text:
 # `[]{#id}::: {#refs}` printed ":::" in the document, and the reference list it was meant to
 # place never appeared. A marker in front of a code fence would do the same to the code.
 _FENCE = re.compile(r"(:::|```|~~~)")
+# On a later line a fenced div's `:::` counts too: `Inner paragraph.\n:::` closes the div,
+# and a marked block would take the closer with it when `import` spliced the paragraph.
+_FENCE_LINE = re.compile(r" {0,3}(?:`{3,}|~{3,}|:{3,})")
+
+# Four columns of indent: an indented code block, or a list item's continuation.
+_INDENTED = re.compile(r"(?: {4}| {0,3}\t)")
+_BULLET = re.compile(r" {0,3}[-*+](?:[ \t]|$)")
+# `1.` `1)` `(1)` `a.` `(a)` `iv.` `II.` `#.` `(@)` `@label.`, then a space, a tab or nothing.
+_ENUMERATOR = re.compile(
+    r" {0,3}(?P<open>\()?(?P<num>\d+|[A-Za-z]+|#|@[\w-]*)"
+    r"(?(open)\)|(?P<delim>[.)]))(?P<gap>[ \t]+|$)"
+)
+# Pandoc's own reading of a roman numeral, which is lenient about order and strict about
+# letters: `mix.` is 1009 and a list, `dim.` is a word.
+_ROMAN = re.compile(
+    r"m*(?:cm)?d?(?:cd)?c*(?:xc)?l?(?:xl)?x*(?:ix)?v?(?:iv)?i*"
+    r"|M*(?:CM)?D?(?:CD)?C*(?:XC)?L?(?:XL)?X*(?:IX)?V?(?:IV)?I*"
+)
+# A block quote; a line block or a pipe table.
+_QUOTE_OR_BAR = re.compile(r" {0,3}[>|]")
+# A setext underline, a table's ruling, a grid border, `---`. Only these characters, and at
+# least one dash or equals sign among them.
+_RULE = re.compile(r"(?=[^-=\n]*[-=])[ \t]*[-=:|+][-=:|+ \t]*")
+_THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
+# A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
+_DEFINITION = re.compile(r" {0,3}[:~][ \t]")
+_CAPTION = re.compile(r" {0,3}[Tt]able:")
+# `[^1]: a footnote` or `[label]: https://...`.
+_REFERENCE = re.compile(r" {0,3}\[[^\]\n]+\]:")
+# An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
+# `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
+# paragraph that opens with an image and ends on a bracket losing its identifier is the
+# safe way to be wrong.
+_FIGURE = re.compile(r"!\[.*[)\]}]", re.DOTALL)
+# A TeX command. `\newpage` alone is a raw block, and marked it became an empty paragraph.
+_TEX = re.compile(r" {0,3}\\[A-Za-z]")
+# Tags pandoc reads as inline, so a paragraph may open with one and stay a paragraph. Any
+# other tag at the start of a line may open a raw HTML block - `<div>`, `<table>`, `<del>` -
+# and is treated as one: leaving a paragraph unmarked costs it its identifier, while marking
+# an HTML block rewrites it.
+_INLINE_HTML = (
+    "a|abbr|b|bdi|bdo|br|cite|code|data|dfn|em|font|i|img|kbd|mark|q|s|samp|small|span|"
+    "strike|strong|sub|sup|time|tt|u|var|wbr"
+)
+_HTML_TAG = re.compile(
+    rf" {{0,3}}</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?=[\s/>]|$)", re.IGNORECASE
+)
+# A comment, a declaration, a processing instruction. Opening a block only: inside a
+# paragraph a comment is inline and the paragraph survives.
+_HTML_LEAD = re.compile(r" {0,3}<[!?]")
 
 
-def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+def _enumerates(line: str) -> bool:
+    """Whether a line starts an ordered list, by pandoc's rules rather than by its look."""
+    found = _ENUMERATOR.match(line)
+    if found is None:
+        return False
+    num, gap = found["num"], found["gap"]
+    if len(num) > 1 and num.isalpha() and _ROMAN.fullmatch(num) is None:
+        return False
+    if found["delim"] == "." and len(num) == 1 and num.isupper() and gap:
+        # "C. difficile was isolated" is a sentence. Pandoc wants two spaces or a tab after
+        # a single capital and a period, so that an initial does not start a list.
+        return gap[:2] == "  " or gap[:1] == "\t"
+    return True
+
+
+def _opens_block(line: str) -> bool:
+    """Whether a block's first line makes it something other than a paragraph."""
     return (
-        not stripped
-        or stripped.startswith("#")
+        _INDENTED.match(line) is not None
+        or _BULLET.match(line) is not None
+        or _enumerates(line)
+        or _QUOTE_OR_BAR.match(line) is not None
+        or _RULE.fullmatch(line) is not None
+        or _THEMATIC.fullmatch(line) is not None
+        or _DEFINITION.match(line) is not None
+        or _CAPTION.match(line) is not None
+        or _REFERENCE.match(line) is not None
+        or _TEX.match(line) is not None
+        or _HTML_LEAD.match(line) is not None
+        or _HTML_TAG.match(line) is not None
+    )
+
+
+def _untagged(block: str) -> bool:
+    """Whether a block is anything other than one ordinary paragraph.
+
+    Only a paragraph can carry the marker. In front of anything else it changes what pandoc
+    reads: `[]{#id}- item one` is no longer a list, and the document printed every list in
+    the manuscript as one run-on paragraph with its dashes in it. The same went for block
+    quotes, numbered lists, line blocks, grid tables, rules, footnote definitions and a lone
+    image, which stopped being a figure.
+
+    Some blocks survive a marker and are still refused one. `[]{#id}| a | b |` is a table
+    with a bookmark in its first cell; `[]{#id}Term\\n: definition` is a definition list with
+    a bookmark on the term; a paragraph followed without a blank line by a code fence or a
+    `<div>` becomes a paragraph and something else. `import` reads the bookmarked Word
+    paragraph and splices its text over the *whole* source block, so a co-author's edit to
+    one cell would have replaced the table with that cell's text. A block qualifies only if
+    pandoc reads the whole of it as one paragraph.
+    """
+    lines = block.split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return True
+    stripped = block.strip()
+    if (
+        stripped.startswith("#")
+        # Pandoc ends a paragraph at a LaTeX environment wherever it opens, mid-line too,
+        # and carries on with a raw block.
+        or "\\begin{" in stripped
         or _FENCE.match(stripped) is not None
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        or _FIGURE.fullmatch(stripped) is not None
+        or _opens_block(lines[0])
+    ):
+        return True
+    # What can end a paragraph without a blank line. At the top level a list, a quote or a
+    # heading cannot - pandoc wants a blank line before those. A definition follows a
+    # one-line term, so only the second line can start one.
+    rest = lines[1:]
+    if (rest != [] and _DEFINITION.match(rest[0]) is not None) or any(
+        _RULE.fullmatch(line) is not None
+        or _FENCE_LINE.match(line) is not None
+        or _HTML_TAG.match(line) is not None
+        for line in rest
+    ):
+        return True
+    # Inside a list item, which is what an indented block is, a nested list or the list's
+    # next item needs no blank line. `  Matched on:\n  - age\n- Drugs were mapped.` is a
+    # paragraph and two list items, and `import` spliced the items away with the paragraph.
+    return lines[0][:1] == " " and any(
+        _BULLET.match(line.lstrip()) is not None or _enumerates(line.lstrip()) for line in rest
     )
+
+
+# Raw content pandoc carries across blank lines without reading it as markdown: an HTML
+# comment and a LaTeX environment wherever they open, and an HTML element whose content is
+# verbatim when it opens a line.
+_VERBATIM = "(?i:pre|script|style|textarea)"
+_RAW_OPEN = re.compile(
+    rf"<!--|\\begin\{{[^{{}}\n]+\}}|^ {{0,3}}<(?P<tag>{_VERBATIM})(?=[\s>]|$)", re.MULTILINE
+)
+_RAW_CLOSE = re.compile(
+    rf"(?P<comment>-->)|\\(?P<tex>begin|end)\{{(?P<env>[^{{}}\n]+)\}}"
+    rf"|</(?P<tag>{_VERBATIM})(?=[\s>]|$)"
+)
+
+
+class _Closers:
+    """Where each piece of raw content closes, found in one pass over the text.
+
+    Searching from each block to the end of the text for its closer was quadratic: 80,000
+    paragraphs that each left a comment open took 26 seconds, and so did 80,000 LaTeX
+    environments with different names, in code `check` reaches through G13. Every closer is
+    indexed once instead, and a LaTeX environment is matched to its own `\\end` the way
+    pandoc matches it, nested environments of the same name included.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._comments: list[int] = []
+        self._tags: dict[str, list[int]] = {}
+        self._environments: dict[int, int] = {}
+        open_environments: dict[str, list[int]] = {}
+        for found in _RAW_CLOSE.finditer(text):
+            if found["comment"]:
+                self._comments.append(found.end())
+            elif found["tag"]:
+                self._tags.setdefault(found["tag"].lower(), []).append(found.end())
+            elif found["tex"] == "begin":
+                open_environments.setdefault(found["env"], []).append(found.start())
+            elif open_environments.get(found["env"]):
+                self._environments[open_environments[found["env"]].pop()] = found.end()
+
+    def end_of(self, opened: re.Match[str]) -> int:
+        """Where the raw content `opened` starts ends, or -1 if it never closes."""
+        if opened["tag"]:
+            ends = self._tags.get(opened["tag"].lower(), [])
+        elif opened.group(0) == "<!--":
+            ends = self._comments
+        else:
+            return self._environments.get(opened.start(), -1)
+        at = bisect.bisect_right(ends, opened.end())
+        return ends[at] if at < len(ends) else -1
+
+
+def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
+    """Where raw content opened in `text[start:end]` ends if it runs past the block, else 0.
+
+    The blocks it swallows are not paragraphs, and a marker in one names a paragraph no
+    document contains. The block that opens it is not a whole paragraph either. An opener
+    that never closes hides nothing: pandoc reads it as text.
+    """
+    position = start
+    while (opened := _RAW_OPEN.search(text, position, end)) is not None:
+        closed = closers.end_of(opened)
+        if closed > end:
+            return closed
+        position = opened.end() if closed < 0 else closed
+    return 0
+
+
+def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
+    """Every piece of `text` in order, with its index and whether it gets an identifier.
+
+    `tag` and `tagged_paragraphs` both iterate this rather than splitting for themselves, so
+    the identifier a document carries and the one `import` looks up are computed by the same
+    code and cannot drift apart.
+
+    Most of the decision is `_untagged`, one block at a time. What it cannot see is a block
+    that is inside something opened earlier: the second half of a fenced code block with a
+    blank line in it, or of a comment. A marker there would print inside the code, or name a
+    paragraph that reaches no document.
+    """
+    fences = iter(fenced_spans(text))
+    fence = next(fences, None)
+    closers = _Closers(text)
+    hidden = 0
+    cursor = 0
+    for index, piece in enumerate(_BREAK.split(text)):
+        origin = cursor
+        start = cursor + len(piece) - len(piece.lstrip())
+        end = cursor + len(piece)
+        cursor = end
+        while fence is not None and fence.end <= start:
+            fence = next(fences, None)
+        inside = fence is not None and fence.start <= start
+        if inside or start < hidden:
+            # What hid this block can end inside it, and raw content opened after that point
+            # swallows the blocks that follow just the same.
+            resume = max(fence.end if inside else 0, hidden)
+            if resume < end:
+                hidden = max(hidden, _raw_end(text, resume, end, closers))
+            yield index, piece, False
+            continue
+        # From the block's own first character, indentation included: `  <pre>` opens a
+        # line, and a search starting at the `<` cannot see that it does.
+        runs_on = _raw_end(text, origin, end, closers)
+        hidden = max(hidden, runs_on)
+        yield index, piece, not (runs_on or _untagged(piece))
 
 
 def tag(text: str, relative: str) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
-    Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
-    blocks, and paragraphs that are nothing but a placeholder, because those become a table
-    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+    Headings are skipped: `[]{#id}# Methods` is not a heading. So are lists, quotes, tables,
+    fenced divs, code, and paragraphs that are nothing but a placeholder, because those
+    become a table or a figure rather than a paragraph. `_untagged` says why each one.
     """
+    slug = paragraph_slug(relative)
     out = []
-    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
-        stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(stripped):
-            out.append(para)
+    for index, piece, marked in _blocks(text):
+        if not marked:
+            out.append(piece)
             continue
-        marker = _TAG.format(slug=paragraph_slug(relative), index=index)
-        out.append(para.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
+        stripped = piece.strip()
+        marker = _TAG.format(slug=slug, index=index)
+        out.append(piece.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
     return "".join(out)
 
 
@@ -306,11 +547,11 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
         # Offsets are into the file on disk, not into the stripped copy: the merge splices
         # into the real file, and a paragraph would land one front matter earlier.
         cursor = len(raw) - len(text)
-        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        for index, para, marked in _blocks(text):
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(stripped):
+            if not marked:
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

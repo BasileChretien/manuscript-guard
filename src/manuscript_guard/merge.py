@@ -471,10 +471,18 @@ _TWICE = (
 def why(aligned: Alignment) -> tuple[str, ...]:
     """The reason a reworded paragraph was not merged, in the author's terms."""
     if aligned.markup:
+        named = aligned.markup
+        listed = named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
         return (
-            "it carries a footnote, a link, display maths or an HTML comment, which Word's "
-            "plain text cannot bring back: merging it would delete them. Make the edit in the "
-            ".md.",
+            f"the edited text carries {listed}, which Word's plain text cannot bring back: "
+            f"merging it would lose {'it' if len(named) == 1 else 'them'}. "
+            f"Make the edit in the .md.",
+        )
+    if aligned.misread:
+        return (
+            "merged, it would not read as the text that came back: something in the new "
+            "wording would be read as Markdown, or would change markup beside it. "
+            "Make the edit in the .md.",
         )
     if aligned.changed:
         lines = []
@@ -489,8 +497,8 @@ def why(aligned: Alignment) -> tuple[str, ...]:
                 )
         return tuple(lines)
     return (
-        "it could not be lined up with its own source, so its numbers and citations cannot be "
-        "told apart from its prose. Make the edit in the .md.",
+        "it could not be lined up with its own source, so its numbers, citations and markup "
+        "cannot be told apart from its prose. Make the edit in the .md.",
     )
 
 

@@ -66,7 +66,7 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, it has a footnote, a link, display maths or an HTML comment, text was typed where it renders nothing, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
 | `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
@@ -108,6 +108,15 @@ handled, and each has a test:
 - A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
   (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit
   added after the number, is not caught: read those in the diff.
+- A rewording is refused, not merged, when the edited text carries something Word's text
+  cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a non-breaking space, a
+  hard line break, or emphasis or code wrapped around a binding. The reason names it. In a
+  paragraph with a binding, markup on one side of the binding does not stop an edit on the
+  other side. A paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses
+  every edit to it.
+- What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
+  co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
 paragraph without an identifier. Port those edits from the dry run and the text diff above.
@@ -119,9 +128,12 @@ Two things in this version still need care:
 - A reworded paragraph that has a binding or a citation *and* an apostrophe, a quotation
   mark or a `--` in its prose is refused as "could not be lined up with its own source":
   pandoc typesets those characters, so the prose no longer matches. Port that edit by hand.
-- A paragraph with a narrative citation (`@key`, no brackets) and no binding merges the
-  citation back as plain text, "Smith (2020)", and one with inline math loses the equation.
-  Before applying, find those paragraphs in the dry run and port them by hand.
+- A reworded paragraph with a narrative citation (`@key`, no brackets) or a prefixed one
+  (`[see @key]`) is refused as "could not be lined up with its own source". Port that edit
+  by hand.
+- A footnote or an equation edited in Word, a changed link address, or a deleted footnote
+  is not seen at all: `import` reads each paragraph's text, and those live elsewhere in the
+  file. Look for them in the text diff above.
 
 ## 5. Apply, then read what was written
 
@@ -134,9 +146,12 @@ manuscript-guard check
 Read the whole diff. What to look for:
 
 - Formatting lost. An edited stretch of text comes back as plain text, so bold, italics and
-  inline code in it are gone. (A paragraph with a footnote or a link is refused instead,
-  because merging it would delete them.)
-- A citation that became text: `Smith (2020)` where the source had `@smith2020`.
+  inline code in it are gone. (A footnote, a comment, a link or an equation is refused
+  instead, because merging would delete it.)
+- Backslashes. Every character in Word's text that Markdown could read as markup is
+  escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
+  Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
+  bare and is curled: put the backslash back if the straight quote mattered.
 - Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
   paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then

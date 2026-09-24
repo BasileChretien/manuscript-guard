@@ -141,6 +141,28 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
     assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize(
+    "line",
+    ["<!-- never closed\n", "Prose\n## Methods\n", "- item\n> quote\n| row |\n", "<div>\n"],
+    ids=["unclosed comments", "paragraph and heading", "list quote row", "html divs"],
+)
+def test_the_heading_scan_is_linear(line: str) -> None:
+    """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s
+    for 20,000 such lines, and the heading scan runs once per file in G2, `explain` and the
+    classifier's heading rules alike."""
+    from manuscript_guard.text.blocks import find_headings
+
+    def measure(count: int) -> float:
+        text = line * count
+        started = time.perf_counter()
+        find_headings(text)
+        return time.perf_counter() - started
+
+    small = max(measure(2000), 1e-3)
+    large = measure(8000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 # ---------------------------------------------------------------- hostile files
 
 

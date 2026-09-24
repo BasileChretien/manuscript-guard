@@ -375,7 +375,7 @@ SPOOFS = {
     "setext continuing a paragraph": (
         "## Results\n\nIt was significant\nMethods\n-------\n\n(p < 0.05).\n"
     ),
-    "lone hash": "## Results\n\n#\nMethods\n\nSignificant (p < 0.05).\n",
+    "lone hash": "## Results\n\nPrevious prose.\n\n#\nMethods\n\nSignificant (p < 0.05).\n",
 }
 
 

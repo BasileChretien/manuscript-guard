@@ -1628,13 +1628,14 @@ def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(
     from manuscript_guard.audit import audit
 
     outputs = _outputs(tmp_path, '{"n": 77}')
-    paper = tmp_path / "paper.md"
-    paper.write_text(
-        "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n"
-        "# Appendix\n\nThe estimate was 9.99.\n",
-        encoding="utf-8",
-    )
-    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+    for appendix in ("# Appendix\n", "Appendix\n--------\n"):
+        paper = tmp_path / "paper.md"
+        paper.write_text(
+            "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n"
+            f"{appendix}\nThe estimate was 9.99.\n",
+            encoding="utf-8",
+        )
+        assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
 def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:

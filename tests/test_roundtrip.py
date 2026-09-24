@@ -187,6 +187,127 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
     assert "}{{table.baseline}}" not in tagged
 
 
+REGISTRY = "https://example.org/registry"
+
+REFERENCE_LINKS = [
+    pytest.param(
+        "See [the registry][reg] for details.", f"[reg]: {REGISTRY}", "the registry", id="full"
+    ),
+    pytest.param("See [reg][] for details.", f"[reg]: {REGISTRY}", "reg", id="collapsed"),
+    pytest.param("See [reg] for details.", f"[reg]: {REGISTRY}", "reg", id="shortcut"),
+    pytest.param(
+        "See [reg] for details.",
+        f"   [reg]: <{REGISTRY}> 'The registry'",
+        "reg",
+        id="indented-with-title",
+    ),
+    pytest.param(
+        "See [reg] and [other] for details.",
+        f"[other]: https://example.org/other\n[reg]:\n  {REGISTRY}\n  \"The registry\"",
+        "reg and other",
+        id="several-definitions",
+    ),
+]
+
+
+def _docx_part(document: Path, part: str) -> str:
+    return zipfile.ZipFile(document).read(part).decode("utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("paragraph", "definition", "shown"), REFERENCE_LINKS)
+def test_a_link_definition_is_left_for_pandoc_to_read(
+    paragraph: str, definition: str, shown: str, tmp_path: Path
+) -> None:
+    """`[reg]: https://...` standing as its own block defines a reference-style link. With an
+    identifier in front of it, pandoc read it as a paragraph instead: every `[text][reg]` in
+    the manuscript printed with its brackets, linked to nothing, and the definition itself
+    printed as a line of text. On every build, not only in `import`."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    source.write_text(tag(f"{paragraph}\n\n{definition}\n", "main.md"), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert f'Target="{REGISTRY}"' in _docx_part(document, "word/_rels/document.xml.rels")
+    assert "<w:hyperlink" in _docx_part(document, "word/document.xml")
+    # The paragraph keeps its identifier and reads as the link's words; the definition
+    # reaches the document as nothing at all.
+    assert list(paragraph_text(document).values()) == [f"See {shown} for details."]
+
+
+@needs_pandoc
+def test_a_footnote_definition_is_left_for_pandoc_to_read(tmp_path: Path) -> None:
+    """The same syntax defines a footnote, and failed the same way: `[^cap]` printed in the
+    paragraph, and the note's text printed as a paragraph of its own."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = "Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n"
+    source.write_text(tag(text, "main.md"), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "Capped at 40 mg." in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped."]
+
+
+#: (block, whether pandoc reads it as a definition) - each answer read off pandoc 3.9.
+DEFINITION_OR_NOT = [
+    pytest.param(f"[reg]: {REGISTRY}", True, id="link"),
+    pytest.param("[^cap]: Capped at 40 mg.", True, id="footnote"),
+    pytest.param(f"[a [b] c]: {REGISTRY}", True, id="nested-label"),
+    pytest.param(f"[mail@example.org]: {REGISTRY}", True, id="address-in-label"),
+    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", True, id="wrapped-label"),
+    pytest.param(f"[]: {REGISTRY}", True, id="empty-label"),
+    # The words run together into an address: pandoc prints nothing of this line.
+    pytest.param("[Methods]: patients were enrolled.", True, id="prose-shaped"),
+    pytest.param("See [Methods] here.", False, id="bracket-inside"),
+    pytest.param("[Methods] describes the cohort.", False, id="no-colon"),
+    pytest.param(f"[reg] : {REGISTRY}", False, id="space-before-colon"),
+    # A definition cannot interrupt a paragraph.
+    pytest.param(f"See [reg] for details.\n[reg]: {REGISTRY}", False, id="second-line"),
+    pytest.param("[@fictionalClassSignal2019]: a cohort of 1,200.", False, id="citation"),
+    pytest.param("[see @fictionalClassSignal2019]: a cohort.", False, id="prefixed-citation"),
+    pytest.param("[see\n@fictionalClassSignal2019]: a cohort.", False, id="wrapped-citation"),
+]
+
+
+@pytest.mark.parametrize(("block", "defines"), DEFINITION_OR_NOT)
+def test_only_a_definition_is_left_without_an_identifier(block: str, defines: bool) -> None:
+    """A paragraph that opens with a bracket, or with a citation and a colon, is still a
+    paragraph and keeps its identifier."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(block, "main.md")
+    assert (tagged == block) is defines, tagged
+    assert tagged.startswith("[]{#mg-p-") is not defines, tagged
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("block", "defines"), DEFINITION_OR_NOT)
+def test_pandoc_reads_a_definition_where_tag_expects_one(block: str, defines: bool) -> None:
+    """The expectations above are pandoc's, not this module's: a definition is a block that
+    renders nothing."""
+    import json
+    import subprocess
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=block,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert (json.loads(read.stdout)["blocks"] == []) is defines
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for
@@ -2074,3 +2195,20 @@ def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert "a footnote" in capsys.readouterr().out
     assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_import_leaves_a_link_definition_where_it_was(project: Path, tmp_path: Path) -> None:
+    """A definition has no identifier and reaches Word as nothing, so `import` never splices
+    into it: a rewording of the paragraph after it merges into that paragraph alone, and the
+    next build still links."""
+    from manuscript_guard.cli import main
+
+    definition = f"[reg]: {REGISTRY}"
+    with_paragraphs(project, "See [the registry][reg] for details.", definition, "It is public.")
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"It is public.": "It is open."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"for details.\n\n{definition}\n\nIt is open.\n" in text
+    assert f'Target="{REGISTRY}"' in _docx_part(built(project), "word/_rels/document.xml.rels")

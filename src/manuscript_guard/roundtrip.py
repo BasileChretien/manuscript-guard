@@ -238,14 +238,34 @@ _TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
 # `[]{#id}::: {#refs}` printed ":::" in the document, and the reference list it was meant to
 # place never appeared. A marker in front of a code fence would do the same to the code.
 _FENCE = re.compile(r"(:::|```|~~~)")
+# A link or footnote definition, `[reg]: https://...` or `[^1]: The note.`, which pandoc
+# reads only at the start of a block. With a marker in front it was a paragraph: every
+# `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
+# definition printed as a line of text, on every build. Pandoc takes almost any line opening
+# this way for one - `[Methods]: patients were enrolled.` is a definition whose address is
+# the words run together, and prints nothing - unless its label holds a citation key, which
+# makes the line a citation: `[@smith2020]: they found` is a paragraph.
+_REFERENCE = re.compile(r"\[(?P<label>(?:[^\[\]]|\[[^\[\]]*\])*)\]:")
+_CITATION_KEY = re.compile(r"(?<![A-Za-z0-9])@[\w{]")
+
+
+def _defines(stripped: str) -> bool:
+    """Whether a block opens with a link or footnote definition, as pandoc reads one."""
+    found = _REFERENCE.match(stripped)
+    if found is None:
+        return False
+    # Only a key at the label's own level: `[a [@b] c]:` is still a definition.
+    return _CITATION_KEY.search(re.sub(r"\[[^\]]*\]", "", found["label"])) is None
 
 
 def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+    """Headings, fences, link and footnote definitions, and a lone placeholder (which
+    becomes a table or a figure)."""
     return (
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
+        or _defines(stripped)
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 
@@ -255,7 +275,8 @@ def tag(text: str, relative: str) -> str:
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
     blocks, and paragraphs that are nothing but a placeholder, because those become a table
-    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing. So
+    are link and footnote definitions, which become nothing at all in the document.
     """
     out = []
     for index, para in enumerate(re.split(r"(\n\s*\n)", text)):

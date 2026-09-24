@@ -2108,7 +2108,9 @@ Closed since, and why each mattered:
     `CD4^+^` refuses every edit to it.
   - *The reading is pandoc's, closely enough, not exactly.* Emphasis is paired by pattern,
     not by pandoc's rules, and `[1][2]` with no reference definition is text to pandoc and a
-    link here, so an edit to it is refused. Where the reading takes source markup for text
+    link here, so an edit to it is refused. The reverse holds for a shortcut link: `[reg]`
+    with a definition is a link to pandoc and text here, so a paragraph holding one cannot be
+    lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
   - *The read-back reads a binding as digits, and a `>` is never escaped.* What a binding's
@@ -2171,6 +2173,26 @@ Closed since, and why each mattered:
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
   past that text is then refused as a move into another section. Safe, and a refusal.
+- **A link or footnote definition carries no identifier.** Pandoc reads `[reg]: https://...`
+  and `[^1]: ...` only at the start of a block, and they render nothing, so there is no
+  paragraph in Word for an identifier to name and nowhere in the definition to put one. In
+  front of it, the identifier made the definition a paragraph, and every link or footnote
+  using it printed as bracketed text on every build. Left untagged, a definition is never a
+  splice target and stays where it was written. What that leaves:
+  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
+    source, so a move across it is refused as a move past a heading, a table or a figure.
+    Safe, and the reason given is wrong.
+  - *A paragraph written straight under a link definition has no identifier.* With no blank
+    line between them pandoc reads a definition and then a paragraph, and the block is left
+    untagged whole. An edit to that paragraph in Word is only counted among the paragraphs
+    that were not compared, and `import` otherwise reports that nothing came back. A blank
+    line after the definition avoids it.
+  - *The test is pandoc's rule, nearly.* A block opening `[label]:` is a definition unless
+    the label holds a citation key, which is what pandoc does with `[Methods]: patients were
+    enrolled.` (a definition whose address is the words run together, printed as nothing)
+    and with `[@smith2020]: they found` (a paragraph). Pandoc also rejects a line that goes
+    on after a title, `[a]: b "c" d`, and that prose loses its identifier here. A label
+    nested two brackets deep is a definition that still gets one, and prints as text.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

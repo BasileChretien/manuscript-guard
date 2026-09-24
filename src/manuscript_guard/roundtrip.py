@@ -562,6 +562,21 @@ def _opens_table(line: str) -> bool:
     return len(line.strip().split()[0]) >= 2 or line.count("-") >= 3
 
 
+# A line after which pandoc starts a new block whatever the next line holds, so a table can
+# open straight under it: an ATX heading, a setext `=` underline, a pipe-table row or a YAML
+# block's closing `...`. Fences, reference definitions and whole lines of block-level HTML
+# or comments are tested below. Under prose, a list item, a quote, a definition, a caption,
+# a TeX command or an image, pandoc 3.9 opens no table.
+_ENDS_LINE = re.compile(r" {0,3}(?:#{1,6}(?:[ \t].*)?|=+[ \t]*|\|.*)|\.\.\.[ \t]*")
+
+
+def _ends_line(line: str) -> bool:
+    if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or _REFERENCE.match(line):
+        return True
+    html = _HTML_TAG.match(line) or _HTML_LEAD.match(line)
+    return html is not None and line.rstrip().endswith(">")
+
+
 @dataclass(frozen=True)
 class _Row:
     """One non-blank line of a block, as the table reader sees it."""
@@ -590,6 +605,8 @@ class _Ruled:
         self._pieces = pieces
         self._rows: list[_Row] = []
         self._first_row: dict[int, int] = {}
+        # Rows that open a table mid-block, straight under a line that ends a block.
+        self._inner: dict[int, list[int]] = {}
         for index in range(0, len(pieces), 2):
             lines = [line for line in pieces[index].split("\n") if line.strip()]
             if not lines:
@@ -612,6 +629,7 @@ class _Ruled:
                         joined=at == len(lines) - 1 and joined,
                     )
                 )
+            self._inner[index] = self._inner_openers(lines, self._first_row[index])
         # Where the table read from each opening row ends, filled in as asked. Tables that
         # open straight under one another share an end, so each chain is walked once.
         self._ends: dict[int, int | None] = {}
@@ -628,6 +646,23 @@ class _Ruled:
             if self._rows[row].opens and not self._closed_in(block, row)
         }
 
+    def _inner_openers(self, lines: list[str], first: int) -> list[int]:
+        """The rows of one block, after its first, where pandoc may open a table: straight
+        under a line that always ends a block, or under a setext underline of dashes. Only
+        the first line of a block was asked, and a table under a `::: {#tbl-a}` fence or a
+        heading printed a marker into its rows. Wrong here, a table is followed that pandoc
+        does not read, and paragraphs go unmarked, which corrupts nothing."""
+        rows = self._rows
+        return [
+            first + at
+            for at in range(1, len(lines))
+            if rows[first + at].opens
+            and (
+                _ends_line(lines[at - 1])
+                or (at >= 2 and rows[first + at - 1].dashes and not rows[first + at - 2].dashes)
+            )
+        ]
+
     def _end_row(self, start: int) -> int | None:
         """The row where the table pandoc reads from the opening line at row `start` ends.
 
@@ -638,10 +673,18 @@ class _Ruled:
         dashes. Where a line that can open a table follows the end straight away, another
         table begins there. Ending always on the first line of dashes printed a marker into
         the rows of a headed table.
+
+        Each row a walk passes is remembered with the walk's end, so a chain is walked once.
+        What is remembered holds for a row however it is reached: a table opening straight
+        under another that never finds its closing line leaves the first table's end,
+        `row - 1`. Only a table asked about directly can find no line of dashes after it and
+        be no table at all, and that is answered before anything is remembered.
         """
+        if self._next_dashes[start] is None:
+            return None
         rows = self._rows
         walked: list[int] = []
-        end: int | None = None
+        end = start - 1
         while start not in self._ends:
             walked.append(start)
             first = self._next_dashes[start]
@@ -682,7 +725,21 @@ class _Ruled:
         return None if end is None else self._rows[end].block
 
     def end(self, index: int) -> int | None:
-        """The block a span opened at `index` ends in, or None if it opens none.
+        """The block a span opened in `index` ends in, or None if it opens none: from the
+        block's first line, or from a table opening further down it."""
+        ends = [self._opened_end(index), self.inner_end(index)]
+        found = [end for end in ends if end is not None]
+        return max(found) if found else None
+
+    def inner_end(self, index: int) -> int | None:
+        """The last block reached by a table opening mid-block in `index`, if past it."""
+        ends = [self._end_row(row) for row in self._inner.get(index, ())]
+        blocks = [self._rows[end].block for end in ends if end is not None]
+        later = [block for block in blocks if block > index]
+        return max(later) if later else None
+
+    def _opened_end(self, index: int) -> int | None:
+        """The block a span opened on the first line of `index` ends in.
 
         A table runs to a line of dashes: a row that happens to read `...` is a row. A
         `---` pandoc tries as YAML is hidden up to where the YAML stops; a mapping ends
@@ -750,6 +807,11 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
             resume = max(fence.end if inside else 0, hidden)
             if resume < end:
                 hidden = max(hidden, _raw_end(text, resume, end, closers))
+                # And so does a table opening straight under a closing fence. One that seems
+                # to open inside the code before it only hides more.
+                table = ruled.inner_end(index)
+                if table is not None:
+                    hidden = max(hidden, ends[table])
             yield index, piece, False
             continue
         # From the block's own first character, indentation included: `  <pre>` opens a

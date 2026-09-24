@@ -347,6 +347,29 @@ RULED = {
         "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
         "----------  ----------"
     ),
+    "a table, a line of dashes that opens nothing, then text": (
+        "----------  ----------\nWarfarin    Bleeding\n\nApixaban    Bleeding\n\n"
+        "Heparin     HIT\n----------  ----------\n----------\nText after."
+    ),
+    **{
+        f"a table straight under {name}": (
+            f"{above}\n----------  ----------\nWarfarin    Bleeding\n\nApixaban    Bleeding\n\n"
+            f"Heparin     HIT\n----------  ----------{closer}"
+        )
+        for name, above, closer in (
+            ("a div fence", "::: {#tbl-a}", "\n:::"),
+            ("an ATX heading", "## Table 1", ""),
+            ("an HTML comment", "<!-- the signals -->", ""),
+            ("a div tag", '<div class="x">', "\n</div>"),
+            ("a setext heading", "Table 1\n=======", ""),
+            ("a setext heading underlined with dashes", "Table 1\n-------", ""),
+            ("a code block", f"{FENCE}\ncode\n{FENCE}", ""),
+            ("a yaml block", "---\ntitle: x\n---", ""),
+            ("a pipe table", "| a | b |\n|---|---|\n| 1 | 2 |", ""),
+            ("a reference definition", "[a]: https://example.org", ""),
+            ("a yaml block closed by dots", "---\ntitle: x\n...", ""),
+        )
+    },
     "caption with no space after the colon": (
         "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
         "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n:Caption."
@@ -394,6 +417,29 @@ def test_a_no_break_space_line_away_from_a_rule_does_not_stretch_a_table() -> No
     )
     marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
     assert "Para" in marked and "End." in marked, marked
+
+
+def test_a_line_of_dashes_under_prose_or_a_list_item_opens_no_table() -> None:
+    """Mid-block, pandoc opens a table straight under a heading or a fence, but not under
+    prose, a list item, a quote, a definition, a caption, a TeX command or an image. The
+    rows after such a line are paragraphs to pandoc, and keep their identifiers."""
+    from manuscript_guard.roundtrip import tag
+
+    for above in (
+        "Some text.",
+        "- item",
+        "> quoted",
+        "Term\n:   definition",
+        "Table: Signals.",
+        "\\newpage",
+        "![Figure](f.png)",
+    ):
+        text = (
+            f"Intro.\n\n{above}\n----------  ----------\nWarfarin    Bleeding\n\n"
+            "Apixaban    Bleeding\n\nHeparin     HIT\n----------  ----------\n\nAfter.\n"
+        )
+        marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+        assert "Apixaban" in marked, (above, marked)
 
 
 def test_a_rule_with_a_blank_line_under_it_opens_nothing() -> None:

@@ -1704,7 +1704,10 @@ Added by the adversarial review, verified and **not** fixed:
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the
   first half's bookmark sat on the joined paragraph and `import --apply` wrote the second
   half twice; both halves are now left unmarked and never compared. Renumbering would fix
-  it and would move every identifier after them.
+  it and would move every identifier after them. Over two stacked lines of dashes, such a
+  line is a setext heading to pandoc and the second line opens a table; the table rules
+  lose the line, take the heading's underline for the opener, and a paragraph inside the
+  table can be marked.
 - **A YAML block in the body is followed only where a block starts with it.** Pandoc tries
   every `---` in column 0 with text straight under it as YAML, up to the first `---` or
   `...` in column 0, and a marker at the start of a line inside turns its quiet fallback (to
@@ -1720,10 +1723,18 @@ Added by the adversarial review, verified and **not** fixed:
   When the line has text straight under it, `tag` leaves everything up to the table's
   closing line of dashes unmarked; with a blank line under it, the line is a rule and opens
   nothing. Pandoc reads no table there when the line continues a list item, sits inside a
-  fenced div after a blank line, follows a no-break-space line inside a paragraph, or starts
-  a simple table (`--\n----\nText.`). The paragraphs in between then go uncompared although
-  pandoc reads them as paragraphs, and nothing is corrupted. Lines of three dashes or more
-  had these cases already; since two dashes can open a table, `--` has them too.
+  fenced div after a blank line, or follows a no-break-space line inside a paragraph. The
+  paragraphs in between then go uncompared although pandoc reads them as paragraphs, and
+  nothing is corrupted. Lines of three dashes or more had these cases already; since two
+  dashes can open a table, `--` has them too.
+- **A table that opens mid-block is followed only under the lines it was seen to open
+  under.** Pandoc 3.9 opens one straight under a heading, a code or div fence, a whole line
+  of block-level HTML or a comment, a setext underline, a pipe-table row, a reference
+  definition or a YAML stop, and `tag` follows it from there; under prose, a list item, a
+  quote, a definition, a caption, a TeX command or an image it opens none. A line of any
+  other kind is taken to open none, and a table pandoc does open under it gets a marker in
+  its rows, visible in the document; `import` then reports that paragraph as deleted in
+  Word and leaves the source alone.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

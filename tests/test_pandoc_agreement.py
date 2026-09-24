@@ -489,6 +489,57 @@ TAGGING = {
         "---------- ----------\nWarfarin   Bleeding\n\nApixaban   Bleeding\n\n"
         "Heparin    HIT\n---------- ----------\n\nAfter.\n"
     ),
+    "a table, a line of dashes that opens nothing, then text": (
+        "Intro.\n\n----------  ----------\nWarfarin    Bleeding\n\nApixaban    Bleeding\n\n"
+        "Heparin     HIT\n----------  ----------\n----------\nText after.\n\nAfter.\n"
+    ),
+    **{
+        f"a {kind} table straight under {name}": (
+            f"Intro.\n\n{above}\n{table}{closer}\n\nAfter.\n"
+        )
+        for kind, table in (
+            (
+                "headless",
+                "----------  ----------\nWarfarin    Bleeding\n\nApixaban    Bleeding\n\n"
+                "Heparin     HIT\n----------  ----------",
+            ),
+            (
+                "headed",
+                "---------- ----------\n Drug      Signal\n---------- ----------\n"
+                "Warfarin   Bleeding\n\nApixaban   Bleeding\n\nHeparin    HIT\n"
+                "---------- ----------",
+            ),
+        )
+        for name, above, closer in (
+            ("a div fence", "::: {#tbl-a}", "\n:::"),
+            ("an ATX heading", "## Table 1", ""),
+            ("an HTML comment", "<!-- the signals -->", ""),
+            ("a div tag", '<div class="x">', "\n</div>"),
+            ("a setext heading", "Table 1\n=======", ""),
+            ("a setext heading underlined with dashes", "Table 1\n-------", ""),
+            ("a code block", "```\ncode\n```", ""),
+            ("a yaml block", "---\ntitle: x\n---", ""),
+            ("a pipe table", "| a | b |\n|---|---|\n| 1 | 2 |", ""),
+            ("a reference definition", "[a]: https://example.org", ""),
+            ("a yaml block closed by dots", "---\ntitle: x\n...", ""),
+        )
+    },
+    # Under these pandoc opens no table, and the rows are paragraphs.
+    **{
+        f"a line of dashes straight under {name}": (
+            f"Intro.\n\n{above}\n----------  ----------\nWarfarin    Bleeding\n\n"
+            "Apixaban    Bleeding\n\nHeparin     HIT\n----------  ----------\n\nAfter.\n"
+        )
+        for name, above in (
+            ("prose", "Some text."),
+            ("a list item", "- item"),
+            ("a block quote", "> quoted"),
+            ("a definition", "Term\n:   definition"),
+            ("a caption", "Table: Signals."),
+            ("a TeX command", "\\newpage"),
+            ("an image", "![Figure](f.png)"),
+        )
+    },
     "a top rule over a line holding only a no-break space": (
         "Intro.\n\n----------  ----------\n\N{NO-BREAK SPACE}\n----------  ----------\n"
         "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
@@ -653,8 +704,12 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
     returned = paragraph_text(pandoc_docx(tagged, tmp_path / "tagged.docx"))
     pieces = re.split(r"\n\s*\n", tagged)
     # A footnote or a link resolves against definitions anywhere in the document, so a
-    # paragraph read on its own is read with them.
-    definitions = "\n\n".join(p for p in pieces if re.match(r" {0,3}\[[^\]]+\]:", p))
+    # paragraph read on its own is read with them - up to a table straight under one.
+    definitions = "\n\n".join(
+        re.split(r"\n(?= {0,3}-+(?:[ \t]+-+)*[ \t]*(?:\n|$))", p)[0]
+        for p in pieces
+        if re.match(r" {0,3}\[[^\]]+\]:", p)
+    )
     for index, piece in enumerate(pieces):
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)
         if marker is None:

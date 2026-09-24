@@ -820,20 +820,24 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
             # What hid this block can end inside it, and raw content opened after that point
             # swallows the blocks that follow just the same.
             resume = max(fence.end if inside else 0, hidden)
-            if not inside and resume == end:
+            if resume == end == hidden:
                 # The block where a table or YAML span ends: something can open after the
-                # span in it. Read from the block's start, which only hides more; missed, a
-                # second table's rows were marked.
-                resume = start
+                # span in it. Read from the block's start, which only hides more, or from
+                # where its code closes; missed, a second table's rows were marked.
+                if not inside:
+                    resume = start
+                elif fence.end < end:
+                    resume = fence.end
             if resume < end:
                 hidden = max(hidden, _raw_end(text, resume, end, closers))
-                # A table can open in it too, on its first line or further down, and is
-                # followed as in any block. A span pandoc does not have, from a line taken
-                # for an opener, ran on to a real table's header underline and ended there;
-                # read only further down, the block missed the real table's own top rule,
-                # and its rows were marked. What seems to open inside code or inside the
+                # A table can open in it too and is followed as in any block: on its first
+                # line or further down, or, when the block starts inside code, under the
+                # code's close - its first line is code. A span pandoc does not have, from a
+                # line taken for an opener, ran on to a real table's header underline and
+                # ended there; read only further down, the block missed the real table's
+                # own top rule, and its rows were marked. What seems to open inside the
                 # span only hides more.
-                table = ruled.end(index)
+                table = ruled.inner_end(index) if inside else ruled.end(index)
                 if table is not None:
                     hidden = max(hidden, ends[table])
             yield index, piece, False

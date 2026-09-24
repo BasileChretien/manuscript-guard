@@ -1743,9 +1743,15 @@ Added by the adversarial review, verified and **not** fixed:
   a line of dashes with text under it, hides the paragraphs down to the next line of
   dashes. Such lines sit inside code, a comment or a table's rows, or in prose such as
   `A -->`, `\end{x}`, `...` or a line opening on `|`. The block where that span ends is
-  read again as any block is, so a real table the span runs into is still followed. Read
-  only for tables opening further down it, the block missed a real table's own top rule,
-  and the table's rows were marked.
+  read again as any block is, or from where its code closes when it starts inside code, so
+  a real table the span runs into is still followed. Read only for tables opening further
+  down it, the block missed a real table's own top rule, and the table's rows were marked.
+  Three layouts are still not covered, all contrived. A span that ends on the underline of
+  a header split by a blank line leaves the table's rows marked. A span that ends on a line
+  of dashes inside a YAML block scalar leaves a marker in the YAML, and the build fails.
+  And a real table that pandoc ends on a `---` inside a code block pairs every later fence
+  differently from `tag`, so a paragraph after it can be marked inside code; that one is
+  older than this reading.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

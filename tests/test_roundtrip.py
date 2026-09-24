@@ -493,7 +493,8 @@ def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
     pandoc does not have. Run on to the next table, it ended on that table's header
     underline, and the block it ended in was read only for tables opening further down it,
     not on its own first line: the real table went unfollowed and its rows were marked.
-    Wherever a span ends, the block is now read as any block is."""
+    The block a span ends in is now read as any block is, or from where its code closes
+    when it starts inside code. DESIGN.md lists the layouts this still misses."""
     from manuscript_guard.roundtrip import tag
 
     headed = (
@@ -507,9 +508,26 @@ def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
         "The flow was A -->\n----------  ----------\nx  y",
         "Text\n++\n----------\nMore.",
     ):
-        text = f"Intro.\n\n{before}\n\nTable: Signals.\n\n{headed}\n\nAfter.\n"
-        marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
-        assert "Apixaban" not in marked and "Heparin" not in marked, (before, marked)
+        # The table under a caption, or straight under the close of code with a blank
+        # line in it, where the block the span ends in starts inside the code.
+        for between in ("Table: Signals.\n\n", f"{FENCE}r\nx <- 1\n\ny <- 2\n{FENCE}\n"):
+            text = f"Intro.\n\n{before}\n\n{between}{headed}\n\nAfter.\n"
+            marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+            assert "Apixaban" not in marked and "Heparin" not in marked, (before, marked)
+
+
+def test_code_that_looks_like_an_opener_hides_nothing_after_its_close() -> None:
+    """A block that starts inside code is read for tables opening after the code closes,
+    not from its first line: that line is code, and read as an opener it hid the
+    paragraphs after the code down to the next line of dashes."""
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"Intro.\n\n{FENCE}yaml\n\n---\n- a\n{FENCE}\nNote under the code.\n\nPara A.\n\n"
+        "Para B.\n\n----------  ----------\nrow a  row b\n----------  ----------\n\nAfter.\n"
+    )
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+    assert marked.count("Para") == 2, marked
 
 
 def test_a_rule_with_a_blank_line_under_it_opens_nothing() -> None:

@@ -581,6 +581,18 @@ TAGGING = {
             ("two plus signs", "Text\n++\n----------\nMore."),
         )
     },
+    **{
+        f"a span taken for a table, ending in a table under code, after {name}": (
+            f"Intro.\n\n{before}\n\n```r\nx <- 1\n\ny <- 2\n```\n---------- ----------\n"
+            " Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+            "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n\nAfter.\n"
+        )
+        for name, before in (
+            ("a line block", "|x| was large.\n----------  ----------\nText."),
+            ("a line of dots", "Text\n...\n----------  ----------\nMore."),
+            ("an arrow", "The flow was A -->\n----------  ----------\nx  y"),
+        )
+    },
     # Under these pandoc opens no table, and the rows are paragraphs.
     **{
         f"a line of dashes straight under {name}": (

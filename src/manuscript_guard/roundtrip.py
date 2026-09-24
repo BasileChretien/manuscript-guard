@@ -480,6 +480,7 @@ def _dash_rule(line: str) -> bool:
 # the closing rule. A YAML block closes on `---` or `...`, and only a YAML block on `...`.
 _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 _YAML_OPEN = re.compile(r" {0,3}---[ \t]*")
+_YAML_KEY = re.compile(r"[ \t]*[\w.-]+[ \t]*:")
 _YAML_CLOSE = re.compile(r" {0,3}(?:---|\.\.\.)[ \t]*")
 
 
@@ -502,7 +503,7 @@ def _ruled_spans(pieces: list[str]) -> dict[int, int]:
     after it to close it closes nothing.
 
     A table closes only on a rule: a row that happens to read `...` is a row. A bare `---`
-    followed by text may open either, so it closes on whichever comes first.
+    followed by a `key:` line may open either, so it closes on whichever comes first.
     """
     tables: dict[int, bool] = {}
     yamls: dict[int, bool] = {}
@@ -514,7 +515,8 @@ def _ruled_spans(pieces: list[str]) -> dict[int, int]:
         tables[index] = _closes_table(lines)
         yamls[index] = _YAML_CLOSE.fullmatch(lines[-1]) is not None
         if _dash_rule(lines[0]) and not tables[index]:
-            opening[index] = "either" if _YAML_OPEN.fullmatch(lines[0]) else "table"
+            yaml = _YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and _YAML_KEY.match(lines[1])
+            opening[index] = "either" if yaml else "table"
     spans: dict[int, int] = {}
     next_table: int | None = None
     next_either: int | None = None

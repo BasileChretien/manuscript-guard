@@ -64,6 +64,11 @@ class Plan:
     #: Identifier -> (file, section): the stretch between headings, tables and figures that
     #: the paragraph belongs to, which is what a move is applied within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
+    #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
+    #: caption, a new paragraph - that the document did not have when it was sent.
+    unidentified: tuple[str, ...] = ()
+    #: How many such paragraphs of the document as sent did not come back as they were.
+    vanished: int = 0
 
     @property
     def empty(self) -> bool:
@@ -74,6 +79,8 @@ class Plan:
             or self.joined
             or self.moved
             or self.misplaced
+            or self.unidentified
+            or self.vanished
         )
 
 
@@ -407,6 +414,20 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
     moved = moves([n for n in rendered if n in set(order)], order)
     misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
     moved = [entry for entry in moved if entry[0] not in set(misplaced)]
+
+    # A paragraph without an identifier is never compared, and it is also what bounds a
+    # section: once a quotation or a list item was reworded it no longer marked where its
+    # section began, a paragraph moved past it read as in order, and import said the
+    # document matched the manuscript. What changed is at least said.
+    unchanged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    unidentified: list[str] = []
+    for block in returned:
+        if block.names or block.table or not block.text:
+            continue
+        if unchanged[block.text]:
+            unchanged[block.text] -= 1
+        else:
+            unidentified.append(block.text)
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -417,13 +438,15 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         sections=sections,
+        unidentified=tuple(unidentified),
+        vanished=sum(missing.values()),
     )
 
 
 _SPLIT = (
-    "it came back with a new paragraph beside it: split in two in Word, or new text written "
-    "next to it. Merging it would replace the whole source paragraph with only part of it. "
-    "Make the split or the addition in the .md."
+    "it came back with a new paragraph beside it: split in two in Word, new text written "
+    "next to it, or a heading, list item or quotation beside it reworded. Merging a split "
+    "would replace the whole source paragraph with only part of it. Make the edit in the .md."
 )
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - an HTML comment, or markup that "

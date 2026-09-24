@@ -409,9 +409,14 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
-        not args.apply and bool(plan.moved or plan.merged)
-    )
+    outstanding = bool(
+        plan.refused
+        or plan.gone
+        or plan.joined
+        or plan.misplaced
+        or plan.unidentified
+        or plan.vanished
+    ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
 
 
@@ -429,9 +434,24 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table or a figure, or into another "
-            "file, changes how many paragraphs a section holds, and import only reorders "
-            "within one; move it in the .md yourself."
+            "    Not applied. A move past a heading, a table, a figure, a list, a quotation "
+            "or anything else without an identifier, or into another file, changes how many "
+            "paragraphs a section holds, and import only reorders within one; move it in the "
+            ".md yourself."
+        )
+
+    if plan.unidentified or plan.vanished:
+        changed = len(plan.unidentified) or plan.vanished
+        print(
+            f"\n{changed} paragraph(s) without an identifier - a heading, a list item, a "
+            f"quotation, a caption or new text - came back different and were not compared:"
+        )
+        for text in plan.unidentified[:12]:
+            print(f"    + {text[:120]}")
+        print(
+            "    Not applied; make these edits in the .md. They also mark where sections "
+            "begin, so a paragraph moved past one of them may not be reported as moved: "
+            "compare the two documents as text before trusting the rest."
         )
 
     if plan.moved:

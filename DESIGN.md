@@ -1240,8 +1240,9 @@ is now planned first, from one reading of each document, and written in one pass
 snapshot of the offsets: every paragraph slot receives the paragraph that now belongs
 there, reworded if it was.
 
-The slots are counted per *section*, the stretch between two headings, tables or figures,
-and not per file. A heading is not a slot, so filling a file's slots in the returned order
+The slots are counted per *section*, the stretch between two headings, tables or figures -
+or, since lists and quotations stopped carrying identifiers, anything else without one - and
+not per file. A heading is not a slot, so filling a file's slots in the returned order
 let a paragraph moved from the Discussion to the Introduction push one paragraph out of
 every section in between, each into the next, with "reordered 1 paragraph(s)" printed and
 the tests comparing `sorted(...)` and seeing nothing. Import cannot change how many
@@ -1288,7 +1289,8 @@ one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the
 carrying the identifier, and a rewording of that first part replaced the whole source
 paragraph with it. Such a paragraph is refused, recognised by the `$$` and, more generally,
 by anything untagged standing between two paragraphs of one section in the document as
-sent. And a paragraph that renders nothing - the example's HTML comment reaches Word as an
+sent. A paragraph with display maths is no longer given an identifier at all, so its edits
+are counted as unexamined; the refusal still guards a document built before that. And a paragraph that renders nothing - the example's HTML comment reaches Word as an
 empty line - has nowhere to put text typed there: merged, it replaced the comment's first
 half, and the second half built into the Methods. Text typed on such a line is refused.
 
@@ -2041,16 +2043,22 @@ Closed since, and why each mattered:
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
   into its paragraph is recognised by its text vanishing from the document and turning up
   in the paragraph; a heading reworded in the same edit is not recognised.
-- **A move is applied only within its section.** A paragraph moved past a heading, table or
-  figure, or into another file, is reported and left where it was. Where each paragraph
-  now sits is read against the headings, tables and figures as the document was sent. An
-  edited or deleted heading is not one of them, so a paragraph that crossed only that
-  heading is not seen to leave its section: with the order unchanged the move is dropped
-  unreported, and with it changed the paragraph goes to the edge of its own section.
+- **A move is applied only within its section.** A paragraph moved past a heading, table,
+  figure, list, quotation or anything else without an identifier, or into another file, is
+  reported and left where it was. Where each paragraph now sits is read against those
+  blocks as the document was sent. An edited or deleted one is not among them, so a
+  paragraph that crossed only that block is not seen to leave its section: with the order
+  unchanged the move is not reported as a move, and with it changed the paragraph goes to
+  the edge of its own section. Since lists and quotations lost their identifiers this is
+  no rare case, so any block without an identifier that came back different is now listed,
+  import no longer says the document matches, and it exits 1 - but the move itself is
+  still not named.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
-  past that text is then refused as a move into another section. Safe, and a refusal.
+  past that text is then refused as a move into another section. Safe, and a refusal. Such
+  a paragraph now carries no identifier, so this arises only for a document built before
+  that change.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

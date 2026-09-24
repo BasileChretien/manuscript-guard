@@ -635,6 +635,46 @@ def tagged_xml(xml: str) -> list[str]:
     return [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p]
 
 
+@needs_pandoc
+def test_an_edit_to_a_paragraph_without_an_identifier_is_not_called_a_match(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A quotation or a list carries no identifier, and a section is bounded by whatever
+    does not. A co-author reworded a quotation and moved the paragraph above it to below it:
+    the moved paragraph read as in order once the quotation's text no longer matched, the
+    quotation was never compared, and import said "the document matches the manuscript on
+    disk" and exited 0 with both edits lost."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    block = (
+        "The analysis rests on three steps.\n\n"
+        "> Disproportionality is a signal, not a measure of risk.\n\n"
+        "A closing paragraph after the quote.\n\n"
+    )
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("# Funding", block + "# Funding", 1),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        moved = next(p for p in tagged if "three steps" in p)
+        closing = next(p for p in tagged if "closing paragraph" in p)
+        xml = xml.replace(moved, "", 1).replace(closing, moved + closing, 1)
+        return xml.replace("not a measure of risk", "never a measure of risk", 1)
+
+    returned = rewrite(document, tmp_path / "quote.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "matches the manuscript" not in out, out
+    assert "never a measure of risk" in out, "the changed quotation is named"
+    assert source.read_text(encoding="utf-8") == before, "nothing it cannot place is applied"
+
+
 def blocks(text: str) -> list[str]:
     """Paragraphs, with their line wrapping ignored: a reworded segment comes back unwrapped."""
     return [" ".join(p.split()) for p in text.split("\n\n") if p.strip()]

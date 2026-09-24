@@ -387,6 +387,9 @@ TAGGING = {
         "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
         "-- ---------- ----------\n\nAfter.\n"
     ),
+    "a rule over text with a line of dots later": (
+        "Before.\n\n---\nText.\n\nP1.\n...\n\nP2.\n\nMethods\n-------\n\nP3.\n"
+    ),
     "yaml block whose first key is table": (
         "Before.\n\n---\ntable: x\nabstract: |\n  a\n\n  b\n...\n\nAfter.\n"
     ),

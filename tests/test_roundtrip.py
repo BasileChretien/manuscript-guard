@@ -265,8 +265,20 @@ DEFINITION_OR_NOT = [
     pytest.param(f"[mail@example.org]: {REGISTRY}", True, id="address-in-label"),
     pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", True, id="wrapped-label"),
     pytest.param(f"[]: {REGISTRY}", True, id="empty-label"),
+    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", True, id="attributes"),
+    pytest.param(f"[reg]: {REGISTRY}\n  \"The registry\"\n  {{.external}}", True, id="next-lines"),
+    pytest.param(f"[a\\]b]: {REGISTRY}", True, id="escaped-bracket"),
+    pytest.param("[josé@example.org]: mailto:jose@example.org", True, id="accented-address"),
+    pytest.param("[^@cap]: A note.", True, id="footnote-with-at"),
     # The words run together into an address: pandoc prints nothing of this line.
     pytest.param("[Methods]: patients were enrolled.", True, id="prose-shaped"),
+    # Words after what pandoc takes for a title, or a bracket in the address, make it prose.
+    pytest.param("[Methods]: patients (n = 200) were enrolled.", False, id="words-after-title"),
+    pytest.param('[Box 1]: Patients described as "frail" were excluded.', False, id="quoted"),
+    pytest.param("[Methods]: see [reg] for the protocol.", False, id="bracket-in-address"),
+    pytest.param("[Note]: [see Figure 2] for this.", False, id="address-is-bracketed"),
+    pytest.param(f"[reg]: <{REGISTRY}> and more words", False, id="words-after-address"),
+    pytest.param(f"[reg]: {REGISTRY}\n(which is public) and more.", False, id="title-then-words"),
     pytest.param("See [Methods] here.", False, id="bracket-inside"),
     pytest.param("[Methods] describes the cohort.", False, id="no-colon"),
     pytest.param(f"[reg] : {REGISTRY}", False, id="space-before-colon"),
@@ -2212,3 +2224,20 @@ def test_import_leaves_a_link_definition_where_it_was(project: Path, tmp_path: P
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     assert f"for details.\n\n{definition}\n\nIt is open.\n" in text
     assert f'Target="{REGISTRY}"' in _docx_part(built(project), "word/_rels/document.xml.rels")
+
+
+@needs_pandoc
+def test_import_merges_prose_that_only_opens_like_a_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """Pandoc gives up on a definition when words follow its title, and prints a paragraph.
+    Taken for a definition anyway, the paragraph lost its identifier, and a co-author's edit
+    to it was dropped while `import` said nothing came back."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "[Note]: patients (all adults) were enrolled.")
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"enrolled.": "recruited."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "patients (all adults) were recruited." in text

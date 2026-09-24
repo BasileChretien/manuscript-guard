@@ -2187,12 +2187,19 @@ Closed since, and why each mattered:
     untagged whole. An edit to that paragraph in Word is only counted among the paragraphs
     that were not compared, and `import` otherwise reports that nothing came back. A blank
     line after the definition avoids it.
-  - *The test is pandoc's rule, nearly.* A block opening `[label]:` is a definition unless
-    the label holds a citation key, which is what pandoc does with `[Methods]: patients were
-    enrolled.` (a definition whose address is the words run together, printed as nothing)
-    and with `[@smith2020]: they found` (a paragraph). Pandoc also rejects a line that goes
-    on after a title, `[a]: b "c" d`, and that prose loses its identifier here. A label
-    nested two brackets deep is a definition that still gets one, and prints as text.
+  - *The test follows pandoc's grammar, and is not pandoc.* A footnote definition is
+    `[^label]:` and anything after it. A link definition is a label holding no citation key,
+    then an address, a title and attributes if it has them, and the end of the line. So
+    `[Methods]: patients were enrolled.` is a definition, its address the words run
+    together, and prints nothing, while `[Methods]: patients (n = 200) were enrolled.` is a
+    paragraph, because words follow what pandoc takes for a title. A first version, caught
+    in review, asked only for `[label]:`, and paragraphs like the second lost their
+    identifiers: an edit to one in Word was dropped, and `import` said nothing came back.
+    What still reads differently: a label holding a code span with a bracket in it, or
+    brackets nested two deep, is a definition that gets an identifier and prints as text.
+    Whether an `@` in a label is a citation key is judged by the character before it, as
+    measured against pandoc 3.9 rather than taken from its parser, so an unusual label such
+    as `["@key"]` can be read the other way.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

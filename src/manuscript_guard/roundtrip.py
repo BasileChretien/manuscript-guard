@@ -241,12 +241,53 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 # A link or footnote definition, `[reg]: https://...` or `[^1]: The note.`, which pandoc
 # reads only at the start of a block. With a marker in front it was a paragraph: every
 # `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
-# definition printed as a line of text, on every build. Pandoc takes almost any line opening
-# this way for one - `[Methods]: patients were enrolled.` is a definition whose address is
-# the words run together, and prints nothing - unless its label holds a citation key, which
-# makes the line a citation: `[@smith2020]: they found` is a paragraph.
-_REFERENCE = re.compile(r"\[(?P<label>(?:[^\[\]]|\[[^\[\]]*\])*)\]:")
-_CITATION_KEY = re.compile(r"(?<![A-Za-z0-9])@[\w{]")
+# definition printed as a line of text, on every build.
+_REFERENCE = re.compile(r"\[(?P<label>(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*)\]:")
+# What pandoc reads as a citation key inside the label, which makes the line a citation:
+# `[@smith2020]: they found` is a paragraph. After a letter, a digit, `.`, `;` or `*` an `@`
+# is not one to pandoc 3.9, which is how `[josé@example.org]:` stays a definition.
+_CITATION_KEY = re.compile(r"(?<![^\W_])(?<![.;*])@[\w{]")
+_UNREAD_IN_LABEL = re.compile(r"\\[!-/:-@\[-`{-~]|`[^`]*`|\[[^\]]*\]")
+
+# What pandoc wants after a link definition's `]:`. The address is `<...>`, or words up to a
+# title, attributes or a bracket; then a title and attributes if there are any, each of them
+# allowed onto the next line; then the end of the line. Almost any words make an address -
+# `[Methods]: patients were enrolled.` is a definition, run together, and prints nothing -
+# but a line that goes on after a title or a bracket is prose: `[Methods]: patients (n =
+# 200) were enrolled.` is a paragraph, and taking it for a definition lost its identifier.
+_GAP = r"[ \t]*\n?[ \t]*"
+# A quote closes a title unless a letter or digit follows it; one that does opens a quote
+# inside the title, which must close in turn.
+_TITLE = "|".join(
+    rf"{q}(?!\s)(?:\\.|[^{q}\\]|{q}(?!\s)(?:\\.|[^{q}\\])*{q}(?![^\W_]))*{q}(?![^\W_])"
+    for q in ('"', "'")
+) + r"|\((?:\\.|[^()\\]|\((?:\\.|[^()\\])*\))*\)"
+_ATTRIBUTES = (
+    r"\{\s*(?:(?:[#.][^\s{}=]+|[^\s{}=]+=(?:\"[^\"]*\"|'[^']*'|[^\s{}]*)|-)\s*)*\}"
+)
+_BRACKETED = r"\[(?:\\.|[^\[\]\\]|\[(?:\\.|[^\[\]\\])*\])*\]"
+_ADDRESS_ENDS = re.compile(rf"[ \t]*(?:{_GAP}(?:{_TITLE})|{_ATTRIBUTES}|{_BRACKETED})")
+_ADDRESS_WORD = re.compile(r"[ \t]*\S+")
+_ANGLED = re.compile(rf"{_GAP}<[^>]*>")
+_TITLE_AFTER = re.compile(rf"{_GAP}(?:{_TITLE})")
+_ATTRIBUTES_AFTER = re.compile(rf"{_GAP}{_ATTRIBUTES}")
+_LINE_END = re.compile(r"[ \t]*(?:\n|\Z)")
+
+
+def _link_definition(rest: str) -> bool:
+    """Whether `rest`, what follows a label's `]:`, completes a link definition."""
+    at = re.match(_GAP, rest).end()
+    if rest.startswith("[", at):
+        return False
+    if angled := _ANGLED.match(rest):
+        at = angled.end()
+    else:
+        while not _ADDRESS_ENDS.match(rest, at) and (word := _ADDRESS_WORD.match(rest, at)):
+            at = word.end()
+    for after in (_TITLE_AFTER, _ATTRIBUTES_AFTER):
+        if found := after.match(rest, at):
+            at = found.end()
+    return _LINE_END.match(rest, at) is not None
 
 
 def _defines(stripped: str) -> bool:
@@ -254,8 +295,14 @@ def _defines(stripped: str) -> bool:
     found = _REFERENCE.match(stripped)
     if found is None:
         return False
-    # Only a key at the label's own level: `[a [@b] c]:` is still a definition.
-    return _CITATION_KEY.search(re.sub(r"\[[^\]]*\]", "", found["label"])) is None
+    label = found["label"]
+    # A footnote takes anything after its colon, and is never read as a citation.
+    if re.fullmatch(r"\^\S+", label):
+        return True
+    # Only a key at the label's own level counts, and not one escaped or in code.
+    if _CITATION_KEY.search(_UNREAD_IN_LABEL.sub("", label)):
+        return False
+    return _link_definition(stripped[found.end() :])
 
 
 def _untagged(stripped: str) -> bool:

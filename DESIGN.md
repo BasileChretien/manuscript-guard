@@ -1380,7 +1380,10 @@ and in a .docx a line is a paragraph, so "Overall, Japanese patients accounted f
 compared with anything (found by a separate review). Each entry shape now has to carry the
 year the way an entry does, "(2019)." or ". 2021." or "2019;393:100", with nothing but names
 before an author-year one, and neither is consulted at all in a file whose reference list
-was found by its heading. The lines a shape accepted are named in the report. An SVG with its
+was found by its heading. Four review rounds of this change each still found a caption some
+shape accepted, and a caption can always be written to fit a shape. So a shape no longer
+decides anything by itself: a line it accepts is compared like any other, and what matches
+nothing is listed apart from the findings, in a section of its own. An SVG with its
 labels drawn as outlines was listed among the audited files, with nothing unmatched in it. A path
 in `--against` that did not exist, or a format the audit does not read, vanished; a typo
 gave "0 output file(s)", every number in the paper reported missing, and exit 0. A .json
@@ -1836,10 +1839,9 @@ Closed since, and why each mattered:
   BMJ's house style, "BMJ 2021;372:n71") or with anything after its pages but a DOI, PMID,
   Epub or availability note, nor a Harvard entry with no full stop after
   "(2019)", nor one whose names are not in the Latin script, so their numbers are
-  reported: noise rather than a pass. The other direction
-  is rarer and worse. A line that opens with a name and a comma and runs through nothing
-  but names to "(2019)." has the shape whatever it is, and its numbers go uncompared, so
-  the report names every line it took for a reference by its shape, under `Not audited`.
+  reported: noise rather than a pass. A caption or sentence that has the shape costs
+  nothing hidden, since the line is still compared; its unmatched numbers are listed in a
+  section of their own, which `--strict` does not count.
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,

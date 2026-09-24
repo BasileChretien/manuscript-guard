@@ -88,10 +88,17 @@ class AuditReport:
     skipped: list[str] = field(default_factory=list)
     #: Stretches of a paper that were read and deliberately not audited: the reference list.
     not_audited: list[str] = field(default_factory=list)
+    #: Numbers found nowhere, on lines taken for reference entries by their shape. Listed
+    #: apart from `unmatched`, where volumes and pages would bury the findings, but listed:
+    #: four review rounds each found a caption some shape accepted.
+    reference_like: list[Candidate] = field(default_factory=list)
 
     @property
     def examined(self) -> int:
-        return len(self.matched) + len(self.unmatched) + self.classified
+        return (
+            len(self.matched) + len(self.unmatched) + len(self.reference_like)
+            + self.classified
+        )
 
 
 def normalise_number(text: str) -> str:
@@ -130,10 +137,14 @@ def normalise_number(text: str) -> str:
 #:
 #: Either bound may carry a sign, "−0.72–−0.30" or "-0.72–0.30", and `_NUMBER` reads a minus
 #: as a sign only where it cannot be the separator.
+#:
+#: Each segment's first digit has one place it can match: no digits before it. Written as
+#: `[\d…]*\d[\d…]*`, the required digit could sit anywhere in a run, and the work multiplied
+#: per segment: 100 s for a 72-character hyphenated token.
 _LABELLED = re.compile(r"^[A-Za-z]{1,3}\s*=\s*")
 _COMPOUND = re.compile(
-    r"^[-−]?[\d.,%\s\xa0]*\d[\d.,%\s\xa0]*"
-    r"(?:[-–—/\xb1:x\xd7][-−]?[\d.,%\s\xa0]*\d[\d.,%\s\xa0]*)+$"
+    r"^[-−]?[.,%\s\xa0]*\d[\d.,%\s\xa0]*"
+    r"(?:[-–—/\xb1:x\xd7][-−]?[.,%\s\xa0]*\d[\d.,%\s\xa0]*)+$"
 )
 
 
@@ -374,13 +385,16 @@ _REFERENCE_ENTRY = re.compile(
 # unclassified number on an indented line quadratic.
 _VANCOUVER_ENTRY = re.compile(
     r"^\s*(?:(?:\[\d{1,4}\]|\d{1,4}[.)])\s*)?"            # "12." / "[12]" / "12)"
-    r"(?:[a-z]{1,3}\s+){0,2}[A-Z][\w'’-]+\s+[A-Z](?:-?[A-Z]){0,3}"  # "Smith J", "van Berg AB"
-    r"[,.](?=\s+(?:[A-Z]|et\s+al\b))"                     # ... then an author or the title
-    r".{0,400}?\.\s+(?:19|20)\d{2}[a-z]?"                 # "Lancet. 2019"
+    rf"(?:[a-z]{{1,3}}\s+){{0,2}}[{_CAPITAL}][\w'’-]+\s+[{_CAPITAL}](?:-?[{_CAPITAL}]){{0,3}}"
+    rf"[,.](?=\s+(?:[{_CAPITAL}]|et\s+al\b))"             # ... then an author or the title
+    # The full stop that ends a journal's name, and not one ending "Dec." or "vs.".
+    r".{0,400}?(?<!Jan)(?<!Feb)(?<!Mar)(?<!Apr)(?<!Jun)(?<!Jul)(?<!Aug)(?<!Sep)(?<!Sept)"
+    r"(?<!Oct)(?<!Nov)(?<!Dec)(?<!vs)\.\s+(?:19|20)\d{2}[a-z]?"  # "Lancet. 2019"
     r"(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"               # "2019 Mar", "2019 Mar 5"
     r";\s?\d+(?:\([^)]{1,20}\))?:\s?"                     # ";393:", ";42(3):", ";393(Suppl 1):"
     r"[A-Za-z]{0,2}\d+(?:[-–][A-Za-z]{0,2}\d+)?"          # "100-10", "e0213", "n71", "S1-S10"
-    r"\.?(?:\s+(?:(?i:doi|https?://|pmid|pmcid|epub|available|published)|\[)[^\n]*)?\s*$"
+    r"\.?(?:\s+(?:(?i:doi\b|https?://|pubmed\b|pmid\b|pmcid\b|epub\b|available\b"
+    r"|published\b)|\[)[^\n]*)?\s*$"
 )
 
 # A Markdown footnote definition. It can sit after the bibliography heading, and it is the
@@ -531,14 +545,9 @@ def audit(
     report.papers = tuple(path for path, _text, _shape in sources)
 
     for path, text, by_shape in sources:
-        shaped: set[int] = set()
         for atom in find_atoms(text, mask(text)):
             if classifier.classify(atom).kind != UNCLASSIFIED:
                 report.classified += 1
-                continue
-            if by_shape and looks_like_reference(atom.line_text):
-                report.classified += 1
-                shaped.add(atom.line)
                 continue
             candidate = Candidate(
                 text=atom.text,
@@ -550,34 +559,34 @@ def audit(
             # Every number the atom carries has to be in the outputs, not just one of them:
             # an interval is accounted for when both its bounds are, and "0.72-0.99" with
             # only 0.72 published is exactly the discrepancy this command is for.
-            if all(part in values for part in parts_of(atom.text)):
+            found = all(part in values for part in parts_of(atom.text))
+            # A line shaped like a reference entry is compared like any other. Its numbers
+            # are most likely a volume, a page and a year, so a miss is listed apart from
+            # the findings rather than among them; a hit counts as a reference. The shape
+            # used to decide instead, and a caption it accepted hid every number it held.
+            if by_shape and looks_like_reference(atom.line_text):
+                if found:
+                    report.classified += 1
+                else:
+                    report.reference_like.append(candidate)
+            elif found:
                 report.matched.append(candidate)
             else:
                 report.unmatched.append(candidate)
-        if shaped:
-            report.not_audited.append(_shaped_note(path, sorted(shaped)))
 
     return report
 
 
-def _shaped_note(path: Path, lines: list[int]) -> str:
-    """Which lines were taken for reference entries by their shape, and so not compared.
-
-    Named rather than folded into a count: a shape can be wrong, and the number it hides is
-    never compared, so every line has to be where a reader can check it. The first version
-    stopped after twelve, and the thirteenth was the one hiding a number. Lines no more than
-    two apart are shown as a range, since entries are separated by blank lines.
-    """
+def _ranges(numbers: list[int]) -> str:
+    """"3-25, 29": sorted line numbers, with any no more than two apart shown as a range,
+    since reference entries are usually separated by blank lines."""
     runs: list[list[int]] = []
-    for line in lines:
-        if runs and line - runs[-1][-1] <= 2:
-            runs[-1].append(line)
+    for number in numbers:
+        if runs and number - runs[-1][-1] <= 2:
+            runs[-1].append(number)
         else:
-            runs.append([line])
-    shown = ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
-    if len(lines) == 1:
-        return f"{path.name}: line {shown}, read as a reference entry by its shape"
-    return f"{path.name}: lines {shown}, read as reference entries by their shape"
+            runs.append([number])
+    return ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
 
 
 # --------------------------------------------------------------------------- discrimination
@@ -630,9 +639,14 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
         f"Audited {len(report.papers)} file(s) against {len(report.backing_values)} distinct "
         f"numbers from {len(report.backing_files)} output file(s)."
     )
+    apart = (
+        f", and {len(report.reference_like)} not found on lines read as reference entries"
+        if report.reference_like
+        else ""
+    )
     lines.append(
         f"{report.examined} numeric tokens: {report.classified} conventions or references, "
-        f"{len(report.matched)} found in the outputs, {len(report.unmatched)} not found."
+        f"{len(report.matched)} found in the outputs, {len(report.unmatched)} not found{apart}."
     )
 
     for heading, items in (
@@ -658,6 +672,24 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
                 lines.append(f"      {candidate.context}")
             if len(items) > 40:
                 lines.append(f"    (+{len(items) - 40} more)")
+
+    if report.reference_like:
+        lines.append("")
+        lines.append(
+            "NOT FOUND, ON LINES READ AS REFERENCE ENTRIES — mostly volumes, pages and years; "
+            "a caption or sentence misread as an entry shows up here (not counted by --strict):"
+        )
+        by_line: dict[Path, dict[int, list[str]]] = {}
+        for candidate in report.reference_like:
+            numbers = by_line.setdefault(candidate.source, {})
+            numbers.setdefault(candidate.line, []).append(candidate.text)
+        for source, numbers in by_line.items():
+            lines.append(f"  {show(source)}")
+            ordered = sorted(numbers)
+            for number in ordered[:40]:
+                lines.append(f"    line {number}: {', '.join(numbers[number])}")
+            if len(ordered) > 40:
+                lines.append(f"    (+{len(ordered) - 40} more lines: {_ranges(ordered[40:])})")
 
     lines.append("")
     lines.append("What a match is worth here:")

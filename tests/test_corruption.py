@@ -1174,3 +1174,28 @@ def test_audit_does_not_take_a_caption_for_a_numbered_reference(tmp_path: Path) 
     )
     unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
     assert "413" in unmatched and "9.99" in unmatched, unmatched
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Figure A. Events 413 of 8,393 from Jan. 2017 to Dec. 2019; 2:1.",
+        "Figure A. Enrolment Jan. 2017 to Dec. 2019; 2:1 [@smith2019]. Events 413 of 8,393.",
+    ],
+)
+def test_audit_never_drops_a_number_on_a_line_read_as_a_reference(
+    tmp_path: Path, caption: str
+) -> None:
+    """Four review rounds each found a caption the reference shapes accepted, and every
+    number on an accepted line went uncompared. However the shapes are tuned, a caption can
+    be written to fit one, so an accepted line is now compared like any other and its
+    unmatched numbers are listed apart."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 8393, "cases": 412}')
+    paper = tmp_path / "supplement.md"
+    paper.write_text(caption + "\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    shown = [c.text for c in [*report.unmatched, *report.reference_like]]
+    assert "413" in shown, shown
+    assert "413" in render(report, measure_discrimination(report.backing_values))

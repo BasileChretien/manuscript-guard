@@ -534,9 +534,9 @@ def test_an_output_with_nul_bytes_and_no_bom_is_named_not_misread(tmp_path: Path
     assert any("out.txt" in item and "NUL" in item for item in skipped)
 
 
-def test_lines_read_as_references_by_their_shape_are_named(tmp_path: Path) -> None:
-    """A shape can be wrong, and a number it hides is never compared, so the report says
-    which lines it took for reference entries instead of folding them into a count."""
+def test_numbers_on_lines_read_as_references_are_listed_apart(tmp_path: Path) -> None:
+    """A shape can be wrong, so what it accepts is compared like anything else and reported
+    in a section of its own, where volume and page numbers do not bury the findings."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     paper = tmp_path / "paper.md"
@@ -544,7 +544,10 @@ def test_lines_read_as_references_by_their_shape_are_named(tmp_path: Path) -> No
         "We saw 77 cases.\n\nSmith J, Jones K. Title. Lancet. 2019;393:100-10.\n", "utf-8"
     )
     report = audit([paper], [outputs])
-    assert any("line 3" in item and "shape" in item for item in report.not_audited)
+    assert report.unmatched == []
+    assert {c.line for c in report.reference_like} == {3}
+    rendered = render(report, measure_discrimination(report.backing_values))
+    assert "READ AS REFERENCE ENTRIES" in rendered
 
 
 def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
@@ -560,9 +563,9 @@ def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
     assert time.perf_counter() - started < 0.5
 
 
-def test_every_line_read_as_a_reference_by_shape_is_named(tmp_path: Path) -> None:
-    """The note stopped after twelve line numbers, so a thirteenth, the one hiding a number,
-    was never named."""
+def test_a_number_on_a_line_misread_as_a_reference_is_still_shown(tmp_path: Path) -> None:
+    """The first version named the lines and never compared their numbers, and a later one
+    stopped naming them after twelve: the thirteenth was the one hiding a number."""
     outputs = tmp_path / "out.json"
     outputs.write_text('{"n": 77}', encoding="utf-8")
     entries = "\n\n".join(
@@ -575,8 +578,7 @@ def test_every_line_read_as_a_reference_by_shape_is_named(tmp_path: Path) -> Non
         encoding="utf-8",
     )
     report = audit([paper], [outputs])
-    note = next(item for item in report.not_audited if "shape" in item)
-    assert "lines 3-25, 29," in note, note
+    assert any(c.text == "9.99" and c.line == 29 for c in report.reference_like)
 
 
 @pytest.mark.parametrize(
@@ -632,4 +634,27 @@ def test_indented_prose_does_not_stall_the_entry_shape() -> None:
 )
 def test_a_numbered_entry_with_a_trailing_note_is_recognised(entry: str) -> None:
     """The shape now ends at the pages, so what may follow them is named."""
+    assert looks_like_reference(entry)
+
+
+def test_a_long_chain_of_numbers_does_not_stall_the_interval_split() -> None:
+    """The digit each segment requires could be placed in many ways, so the work multiplied
+    per segment: 100 s for a 72-character hyphenated token."""
+    import time
+
+    started = time.perf_counter()
+    parts_of("12345-" * 11 + "12345a")
+    parts_of("1.23/" * 14 + "1.23mg")
+    parts_of("1" * 4000)
+    assert time.perf_counter() - started < 0.5
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Østergaard L, Smith J. Title. Lancet. 2019;393:100-10.",
+        "Smith J. Title. Lancet. 2019;393:100-10. PubMed PMID: 12345678.",
+    ],
+)
+def test_a_numbered_entry_named_in_known_gaps_as_recognised_is(entry: str) -> None:
     assert looks_like_reference(entry)

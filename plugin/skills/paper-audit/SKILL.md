@@ -107,9 +107,10 @@ Only when there is no such heading is a line taken for a reference entry by its 
 only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
 2021.", or the numbered styles' "Smith J, Jones K. … 2019;393:100-10.". A Harvard entry with
 no full stop after "(2019)", or a book, web page or online-first article in a numbered
-style, is not recognised, and its numbers show up as unmatched. The shape can also accept a
-line that is not a reference, so the report names every line it took for one, under
-`Not audited`. Read those lines.
+style, is not recognised, and its numbers show up as unmatched. A line taken for an entry is
+still compared: numbers on it found nowhere are listed apart, under `NOT FOUND, ON LINES READ
+AS REFERENCE ENTRIES`, which `--strict` does not count. Most are volumes and pages. Read the
+list anyway, because a caption can have the same shape.
 
 ## 5. Say what a clean report does not mean
 
@@ -117,11 +118,10 @@ A match means the number appears somewhere in the outputs. It does not mean it a
 the right place: a value correct in the abstract and wrong in the Results passes. An
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
-includes `p < 0.05` anywhere in the text, the lines the report lists under `Not audited`,
-and, in a paper with no references heading, any line shaped like a reference entry
-(section 4). Conventions and lines taken for references by their shape are counted as
-"conventions or references"; the numbers on a cut reference list are not counted at all.
-Describe all of them as not checked, never as matched.
+includes `p < 0.05` anywhere in the text and the lines the report lists under
+`Not audited`. Conventions, and numbers on lines taken for reference entries that happened to
+match, are counted as "conventions or references"; the numbers on a cut reference list are
+not counted at all. Describe all of them as not checked, never as matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

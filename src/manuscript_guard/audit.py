@@ -444,10 +444,10 @@ def bibliography_spans(
     reference list was read as prose.
 
     `headings` says which lines are headings when the text cannot: a .docx read as plain text
-    knows them only from paragraph styles. Omitted, they are read as Markdown, and nothing
-    pandoc does not print as text starts a list: a line in a fenced block, an HTML comment
-    or the front matter is code, a note or metadata, whatever it says. `cells` are lines
-    inside a table, where "References" is a column header and not a heading.
+    knows them only from paragraph styles. Omitted, they are read as Markdown, and a line in
+    a fenced block, an HTML comment or the front matter does not start a list, whatever it
+    says: it is code, a note or metadata. `cells` are lines inside a table, where
+    "References" is a column header and not a heading.
     """
     lines = text.split("\n")
     if headings is None:

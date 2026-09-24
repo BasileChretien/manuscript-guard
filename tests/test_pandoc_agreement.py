@@ -26,6 +26,7 @@ import subprocess
 import pytest
 
 from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.sections import headings
 
 PANDOC = shutil.which("pandoc")
@@ -175,6 +176,43 @@ def pandoc_code_text(markdown: str) -> str:
 
     walk(json.loads(finished.stdout)["blocks"])
     return "\n".join(blocks)
+
+
+# ---------------------------------------------------------------- front matter
+
+FRONT_MATTER_CASES = {
+    "closed by dashes": "---\ntitle: T\n---\n\nProse 9.99.\n",
+    "closed by dots": "---\ntitle: T\n...\n\nProse 9.99.\n",
+    "trailing spaces on both delimiters": "--- \ntitle: T\n---  \n\nProse 9.99.\n",
+    "a blank line after the opening": "---\n\ntitle: T\n---\n\nProse 9.99.\n",
+    "a line of spaces after the opening": "---\n  \ntitle: T\n---\n\nProse 9.99.\n",
+    "a rule, prose, and a rule": "---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+}
+
+
+def pandoc_meta(markdown: str) -> dict:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)["meta"]
+
+
+@pytest.mark.parametrize("name", sorted(FRONT_MATTER_CASES))
+def test_the_toolkit_finds_the_front_matter_pandoc_reads(name: str) -> None:
+    """The gates mask the front matter and the build strips it, both where `FRONTMATTER`
+    says it ends. Taking too much hides prose that prints from every gate; the build having
+    a pattern of its own let G2 read a heading the document never printed."""
+    markdown = FRONT_MATTER_CASES[name]
+    toolkit = FRONTMATTER.match(markdown) is not None
+    assert toolkit == bool(pandoc_meta(markdown)), (
+        f"{name}: pandoc {'reads' if not toolkit else 'does not read'} front matter here; "
+        f"the toolkit thinks the opposite"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(FENCE_CASES))

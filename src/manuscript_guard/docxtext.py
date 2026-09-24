@@ -45,6 +45,21 @@ _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
 _PICTURES = {W + "drawing", W + "pict", W + "object"}
 
+#: Whitespace that is layout, not text: a source line wrapped by its author, a tab or a line
+#: break in Word. A no-break space is not in it. Read as `\s`, one came back as a plain space,
+#: so a merge could not carry it and refused every edited stretch that held one - and Word's
+#: French AutoCorrect puts one before `:` and inside « », and authors put one in "5 mg".
+_LAYOUT = re.compile(r"[ \t\n\r\f\v]+")
+
+
+def spaced(text: str) -> str:
+    """Runs of layout whitespace as one space; every other space kept as the character it is.
+
+    The ends are left alone. A paragraph's own are stripped by its reader, with every kind of
+    space: the source paragraph is spliced without them, so they are not its text either.
+    """
+    return _LAYOUT.sub(" ", text)
+
 
 class DocumentUnreadable(Exception):
     """The file is not a Word document this module can read safely."""
@@ -56,7 +71,8 @@ class Block:
 
     #: The paragraph identifiers it carries. More than one means paragraphs were joined.
     names: tuple[str, ...] = ()
-    #: What it says, whitespace-normalised, with every tracked change accepted.
+    #: What it says, with every tracked change accepted: layout whitespace as single spaces,
+    #: a no-break space as itself. See `spaced`.
     text: str = ""
     #: A table or a figure: a block that is not prose, and not compared.
     table: bool = False
@@ -91,7 +107,7 @@ def _text(element: ET.Element) -> str:
             walk(child)
 
     walk(element)
-    return re.sub(r"\s+", " ", "".join(out)).strip()
+    return spaced("".join(out)).strip()
 
 
 def runs_on(paragraph: ET.Element) -> bool:
@@ -188,7 +204,7 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
         return []
     kept = [p for p in run if p.text or p is run[-1]]
     names = tuple(dict.fromkeys(n for p in kept for n in p.names))
-    text = re.sub(r"\s+", " ", " ".join(p.text for p in kept if p.text)).strip()
+    text = spaced(" ".join(p.text for p in kept if p.text)).strip()
     return [Block(names=names, text=text)]
 
 
@@ -215,5 +231,5 @@ def comment_texts(document: Path) -> list[tuple[dict[str, str], str]]:
     for comment in root.iter(W + "comment"):
         attributes = {key.removeprefix(W): value for key, value in comment.attrib.items()}
         text = " ".join(_text(p) for p in comment.iter(W + "p"))
-        out.append((attributes, re.sub(r"\s+", " ", text).strip()))
+        out.append((attributes, spaced(text).strip()))
     return out

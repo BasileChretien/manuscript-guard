@@ -484,3 +484,10 @@ def test_following_the_refusal_to_restamp_leads_somewhere(project: Path, capsys)
 
     assert main([*args, "--round", "3"]) == 0
     assert main(["check", str(project), "--submission"]) == 0, capsys.readouterr().out
+
+
+def test_the_stale_hint_is_a_command_that_runs(project: Path) -> None:
+    """The hint left out --verdict, which the command requires, so following it exited 2."""
+    revise(project)
+    stale = next(f for f in report_for(project).findings if f.code == "review-stale")
+    assert "--verdict" in stale.hint

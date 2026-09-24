@@ -545,3 +545,48 @@ def test_lines_read_as_references_by_their_shape_are_named(tmp_path: Path) -> No
     )
     report = audit([paper], [outputs])
     assert any("line 3" in item and "shape" in item for item in report.not_audited)
+
+
+def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
+    """Five optional whitespace runs in a row backtracked polynomially: 26 s for one line of
+    the kind `pdftotext -layout` writes."""
+    import time
+
+    from manuscript_guard.audit import is_bibliography_heading
+
+    started = time.perf_counter()
+    for line in (" " * 200 + "references" + " " * 200 + "x", "References" + " " * 300 + "12"):
+        assert not is_bibliography_heading(line)
+    assert time.perf_counter() - started < 0.5
+
+
+def test_every_line_read_as_a_reference_by_shape_is_named(tmp_path: Path) -> None:
+    """The note stopped after twelve line numbers, so a thirteenth, the one hiding a number,
+    was never named."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    entries = "\n\n".join(
+        f"Smith{i} J, Jones K. Title. Lancet. 2019;393:{i}-10." for i in range(1, 13)
+    )
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77.\n\n{entries}\n\n## Appendix\n\n"
+        "Tanaka, Suzuki and Sato (2019). The sensitivity estimate was 9.99.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    note = next(item for item in report.not_audited if "shape" in item)
+    assert "lines 3-25, 29," in note, note
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Smith, J., Østergaard, K. (2019). Hepatic injury. Drug Safety, 42, 1-9.",
+        "Éric, M., & Jones, K. (2019). Hepatic injury. Drug Safety, 42, 1-9.",
+        "Smith, J., dos Santos, A. (2019). Hepatic injury. Drug Safety, 42, 1-9.",
+        "Smith, J., d'Alembert, A. (2019). Hepatic injury. Drug Safety, 42, 1-9.",
+    ],
+)
+def test_an_entry_with_accented_or_particled_names_is_recognised(entry: str) -> None:
+    assert looks_like_reference(entry)

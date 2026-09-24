@@ -94,8 +94,10 @@ Each unmatched number is one of these, and only the first is what you are lookin
 
 A reference list starts at a line that is only a heading such as `References`,
 `Reference list`, `Bibliography`, `Works cited` or `Literature cited`, with or without a
-leading `#`, a number (`5.`, `5)`, or a bare `5` before a capitalised heading), bold, or a
-trailing colon. A table cell reading `References` is a column header, not a heading. The
+leading `#`, a number (`5`, `5.`, `5)`), bold, or a trailing colon. A line the document does
+not mark as a heading (a Markdown `#` or underline, a heading style in a `.docx`) also has to
+be capitalised and not end in a full stop, so a wrapped "…duplicate / references." is prose.
+A table cell reading `References` is a column header, not a heading. The
 list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
 Every such list is cut, and the report names the lines under `Not audited`. Check each
 range. In a `.docx` whose headings are only bold text, the list runs to the end of the body,

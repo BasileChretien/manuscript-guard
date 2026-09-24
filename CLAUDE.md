@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # 1157 tests, ~11 min (R, Zotero and Claude Code tests skip if absent)
+pytest -q                    # 1166 tests, ~10 min (R, Zotero and Claude Code tests skip if absent)
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```

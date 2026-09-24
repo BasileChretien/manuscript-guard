@@ -157,6 +157,22 @@ def _numbers_in(text: str) -> set[str]:
     return {normalise_number(m.group(0)) for m in _NUMBER.finditer(_OPAQUE.sub(" ", text))}
 
 
+def _json_values(node: object) -> list[str]:
+    """Every key, string and number in a parsed JSON document, as text.
+
+    Not a re-serialisation. `json.dumps` escaped "β" as "\\u03b2", which put 3 and 2 in the
+    backing set, and wrote a tab inside a string as the two characters "\\t", so the "t"
+    before "-0.51" stopped the minus being read as a sign and 0.51 in a paper matched.
+    """
+    if isinstance(node, dict):
+        return [part for key, value in node.items() for part in [str(key), *_json_values(value)]]
+    if isinstance(node, list):
+        return [part for item in node for part in _json_values(item)]
+    if isinstance(node, bool) or node is None:
+        return []
+    return [str(node)]
+
+
 class UnreadableText(ValueError):
     """A file that holds text in no encoding the audit can name."""
 
@@ -214,9 +230,7 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
             raw = read_text(path)
             if suffix == ".json":
                 try:
-                    # Unescaped: with `ensure_ascii` "β" became "β", and its digits
-                    # joined the backing set as 3 and 2.
-                    text = json.dumps(json.loads(raw), ensure_ascii=False)
+                    text = "\n".join(_json_values(json.loads(raw)))
                 except ValueError:
                     # JSON Lines is the usual reason, and its numbers are all there as text.
                     text = raw
@@ -269,28 +283,35 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
 # there to the next heading is page ranges, volume numbers and years belonging to other
 # people's papers: not the author's claims, and reporting them buries the findings that
 # matter.
+#
+# Everything after the heading word is one character class under one quantifier. The first
+# version had five optional whitespace runs in a row there, and a line that began with the
+# word and failed later backtracked through every way of dividing its spaces between them:
+# 26 s for one line of the kind `pdftotext -layout` writes.
 _BIBLIOGRAPHY = re.compile(
-    r"^\s*(?:#+\s*)?(?:(?P<numbered>\d+[.)])\s*|(?P<bare>\d+)\s+)?[*_]{0,2}\s*"
+    r"^\s*(?P<hashes>#+\s*)?(?:(?P<numbered>\d+[.)])|(?P<bare>\d+)(?=\s))?[\s*_]*"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
     r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
-    r"\s*[*_]{0,2}\s*(?P<stop>[:.]?)\s*[*_]{0,2}\s*(?:\|\s*)*$",
+    r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
 )
 
 
-def is_bibliography_heading(line: str) -> bool:
-    """A bibliography heading, including a bare-numbered one only where it reads as one.
+def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
+    """A bibliography heading: a line that is marked as a heading, or has a heading's shape.
 
-    "5 References" is a heading. "12 references." is the end of a sentence that a hard wrap
-    left on a line of its own, and taking it for a heading hid the rest of the section: so a
-    bare number needs a capital and no full stop.
+    `marked` is for a line the document itself calls a heading, a Markdown `#` or setext
+    heading or a styled paragraph in a .docx. Any other line has to look like one:
+    capitalised, and not ending in a full stop. "12 references." and "references." are where
+    a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
+    the section.
     """
     found = _BIBLIOGRAPHY.match(line)
     if not found:
         return False
-    if found.group("bare"):
-        return found.group("word")[0].isupper() and found.group("stop") != "."
-    return True
+    if marked or found.group("hashes"):
+        return True
+    return found.group("word")[0].isupper() and "." not in found.group("tail")
 
 
 # A reference-list entry, recognised by its shape rather than by a heading. citeproc appends
@@ -310,15 +331,20 @@ def is_bibliography_heading(line: str) -> bool:
 #
 # Each token of the author list is unambiguous, one separator character or one whole word,
 # so a line that fails costs a single pass rather than a backtracking search.
+# Capitals from the Latin script, not only ASCII: "Østergaard", "Éric". Latin Extended-A
+# mixes both cases, so a word starting with one of its small letters also counts, which at
+# worst accepts a name.
+_CAPITAL = "A-Z\u00c0-\u00d6\u00d8-\u00de\u0100-\u017e"
 _AUTHOR_LIST = (
     r"(?:[\s,.&]"
-    r"|[A-Z][\w'’-]*(?![\w'’-])"
-    r"|(?:and|et\s+al|van|von|der|den|de|du|da|di|del|la|le)(?![\w'’-]))*?"
+    rf"|[{_CAPITAL}][\w'’-]*(?![\w'’-])"
+    r"|(?:and|et\s+al|van|von|der|den|de|du|da|das|di|do|dos|del|la|le)(?![\w'’-])"
+    rf"|d['’](?=[{_CAPITAL}]))*?"
 )
 _REFERENCE_ENTRY = re.compile(
-    r"^\s*[A-Z][\w'’-]+,\s+"                                         # "Fictional,"
-    r"(?:[A-Z]\.(?:\s?-?[A-Z]\.)*(?=\s*[,&(]|\s+and\s|\s+(?:19|20)\d{2})"  # "J. A." then more
-    r"|[A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"     # "Anne," "Anne and"
+    rf"^\s*[{_CAPITAL}][\w'’-]+,\s+"                                 # "Fictional,"
+    rf"(?:[{_CAPITAL}]\.(?:\s?-?[{_CAPITAL}]\.)*(?=\s*[,&(]|\s+and\s|\s+(?:19|20)\d{{2}})"
+    rf"|[{_CAPITAL}][\w'’-]+(?:\s+[{_CAPITAL}][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"
     + _AUTHOR_LIST
     + r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|(?:\.|(?<=\.))\s+(?:19|20)\d{2}[a-z]?\.)",
 )
@@ -376,11 +402,15 @@ def bibliography_spans(
     last = len(lines) - text.endswith("\n")
     spans: list[tuple[int, int]] = []
     for start, line in enumerate(lines):
-        if start in cells or not is_bibliography_heading(line):
+        if start in cells or not is_bibliography_heading(line, marked=start in headings):
             continue
         if spans and start < spans[-1][1]:
             continue
-        after = (i for i in sorted(headings) if i > start and not is_bibliography_heading(lines[i]))
+        after = (
+            i
+            for i in sorted(headings)
+            if i > start and not is_bibliography_heading(lines[i], marked=True)
+        )
         spans.append((start, next(after, last)))
     return spans
 
@@ -509,9 +539,17 @@ def _shaped_note(path: Path, lines: list[int]) -> str:
     """Which lines were taken for reference entries by their shape, and so not compared.
 
     Named rather than folded into a count: a shape can be wrong, and the number it hides is
-    never compared, so the lines have to be where a reader can check them.
+    never compared, so every line has to be where a reader can check it. The first version
+    stopped after twelve, and the thirteenth was the one hiding a number. Lines no more than
+    two apart are shown as a range, since entries are separated by blank lines.
     """
-    shown = ", ".join(str(n) for n in lines[:12]) + (" …" if len(lines) > 12 else "")
+    runs: list[list[int]] = []
+    for line in lines:
+        if runs and line - runs[-1][-1] <= 2:
+            runs[-1].append(line)
+        else:
+            runs.append([line])
+    shown = ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
     if len(lines) == 1:
         return f"{path.name}: line {shown}, read as a reference entry by its shape"
     return f"{path.name}: lines {shown}, read as reference entries by their shape"

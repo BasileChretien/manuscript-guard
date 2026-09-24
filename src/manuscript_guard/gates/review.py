@@ -372,8 +372,8 @@ def _check_round(
                     path=path,
                     context=f"reviewed {document['reviewed_on']} by {document['reviewed_by']}",
                     hint="the text has changed since. Record a further round that reads it "
-                    "as it stands (`manuscript-guard review --record <reviewer> --round "
-                    "<n>`); once that round is complete it supersedes this one",
+                    "as it stands (`manuscript-guard review --record <reviewer> --round <n> "
+                    "--verdict <verdict>`); once that round is complete it supersedes this one",
                 )
             )
 

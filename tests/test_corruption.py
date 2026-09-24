@@ -1121,3 +1121,35 @@ def test_audit_reads_an_appendix_after_the_references_in_a_crlf_file(tmp_path: P
         b"\r\n\r\nAppendix\r\n--------\r\n\r\nThe estimate was 4.65.\r\n"
     )
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["4.65"]
+
+
+def test_audit_does_not_take_a_wrapped_sentence_end_for_a_references_heading(
+    tmp_path: Path,
+) -> None:
+    """"references." alone on a line is where a hard wrap left the end of a sentence."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"screened": 1204, "kept": 412}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "## Results\n\nWe screened 1,204 records and kept 412 after removing duplicate\n"
+        "references.\nThe pooled reporting odds ratio was 9.99.\n\n## Discussion\n\nText.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+def test_audit_keeps_the_sign_of_a_number_inside_a_json_string(tmp_path: Path) -> None:
+    """Re-serialised, a tab in a string became the text "\t", and the "t" before "-0.51"
+    stopped the minus being read as a sign: 0.51 in the paper matched."""
+    import json as json_module
+
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "out.json"
+    outputs.write_text(json_module.dumps({"table": "term\tlog_ror\nage\t-0.51"}), "utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("The log reporting odds ratio for age was 0.51.\n", encoding="utf-8")
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["0.51"]

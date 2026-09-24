@@ -420,7 +420,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
     outstanding = bool(
-        plan.refused or plan.gone or plan.joined or plan.misplaced or plan.lost
+        plan.refused or plan.gone or plan.joined or plan.misplaced or plan.lost or plan.strayed
     ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
 
@@ -440,9 +440,19 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {opening(name)}")
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
-            "a table, a figure, another file, an HTML comment (an empty line in Word) or a "
-            "`:::` or code fence with no blank line above it ends one. Move it in the .md "
-            "yourself."
+            "a table, a figure, another file, or a paragraph it holds in place ends one: an "
+            "HTML comment (an empty line in Word), or a paragraph with a fence or `</div>` "
+            "directly under it. Move it in the .md yourself."
+        )
+
+    if plan.strayed:
+        print(f"{len(plan.strayed)} heading(s), table(s) or figure(s) came back somewhere else:")
+        for kind, text in plan.strayed:
+            what = f"the heading or caption '{text[:80]}'" if kind == "text" else f"a {kind}"
+            print(f"    {what}")
+        print(
+            "    Not applied: each goes where the .md puts it. Move the heading, or the "
+            "table's or figure's placeholder, in the .md yourself."
         )
 
     if plan.lost:

@@ -2416,6 +2416,150 @@ def test_no_move_carries_a_fence_line_with_it(tmp_path: Path) -> None:
     assert path.read_text(encoding="utf-8") == before
 
 
+def _held_between_headings(tmp_path: Path):
+    """'# A' holding a div whose last paragraph runs into its fence, then a comment across a
+    blank line; '# B' holding two paragraphs."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = (
+        "# A\n\n::: {.note}\nAlpha, inside the div.\n\nZeta, last inside the div.\n:::\n\n"
+        "<!--\nA note,\n\ncarried on.\n-->\n\n# B\n\nBeta one.\n\nBeta two.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {
+        "z": "Zeta, last inside the div.\n:::",
+        "c1": "<!--\nA note,",
+        "c2": "carried on.\n-->",
+        "b1": "Beta one.",
+        "b2": "Beta two.",
+    }
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {
+        "z": Block(("z",), "Zeta, last inside the div."),
+        "c1": Block(("c1",), ""),
+        "b1": Block(("b1",), "Beta one."),
+        "b2": Block(("b2",), "Beta two."),
+    }
+    heading_a, heading_b = Block((), "A"), Block((), "B")
+    alpha = Block((), "Alpha, inside the div.")
+    sent = [heading_a, alpha, b["z"], b["c1"], heading_b, b["b1"], b["b2"]]
+    return path, text, known, b, heading_a, alpha, heading_b, sent
+
+
+@pytest.mark.parametrize(
+    "dragged", ["fenced-below-the-next-heading", "fenced-to-the-end", "empty-line-elsewhere"]
+)
+def test_a_paragraph_held_in_place_that_was_dragged_is_reported(
+    tmp_path: Path, dragged: str
+) -> None:
+    """A paragraph held in place took part in the ordering as an anonymous anchor, and was
+    dropped from the moves as well. Dragged past a heading, it was dropped without a word:
+    "nothing came back", exit 0. Dragged to the end of the next section, the paragraph it
+    passed was reported as reordered, and nothing was written."""
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, b, heading_a, alpha, heading_b, sent = _held_between_headings(tmp_path)
+    if dragged == "fenced-below-the-next-heading":
+        returned, crossed = [heading_a, alpha, b["c1"], heading_b, b["z"], b["b1"], b["b2"]], "z"
+    elif dragged == "fenced-to-the-end":
+        returned, crossed = [heading_a, alpha, b["c1"], heading_b, b["b1"], b["b2"], b["z"]], "z"
+    else:
+        returned, crossed = [heading_a, alpha, b["z"], heading_b, b["b1"], b["c1"], b["b2"]], "c1"
+
+    plan = plan_import(known, sent, returned)
+    assert plan.misplaced == (crossed,)
+    assert not plan.moved, "nothing is reported as reordered that will not be"
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_split_beside_a_paragraph_held_in_place_is_still_refused(tmp_path: Path) -> None:
+    """A paragraph that reaches Word in parts was recognised by untagged text between it and
+    the next paragraph of its section. A paragraph held in place is a section of its own, so a
+    one-line comment after it hid the split, and a rewording of the first part deleted the
+    rest: a definition, or a box written as an HTML div."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {"a": "Alpha text here and the rest of it.", "c": "<!-- a note -->"}
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    sent = [Block(("a",), "Alpha text here"), Block((), "and the rest of it."), Block(("c",), "")]
+    returned = [Block(("a",), "Alpha text here, reworded"), sent[1], sent[2]]
+
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged and [r.name for r in plan.refused] == ["a"]
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_a_comment_whose_continuation_opens_with_a_heading_is_not_split_by_a_move(
+    tmp_path: Path,
+) -> None:
+    """A paragraph opening a comment was held only when the part of the comment after the
+    blank line was the very next paragraph of source. A heading inside the comment came
+    between them, and swapping the paragraph with the one before it wrote that one inside the
+    comment, exit 0."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    text = (
+        "# Intro\n\nFirst paragraph.\n\nSecond paragraph. <!-- an earlier draft:\n\n"
+        "## Earlier background\n\nIt read differently.\n-->\n\n# Methods\n\nMethods one.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {
+        "p1": "First paragraph.",
+        "p2": "Second paragraph. <!-- an earlier draft:",
+        "hidden": "It read differently.\n-->",
+        "m1": "Methods one.",
+    }
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    intro, methods = Block((), "Intro"), Block((), "Methods")
+    p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second paragraph.")
+    m1 = Block(("m1",), "Methods one.")
+
+    plan = plan_import(known, [intro, p1, p2, methods, m1], [intro, p2, p1, methods, m1])
+    assert plan.misplaced == ("p1",)
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize(
+    "glued",
+    [
+        "Zeta, last inside the box.\n</div>",
+        "Zeta, last inside the minipage.\n\\end{minipage}",
+        "Odds ratio\n:   The odds of the event among the exposed.",
+        "A heading written underlined\n============================",
+    ],
+    ids=["html-block", "latex-environment", "definition", "setext-heading"],
+)
+def test_a_line_that_opens_or_closes_a_block_is_never_merged_or_moved_away(
+    tmp_path: Path, glued: str
+) -> None:
+    """Only `:::` and code fences were recognised. A `</div>` written directly under a
+    box's last paragraph was deleted with a rewording of it, and the box ran to the end of the
+    document, exit 0; so would a LaTeX environment's end, a definition, or a heading's
+    underline, all of which Word shows apart from the paragraph."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, known = source_of(tmp_path, {"z": glued, "o": "Omega, after it."})
+    before = path.read_text(encoding="utf-8")
+    first = glued.split("\n")[0]
+    sent = [Block(("z",), first), Block(("o",), "Omega, after it.")]
+
+    reworded = plan_import(known, sent, [Block(("z",), first + " Indeed."), sent[1]])
+    assert not reworded.merged and [r.name for r in reworded.refused] == ["z"]
+    moved = plan_import(known, sent, [sent[1], sent[0]])
+    assert moved.misplaced == ("o",)
+    apply_plan(known, moved)
+    assert path.read_text(encoding="utf-8") == before
+
+
 WORDML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -2539,6 +2683,105 @@ def test_a_table_or_figure_that_did_not_come_back_is_reported(tmp_path: Path) ->
     plan = plan_import(known, sent, [b["alpha"], b["beta"], b["gamma"], figure, b["delta"]])
     assert plan.lost == ("table",)
     assert not plan.empty
+
+
+def _two_headed_sections(tmp_path: Path):
+    """'# Results': 'Alpha.', a captioned table, 'Beta.' and a figure; '# Funding': 'Gamma.'."""
+    from manuscript_guard.docxtext import Block
+
+    path = tmp_path / "main.md"
+    text = (
+        "# Results\n\nAlpha.\n\n{{table.t}}\n\nBeta.\n\n{{figure.f}}\n\n"
+        "# Funding\n\nGamma.\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    words = {"alpha": "Alpha.", "beta": "Beta.", "gamma": "Gamma."}
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    b = {name: Block((name,), w) for name, w in words.items()}
+    b.update(
+        results=Block((), "Results"),
+        caption=Block((), "Table 1: counts."),
+        table=Block(kind="table", key="t"),
+        figure=Block(kind="figure", key="f"),
+        funding=Block((), "Funding"),
+    )
+    order = ["results", "alpha", "caption", "table", "beta", "figure", "funding", "gamma"]
+    return path, text, known, b, [b[n] for n in order]
+
+
+@pytest.mark.parametrize("deleted", ["table", "figure"])
+def test_a_deletion_is_reported_when_another_of_its_kind_is_pasted_elsewhere(
+    tmp_path: Path, deleted: str
+) -> None:
+    """With as many of a kind back as were sent, the unmatched were paired by their place
+    among that kind, wherever they were. A table deleted from the Results and another pasted
+    into the Funding were taken for one table, and the deletion said "nothing came back"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, sent = _two_headed_sections(tmp_path)
+    pasted = Block(kind=deleted, key="pasted from elsewhere")
+    returned = [block for block in sent if block is not b[deleted]] + [pasted]
+    plan = plan_import(known, sent, returned)
+    assert plan.lost == (deleted,)
+
+
+def test_a_figure_stored_anew_is_found_in_its_place_when_a_photograph_is_pasted_elsewhere(
+    tmp_path: Path,
+) -> None:
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, sent = _two_headed_sections(tmp_path)
+    stored = Block(kind="figure", key="re-encoded")
+    photo = Block(kind="figure", key="photo")
+    head = [b["results"], b["alpha"], b["caption"], b["table"]]
+    tail = [b["funding"], photo, b["gamma"]]
+    assert not plan_import(known, sent, [*head, b["beta"], stored, *tail]).lost
+
+    # Beta dragged below the figure, which only its place identifies.
+    dragged = [*head, stored, b["beta"], *tail]
+    assert plan_import(known, sent, dragged).misplaced == ("beta",)
+
+
+@pytest.mark.parametrize("moved", ["table", "figure", "heading"])
+def test_a_heading_table_or_figure_moved_in_word_is_reported(tmp_path: Path, moved: str) -> None:
+    """A table or figure dragged elsewhere, or a heading dragged past another, was the anchor
+    the ordering dropped, and it named nobody: "nothing came back", exit 0. None of them moves
+    in the .md."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, b, sent = _two_headed_sections(tmp_path)
+    name = {"table": "table", "figure": "figure", "heading": "results"}[moved]
+    returned = [block for block in sent if block is not b[name]] + [b[name]]
+
+    plan = plan_import(known, sent, returned)
+    expected = {"table": ("table", ""), "figure": ("figure", ""), "heading": ("text", "Results")}
+    assert plan.strayed == (expected[moved],)
+    assert not plan.misplaced and not plan.empty
+
+
+def test_a_picture_that_cannot_be_read_leaves_its_figure_unkeyed(tmp_path: Path) -> None:
+    """Reading pictures to know figures apart crashed the import with a traceback on a part
+    stored with a compression Python cannot read, where the import had never read one."""
+    import struct
+
+    from manuscript_guard.docxtext import blocks as read
+
+    document = word_document(tmp_path / "odd.docx", _picture("rId7"), {"rId7": b"forest"})
+    data = bytearray(document.read_bytes())
+    name = b"word/media/rId7.png"
+    local = data.find(b"PK\x03\x04")
+    while data[local + 30 : local + 30 + len(name)] != name:
+        local = data.find(b"PK\x03\x04", local + 1)
+    central = data.find(b"PK\x01\x02")
+    while data[central + 46 : central + 46 + len(name)] != name:
+        central = data.find(b"PK\x01\x02", central + 1)
+    data[local + 8 : local + 10] = struct.pack("<H", 98)  # PPMd, which zipfile cannot read
+    data[central + 10 : central + 12] = struct.pack("<H", 98)
+    document.write_bytes(bytes(data))
+
+    assert [(b.kind, b.key) for b in read(document)] == [("figure", "")]
 
 
 @needs_pandoc

@@ -1263,11 +1263,24 @@ other slot, the first half moved and the second stayed, and a paragraph dragged 
 empty line that ends the example's Methods was written inside the comment and vanished from
 the next build. A `:::` or a code fence written directly under a paragraph belongs to that
 paragraph's source but not to its Word text, so it travelled with the paragraph, and a
-rewording deleted it: the div then ran to the end of the document. Four kinds of paragraph
+rewording deleted it: the div then ran to the end of the document. Five kinds of paragraph
 are now held in place, each a section of its own, so a move past one is reported like a move
-past a heading: one that never reaches Word, one whose comment or raw markup runs on into
-it, one that renders nothing, and one that runs straight on into a fence. The last two are
-never reworded either.
+past a heading:
+
+- one that never reaches Word;
+- one that opens a comment it does not close, or whose raw markup runs on into the next;
+- one that renders nothing;
+- one with a line directly under it that opens or closes something else: a `:::` or code
+  fence, an HTML block tag such as `</div>`, `\begin` or `\end`, a definition, or a heading's
+  underline;
+- one that Word shows as more than one paragraph.
+
+None of them takes a rewording. A held paragraph the co-author drags is reported by name,
+like any other paragraph that left its section. The first version made it an anonymous
+anchor, so a held paragraph dragged past a heading was dropped with "nothing came back".
+Whether a paragraph reaches Word in parts is still judged within the sections the source
+has. Judged within the finer sections that holding creates, a one-line comment after a
+definition list hid the split, and a rewording of the term deleted the definition.
 
 A table or a figure is a boundary only if it can be found again in the returned document.
 They were matched by position, both kinds together, and only while their total was
@@ -1275,9 +1288,14 @@ unchanged, so a co-author who deleted one table or pasted in any picture switche
 boundary off, and a paragraph dragged below a figure came back as "nothing came back". Each
 is now matched within its own kind by what it holds: a table by its text, a figure by the
 bytes of its picture, because Word renumbers and renames the part a picture is stored in
-every time it saves. What is left is paired by position when as many of that kind came back
-as were sent. One that cannot be found is reported and makes the command exit 1, because a
-move past it cannot be seen.
+every time it saves. What is left is paired by place, within the stretch between the same
+two headings, captions or matched tables and figures, when that stretch holds as many of
+the kind in both documents. Paired by position anywhere in the document, a table deleted
+from the Results and another pasted into the Funding were taken for one table, and the
+deletion went unreported. One that cannot be found is reported and makes the command exit
+1, because a move past it cannot be seen. A heading, table or figure that is found but came
+back somewhere else is reported too. It had been the anchor the ordering dropped, which
+named nothing.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
@@ -2341,18 +2359,25 @@ Closed since, and why each mattered:
   own section. A table or figure that cannot be found in the returned document is not one of
   them either. That one is reported, but a move past it is not.
 - **A paragraph is held in place by its source, not by what the co-author meant.** A
-  one-line comment, a `
-ewpage` or anything else Word shows as an empty line is held, so a
+  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
   move across it is refused where nothing would have broken. A paragraph written directly
-  above a `:::` or a code fence is never moved or reworded by `import`; a blank line before
-  the fence frees it on the next build. A co-author who drags the empty line itself sees the
-  paragraphs it passed reported as moved, not the line.
+  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
+  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
+  the paragraph on the next build. The lines are found by pattern: prose that happens to
+  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
+  not recognised. A co-author who drags the empty line past the paragraph beside it sees
+  that paragraph reported as moved; dragged past a heading, the line itself is reported.
 - **A table or figure is recognised by what it holds, and failing that by its place.** A
   table with a corrected cell, or a picture Word stored again, no longer matches by content,
-  and is taken to be the one in its place among its kind when as many came back as were
-  sent. If a table is deleted and another pasted in while a third is edited, the wrong two
-  can be paired, and a move is then judged against the wrong boundary. A figure pasted twice
-  matches neither copy and is reported as not found.
+  and is taken to be the one in its place among its kind, between the same two headings,
+  captions or matched tables and figures, when that stretch holds as many of its kind in
+  both documents. A table deleted and another pasted into the same stretch are taken for
+  one, and the deletion is not reported. A figure pasted twice matches neither copy and is
+  reported as not found.
+- **A paragraph that reaches Word in parts is only recognised by what lies around it.**
+  Untagged text between it and the next paragraph of its section, or a line under it that
+  opens a block, marks it. One that pandoc splits for another reason and that ends its
+  section is not recognised: a rewording of its first part would replace the rest.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section

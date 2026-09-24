@@ -21,6 +21,7 @@ import hashlib
 import posixpath
 import re
 import zipfile
+import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -293,7 +294,8 @@ def _pictures(document: Path, wanted: set[str]) -> dict[str, str]:
     """A digest of each picture the body shows, by relationship id.
 
     What tells one figure from another in a document Word has saved. The relationship id and
-    the file it names are not: Word renumbers and renames them on every save.
+    the file it names are not: Word renumbers and renames them on every save. A picture that
+    cannot be read gets no digest, and its figure is then known by its place alone.
     """
     if not wanted:
         return {}
@@ -302,6 +304,7 @@ def _pictures(document: Path, wanted: set[str]) -> dict[str, str]:
         with open_archive(document) as archive:
             if rels not in archive.namelist():
                 return {}
+            digests: dict[str, str | None] = {}
             found = {}
             for rel in read_part(archive, rels, what=f"{document.name}:{rels}").iter(_RELS):
                 rid, target = rel.get("Id", ""), rel.get("Target", "")
@@ -310,13 +313,26 @@ def _pictures(document: Path, wanted: set[str]) -> dict[str, str]:
                 part = target[1:] if target.startswith("/") else posixpath.normpath(
                     f"word/{target}"
                 )
-                try:
-                    found[rid] = hashlib.sha256(archive.read(part)).hexdigest()
-                except (KeyError, OSError, zipfile.BadZipFile):
-                    continue
+                if part not in digests:
+                    digests[part] = _digest_of(archive, part)
+                if digests[part]:
+                    found[rid] = digests[part]
             return found
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
+
+
+def _digest_of(archive: zipfile.ZipFile, part: str) -> str | None:
+    """A digest of one part, or None when it cannot be read.
+
+    Reading a picture is not what the import is for, so a part it cannot read must not stop
+    it: a missing part, a compression `zipfile` does not support, an encrypted or corrupt one.
+    """
+    try:
+        return hashlib.sha256(archive.read(part)).hexdigest()
+    except (KeyError, OSError, RuntimeError, NotImplementedError, EOFError, zipfile.BadZipFile,
+            zlib.error):
+        return None
 
 
 def _fold(run: list[_Paragraph]) -> list[Block]:

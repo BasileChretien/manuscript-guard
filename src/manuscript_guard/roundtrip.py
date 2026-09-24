@@ -469,18 +469,9 @@ def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
 
 
 # A multiline table's rows are separated by blank lines, and a YAML block in the body may
-# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML). A
-# table's first column may be one dash wide, so the dashes are counted rather than run.
+# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML).
+# Any line of dashes ends a table, however short; see `_opens_table` for what opens one.
 _DASH_GROUPS = re.compile(r" {0,3}-+(?:[ \t]+-+)*[ \t]*")
-
-
-def _dash_rule(line: str) -> bool:
-    return _DASH_GROUPS.fullmatch(line) is not None and line.count("-") >= 3
-
-
-# A table caption, `Table: x`, `table: x`, `: x` or `:x`, which pandoc takes straight under
-# the closing rule.
-_TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 # A YAML block in the body: pandoc tries every `---` in column 0 with text straight under
 # it, up to the first `---` or `...` in column 0, wherever in a block that falls. Read to
 # the end without a limit: every attempt opens on an exact `---`, which is itself a stop
@@ -562,35 +553,26 @@ def _yaml_stop(pieces: list[str], index: int) -> tuple[int, bool, str] | None:
     return None
 
 
-def _closes_table(lines: list[str], joined: bool = False) -> bool:
-    """Whether a block that opens on a rule is a whole table: it ends on a line of dashes,
-    or on one with the caption straight under it. Not on its first line - `---\\ntable: x`
-    opens a YAML block.
-
-    A caption closes only a headed table, one with a header underline between the top and
-    the bottom. Without one, pandoc reads the closing rule as the underline of a header,
-    the caption as the first of its rows, and runs on to the next line of dashes. And a
-    block `joined` to the next by a line pandoc does not call blank does not end there.
-    """
-    rules = [i for i, line in enumerate(lines) if _DASH_GROUPS.fullmatch(line) is not None]
-    if not rules:
-        return False
-    last = rules[-1]
-    if last == len(lines) - 1:
-        return not joined
-    return (
-        last > 0
-        and len(rules) > 2
-        and _TABLE_CAPTION.match(lines[last + 1]) is not None
-    )
-
-
 def _opens_table(line: str) -> bool:
-    """A line of dashes that can open a multiline table: its first run two dashes or more.
-    A lone `-` is an empty list item, which pandoc tries first."""
+    """A line of dashes that can open a multiline table. `-` and `- -` are list items to
+    pandoc, which it tries first; a line with a first run of two dashes, or three dashes in
+    all - a first column one dash wide - is not."""
     if _DASH_GROUPS.fullmatch(line) is None:
         return False
-    return len(line.strip().split()[0]) >= 2
+    return len(line.strip().split()[0]) >= 2 or line.count("-") >= 3
+
+
+@dataclass(frozen=True)
+class _Row:
+    """One non-blank line of a block, as the table reader sees it."""
+
+    block: int
+    dashes: bool
+    opens: bool
+    #: The last line of its block, with a blank line under it.
+    ends_block: bool
+    #: The last line of its block, with a line pandoc does not call blank under it.
+    joined: bool
 
 
 class _Ruled:
@@ -604,40 +586,86 @@ class _Ruled:
 
     def __init__(self, pieces: list[str]) -> None:
         self._pieces = pieces
-        self._opens: set[int] = set()
-        # Every line of dashes, however short - pandoc ends a table on `--` or `-` too - as
-        # (block, line, whether it is the last line of its block), in document order.
-        self._dashes: list[tuple[int, int, bool]] = []
+        self._rows: list[_Row] = []
+        self._first_row: dict[int, int] = {}
         for index in range(0, len(pieces), 2):
             lines = [line for line in pieces[index].split("\n") if line.strip()]
             if not lines:
                 continue
-            # A "blank" line holding a no-break space is text to pandoc, so a line of dashes
-            # before one is not the end of its block, however the text was split.
-            joined = index + 1 < len(pieces) and bool(re.search(r"[^ \t\n]", pieces[index + 1]))
+            # A "blank" line holding a no-break space straight under the block is text to
+            # pandoc, however the text was split.
+            joined = index + 1 < len(pieces) and (
+                re.match(r"\n[ \t]*[^ \t\n]", pieces[index + 1]) is not None
+            )
+            self._first_row[index] = len(self._rows)
             for at, line in enumerate(lines):
-                if _DASH_GROUPS.fullmatch(line) is not None:
-                    last = at == len(lines) - 1 and not joined
-                    self._dashes.append((index, at, last))
-            if _opens_table(lines[0]) and not _closes_table(lines, joined):
-                self._opens.add(index)
+                last = at == len(lines) - 1
+                dashes = _DASH_GROUPS.fullmatch(line) is not None
+                self._rows.append(
+                    _Row(
+                        block=index,
+                        dashes=dashes,
+                        opens=dashes and _opens_table(line),
+                        ends_block=last and not joined,
+                        joined=last and joined,
+                    )
+                )
+        # The next line of dashes after each row, for finding where a table ends.
+        self._next_dashes: list[int | None] = [None] * len(self._rows)
+        following: int | None = None
+        for row in range(len(self._rows) - 1, -1, -1):
+            self._next_dashes[row] = following
+            if self._rows[row].dashes:
+                following = row
+        self._opens = {
+            block
+            for block, row in self._first_row.items()
+            if self._rows[row].opens and not self._closed_in(block, row)
+        }
+
+    def _end_row(self, start: int) -> int | None:
+        """The row where the table pandoc reads from the opening line at row `start` ends.
+
+        Pandoc tries a headed multiline table first. Its header runs down to the next line
+        of dashes, and when there is a header above that line and text straight under it,
+        the rows run on to the line of dashes after. Otherwise the table is headless and
+        ends on the first line of dashes. Where a line that can open a table follows the
+        end straight away, another table begins there. Ending always on the first line of
+        dashes printed a marker into the rows of a headed table.
+        """
+        rows = self._rows
+        while True:
+            first = self._next_dashes[start]
+            if first is None:
+                return None
+            under = rows[first].joined or (
+                not rows[first].ends_block
+                and first + 1 < len(rows)
+                and rows[first + 1].block == rows[first].block
+                and not rows[first + 1].dashes
+            )
+            end = first
+            if first > start + 1 and under and self._next_dashes[first] is not None:
+                end = self._next_dashes[first]
+            after = end + 1
+            if (
+                after < len(rows)
+                and rows[after].block == rows[end].block
+                and rows[after].opens
+            ):
+                start = after
+                continue
+            return end
+
+    def _closed_in(self, block: int, row: int) -> bool:
+        """Whether the table read from the block's opening line ends inside the block."""
+        end = self._end_row(row)
+        return end is not None and self._rows[end].block == block
 
     def _table_end(self, index: int) -> int | None:
-        """The block where the table pandoc reads from the rule opening `index` ends.
-
-        Pandoc tries a headed multiline table first: everything down to the next line of
-        dashes is its header, and when text follows that line straight away, the rows run
-        on to the line of dashes after it. Otherwise the table is headless and ends on the
-        first line of dashes. Ending always on the first one printed a marker into the
-        rows of a headed table.
-        """
-        at = bisect.bisect_right(self._dashes, (index, 0, True))
-        if at >= len(self._dashes):
-            return None
-        block, _line, last = self._dashes[at]
-        if not last and at + 1 < len(self._dashes):
-            return self._dashes[at + 1][0]
-        return block
+        """The block where the table pandoc reads from the rule opening `index` ends."""
+        end = self._end_row(self._first_row[index])
+        return None if end is None else self._rows[end].block
 
     def end(self, index: int) -> int | None:
         """The block a span opened at `index` ends in, or None if it opens none.

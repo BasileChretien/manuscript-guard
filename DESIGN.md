@@ -1715,6 +1715,13 @@ Added by the adversarial review, verified and **not** fixed:
   and stops in the next - each file is tagged on its own and the build joins them - builds,
   with the second file's paragraphs read into a table whose bookmarks `import` ignores, so
   their edits go uncompared.
+- **A block that opens on a line of dashes is taken for a table whatever surrounds it.**
+  From such a block, `tag` leaves everything up to the table's closing line of dashes
+  unmarked. Pandoc reads no table there when the line continues a list item, sits inside a
+  fenced div after a blank line, follows a no-break-space line inside a paragraph, or starts
+  a simple table (`--\n----\nText.`). The paragraphs in between then go uncompared although
+  pandoc reads them as paragraphs, and nothing is corrupted. Lines of three dashes or more
+  had these cases already; since two dashes can open a table, `--` has them too.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

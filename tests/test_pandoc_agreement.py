@@ -458,6 +458,20 @@ TAGGING = {
         "----------  ----------\nTable: Signals of interest.\n\nWe found two signals in total.\n\n"
         "Both concern bleeding.\n\nDiscussion\n----------\n"
     ),
+    "a table whose first column is one dash wide": (
+        "Before.\n\n- ---------- ----------\n#  Drug       Signal\n- ---------- ----------\n"
+        "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
+        "- ---------- ----------\n\nAfter.\n"
+    ),
+    "a headless table whose first column is one dash wide": (
+        "Before.\n\n-   ----------  ----------\na   Warfarin    Bleeding\n\n"
+        "b   Apixaban    Bleeding\n\nc   Heparin     HIT\n-   ----------  ----------\n\nAfter.\n"
+    ),
+    "a row of dashes above the bottom rule, then a caption": (
+        "Intro.\n\n--------  --------  --------\nWarfarin  Bleeding  12\n--        --        --\n"
+        "--------  --------  --------\nTable: Signals.\n\nWe found one.\n\n"
+        "Discussion\n----------\n\nEnd.\n"
+    ),
     "a table opened by two dashes, then a setext heading": (
         "Intro.\n\n--\nA note.\n\nPara A.\n\nMethods\n-------\n\nEnd.\n"
     ),

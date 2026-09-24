@@ -306,6 +306,15 @@ RULED = {
         "----------  ----------\nTable: Signals.\n\nWe found two.\n\nBoth bleed.\n\n"
         "Discussion\n----------"
     ),
+    "first column one dash wide": (
+        "- ---------- ----------\n#  Drug       Signal\n- ---------- ----------\n"
+        "1  Warfarin   Bleeding\n\n2  Apixaban   Bleeding\n\n3  Heparin    HIT\n"
+        "- ---------- ----------"
+    ),
+    "headless, first column one dash wide": (
+        "-   ----------  ----------\na   Warfarin    Bleeding\n\nb   Apixaban    Bleeding\n\n"
+        "c   Heparin     HIT\n-   ----------  ----------"
+    ),
     "a table opened by two dashes, then a setext heading": (
         "--\nA note.\n\nPara A.\n\nMethods\n-------"
     ),
@@ -366,6 +375,20 @@ def test_yaml_closed_in_its_own_block_hides_nothing_after_it() -> None:
         note = f"Intro.\n\n---\n{body}\n...\n\nPara one.\n\nPara two.\n\nResults\n-------\n"
         marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(note + "\nAfter.\n", "main.md"))
         assert marked == ["Intro.", "Para", "Para", "After."], body
+
+
+def test_a_no_break_space_line_away_from_a_rule_does_not_stretch_a_table() -> None:
+    """Only a no-break-space line straight under a block's last line is text after it. One
+    further down counted too, and a paragraph pandoc reads as a paragraph lost its
+    identifier to a table that had already ended."""
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        "Intro.\n\n----------  ----------\nWarfarin    Bleeding\n----------  ----------\n\n"
+        " \nPara A.\n\nPara B.\n\nHead\n----\n\nEnd.\n"
+    )
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+    assert "Para" in marked and "End." in marked, marked
 
 
 def test_yaml_after_a_blank_first_line_is_recognised() -> None:

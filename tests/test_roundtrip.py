@@ -367,6 +367,26 @@ def test_what_is_left_unmarked_renders_nothing(block: str, reads: str) -> None:
     assert _renders_nothing(tagged) is (reads == DEFINITION)
 
 
+def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
+    """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
+    from the stripped block in one and the raw block in the other, a definition ending in a
+    no-break space was marked in the document and unknown on disk."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    text = "\n\n".join(param.values[0] for param in BLOCKS) + "\n"
+    (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name
+        for name, (path, _text, _start) in tagged_paragraphs(loaded).items()
+        if path.name == "definitions.md"
+    }
+    marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "definitions.md")))
+    assert marked == known
+    assert len(marked) == sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS))
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for

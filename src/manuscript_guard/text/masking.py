@@ -28,6 +28,13 @@ FRONTMATTER = re.compile(
     r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n", re.DOTALL
 )
 
+
+def without_front_matter(text: str) -> str:
+    """`text` after its front matter: the part of a source file the build prints."""
+    opening = FRONTMATTER.match(text)
+    return text[opening.end() :] if opening else text
+
+
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of
 # "A 3.84-fold excess" and an abstract quoting an ROR and a cohort size were checked by

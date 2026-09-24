@@ -883,6 +883,55 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+# --------------------------------------------------------------------- the journal gate
+# A journal's limits, sections and statements are about the document the editor receives,
+# and the build strips every file's front matter before printing it.
+
+
+def _journal(root: Path):
+    from manuscript_guard.gates import check_journal
+
+    project, _ = load_project(root)
+    return check_journal(project)
+
+
+def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:
+    """The gate reads the main text as one string joined from every file, and only the first
+    file's front matter is at the top of it. A later file's block was read as prose: its
+    closing `---`, directly under a YAML line, underlined that line into a heading, so
+    `title: Methods of the online appendix` satisfied the required Methods section of a
+    paper that had none, and its words counted as main text."""
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", "# Approach\n"), encoding="utf-8"
+    )
+    before = _journal(project)
+    assert "missing-required-section" in codes(before)
+
+    (project / "manuscript" / "online_appendix.md").write_text(
+        "---\ntitle: Methods of the online appendix\n---\n\nThree more words.\n",
+        encoding="utf-8",
+    )
+    after = _journal(project)
+    assert "missing-required-section" in codes(after)
+    assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
+
+
+def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
+    """`# Funding` is a heading in Markdown and a comment in YAML. Inside the front matter it
+    satisfied the journal's funding statement, and the build, which strips the block,
+    printed a paper with no funding statement in it."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    text = text.replace("---\n", "---\n# Funding: none was received.\n", 1)
+    main.write_text(text, encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
+    )
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never

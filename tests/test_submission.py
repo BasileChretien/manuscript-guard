@@ -51,6 +51,19 @@ def test_the_title_page_carries_what_the_manuscript_leaves_out(project: Path) ->
     assert "Word count" in page
 
 
+def test_the_title_page_declares_the_words_the_build_prints(project: Path) -> None:
+    """The count the editor reads included the manuscript's front matter, which the build
+    strips: the example's title page declared 573 words of main text for 557 printed."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import measure
+
+    printed, _title = strip_front_matter(
+        (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    )
+    page = title_page(load_project(project)[0])
+    assert f"main text {measure(printed).main_text_words}." in page
+
+
 def test_affiliation_superscripts_follow_the_declared_order(project: Path) -> None:
     page = title_page(load_project(project)[0])
     assert "Ada Example, PharmD, MSc^1^" in page

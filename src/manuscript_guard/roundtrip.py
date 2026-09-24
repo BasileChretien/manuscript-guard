@@ -274,7 +274,10 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
         marker = _TAG.format(slug=slug, index=index)
         body = stripped
         if mark:
-            body = _PROTECTED.sub(lambda token: _bookmarked(token.group(0), slug, counter), body)
+            spans = _protected_spans(body)
+            marked = [_bookmarked(body[a:b], slug, counter) for a, b in spans]
+            for (a, b), replacement in reversed(list(zip(spans, marked, strict=True))):
+                body = body[:a] + replacement + body[b:]
         out.append(para.replace(stripped, f"[]{{#{marker}}}{body}", 1))
     return "".join(out)
 
@@ -374,21 +377,73 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
 
 
 #: A binding or a citation: the parts of a paragraph the author does not own. Citations
-#: are read in every form pandoc reads them - `[see @key, p. 4]` with its prefix and
-#: locator, and a narrative `@key` - because only `[@key]` was protected, and a rewording of
-#: a paragraph citing `@smith2020` merged it back as the plain text "Smith (2020)". A
-#: narrative key ends on a word character, so a full stop after it stays prose.
-#:
-#: A bracketed citation is the innermost bracket group holding an `@`. The citation pattern
-#: the gates use starts at the first `[` with an `@` before the next `]`, which is right for
-#: finding keys and wrong here: in "Scores in [low, high) were rescaled as in [@key]" it made
-#: the prose from `[low` onwards part of the citation.
-_IN_GROUP = r"(?:[^\[\]\n]|\n(?![ \t]*\n))"
-_PROTECTED = re.compile(
-    r"\{\{[^}]*\}\}"
-    rf"|\[{_IN_GROUP}*@{_IN_GROUP}*\]"
-    r"|(?<![\w`\[@])-?@[A-Za-z][\w:.#$%&+?<>~/-]*(?<![:.#$%&+?<>~/-])"
-)
+#: are read in the forms pandoc reads - `[see @key, p. 4]` with its prefix and locator,
+#: `[@key, p. 3 [emphasis added]]` with brackets inside it, and a narrative `@key`, with
+#: its locator in `@key [p. 33]` - because only `[@key]` was protected at first, and a
+#: rewording of a paragraph citing `@smith2020` merged it back as the text "Smith (2020)".
+_BINDING = re.compile(r"\{\{[^}]*\}\}")
+_KEY = r"-?@[A-Za-z][\w:.#$%&+?<>~/-]*(?<![:.#$%&+?<>~/-])"
+#: A key at a bracket group's own level makes the group a citation. A narrative key ends on
+#: a word character, so a full stop after it stays prose; an email address is no key.
+_OWN_KEY = re.compile(rf"(?<![\w@]){_KEY}")
+_NARRATIVE = re.compile(rf"(?<![\w`\[@]){_KEY}")
+#: Whatever the patterns above miss, a key left in the prose: the paragraph is refused
+#: rather than merged, since Word's text holds the citation's rendering and not the key.
+_LOOSE_KEY = re.compile(r"(?<![\w`@])@[A-Za-z]")
+
+
+def _bracket_groups(text: str) -> list[tuple[int, int]]:
+    """Balanced bracket groups as (start, end), escaped brackets skipped."""
+    groups: list[tuple[int, int]] = []
+    open_: list[int] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "[":
+            open_.append(index)
+        elif char == "]" and open_:
+            groups.append((open_.pop(), index + 1))
+        index += 1
+    return sorted(groups)
+
+
+def _protected_spans(text: str) -> list[tuple[int, int]]:
+    """Where the bindings and citations of a source paragraph are, in order.
+
+    A bracketed citation is a balanced bracket group with a key at its own level, not only
+    inside a nested group: "[see [@key]]" cites through its inner group, and
+    "[@key, p. 3 [emphasis added]]" is one citation. Found by balance, because a pattern
+    either stopped at the first inner bracket - and protected nothing - or started at the
+    first `[` of the paragraph, and made the prose "[low, high) were rescaled as in" part of
+    a citation.
+    """
+    spans = [m.span() for m in _BINDING.finditer(text)]
+
+    def free(start: int, end: int) -> bool:
+        return not any(s < end and start < e for s, e in spans)
+
+    groups = _bracket_groups(text)
+    for start, end in groups:
+        inner = [(s, e) for s, e in groups if start < s and e < end]
+        own = list(text[start + 1 : end - 1])
+        for s, e in inner:
+            own[s - start - 1 : e - start - 1] = " " * (e - s)
+        if _OWN_KEY.search("".join(own)) and free(start, end):
+            spans.append((start, end))
+    for match in _NARRATIVE.finditer(text):
+        start, end = match.span()
+        if not free(start, end):
+            continue
+        locator = re.match(r"[ \t]+\[", text[end:])
+        if locator:
+            group = next((g for g in groups if g[0] == end + locator.end() - 1), None)
+            if group and not _OWN_KEY.search(text[group[0] + 1 : group[1] - 1]):
+                end = group[1]
+        spans.append((start, end))
+    return sorted(spans)
 
 
 def paragraph_text(document: Path) -> dict[str, str]:
@@ -412,12 +467,10 @@ def segments(paragraph: str) -> tuple[list[str], list[str]]:
     Returns `(prose, protected)` with `len(prose) == len(protected) + 1`, so the paragraph is
     `prose[0] + protected[0] + prose[1] + ...`.
     """
-    # By position rather than `split`, which also returns every group a pattern captures,
-    # and the citation pattern captures its body.
-    matches = list(_PROTECTED.finditer(paragraph))
-    edges = [0] + [edge for m in matches for edge in m.span()] + [len(paragraph)]
+    spans = _protected_spans(paragraph)
+    edges = [0] + [edge for span in spans for edge in span] + [len(paragraph)]
     prose = [paragraph[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
-    return prose, [m.group(0) for m in matches]
+    return prose, [paragraph[a:b] for a, b in spans]
 
 
 #: Quotes are compared as quotes, whichever way they curl. Pandoc curls them, Word's
@@ -559,8 +612,10 @@ def align(
     if _MARKUP.search(source):
         return Alignment(None, markup=True)
     prose, protected = segments(source)
+    if _LOOSE_KEY.search("\x00".join(prose)):
+        return Alignment(None, unaligned=True)
     if not protected:
-        return Alignment(returned.strip() or None)
+        return Alignment(returned.strip().translate(_STRAIGHT) or None)
 
     spans = _checked(tokens, len(protected), len(rendered))
     if spans is None:
@@ -591,60 +646,62 @@ def align(
         same = _comparable(was_prose[index]) == _comparable(piece)
         if not same and index in wrapping:
             return Alignment(None, wraps=True)
-        out.append(prose[index] if same else piece)
+        # Straight quotes, for pandoc to curl: Word's closing `’` beside the source's opening
+        # `'` made pandoc read the opening one as an apostrophe.
+        out.append(prose[index] if same else piece.translate(_STRAIGHT))
         if index < len(protected):
             out.append(protected[index])
     return Alignment("".join(out).strip() or None)
 
 
-#: Inline markup opened in one prose segment and closed in another, around a token.
-_PAIRED = (
-    r"\*\*",
-    r"__",
-    r"~~",
-    r"(?<![\w*])\*|\*(?![\w*])",
-    r"(?<!\w)_|_(?!\w)",
-    r"~",
-    r"\^",
-    r"`",
-)
+#: Inline markers that open and close with the same characters. They were paired in order,
+#: first with second, so one literal `*` earlier in the paragraph - "marked * in Table 2" -
+#: shifted every pair after it and `*{{x}}*` merged as `{{x}}* overall`. Now a segment holding
+#: one is treated as wrapping whenever another segment holds the same kind: sometimes a
+#: refusal a closer reading would allow, never a half-open marker.
+_SYMMETRIC = (r"\*\*", r"__", r"~~", r"(?<![\w*])\*|\*(?![\w*])", r"(?<!\w)_|_(?!\w)", r"`")
+#: Super- and subscript cannot contain a space, so only one pressed against a token can wrap it.
+_SCRIPT_OPEN = re.compile(r"[\^~][^\s^~]*$")
+_SCRIPT_CLOSE = re.compile(r"^[^\s^~]*[\^~]")
 _TAG_OPEN = re.compile(r"<([A-Za-z][\w-]*)(?:\s[^<>]*)?(?<!/)>")
 _TAG_CLOSE = re.compile(r"</([A-Za-z][\w-]*)\s*>")
 
 
 def _wrapping(prose: list[str]) -> set[int]:
-    """The prose segments holding half of some formatting whose other half is across a token.
+    """The prose segments that may hold half of some formatting around a token.
 
     An edited segment is taken from Word without its markdown, so the half in it went and
     the half in an untouched segment stayed: `[{{x}}]{.smallcaps}` with its first segment
-    edited merged as `The new value {{x}}]{.smallcaps}`, and the document printed the
-    brace. Such a segment cannot take a rewording; one on the far side of the paragraph can.
+    edited merged as `The new value {{x}}]{.smallcaps}`, and the document printed the brace.
+    Brackets count only when a span or a link follows them - an interval "[{{lo}}, {{hi}}]"
+    is text - and `^` and `~` only pressed against a token, as "About ~{{x}} reports" is text.
     """
+    parts = [re.sub(r"\\.", "  ", part) for part in prose]
+    found: set[int] = set()
+    for pattern in _SYMMETRIC:
+        holders = {i for i, part in enumerate(parts) if re.search(pattern, part)}
+        if len(holders) > 1:
+            found |= holders
+        parts = [re.sub(pattern, lambda m: " " * len(m.group(0)), part) for part in parts]
+    for i in range(len(prose) - 1):
+        if _SCRIPT_OPEN.search(prose[i]) and _SCRIPT_CLOSE.search(prose[i + 1]):
+            found |= {i, i + 1}
+
     joined = "\x00".join(re.sub(r"\\.", "  ", part) for part in prose)
     owner = [i for i, part in enumerate(prose) for _ in range(len(part) + 1)]
-    found: set[int] = set()
 
     def across(a: int, b: int) -> None:
         if "\x00" in joined[a:b]:
             found.update((owner[a], owner[b]))
 
-    depth: list[int] = []
-    for at, char in enumerate(joined):
-        if char == "[":
-            depth.append(at)
-        elif char == "]" and depth:
-            across(depth.pop(), at)
-    for pattern in _PAIRED:
-        marks = [m.start() for m in re.finditer(pattern, joined)]
-        for a, b in zip(marks[::2], marks[1::2], strict=False):
-            across(a, b)
-        joined = re.sub(pattern, lambda m: " " * len(m.group(0)), joined)
+    for start, end in _bracket_groups(joined):
+        if joined[end : end + 1] in ("{", "(", "["):
+            across(start, end - 1)
     opened: dict[str, list[int]] = {}
-    for tag in sorted(
+    for at, name, opening in sorted(
         [(m.start(), m.group(1).lower(), True) for m in _TAG_OPEN.finditer(joined)]
         + [(m.start(), m.group(1).lower(), False) for m in _TAG_CLOSE.finditer(joined)]
     ):
-        at, name, opening = tag
         if opening:
             opened.setdefault(name, []).append(at)
         elif opened.get(name):

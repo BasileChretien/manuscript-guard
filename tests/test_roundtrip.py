@@ -494,6 +494,34 @@ def test_a_citation_is_its_own_brackets_and_no_more() -> None:
     assert segments("Nested [see [@smith2020]] here.")[1] == ["[@smith2020]"]
 
 
+def test_a_citation_keeps_the_brackets_inside_it() -> None:
+    """The narrowed pattern could not contain `[`, so `[@key, p. 3 [emphasis added]]`
+    matched nothing and an edit merged the citation back as plain text."""
+    assert segments("Quoted [@key, p. 3 [emphasis added]] as {{results.a}}.")[1] == [
+        "[@key, p. 3 [emphasis added]]",
+        "{{results.a}}",
+    ]
+    assert segments("Per [@who2021, Annex \\[2\\]] here.")[1] == ["[@who2021, Annex \\[2\\]]"]
+    assert segments("As @key [p. 33] says, it was {{results.a}}.")[1] == [
+        "@key [p. 33]",
+        "{{results.a}}",
+    ]
+
+
+def test_a_citation_nothing_protected_refuses_the_paragraph() -> None:
+    """Whatever the token patterns miss, a key left in the prose must not be merged over:
+    Word's text has the citation's rendering, not the key."""
+    from manuscript_guard.roundtrip import align
+
+    aligned = align(
+        "Quoted [@key, p. 3 and more.",
+        "Quoted [Key (2019), p. 3 and more.",
+        "Quoted [Key (2019), p. 3 and then more.",
+        [],
+    )
+    assert aligned.rebuilt is None
+
+
 def test_tokens_are_marked_without_adding_brackets() -> None:
     """Wrapped in `[...]{#id}`, a token next to an unbalanced bracket let pandoc pair the
     brackets differently: the text read the same, the extent lost its first character, and
@@ -529,6 +557,68 @@ def test_formatting_that_wraps_a_token_is_not_left_half_open(
     aligned = align(source, plain, returned, spans)
     assert aligned.rebuilt is None
     assert "formatting" in " ".join(why(aligned))
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        (
+            "Significant values are marked * in Table 2; the ratio was *{{results.x}}* overall.",
+            "Significant values are marked * in Table 2; the ratio was ⟦3⟧ overall.",
+            "Significant results are marked * in Table 2; the ratio was 3 overall.",
+        ),
+        (
+            "Of 2 * 3 cells, *{{results.x}}* were empty.",
+            "Of 2 * 3 cells, ⟦3⟧ were empty.",
+            "Of the 2 * 3 cells, 3 were empty.",
+        ),
+    ],
+    ids=["marked-with-a-star", "times"],
+)
+def test_a_literal_marker_does_not_shift_the_pairs_after_it(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Markers were paired in order, so a literal `*` earlier in the paragraph paired with
+    the italics' opening one, and `*{{x}}*` merged as `{{x}}* overall`."""
+    assert merged(source, rendered, returned) is None
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        (
+            "The effect was 95% CI [{{results.a}}, {{results.b}}], a strong signal.",
+            "The effect was 95% CI [⟦1⟧, ⟦2⟧], a strong signal.",
+            "The effect was 95% CI [1, 2], a very strong signal.",
+            "The effect was 95% CI [{{results.a}}, {{results.b}}], a very strong signal.",
+        ),
+        (
+            "About ~{{results.a}} reports and ~200 controls.",
+            "About ~⟦3⟧ reports and ~200 controls.",
+            "About ~3 reports and ~200 matched controls.",
+            "About ~{{results.a}} reports and ~200 matched controls.",
+        ),
+    ],
+    ids=["interval", "approximately"],
+)
+def test_literal_brackets_and_tildes_are_not_formatting(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """An APA interval and an approximate value were refused as formatting that wraps a
+    number. Brackets are markup only when a span or a link follows them."""
+    assert merged(source, rendered, returned) == expected
+
+
+def test_quotes_from_word_are_straightened_for_pandoc_to_curl() -> None:
+    """Word's closing `’` beside the source's opening `'` made pandoc read the opening one
+    as an apostrophe: `’a ratio of 3.84’`."""
+    source = "The agency called it 'a ratio of {{results.x}}' in its review."
+    out = merged(
+        source,
+        "The agency called it ‘a ratio of ⟦3⟧’ in its review.",
+        "The agency called it ‘a ratio of 3’ in its last review.",
+    )
+    assert out == "The agency called it 'a ratio of {{results.x}}' in its last review."
 
 
 def test_formatting_that_wraps_a_token_is_kept_when_that_side_is_untouched() -> None:
@@ -1024,6 +1114,11 @@ MARKUP = {
     "citations-in-a-row": "Both [@fictionalClassSignal2019], [@fictionalHepaticCohort2021] "
     "agree on {{results.ror.point}}.",
     "value-ends-it": "The reporting odds ratio was {{results.ror.point}}.",
+    "bracket-inside-citation": "Quoted [@fictionalClassSignal2019, p. 3 [emphasis added]] as "
+    "{{results.ror.point}}.",
+    "narrative-with-locator": "As @fictionalClassSignal2019 [p. 3] found, it was "
+    "{{results.ror.point}}.",
+    "interval": "The interval was [{{results.ror.ci_low}}, {{results.ror.ci_high}}] here.",
 }
 
 

@@ -1951,11 +1951,13 @@ Closed since, and why each mattered:
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in
   the source. That is a choice, not something the document says.
-- **Typographic punctuation defeats alignment.** Pandoc typesets prose - `drug's` reaches
-  Word as `drug’s`, `--` as an en dash - so in a paragraph with a binding or a citation the
-  source prose is not found verbatim in the rendered text, and a rewording of that paragraph
-  is refused as "could not be lined up with its own source". Safe, and a refusal in any such
-  paragraph with an apostrophe in it.
+- **Where a token's rendering begins and ends is guessed, and the guess fails both ways.**
+  The source's prose is flattened and searched for in the rendered text, and each binding or
+  citation is whatever lies between. Pandoc typesets prose (`drug's` reaches Word as
+  `drug’s`), so a paragraph with a binding and an apostrophe is refused. Worse, a short piece
+  of prose can be found inside a citation: "(Smith et al. 2020)." ending a paragraph is cut
+  at "al.", and a rewording merges as `[@smith2020]. 2020).`. A narrative `@key` is not
+  protected at all and merges back as the text "Smith (2020)", and inline math is deleted.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact

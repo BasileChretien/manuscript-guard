@@ -570,7 +570,8 @@ def _opens_table(line: str) -> bool:
 # definition, pandoc 3.9 opens no table: over a line of dashes, most of those are the header
 # of a simple table, whose rows end at the next blank line.
 _ENDS_LINE = re.compile(
-    r" {0,3}(?:=+[ \t]*|\+[-=:+]+[ \t]*|\|.*|\\end[ \t]*\{.*)|\.\.\.[ \t]*|.*-->[ \t]*"
+    r" {0,3}(?:=+[ \t]*|\+(?:[-=:]+\+)+[ \t]*|\|.*|\\end[ \t]*\{.*)|\.\.\.[ \t]*"
+    r"|(?:(?!<!--).)*-->[ \t]*"
 )
 # A heading or a whole-line comment ends a block too, but over a single run of dashes pandoc
 # reads it as the text of a setext heading, and no table opens.
@@ -826,9 +827,13 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
                 resume = start
             if resume < end:
                 hidden = max(hidden, _raw_end(text, resume, end, closers))
-                # And so does a table opening straight under a closing fence. One that seems
-                # to open inside the code before it only hides more.
-                table = ruled.inner_end(index)
+                # A table can open in it too, on its first line or further down, and is
+                # followed as in any block. A span pandoc does not have, from a line taken
+                # for an opener, ran on to a real table's header underline and ended there;
+                # read only further down, the block missed the real table's own top rule,
+                # and its rows were marked. What seems to open inside code or inside the
+                # span only hides more.
+                table = ruled.end(index)
                 if table is not None:
                     hidden = max(hidden, ends[table])
             yield index, piece, False

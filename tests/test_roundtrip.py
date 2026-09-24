@@ -488,6 +488,30 @@ def test_a_line_of_dashes_under_prose_or_a_list_item_opens_no_table() -> None:
         assert "Apixaban" in marked, (above, marked)
 
 
+def test_a_span_ending_in_a_table_s_first_block_still_hides_its_rows() -> None:
+    """A line taken for a table's opener that pandoc does not read as one starts a span
+    pandoc does not have. Run on to the next table, it ended on that table's header
+    underline, and the block it ended in was read only for tables opening further down it,
+    not on its own first line: the real table went unfollowed and its rows were marked.
+    Wherever a span ends, the block is now read as any block is."""
+    from manuscript_guard.roundtrip import tag
+
+    headed = (
+        "---------- ----------\n Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+        "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------"
+    )
+    for before in (
+        "|x| was large.\n----------  ----------\nText.",
+        "Text\n...\n----------  ----------\nMore.",
+        "Results <!-- to check -->\n-----------------------------\nWe found three signals.",
+        "The flow was A -->\n----------  ----------\nx  y",
+        "Text\n++\n----------\nMore.",
+    ):
+        text = f"Intro.\n\n{before}\n\nTable: Signals.\n\n{headed}\n\nAfter.\n"
+        marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\S*)", tag(text, "main.md"))
+        assert "Apixaban" not in marked and "Heparin" not in marked, (before, marked)
+
+
 def test_a_rule_with_a_blank_line_under_it_opens_nothing() -> None:
     """A table and a YAML block both need text straight under their first line, so a line
     of dashes with a blank line under it is a rule to pandoc. Taken for an opener, a lone

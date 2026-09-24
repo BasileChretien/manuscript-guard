@@ -1739,9 +1739,13 @@ Added by the adversarial review, verified and **not** fixed:
   continuation and an HTML tag split over two lines. A table pandoc does open under one
   gets a marker in its rows, visible in the document; `import` then reports that paragraph
   as deleted in Word and leaves the source alone. The other way round costs only
-  comparisons: a line inside code, a comment or a table's rows that looks like one of
-  these, over a line of dashes with text under it, hides the paragraphs down to the next
-  line of dashes.
+  comparisons. A line taken for one of these that pandoc does not end a block under, over
+  a line of dashes with text under it, hides the paragraphs down to the next line of
+  dashes. Such lines sit inside code, a comment or a table's rows, or in prose such as
+  `A -->`, `\end{x}`, `...` or a line opening on `|`. The block where that span ends is
+  read again as any block is, so a real table the span runs into is still followed. Read
+  only for tables opening further down it, the block missed a real table's own top rule,
+  and the table's rows were marked.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

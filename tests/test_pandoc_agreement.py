@@ -564,6 +564,23 @@ TAGGING = {
         "Warfarin    Bleeding\n\nApixaban    Bleeding\n\nHeparin     HIT\n"
         "----------  ----------\n\nAfter.\n"
     ),
+    **{
+        f"a span taken for a table, ending in a headed table, after {name}": (
+            f"Intro.\n\n{before}\n\nTable: Signals.\n\n---------- ----------\n"
+            " Drug      Signal\n---------- ----------\nWarfarin   Bleeding\n\n"
+            "Apixaban   Bleeding\n\nHeparin    HIT\n---------- ----------\n\nAfter.\n"
+        )
+        for name, before in (
+            ("a line block", "|x| was large.\n----------  ----------\nText."),
+            ("a line of dots", "Text\n...\n----------  ----------\nMore."),
+            (
+                "a trailing comment",
+                "Results <!-- to check -->\n-----------------------------\nWe found three signals.",
+            ),
+            ("an arrow", "The flow was A -->\n----------  ----------\nx  y"),
+            ("two plus signs", "Text\n++\n----------\nMore."),
+        )
+    },
     # Under these pandoc opens no table, and the rows are paragraphs.
     **{
         f"a line of dashes straight under {name}": (

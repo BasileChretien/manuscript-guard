@@ -776,6 +776,17 @@ def _words(rendered: str, spans: list[tuple[int, int]]) -> tuple[list[str], list
     return words, ranges
 
 
+def _undone(returned: str, shown: str, sent: str) -> bool:
+    """Whether Word's text only undid pandoc's typesetting: it reads as the source does, and
+    the source reads as what was sent, but for typesetting.
+
+    The second half is the guard. The reading is wrong where pandoc prints as text what it
+    takes for markup - a footnote reference with no note, an image with no file - and a
+    co-author who deleted that text matched it: the source was kept and the edit dropped.
+    """
+    return _spaced(returned) == shown and _untypeset(shown) == _untypeset(sent)
+
+
 def _between(words: list[str], tokens: list[tuple[int, int]]) -> list[str]:
     """The prose either side of each token, given the range of words each token occupies."""
     prose: list[str] = []
@@ -872,8 +883,10 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         # from Word, where inline formatting did not survive being read as plain text.
         # Unchanged means it came back as it was sent, which catches a no-break space the
         # co-author typed, or as the source reads, which lets pandoc's own after "e.g." be
-        # taken out again in Word without costing the stretch its formatting.
-        if _spaced(piece) in (_spaced(sent[index]), reading.shown[index]):
+        # taken out again in Word without costing the stretch its formatting. See `_undone`.
+        if _spaced(piece) == _spaced(sent[index]) or _undone(
+            piece, reading.shown[index], sent[index]
+        ):
             out.append(prose[index])
         else:
             lost += [name for name in reading.lost[index] if name not in lost]
@@ -898,7 +911,9 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
     rebuilt from Word's text would delete it.
     """
     # As it was sent, or as the source reads; see `align`.
-    if _spaced(returned).strip() in (_spaced(rendered).strip(), reading.shown[0].strip()):
+    if _spaced(returned).strip() == _spaced(rendered).strip() or _undone(
+        returned.strip(), reading.shown[0].strip(), rendered
+    ):
         return Alignment(source)
     if reading.lost[0]:
         return Alignment(None, markup=reading.lost[0])

@@ -1616,6 +1616,55 @@ def test_a_no_break_space_typed_in_word_is_an_edit(tmp_path: Path) -> None:
     assert plan.merged == {"a": "Le mot\u00a0: clair."}
 
 
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "named"),
+    [
+        pytest.param(
+            "See the note[^missing] for how the cohort was defined.",
+            "See the note[^missing] for how the cohort was defined.",
+            "See the note for how the cohort was defined.",
+            ("a footnote",),
+            id="footnote-without-a-definition",
+        ),
+        pytest.param(
+            "See ![Forest plot](nowhere.png) for the estimates.",
+            "See Forest plot for the estimates.",
+            "See for the estimates.",
+            ("an image",),
+            id="image-without-a-file",
+        ),
+        pytest.param(
+            "The ratio was {{results.x}} in all adults.[^missing]",
+            "The ratio was 3.84 in all adults.[^missing]",
+            "The ratio was 3.84 in all adults.",
+            ("a footnote",),
+            id="after-a-binding",
+        ),
+        pytest.param(
+            "[^missing] The ratio was {{results.x}} in all adults.",
+            "[^missing] The ratio was 3.84 in all adults.",
+            "The ratio was 3.84 in all adults.",
+            ("a footnote",),
+            id="before-a-binding",
+        ),
+    ],
+)
+def test_an_edit_that_matches_a_wrong_reading_of_the_source_is_refused(
+    source: str, rendered: str, returned: str, named: tuple[str, ...]
+) -> None:
+    """Keeping the source whenever Word's text read as the source does was meant for pandoc's
+    no-break space taken out again. But the reading is wrong where pandoc prints as text what
+    it takes for markup - a footnote reference with no note, an image with no file - and a
+    co-author deleting that text matched the reading: the source was kept, the edit dropped,
+    and import said "nothing came back". The reading counts only where it agrees with what
+    was sent."""
+    from manuscript_guard.roundtrip import align
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == named
+
+
 def test_pandocs_no_break_space_taken_out_in_word_is_not_reported(tmp_path: Path) -> None:
     """A paragraph whose only change undoes pandoc's typesetting has nothing to merge, and
     reporting it as merged made a dry run exit 1 asking for an `--apply` that did nothing."""
@@ -1866,3 +1915,21 @@ def test_import_carries_a_no_break_space(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the way the review found it: `[^missing]` prints as text, the co-author
+    deletes it, and import exited 0 with "nothing came back"."""
+    from manuscript_guard.cli import main
+
+    paragraph = "See the note[^missing] for how the cohort was defined."
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"note[^missing]": "note"})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "a footnote" in capsys.readouterr().out
+    assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")

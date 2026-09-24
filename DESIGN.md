@@ -2019,7 +2019,10 @@ Closed since, and why each mattered:
     changed there. Where the source is read against Word's text, U+00A0 therefore counts
     as a space; Word's text against Word's text compares it exactly, so one the co-author
     typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
-    space taken out again in Word is no edit, and the next build puts it back.
+    space taken out again in Word is no edit, and the next build puts it back. Only where
+    the source reads as what was sent, but for typesetting: the reading is wrong where
+    pandoc prints markup as text (`[^missing]` with no note, an image with no file), and a
+    co-author deleting that text would otherwise have been dropped without a word.
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
     without its own, so a no-break space the co-author added there is dropped: silently,
     when it is the only change to the paragraph.

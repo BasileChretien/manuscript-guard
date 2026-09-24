@@ -371,6 +371,37 @@ def test_a_matching_checksum_passes(tmp_path: Path) -> None:
     assert count == 1
 
 
+def test_make_docx_gives_the_same_bytes_across_a_clock_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test above checksums one make_docx write and builds from a second.
+
+    Entries stamped with the clock made the two differ whenever they straddled a two-second
+    tick, and the checksum test failed now and then. Here the clock jumps two seconds every
+    time zipfile reads it, so going back to stamped entries fails every run.
+    """
+    import itertools
+    import time
+    import types
+
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)  # Python 3.14 prefers it
+    ticks = itertools.count(1_600_000_000, 2)
+    clock = types.SimpleNamespace(time=lambda: next(ticks), localtime=time.localtime)
+    monkeypatch.setattr(zipfile, "time", clock)
+
+    def stamped(path: Path) -> bytes:
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("word/document.xml", "<w:document/>")
+        return path.read_bytes()
+
+    assert stamped(tmp_path / "s1.zip") != stamped(tmp_path / "s2.zip"), "the clock never ticked"
+
+    rows = [["", "Item No.", "Recommendation"], ["Title", "1", "Identify the study design", ""]]
+    first = make_docx(tmp_path / "a.docx", rows).read_bytes()
+    second = make_docx(tmp_path / "b.docx", rows).read_bytes()
+    assert first == second
+
+
 def test_the_licence_notice_names_the_source_and_terms() -> None:
     from manuscript_guard.reporting.fetch import licence_notice
 

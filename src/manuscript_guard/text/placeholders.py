@@ -68,7 +68,10 @@ def _without_comments(text: str) -> str:
 
     Blanked rather than removed so every offset, line and column still refers to the file
     the author is looking at. Only what pandoc drops is blanked: `` `<!--` `` is code, and
-    so is a `<!--` in a listing, and a binding after either is printed like any other.
+    so is a `<!--` in a listing, and a binding after either is printed like any other. A
+    comment opened in the front matter ends with it, as pandoc reads it: run on to the next
+    comment in the body, it took every binding between out of G2, and a reversed interval
+    passed.
     """
     if "<!--" not in text:
         return text

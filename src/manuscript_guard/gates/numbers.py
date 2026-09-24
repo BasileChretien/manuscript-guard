@@ -20,8 +20,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.masking import front_matter_end, mask
+from manuscript_guard.text.masking import fenced_blocks, mask
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -246,7 +245,7 @@ def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> 
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
-    for fence in fenced_spans(text, front_matter_end(text)):
+    for fence in fenced_blocks(text):
         line = text.count("\n", 0, fence.start) + 1
         body = text[fence.body_start : fence.body_end]
 

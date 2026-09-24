@@ -20,10 +20,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.fences import blank_fences, fenced_spans
+from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import (
     FRONTMATTER,
     blank,
+    fenced_blocks,
     front_matter_end,
     html_comments,
     mask,
@@ -122,7 +123,7 @@ def scannable(text: str) -> str:
     # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
     # earlier opener and blanked the headings between them.
     head = front_matter_end(text)
-    fences = fenced_spans(text, head)
+    fences = fenced_blocks(text)
     spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
     return blank(text, [(0, head), *spans])
 

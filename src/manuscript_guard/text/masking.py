@@ -42,6 +42,14 @@ def front_matter_end(text: str) -> int:
     opening = FRONTMATTER.match(text)
     return opening.end() if opening else 0
 
+
+def fenced_blocks(text: str) -> list[Fence]:
+    """The fenced blocks of the front matter and of the body, none opening in one and
+    closing in the other. A code block in an abstract is still code: looked for in the body
+    alone, its `<!--` opened a comment that hid the abstract's prose."""
+    head = front_matter_end(text)
+    return [*fenced_spans(text[:head]), *fenced_spans(text, head)]
+
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of
 # "A 3.84-fold excess" and an abstract quoting an ROR and a cohort size were checked by
@@ -166,7 +174,7 @@ def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[in
         return []
     view = _filled(text, _frontmatter_spans(text), NUL)
     if fences is None:
-        fences = fenced_spans(text, front_matter_end(text))
+        fences = fenced_blocks(text)
     return comment_spans(view, fences)
 
 
@@ -192,7 +200,7 @@ def mask(text: str) -> str:
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    fences = fenced_spans(text, head)
+    fences = fenced_blocks(text)
     for fence in fences:
         for index in range(fence.start, fence.end):
             chars[index] = NUL
@@ -216,7 +224,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
     head = front_matter_end(text)
-    blocks = fenced_spans(text, head)
+    blocks = fenced_blocks(text)
     comments = html_comments(text, blocks)
     fences = [(f.start, f.end) for f in blocks]
     if fences:

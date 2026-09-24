@@ -16,7 +16,6 @@ import pytest
 
 from manuscript_guard.roundtrip import (
     comments_in,
-    realign,
     segments,
     stamp_into,
     stamp_of,
@@ -24,6 +23,56 @@ from manuscript_guard.roundtrip import (
 
 PANDOC = shutil.which("pandoc") is not None
 needs_pandoc = pytest.mark.skipif(not PANDOC, reason="pandoc is not installed")
+
+
+def guessed(source: str, rendered: str) -> list[tuple[int, int]] | None:
+    """Token extents found the way import once guessed them: each stretch of prose located in
+    the rendered text, the tokens being what lies between.
+
+    A test fixture, for the plain strings these unit tests use, where the guess is right.
+    Import itself reads the extents from a build with every token bookmarked, because the
+    guess is wrong in general - "(Smith et al. 2020)." ending a paragraph was cut at "al.".
+    """
+    from manuscript_guard.roundtrip import _read
+
+    flat = [shown.strip() for shown in _read(source).shown]
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    if flat[0]:
+        at = rendered.find(flat[0])
+        if at < 0:
+            return None
+        cursor = at + len(flat[0])
+    for index in range(1, len(flat)):
+        piece = flat[index]
+        if piece:
+            at = rendered.find(piece, cursor)
+            if at < 0:
+                return None
+            start, end, cursor = cursor, at, at + len(piece)
+        elif index == len(flat) - 1:
+            start, end, cursor = cursor, len(rendered), len(rendered)
+        else:
+            return None
+        while start < end and rendered[start].isspace():
+            start += 1
+        while end > start and rendered[end - 1].isspace():
+            end -= 1
+        if start == end:
+            return None
+        spans.append((start, end))
+    return spans
+
+
+def align(source: str, rendered: str, returned: str, tokens=None):
+    """`roundtrip.align`, with the token extents guessed when a test gives none."""
+    from manuscript_guard.roundtrip import align as real
+
+    return real(source, rendered, returned, guessed(source, rendered) if tokens is None else tokens)
+
+
+def realign(source: str, rendered: str, returned: str, tokens=None) -> str | None:
+    return align(source, rendered, returned, tokens).rebuilt
 
 
 def edit_docx(source: Path, target: Path, replacements: dict[str, str]) -> Path:
@@ -333,25 +382,24 @@ def test_a_number_that_grew_a_digit_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "named"),
     [
-        "See the [agency report](https://example.org/r) for details.",
-        "See the agency report.^[Withdrawn in 2019.] It has details.",
-        "See the agency report, $n = 3$, for details.",
+        ("See the [agency report](https://example.org/r) for details.", "a link"),
+        ("See the agency report.^[Withdrawn in 2019.] It has details.", "a footnote"),
+        ("See the agency report, $n = 3$, for details.", "an equation"),
     ],
     ids=["link", "footnote", "math"],
 )
-def test_a_paragraph_whose_markup_word_cannot_carry_is_refused(source: str) -> None:
-    """Word's plain text has the link's words but not its address, a footnote's reference
-    mark but not its text, and none of an equation. Merging it over the source deleted
-    them."""
+def test_a_paragraph_whose_markup_word_cannot_carry_is_refused(source: str, named: str) -> None:
+    """Word's plain text has the link's words but not its address, a footnote's
+    reference mark but not its text, and none of an equation. Merging it over the source
+    deleted them."""
     from manuscript_guard.merge import why
-    from manuscript_guard.roundtrip import align
 
     rendered = "See the agency report for details."
     aligned = align(source, rendered, "See the agency report for more details.", [])
     assert aligned.rebuilt is None
-    assert "a footnote, a link" in why(aligned)[0]
+    assert named in why(aligned)[0]
 
 
 @pytest.mark.parametrize(
@@ -455,7 +503,6 @@ def test_an_edit_inside_a_citation_is_refused_not_merged_as_prose() -> None:
     first citation, so a co-author's 'and' -> '&' in the citation merged as prose, between
     the two citations."""
     from manuscript_guard.merge import why
-    from manuscript_guard.roundtrip import align
 
     source = "Both [@a] and [@b] agree."
     plain, spans = unmark("Both ⟦(Smith and Jones 2020)⟧ and ⟦(Lee 2021)⟧ agree.")
@@ -479,7 +526,6 @@ def test_two_tokens_with_nothing_between_them_are_refused_as_unaligned() -> None
     """Their extents are known in the build, but Word's text has no seam between '1' and
     '2'. Refused, and not as "'1' comes from results.a", which would say a value that had
     not changed was changed."""
-    from manuscript_guard.roundtrip import align
 
     aligned = align("Values {{results.a}}{{results.b}} here.", "Values 12 here.",
                     "Values 12 there.", [(7, 8), (8, 9)])
@@ -508,10 +554,36 @@ def test_a_citation_keeps_the_brackets_inside_it() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "citation",
+    [
+        "[@2019who]",
+        "[@_underkey]",
+        "[@Élodie2020]",
+        "[@{10.1000/xyz}]",
+        "[see @{https://ex.org/a?b=c&d=e}, p. 4]",
+        "@2019who",
+        "@Élodie2020",
+        "@{10.1000/xyz}",
+    ],
+)
+def test_a_key_pandoc_reads_is_a_citation_here_too(citation: str) -> None:
+    """Keys were read as starting with an ASCII letter, and pandoc also reads a digit, an
+    underscore, any letter and a key in braces. `[@2019who]` stayed in the prose, and a
+    rewording beside it merged the citation back as its rendered text."""
+    assert segments(f"Rates rose {citation} in all.")[1] == [citation]
+
+
+def test_a_citation_with_a_key_starting_with_a_digit_survives_a_rewording() -> None:
+    source = "Rates rose [@2019who] in all regions."
+    out = merged(source, "Rates rose ⟦(WHO 2019)⟧ in all regions.",
+                 "Rates climbed (WHO 2019) in all regions.")
+    assert out == "Rates climbed [@2019who] in all regions."
+
+
 def test_a_citation_nothing_protected_refuses_the_paragraph() -> None:
     """Whatever the token patterns miss, a key left in the prose must not be merged over:
     Word's text has the citation's rendering, not the key."""
-    from manuscript_guard.roundtrip import align
 
     aligned = align(
         "Quoted [@key, p. 3 and more.",
@@ -551,12 +623,11 @@ def test_formatting_that_wraps_a_token_is_not_left_half_open(
     """An edited segment is taken from Word without its markdown, and the untouched segment
     on the other side of the token kept its delimiter: `The new value {{x}}]{.smallcaps}`."""
     from manuscript_guard.merge import why
-    from manuscript_guard.roundtrip import align
 
     plain, spans = unmark(rendered)
     aligned = align(source, plain, returned, spans)
     assert aligned.rebuilt is None
-    assert "formatting" in " ".join(why(aligned))
+    assert aligned.markup or aligned.misread, why(aligned)
 
 
 @pytest.mark.parametrize(
@@ -583,6 +654,137 @@ def test_a_literal_marker_does_not_shift_the_pairs_after_it(
     assert merged(source, rendered, returned) is None
 
 
+# ------------------------------------------ what Word's text cannot carry back to the source
+
+
+def test_an_inline_comment_and_footnote_are_not_merged_away() -> None:
+    """The reported case. Neither reaches the paragraph's `w:t` text, so rebuilding the
+    paragraph from what came back deleted the comment, and nothing said so."""
+    from manuscript_guard.merge import why
+
+    source = "Text <!-- keep me --> with a note^[the footnote] here."
+    aligned = align(source, "Text with a note here.", "Text with a note there.")
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("an HTML comment", "a footnote")
+    assert "an HTML comment and a footnote" in why(aligned)[0]
+    assert "lose them" in why(aligned)[0]
+
+
+# (source, what its paragraph shows in Word) - each rendered form was read off pandoc's
+# output for that source, not assumed.
+UNCARRIED = [
+    pytest.param("Text <!-- keep me --> here.", "Text here.", "an HTML comment", id="comment"),
+    pytest.param("Text with a ref[^1] here.", "Text with a ref here.", "a footnote", id="note-ref"),
+    pytest.param(
+        'Text <span class="x">inside</span> here.', "Text inside here.", "inline HTML", id="html"
+    ),
+    pytest.param(r"Raw \ref{fig} here.", "Raw here.", "raw TeX", id="raw-tex"),
+    pytest.param("Raw `<b>x</b>`{=html} here.", "Raw here.", "a raw inline", id="raw-attribute"),
+    pytest.param(
+        "Text [small]{.smallcaps} here.", "Text small here.", "a span with attributes", id="span"
+    ),
+    pytest.param("See <https://x.org> here.", "See https://x.org here.", "a link", id="autolink"),
+    pytest.param("Math $x^2$ here.", "Math here.", "an equation", id="math"),
+    pytest.param("Units of 10^9^/L here.", "Units of 109/L here.", "a superscript", id="sup"),
+    pytest.param("Water is H~2~O here.", "Water is H2O here.", "a subscript", id="sub"),
+    pytest.param("An ![a plot](plot.png) here.", "An here.", "an image", id="image"),
+    pytest.param("Text ~~gone~~ here.", "Text gone here.", "struck-through text", id="struck"),
+]
+
+
+@pytest.mark.parametrize(("source", "rendered", "named"), UNCARRIED)
+def test_markup_word_text_cannot_carry_refuses_a_rewording(
+    source: str, rendered: str, named: str
+) -> None:
+    """Each reaches Word as something other than its source: nothing at all, or its words
+    without the address, the attributes, or the raised 9 that makes 10^9 not 109."""
+
+    aligned = align(source, rendered, rendered.replace("here", "there"))
+    assert aligned.rebuilt is None
+    assert aligned.markup == (named,)
+
+
+@pytest.mark.parametrize(("source", "rendered", "named"), UNCARRIED)
+def test_markup_in_an_unedited_paragraph_is_left_alone(
+    source: str, rendered: str, named: str
+) -> None:
+    assert realign(source, rendered, rendered) == source
+
+
+def test_markup_in_an_untouched_stretch_survives_the_merge() -> None:
+    """The refusal is per stretch of prose, not per paragraph: a footnote before a binding
+    stays where it was when the co-author reworded only the text after it."""
+    source = "Readers^[an aside] saw {{results.x}} and more words."
+    rendered = "Readers saw 3.84 and more words."
+    out = realign(source, rendered, "Readers saw 3.84 and many more words.")
+    assert out == "Readers^[an aside] saw {{results.x}} and many more words."
+
+
+def test_markup_in_the_edited_stretch_refuses_the_merge() -> None:
+
+    source = "Readers^[an aside] saw {{results.x}} and more words."
+    rendered = "Readers saw 3.84 and more words."
+    aligned = align(source, rendered, "Most readers saw 3.84 and more words.")
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("a footnote",)
+
+
+def test_a_binding_inside_a_footnote_belongs_to_the_footnote() -> None:
+    """It renders into footnotes.xml, not into the paragraph, so it cannot be aligned as one
+    of the paragraph's own tokens - and a comment's binding is never rendered at all."""
+    prose, protected = segments("a^[n = {{results.n}}] b {{results.x}} c <!-- {{results.y}} -->")
+    assert protected == ["{{results.x}}"]
+    assert prose[0] == "a^[n = {{results.n}}] b "
+
+
+def test_a_binding_inside_inline_code_is_still_a_binding() -> None:
+    """Code shows its text, so a binding in it renders into the paragraph like any other."""
+    _prose, protected = segments("Run with version `{{results.version}}` today.")
+    assert protected == ["{{results.version}}"]
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "The **ratio {{results.x}} was** high.",
+            "The ratio 3.84 was high.",
+            "The ratio 3.84 was very high.",
+            id="bold",
+        ),
+        pytest.param(
+            "Run with version `{{results.v}}` today.",
+            "Run with version 4.4.1 today.",
+            "Run with version 4.4.1 again today.",
+            id="code",
+        ),
+    ],
+)
+def test_formatting_around_a_binding_is_not_cut_in_half(
+    source: str, rendered: str, returned: str
+) -> None:
+    """The prose either side of a binding each holds one delimiter. Rebuilding the edited
+    side from Word's text dropped its delimiter and kept the other: `**ratio {{results.x}}
+    was very high.`, and the document printed the asterisks."""
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("one end of an emphasis or code span",)
+
+
+def test_bold_around_two_bindings_is_not_stretched_over_the_words_between() -> None:
+    """The stretch between holds a closing and an opening delimiter, so counting them found
+    an even number and let it merge: `**{{results.x}} versus {{results.y}}**`, the co-author's
+    word now bold and the author's two bold values one span."""
+
+    source = "The **{{results.x}}** and **{{results.y}}** values differ."
+    aligned = align(
+        source, "The 3.84 and 7.02 values differ.", "The 3.84 versus 7.02 values differ."
+    )
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("one end of an emphasis or code span",)
+
+
 @pytest.mark.parametrize(
     ("source", "rendered", "returned", "expected"),
     [
@@ -596,7 +798,7 @@ def test_a_literal_marker_does_not_shift_the_pairs_after_it(
             "About ~{{results.a}} reports and ~200 controls.",
             "About ~⟦3⟧ reports and ~200 controls.",
             "About ~3 reports and ~200 matched controls.",
-            "About ~{{results.a}} reports and ~200 matched controls.",
+            "About ~{{results.a}} reports and \\~200 matched controls.",
         ),
     ],
     ids=["interval", "approximately"],
@@ -619,6 +821,60 @@ def test_quotes_from_word_are_straightened_for_pandoc_to_curl() -> None:
         "The agency called it ‘a ratio of 3’ in its last review.",
     )
     assert out == "The agency called it 'a ratio of {{results.x}}' in its last review."
+
+
+def test_a_quote_opened_right_before_a_token_is_closed_straight_too() -> None:
+    source = "The agency called it '{{results.x}} to one' in its review."
+    out = merged(
+        source,
+        "The agency called it ‘⟦3⟧ to one’ in its review.",
+        "The agency called it ‘3 to one’ in its last review.",
+    )
+    assert out == "The agency called it '{{results.x}} to one' in its last review."
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "Das Amt nannte es „ein Signal“ in {{results.n}} Fällen.",
+            "Das Amt nannte es „ein Signal“ in ⟦12⟧ Fällen.",
+            "Das Amt nannte es „ein klares Signal“ in 12 Fällen.",
+            id="german",
+        ),
+        pytest.param(
+            "Rates of {{results.x}} rose in the 1990s.",
+            "Rates of ⟦3⟧ rose in the 1990s.",
+            "Rates of 3 rose in the ’90s, rock ’n’ roll aside.",
+            id="apostrophes",
+        ),
+        pytest.param(
+            "Das Amt nannte es ein Signal.",
+            "Das Amt nannte es ein Signal.",
+            "Das Amt nannte es „ein Signal“ im ’90er-Stil.",
+            id="german-plain",
+        ),
+    ],
+)
+def test_quotes_from_word_are_kept_as_word_shows_them(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Straightening every quote from Word, for pandoc to curl again, turned „ein Signal“
+    into “ein Signal” and the ’90s into ‘90s: pandoc curls a straight quote the English
+    way, and reads one before a word as opening a quotation."""
+    plain = returned.replace("12", "{{results.n}}").replace("3 rose", "{{results.x}} rose")
+    assert merged(source, rendered, returned) == plain
+
+
+def test_only_the_quote_closing_a_kept_straight_one_is_straightened() -> None:
+    """The apostrophe of "patients'" opens nothing, so the ’90s after it stays as typed."""
+    source = "The patients' {{results.n}} visits rose."
+    out = merged(
+        source,
+        "The patients’ ⟦12⟧ visits rose.",
+        "The patients’ 12 visits rose, the ’90s aside.",
+    )
+    assert out == "The patients' {{results.n}} visits rose, the ’90s aside."
 
 
 def test_formatting_that_wraps_a_token_is_kept_when_that_side_is_untouched() -> None:
@@ -653,13 +909,13 @@ def test_prose_before_a_stray_bracket_and_a_citation_merges_once(
     )
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     after = source.read_text(encoding="utf-8")
-    assert after.count("All scores in [low, high) were rescaled") == 1
-    assert "[[" not in after and closed(after)
+    printed = after.replace("\\[", "[")  # Word's text is written back escaped
+    assert printed.count("All scores in [low, high) were rescaled") == 1
+    assert "[[" not in printed and closed(after)
 
 
 def test_inline_maths_wrapped_across_a_line_is_refused() -> None:
     """pandoc reads `$p <\\n0.05$` as one equation, which Word holds as OMML, not text."""
-    from manuscript_guard.roundtrip import align
 
     aligned = align("We required $p <\n0.05$ throughout.", "We required throughout.",
                     "We always required throughout.", [])
@@ -688,6 +944,387 @@ def test_a_private_use_character_survives_being_read(tmp_path: Path) -> None:
 def test_an_email_address_is_not_a_citation() -> None:
     prose, protected = segments("Write to data@example.org for access.")
     assert protected == []
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            r"Values \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
+            "Values <LLOQ and >ULOQ (n = 56) were excluded.",
+            "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
+            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            id="escape",
+        ),
+        pytest.param(
+            "Values &lt;LLOQ and &gt;ULOQ (n = {{results.n}}) were excluded.",
+            "Values <LLOQ and >ULOQ (n = 56) were excluded.",
+            "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
+            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            id="entity",
+        ),
+        pytest.param(
+            r"Carriers of CYP2D6\*4 and CYP2D6\*10 were poor metabolisers.",
+            "Carriers of CYP2D6*4 and CYP2D6*10 were poor metabolisers.",
+            "Carriers of CYP2D6*4 and CYP2D6*10 were slow metabolisers.",
+            r"Carriers of CYP2D6\*4 and CYP2D6\*10 were slow metabolisers.",
+            id="genotype",
+        ),
+        pytest.param(
+            r"The adjusted HR\* {{results.x}} was lower.",
+            "The adjusted HR* 3.84 was lower.",
+            "An adjusted HR* 3.84 was lower.",
+            r"An adjusted HR\* {{results.x}} was lower.",
+            id="escape-beside-a-binding",
+        ),
+        pytest.param(
+            "The HR {{results.x}}* was lower.",
+            "The HR 3.84* was lower.",
+            "The HR 3.84* was higher.",
+            r"The HR {{results.x}}\* was higher.",
+            id="asterisk-after-a-binding",
+        ),
+        pytest.param(
+            r"The \"real-world\" data (95% CI \[1.2-3.4\]; p\<0.05) cost US\$5.",
+            "The “real-world” data (95% CI [1.2-3.4]; p<0.05) cost US$5.",
+            "The “real-world” data (95% CI [1.2-3.4]; p<0.05) cost only US$5.",
+            r"The “real-world” data (95% CI \[1.2-3.4]; p<0.05) cost only US\$5.",
+            id="converted-from-word",
+        ),
+    ],
+)
+def test_what_word_shows_unescaped_goes_back_reading_the_same(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Word shows `\\<LLOQ` as "<LLOQ", and written back bare that is an HTML tag: the
+    document printed "Concentrations ULOQ". `CYP2D6\\*4` came back as the start of italics.
+    Refusing every escape instead refused most of a paper converted from Word by pandoc,
+    which escapes as a habit. So Word's text is escaped where Markdown would read it as
+    markup, and only there."""
+    assert realign(source, rendered, returned) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "named"),
+    [
+        pytest.param(
+            "A&nbsp;B here.", "A B here.", "A B there.", "a non-breaking space", id="entity"
+        ),
+        pytest.param(
+            "The dose was 5 mg/kg in all.",
+            "The dose was 5 mg/kg in all.",
+            "The dose was 5 mg/kg in most.",
+            "a non-breaking space",
+            id="character",
+        ),
+        pytest.param(
+            "Line one  \nline two here.",
+            "Line one line two here.",
+            "Line one line two there.",
+            "a line break",
+            id="hard-break",
+        ),
+    ],
+)
+def test_what_word_reads_back_as_a_plain_space_is_refused(
+    source: str, rendered: str, returned: str, named: str
+) -> None:
+    """Word's text comes back with its spaces normalised, so nothing in it says a space was
+    non-breaking or a line was broken."""
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == (named,)
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "The ratio was *{{results.x}}* in all cases.",
+            "The ratio was 3.84 in all cases.",
+            "The ratio was 3.84 in most cases.",
+            id="italic-after",
+        ),
+        pytest.param(
+            "The ratio was *{{results.x}}* in all cases.",
+            "The ratio was 3.84 in all cases.",
+            "The odds ratio was 3.84 in all cases.",
+            id="italic-before",
+        ),
+        pytest.param(
+            "Run `{{results.v}}` and `{{results.x}}` today.",
+            "Run 4.4.1 and 3.84 today.",
+            "Run 4.4.1 or 3.84 today.",
+            id="code-around-two",
+        ),
+        pytest.param(
+            "Ratio *{{results.x}}* vs *{{results.y}}* here.",
+            "Ratio 3.84 vs 7.02 here.",
+            "Ratio 3.84 versus 7.02 here.",
+            id="italic-around-two",
+        ),
+    ],
+)
+def test_a_span_around_a_binding_is_seen_whatever_its_delimiter(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Read one stretch at a time, a lone `*` beside a binding looked like a character, and
+    the stretch between two code spans looked like a code span of its own. Read with the
+    bindings in place, each is one end of a span around one."""
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == ("one end of an emphasis or code span",)
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Costs ranged from US$5–US${{results.hi}} per patient.",
+            "Costs ranged from US$5–US$6.3 per patient.",
+            "Costs varied from US$5–US$6.3 per patient.",
+            r"Costs varied from US\$5–US\${{results.hi}} per patient.",
+            id="one-price-bound",
+        ),
+        pytest.param(
+            "The *main **adjusted** ratio* was {{results.x}} in cases.",
+            "The main adjusted ratio was 3.84 in cases.",
+            "The main fully adjusted ratio was 3.84 in cases.",
+            "The main fully adjusted ratio was {{results.x}} in cases.",
+            id="bold-inside-italics",
+        ),
+        pytest.param(
+            "Alpha `a*b` and `c*d` beta gamma.",
+            "Alpha a*b and c*d beta gamma.",
+            "Alpha a*b and c*d beta delta.",
+            r"Alpha a\*b and c\*d beta delta.",
+            id="code-comes-back-as-text",
+        ),
+    ],
+)
+def test_a_stretch_is_read_with_its_neighbours(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    assert realign(source, rendered, returned) == expected
+
+
+@pytest.mark.parametrize(
+    ("returned", "expected"),
+    [
+        pytest.param("It was 3.84 % in all.", "It was {{results.x}} % in all.", id="space"),
+        pytest.param("It was 3.84%* in all.", r"It was {{results.x}}%\* in all.", id="asterisk"),
+    ],
+)
+def test_an_edit_to_spacing_or_an_asterisk_alone_is_merged(returned: str, expected: str) -> None:
+    """Each stretch used to be stripped, and its asterisks dropped, before it was compared, so
+    these were judged unchanged: the source was kept and the paragraph reported as merged."""
+    assert realign("It was {{results.x}}% in all.", "It was 3.84% in all.", returned) == expected
+
+
+TYPED_IN_WORD = [
+    pytest.param("Costs were $x$ low.", r"Costs were \$x\$ low.", id="math"),
+    pytest.param("Ask @admin for it.", r"Ask \@admin for it.", id="citation"),
+    pytest.param("Its \u2018real\u2019 cost, they\u2019re sure.",
+                 "Its \u2018real\u2019 cost, they\u2019re sure.", id="quotes"),
+    pytest.param("Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
+                 "Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
+                 id="german-quotes"),
+    pytest.param("Use {{results.x}} here.", r"Use \{\{results.x}} here.", id="binding"),
+    pytest.param("1990. The year was bad.", r"1990\. The year was bad.", id="list"),
+    pytest.param("A *real* change.", r"A \*real\* change.", id="emphasis"),
+    pytest.param(
+        "Samples <LLOQ in mg/L and >ULOQ were redone.",
+        r"Samples \<LLOQ in mg/L and >ULOQ were redone.",
+        id="tag-to-pandoc",
+    ),
+    pytest.param("Ask @2020 or @_user.", r"Ask \@2020 or \@\_user.", id="odd-citation"),
+    pytest.param("See [Methods] here.", r"See \[Methods] here.", id="header-reference"),
+    pytest.param("Samples ~~5 and $$x$$.", r"Samples \~\~5 and \$\$x\$\$.", id="doubled"),
+    pytest.param("``` not a fence", r"\`\`\` not a fence", id="code-fence"),
+    pytest.param("::: not a div", r"\::: not a div", id="div-fence"),
+    pytest.param(r"Files in C:\temp\new.", r"Files in C:\\temp\\new.", id="backslash"),
+    pytest.param(
+        "R&D in data@example.org, p < 0.05.", "R&D in data@example.org, p < 0.05.", id="as-is"
+    ),
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("returned", "expected"), TYPED_IN_WORD)
+def test_what_word_typed_prints_as_typed(returned: str, expected: str, tmp_path: Path) -> None:
+    """The artefact, not the escaper's opinion of it. The first escaper asked this module's
+    reading of Markdown what needed a backslash, and that reading is not pandoc's: typed
+    `<LLOQ in mg/L and >` passed its own read-back and was deleted by pandoc."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    merged = realign("Costs were low.", "Costs were low.", returned)
+    source = tmp_path / "a.md"
+    source.write_text(f"# Methods\n\n[]{{#mg-p-x-0}}{merged}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(source), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")["mg-p-x-0"]
+    # Pandoc still typesets a typed `--` as a dash; a hyphen is never escaped.
+    assert printed.replace("\u2013", "--") == " ".join(returned.split())
+
+
+BESIDE_A_TOKEN = [
+    pytest.param(
+        "Alpha beta [@jones2019] gamma delta.",
+        "Alpha beta (Jones 2019) gamma delta.",
+        "Alpha beta (Jones 2019)(see Table 2) gamma delta.",
+        r"Alpha beta [@jones2019]\(see Table 2) gamma delta.",
+        id="parenthesis-after-a-citation",
+    ),
+    pytest.param(
+        "Patients took {{results.drug}} daily with water.",
+        "Patients took aspirin daily with water.",
+        "Patients took <aspirin daily and >placebo.",
+        r"Patients took \<{{results.drug}} daily and >placebo.",
+        id="angle-before-a-binding",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
+def test_text_beside_a_token_is_escaped_for_its_neighbour(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Each stretch was escaped as if it stood alone. `(see Table 2)` typed straight after a
+    citation's `]` made a link of it, and the parenthesis became the link's address; a `<`
+    before a binding whose value is a word became the start of a tag."""
+    assert realign(source, rendered, returned) == expected
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
+def test_text_beside_a_token_prints_as_typed(
+    source: str, rendered: str, returned: str, expected: str, tmp_path: Path
+) -> None:
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    # The binding filled in as the build fills it; the citation left for pandoc to read.
+    merged = realign(source, rendered, returned).replace("{{results.drug}}", "aspirin")
+    path = tmp_path / "a.md"
+    path.write_text(f"[]{{#mg-p-x-0}}{merged}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")["mg-p-x-0"]
+    kept = "(see Table 2)" if "Table" in returned else "<aspirin daily and >placebo"
+    assert kept in printed
+
+
+@pytest.mark.parametrize(("returned", "expected"), TYPED_IN_WORD)
+def test_markdown_typed_in_word_goes_back_as_text(returned: str, expected: str) -> None:
+    """A co-author types text, not Markdown. Put into the source as it was, `@admin` became a
+    citation and `{{results.x}}` a binding - a number the co-author typed, entering the
+    manuscript as though the analysis had produced it."""
+    source = "Costs were low."
+    assert realign(source, source, returned) == expected
+
+
+def test_an_escape_in_a_stretch_left_alone_is_kept() -> None:
+    source = r"The adjusted HR\* {{results.x}} was lower."
+    rendered = "The adjusted HR* 3.84 was lower."
+    out = realign(source, rendered, "The adjusted HR* 3.84 was much lower.")
+    assert out == r"The adjusted HR\* {{results.x}} was much lower."
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
+            "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
+            "Levels <LOD were imputed as LOD/2 and >ULOQ dropped.",
+            r"Levels \<LOD were imputed as LOD/2 and >ULOQ dropped.",
+            id="angle-brackets",
+        ),
+        pytest.param(
+            "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ excluded.",
+            "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ excluded.",
+            "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ dropped.",
+            "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ dropped.",
+            id="angle-brackets-and-a-binding",
+        ),
+        pytest.param(
+            "Costs ranged from US${{results.lo}} to US${{results.hi}} per patient.",
+            "Costs ranged from US$2.1 to US$6.3 per patient.",
+            "Costs varied from US$2.1 to US$6.3 per patient.",
+            r"Costs varied from US\${{results.lo}} to US${{results.hi}} per patient.",
+            id="dollars-and-bindings",
+        ),
+    ],
+)
+def test_prose_that_only_looks_like_markup_still_merges(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Pandoc prints these as text - `<LOD ... LOD/2 and >` is not a tag, and a dollar before
+    a number does not close an equation - so reading them as markup refused a clean edit."""
+    assert realign(source, rendered, returned) == expected
+
+
+def test_emphasis_inside_one_stretch_is_only_formatting() -> None:
+    """Bold wholly inside an edited stretch is lost with it, which is the known cost - both
+    delimiters go, so nothing is left unpaired."""
+    source = "The ratio {{results.x}} was **very** high."
+    out = realign(source, "The ratio 3.84 was very high.", "The ratio 3.84 was very, very high.")
+    assert out == "The ratio {{results.x}} was very, very high."
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered"),
+    [
+        ("As @smith2020 showed, rates rose.", "As ⟦Smith (2020)⟧ showed, rates rose."),
+        # Its extent is given, not guessed: guessing found the final "." inside "p. 4".
+        ("Rates rose [see @smith2020, p. 4].", "Rates rose ⟦(see Smith (2020), p. 4)⟧."),
+    ],
+    ids=["narrative", "prefixed"],
+)
+def test_a_narrative_or_prefixed_citation_is_protected_not_flattened(
+    source: str, rendered: str
+) -> None:
+    """These read in Word as "Smith (2020)". When only `[@key]` was a token, rebuilding from
+    Word's text turned the citation into that text and the reference left the bibliography;
+    that was then refused. Both are tokens now, and a rewording keeps the key."""
+    returned = unmark(rendered)[0].replace("rose", "climbed")
+    assert merged(source, rendered, returned) == source.replace("rose", "climbed")
+
+
+def test_an_email_address_is_prose() -> None:
+    source = "Write to data@example.org for access."
+    out = realign(source, source, "Write to data@example.org for the data.")
+    assert out == "Write to data@example.org for the data."
+
+
+def test_prices_in_dollars_are_prose() -> None:
+    """Pandoc's dollar rule, not any pair of dollars: "US$ 5" and "$5 and $10" are text, so
+    the source is not refused as an equation. What comes back is escaped all the same."""
+    source = "It cost US$ 5, or $5 and $10 elsewhere."
+    out = realign(source, source, "It cost US$ 5, or $5 and $10 abroad.")
+    assert out == r"It cost US\$ 5, or \$5 and \$10 abroad."
+
+
+def test_smart_punctuation_alone_does_not_refuse_a_plain_paragraph() -> None:
+    """Pandoc curls quotes and turns `--` into a dash. That is typesetting, not something
+    lost, and refusing on it would refuse most paragraphs."""
+    source = "It's \"fine\" -- here..."
+    rendered = "It’s “fine” – here…"
+    returned = "It’s “fine” – there…"
+    assert realign(source, rendered, returned) == returned
+
+
+def test_a_paragraph_whose_text_word_does_not_show_is_refused() -> None:
+    """The backstop for whatever `_INLINE` does not name. If the source does not read as
+    what Word shows, something in it did not reach Word as text, and rebuilding the
+    paragraph from Word's text would lose it."""
+
+    aligned = align("Alpha beta gamma.", "Alpha gamma.", "Alpha gamma delta.")
+    assert aligned.rebuilt is None
+    assert aligned.unaligned
 
 
 # ------------------------------------------------ what an import must not do to the source
@@ -1013,7 +1650,6 @@ def test_text_typed_where_a_paragraph_renders_nothing_is_not_merged(tmp_path: Pa
     ids=["display-maths", "html-comment"],
 )
 def test_markup_that_word_text_cannot_carry_is_refused(source: str) -> None:
-    from manuscript_guard.roundtrip import align
 
     aligned = align(source, "Before and after.", "Before and just after.", [])
     assert aligned.rebuilt is None and aligned.markup
@@ -1161,6 +1797,30 @@ def test_every_way_pandoc_renders_prose_still_takes_a_rewording(project: Path) -
         assert aligned.rebuilt.startswith(source[:-1]), f"{label}: {aligned.rebuilt}"
     for name, block in sent.items():
         assert extents[name].text == block.text, f"marking changed {block.text[:60]!r}"
+
+
+@needs_pandoc
+def test_a_value_ending_a_sentence_takes_a_rewording_end_to_end(
+    project: Path, tmp_path: Path
+) -> None:
+    """Guessing the extents, the final "." was found inside "3.84" and the paragraph was
+    refused as "'3' comes from results.ror.point" - a value nobody had changed."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    sentence = "The odds ratio for bleeding was {{results.ror.point}}."
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Bleeding\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project),
+        tmp_path / "bleeding.docx",
+        lambda xml: xml.replace("for bleeding was", "for major bleeding was", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+    assert "The odds ratio for major bleeding was {{results.ror.point}}." in after
 
 
 @needs_pandoc
@@ -1513,3 +2173,74 @@ def test_respond_from_a_file_that_is_not_a_docx_says_so(
     assert main(["respond", str(project), "--open", "--from", str(bogus)]) == 2
     assert "reviews.docx" in capsys.readouterr().err
     assert not (project / "revision").exists(), "no round opened from nothing"
+
+
+# ------------------------------------------- end to end: markup a rewording must not delete
+
+
+def with_paragraphs(project: Path, *paragraphs: str) -> None:
+    """Paragraphs added to the example's Discussion, before the document is built."""
+    path = project / "manuscript" / "main.md"
+    anchor = "# Data availability"
+    extra = "".join(f"{p}\n\n" for p in paragraphs)
+    path.write_text(path.read_text(encoding="utf-8").replace(anchor, extra + anchor, 1), "utf-8")
+
+
+@needs_pandoc
+def test_import_keeps_an_inline_comment_and_footnote(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the way it was found: a co-author rewords a paragraph carrying an inline
+    comment and a footnote. `import --apply` exited 0 and the source lost the comment."""
+    from manuscript_guard.cli import main
+
+    paragraph = "Text <!-- keep me --> with a marker^[the footnote] beside it."
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"beside it.": "near it."})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert paragraph in text, "the paragraph, comment and footnote included, is untouched"
+    assert "an HTML comment and a footnote" in out, out
+
+
+@needs_pandoc
+def test_import_merges_around_a_footnote_it_can_leave_alone(
+    project: Path, tmp_path: Path
+) -> None:
+    """The refusal costs only the stretch that holds the footnote: an edit on the other side
+    of a binding merges, and the footnote stays where it was."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project, "Readers^[an aside] will find a ratio of {{results.ror.point}} in a second look."
+    )
+    returned = edit_docx(
+        built(project), tmp_path / "back.docx", {"in a second look.": "in a closer look."}
+    )
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert (
+        "Readers^[an aside] will find a ratio of {{results.ror.point}} in a closer look." in text
+    )
+
+
+@needs_pandoc
+def test_import_does_not_flatten_a_narrative_citation(project: Path, tmp_path: Path) -> None:
+    """Word shows `@key` as the author and year. Rebuilt from that, the citation became
+    plain text, and the reference left the bibliography with nothing reported."""
+    from manuscript_guard.cli import main
+
+    paragraph = "As @fictionalClassSignal2019 reported, the signal was plain."
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(
+        built(project), tmp_path / "back.docx", {"the signal was plain.": "the signal was clear."}
+    )
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert paragraph.replace("plain.", "clear.") in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    ), "the rewording lands, and the citation is still a citation"

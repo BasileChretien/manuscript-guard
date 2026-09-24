@@ -1224,8 +1224,9 @@ file when nothing had moved at all.
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and
-`@key [p. 33]`. A key left in the prose all the same refuses the paragraph, since Word's text
-holds the citation's rendering and not the key. Where each token's rendering begins
+`@key [p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and
+`@{10.1000/xyz}` as well as `@smith2020`. A key left in the prose all the same refuses the
+paragraph, since Word's text holds the citation's rendering and not the key. Where each token's rendering begins
 and ends is not worked out. It is read from a second build of the same source in which
 every token has a Word bookmark around it, written as raw OpenXML that pandoc passes
 through. So nothing about how a number or a citation renders has to be known, which is what
@@ -1268,18 +1269,51 @@ segment with the same segment of the build, quotes straightened on both sides, b
 co-author's Word curls or uncurls them without anyone editing anything. And an unchanged
 segment is rebuilt from the source rather than from Word, so only a segment the co-author
 actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
-that is the price of using the bookmark as identity. Its quotes are straightened, for pandoc
-to curl: a curly closing quote from Word beside the source's straight opening one made pandoc
-print the opening one as an apostrophe. An edited segment that may hold half of some
-formatting around a token - `[{{x}}]{.smallcaps}`, `**{{x}}**`, `<sup>{{x}}</sup>` - is
-refused, because its half would go and the other half stay: the first attempt merged `The
-new value {{x}}]{.smallcaps}`. Markers are not paired by order, since one literal `*`
-earlier in a paragraph shifts every pair after it; a segment holding a `*`, `_`, `~~` or
-backtick is treated as wrapping whenever another segment holds the same kind. Brackets
-count only before a span or a link, so an interval "[{{lo}}, {{hi}}]" still merges, and `^`
-and `~` only when pressed against a token. What plain text cannot carry at all, a footnote, a link's
-address, an equation (wrapped across a line or not) or an HTML comment, makes the paragraph
-refused rather than merged: merging Word's text over it deleted them.
+that is the price of using the bookmark as identity. An edited segment keeps Word's quotes
+as they are: straightening them all for pandoc to curl again turned „ein Signal“ into
+“ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'` kept from the
+source can open a quotation that closes in the edited segment, and pandoc, finding nothing
+straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The read-back check
+below compares quotes as quotes and cannot see that, so the segment's first closing `’` is
+written straight, as the source had it.
+
+Losing bold is a cost; losing a footnote is a corruption. Word's text holds nothing of an
+HTML comment, a footnote, an equation or raw TeX; it holds a link's words without the
+address, and `10^9^/L` as "109/L". Rebuilt from that text, a paragraph lost them, and only
+footnotes and links were caught. The source is now read the way Word shows it, construct
+by construct, and an edited stretch of prose that holds one of them refuses the paragraph
+and names it: "the edited text carries an HTML comment and a footnote". A stretch the
+co-author left alone is rebuilt from the source, so a footnote before a binding survives an
+edit after it. Emphasis or code wrapped around a binding is refused the same way, because
+each side holds a delimiter whose partner is on the other, and rebuilding one side left the
+other unpaired, printed as literal asterisks.
+
+The paragraph is read whole, with each binding filled in as digits, because what a stretch
+is depends on its neighbours: `*{{results.x}}*` is italics around a number, and
+`US$5–US${{results.hi}}` is a price range, not an equation. Read one stretch at a time,
+neither was either.
+
+Word's text is literal, and the source is Markdown, so every character in what comes back
+that Markdown could read as markup is escaped, its edges read with the binding or citation
+that will stand beside them: `(see Table 2)` typed straight after a citation's `]` was a
+link. `CYP2D6\*4` is shown in Word as `CYP2D6*4`; written back bare it opened italics, and a
+co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. Two other ways
+were tried and beaten in review. Refusing every escape refused most of a paper converted
+from Word by pandoc, which escapes by habit. Escaping only what this module's reading took
+for markup trusted a reading that is close to pandoc's and not the same: `<LLOQ in mg/L and
+>` is a tag to pandoc, was text to it, and the words were deleted at the next build.
+Escaping never depends on that reading now. A backslash before punctuation does not change
+what pandoc prints, except before a quote, a hyphen or a full stop, which it would stop
+typesetting; those are escaped only where they open a paragraph as a list would (`1990.`,
+`- `), and there nothing is typeset.
+
+Then the rebuilt paragraph is read back the way Word should show it, and must read as what
+the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
+what this module can see - a delimiter left unpaired, a span stretched over new words - and
+not where the reading and pandoc disagree. A paragraph without bindings has one more
+backstop, for what renders nothing and the list does not name: if its source, read as Word
+should show it, is not what Word does show, something in it never reached Word as text, and
+the rewording is refused rather than rebuilt from what did.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -1976,9 +2010,40 @@ Closed since, and why each mattered:
   because the bookmark that identifies the paragraph is discarded by pandoc's markdown
   writer. Only a segment the co-author actually edited is affected; unchanged prose is
   rebuilt from the source.
+- **Merging a reworded paragraph refuses, rather than drops, what Word does not show as its
+  text.** It used to drop an inline comment, a footnote or inline math, and exit 0. Now an
+  edited stretch holding what Word's text cannot carry is refused by name: a comment, a
+  footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
+  HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
+  struck-through text, a non-breaking space, a hard line break, or one end of emphasis or
+  code wrapped around a binding. What comes back is escaped, and a merge that this module
+  reads differently from what came back is refused. What remains:
+  - *The refusal costs the edit.* The markup is never carried over into the new wording, even
+    where the words either side of a footnote came back unchanged and its place is certain.
+    In a paragraph without bindings the whole paragraph is one stretch, so one `kg/m^2^` or
+    `CD4^+^` refuses every edit to it.
+  - *The reading is pandoc's, closely enough, not exactly.* Emphasis is paired by pattern,
+    not by pandoc's rules, and `[1][2]` with no reference definition is text to pandoc and a
+    link here, so an edit to it is refused. Where the reading takes source markup for text
+    it keeps - an unnamed construct that renders nothing - the backstop or the alignment
+    refuses. Where it misjudges a span around a binding, nothing does.
+  - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
+    in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
+    `import` reads none of them. An edit inside a footnote or an equation, a changed link
+    address, or a footnote deleted in Word leaves the paragraph's text as it was, and
+    nothing is merged or reported.
+  - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
+    the source's own way of writing a character: `&lt;` comes back as `\<`, which prints the
+    same. An escaped straight quote, `\"`, comes back bare and pandoc curls it: a pandoc
+    conversion from Word writes those.
 - **Two protected tokens with nothing between them cannot be aligned.** The marked build
   knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
   '1' and '2' come back as '12'. The paragraph is refused.
+- **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
+  punctuation and before a non-space opens a quotation; the first `’` of the edited stretch
+  that closes it is written straight. Where that rule and pandoc disagree, one quote prints
+  the wrong way round, and no word changes. Stretches also compare quotes as quotes, so one
+  in which only their style changed, “x” to „x“, reads as untouched and keeps the source's.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -2024,8 +2089,6 @@ Closed since, and why each mattered:
   a binding inside inline code or an HTML comment, where the bookmark is printed rather than
   read; super- or subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks;
   `@a [-@b]`; and quotes that pandoc pairs differently around a bookmark.
-- **The wrap check refuses more than it must.** A paragraph with bold words on both sides
-  of a number refuses an edit to either side, because markers are not paired by order.
 - **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
   punctuation and merges; so does a unit or a percent sign added after a value. Both change
   what the sentence claims, and neither is caught here; `check` sees the binding intact.

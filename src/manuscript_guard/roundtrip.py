@@ -242,9 +242,10 @@ _FENCE = re.compile(r"(:::|```|~~~)")
 
 
 def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder that becomes a table or a figure.
+    """Headings, fences, and a lone placeholder that is not a value.
 
-    Not a lone value, which is a paragraph printing a number. Every lone placeholder used to
+    That is a table or a figure, or a misspelt placeholder, which `check` refuses. Not a
+    lone value, which is a paragraph printing a number. Every lone placeholder used to
     be skipped, so a co-author who cut a paragraph down to its number merged as
     `{{results.ror.point}}` alone, the next build gave it no identifier, and its next edit in
     Word was skipped with "nothing came back".
@@ -267,7 +268,8 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
     blocks, and paragraphs that are nothing but a table or figure placeholder, because those
     become a table or a figure rather than a paragraph, and a bookmark would attach to the
-    wrong thing.
+    wrong thing. A misspelt placeholder standing alone is skipped with them; `check`
+    refuses it.
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -976,9 +978,9 @@ class Alignment:
     misread: bool = False
     #: Everything between two tokens was deleted, so rebuilt they would touch.
     touching: bool = False
-    #: Rebuilt, it would be only this, which `tag` gives no identifier because it builds as
-    #: a table or a figure: `"{{table.cases}}"`. A later edit to it in Word could not come
-    #: back, and would be skipped with "nothing came back".
+    #: Rebuilt, it would be only this, which `tag` gives no identifier: a table, a figure,
+    #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
+    #: not come back, and would be skipped with "nothing came back".
     alone: str = ""
 
 
@@ -1155,7 +1157,11 @@ def align(
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            out.append(_escaped(piece, opening=index == 0, **beside))
+            # The paragraph is stripped once rebuilt, so the first stretch is escaped as it
+            # will open it: behind a space, a `#` or `:::` was not seen by `_OPENER`, and
+            # the paragraph merged as a heading.
+            opening = piece.lstrip() if index == 0 else piece
+            out.append(_escaped(opening, opening=index == 0, **beside))
         if index < len(protected):
             out.append(protected[index])
     if lost:
@@ -1170,9 +1176,9 @@ def align(
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
     # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
-    # unless the token is a table or a figure. Merged, that would build without one. A
-    # paragraph with no token needs no such check: `_escaped` keeps a heading, a fence or a
-    # placeholder typed in Word from reading as one.
+    # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
+    # Merged, that would build without one. Nothing else here can read as what `tag`
+    # skips, because the opening stretch is escaped, and `_align_plain` escapes all of it.
     if _untagged(rebuilt):
         return Alignment(None, alone=rebuilt)
     if not _reads_as(rebuilt, protected, tokens, returned):

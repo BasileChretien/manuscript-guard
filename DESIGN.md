@@ -1400,9 +1400,11 @@ anything that was only a placeholder, because that is how a table or a figure is
 and it did not ask which kind. A co-author who deleted everything but `3.84` merged as
 `{{results.ror.point}}` alone, `check` passed, and the next build left that paragraph
 without a bookmark: its next edit in Word was skipped with "nothing came back". Now only a
-table or a figure standing alone goes without one. A rewording that would leave nothing but
-one of those is refused and named, because merged it would build as the table or figure,
-and no later edit could come back to it.
+table, a figure, or a misspelt placeholder that `check` refuses goes without one when it
+stands alone. A rewording that would leave nothing but one of those is refused and named,
+because merged it would build with no identifier, and no later edit could come back to it.
+A table cannot get that far in practice, since pandoc makes a table of the whole paragraph
+it stands in; a misspelt placeholder in a document built with `--skip-checks` can.
 
 **The identifier marks where a paragraph starts, not where it ends.** Word keeps a
 paragraph's bookmark at its start, so a split leaves the first half carrying it and the
@@ -2310,11 +2312,18 @@ Closed since, and why each mattered:
 - **Which paragraphs carry an identifier is decided by the code that imports, not the code
   that built.** The document as sent is rebuilt from the source by what is installed now. A
   paragraph that is only a value binding carries an identifier now, and in a document built
-  before that change it carried none. Returned after the change, that paragraph is reported as
-  deleted in Word and left in place, and an edit to the paragraph beside it is refused as a
-  possible split. Nothing is written wrongly, and a fresh build clears both. Every other
+  before that change it carried none. Returned after the change, even untouched, that
+  paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
+  to the paragraph on either side of it is refused as a possible split. A move is worse. A
+  paragraph with no place in the returned document travels with the paragraph it followed,
+  so moving that one elsewhere in the section takes the value paragraph along. `--apply`
+  then writes it where the co-author's document does not have it, and still reports it as
+  left in place. No binding is harmed, but the order is not the co-author's. Rebuild and
+  send the document again rather than import one built before the change. Every other
   identifier stays as it was, because an index counts every block in its file. Any later
-  change to what `tag` skips will do the same, once, to documents already sent.
+  change to what `tag` skips will do the same, once, to documents already sent. The fix is
+  to recognise a paragraph that lost its bookmark but kept its text, which Word can do to
+  any paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

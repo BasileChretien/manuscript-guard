@@ -2020,18 +2020,29 @@ def test_a_paragraph_cut_down_to_its_token_keeps_its_identifier(
     assert tag(merged, "main.md").startswith("[]{#mg-p-"), "the next build names it"
 
 
-def test_a_rewording_that_leaves_only_a_table_is_refused_and_named() -> None:
-    """A table placeholder is a table only on its own. Cut down to one, a paragraph would
-    build as a table with no identifier, and the merge that made it would be the last edit
-    to it that Word could bring back."""
+def test_a_rewording_that_leaves_only_a_misspelt_placeholder_is_refused_and_named() -> None:
+    """`tag` gives no identifier to a misspelt placeholder standing alone, and one reaches
+    Word as its own text in a document built with `--skip-checks`. Cut down to it, the
+    paragraph would build with no identifier, and no later edit to it could come back. The
+    refusal said it would build as a table or a figure, which it would not."""
     from manuscript_guard.merge import why
 
-    aligned = align(
-        "Counts are in {{table.cases}} here.", "Counts are in | a | b | here.", "| a | b |"
-    )
+    source = "Value {{result.ror.point}} here."
+    aligned = align(source, source, "{{result.ror.point}}")
     assert aligned.rebuilt is None
-    assert aligned.alone == "{{table.cases}}"
-    assert "{{table.cases}}" in why(aligned)[0]
+    assert aligned.alone == "{{result.ror.point}}"
+    reason = why(aligned)[0]
+    assert "{{result.ror.point}}" in reason
+    assert "misspelt placeholder" in reason
+
+
+def test_a_heading_typed_at_the_start_of_a_paragraph_with_a_binding_is_text() -> None:
+    """The first stretch was escaped before the paragraph was stripped, so a `#` behind a
+    space was not at the start of anything, stayed bare, and opened the merged paragraph as
+    a heading."""
+    merged = realign("Ratio {{results.x}} here.", "Ratio 3.84 here.", " # x 3.84")
+    assert merged == r"\# x {{results.x}}"
+    assert tag(merged, "main.md").startswith("[]{#mg-p-")
 
 
 @pytest.mark.parametrize(

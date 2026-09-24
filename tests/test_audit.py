@@ -608,3 +608,28 @@ def test_indented_lines_do_not_stall_the_reference_list_search() -> None:
 
 def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
     assert looks_like_reference("Smith, J. et al. (2020). Hepatic injury. Drug Safety, 42, 1-9.")
+
+
+def test_indented_prose_does_not_stall_the_entry_shape() -> None:
+    """Two whitespace runs side by side at the start of the numbered-style shape made every
+    unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines."""
+    import time
+
+    started = time.perf_counter()
+    for _ in range(3000):
+        assert not looks_like_reference(" " * 150 + "accounted for 12 of 8,393 cases")
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "Smith J, Jones K. Title. Lancet. 2019;393(Suppl 1):S1-S10.",
+        "Smith J. Title. PLoS One. 2019;14(3):e0213. doi:10.1371/journal.pone.0213",
+        "Smith J, Jones K. Title. Lancet. 2019;393:100-10. Epub 2019 Jan 5.",
+        "Smith J. Title. Drug Saf. 2019 Mar 5;42(3):100-10. PMID: 12345678.",
+    ],
+)
+def test_a_numbered_entry_with_a_trailing_note_is_recognised(entry: str) -> None:
+    """The shape now ends at the pages, so what may follow them is named."""
+    assert looks_like_reference(entry)

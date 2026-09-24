@@ -991,6 +991,11 @@ def test_audit_does_not_count_an_outlined_figure_as_audited(tmp_path: Path) -> N
         # between the name and the year have to be names, not prose.
         "Notably, Japan and Korea contributed 99 of 8,393 cases, in line with Smith (2019).",
         "Similarly, Smith and colleagues found 99 cases in Japan (2019).",
+        # A caption ending a clause with "Dec. 2019; 2:1" has a full stop before the year and a
+        # volume-and-page shape after it. An entry ends at its pages; a caption goes on.
+        "Figure A. Enrolment from Jan. 2017 to Dec. 2019; 2:1 randomisation. Events 99 of 8,393.",
+        "Table B. Cases diagnosed in 2020 vs. 2019; 1:4 matched controls; 99 of 8,393.",
+        "Panel B. Follow-up ended Dec. 2019; 3:1 allocation; 99 events.",
     ],
 )
 def test_audit_does_not_take_a_body_paragraph_for_a_reference(

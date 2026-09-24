@@ -363,15 +363,24 @@ _REFERENCE_ENTRY = re.compile(
 # diagnosed in 2010-2020; 45 excluded" has a year and a semicolon, which is why the volume
 # must run on to its page, and the initials on to another author or the title. "Figure A.
 # Case-control design, 2010 to 2019; 1:4 matching" has all of that, which is why the year
-# must also follow the full stop that ends a journal's name: "Lancet. 2019;393". A style
-# that omits it, as the BMJ's own does, is not recognised, which is the safe direction.
+# must follow the full stop that ends a journal's name, "Lancet. 2019;393", and why the
+# entry must end at its pages. "Figure A. Enrolment to Dec. 2019; 2:1 randomisation. Events
+# 413 …" has a full stop before its year too, and then goes on, as a caption does and an
+# entry does not. After the pages only a DOI, a PMID, an Epub or availability note may
+# follow. A style with no full stop before the year, as the BMJ's own, is not recognised,
+# which is the safe direction.
+#
+# Each whitespace run has one quantifier that can take it: two side by side made every
+# unclassified number on an indented line quadratic.
 _VANCOUVER_ENTRY = re.compile(
-    r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)])?\s*"                # "12." / "[12]" / "12)"
+    r"^\s*(?:(?:\[\d{1,4}\]|\d{1,4}[.)])\s*)?"            # "12." / "[12]" / "12)"
     r"(?:[a-z]{1,3}\s+){0,2}[A-Z][\w'’-]+\s+[A-Z](?:-?[A-Z]){0,3}"  # "Smith J", "van Berg AB"
     r"[,.](?=\s+(?:[A-Z]|et\s+al\b))"                     # ... then an author or the title
     r".{0,400}?\.\s+(?:19|20)\d{2}[a-z]?"                 # "Lancet. 2019"
     r"(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"               # "2019 Mar", "2019 Mar 5"
-    r";\s?\d+(?:\(\d+\))?:\s?[A-Za-z]?\d"                 # ";393:100", ";42(3):100", ";372:n71"
+    r";\s?\d+(?:\([^)]{1,20}\))?:\s?"                     # ";393:", ";42(3):", ";393(Suppl 1):"
+    r"[A-Za-z]{0,2}\d+(?:[-–][A-Za-z]{0,2}\d+)?"          # "100-10", "e0213", "n71", "S1-S10"
+    r"\.?(?:\s+(?:(?i:doi|https?://|pmid|pmcid|epub|available|published)|\[)[^\n]*)?\s*$"
 )
 
 # A Markdown footnote definition. It can sit after the bibliography heading, and it is the

@@ -1272,9 +1272,9 @@ co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. A 
 after any `]` is escaped, because the `]` may close a `[` of the source's own, in a stretch
 kept as it was. A `{` typed before a binding is written `&lbrace;`: escaped as `\{`, it
 joined the binding's own braces into `{{{results.x}}`, which `check` refuses as malformed,
-and `&#123;` put a 123 into the prose for G2 to refuse. A `]` typed before a binding whose
-value opens with `(` is escaped too: the build fills the value in as it is, and it became a
-link's address. Two other ways
+and `&#123;` put a 123 into the prose for G2 to refuse. A `]` typed straight before a
+binding or a citation is escaped too, whatever follows it: the build fills a value in as it
+is, and one that opened with `(` became a link's address. Two other ways
 were tried and beaten in review. Refusing every escape refused most of a paper converted
 from Word by pandoc, which escapes by habit. Escaping only what this module's reading took
 for markup trusted a reading that is close to pandoc's and not the same: `<LLOQ in mg/L and
@@ -2022,7 +2022,11 @@ Closed since, and why each mattered:
     conversion from Word writes those.
 - **Two protected tokens with nothing between them cannot be aligned.**
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
-  one rendering ends and the next begins. The paragraph is refused.
+  one rendering ends and the next begins. The paragraph is refused. A rewording that deletes
+  everything between two tokens is refused for the same reason, and because nothing is left
+  to escape: `[@jones2019]{{results.ci}}` with a value of `(1.2-3.4)` printed as a link. One
+  that leaves only a space between them merges, prints as typed, and cannot be aligned
+  after that, so the paragraph's next rewording is refused.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

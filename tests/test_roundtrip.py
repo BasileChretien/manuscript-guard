@@ -789,7 +789,9 @@ def test_text_beside_a_token_prints_as_typed(
 
     # Each binding filled in as the build fills it; the citation left for pandoc to read,
     # which without a bibliography prints it as it is written.
-    merged = substitute(realign(source, rendered, returned), BESIDE_VALUES)
+    merged = realign(source, rendered, returned)
+    assert merged is not None, "refused"
+    merged = substitute(merged, BESIDE_VALUES)
     path = tmp_path / "a.md"
     path.write_text(f"[]{{#mg-p-x-0}}{merged}\n", encoding="utf-8")
     subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
@@ -813,10 +815,55 @@ def test_a_brace_before_a_binding_leaves_check_nothing_to_refuse(returned: str) 
 
     source = "Alpha beta {{results.drug}} gamma delta."
     merged = realign(source, "Alpha beta aspirin gamma delta.", returned)
+    assert merged is not None, "refused"
     placeholders, malformed = parse(merged)
     assert [p.raw for p in placeholders] == ["{{results.drug}}"]
     assert malformed == []
     assert find_atoms(merged, mask(merged)) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "See [@jones2019], {{results.ci}} here.",
+            "See (Jones 2019), (1.2-3.4) here.",
+            "See (Jones 2019)(1.2-3.4) here.",
+            id="citation-then-value",
+        ),
+        pytest.param(
+            "CI {{results.br}} is {{results.ci}} here.",
+            "CI [1.2; 3.4] is (1.2-3.4) here.",
+            "CI [1.2; 3.4](1.2-3.4) here.",
+            id="value-then-value",
+        ),
+    ],
+)
+def test_text_deleted_from_between_two_tokens_is_refused(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Everything between two tokens deleted in Word left nothing to escape, and they merged
+    touching: `[@jones2019]{{results.ci}}` printed "See @jones2019 here.", the interval a
+    link's address. And two tokens with nothing between them cannot be lined up, so every
+    later edit to the paragraph was refused."""
+    from manuscript_guard.merge import why
+    from manuscript_guard.roundtrip import align
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.touching
+    assert "would touch" in why(aligned)[0]
+
+
+def test_a_space_left_between_two_tokens_still_merges() -> None:
+    """A space keeps them apart for pandoc, so this is a clean edit and merges. The paragraph
+    cannot be lined up after it, which DESIGN.md records."""
+    out = realign(
+        "See [@jones2019], {{results.ci}} here.",
+        "See (Jones 2019), (1.2-3.4) here.",
+        "See (Jones 2019) (1.2-3.4) here.",
+    )
+    assert out == "See [@jones2019] {{results.ci}} here."
 
 
 @pytest.mark.parametrize(("returned", "expected"), TYPED_IN_WORD)

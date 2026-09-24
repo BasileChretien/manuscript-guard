@@ -637,7 +637,8 @@ def _escaped(
     `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
     binding whose value is a word opens a tag, and a `]` before one whose value opens with
     `(` makes the value a link's address. At the end of the text none of them looked like
-    markup, because the citation and the binding were not there to see.
+    markup, because the citation and the binding were not there to see. The value is not
+    seen here either, so a `]` is escaped before any token, whatever follows it.
 
     A `{` before a binding is written as an entity. Escaped, it still joined the binding's
     own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
@@ -698,6 +699,8 @@ class Alignment:
     #: Rebuilt, it would not read as what came back: Markdown the merge could not keep from
     #: being read as markup, or markup beside the edit that it would change.
     misread: bool = False
+    #: Everything between two tokens was deleted, so rebuilt they would touch.
+    touching: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -851,6 +854,11 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         new_prose.append("".join(after[cursor:start]))
         cursor = end
     new_prose.append("".join(after[cursor:]))
+    # With nothing between them there is nothing to escape: a citation's `]` against a value
+    # that opens with `(` is a link, and the interval was its address. Nor can two touching
+    # tokens be lined up again, so every later edit to the paragraph would be refused.
+    if not all(new_prose[1:-1]):
+        return Alignment(None, touching=True)
 
     out: list[str] = []
     lost: list[str] = []

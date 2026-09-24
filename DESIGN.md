@@ -894,7 +894,10 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   `p < 0.001` under it passed as the alpha chosen in advance. There is one pattern now, and
   `test_pandoc_agreement.py` holds it to pandoc's reading. Every reader also applies it to
   the text as written: the heading scan blanked HTML comments first, so a comment on the
-  YAML's first line read as a blank one and the front matter went unrecognised.)
+  YAML's first line read as a blank one and the front matter went unrecognised. And nothing
+  opened in the front matter closes in the body, as pandoc reads it: a `<!--` in a title ran
+  on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
+  below, hiding everything between from G2 and the audit. See `front_matter_end`.)
 
 **Two were the same value compared the wrong way.**
 

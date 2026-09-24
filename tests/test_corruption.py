@@ -1171,6 +1171,42 @@ def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[s
     assert headings(body) == headings(text) == printed
 
 
+@pytest.mark.parametrize(
+    ("paper", "shown"),
+    [
+        ('---\ntitle: "Risk <!-- draft"\n---\n\n## Methods\n\nThe ROR was 9.99. -->\n', {"9.99"}),
+        (
+            '---\ntitle: "Risk <!-- draft"\n---\n\n# Results\n\nThe ROR was 3.84.\n\n'
+            "references\n==========\n\nSmith J. A paper. Lancet. 2019;393:100-10. -->\n\n"
+            "# Appendix\n\nThe appendix ROR was 9.99.\n\n<!-- a later note -->\n",
+            {"3.84", "9.99"},
+        ),
+        (
+            "---\nabstract: |\n  ```\n---\n\n## Methods\n\nThe ROR was 9.99.\n\n"
+            "```r\nx <- 1\n```\n",
+            {"9.99"},
+        ),
+    ],
+)
+def test_nothing_opened_in_the_front_matter_hides_the_body(
+    tmp_path: Path, paper: str, shown: set[str]
+) -> None:
+    """Pandoc reads the YAML apart from the body, and each value apart from the rest. The
+    masking read them as one text: a `<!--` in a title ran on to the next `-->` in the body,
+    and a fence opener in an abstract paired with a fence in the body, so everything between
+    was hidden from G2 and the audit while pandoc printed it. Once the heading scan stopped
+    at the front matter and the masking did not, a reference heading between the two cut the
+    body's `-->` away, and the title's comment ran on over an appendix."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
+    assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
+
+
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
     """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
     plain paragraphs, with `# References` among its comments, cut everything after it."""

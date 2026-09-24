@@ -131,9 +131,11 @@ the right place: a value correct in the abstract and wrong in the Results passes
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
 includes `p < 0.05` anywhere in the text and the lines the report lists under
-`Not audited`. Conventions, and numbers on lines taken for reference entries that happened to
-match, are counted as "conventions or references"; the numbers on a cut reference list are
-not counted at all. Describe all of them as not checked, never as matched.
+`Not audited`. Nor are numbers inside fenced code blocks in a Markdown paper. Conventions, and
+numbers on lines taken for reference entries that happened to
+match, are counted as "conventions or references"; the numbers on a cut reference list and
+in fenced code are not counted at all. Describe all of them as not checked, never as
+matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

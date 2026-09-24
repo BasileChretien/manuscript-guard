@@ -280,6 +280,16 @@ RULED = {
     "yaml closing on dots in the middle of a block": (
         "---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n...\nPara A right after."
     ),
+    "yaml that is not a mapping, which pandoc reads as prose": (
+        "---\n# Afterword\n\nThe signal was strong.\n\nIt held, and then\n..."
+    ),
+    "yaml with an impossible date": "---\ndate: 2026-02-30\n\nnote: revised\n...",
+    "yaml example inside a comment before real yaml": (
+        "<!--\n---\nk: v\n\nj: w\n-->\n\n---\ntitle: x\n\nsubtitle: y\n..."
+    ),
+    "yaml example inside a code fence before real yaml": (
+        f"{FENCE}\n\n---\nk: v\n\nj: w\n{FENCE}\n\n---\ntitle: x\n\nsubtitle: y\n..."
+    ),
     "a table whose header has a colon, with a row of dots": (
         "---\nRatio (a:b)    Value\n-------------- -----\nFirst          1.2\n\n"
         "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"
@@ -310,6 +320,17 @@ def test_no_marker_inside_a_table_or_yaml_across_blank_lines(name: str) -> None:
 
     tagged = tag(f"Before.\n\n{RULED[name]}\n\nAfter.\n", "main.md")
     assert re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tagged) == ["Before", "After"], tagged
+
+
+def test_yaml_closed_in_its_own_block_hides_nothing_after_it() -> None:
+    """A YAML block that ends in the block it opened has nothing after it to hide. Read as
+    left open, it fell back to the next line of dashes, and the paragraphs up to a setext
+    heading lost their identifiers."""
+    from manuscript_guard.roundtrip import tag
+
+    text = "Intro.\n\n---\ntitle: x\n...\n\nPara one.\n\nPara two.\n\nMethods\n-------\n\nP3.\n"
+    marked = re.findall(r"\[\]\{#mg-p-[^}]+\}(\w+)", tag(text, "main.md"))
+    assert marked == ["Intro", "Para", "Para", "P3"]
 
 
 def test_a_table_closed_by_its_caption_does_not_hide_what_follows() -> None:

@@ -396,6 +396,24 @@ TAGGING = {
     "yaml block closing on dots in the middle of a block": (
         "Intro.\n\n---\ntitle: x\n\nsubtitle: y\n\nabstract: z\n...\nPara A right after.\n"
     ),
+    "yaml that is not a mapping, which pandoc reads as prose": (
+        "Intro.\n\n---\n# Afterword\n\nThe signal was strong.\n\nIt held, and then\n...\n\n"
+        "After.\n"
+    ),
+    "yaml with an impossible date": (
+        "Intro.\n\n---\ndate: 2026-02-30\n\nnote: revised\n...\n\nAfter.\n"
+    ),
+    "a yaml example inside a comment before real yaml": (
+        "Intro.\n\n<!--\n---\nk: v\n\nj: w\n-->\n\n---\ntitle: x\n\nsubtitle: y\n...\n\n"
+        "After.\n"
+    ),
+    "a yaml example inside a code fence before real yaml": (
+        f"Intro.\n\n{FENCE}\n\n---\nk: v\n\nj: w\n{FENCE}\n\n---\ntitle: x\n\nsubtitle: y\n...\n\n"
+        "After.\n"
+    ),
+    "yaml closed in its own block, then prose and a setext heading": (
+        "Intro.\n\n---\ntitle: x\n...\n\nPara one.\n\nPara two.\n\nMethods\n-------\n\nP3.\n"
+    ),
     "a table whose header has a colon, with a row of dots": (
         "Before.\n\n---\nRatio (a:b)    Value\n-------------- -----\nFirst          1.2\n\n"
         "Second         2.3\n...\n\nThird          3.4\n\nFourth         4.5\n"

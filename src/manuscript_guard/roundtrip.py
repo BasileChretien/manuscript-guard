@@ -480,44 +480,49 @@ def _dash_rule(line: str) -> bool:
 # A table caption, `Table: x`, `table: x`, `: x` or `:x`, which pandoc takes straight under
 # the closing rule.
 _TABLE_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
-# A YAML block in the body: `---` in column 0 over a line YAML can open with - a key, a
-# quoted or complex key, a comment - and it ends on the first `---` or `...` in column 0.
+# A YAML block in the body: pandoc tries every `---` in column 0 with text straight under
+# it, up to the first `---` or `...` in column 0, wherever in a block that falls.
 _YAML_OPEN = re.compile(r"---[ \t]*")
-_YAML_FIRST = re.compile(r"[ \t]*(?:#|[\"'?]|[\w.-][^:\n]*:(?:[ \t]|$))")
 _YAML_STOP = re.compile(r"(?:---|\.\.\.)[ \t]*")
-# How much text is parsed to decide whether a `---` opens YAML. A metadata block in the body
-# longer than this is read as not one, which costs at worst a build that pandoc refuses.
+# How much text is read to find where a `---` would stop. A metadata block in the body
+# longer than this is not followed, which costs at worst a build that pandoc refuses.
 _YAML_LIMIT = 4000
+_MAPPING, _OTHER = "mapping", "other"
 
 
-def _yaml_mapping(text: str) -> bool:
+def _yaml_kind(text: str) -> str:
+    """`_MAPPING` if pandoc keeps this as metadata; `_OTHER` otherwise.
+
+    Composed, not loaded: constructing values raised on YAML pandoc accepts -
+    `date: 2026-02-30` is a ValueError to PyYAML - and nothing here needs the values.
+    """
     import yaml
 
     loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     try:
-        return isinstance(yaml.load(text, Loader=loader), dict)
-    except yaml.YAMLError:
-        return False
+        node = yaml.compose(text, Loader=loader)
+    except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
+        return _OTHER
+    return _MAPPING if isinstance(node, yaml.MappingNode) else _OTHER
 
 
-def _yaml_closes(pieces: list[str], index: int) -> int | None:
-    """The block a YAML block opened at `pieces[index]` stops in, if pandoc reads one there.
+def _yaml_stop(pieces: list[str], index: int) -> tuple[int, str] | None:
+    """Where a YAML block tried at `pieces[index]` stops, and what it holds.
 
-    Pandoc stops at the first `---` or `...` in column 0, wherever in a block it falls, and
-    keeps what came before only if it is a YAML mapping; otherwise the `---` is a rule or a
-    table. Deciding by the look of the first line alone read a table headed `Ratio (a:b)` as
-    YAML, and a YAML block ending mid-block as still open.
+    Pandoc keeps a mapping as metadata. Anything else it gives up on quietly and reads as a
+    rule, a table or prose - but only while nothing in it breaks the YAML: a marker written
+    into the middle of it turns that fallback into a parse error, and the build fails. So
+    whatever pandoc tries as YAML is left unmarked, mapping or not.
     """
     lines = pieces[index].split("\n")
-    if not (_YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and _YAML_FIRST.match(lines[1])):
+    if not (_YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and lines[1].strip()):
         return None
     body: list[str] = []
     size = 0
     for at in range(index, len(pieces)):
         for line in lines[1:] if at == index else pieces[at].split("\n"):
             if _YAML_STOP.fullmatch(line):
-                # Closed inside its own block: there is nothing after it to hide.
-                return at if at != index and _yaml_mapping("\n".join(body)) else None
+                return at, _yaml_kind("\n".join(body))
             body.append(line)
             size += len(line) + 1
             if size > _YAML_LIMIT:
@@ -537,43 +542,49 @@ def _closes_table(lines: list[str]) -> bool:
     return last > 0 and _TABLE_CAPTION.match(lines[last + 1]) is not None
 
 
-def _ruled_spans(pieces: list[str]) -> dict[int, int]:
-    """Each block that opens a table or a YAML block running across blank lines, mapped to
-    the block that closes it. Without this the middle rows of a three-row multiline table
-    were ordinary-looking blocks, and a marker printed into a cell. An opener with nothing
-    after it to close it closes nothing.
+class _Ruled:
+    """Tables and YAML blocks that run across blank lines: where each one ends.
 
-    A table closes only on a rule: a row that happens to read `...` is a row. A `---` opens
-    YAML only when what follows it, up to where pandoc would stop, is a YAML mapping.
+    Without this the middle rows of a three-row multiline table were ordinary-looking
+    blocks, and a marker printed into a cell. Asked lazily, by `_blocks`, only of a block
+    that is not already inside code, a comment or an earlier span - an example `---` inside
+    a code fence is not an opener, and treated as one it swallowed the real YAML after it.
     """
-    tables: dict[int, bool] = {}
-    opening: list[int] = []
-    for index in range(0, len(pieces), 2):
-        lines = [line for line in pieces[index].split("\n") if line.strip()]
-        if not lines:
-            continue
-        tables[index] = _closes_table(lines)
-        if _dash_rule(lines[0]) and not tables[index]:
-            opening.append(index)
-    next_table: dict[int, int] = {}
-    following: int | None = None
-    for index in range(len(pieces) - 1, -1, -1):
-        if following is not None:
-            next_table[index] = following
-        if tables.get(index):
-            following = index
-    spans: dict[int, int] = {}
-    hidden_to = -1
-    for index in opening:
-        if index <= hidden_to:
-            continue  # inside a span already: pandoc never reads it as an opener
-        closer = _yaml_closes(pieces, index)
-        if closer is None:
-            closer = next_table.get(index)
-        if closer is not None:
-            spans[index] = closer
-            hidden_to = closer
-    return spans
+
+    def __init__(self, pieces: list[str]) -> None:
+        self._pieces = pieces
+        self._opens: set[int] = set()
+        self._next_table: dict[int, int] = {}
+        following: int | None = None
+        for index in range(len(pieces) - 1 - (len(pieces) - 1) % 2, -1, -2):
+            lines = [line for line in pieces[index].split("\n") if line.strip()]
+            if following is not None:
+                self._next_table[index] = following
+            if not lines:
+                continue
+            if _closes_table(lines):
+                following = index
+            elif _dash_rule(lines[0]):
+                self._opens.add(index)
+
+    def end(self, index: int) -> int | None:
+        """The block a span opened at `index` ends in, or None if it opens none.
+
+        A table closes only on a rule: a row that happens to read `...` is a row. A `---`
+        pandoc tries as YAML is hidden up to where the YAML stops; a mapping ends there,
+        and anything else may go on as a table, so the table's rule is honoured as well.
+        """
+        if index not in self._opens:
+            return None
+        table = self._next_table.get(index)
+        tried = _yaml_stop(self._pieces, index)
+        if tried is None:
+            return table
+        stop, kind = tried
+        if kind == _MAPPING:
+            return stop if stop != index else None
+        ends = [end for end in (stop, table) if end is not None and end != index]
+        return max(ends) if ends else None
 
 
 def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
@@ -603,7 +614,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         index % 2 == 1 and re.search(r"[^ \t\n]", piece) is not None
         for index, piece in enumerate(pieces)
     ]
-    ruled = _ruled_spans(pieces)
+    ruled = _Ruled(pieces)
     ends = list(itertools.accumulate(len(piece) for piece in pieces))
     for index, piece in enumerate(pieces):
         apart = not (joined[max(index - 1, 0)] or joined[min(index + 1, len(pieces) - 1)])
@@ -625,8 +636,9 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
         runs_on = _raw_end(text, origin, end, closers)
-        if index in ruled:
-            runs_on = max(runs_on, ends[ruled[index]])
+        closer = ruled.end(index)
+        if closer is not None:
+            runs_on = max(runs_on, ends[closer])
         hidden = max(hidden, runs_on)
         yield index, piece, apart and not (runs_on or _untagged(piece))
 

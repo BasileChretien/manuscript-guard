@@ -619,6 +619,7 @@ _MARKDOWN = re.compile(
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
+    r"|(?<=\])\("  # a link's address, whose `[` may stand in the source's own prose
 )
 
 
@@ -636,12 +637,20 @@ def _escaped(
     `]` makes a link, and `(see Table 2)` became the address of one; a `<` straight before a
     binding whose value is a word opens a tag. At the end of the text neither looked like
     markup, because the citation and the binding were not there to see.
+
+    A `{` before a binding is written as an entity. Escaped, it still joined the binding's
+    own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
+    refuses as malformed. The entity is a named one because `&#123;` puts the number 123
+    into the prose, and `check` refuses that as a number bound to no source.
     """
+    brace = before_token and text.endswith("{")
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&")):
         text = text[:-1] + "\\" + text[-1]
+    if brace:
+        text = text.removesuffix("\\{") + "&lbrace;"
     if opening and (block := _OPENER.match(text)):
         at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
         text = text[:at] + "\\" + text[at:]

@@ -1268,7 +1268,11 @@ Word's text is literal, and the source is Markdown, so every character in what c
 that Markdown could read as markup is escaped, its edges read with the binding or citation
 that will stand beside them: `(see Table 2)` typed straight after a citation's `]` was a
 link. `CYP2D6\*4` is shown in Word as `CYP2D6*4`; written back bare it opened italics, and a
-co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. Two other ways
+co-author's `@admin` became a citation and a typed `{{results.x}}` a binding. A `(` straight
+after any `]` is escaped, because the `]` may close a `[` of the source's own, in a stretch
+kept as it was. A `{` typed before a binding is written `&lbrace;`: escaped as `\{`, it
+joined the binding's own braces into `{{{results.x}}`, which `check` refuses as malformed,
+and `&#123;` put a 123 into the prose for G2 to refuse. Two other ways
 were tried and beaten in review. Refusing every escape refused most of a paper converted
 from Word by pandoc, which escapes by habit. Escaping only what this module's reading took
 for markup trusted a reading that is close to pandoc's and not the same: `<LLOQ in mg/L and

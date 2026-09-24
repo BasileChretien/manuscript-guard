@@ -150,7 +150,9 @@ Read the whole diff. What to look for:
 - Backslashes. Every character in Word's text that Markdown could read as markup is
   escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
   Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
-  bare and is curled: put the backslash back if the straight quote mattered.
+  bare and is curled: put the backslash back if the straight quote mattered. A `{` typed
+  straight before a binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the
+  binding's braces, and `check` reports `{{{results.x}}` as malformed.
 - Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
   paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then

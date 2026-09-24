@@ -714,7 +714,43 @@ BESIDE_A_TOKEN = [
         r"Patients took \<{{results.drug}} daily and >placebo.",
         id="angle-before-a-binding",
     ),
+    pytest.param(
+        "Alpha beta {{results.drug}} gamma delta.",
+        "Alpha beta aspirin gamma delta.",
+        "Alpha beta {aspirin gamma delta.",
+        "Alpha beta &lbrace;{{results.drug}} gamma delta.",
+        id="brace-before-a-binding",
+    ),
+    pytest.param(
+        "Alpha beta {{results.drug}} gamma delta.",
+        "Alpha beta aspirin gamma delta.",
+        "Alpha beta {{aspirin gamma delta.",
+        r"Alpha beta \{&lbrace;{{results.drug}} gamma delta.",
+        id="two-braces-before-a-binding",
+    ),
+    pytest.param(
+        "Alpha [@jones2019] and {{results.drug}} gamma.",
+        "Alpha (Jones 2019) and aspirin gamma.",
+        "Alpha (Jones 2019) {aspirin gamma.",
+        "Alpha [@jones2019] &lbrace;{{results.drug}} gamma.",
+        id="brace-between-a-citation-and-a-binding",
+    ),
+    pytest.param(
+        "HR [{{results.x}}, {{results.y}}] (p=0.01) overall.",
+        "HR [3.84, 7.02] (p=0.01) overall.",
+        "HR [3.84, 7.02](p=0.01) overall.",
+        r"HR [{{results.x}}, {{results.y}}]\(p=0.01) overall.",
+        id="parenthesis-after-a-bracket-inside-an-edit",
+    ),
 ]
+
+#: What the build fills each binding in with, and what Word showed for each citation.
+BESIDE_VALUES = {
+    "results.drug": "aspirin",
+    "results.x": "3.84",
+    "results.y": "7.02",
+}
+BESIDE_CITED = {"(Jones 2019)": "[@jones2019]"}
 
 
 @pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
@@ -723,7 +759,11 @@ def test_text_beside_a_token_is_escaped_for_its_neighbour(
 ) -> None:
     """Each stretch was escaped as if it stood alone. `(see Table 2)` typed straight after a
     citation's `]` made a link of it, and the parenthesis became the link's address; a `<`
-    before a binding whose value is a word became the start of a tag."""
+    before a binding whose value is a word became the start of a tag.
+
+    Two were refused where they could merge. `\\{` before a binding's own `{{` reads as the
+    binding `{{{results.drug}}`, which `check` refuses as malformed; and a `](` formed inside
+    an edited stretch, its `[` in the stretch before, was a link."""
     assert realign(source, rendered, returned) == expected
 
 
@@ -735,15 +775,38 @@ def test_text_beside_a_token_prints_as_typed(
     import subprocess
 
     from manuscript_guard.roundtrip import paragraph_text
+    from manuscript_guard.text.placeholders import substitute
 
-    # The binding filled in as the build fills it; the citation left for pandoc to read.
-    merged = realign(source, rendered, returned).replace("{{results.drug}}", "aspirin")
+    # Each binding filled in as the build fills it; the citation left for pandoc to read,
+    # which without a bibliography prints it as it is written.
+    merged = substitute(realign(source, rendered, returned), BESIDE_VALUES)
     path = tmp_path / "a.md"
     path.write_text(f"[]{{#mg-p-x-0}}{merged}\n", encoding="utf-8")
     subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
     printed = paragraph_text(tmp_path / "a.docx")["mg-p-x-0"]
-    kept = "(see Table 2)" if "Table" in returned else "<aspirin daily and >placebo"
-    assert kept in printed
+    typed = returned
+    for shown, cited in BESIDE_CITED.items():
+        typed = typed.replace(shown, cited)
+    assert printed == typed
+
+
+@pytest.mark.parametrize(
+    "returned", ["Alpha beta {aspirin gamma delta.", "Alpha beta {{aspirin gamma delta."]
+)
+def test_a_brace_before_a_binding_leaves_check_nothing_to_refuse(returned: str) -> None:
+    """The brace must stay out of the binding and put no number into the prose. `\\{` joined
+    the binding's braces, and G2 refused `{{{results.drug}}` as malformed; `&#123;` keeps them
+    apart, and G2 refused its 123 as a number bound to no source."""
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.placeholders import parse
+    from manuscript_guard.text.tokens import find_atoms
+
+    source = "Alpha beta {{results.drug}} gamma delta."
+    merged = realign(source, "Alpha beta aspirin gamma delta.", returned)
+    placeholders, malformed = parse(merged)
+    assert [p.raw for p in placeholders] == ["{{results.drug}}"]
+    assert malformed == []
+    assert find_atoms(merged, mask(merged)) == []
 
 
 @pytest.mark.parametrize(("returned", "expected"), TYPED_IN_WORD)

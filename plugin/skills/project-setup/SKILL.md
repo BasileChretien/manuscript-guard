@@ -52,8 +52,9 @@ add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` 
 in it is read as a results fragment and fails the schema if it is not one, and `verify`
 empties the whole directory in its scratch copy. If the analysis already keeps its own
 output there, either move that output, or set `paths: {results: <dir>}` in `paper.yaml`
-and pass the same path to every emitter's `write()`, because the emitters default to
-`results/` and do not read `paper.yaml`. It creates:
+and give each emitter's `write()` its own `.json` file in that directory
+(`em.write("<dir>/01_model.json")`, `em$write("<dir>/01_model.json")`). Without an argument
+the emitters write `results/<script>.json` and never look at `paths.results`. It creates:
 
 ```
 paper.yaml             stage, English variant, target journal, reporting guideline

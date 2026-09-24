@@ -1732,8 +1732,8 @@ Closed since, and why each mattered:
   guarantee.
 - **The audit's reference-entry shape also matches body text.** Every line, whether or
   not a bibliography heading was found, is a reference if it opens with a capitalised word,
-  a comma and another capitalised word, with any number from 1900 to 2099 within 200
-  characters. In a `.docx` a line is a paragraph and in Markdown a physical line, so
+  a comma and another capitalised word, with four digits from 1900 to 2099 standing alone
+  within 200 characters (a year, or the decimals of `0.2013`). In a `.docx` a line is a paragraph and in Markdown a physical line, so
   "Overall, Japanese patients accounted for 412 of 8,393 cases reported between 2010 and
   2019." and a wrapped mid-paragraph line alike are classified as references, and none of
   their numbers is compared, silently. This is the unsafe direction for an audit. Found by

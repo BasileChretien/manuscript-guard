@@ -37,8 +37,10 @@ analysis, figures taken from a protocol: anything not in `--against` comes back 
 
 **It reads `.json .csv .tsv .txt .yaml .yml .md`, and skips everything else in silence**,
 including `.xlsx`, `.rds`, `.log` and `.html`, any `.json` that does not parse (JSON
-Lines saved as `.json`, and UTF-8 with a byte-order mark, as Windows PowerShell 5 writes it),
-and paths that do not exist.
+Lines saved as `.json`, and any file with a byte-order mark: UTF-8 with BOM, or UTF-16, which
+Windows PowerShell 5 writes by default), and paths that do not exist. A UTF-16 `.csv`,
+`.tsv`, `.txt` or `.md` is worse: it is read, as single digits, and counted. Re-save such
+files as UTF-8.
 Export spreadsheets to CSV first. Then read the first line of the report: `against 0
 distinct numbers from 0 output file(s)` means no supported file was read, whether from a
 typo, an empty folder or a folder of unsupported files. It never means a clean paper.
@@ -96,8 +98,8 @@ heading to a copy of the document saves reading past forty spurious findings, at
 of the notes: check those by hand.
 
 With or without a heading, every line is also tested by its shape: a capitalised word, a
-comma, another capitalised word, and any number from 1900 to 2099 within about 200
-characters. A line that fits counts as a reference entry. That catches author-year entries
+comma, another capitalised word, and within about 200 characters four digits from 1900 to
+2099 standing alone (a year, `2019a`, or the decimals of `0.2013`). A line that fits counts as a reference entry. That catches author-year entries
 and misses Vancouver ones (`Smith J, …`), whose volume and page numbers are then reported.
 **It also catches body text.** In a `.docx` a line is a paragraph; in Markdown or text it is
 a physical line, so a wrapped line in mid-paragraph counts too. "Overall, Japanese patients

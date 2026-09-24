@@ -104,15 +104,16 @@ A reference list starts at a line that is only a heading such as `References`,
 Markdown `#` or underline, a heading style in a `.docx`) needs nothing more. Any other line
 also has to be capitalised, not end in a full stop, and not start with `#`: a wrapped
 "…duplicate / references." is not a heading, and neither is `# References` as a comment in
-an R listing or typed into a Word paragraph with no heading style. In Markdown, nothing in a
-fenced block, an HTML comment or the front matter starts a list. A table cell reading
-`References` is a column header, not a heading. The
+a fenced R listing or typed into a Word paragraph with no heading style. In Markdown,
+nothing in a fenced block, an HTML comment or the front matter starts a list. A table cell
+reading `References` is a column header, not a heading. The
 list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
 Every such list is cut, and the report names the lines under `Not audited`. Check each
-range: code that is not fenced, an indented block in Markdown or a listing pasted into
-Word, is not recognised as code, so a bare `References` line in it does start a list. In a
-`.docx` whose headings are only bold text, the list runs to the end of the body, and an
-appendix after it goes unread.
+range. Code that is not fenced is not recognised as code, whether it is an unfenced or
+indented listing in Markdown or a listing pasted into Word. A `References` line in it does
+start a list, and in Markdown so does a `# References` comment at the start of a line,
+which pandoc prints as a heading. In a `.docx` whose headings are only bold text, the list
+runs to the end of the body, and an appendix after it goes unread.
 
 Only when there is no such heading is a line taken for a reference entry by its shape, and
 only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
@@ -130,9 +131,11 @@ the right place: a value correct in the abstract and wrong in the Results passes
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
 includes `p < 0.05` anywhere in the text and the lines the report lists under
-`Not audited`. Conventions, and numbers on lines taken for reference entries that happened to
-match, are counted as "conventions or references"; the numbers on a cut reference list are
-not counted at all. Describe all of them as not checked, never as matched.
+`Not audited`. Nor are numbers inside fenced code blocks in a Markdown paper. Conventions, and
+numbers on lines taken for reference entries that happened to
+match, are counted as "conventions or references"; the numbers on a cut reference list and
+in fenced code are not counted at all. Describe all of them as not checked, never as
+matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

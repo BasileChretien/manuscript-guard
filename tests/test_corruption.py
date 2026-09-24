@@ -1105,6 +1105,7 @@ def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: P
         "## Methods\n\n<!--\n# References\n-->\n",
         "## Methods\n\n<!--\nReferences\n-->\n",
         "---\ntitle: A study\n# References\nbibliography: refs.bib\n---\n",
+        "---\n<!-- keep in step with paper.yaml -->\n# References\nbibliography: refs.bib\n---\n",
     ],
 )
 def test_audit_does_not_start_a_reference_list_in_code_or_a_comment(
@@ -1139,6 +1140,71 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
         f"---\n\nThe pooled ROR was 9.99.\n\n{references}---\n\nEnd.\n", encoding="utf-8"
     )
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
+_CLAIM = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+
+
+@pytest.mark.parametrize(
+    ("text", "printed"),
+    [
+        # A rule, not front matter: the heading prints.
+        (f"---\n{_RULED}", ["Methods"]),
+        (f"---\n  {_RULED}", ["Methods"]),
+        # Front matter, with a YAML comment in it: nothing prints.
+        (f"---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+    ],
+)
+def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:
+    """The build found the end of the front matter with a pattern of its own. Once the gates
+    stopped taking `---` and a blank line for front matter, the build still stripped it: G2
+    read the `## Methods` heading inside, so `p < 0.001` after it passed as the alpha chosen
+    in advance, and the document printed it with no Methods heading above it. The heading
+    scan then blanked comments before it looked for front matter, so a comment on the first
+    line of the YAML read as that blank line, and a `# Methods` in the YAML headed the body."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import headings
+
+    body, _title = strip_front_matter(text)
+    assert headings(body) == headings(text) == printed
+
+
+@pytest.mark.parametrize(
+    ("paper", "shown"),
+    [
+        ('---\ntitle: "Risk <!-- draft"\n---\n\n## Methods\n\nThe ROR was 9.99. -->\n', {"9.99"}),
+        (
+            '---\ntitle: "Risk <!-- draft"\n---\n\n# Results\n\nThe ROR was 3.84.\n\n'
+            "references\n==========\n\nSmith J. A paper. Lancet. 2019;393:100-10. -->\n\n"
+            "# Appendix\n\nThe appendix ROR was 9.99.\n\n<!-- a later note -->\n",
+            {"3.84", "9.99"},
+        ),
+        (
+            "---\nabstract: |\n  ```\n---\n\n## Methods\n\nThe ROR was 9.99.\n\n"
+            "```r\nx <- 1\n```\n",
+            {"9.99"},
+        ),
+    ],
+)
+def test_nothing_opened_in_the_front_matter_hides_the_body(
+    tmp_path: Path, paper: str, shown: set[str]
+) -> None:
+    """Pandoc reads the YAML apart from the body, and each value apart from the rest. The
+    masking read them as one text: a `<!--` in a title ran on to the next `-->` in the body,
+    and a fence opener in an abstract paired with a fence in the body, so everything between
+    was hidden from G2 and the audit while pandoc printed it. Once the heading scan stopped
+    at the front matter and the masking did not, a reference heading between the two cut the
+    body's `-->` away, and the title's comment ran on over an appendix."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
+    assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:

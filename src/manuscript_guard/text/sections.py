@@ -21,7 +21,13 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences, fenced_spans
-from manuscript_guard.text.masking import FRONTMATTER, blank, html_comments, mask
+from manuscript_guard.text.masking import (
+    FRONTMATTER,
+    blank,
+    front_matter_end,
+    html_comments,
+    mask,
+)
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -104,18 +110,21 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-    # Both found in the text as written. Blanking the comments first made a line like
-    # "```<!-- TODO -->" a bare closing fence, which paired with an earlier opener and
-    # blanked the headings between them.
-    fences = fenced_spans(text)
-    out = blank(text, [(f.start, f.end) for f in fences] + html_comments(text, fences))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter.
-    opening = FRONTMATTER.match(out)
-    if opening is None:
-        return out
-    return blank(out, [(0, opening.end())])
+    # a level-2 heading conjured out of the document's own delimiter. It is found in the
+    # text as written, as the build and `mask` find it, and fences are looked for only
+    # after it. Blanked first, a comment on the YAML's first line read as a blank line
+    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # headed a body the build printed without it.
+    #
+    # Fences and comments are found in the text as written too. Blanking the comments
+    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
+    # earlier opener and blanked the headings between them.
+    head = front_matter_end(text)
+    fences = fenced_spans(text, head)
+    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
+    return blank(text, [(0, head), *spans])
 
 
 @dataclass(frozen=True)

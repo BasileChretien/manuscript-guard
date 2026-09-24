@@ -88,7 +88,7 @@ def _closes(line: str, char: str, width: int) -> bool:
     return closing is not None and closing[0] == char and closing[1] >= width
 
 
-def fenced_spans(text: str) -> list[Fence]:
+def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
     """Every fenced block, in document order. Linear in the length of the text.
 
     An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
@@ -96,10 +96,13 @@ def fenced_spans(text: str) -> list[Fence]:
     against pandoc 3.9.0.2 — so treating it as code to the end of the file would mask prose
     the reader plainly sees. That is the same failure as the longer-closer bug, arrived at
     from the other side, and `tests/test_pandoc_agreement.py` caught it here.
+
+    `begin`, the start of a line, is where the body starts: no fence opens in the front
+    matter before it (see `masking.front_matter_end`). Offsets are still into `text`.
     """
     found: list[Fence] = []
-    offset = 0
-    lines = text.splitlines(keepends=True)
+    offset = begin
+    lines = text[begin:].splitlines(keepends=True)
     index = 0
 
     # The widest line at or below each line that could close a fence, by fence character.

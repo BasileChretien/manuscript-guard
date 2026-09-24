@@ -66,7 +66,7 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or it could not be lined up with its source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
 | `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
@@ -109,11 +109,14 @@ handled, and each has a test:
   added after the number, is not caught: read those in the diff.
 - A rewording is refused, not merged, when the edited text carries something Word's text
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a non-breaking space, a
-  hard line break, or emphasis or code wrapped around a binding. The reason names it. In a
-  paragraph with a binding, markup on one side of the binding does not stop an edit on the
-  other side. A paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses
-  every edit to it.
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break, or
+  emphasis or code wrapped around a binding. The reason names it. In a paragraph with a
+  binding, markup on one side of the binding does not stop an edit on the other side. A
+  paragraph without a binding is all one piece, so one `kg/m^2^` in it refuses every edit to
+  it.
+- A no-break space comes back as the character it is, so a rewording around it merges and
+  keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
+  put before a colon or inside « ».
 - What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
   co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
 
@@ -150,9 +153,16 @@ Read the whole diff. What to look for:
 - Backslashes. Every character in Word's text that Markdown could read as markup is
   escaped (`CYP2D6\*4`, `\@admin`, `US\$5`), and a `&lt;` of yours may come back as `\<`.
   Each prints as it did. The exception is an escaped straight quote, `\"`, which comes back
-  bare and is curled: put the backslash back if the straight quote mattered.
+  bare and is curled: put the backslash back if the straight quote mattered. A `{` typed
+  straight before a binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the
+  binding's braces, and `check` reports `{{{results.x}}` as malformed.
+- Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
+  abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
+  itself. Each prints as it did, but a diff can show a line as changed where nothing
+  visible changed.
 - Citation text left beside a key, such as `[@smith2020]. 2020).`: a citation ending a
-  paragraph, "(Smith et al. 2020).", can be cut at "al.". Restore the paragraph's ending.
+  paragraph, "(Smith et al. 2020).", can be cut at "al.", even when the only change there was
+  an invisible one to the kind of space. Restore the paragraph's ending.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

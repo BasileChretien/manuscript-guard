@@ -895,7 +895,11 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   most-read part of the paper was outside every check. Rendered keys are now read; `lang`,
   `zotero` and the rest of the machinery stay masked. (Later: a `---` followed by a blank
   line was taken for the opening of front matter too. Pandoc prints it as a horizontal rule,
-  with the prose after it, which went unread up to the next `---`.)
+  with the prose after it, which went unread up to the next `---`. The build found the end
+  of the front matter with a pattern of its own, and the two had to be made one: fixed in
+  the gates alone, G2 read a `## Methods` heading that the build still stripped, and
+  `p < 0.001` under it passed as the alpha chosen in advance. There is one pattern now, and
+  `test_pandoc_agreement.py` holds it to pandoc's reading.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1972,17 +1976,26 @@ Closed since, and why each mattered:
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
   number split across the two is read in two pieces. Joining into the cell would mean
   moving the row and cell separators the reader writes before the cell's text.
-- **A bare `References` line in code can start a reference list.** In Markdown a line in a
-  fenced block, an HTML comment or the front matter never starts one, and an unmarked
-  `# References` never does anywhere, so an R or Python comment cannot. But an indented
-  block is not blanked, because `pdftotext -layout` indents real headings and a text file
-  is read as Markdown; and a listing pasted into Word as plain paragraphs is not code as
-  far as the reader can tell, so a numpydoc `References` section in one starts a list. The
-  cut is named under "Not audited".
+- **A `References` line in code that is not fenced can start a reference list.** In
+  Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
+  and an unmarked `# References` never does, so an R or Python comment in a fenced listing
+  cannot. But a listing that is not fenced is not code as far as the reader can tell. In
+  Markdown, `# References` at the start of a line there is a heading, and pandoc prints it
+  as one. An indented block is not blanked, because `pdftotext -layout` indents real
+  headings and a text file is read as Markdown. A listing pasted into Word as plain
+  paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
+  named under "Not audited".
+- **A `---` block at the top that is not YAML is taken for front matter.** Pandoc wants a
+  YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
+  gates mask it and the build strips it, so for a paper built here they agree and nothing
+  unread prints. The audit of a Markdown paper rendered some other way does not read it.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. It needs a paper that
   writes both markers in backticks, and the comment scanner would have to know code spans.
+  The heading scan also blanks comments before it looks for front matter, so a `<!--`
+  inside a YAML value, closed after the front matter ends, hides the closing `---` from
+  it: a `# Methods` line in the YAML then heads the body, which the build prints without it.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2123,9 +2136,12 @@ Closed since, and why each mattered:
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
   footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
   HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
-  struck-through text, a non-breaking space, a hard line break, or one end of emphasis or
-  code wrapped around a binding. What comes back is escaped, and a merge that this module
-  reads differently from what came back is refused. What remains:
+  struck-through text, a hard line break, or one end of emphasis or code wrapped around a
+  binding. What comes back is escaped, and a merge that this module reads differently from
+  what came back is refused. A no-break space is no longer on that list: Word's text keeps
+  it (U+00A0, U+202F and every other space except layout whitespace), so it merges back as
+  typed, whether the source had it or the co-author's French AutoCorrect put it before a
+  colon. What remains:
   - *The refusal costs the edit.* The markup is never carried over into the new wording, even
     where the words either side of a footnote came back unchanged and its place is certain.
     In a paragraph without bindings the whole paragraph is one stretch, so one `kg/m^2^` or
@@ -2141,12 +2157,37 @@ Closed since, and why each mattered:
     address, or a footnote deleted in Word leaves the paragraph's text as it was, and
     nothing is merged or reported.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
-    the source's own way of writing a character: `&lt;` comes back as `\<`, which prints the
-    same. An escaped straight quote, `\"`, comes back bare and pandoc curls it: a pandoc
-    conversion from Word writes those.
+    the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
+    `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
+    straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
+    Word writes those.
+  - *Pandoc's own no-break spaces come back as characters.* Pandoc puts one after an
+    abbreviation it knows ("e.g.", "et al.", "p.", "vs."), where the source has a plain
+    space. A stretch the co-author left alone keeps the source's space, but an edited one is
+    Word's text, and puts pandoc's character into the `.md`. It prints the same and `check`
+    reads it the same, but it cannot be seen in an editor, and a diff shows the line as
+    changed there. Where the source is read against Word's text, U+00A0 therefore counts
+    as a space; Word's text against Word's text compares it exactly, so one the co-author
+    typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
+    space taken out again in Word is no edit, and the next build puts it back. Only where
+    the source reads as what was sent, but for typesetting: the reading is wrong where
+    pandoc prints markup as text (`[^missing]` with no note, an image with no file), and a
+    co-author deleting that text would otherwise have been dropped without a word.
+  - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
+    without its own, so a no-break space the co-author added there is dropped: silently,
+    when it is the only change to the paragraph.
 - **Two protected tokens with nothing between them cannot be aligned.**
   `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
   one rendering ends and the next begins. The paragraph is refused.
+- **Paragraph identifiers move when the rules that split a source change.** An identifier
+  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
+  the stamp records the sources' digest but not the rules that split them. A document sent
+  out before such a change and imported after it has its identifiers pointing at other
+  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
+  wrong one. 0.2.9 is such a change for a source whose front matter has a blank line after
+  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
+  none of these; a document built from one before 0.2.9 has to be rebuilt and sent again.
+  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -2190,7 +2231,9 @@ Closed since, and why each mattered:
   citation is whatever lies between. Pandoc typesets prose (`drug's` reaches Word as
   `drug’s`), so a paragraph with a binding and an apostrophe is refused. Worse, a short piece
   of prose can be found inside a citation: "(Smith et al. 2020)." ending a paragraph is cut
-  at "al.", and a rewording merges as `[@smith2020]. 2020).`. A narrative `@key`, and a
+  at "al.", and a rewording merges as `[@smith2020]. 2020).`. The rewording can be one
+  nobody sees: now that Word's text keeps a no-break space, a typography corrector turning
+  the space in "et al. 2020" into a narrow no-break one is enough. A narrative `@key`, and a
   bracketed citation with a prefix (`[see @key]`), is not protected: the source does not read
   as what Word shows, so a paragraph quoting one is refused whatever the edit.
 - **The annotated copy shows classification, not correctness.** Green means a number came

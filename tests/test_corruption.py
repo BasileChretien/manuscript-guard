@@ -1141,6 +1141,23 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
+@pytest.mark.parametrize("blank", ["", "  "])
+def test_the_build_prints_the_headings_the_gates_read(blank: str) -> None:
+    """The build found the end of the front matter with a pattern of its own. Once the gates
+    stopped taking `---` and a blank line for front matter, the build still stripped it: G2
+    read the `## Methods` heading inside, so `p < 0.001` after it passed as the alpha chosen
+    in advance, and the document printed it with no Methods heading above it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import headings
+
+    text = (
+        f"---\n{blank}\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    )
+    body, _title = strip_front_matter(text)
+    assert headings(body) == headings(text) == ["Methods"]
+
+
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
     """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
     plain paragraphs, with `# References` among its comments, cut everything after it."""

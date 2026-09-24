@@ -1207,13 +1207,15 @@ first item, the first cell, the term) while it names the *whole* source block, a
 splices the returned paragraph over the block it names. A co-author's edit to the first
 item would have replaced the list with that item. That was not hypothetical: a paragraph
 closing a fenced div without a blank line (`Inner paragraph.\n:::`), a list item's
-continuation followed directly by a nested list or the next item, and a paragraph with a
-LaTeX environment opening on its second line were each marked as one block, and
-`import --apply` deleted the `:::`, flattened the items into the paragraph, or deleted the
-environment's opening and first row — and exited 0. So a block is
-marked only when pandoc reads the whole of it as one paragraph, and
-`tests/test_pandoc_agreement.py` asks pandoc directly, for each construct in its table,
-whether that holds. Lists and quotes cost their identifiers, and their edits are counted as
+continuation followed directly by a nested list or the next item, a paragraph with a LaTeX
+environment opening on its second line, and a paragraph with display math in it were each
+marked as one block, and `import --apply` deleted the `:::`, flattened the items into the
+paragraph, deleted the environment's opening and first row, or deleted the equation and the
+sentence after it — and exited 0. The last is invisible to pandoc's reader, which keeps
+`$$...$$` inside the paragraph; its Word writer gives the equation a paragraph of its own and
+the bookmark stays on the words before it. So a block is marked only when the whole of it
+becomes one paragraph, and `tests/test_pandoc_agreement.py` asks pandoc directly, of both its
+reader and the .docx it writes, for each construct in its table, whether that holds. Lists and quotes cost their identifiers, and their edits are counted as
 unexamined rather than merged; see Known gaps.
 
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
@@ -1462,9 +1464,12 @@ Added by the adversarial review, verified and **not** fixed:
   comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
   tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
   one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
-  after a `<!--` written inside inline code, up to the next `-->`. Two review rounds found
-  holes in earlier versions of these patterns, every one by running pandoc on a construct
-  the table did not yet hold, so the table is evidence for what is in it and no more.
+  after a `<!--` written inside inline code, up to the next `-->`. Raw TeX other than an
+  environment is not followed across a blank line, so a `\newcommand` whose body holds a
+  blank line gets a marker inside it; pandoc drops raw TeX from the .docx and the identifier
+  names nothing, which `import` already tolerates. Three review rounds found holes in earlier
+  versions of these patterns, every one by running pandoc on a construct the table did not
+  yet hold, so the table is evidence for what is in it and no more.
 - **Two block boundaries are drawn where pandoc draws none.** A line holding only a
   non-breaking space splits the text into two blocks, each marked, where pandoc reads one
   paragraph carrying both bookmarks; fixing it renumbers every identifier after it. And a
@@ -1475,11 +1480,12 @@ Added by the adversarial review, verified and **not** fixed:
   nothing.** A `where:` recorded from a document built earlier can hold the identifier the
   flattened list carried. That block is no longer tagged, so G13 reports the paragraph as no
   longer in the manuscript rather than checking the response against it.
-- **Merging a reworded paragraph drops an inline comment or an inline footnote.** Only
-  bindings and citations are protected tokens in `realign`. `Text <!-- note --> with a
-  note^[the footnote] here.` renders to "Text with a note here.", and a co-author's edit to
-  that comes back as a source paragraph with the comment and the footnote gone. Nothing is
-  reported.
+- **Merging a reworded paragraph drops what Word does not show as its text.** Only bindings
+  and citations are protected tokens in `realign`, and a paragraph is read from its `w:t`
+  runs. `Text <!-- note --> with a note^[the footnote] here.` renders to "Text with a note
+  here.", and `The hazard was $\lambda$ per year.` to "The hazard was per year." because
+  Word keeps math in `m:t`. A co-author's edit to either comes back as a source paragraph
+  with the comment, the footnote or the symbol gone. Nothing is reported.
 
 Closed since, and why each mattered:
 

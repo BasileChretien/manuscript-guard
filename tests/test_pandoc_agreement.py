@@ -19,10 +19,13 @@ heading or what is code, the toolkit is wrong by definition.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import shutil
 import subprocess
+import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -324,6 +327,28 @@ TAGGING = {
     "a latex environment opened where a comment closes": (
         "<!-- one\n\nmore --> \\begin{x}\n\nrow\n\n\\end{x}\n\nAfter.\n"
     ),
+    # Found by the review standing in for CodeRabbit on the PR, the first two only in the .docx.
+    "display math inside a paragraph": (
+        "The fitted model is\n$$\ny = a + bx\n$$\nwhere b is the slope.\n"
+    ),
+    "display math within a sentence": "The model: $$y = x$$ inline.\n",
+    "a block html tag mid-line": (
+        "The signal was stronger in women. <div>See the note below.</div> It was weaker.\n"
+    ),
+    "a paragraph tag mid-line": "text <p>x</p> more\n",
+    "a rule tag mid-line": "text <hr> more\n",
+    "tags pandoc keeps inline mid-line": "text <del>x</del> and <style>y</style> more\n",
+    "a less-than before a word": "Values <LOQ were imputed as half the limit.\n",
+    "latex environment written with a space": (
+        "Results are shown below.\n\\begin {table}\nrow one\n\\end{table}\n\nAfter.\n"
+    ),
+    "latex environment closed with a space": (
+        "Results are shown below.\n\\begin{table}\nrow one\n\\end {table}\n\nAfter.\n"
+    ),
+    "html block inside a list item's continuation": (
+        "- item\n\n  para\n    <div>\n    x\n    </div>\n"
+    ),
+    "pre opened mid-line": "text <pre>code\n\nmore</pre>\n\nAfter.\n",
     "a comment opened in the block where a fence closes": (
         f"{FENCE}\ncode\n\nmore\n{FENCE}\ntext <!-- two\n\ninside two\n\n-->\n\nAfter.\n"
     ),
@@ -378,20 +403,47 @@ def _holders(node, found: dict) -> None:
             _holders(value, found)
 
 
+def pandoc_docx(markdown: str, output: Path) -> Path:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-o", str(output)],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return output
+
+
+def word_paragraphs(document: Path) -> list[str]:
+    """The text of every paragraph in the body, read the way `import` reads one."""
+    xml = zipfile.ZipFile(document).read("word/document.xml").decode("utf-8")
+    return [
+        re.sub(r"\s+", " ", html.unescape("".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p))))
+        .strip()
+        for p in re.findall(r"<w:p(?:\s[^>]*)?(?:/>|>.*?</w:p>)", xml, re.DOTALL)
+    ]
+
+
 @pytest.mark.parametrize("name", sorted(TAGGING))
-def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(name: str) -> None:
+def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
+    name: str, tmp_path: Path
+) -> None:
     """Two things, both about what pandoc makes of the marked source.
 
     The marker must change nothing but itself. In front of a list it did: pandoc read
     `[]{#mg-p-...}- item one` as a paragraph, and the document printed the list as one
     run-on line with its dashes in it.
 
-    And the paragraph carrying it must be the whole of the block it names, because `import`
-    splices that paragraph's text over the block. A marker in a pipe table's first cell
-    changes nothing pandoc reads, and a co-author's edit to that cell would have replaced
-    the table.
+    And the Word paragraph carrying it must be the whole of the block it names, because
+    `import` splices that paragraph's text over the block. A marker in a pipe table's first
+    cell changes nothing pandoc reads, and a co-author's edit to that cell would have
+    replaced the table. Asked of both pandoc's reader and the .docx, because each misses
+    what the other sees: display math is inside one paragraph to the reader and gets a
+    paragraph of its own from the Word writer, while a LaTeX environment after the first
+    line is a separate block to the reader and simply absent from the .docx.
     """
-    from manuscript_guard.roundtrip import tag
+    from manuscript_guard.roundtrip import paragraph_text, tag
 
     markdown = TAGGING[name]
     tagged = tag(markdown, "main.md")
@@ -402,19 +454,30 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(name: str) ->
     _holders(ast, held)
     written = re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged)
     assert set(held) == set(written), f"{name}: a marker reached no paragraph in {tagged!r}"
+    if not written:
+        return
 
+    returned = paragraph_text(pandoc_docx(tagged, tmp_path / "tagged.docx"))
     pieces = re.split(r"\n\s*\n", tagged)
     # A footnote or a link resolves against definitions anywhere in the document, so a
     # paragraph read on its own is read with them.
     definitions = "\n\n".join(p for p in pieces if re.match(r" {0,3}\[[^\]]+\]:", p))
-    for piece in pieces:
+    for index, piece in enumerate(pieces):
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)
         if marker is None:
             continue
-        alone = pandoc_ast(piece.replace(marker.group(0), "", 1) + "\n\n" + definitions)
-        assert [block["t"] for block in alone] in (["Para"], ["Plain"]), (
-            f"{name}: {piece!r} is marked and is not one paragraph"
+        source = piece.replace(marker.group(0), "", 1) + "\n\n" + definitions
+        read = pandoc_ast(source)
+        assert [block["t"] for block in read] in (["Para"], ["Plain"]), (
+            f"{name}: {piece!r} is marked and pandoc reads it as {[b['t'] for b in read]}"
         )
-        assert _unmarked(held[marker.group(1)]) == alone[0]["c"], (
+        assert _unmarked(held[marker.group(1)]) == read[0]["c"], (
             f"{name}: the marked paragraph holds only part of {piece!r}"
+        )
+        written_out = word_paragraphs(pandoc_docx(source, tmp_path / f"alone-{index}.docx"))
+        assert len(written_out) == 1, (
+            f"{name}: {piece!r} is marked and is {len(written_out)} paragraphs in Word"
+        )
+        assert returned.get(marker.group(1)) == written_out[0], (
+            f"{name}: the marked Word paragraph holds only part of {piece!r}"
         )

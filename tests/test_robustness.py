@@ -94,7 +94,8 @@ def test_the_fence_scanner_is_linear() -> None:
 def test_paragraph_tagging_is_linear(opener: str) -> None:
     """A block that opens raw content with no closer used to search to the end of the text,
     once per block: 80,000 of them took 26 seconds, and `check` reaches this through G13.
-    Remembering the last answer per closing string fixed one name and not a thousand.
+    Distinct environment names are measured separately because a cache keyed by closing
+    string fixed the repeated case and left each new name searching to the end of the text.
 
     Padded, because with short blocks the per-block work hides the search: without the fix
     the ratio below was 13 to 17, and with it about 4.

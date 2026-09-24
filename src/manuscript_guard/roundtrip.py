@@ -303,6 +303,12 @@ _INLINE_HTML = (
 _HTML_TAG = re.compile(
     rf" {{0,3}}</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?=[\s/>]|$)", re.IGNORECASE
 )
+# The same tags, whole, anywhere in a line. Mid-line too `text <div>x</div> more` is three
+# paragraphs to pandoc. Whole, because "values <LOQ were imputed" is a sentence.
+_HTML_BLOCK_TAG = re.compile(
+    rf"</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?:\s[^<>]*)?/?>", re.IGNORECASE
+)
+_TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -366,9 +372,14 @@ def _untagged(block: str) -> bool:
     stripped = block.strip()
     if (
         stripped.startswith("#")
-        # Pandoc ends a paragraph at a LaTeX environment wherever it opens, mid-line too,
-        # and carries on with a raw block.
-        or "\\begin{" in stripped
+        # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
+        # it opens, mid-line too, and carries on with a raw block.
+        or _TEX_ENVIRONMENT.search(stripped) is not None
+        or _HTML_BLOCK_TAG.search(stripped) is not None
+        # One paragraph to pandoc's reader and three to its Word writer, which gives display
+        # math a paragraph of its own: the bookmark stayed on the words before the equation,
+        # and `import` spliced them over the equation and everything after it.
+        or "$$" in stripped
         or _FENCE.match(stripped) is not None
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
         or _FIGURE.fullmatch(stripped) is not None
@@ -394,15 +405,15 @@ def _untagged(block: str) -> bool:
     )
 
 
-# Raw content pandoc carries across blank lines without reading it as markdown: an HTML
-# comment and a LaTeX environment wherever they open, and an HTML element whose content is
-# verbatim when it opens a line.
+# Raw content pandoc carries across blank lines without reading it as markdown, wherever it
+# opens: an HTML comment, a LaTeX environment (`\begin {table}` with a space included), and
+# an HTML element whose content is verbatim.
 _VERBATIM = "(?i:pre|script|style|textarea)"
 _RAW_OPEN = re.compile(
-    rf"<!--|\\begin\{{[^{{}}\n]+\}}|^ {{0,3}}<(?P<tag>{_VERBATIM})(?=[\s>]|$)", re.MULTILINE
+    rf"<!--|\\begin[ \t]*\{{[^{{}}\n]+\}}|<(?P<tag>{_VERBATIM})(?=[\s>]|$)"
 )
 _RAW_CLOSE = re.compile(
-    rf"(?P<comment>-->)|\\(?P<tex>begin|end)\{{(?P<env>[^{{}}\n]+)\}}"
+    rf"(?P<comment>-->)|\\(?P<tex>begin|end)[ \t]*\{{(?P<env>[^{{}}\n]+)\}}"
     rf"|</(?P<tag>{_VERBATIM})(?=[\s>]|$)"
 )
 

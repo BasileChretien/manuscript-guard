@@ -213,6 +213,10 @@ NOT_PARAGRAPHS = {
     "page break": "\\newpage",
     "latex environment after a paragraph's first line": "text\n\\begin{x}\nrow\n\\end{x}",
     "latex environment opened mid-line": "text \\begin{x}\nrow\n\\end{x} more",
+    "latex environment written with a space": "text\n\\begin {table}\nrow\n\\end{table}",
+    "display math inside a paragraph": "The model is\n$$\ny = a + bx\n$$\nwhere b is the slope.",
+    "a block html tag mid-line": "In women. <div>See the note.</div> Weaker in men.",
+    "html block inside a list item's continuation": "  para\n    <div>\n    x\n    </div>",
     "example list without parentheses": "@good. second",
     "a capital and a period alone": "A.",
     "a valid roman numeral": "mix. up",
@@ -229,6 +233,8 @@ PARAGRAPHS = {
     "an autolink": "<https://example.org> is a link.",
     "a dash on a later line": "text\n- not a list",
     "a word made of roman letters": "dim. lights were used.",
+    "a less-than before a word": "Values <LOQ were imputed as half the limit.",
+    "an inline tag mid-line": "The <em>adjusted</em> estimate was lower.",
 }
 
 

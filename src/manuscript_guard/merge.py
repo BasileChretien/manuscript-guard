@@ -216,9 +216,11 @@ _CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DO
 #:   span's closer was taken for an opener and swallowed what followed.
 #: - a comment that closes.
 #: - display maths, of which the `$$` at each end are kept, so that it is still found, and
-#:   inline maths, by pandoc's rule: no space just inside either `$`, and no digit (or a
-#:   binding, which prints digits) straight after the closing one. Of a `$$` that does not
-#:   close, the second `$` can open inline maths.
+#:   inline maths, by pandoc's rule: no space just inside either `$`, and no digit straight
+#:   after the closing one. Of a `$$` that does not close, the second `$` can open inline
+#:   maths. A binding straight after the closing `$` prints a number, which stops pandoc
+#:   closing there if it starts with a digit and not if it starts with a minus sign; the
+#:   source cannot say which, so this reading is made twice, once for each.
 #: - an autolink, an HTML tag with its attributes, and the address and title of a link or
 #:   an image. The link's text is read like the rest, because pandoc reads it as Markdown.
 #:   An autolink's address runs to the first space or `>`, and may hold `<` or backticks.
@@ -236,26 +238,40 @@ _TEX_HELD = r"(?:[^{}$%\\]|\\.|\$(?:[^$\\]|\\.)*\$)"
 _TEX_BRACES = r"\{" + _TEX_HELD + r"*\}"
 for _ in range(2):
     _TEX_BRACES = r"\{(?:" + _TEX_HELD + "|" + _TEX_BRACES + r")*\}"
-_ASIDE = re.compile(
-    "|".join(
-        (
-            r"(?P<tex>\\[A-Za-z]+(?![A-Za-z])\*?(?:\[[^\]]*\])*(?:" + _TEX_BRACES + r")*(?!\{))",
-            r"(?P<escape>\\.)",
-            r"(?P<code>(?P<ticks>`+)(?!`).+?(?<!`)(?P=ticks)(?!`))",
-            r"(?P<comment><!--.*?-->)",
-            r"(?P<display>\$\$.+?\$\$)",
-            r"(?P<maths>\$(?![\s$])(?:[^$\\]|\\.)+?(?<!\s)\$(?!\d|\{\{))",
-            r"(?P<autolink><(?!!--)"
-            r"(?:[A-Za-z][A-Za-z0-9+.-]*:[^\s>]+|[^\s<>@`]+@[^\s<>@`]+)>)",
-            r"(?P<html></?[A-Za-z][A-Za-z0-9-]*"
-            r"(?:\s+[A-Za-z_:][\w:.-]*(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*\s*/?>)",
-            r"(?P<link>(?P<open>!?\[)(?P<text>(?:[^\[\]\\]|\\.|\[(?:[^\[\]\\]|\\.)*\])*)"
-            r"(?P<address>\]\((?:<[^<>\n]*>|(?:[^\s()\\]|\\.|\((?:[^\s()\\]|\\.)*\))*)"
-            r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^()]*\)))?\s*\)))",
-        )
-    ),
-    re.DOTALL,
-)
+
+
+def _aside(maths_ends_before: str) -> re.Pattern[str]:
+    """The second reading, inline maths closing only where `maths_ends_before` does not follow."""
+    return re.compile(
+        "|".join(
+            (
+                r"(?P<tex>\\[A-Za-z]+(?![A-Za-z])\*?(?:\[[^\]]*\])*"
+                r"(?:" + _TEX_BRACES + r")*(?!\{))",
+                r"(?P<escape>\\.)",
+                r"(?P<code>(?P<ticks>`+)(?!`).+?(?<!`)(?P=ticks)(?!`))",
+                r"(?P<comment><!--.*?-->)",
+                r"(?P<display>\$\$.+?\$\$)",
+                r"(?P<maths>\$(?![\s$])(?:[^$\\]|\\.)+?(?<!\s)\$(?!"
+                + maths_ends_before
+                + r"))",
+                r"(?P<autolink><(?!!--)"
+                r"(?:[A-Za-z][A-Za-z0-9+.-]*:[^\s>]+|[^\s<>@`]+@[^\s<>@`]+)>)",
+                r"(?P<html></?[A-Za-z][A-Za-z0-9-]*"
+                r"(?:\s+[A-Za-z_:][\w:.-]*"
+                r"(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*\s*/?>)",
+                r"(?P<link>(?P<open>!?\[)(?P<text>(?:[^\[\]\\]|\\.|\[(?:[^\[\]\\]|\\.)*\])*)"
+                r"(?P<address>\]\((?:<[^<>\n]*>|(?:[^\s()\\]|\\.|\((?:[^\s()\\]|\\.)*\))*)"
+                r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^()]*\)))?\s*\)))",
+            )
+        ),
+        re.DOTALL,
+    )
+
+
+#: A binding after the closing `$` printing a number that starts with a digit, and one
+#: printing a negative number.
+_ASIDE = _aside(r"\d|\{\{")
+_ASIDE_SIGNED = _aside(r"\d")
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
@@ -270,7 +286,7 @@ def _set_aside(match: re.Match[str]) -> str:
     if match.group("link"):
         return (
             " " * len(match.group("open"))
-            + _ASIDE.sub(_set_aside, match.group("text"))
+            + match.re.sub(_set_aside, match.group("text"))
             + " " * len(match.group("address"))
         )
     return _blank(match)
@@ -286,9 +302,12 @@ def _bare(para: str) -> tuple[bool, bool]:
     with attributes, or `~~ $$x$$ ~~` for struck-through text, it hid display maths, and a
     paragraph that was not held had its first part moved without its equation. Setting
     aside too little only holds a paragraph that could have moved - `$$` in a footnote does.
-    So it is read two ways, and what either finds counts; see `_ASIDE`.
+    So it is read two ways, the second twice when a binding is in it, and what any reading
+    finds counts; see `_ASIDE`.
     """
-    readings = (_CODE_OR_COMMENT.sub(_blank, para), _ASIDE.sub(_set_aside, para))
+    readings = [_CODE_OR_COMMENT.sub(_blank, para), _ASIDE.sub(_set_aside, para)]
+    if "{{" in para:
+        readings.append(_ASIDE_SIGNED.sub(_set_aside, para))
     return (
         any("<!--" in reading for reading in readings),
         any(_DISPLAY_MATHS.search(reading) for reading in readings),

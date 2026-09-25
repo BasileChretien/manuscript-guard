@@ -258,12 +258,7 @@ HOLD_CASES = {
     "autolink holding backticks": "The <http://x.org/" + TICKS + "y>" + AFTER,
     "html attribute holding backticks": 'The <span title="' + TICKS + 'q">a</span>' + AFTER,
     "display maths holding backticks": "The $$\\text{" + TICKS + "x''}$$" + AFTER,
-    "maths holding a comment opener": "The $a <!-- b$ and `c` done.",
-    "code holding a comment opener": "The `<!--` opener, and `$$` for maths.",
     "escaped backtick before a code span": "The \\`" + "`onset`" + AFTER,
-    "latex quotes in prose": "The " + TICKS + "crude''" + AFTER,
-    "a bracket that makes no link": "The ](http://x/" + TICKS + "y)" + AFTER,
-    "a space between bracket and address": "The [a] (http://x/" + TICKS + "y)" + AFTER,
     "dollar amounts": "It cost $5 and $10 by `ror`. <!-- a",
     "an unclosed comment and nothing else": "Plain prose. <!-- a draft",
     "raw TeX then a brace that does not close": "The \\text{a<!--}{b and more",
@@ -274,19 +269,27 @@ HOLD_CASES = {
     "an autolink holding a tag and a backtick": "The <http://x/`<br/> page" + AFTER,
     "a comment opener that reads like an email": "The <!--a@b.org> note, and more",
     "a display opener that does not close": "The $$x$ y <!-- z",
-    "inline maths opened by the second dollar": "The a$$x <!-- z$ and more",
     # Each of these, read as something set aside, hid a comment pandoc opens.
     "maths closing inside its text": "Let $f = \\text{if $x$ is positive}$. <!-- a ($f$) said",
     "maths closing after a no-break space": "The $a" + chr(0xA0) + "$-fold. <!-- a ($y$) said",
     "raw TeX with a group that is not its argument": "The \\emph{a}{crude <!-- a draft}, b",
     "raw TeX that takes no argument": "The ratio\\ldots{crude <!-- a draft}, b",
-    "raw TeX with an optional argument": "The \\emph[x]{a" + TICKS + "b}" + AFTER,
-    "raw TeX naming no command": "The \\LaTeX{a" + TICKS + "b}" + AFTER,
+    "raw TeX with an optional argument": "The \\emph[b <!-- c]{d} end.",
+    "raw TeX that takes no argument, then a group": "The \\LaTeX{b <!-- c} end.",
+    "raw TeX taking fewer groups than follow": "The \\href{a}{b}{c <!-- d} end.",
+    "raw TeX ending an environment": "The \\end{b <!-- c} end.",
+    "raw TeX beginning an environment it never ends": "The \\begin{b <!-- c} end.",
+    "raw TeX whose dollars pair across a brace": "The \\foo{a$}$b <!-- c} end.",
     "brackets around code that holds a link end": "See [the `f](x)` here" + AFTER,
     "a footnote reference before parentheses": "As shown[^note](a`b) and `ror." + AFTER,
-    "a reference link before parentheses": "The [a][b](x" + TICKS + "y)" + AFTER,
+    "a reference link before parentheses": "[a][b](x`y) z `w <!-- q` end.",
+    "link text holding a dollar": "[a $](x)$ and <!-- b ($c$) end.",
     "an autolink with a scheme pandoc does not know": "See <zzz:a`b> and `ror." + AFTER,
-    "an attribute name pandoc does not accept": 'See <span data.x="a`b">it</span>' + AFTER,
+    "an attribute name with a dot": 'Text <span data.x="a`b"> x `c <!-- d` end.',
+    "an attribute name opening with an underscore": 'Text <span _x="a`b"> x `c <!-- d` end.',
+    "an attribute name opening with a colon": 'Text <span :x="a`b"> x `c <!-- d` end.',
+    "maths closing after a thin space": "The $a" + chr(0x2009) + "$b and <!-- c ($y$) end.",
+    "dollars inside two autolinks": "See <$$a@b> c <$$d@e> end.",
 }
 
 
@@ -338,12 +341,13 @@ def test_import_holds_the_paragraphs_pandoc_runs_on_or_shows_maths_in() -> None:
     paragraph, and display maths wherever pandoc shows it. Finding one where pandoc does not
     only holds a paragraph that could have moved; missing one lets a move write into the
     comment. Each is asked of pandoc on its own, so that a brace one leaves open cannot
-    close in another."""
+    close in another. A case where pandoc does neither would test nothing, so none is one."""
     from manuscript_guard.merge import _bare
 
     wrong = []
     for name in sorted(HOLD_CASES):
         [(runs_on, display)] = pandoc_holds([HOLD_CASES[name]])
+        assert runs_on or display, f"{name}: pandoc runs no comment on and shows no maths"
         opens, maths = _bare(HOLD_CASES[name])
         if (runs_on and not opens) or (display and not maths):
             wrong.append(
@@ -351,3 +355,22 @@ def test_import_holds_the_paragraphs_pandoc_runs_on_or_shows_maths_in() -> None:
                 f"_bare finds a comment {opens}, display {maths}"
             )
     assert not wrong, "\n".join(wrong)
+
+
+@pytest.mark.parametrize("value", ["0.50", "-0.50", "\N{MINUS SIGN}0.50"])
+def test_import_holds_a_paragraph_whatever_sign_a_binding_after_maths_prints(value: str) -> None:
+    """`_bare` reads the source, where a binding is `{{...}}`; pandoc reads the build, where it
+    is a number. After a closing `$`, a number starting with a digit keeps pandoc from closing
+    the maths there, and a negative one does not, which ran the comment on. The maths before
+    it hides the comment from the first reading, so the second has to find it."""
+    from manuscript_guard.merge import _bare
+
+    source = (
+        "The $\\text{" + TICKS + "crude''}$ ratio changed by $x${{results.delta}} units. "
+        "<!-- a draft ($y$, " + TICKS + "raw'') said:"
+    )
+    [(runs_on, display)] = pandoc_holds([source.replace("{{results.delta}}", value)])
+    opens, maths = _bare(source)
+    assert (runs_on <= opens) and (display <= maths), (
+        f"filled with {value}: pandoc runs on {runs_on}; _bare finds a comment {opens}"
+    )

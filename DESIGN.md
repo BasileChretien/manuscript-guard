@@ -1308,31 +1308,33 @@ aside what pandoc reads before code spans: raw TeX with its arguments, maths, a 
 address and title (not its text, which is Markdown), an autolink and an HTML tag. Raw TeX
 counts only when every brace straight after it closes. After a `$$` that does not close, the
 second `$` can open inline maths. A `<!--` is a comment even unclosed, never an autolink. A
-paragraph is held when either reading finds an open comment or display maths. The second
+binding straight after a closing `$` prints a number, which keeps pandoc from closing the
+maths there if it starts with a digit and not if it is negative. The source cannot say
+which, so for a paragraph holding a binding the second reading is made twice, once each way.
+A paragraph is held when any reading finds an open comment or display maths. The second
 reading alone was reviewed, and it sets aside some things pandoc reads as text: a brace
 group after a TeX command that does not take it, `\text{...}` holding a `$` inside maths,
 brackets around code holding `](`, an autolink with a scheme pandoc does not know, and an
 attribute name with a dot in it. Each hid a comment the first reading finds, and a paragraph
 swapped past was written into it. Neither reading is pandoc's, so neither is trusted alone:
 a comment found where pandoc sees none costs a refusal, and one missed costs a paragraph.
-Compared with pandoc on 60,000 random paragraphs built from these pieces, the two together
-miss a comment or display maths pandoc shows in 5, where the first alone missed 44. One of
-the 5 holds a binding, which pandoc was given unfilled; filled with a number, as a build
-fills it, it is not missed. The other four are raw TeX or an attribute that runs past its
-paragraph, a gap listed below. The pieces cannot make most of what the review found, so each
-of those is a named case of the agreement test instead. Holding what either finds costs
-little: 7,097 paragraphs of the sample are held with nothing to hold them, against 7,053 for
-the first reading alone. Display maths is also read from the document as sent, which says it
-outright: an equation directly after a paragraph is part of that paragraph, however its
-source is written. And a held paragraph whose only change is a no-break space pandoc put in
-and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
-refused instead. That is decided only for a source with no no-break space of its own and no
-binding or citation: asked of every paragraph, the check dropped a co-author's change to one
-the author had written, with "nothing came back". An author can write one as `\ `, as the
-character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
-also decided only when no new text stands beside the paragraph. Only the part carrying the
-identifier is compared, so when the part after an equation had been reworded, skipping the
-paragraph dropped that rewording.
+Compared with pandoc on 60,000 random paragraphs built from these pieces, the readings
+together miss a comment or display maths pandoc shows in 4, where the first alone missed 44.
+All four are raw TeX or an attribute that runs past its paragraph, a gap listed below. The
+pieces cannot make most of what the review found, so each of those is a named case of the
+agreement test instead. Holding what any of them finds costs little: 7,097 paragraphs of the
+sample are held with nothing to hold them, against 7,053 for the first reading alone.
+Display maths is also read from the document as sent, which says it outright: an equation
+directly after a paragraph is part of that paragraph, however its source is written. And a
+held paragraph whose only change is a no-break space pandoc put in and Word's editor took
+out again has nothing to merge, as an ordinary one has not; it was refused instead. That is
+decided only for a source with no no-break space of its own and no binding or citation:
+asked of every paragraph, the check dropped a co-author's change to one the author had
+written, with "nothing came back". An author can write one as `\ `, as the character, or as
+an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is also decided only
+when no new text stands beside the paragraph. Only the part carrying the identifier is
+compared, so when the part after an equation had been reworded, skipping the paragraph
+dropped that rewording.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2439,13 +2441,15 @@ Closed since, and why each mattered:
   is found by reading the source two ways: once with code spans and closed comments set
   aside, and once with maths, raw TeX, a link's address, autolinks and HTML tags set aside
   as well. Either finding it holds the paragraph, so it is missed only where both readings
-  miss it. Raw TeX with braces nested more than three deep, and a link whose text nests
-  brackets more than one deep, are prose to both, so a backtick inside them can still be
-  taken for one that opens a code span. A comment is the only thing looked for that runs
-  past a paragraph, and pandoc runs two others past it too. Raw TeX whose brace closes only
-  in a later paragraph, and an HTML attribute whose quote does, swallow everything up to
-  that close. Such a paragraph is held only when it swallows a tagged paragraph, which is
-  then found hidden; otherwise it can be moved.
+  miss it, each for its own reason: backticks inside inline maths, which the first takes for
+  code, followed by a brace group a TeX command does not take, which the second takes for
+  its argument, hide a comment from both. Raw TeX with braces nested more than three deep,
+  and a link whose text nests brackets more than one deep, are prose to both, so a backtick
+  inside them can still be taken for one that opens a code span. A comment is the only thing
+  looked for that runs past a paragraph, and pandoc runs two others past it too. Raw TeX
+  whose brace closes only in a later paragraph, and an HTML attribute whose quote does,
+  swallow everything up to that close. Such a paragraph is held only when it swallows a
+  tagged paragraph, which is then found hidden; otherwise it can be moved.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A

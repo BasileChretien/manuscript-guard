@@ -3170,6 +3170,24 @@ def test_what_pandoc_reads_as_text_is_not_set_aside_over_a_comment(
     assert _held_in_place(known, {"p": para}).get("p") == "runs-on"
 
 
+def test_a_binding_after_maths_is_read_both_as_digits_and_as_a_minus_sign(
+    tmp_path: Path,
+) -> None:
+    """A binding straight after a closing `$` prints a number. One starting with a digit stops
+    pandoc closing the maths there, and a negative one does not. Taking every binding for
+    digits, the second reading ran the maths on over the `<!--`; with backticks in the maths
+    hiding it from the first reading too, a paragraph swapped past was written into the
+    comment, exit 0."""
+    from manuscript_guard.merge import _held_in_place
+
+    para = (
+        "The $\\text{``crude''}$ ratio changed by $x${{results.delta}} units. "
+        "<!-- a draft ($y$, ``raw'') said:"
+    )
+    _path, known = source_of(tmp_path, {"p": para})
+    assert _held_in_place(known, {"p": para}).get("p") == "runs-on"
+
+
 def test_an_equation_after_a_paragraph_in_the_document_as_sent_holds_that_paragraph(
     tmp_path: Path,
 ) -> None:

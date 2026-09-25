@@ -593,6 +593,79 @@ def test_a_note_over_an_indented_block_prints_as_text(indented: str) -> None:
     assert any("rare" in paragraph for paragraph in paragraphs)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "between",
+    [
+        pytest.param(f"\n\n{chr(0xA0)}\n", id="blank-then-no-break"),
+        pytest.param(f"\n\n   {chr(0xA0)}\n", id="blank-then-three-spaces"),
+        pytest.param("\n\n   ", id="next-indented-three"),
+        pytest.param(f"\n\n    {chr(0xA0)}\n\n", id="indented-no-break-between-blanks"),
+        pytest.param("\n\n\t\n", id="tab-only-line"),
+    ],
+)
+def test_a_note_a_blank_line_ends_is_left_alone(between: str) -> None:
+    """The direction whose failure is silent, judged by pandoc: a note left unmarked must be
+    a note, and what follows it must stay in the body with its identifier. A blank line ends
+    a note unless the line after it is indented four columns; under that line, anything that
+    is not indented so starts afresh."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.{between}It was rare.\n"
+    tagged = tag(text, "main.md")
+    assert "\n\n[^cap]: Capped at 40 mg." in tagged
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tagged,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    notes: list[str] = []
+
+    def gather(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("t") == "Note":
+                notes.append(json.dumps(node))
+            for value in node.values():
+                gather(value)
+        elif isinstance(node, list):
+            for value in node:
+                gather(value)
+
+    gather(blocks)
+    assert any("Capped" in note for note in notes)
+    assert not any("rare" in note for note in notes)
+    paragraphs = [json.dumps(b) for b in blocks if b["t"] == "Para"]
+    assert any("rare" in paragraph and "mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("lead", ["\t", "    "], ids=["tab", "four-spaces"])
+def test_a_note_ending_a_file_does_not_take_in_the_next_file(project: Path, lead: str) -> None:
+    """Review of #64: `tag` judges a note by the end of its own file, where nothing follows,
+    and the build joined the files with blank lines alone. A note ending one file then took
+    in the next file's first paragraph when that opened indented, and a co-author's edit to
+    it was dropped with nothing said. A comment between files, which pandoc drops, ends it."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8").replace("None declared.", "None declared.[^end]")
+    main_md.write_text(f"{text.rstrip()}\n\n[^end]: A closing note.\n", encoding="utf-8")
+    (project / "manuscript" / "zz_extra.md").write_text(
+        f"{lead}Extra paragraph from the next file.\n", encoding="utf-8"
+    )
+
+    document = built(project)
+    notes = _docx_part(document, "word/footnotes.xml")
+    assert "A closing note." in notes
+    assert "Extra paragraph" not in notes
+    assert "Extra paragraph" in _docx_part(document, "word/document.xml")
+
+
 def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
     from the stripped block in one and the raw block in the other, a definition ending in a

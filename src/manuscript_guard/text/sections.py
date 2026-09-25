@@ -21,7 +21,14 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import (
+    FRONTMATTER,
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    mask,
+)
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -82,9 +89,6 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
@@ -107,20 +111,21 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # text as written, as the build and `mask` find it, and fences are looked for only
+    # after it. Blanked first, a comment on the YAML's first line read as a blank line
+    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
     # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
-    return blank(opening) + rest if opening else rest
+    #
+    # Fences and comments are found in the text as written too. Blanking the comments
+    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
+    # earlier opener and blanked the headings between them.
+    head = front_matter_end(text)
+    fences = fenced_blocks(text)
+    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
+    return blank(text, [(0, head), *spans])
 
 
 @dataclass(frozen=True)

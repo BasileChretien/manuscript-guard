@@ -2047,23 +2047,43 @@ Closed since, and why each mattered:
   YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
   gates mask it and the build strips it, so for a paper built here they agree and nothing
   unread prints. The audit of a Markdown paper rendered some other way does not read it.
-- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
-  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
-  enough, since any later real comment supplies the `-->`, and a draft often has one. The
-  comment scanner would have to know code spans.
+- **The comment scanner knows code spans, fences and the front matter, and no other
+  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+  does, but it ends a code span only at a blank line or a front-matter value's edge, where
+  pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
+  or TeX maths as its own, where pandoc reads the enclosing construct first. So
+  ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
+  prints, as a stray backtick in one list item does when it pairs with the one opening
+  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
+  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints it as code. The old regex did all of this and more.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, but each of these can still hide a number pandoc prints, all on contrived
-  input:
-  - a `<!--` or a fence opened in one YAML value and closed in another;
+  in the body, and a comment stays inside the value it was opened in, but each of these can
+  still hide a number pandoc prints, all on contrived input:
+  - a fence opened in one YAML value and closed in another;
+  - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
+    a quoted title, which a `# -->` YAML comment after it closes;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
   - front matter behind a UTF-8 byte-order mark, which G2 does not find;
-  - a YAML block in the middle of the body;
-  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
-    though not for the masking.
-
-  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+  - a YAML block in the middle of the body, which pandoc also reads.
+- **Fences are found without knowing what a comment or a code span swallowed.**
+  `text/fences.py` reads the file for fences before anything else. So a fence line that
+  pandoc reads as part of a comment or of an open code span is still an opener there, and
+  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
+  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
+  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
+  such a fence for itself, but it does not look for the fences pandoc finds after it. One
+  case follows from that, the only one where this branch reads worse than the regex did: a
+  code span holding a line of four backticks, followed by a listing that holds `<!--`,
+  hides the prose after the listing up to the next `-->`. Separately, a `~~~` fence, or a
+  backtick fence indented one to three spaces, does not interrupt a paragraph in pandoc,
+  which prints it as prose. One pass that finds fences, code spans and comments together
+  would close all of these.
+- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
+  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
+  mentions both markers hides everything between them.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

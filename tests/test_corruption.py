@@ -1458,6 +1458,104 @@ def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
     assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}
 
 
+COMMENT_MARKERS_IN_CODE = "We stripped `<!--` markers. The ROR was {}.\n\nNote: `-->` closes.\n"
+
+
+def test_audit_reads_prose_between_comment_markers_in_code(tmp_path: Path) -> None:
+    """Pandoc prints `` `<!--` `` as code. The masking took it for a comment and hid
+    everything up to the next `-->`, a later `` `-->` `` included: the audit reported 0
+    numeric tokens and `--strict` passed."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"), encoding="utf-8")
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 1
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "<!-- draft\n```r\nx <- 1 # -->\n```\n\nThe ROR was 9.99. <!-- a -->\n",
+        "---\ntitle: Stripping <!-- markers\n---\n\nThe ROR was 9.99. <!-- note -->\n",
+        "<!-- Cut after review --\n> The pilot ROR was 9.99.\n-->\n",
+        "Set `<!-- ROR 9.99\n```\n-->\n```\n` in the template.\n",
+    ],
+    ids=[
+        "closed in a listing",
+        "opened in the title",
+        "cut short by --, newline, >",
+        "code across a fence line",
+    ],
+)
+def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, paper: str) -> None:
+    """Pandoc prints 9.99 in each. The first three comments end before the next `-->`: at
+    one inside a listing, at the end of the title they were opened in, or nowhere, because
+    pandoc's HTML reader stops at `--` and `>` and then prints the whole thing. In the last
+    the `<!--` is code, and a code span already open runs across the fence lines."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+
+
+def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
+    """The old binding parser got this right and the first version of the shared scanner
+    did not: it read with the fences blanked, so the comment ran on over the binding."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n<!-- draft\n```r\nx <- 1 # -->\n```\n\n"
+        + "The ROR was {{results.no_such_key}}. <!-- a -->\n",
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
+
+
+def test_g2_reads_a_number_in_an_escaped_comment(project: Path) -> None:
+    """`\\<!--` opens no comment: pandoc prints "A note <!– 42 –> here.", and G2 masked it as
+    one, so the 42 passed unbound. `import --apply` writes exactly this shape, since it
+    escapes a `<` before `!` that a co-author typed in Word."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nA note \\<!-- 42 --> here.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "42" in f.message for f in report.failures
+    ), report.render(project)
+
+
+def test_g2_reads_prose_between_comment_markers_in_code(project: Path) -> None:
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"),
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "9.99" in f.message for f in report.failures
+    ), report.render(project)
+
+
+def test_a_bad_binding_between_comment_markers_in_code_is_caught(project: Path) -> None:
+    """Skipped as commented out, it was neither resolved nor substituted, and the document
+    printed `{{results.no_such_key}}`."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n"
+        + COMMENT_MARKERS_IN_CODE.format("{{results.no_such_key}}"),
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     "bound",
     [

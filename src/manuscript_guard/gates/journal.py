@@ -223,7 +223,9 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
                 )
             )
         else:
-            body = abstract.enclosed.lower()
+            # Comments and listings blanked, as for the required statements below: a
+            # heading in `<!-- Conclusions: to write -->` is one the abstract does not print.
+            body = scannable(abstract.enclosed).lower()
             missing = [h for h in wanted if h.lower() not in body]
             if missing:
                 report = report.with_findings(

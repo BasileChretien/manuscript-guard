@@ -1023,6 +1023,22 @@ def test_a_statement_that_does_not_print_as_one_is_missing(project: Path, hidden
     )
 
 
+def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) -> None:
+    """The abstract's required headings were looked for in its text with its comments still
+    in it, so `<!-- Conclusions: to write -->` met a Conclusions heading the abstract did
+    not print."""
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["structure"]["abstract_headings"] = ["Background", "Methods", "Conclusions"]
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace(
+        "**Conclusions.** Reporting", "<!-- Conclusions: to write -->\nReporting"
+    )
+    main.write_text(text, encoding="utf-8")
+    assert "abstract-headings-missing" in codes(_journal(project))
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never

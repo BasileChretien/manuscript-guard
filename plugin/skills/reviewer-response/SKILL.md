@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point or anchor-uncheckable, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen or claimed-change-missed-the-point, or before resubmitting.
 ---
 
 # Answering the reviewers
@@ -134,10 +134,9 @@ manuscript-guard respond --submission    # the same findings, as failures
 | `point-unanswered` | the response is blank; a `rebutted` alone does not count |
 | `response-claims-nothing` | a response with neither `changed` nor `rebutted` |
 | `claimed-change-did-not-happen` | the named file is byte-identical to the baseline, or the key or path does not exist |
-| `claimed-change-missed-the-point` | the paragraph the reviewer commented on is unchanged, though the response says the manuscript was revised |
-| `anchor-uncheckable` | the round's paragraph identifiers were numbered by other rules, after an upgrade that changed them, so the anchored paragraph cannot be compared. Check it by hand, then delete the point's `where` |
+| `claimed-change-missed-the-point` | the paragraph the reviewer commented on is unchanged, though the response says the manuscript was revised. It is found by its text, so moving it or adding paragraphs above it does not count as revising it |
 
-All five warn during the revision and fail at submission. `respond` ignores `stage:` in
+All four warn during the revision and fail at submission. `respond` ignores `stage:` in
 `paper.yaml`, so pass `--submission` yourself. For the last one, if revising somewhere else
 in the file really was the right answer, say so in `rebutted`.
 

@@ -315,6 +315,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         comments_in,
         numbering_problem,
         numbering_refusal,
+        paragraph_order,
         read_blocks,
         scheme_of,
         stamp_of,
@@ -342,7 +343,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
     # Before the digest, and past --force: under other numbering an edit has no hunk to
     # check by hand, only a paragraph that is not the one it was made in.
-    problem = numbering_problem(project, scheme_of(edited))
+    try:
+        problem = numbering_problem(
+            project,
+            scheme_of(edited),
+            paragraph_order(edited),
+            stale=carried != document_digest(project),
+        )
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     if problem:
         print(numbering_refusal(edited.name, problem))
         return 1
@@ -545,6 +555,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 RoundTripError,
                 numbering_problem,
                 numbering_refusal,
+                paragraph_order,
                 scheme_of,
                 stamp_of,
             )
@@ -552,6 +563,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             try:
                 carried = stamp_of(args.source)
                 scheme = scheme_of(args.source)
+                names = paragraph_order(args.source)
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
@@ -566,7 +578,9 @@ def cmd_respond(args: argparse.Namespace) -> int:
                     f"the points into the round file."
                 )
                 return 1
-            problem = numbering_problem(project, scheme)
+            problem = numbering_problem(
+                project, scheme, names, stale=carried != document_digest(project)
+            )
             if problem:
                 print(numbering_refusal(args.source.name, problem))
                 return 1
@@ -609,15 +623,12 @@ def cmd_respond(args: argparse.Namespace) -> int:
             # comparison could not fire and the check was dead code. Its test passed because
             # the test built the baseline the way the gate reads it, not the way this
             # command writes it.
-            from manuscript_guard.roundtrip import TAGGING_SCHEME, tagged_paragraphs
+            from manuscript_guard.roundtrip import tagged_paragraphs
 
             document["submitted_paragraphs"] = {
                 name: hashlib.sha256(entry[1].encode("utf-8")).hexdigest()
                 for name, entry in tagged_paragraphs(project).items()
             }
-            # The anchors are identifiers, and an identifier means something only under the
-            # rules that assigned it: G13 compares them only under the same rules.
-            document["tagging_scheme"] = TAGGING_SCHEME
         path.write_text(
             yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
             encoding="utf-8",

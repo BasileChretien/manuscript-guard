@@ -69,17 +69,12 @@ def check_revision(project: Project, *, submission: bool = False) -> Report:
 
         submitted = document.get("submitted_files") or {}
         paragraphs = document.get("submitted_paragraphs") or {}
-        numbering = None
-        if paragraphs:
-            from manuscript_guard.roundtrip import numbering_problem
-
-            numbering = numbering_problem(project, document.get("tagging_scheme"))
         for reviewer in document["reviewers"]:
             for point in reviewer["points"]:
                 total += 1
                 report, ok = _check_point(
                     report, project, number, reviewer["id"], point, submitted, current,
-                    severity, paragraphs, numbering,
+                    severity, paragraphs,
                 )
                 answered += int(ok)
 
@@ -100,7 +95,6 @@ def _check_point(
     current: dict,
     severity: str,
     paragraphs: dict,
-    numbering: str | None = None,
 ) -> tuple[Report, bool]:
     where = f"round {number}, {reviewer} point {point['id']}"
     response = str(point.get("response", "")).strip()
@@ -140,26 +134,7 @@ def _check_point(
         )
 
     ok = True
-    if numbering and _anchored(point, paragraphs, changed):
-        # An identifier is positional: under other numbering it names another paragraph,
-        # and comparing it passed a revision that never happened.
-        ok = False
-        report = report.with_findings(
-            Finding(
-                gate=GATE,
-                code="anchor-uncheckable",
-                severity=severity,
-                message=f"{where}: the paragraph this point was attached to "
-                f"({point['where']}) cannot be checked, because round {number} {numbering}",
-                context=response[:140],
-                hint="read that paragraph against the reviewer's comment yourself. Once it "
-                "is revised, delete `where` from the point: the claimed change is then "
-                "checked against the whole file",
-            )
-        )
-        anchored = None
-    else:
-        anchored = _anchor_unchanged(project, point, paragraphs, changed)
+    anchored = _anchor_unchanged(project, point, paragraphs, changed)
     if anchored:
         ok = False
         report = report.with_findings(
@@ -203,41 +178,35 @@ def _anchor_unchanged(
     and a paper's Methods is one file. When the point came from a comment attached to a
     paragraph, the tighter question is available and worth asking: the reviewer objected to
     that paragraph, and it is unchanged.
+
+    The paragraph is found by its text, not by its identifier. The identifier is
+    positional: a paragraph added above it during the revision, or a release that numbers
+    paragraphs by other rules, pointed it at a neighbour, whose text differed, and a
+    paragraph nobody touched passed as revised. The round keeps a hash of the text the
+    reviewer read. If the manuscript still holds that text anywhere, it was not revised,
+    wherever it now sits. Of two identical paragraphs, one revised, the other still reads as
+    the unrevised one: a false alarm, which is the direction to be wrong in.
     """
-    if not _anchored(point, paragraphs, changed):
+    where = point.get("where")
+    if not where or not paragraphs or where not in paragraphs:
         return None
-    where = point["where"]
+    if not any(entry["kind"] == "manuscript" for entry in changed):
+        return None
 
     import hashlib
 
     from manuscript_guard.roundtrip import tagged_paragraphs
 
-    known = tagged_paragraphs(project)
-    if where not in known:
-        return f"the paragraph this point was attached to ({where}) is no longer in the "\
-               f"manuscript, so the response cannot be checked against it"
-
-    # The comparison the docstring has always promised. Checking only that the identifier
-    # still resolves detects a deleted paragraph and nothing else - so a response could
-    # claim a revision, change something else in the same file, and the paragraph the
-    # reviewer actually objected to went untouched with the gate silent.
-    now = hashlib.sha256(known[where][1].encode("utf-8")).hexdigest()
-    if now == paragraphs[where]:
+    read = paragraphs[where]
+    if any(
+        hashlib.sha256(text.encode("utf-8")).hexdigest() == read
+        for _path, text, _start in tagged_paragraphs(project).values()
+    ):
         return (
             f"the paragraph this point was attached to ({where}) is unchanged, though the "
             f"response says the manuscript was revised"
         )
     return None
-
-
-def _anchored(point: dict, paragraphs: dict, changed: list) -> bool:
-    """Whether a point is attached to a recorded paragraph and claims a manuscript change."""
-    where = point.get("where")
-    return (
-        bool(where)
-        and where in paragraphs
-        and any(entry["kind"] == "manuscript" for entry in changed)
-    )
 
 
 def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -> str | None:

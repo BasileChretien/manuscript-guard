@@ -196,10 +196,9 @@ A document whose paragraphs were numbered by other rules is refused whatever you
 `--force` included, and so is `respond --open --from` on it. It happens across an upgrade
 that changed how paragraphs are numbered: each identifier would name another paragraph, so
 every edit and every comment would land in the wrong one. A document built before the rules
-were recorded in it is refused only when its source's front matter is now read differently.
-Rebuild, send the new document, and carry over by hand anything already written in the old
-one. A revision round opened under other numbering has its anchored points reported as
-`anchor-uncheckable` rather than compared; check each by hand, then delete its `where`.
+were recorded in it is refused when its source has changed since the build, and otherwise
+only when a file it carries has front matter that is now read differently. Rebuild, send the
+new document, and carry over by hand anything already written in the old one.
 
 ## If you are a model doing this
 

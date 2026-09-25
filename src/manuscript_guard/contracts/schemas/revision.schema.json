@@ -27,11 +27,6 @@
       "description": "The manuscript as the journal received it, one digest per identified paragraph. Written alongside submitted_files, and what lets a point anchored to a paragraph be checked against that paragraph rather than the whole file it sits in.",
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
     },
-    "tagging_scheme": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "The rules the paragraph identifiers in submitted_paragraphs and in each point's `where` were assigned under. An identifier is positional, so under other rules it names another paragraph; G13 compares anchors only under the rules that assigned them. Absent from rounds opened before it was recorded."
-    },
     "reviewers": {
       "type": "array",
       "minItems": 1,

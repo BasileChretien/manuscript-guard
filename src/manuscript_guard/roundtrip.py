@@ -46,9 +46,11 @@ _CUSTOM = "docProps/custom.xml"
 #: how the rest splits into blocks, and which blocks are tagged. An identifier is
 #: positional, so a document built under one set of rules and imported under another has
 #: its identifiers naming other paragraphs, and every edit in it lands in the wrong one.
-#: The number travels in the document beside the digest, and in a review round, and a
-#: mismatch is refused. Bump it with any change to `strip_front_matter`, `_untagged` or
-#: the split; `test_identifiers_are_pinned_to_the_tagging_scheme` fails until you do.
+#: The number travels in the document beside the digest, and a mismatch is refused. Bump it
+#: with any change to `strip_front_matter`, `_untagged` or the split;
+#: `test_identifiers_are_pinned_to_the_tagging_scheme` fails until you do, for the
+#: constructs its table holds. (A review round needs no scheme: G13 finds the paragraph a
+#: reviewer commented on by its text.)
 #:
 #: 1. Up to plugin release 0.2.12, and never recorded: front matter closed only by `---`
 #:    (`_SCHEME_1_FRONT`).
@@ -179,8 +181,10 @@ def stamp_of(document: Path) -> str | None:
     return found.group(1) if found else None
 
 
-def scheme_of(document: Path) -> int | None:
-    """The tagging scheme a document's paragraphs were numbered under, if it records one."""
+def scheme_of(document: Path) -> str | None:
+    """The tagging scheme a document's paragraphs were numbered under, as recorded, or None
+    when it records none. Returned as written: a value that is not this version's number,
+    readable or not, is another scheme."""
     try:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
@@ -188,8 +192,8 @@ def scheme_of(document: Path) -> int | None:
             xml = archive.read(_CUSTOM).decode("utf-8")
     except (OSError, zipfile.BadZipFile) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
-    found = re.search(rf'name="{SCHEME_PROPERTY}"[^>]*>\s*<vt:lpwstr>(\d+)</vt:lpwstr>', xml)
-    return int(found.group(1)) if found else None
+    found = re.search(rf'name="{SCHEME_PROPERTY}"[^>]*>\s*<vt:lpwstr>([^<]*)</vt:lpwstr>', xml)
+    return found.group(1) if found else None
 
 
 def comments_in(document: Path) -> list[Comment]:
@@ -392,49 +396,71 @@ def identified(
     return out
 
 
-def renumbered(project) -> list[str]:
-    """The source files whose paragraphs scheme 1 numbered differently from this one.
+def renumbered(project) -> dict[str, str]:
+    """The source files whose paragraphs scheme 1 numbered differently from this one, as
+    their identifier slug and their path within `manuscript/`.
 
-    A document or a review round that records no scheme was numbered either under scheme 1
-    or, if built by 0.2.13, under this one. Where the two agree it does not matter which,
-    and it is read as it always was; only these files are a question.
+    A document that records no scheme was numbered either under scheme 1 or, if built by
+    0.2.13, under this one. Where the two agree it does not matter which, and it is read as
+    it always was; only these files are a question.
     """
-    return [
-        relative
+    return {
+        paragraph_slug(relative): relative
         for _path, relative, raw in _sources(project)
         if [entry[:2] for entry in identified(raw, relative, 1)]
         != [entry[:2] for entry in identified(raw, relative)]
-    ]
+    }
 
 
-def numbering_problem(project, carried: int | None) -> str | None:
-    """Why paragraph identifiers recorded under scheme `carried` cannot be trusted here, or
-    None when they can. `carried` is None for a document or round that records no scheme."""
-    if carried == TAGGING_SCHEME:
+def _slug_of(identifier: str) -> str:
+    """The file an identifier belongs to: the slug between `mg-p-` and its index."""
+    return identifier.removeprefix("mg-p-").rpartition("-")[0]
+
+
+def numbering_problem(
+    project, carried: str | None, names: Sequence[str], *, stale: bool
+) -> str | None:
+    """Why a document's paragraph identifiers cannot be trusted to name the paragraphs they
+    were made in, or None when they can.
+
+    `carried` is the scheme the document records, None if it records none; `names` are the
+    identifiers it carries; `stale` says it was built from other text than is on disk.
+    """
+    if carried == str(TAGGING_SCHEME):
         return None
     if carried is not None:
         return (
-            f"numbers its paragraphs by other rules (tagging scheme {carried}; this version "
-            f"uses {TAGGING_SCHEME})"
+            f"numbers its paragraphs by other rules (tagging scheme {carried!r}; this "
+            f"version uses {TAGGING_SCHEME})"
         )
+    # Unmarked. Whether scheme 1 and this one number its files alike can only be asked of
+    # the text it was built from, and a stale document was built from other text.
+    if stale:
+        return (
+            "records no numbering scheme and was built from other text than is on disk, so "
+            "there is no checking that its paragraphs are numbered as they are now"
+        )
+    # Only the files it carries: an identifier names its file, so a supplement read
+    # differently now says nothing about the main text's document.
     changed = renumbered(project)
-    if not changed:
+    carried_files = sorted({changed[slug] for slug in map(_slug_of, names) if slug in changed})
+    if not carried_files:
         return None
     return (
-        f"records no numbering scheme, and the front matter of {', '.join(changed)} is "
-        f"taken to end in a different place than it was before the scheme was recorded, so "
-        f"the version that built it may have numbered its paragraphs differently"
+        f"records no numbering scheme, and the front matter of {', '.join(carried_files)} "
+        f"is taken to end in a different place than it was before the scheme was recorded, "
+        f"so the version that built it may have numbered its paragraphs differently"
     )
 
 
 def numbering_refusal(name: str, problem: str) -> str:
     """The refusal `import` and `respond --open` print for `numbering_problem`."""
     return (
-        f"{name} {problem}. Its paragraph identifiers name other paragraphs now, so every "
-        f"edit or comment in it would land in the wrong one.\n"
+        f"{name} {problem}. An edit or comment in it could land in a paragraph other than "
+        f"the one it was made in.\n"
         f"  Rebuild, send the new document, and carry over by hand anything already written "
-        f"in this one. --force does not change this: there is no hunk to check, only the "
-        f"wrong paragraph."
+        f"in this one. --force does not change this: the import shows what an edit becomes, "
+        f"not which paragraph it replaces, so there is no hunk to check."
     )
 
 

@@ -1235,13 +1235,21 @@ document built before the change and imported after it had every identifier a bl
 step: `import --apply` wrote three paragraphs' text over three others and printed "merged 3
 reworded paragraph(s), bindings intact". A review round's anchors went the same way, and G13
 compared the wrong paragraph and passed. The document now records its tagging scheme beside
-the source digest, and a round records it too (`roundtrip.TAGGING_SCHEME`). Under another
-scheme `import` and `respond --open` refuse, and `--force` does not help: there is no hunk to
-check, only the wrong paragraph. G13 reports such a round's anchors as `anchor-uncheckable`
-instead of comparing them. A document or round from before the scheme was recorded is
-refused only where it matters: when some source's paragraphs come out differently under the
-rules kept from scheme 1. A table of identifiers in `test_roundtrip.py` fails on any
-numbering change until the scheme is bumped.
+the source digest (`roundtrip.TAGGING_SCHEME`). Under another scheme, or one it cannot read,
+`import` and `respond --open` refuse, and `--force` does not help. The plan shows what an
+edit becomes, not which paragraph it replaces, so there is no hunk to check. A document from
+before the scheme was recorded is refused only where it matters, which can only be judged
+against the text it was built from. If its source has changed since, it is refused, whatever
+is passed. If not, it is refused when a file it carries numbers differently under the rules
+kept from scheme 1. A table of identifiers in `test_roundtrip.py` fails when the numbering of
+the constructs it holds changes, until the scheme is bumped.
+
+A review round needs no scheme, because G13 no longer compares by identifier. The round
+keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
+commented on counts as unrevised while the manuscript still holds that exact text,
+wherever it now sits. Compared by identifier, it broke without any change of rules as
+well: a paragraph added above the anchor during the revision pointed it at a neighbour,
+and a paragraph nobody touched passed as revised.
 
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
@@ -2296,12 +2304,18 @@ Closed since, and why each mattered:
   code and a YAML block. A change to anything else needs its author to bump
   `TAGGING_SCHEME` unprompted. Otherwise documents already sent out come back pointing at
   other paragraphs, as before the scheme existed.
-- **A document built by plugin release 0.2.13 itself can be refused needlessly.** It
-  numbered paragraphs under the current rules but records no scheme, so it is judged like a
-  document built before the change. It is refused when its source's front matter has a blank
-  line after the opening `---`, a `...` closer or a trailing space on the opening `---`.
-  `init` writes none of these. The way through is the refusal's own advice: rebuild and
-  resend.
+- **An unmarked document can be refused needlessly.** One built before the scheme was
+  recorded is refused whenever its source has changed since the build, `--force` or not,
+  because the numbering can only be checked against the text it was built from. One built
+  by plugin release 0.2.13 itself numbered paragraphs under the current rules, but it is
+  judged like a document built before the change: it is refused when a file it carries has
+  a blank line after the opening `---`, a `...` closer or a trailing space on the opening
+  `---`. `init` writes none of these. Either way, the refusal's own advice is the way
+  through: rebuild and resend.
+- **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
+  paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
+  paper repeats a paragraph word for word and the author revises one copy, the other still
+  reports it unchanged. That is a false alarm, the safe direction.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

@@ -236,10 +236,11 @@ def with_scheme(document: Path, value: str | None) -> Path:
 #: `TAGGING_SCHEME`, and the table is re-pinned for the new scheme.
 #:
 #: Some entries are wrong: the half of a code block after its blank line is tagged, and so
-#: are raw HTML, a link definition, indented code and a YAML block, while a paragraph that is
-#: only a binding is not. They are pinned anyway. The table records what the documents
-#: already sent out carry, not what is right, and fixing any of them is exactly a change
-#: that has to bump the scheme.
+#: are list items (the marker turns `- one` into a paragraph), a pipe table (the marker
+#: becomes its first header cell), raw HTML, a link definition, indented code and a YAML
+#: block, while a paragraph that is only a binding is not. They are pinned anyway. The
+#: table records what the documents already sent out carry, not what is right, and fixing
+#: any of them is exactly a change that has to bump the scheme.
 PINNED_SOURCE = (
     "---\ntitle: T\n...\n\n# Methods\n\nFirst {{results.a}} paragraph.\n\n"
     "```r\nx <- 1\n\ny <- 2\n```\n\n::: {#refs}\n:::\n\n{{table.t1}}\n\n{{results.b}}\n\n"
@@ -292,12 +293,15 @@ def test_a_built_document_carries_its_tagging_scheme(project: Path) -> None:
     from manuscript_guard.roundtrip import TAGGING_SCHEME, scheme_of
 
     assert main(["build", str(project), "--offline"]) == 0
-    assert scheme_of(project / "build" / "manuscript.docx") == TAGGING_SCHEME
+    assert scheme_of(project / "build" / "manuscript.docx") == str(TAGGING_SCHEME)
 
 
 @needs_pandoc
+# Another number, and values that are no number at all: a scheme that is recorded but
+# unreadable is not "records none", which would take the lenient path.
+@pytest.mark.parametrize("recorded", ["1", "3.0", " 2", ""])
 def test_a_document_numbered_under_other_rules_is_refused_even_with_force(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], recorded: str
 ) -> None:
     """--force exists for a stale digest, where every hunk can be checked by hand. Under
     other numbering there is no hunk to check: each edit lands in whichever paragraph now
@@ -310,7 +314,7 @@ def test_a_document_numbered_under_other_rules_is_refused_even_with_force(
         tmp_path / "back.docx",
         {"This work received no funding.": "This work received no external funding."},
     )
-    with_scheme(returned, "1")
+    with_scheme(returned, recorded)
     source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
 
     capsys.readouterr()
@@ -343,19 +347,55 @@ def test_an_unmarked_document_whose_numbering_did_not_change_still_imports(
 
 
 @needs_pandoc
-def test_a_round_records_the_scheme_its_anchors_were_numbered_under(
+def test_an_unmarked_document_built_from_other_text_is_refused_even_with_force(
     project: Path, tmp_path: Path
 ) -> None:
-    import yaml
-
+    """Whether an unmarked document was numbered as its source is now can only be asked of
+    the text it was built from. Asked of the source as edited since, a forced import wrote
+    four paragraphs' text over their neighbours; the plan shows what an edit becomes and not
+    what it replaces, so checking every hunk could not have caught it."""
     from manuscript_guard.cli import main
-    from manuscript_guard.roundtrip import TAGGING_SCHEME
 
     assert main(["build", str(project), "--offline"]) == 0
-    returned = shutil.copy(project / "build" / "manuscript.docx", tmp_path / "back.docx")
-    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
-    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
-    assert document["tagging_scheme"] == TAGGING_SCHEME
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"This work received no funding.": "This work received no external funding."},
+    )
+    with_scheme(returned, None)
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nA later paragraph.\n", "utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
+
+
+@needs_pandoc
+def test_an_unmarked_document_is_judged_by_the_files_it_carries(
+    project: Path, tmp_path: Path
+) -> None:
+    """An identifier names its file. A supplement whose front matter is read differently now
+    says nothing about the numbering of the main text's document, and refusing it for that
+    blocked every unmarked main document in a project with such a supplement."""
+    from manuscript_guard.cli import main
+
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        "---\ntitle: S1\n...\n\n" + supplement.read_text(encoding="utf-8"), "utf-8"
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"This work received no funding.": "This work received no external funding."},
+    )
+    with_scheme(returned, None)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:

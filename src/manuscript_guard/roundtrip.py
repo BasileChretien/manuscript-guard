@@ -312,6 +312,23 @@ _TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
 # A brace not escaped: after an even number of backslashes, none included.
 _UNESCAPED_OPEN = re.compile(r"(?<!\\)(?:\\\\)*\{")
 _UNESCAPED_CLOSE = re.compile(r"(?<!\\)(?:\\\\)*\}")
+
+
+def _brace_group_runs_on(stripped: str) -> bool:
+    """Whether a block holds half of a brace group: an open brace left unclosed, the head of
+    a group that runs on past the blank line, or a close brace nothing opened, its tail.
+
+    An escaped brace is text and opens nothing, but a close brace may still pair with it:
+    `import` writes a `{` a co-author typed as `\\{` and a `}` as it is, so `{{table.x}}`
+    typed in Word comes back `\\{\\{table.x}}`. Counting every brace refused `\\{&lbrace;`
+    before a binding, three against two; counting only unescaped ones refused that, none
+    against two. So an unescaped brace must close, and a close brace must have something,
+    escaped or not, to close.
+    """
+    opened = len(_UNESCAPED_OPEN.findall(stripped))
+    escaped = stripped.count("{") - opened
+    closed = len(_UNESCAPED_CLOSE.findall(stripped))
+    return closed < opened or closed > opened + escaped
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -386,10 +403,8 @@ def _untagged(block: str) -> bool:
         or "$$" in stripped
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
-        # is the paragraph the bookmark lands in. An escaped brace is text, and opens nothing:
-        # counted, the `\{` `import` writes for a brace a co-author typed left the paragraph
-        # without an identifier.
-        or len(_UNESCAPED_OPEN.findall(stripped)) != len(_UNESCAPED_CLOSE.findall(stripped))
+        # is the paragraph the bookmark lands in.
+        or _brace_group_runs_on(stripped)
         or _FENCE.match(stripped) is not None
         # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
         # paragraph printing a number: skipped, a paragraph cut down to its number in Word

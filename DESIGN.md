@@ -1803,8 +1803,9 @@ Added by the adversarial review, verified and **not** fixed:
   comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
   (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
-  inside inline code, up to the next `-->`; a paragraph whose braces do not pair, escaped
-  ones aside. Raw TeX other than an environment is not followed across a blank line. When
+  inside inline code, up to the next `-->`; a paragraph with an unescaped brace left open,
+  or a close brace that nothing, escaped or not, opened. Raw TeX other than an environment is
+  not followed across a blank line. When
   the blank line falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a

@@ -4410,6 +4410,8 @@ def test_what_import_writes_pandoc_reads_as_one_paragraph(returned: str) -> None
             id="escaped-angle",
         ),
         pytest.param(r"Alpha beta \{&lbrace;{{results.drug}} gamma delta.", id="escaped-brace"),
+        pytest.param(r"\{\{table.cases}}", id="escaped-braces-closed-as-typed"),
+        pytest.param(r"The ratio \{ was {{results.ror.point}} overall.", id="escaped-brace-open"),
     ],
 )
 def test_a_paragraph_pandoc_reads_as_one_is_tagged(paragraph: str) -> None:
@@ -4427,6 +4429,7 @@ def test_a_paragraph_pandoc_reads_as_one_is_tagged(paragraph: str) -> None:
         pytest.param("Text <div>x</div> more.", id="block-tag-mid-line"),
         pytest.param("<section>A section.</section>", id="block-tag-opening"),
         pytest.param(r"\footnote{In one analysis.", id="open-tex-group"),
+        pytest.param("And in another.}", id="tail-of-a-tex-group"),
         pytest.param(": a definition of the term above.", id="definition"),
     ],
 )

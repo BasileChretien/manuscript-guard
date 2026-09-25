@@ -93,15 +93,21 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     paragraph touching one - across nothing but empty paragraphs - may have been split.
     Compared by text rather than by position, because a move changes every neighbour and
     creates no text at all. An edited heading is new text too, which costs a refusal of the
-    paragraph beside it when both were edited; the alternative is a split that truncates.
+    paragraph beside it when both were edited; the alternative is a split that truncates. A
+    paragraph holding only a symbol with no text is new text as well: skipped as empty, the
+    rewording beside it merged and the symbol was dropped.
     """
-    unchanged = Counter(b.text for b in sent if not b.table and not b.names and b.text)
+
+    def content(block: Block) -> tuple[str, tuple[str, ...]]:
+        return block.text, block.unread
+
+    unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
     new: set[int] = set()
     for index, block in enumerate(returned):
-        if block.table or block.names or not block.text:
+        if block.table or block.names or not any(content(block)):
             continue
-        if unchanged[block.text]:
-            unchanged[block.text] -= 1
+        if unchanged[content(block)]:
+            unchanged[content(block)] -= 1
         else:
             new.add(index)
 
@@ -112,7 +118,7 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
                 return False
             if i in new:
                 return True
-            if block.text:
+            if any(content(block)):
                 return False
         return False
 
@@ -348,10 +354,33 @@ def _joined_without_bookmark(
     return found
 
 
+def _unread(
+    reference: list[Block], returned: list[Block], rendered: dict[str, str]
+) -> dict[str, tuple[str, ...]]:
+    """What each paragraph came back holding that is not read as text, and was not sent.
+
+    Pandoc writes no `w:sym` and sets no font on text, so what the document as sent did not
+    hold was put there in Word. What it held already - a private-use character pasted into
+    the source, a reference document that gives a style the Symbol font - is not the
+    co-author's.
+    """
+    sent = {b.names[0]: Counter(b.unread) for b in reference if b.names and not b.table}
+    found: dict[str, tuple[str, ...]] = {}
+    for block in returned:
+        if block.table or not block.unread:
+            continue
+        for name in (n for n in block.names if n in rendered):
+            new = Counter(block.unread) - sent.get(name, Counter())
+            if new:
+                found[name] = tuple(new)
+    return found
+
+
 def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph."""
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
     texts, joined, slid = _read_returned(returned, rendered)
+    unread = _unread(reference, returned, rendered)
     in_join = {name for group in joined for name in group}
     joined += _joined_without_bookmark(rendered, texts, in_join)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
@@ -380,6 +409,11 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         was, now = rendered[name], texts.get(name)
         if counts[name] > 1:
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
+        elif now is not None and name in unread:
+            # Before the comparison: with nothing else edited, the paragraph reads as
+            # unchanged, and the co-author's symbol was dropped without a word. And before
+            # a deletion: a paragraph replaced by a symbol alone read as deleted.
+            refused.append(Refusal(name, now, _unread_why(unread[name])))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now):
@@ -446,6 +480,42 @@ _TOOK_IN = (
     "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
     "make the edit in the .md."
 )
+_UNREAD = (
+    "Word draws something in it that has no text the source can hold: {what}. Merging would "
+    "leave it out. Type the character itself in Word - Ctrl+Z straight after AutoCorrect "
+    "turns ':)' or '-->' into a symbol undoes it - or make the edit in the .md."
+)
+_STYLED = (
+    "part of it is in the Symbol font, set by {where}: read as that font draws it, but a font "
+    "set by a style, the defaults or the theme is not taken as exact. Set the font on the "
+    "text itself in Word, type the characters, or make the edit in the .md."
+)
+_PRIVATE = (
+    "it holds {what}, which only a symbol or icon font draws as Word shows it. The source "
+    "would keep the code, but the build draws it in the body font. Type the character "
+    "itself in Word, or make the edit in the .md."
+)
+_STYLED_PREFIX = "Symbol font from "
+_PRIVATE_PREFIX = "private-use character "
+
+
+def _unread_why(names: tuple[str, ...]) -> tuple[str, ...]:
+    """Why a paragraph holding what `wordfonts` names is refused, each kind named once."""
+    names = tuple(dict.fromkeys(names))
+    styled = [n.removeprefix(_STYLED_PREFIX) for n in names if n.startswith(_STYLED_PREFIX)]
+    private = [n for n in names if n.startswith(_PRIVATE_PREFIX)]
+    missing = [n for n in names if n not in private and not n.startswith(_STYLED_PREFIX)]
+    why = []
+    if missing:
+        why.append(_UNREAD.format(what="; ".join(missing)))
+    for name in private:
+        # One sentence each: rarely more than one, and a plural sentence read as one anyway.
+        why.append(_PRIVATE.format(what=f"a {name}"))
+    if styled:
+        why.append(_STYLED.format(where=" and ".join(styled)))
+    return tuple(why)
+
+
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "
     "paragraph cannot be told. Make the edit in the .md."

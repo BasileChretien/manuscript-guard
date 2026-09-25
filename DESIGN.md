@@ -1363,12 +1363,54 @@ and be refused as "a number or a citation changed".
 No text box is read, and no AlternateContent fallback, which repeats its choice. So a
 character Word writes only in a fallback is read from the choice: an emoji inserted in Word
 can be a `w16se:symEx` in the choice, with the character as text only in the fallback. The
-document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that way. Read as nothing, an emoji the author inserted never came
-back ("nothing came back: the document matches the manuscript on disk"), and one already in
-the source read as deleted: `--apply` took it out and reported a reworded paragraph. Word 16
-did not write that form for an emoji set as text or typed through its COM interface, nor on
-saving a built document holding one, untouched or edited beside it (verified 2026-09-25), so
-which way of inserting one produces it is not known here.
+document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that
+way. Read as nothing, an emoji the author inserted never came back ("nothing came back: the
+document matches the manuscript on disk"), and one already in the source read as deleted:
+`--apply` took it out and reported a reworded paragraph. Word 16 did not write that form for
+an emoji set as text or typed through its COM interface, nor on saving a built document
+holding one, untouched or edited beside it (verified 2026-09-25), so which way of inserting
+one produces it is not known here.
+
+A character is read as the font it is in draws it (`wordfonts`). Insert > Symbol with the
+Symbol font writes no text but `<w:sym w:font="Symbol" w:char="F0B1"/>`, for every character
+of the font, and text typed in the Symbol font is in that font's encoding: an `m`, or the
+private-use U+F06D, drawn as μ. Read as nothing, an inserted ± was dropped and the rest of
+the edit merged without it ("no funding ± none." became "no funding none."), a μ in "5 μg"
+merged as "5 g", and a minus put before a bound number came back as "nothing came back";
+read as written, a μ typed in the font read as "5 mg". The Symbol font is read through
+Adobe's encoding as the Unicode Consortium publishes it, less 0xA0, € in Adobe's later
+Symbol font: the Symbol font Windows ships has no glyph there. Which font draws a character is
+decided as Word decides it, and each rule was checked against Word 16, whose own text
+reports a character the Symbol font draws as U+F0xx (verified 2026-09-25): `ascii` draws
+ASCII and `hAnsi` the rest of Latin; `w:hint="eastAsia"` sends ±, °, × and twenty other
+Latin-1 characters, and the symbol range U+F000-U+F0FF, to the East Asian font; a font comes
+from the run, else its character style, else its paragraph style, else the defaults, or from
+the theme where a `...Theme` attribute names one. `w16se:symEx` names its own font and is
+read in it the same way.
+
+What has no text is not given one: a Wingdings character (in 1,813 Word files on the
+author's machine, all 382 `w:sym` were Wingdings or Wingdings 2 check boxes and arrows, and
+Word's AutoCorrect turns `:)` and `-->` into such a symbol, its entries being formatted
+ones), a piece of a tall bracket, or a Symbol code with no glyph. Typed in another symbol
+font it is the same: `J` and `ü` typed in Wingdings or Webdings are saved as that text, and
+Word reports them as U+F04A and U+F0FC, its smiley and check mark (Word 16); read as written,
+"no funding J." went into the source. Word marks a symbol font in the document's font table
+with `w:charset w:val="02"`: Symbol, Wingdings and Webdings, not Segoe MDL2 Assets, whose `J`
+is a J.
+
+A paragraph that came back holding a character with no text is refused and the character
+named ("Wingdings character F04A"), even with nothing else edited: merged, the rest of the
+edit landed without it. So
+is Symbol-font text whose font comes from a style, the defaults or the theme, with its own
+reason: it is read, but a style's font is not taken as exact. A private-use character that
+another font draws - a symbol font's code, or an icon font's such as Segoe MDL2 Assets - is
+kept as the character it is, and named without the font, with a reason of its own: the source
+would keep it, but the build draws it in the body font. The source can hold one pasted from
+an old document, and dropped from the text, or named after a body font the co-author
+changed, it put its paragraph beyond merging. What the document as sent held already is not
+the co-author's and is not refused; each is counted, not each kind, since a second of a code
+the paragraph held already was merged. The author chose refusing over reading these as
+nothing or as a space, on 2026-09-25.
 
 ## An exemption has to prove itself
 
@@ -2007,10 +2049,25 @@ Closed since, and why each mattered:
   import that loses the co-author's insertion, and where Word writes text already in the
   source that way, `--apply` deletes it from the source. A second choice, which the format
   allows and Word does not write, would be read as well as the first.
-- **The import does not read a Symbol-font character.** Insert > Symbol with the Symbol
-  font writes a `w:sym` element, not text. The audit's reader maps the ones that can stand
-  beside a number (minus, ±, ≤, ≥, ×); the import's reads nothing, so "3.2 ± 0.4" inserted
-  that way comes back as "3.2 0.4" and the co-author's ± is dropped.
+- **A symbol with no text refuses its paragraph in the import, and reads as a space in the
+  audit.** A Wingdings check box, or the smiley AutoCorrect makes of `:)`, that a co-author
+  adds to a sentence costs a manual edit in the .md, and so does Symbol-font text whose font
+  a style, the defaults or the theme sets: it is read, but a style's font is not taken as
+  exact. The audit reads the style's font the same way and cannot refuse, so its reading of
+  such text is as good as the resolution.
+- **Fonts are resolved as far as the run, its styles, the defaults and the theme.** A table
+  style's font, the complex-script font (`w:cs`, with `w:rtl` or `w:cs` on the run) and an
+  East Asian font of Symbol drawing CJK text are not considered: such text is read as the
+  characters it holds. A symbol font the reader does not know by name, in a document with no
+  font table to say so, is read as the letters it is stored as. A private-use character in
+  a font that is not a symbol font - an icon font's, or one pasted into the body text - is
+  kept as it is, and refused in the import only when the paragraph came back holding more of
+  that code than it was sent with. One deleted and another of the same code typed elsewhere
+  in the paragraph count as no change, and merge as the character moved, which the build
+  draws in the body font as before.
+- **The import refuses a document whose styles, theme, font table or document relationships
+  it cannot read safely.** Without them it cannot tell which font a run is in. Word does not
+  write such parts; the audit, which cannot refuse, reads only the fonts a run names itself.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing

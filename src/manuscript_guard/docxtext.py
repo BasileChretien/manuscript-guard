@@ -23,6 +23,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+from manuscript_guard.wordfonts import Fonts, RunFonts, symbol
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
@@ -77,6 +78,10 @@ class Block:
     text: str = ""
     #: A table or a figure: a block that is not prose, and not compared.
     table: bool = False
+    #: What Word draws in it that is not read as text, or not read exactly, named once for
+    #: each occurrence: a Wingdings character, a piece of a tall bracket, a private-use
+    #: character, Symbol-font text whose font a style sets. See `wordfonts`.
+    unread: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,28 +94,54 @@ class _Paragraph:
     table: bool
     #: It holds a picture: a figure, when it has no text and no identifier.
     picture: bool = False
+    unread: tuple[str, ...] = ()
 
 
-def _text(element: ET.Element) -> str:
+def _text(element: ET.Element, fonts: Fonts | None = None) -> str:
     """The visible text under `element`, tracked changes accepted."""
-    out: list[str] = []
+    return _reading(element, fonts or Fonts())[0]
 
-    def walk(node: ET.Element) -> None:
+
+def _reading(element: ET.Element, fonts: Fonts) -> tuple[str, tuple[str, ...]]:
+    """The visible text under `element`, and what in it is not read as text, named.
+
+    A character is read as the font it is in draws it: Insert > Symbol writes a `w:sym`, and
+    text typed in the Symbol font is in that font's encoding. See `wordfonts`.
+    """
+    out: list[str] = []
+    unread: list[str] = []
+    paragraph = element if element.tag == W + "p" else None
+
+    def walk(node: ET.Element, run: RunFonts) -> None:
         if node.tag in _UNSEEN:
             return
+        if node.tag == W + "r":
+            run = fonts.run(node, paragraph)
         if node.tag == W + "t" and node.text:
-            out.append(node.text)
+            text, missing = run.read(node.text)
+            out.append(text)
+            unread.extend(missing)
         elif node.tag in _SPACES:
             out.append(" ")
         elif node.tag == W + "noBreakHyphen":
             out.append("-")
         elif node.tag == W16SE + "symEx":
-            out.append(extended_symbol(node))
+            # In the font it names, as text is in its run's: a symbol or icon font's code too.
+            shown, name = fonts.drawn(extended_symbol(node), node.get(W16SE + "font"))
+            out.append(shown)
+            if name is not None:
+                unread.append(name)
+        elif node.tag == W + "sym":
+            shown, name = symbol(node)
+            if shown is None:
+                unread.append(name)
+            else:
+                out.append(shown)
         for child in node:
-            walk(child)
+            walk(child, run)
 
-    walk(element)
-    return spaced("".join(out)).strip()
+    walk(element, fonts.run(None, paragraph))
+    return spaced("".join(out)).strip(), tuple(unread)
 
 
 def extended_symbol(node: ET.Element) -> str:
@@ -143,7 +174,7 @@ def runs_on(paragraph: ET.Element) -> bool:
     )
 
 
-def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
+def _paragraph(element: ET.Element, *, table: bool, fonts: Fonts) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
     for node in element.iter():
@@ -154,21 +185,20 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         elif node.tag == W + "commentRangeStart":
             comments.append(node.get(W + "id", ""))
     picture = any(node.tag in _PICTURES for node in element.iter())
-    return _Paragraph(
-        tuple(names), _text(element), tuple(comments), runs_on(element), table, picture
-    )
+    text, unread = _reading(element, fonts)
+    return _Paragraph(tuple(names), text, tuple(comments), runs_on(element), table, picture, unread)
 
 
-def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
+def _walk_body(node: ET.Element, *, fonts: Fonts, table: bool = False) -> list[_Paragraph]:
     out: list[_Paragraph] = []
     for child in node:
         if child.tag == W + "p":
-            out.append(_paragraph(child, table=table))
+            out.append(_paragraph(child, table=table, fonts=fonts))
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, table=True))
+            out.extend(_walk_body(child, fonts=fonts, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
-            out.extend(_walk_body(child, table=table or child.tag == W + "tc"))
+            out.extend(_walk_body(child, fonts=fonts, table=table or child.tag == W + "tc"))
     return out
 
 
@@ -179,10 +209,12 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
             if part not in archive.namelist():
                 return []
             root = read_part(archive, part, what=f"{document.name}:{part}")
+            # Which font a run is in decides what its text is; see `wordfonts`.
+            fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
-    return _walk_body(body if body is not None else root)
+    return _walk_body(body if body is not None else root, fonts=fonts)
 
 
 def blocks(document: Path) -> list[Block]:
@@ -226,7 +258,8 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
     kept = [p for p in run if p.text or p is run[-1]]
     names = tuple(dict.fromkeys(n for p in kept for n in p.names))
     text = spaced(" ".join(p.text for p in kept if p.text)).strip()
-    return [Block(names=names, text=text)]
+    unread = tuple(u for p in run for u in p.unread)
+    return [Block(names=names, text=text, unread=unread)]
 
 
 def comment_anchors(document: Path) -> dict[str, str]:
@@ -246,11 +279,12 @@ def comment_texts(document: Path) -> list[tuple[dict[str, str], str]]:
             if "word/comments.xml" not in archive.namelist():
                 return []
             root = read_part(archive, "word/comments.xml", what=f"{document.name}:comments")
+            fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     out = []
     for comment in root.iter(W + "comment"):
         attributes = {key.removeprefix(W): value for key, value in comment.attrib.items()}
-        text = " ".join(_text(p) for p in comment.iter(W + "p"))
+        text = " ".join(_text(p, fonts) for p in comment.iter(W + "p"))
         out.append((attributes, spaced(text).strip()))
     return out

@@ -66,15 +66,20 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source; or where the change would put it, the next build would give it no identifier, and its move is held back too. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source; or reworded so, the next build would give it no identifier. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
-| `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
+| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved where a paragraph would reach the next build without its identifier` | a move that would leave a paragraph where pandoc reads it as a link or footnote definition, a heading or a placeholder. Not applied, nor any other move in that section; each is named with the paragraph it would leave behind. Rewordings there still land. Make the moves in the `.md` |
+| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, or into another file. Not applied; move it in the `.md` yourself |
+| `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
+| `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
+| `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted, moved between sections or files, or held back for a
+paragraph it would leave without an identifier, and any paragraph without an identifier
+that came back different or in a different order, makes the command exit 1, with or
+without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -89,8 +94,8 @@ pandoc returned.docx -t plain -o returned.txt
 git diff --no-index sent.txt returned.txt
 ```
 
-A new paragraph, a changed heading or a table edit is typed into the `.md`, or taken back to
-the analysis if it touched a number.
+A new paragraph, a changed heading, a list or quotation edit, or a table edit is typed into
+the `.md`, or taken back to the analysis if it touched a number.
 
 ## 4. What `import` refuses on its own, and what still needs you
 
@@ -112,12 +117,13 @@ handled, and each has a test:
   and dashes no longer stop a paragraph with a binding from taking a rewording.
 - A rewording is refused, not merged, when the edited text carries something Word's text
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break, or
-  emphasis or code wrapped around a binding. The reason names it. In a paragraph with a
-  binding, markup of those kinds on one side of the binding does not stop an edit on the
-  other side. Markup the import does not recognise does: `[Methods]`, a link to the heading,
-  refuses every edit to its paragraph. A paragraph without a binding is all one piece, so
-  one `kg/m^2^` in it refuses every edit to it.
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break,
+  emphasis or code wrapped around a binding, or code holding a `--`, a `...` or a quote
+  (written back as text, `--offline` printed as "–offline"). The reason names it. In a
+  paragraph with a binding, markup of those kinds on one side of the binding does not stop
+  an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
+  to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
+  one piece, so one `kg/m^2^` in it refuses every edit to it.
 - A no-break space comes back as the character it is, so a rewording around it merges and
   keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
   put before a colon or inside « ».
@@ -126,12 +132,12 @@ handled, and each has a test:
   citation and a number.
 - What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
   co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
-- A move or a rewording after which the next build would not find the paragraph again is
+- A move or a rewording after which the next build would not find a paragraph again is
   refused: each file is worked out as it would be written and read the way the build reads
-  it. A line in a link definition's shape, `[x]: https://…`, prints as a paragraph under a
-  line holding only a no-break space; moved in Word under a blank line, it would become a
-  definition that prints nothing. It is kept where it was, as it was, and the other changes
-  in the file still land.
+  it. A footnote marked because an indented block below would run into it prints as text;
+  moved in Word over a plain paragraph, it would become a footnote again and leave the body.
+  No move in its section is applied, and the moves are named; rewordings there, and changes
+  elsewhere, still land.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
 paragraph without an identifier. Port those edits from the dry run and the text diff above.
@@ -165,10 +171,10 @@ Read the whole diff. What to look for:
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed.
-- Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
-  abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
-  itself. Each prints as it did, but a diff can show a line as changed where nothing
-  visible changed.
+- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
+  the character itself. It prints as it did, but a diff can show a line as changed where
+  nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
+  plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

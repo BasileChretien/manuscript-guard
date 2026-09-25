@@ -57,7 +57,9 @@ manuscript-guard audit manuscript.docx supplement.docx \
 
 It needs no project and reads no `paper.yaml`. A `.docx` is read with tracked changes
 accepted and table cells kept apart, from the body, footnotes and endnotes; headers,
-footers and comments are not read. The notes are read after the reference list has been
+footers and comments are not read. One tracked change is not accepted: two paragraphs
+joined by deleting or moving the mark between them are still read as two, so check by hand
+the numbers either side of such a join. The notes are read after the reference list has been
 cut from the body, so they are always audited. Markdown and text files are read as written,
 and `--` between digits is read as a separator and a minus in every format: `-0.72--0.30`
 runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
@@ -97,15 +99,21 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
 
 A reference list starts at a line that is only a heading such as `References`,
-`Reference list`, `Bibliography`, `Works cited` or `Literature cited`, with or without a
-leading `#`, a number (`5`, `5.`, `5)`), bold, or a trailing colon. A line the document does
-not mark as a heading (a Markdown `#` or underline, a heading style in a `.docx`) also has to
-be capitalised and not end in a full stop, so a wrapped "…duplicate / references." is prose.
-A table cell reading `References` is a column header, not a heading. The
+`Reference list`, `Bibliography`, `Works cited` or `Literature cited`, perhaps with a number
+(`5`, `5.`, `5)`), bold, or a trailing colon. A line the document marks as a heading (a
+Markdown `#` or underline, a heading style in a `.docx`) needs nothing more. Any other line
+also has to be capitalised, not end in a full stop, and not start with `#`: a wrapped
+"…duplicate / references." is not a heading, and neither is `# References` as a comment in
+a fenced R listing or typed into a Word paragraph with no heading style. In Markdown,
+nothing in a fenced block, an HTML comment or the front matter starts a list. A table cell
+reading `References` is a column header, not a heading. The
 list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
 Every such list is cut, and the report names the lines under `Not audited`. Check each
-range. In a `.docx` whose headings are only bold text, the list runs to the end of the body,
-and an appendix after it goes unread.
+range. Code that is not fenced is not recognised as code, whether it is an unfenced or
+indented listing in Markdown or a listing pasted into Word. A `References` line in it does
+start a list, and in Markdown so does a `# References` comment at the start of a line,
+which pandoc prints as a heading. In a `.docx` whose headings are only bold text, the list
+runs to the end of the body, and an appendix after it goes unread.
 
 Only when there is no such heading is a line taken for a reference entry by its shape, and
 only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
@@ -123,9 +131,11 @@ the right place: a value correct in the abstract and wrong in the Results passes
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
 includes `p < 0.05` anywhere in the text and the lines the report lists under
-`Not audited`. Conventions, and numbers on lines taken for reference entries that happened to
-match, are counted as "conventions or references"; the numbers on a cut reference list are
-not counted at all. Describe all of them as not checked, never as matched.
+`Not audited`. Nor are numbers inside fenced code blocks in a Markdown paper. Conventions, and
+numbers on lines taken for reference entries that happened to
+match, are counted as "conventions or references"; the numbers on a cut reference list and
+in fenced code are not counted at all. Describe all of them as not checked, never as
+matched.
 
 So report what was done, not a verdict: how many numbers were examined, how many matched,
 what the chance-match rate was, and which unmatched ones you checked by hand and what you

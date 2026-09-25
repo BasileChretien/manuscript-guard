@@ -50,8 +50,10 @@ def collect(required: str | None, *, path: Path | None = None) -> tuple[int, str
 
 def installed_version() -> str:
     assert PANDOC is not None
-    printed = subprocess.run([PANDOC, "--version"], capture_output=True, text=True).stdout
-    line = re.search(r"^pandoc\s+(\S+)", printed, re.MULTILINE)
+    printed = subprocess.run(
+        [PANDOC, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace"
+    ).stdout
+    line = re.search(r"^pandoc(?i:\.exe)?\s+(\S+)", printed, re.MULTILINE)
     assert line is not None, printed
     return line.group(1)
 
@@ -111,6 +113,14 @@ def test_space_around_the_required_version_is_not_part_of_it() -> None:
 def test_the_version_is_read_from_the_line_that_names_pandoc(tmp_path: Path) -> None:
     """A warning printed first made the second word of the output "the version"."""
     folder = fake_pandoc(tmp_path, "Deprecated: this pandoc is old", "pandoc 3.9.0.2")
+    code, output = collect("3.9.0.2", path=folder)
+    assert code == pytest.ExitCode.OK, output
+
+
+def test_a_pandoc_that_prints_its_file_name_is_read(tmp_path: Path) -> None:
+    """Before 3.8, pandoc printed the name it was started by: `pandoc.exe 3.7.0.2` on
+    Windows, with ".exe" in whatever case the path had."""
+    folder = fake_pandoc(tmp_path, "pandoc.EXE 3.9.0.2")
     code, output = collect("3.9.0.2", path=folder)
     assert code == pytest.ExitCode.OK, output
 

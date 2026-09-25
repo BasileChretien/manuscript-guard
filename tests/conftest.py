@@ -33,8 +33,9 @@ IGNORE = shutil.ignore_patterns("build", "__pycache__", ".pytest_cache")
 REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 
 #: The version on the line that names the program, wherever that line falls in the output.
-#: pandoc prints its own name, whatever its file is called.
-PANDOC_VERSION_LINE = re.compile(r"^pandoc\s+(\S+)", re.MULTILINE)
+#: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
+#: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
+PANDOC_VERSION_LINE = re.compile(r"^pandoc(?i:\.exe)?\s+(\S+)", re.MULTILINE)
 
 
 def pytest_configure(config: pytest.Config) -> None:

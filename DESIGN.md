@@ -832,7 +832,9 @@ predecessor:
   read turns `39 | 20 | 26 | 16` into 39,202,616 and silently skips every table. A wrong
   count in Table 1 survived every check for exactly that reason.
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
-  reading it raw reports corrections as errors and misses what will be published.
+  reading it raw reports corrections as errors and misses what will be published. Text moved
+  away goes with the deletions, and so does a deleted line break or tab: read as a space, it
+  parted a minus from its number.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -884,7 +886,21 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   checked*. It now has a companion that asserts G2 and G6 actually ran.
 - YAML front matter was masked whole. Pandoc renders `title` and `abstract` from it, so the
   most-read part of the paper was outside every check. Rendered keys are now read; `lang`,
-  `zotero` and the rest of the machinery stay masked.
+  `zotero` and the rest of the machinery stay masked. (Later: a `---` followed by a blank
+  line was taken for the opening of front matter too. Pandoc prints it as a horizontal rule,
+  with the prose after it, which went unread up to the next `---`. The build found the end
+  of the front matter with a pattern of its own, and the two had to be made one: fixed in
+  the gates alone, G2 read a `## Methods` heading that the build still stripped, and
+  `p < 0.001` under it passed as the alpha chosen in advance. There is one pattern now, and
+  `test_pandoc_agreement.py` holds it to pandoc's reading. Every reader also applies it to
+  the text as written: the heading scan blanked HTML comments first, so a comment on the
+  YAML's first line read as a blank one and the front matter went unrecognised. And nothing
+  opened in the front matter closes in the body, as pandoc reads it: a `<!--` in a title ran
+  on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
+  below, hiding everything between from G2 and the audit, and the bindings between from
+  G2's binding checks. The masking, `explain`, G2's fence and binding readers and the
+  heading scan all stop at `front_matter_end`; all but the binding reader also look for
+  fences on each side of it. What is still open is under Known gaps.)
 
 **Two were the same value compared the wrong way.**
 
@@ -2011,6 +2027,65 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
+- **The audit reads a deleted paragraph mark as a paragraph break.** Once the change is
+  accepted Word joins the two paragraphs, and it does the same for a mark moved away; the
+  audit reads them as two lines, so the numbers either side of the join are read apart:
+  "−", a deleted mark, then "0.30" matches an output of +0.30, and "-0.5", a deleted mark,
+  then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
+  (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
+  take one of two styles, and a heading style is what ends a reference list.
+- **A `References` line in code that is not fenced can start a reference list.** In
+  Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
+  and an unmarked `# References` never does, so an R or Python comment in a fenced listing
+  cannot. But a listing that is not fenced is not code as far as the reader can tell. In
+  Markdown, `# References` at the start of a line there is a heading, and pandoc prints it
+  as one. An indented block is not blanked, because `pdftotext -layout` indents real
+  headings and a text file is read as Markdown. A listing pasted into Word as plain
+  paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
+  named under "Not audited".
+- **A `---` block at the top that is not YAML is taken for front matter.** Pandoc wants a
+  YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
+  gates mask it and the build strips it, so for a paper built here they agree and nothing
+  unread prints. The audit of a Markdown paper rendered some other way does not read it.
+- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
+  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
+  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
+  enough, since any later real comment supplies the `-->`, and a draft often has one. The
+  comment scanner would have to know code spans.
+- **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
+  `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
+  pandoc's own Markdown writer produces and `import` can write, are the thresholds they
+  print. Where the pattern and pandoc disagree, only a value a shipped rule already names
+  can pass; any other number still fails:
+  - *In text that is not Markdown.* A string in a listing or a figure script,
+    `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
+  - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
+    read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word.
+  - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
+    backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
+    backslash there counts as an escape. An escaped backtick, which `import` writes for every
+    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails.
+
+  A project convention written to match a literal `\>` no longer matches. Closing these
+  needs a reader that knows code spans as pandoc does, the one the comment scanner needs.
+- **The front-matter boundary still has edges.** Nothing opened in the front matter closes
+  in the body, but each of these can still hide a number pandoc prints, all on contrived
+  input:
+  - a `<!--` or a fence opened in one YAML value and closed in another;
+  - a URL at the end of a value swallowing the next value's first word;
+  - a code block in an abstract indented four spaces, which is not found;
+  - front matter behind a UTF-8 byte-order mark, which G2 does not find;
+  - a YAML block in the middle of the body;
+  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
+    though not for the masking.
+
+  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+- **An unmarked `#` heading counts as no heading.** `#References` with no space, an
+  indented `  # References`, or a Word paragraph typed as `# References` without a heading
+  style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
+  reference heading is read as having none. Its lines are then taken for reference entries
+  by their shape, as in any headingless paper, and a sentence with an entry's shape has its
+  unmatched numbers listed apart, where `--strict` does not count them.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
@@ -2219,6 +2294,15 @@ Closed since, and why each mattered:
   "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
+- **Paragraph identifiers move when the rules that split a source change.** An identifier
+  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
+  the stamp records the sources' digest but not the rules that split them. A document sent
+  out before such a change and imported after it has its identifiers pointing at other
+  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
+  wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
+  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
+  none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
+  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

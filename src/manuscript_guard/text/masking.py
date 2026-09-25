@@ -15,11 +15,40 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import Fence, fenced_spans
 
 NUL = "\x00"
 
-FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
+# Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
+# opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
+# and the prose after it prints. Either delimiter may carry trailing spaces, and `...`
+# closes the block as well as `---`. The build had a copy of its own that differed on each
+# of these, and where the two disagreed a heading could be read by G2 and stripped by the
+# build: `p < 0.001` under it passed as the alpha chosen in advance and printed without it.
+FRONTMATTER = re.compile(
+    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n", re.DOTALL
+)
+
+
+def front_matter_end(text: str) -> int:
+    """Where the body begins: just past the front matter, or 0 when there is none.
+
+    Nothing opened on one side of it closes on the other. Pandoc reads the YAML apart from
+    the body, and each value apart from the rest, so a `<!--` in a title or a fence opener in
+    an abstract ends with its value. Read as one text, a title's comment ran on to the next
+    `-->` in the body, and everything between was hidden from G2 and the audit while pandoc
+    printed it.
+    """
+    opening = FRONTMATTER.match(text)
+    return opening.end() if opening else 0
+
+
+def fenced_blocks(text: str) -> list[Fence]:
+    """The fenced blocks of the front matter and of the body, none opening in one and
+    closing in the other. A code block in an abstract is still code: looked for in the body
+    alone, its `<!--` opened a comment that hid the abstract's prose."""
+    head = front_matter_end(text)
+    return [*fenced_spans(text[:head]), *fenced_spans(text, head)]
 
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of
@@ -40,8 +69,10 @@ _KEY_LINE = re.compile(
 )
 
 _BACKSLASHES = re.compile(r"\\+(?=[<>])")
-# Pandoc's rule: a run of backticks, closed by the next run exactly as long, within a
-# paragraph. A fence is such a run too, so a backslash in a listing is left alone.
+# A run of backticks, closed by the next run exactly as long, within a paragraph: pandoc's
+# rule, less its fallbacks. A fence is such a run too, so a backslash in a fenced block is no
+# escape; code handed over without its fence, a listing's string or a figure script's, is
+# not seen as code. DESIGN.md's Known gaps has the rest.
 _CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
 
 
@@ -51,8 +82,9 @@ def comparison_escapes(text: str) -> list[int]:
     Pandoc's Markdown writer puts one before every comparison, so a paper converted from
     Word reads `p \\< 0.05` and `ROR \\> 2`; `import` puts one before a `>` that a `<` earlier
     in the paragraph could close as a tag. G2 read neither: the threshold rules never
-    matched, and `\\>3` was an atom no rule began at. `mask` blanks these, so an atom starts
-    where the printed one does, and the classifier matches its rules without them.
+    matched, and `\\>3` was an atom no rule began at. `mask` blanks these, so `\\>3` is read
+    from its `3`, and the classifier matches its rules without them. Blanked, one also ends
+    the atom before it, where the printed `>` does not: `n\\>3` is read as `n` and `>3`.
 
     Only a backslash that prints nothing counts: the last of an odd run, since `\\\\>` is a
     backslash printed before a `>`, and none inside inline code, which prints it as typed.
@@ -153,20 +185,26 @@ def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
     return [(a, b) for a, b in spans if b > a]
 
 
+def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Match[str]]:
+    """Matches in the front matter and in the body, none running from one into the other."""
+    return [*pattern.finditer(text, 0, head), *pattern.finditer(text, head)]
+
+
 def mask(text: str) -> str:
     """Return `text` with non-claim regions replaced by NUL, preserving length."""
     chars = list(text)
+    head = front_matter_end(text)
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    for fence in fenced_spans(text):
+    for fence in fenced_blocks(text):
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
         for index in range(start, end):
             chars[index] = NUL
     for _name, pattern in _PATTERNS:
-        for match in pattern.finditer("".join(chars)):
+        for match in _either_side(pattern, "".join(chars), head):
             for index in range(match.start(), match.end()):
                 chars[index] = NUL
     for index in comparison_escapes(text):
@@ -178,7 +216,8 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     """What each pattern matched. Used by the test suite and by `explain` output."""
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
-    fences = [(f.start, f.end) for f in fenced_spans(text)]
+    head = front_matter_end(text)
+    fences = [(f.start, f.end) for f in fenced_blocks(text)]
     if fences:
         found["fenced-code"] = fences
         chars = list(working)
@@ -195,7 +234,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
                 chars[index] = NUL
         working = "".join(chars)
     for name, pattern in _PATTERNS:
-        spans = [(m.start(), m.end()) for m in pattern.finditer(working)]
+        spans = [(m.start(), m.end()) for m in _either_side(pattern, working, head)]
         if spans:
             found[name] = spans
             chars = list(working)

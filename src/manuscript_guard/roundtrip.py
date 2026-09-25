@@ -323,8 +323,16 @@ def _blank_above(above: str) -> bool:
 _SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
-# A block whose first line is an ATX heading or a `#.` list item, which a marker would unmake.
-_HASH_OPENS = re.compile(r"(?:[ \t]*\n)*(?:#+(?:[ \t\n]|\Z)|#[.)])")
+# A block whose first line is an ATX heading or a `#.` list item, which a marker would unmake;
+# or, indented four spaces or a tab, a line of code opening with a `# comment`, which a marker
+# would be printed in. Code opening otherwise has always been marked.
+_HASH_OPENS = re.compile(r"(?:[ \t]*\n)*(?:#+(?:[ \t\n]|\Z)|#[.)]|(?:[ ]{4,}|[ ]{0,3}\t)[ \t]*#)")
+# Under a heading, a line that may open a definition in a shape `_LINK_LINE` does not take:
+# its title on the next line, `{attributes}`, several words. The block is left unmarked, as it
+# always was; a marker in front of it would print the definition and break every link to it.
+_DEFINITION_OPENS = re.compile(r"[ ]{0,3}\[[^\n]*?\]:")
+# The line under a link's definition that may hold its title or attributes.
+_TITLE_NEXT = re.compile(r"[ \t]*[\"'({]")
 
 # A line opening a plain paragraph: a letter or a digit, or punctuation that opens nothing
 # but inline markup. What follows a block's headings and definitions is marked only when it
@@ -342,6 +350,9 @@ _LIST_MARKER = re.compile(
     r"|[A-Z]\.(?:[ ]{2}|\t)"
 )
 _RULE_LINE = re.compile(r"[ ]{0,3}([*_])(?:[ \t]*\1){2,}[ \t]*$")
+# A table's caption: pandoc attaches it to the table below, and a marker in front makes it a
+# paragraph and leaves the table without one.
+_CAPTION = re.compile(r"[Tt]able:")
 # What ends a paragraph without a blank line, from its second line on: a fence, a fenced div,
 # an HTML tag, a LaTeX environment; and on the second line, a definition's `:` or `~`, or the
 # rule under a table's header. A wrapped line opening with a dash, `<`, `≥` or `±` does not.
@@ -366,7 +377,7 @@ def _lead_end(block: str, above: str) -> int:
         # Pandoc looks on the next line for the definition's title or attributes: under
         # `[reg]: url`, a line opening `(which is public) and more` makes one paragraph of
         # both, and a marker between them would make a definition and a paragraph instead.
-        if block[end + 1 :].lstrip(" \t")[:1] in ("\"", "'", "(", "{"):
+        if _TITLE_NEXT.match(block, end + 1):
             break
         at = min(end + 1, len(block))
     return at if at > start else 0
@@ -378,6 +389,7 @@ def _plain_paragraph(rest: str) -> bool:
     lines = rest.rstrip().split("\n")
     return (
         _PROSE_START.match(lines[0]) is not None
+        and _CAPTION.match(lines[0]) is None
         and _LIST_MARKER.match(lines[0]) is None
         and _RULE_LINE.match(lines[0]) is None
         and not (len(lines) > 1 and _SECOND_LINE.match(lines[1]))
@@ -388,13 +400,28 @@ def _plain_paragraph(rest: str) -> bool:
 def _marker_at(block: str, above: str, below: str) -> int | None:
     """Where in `block` its identifier goes, or None when it gets none: in front of its
     first character, or in front of the paragraph under the headings and definitions it
-    opens with."""
+    opens with.
+
+    What is not plainly a paragraph gets none under a heading, as a block opening with a
+    heading never did, and nor does a line there that may open a definition in a shape
+    `_LINK_LINE` does not take. Under a link's definition it is marked with the block, as it was
+    before definitions were passed over: pandoc reads `[reg]: url` over `` `code` first ``,
+    or over a line opening with an em dash or an ellipsis, as a definition and a paragraph, and
+    that paragraph, unmarked, would lose a co-author's edit without a word, where the
+    definition printed as text is seen."""
     head = _lead_end(block, above)
     if head:
         rest = block[head:]
-        if not rest.strip() or _untagged(rest, "", below) or not _plain_paragraph(rest):
+        if not rest.strip() or _untagged(rest, "", below):
             return None
-        return head
+        opening = _BLANK_LINES.match(block).end()
+        under_heading = (_SETEXT.match(block, opening) or _ATX.match(block, opening)) is not None
+        if under_heading and _DEFINITION_OPENS.match(rest):
+            return None
+        if _plain_paragraph(rest):
+            return head
+        if under_heading:
+            return None
     if _untagged(block, above, below):
         return None
     return len(block) - len(block.lstrip())
@@ -438,7 +465,8 @@ def _untagged(block: str, above: str, below: str) -> bool:
     stripped = block.strip()
     return (
         not stripped
-        # Only a heading or a `#.` list: `#Methods` is a paragraph to pandoc. Nor under a
+        # Only a heading, a `#.` list or code opening with a comment: `#Methods` and
+        # ` # Methods` are paragraphs to pandoc. Nor under a
         # line that is blank here and not to pandoc, where `#` opens no heading but is more
         # of the paragraph above, and needs the marker like any other.
         or (_blank_above(above) and _HASH_OPENS.match(block) is not None)

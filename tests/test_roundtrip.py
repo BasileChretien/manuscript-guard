@@ -624,6 +624,12 @@ HEADED = [
     pytest.param("# Methods\n***", None, id="rule"),
     pytest.param("# Methods\nII. Aims", None, id="numeral-list"),
     pytest.param("#. First\nSecond", None, id="hash-list"),
+    pytest.param("# Tables\nTable: Baseline characteristics.", None, id="caption"),
+    # A definition in a shape the strict rule does not take, under a heading: a marker in
+    # front of it would print it and break its links, where main left the block alone.
+    pytest.param(f"# References\n[reg]: {REGISTRY}\n    \"The registry\"", None, id="title-below"),
+    pytest.param(f"# References\n[reg]: {REGISTRY} {{.external}}", None, id="attributes"),
+    pytest.param("# References\n[Note]: see the registry", None, id="words-address"),
     # A link's definition is passed over like a heading, when nothing on the next line could
     # be its title or attributes.
     pytest.param(f"[reg]: {REGISTRY}\nIt is public.", "It is public.", id="definition-first"),
@@ -634,6 +640,20 @@ HEADED = [
     ),
     pytest.param(f"# Methods\n[reg]: {REGISTRY}\nPatients.", "Patients.", id="heading-then-link"),
     pytest.param(f"[reg]: {REGISTRY}\n## Results", None, id="definition-over-heading"),
+    # Under a definition, a paragraph that does not open plainly is marked with the whole
+    # block, as before: left unmarked, pandoc still printed it, and an edit to it was lost.
+    *(
+        pytest.param(f"[reg]: {REGISTRY}\n{line}", f"[reg]: {REGISTRY}\n{line}", id=name)
+        for name, line in [
+            ("definition-over-code-span", "`glm()` was used."),
+            ("definition-over-dash", chr(0x2014) + "and so it was."),
+            ("definition-over-ellipsis", chr(0x2026) + "and more."),
+            ("definition-over-indent", "  Indented two spaces."),
+            ("definition-over-html", "<b>Bold</b> first."),
+            ("definition-over-tex", "\\emph{Stress} first."),
+            ("definition-over-decimal", ".5 of them."),
+        ]
+    ),
     # Prose that the first version left unmarked.
     pytest.param("# Methods\nE. coli was isolated.", "E. coli was isolated.", id="initial"),
     pytest.param("# Methods\nI. Aims were set.", "I. Aims were set.", id="single-capital"),
@@ -711,6 +731,39 @@ def test_a_comment_in_fenced_code_is_not_read_as_a_heading(mark: bool) -> None:
     tagged = tag(f"Before.\n\n{code}\n\nAfter.\n", "main.md", mark=mark)
     assert f"\n\n{code}\n\n" in tagged
     assert tagged.count("[]{#mg-p-") == 2
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("above", "code"),
+    [
+        pytest.param("\n\n", "    # random intercept per centre\n    m <- lmer(y)", id="spaces"),
+        pytest.param("\n\n", "\t# drop duplicates\n\td <- unique(d)", id="tab"),
+        pytest.param("\n\n", "  \t# two spaces and a tab\n  \tx <- 1", id="spaces-and-tab"),
+        # Under a line pandoc does not take for blank, the lines are more of a paragraph.
+        pytest.param(f"\n\n{chr(0xA0)}\n", "    # not code here", id="under-no-break-space"),
+    ],
+)
+def test_indented_code_opening_with_a_comment_is_not_marked(above: str, code: str) -> None:
+    """Code indented four spaces or a tab, opening with a `# comment`, went unmarked while
+    every block starting with `#` did. Marked after its indent, the identifier printed as
+    text inside the code in Word."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(f"Intro.{above}{code}\n\nAfter.\n", "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    assert all("mg-p-" not in json.dumps(b) for b in blocks if b["t"] == "CodeBlock")
+    assert all("mg-p-" in json.dumps(b) for b in blocks if b["t"] == "Para")
 
 
 def test_tagged_paragraphs_splices_only_the_paragraph_under_a_heading(project: Path) -> None:
@@ -3598,6 +3651,8 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
         pytest.param("# Findings", id="atx"),
         pytest.param("Findings\n========", id="setext"),
         pytest.param("# Results\n## Findings", id="two-headings"),
+        pytest.param(f"[reg]: {REGISTRY}", id="link-definition"),
+        pytest.param(f"# Findings\n[reg]: {REGISTRY}", id="heading-and-definition"),
     ],
 )
 def test_import_merges_a_paragraph_written_straight_under_a_heading(
@@ -3606,7 +3661,8 @@ def test_import_merges_a_paragraph_written_straight_under_a_heading(
     """End to end, the way review found it. `# Findings` with its paragraph on the next line
     is one block starting with `#`, and every such block went unmarked. Pandoc reads a
     heading and a paragraph, so the paragraph reached Word with no identifier, and a
-    co-author's edit to it was dropped while `import --apply` said nothing came back."""
+    co-author's edit to it was dropped while `import --apply` said nothing came back. A
+    link's definition over the paragraph is passed over the same way."""
     from manuscript_guard.cli import main
 
     with_paragraphs(project, f"{heading}\nPatients were enrolled early.")

@@ -2293,16 +2293,34 @@ Closed since, and why each mattered:
   text, the marker making one paragraph of both. Now the headings and link definitions a
   block opens with - ATX or setext headings, under a line pandoc takes for blank - stay
   unmarked, and the paragraph after them carries the identifier, provided it opens as a
-  paragraph (a letter, a digit or inline markup; no list marker, no rule) and nothing
-  below interrupts it (a fence, `:::`, an HTML tag, a LaTeX environment, or on its second
-  line a definition's `:` or a table's rule). A piece that starts inside a fenced code
-  block is never marked: a `# comment` after a blank line in a listing read as a heading.
-  What that leaves:
+  paragraph (a letter, a digit, a quote or a parenthesis, emphasis, maths, a citation, a
+  binding or a link;
+  no list marker, no rule, no `Table:` caption) and nothing below may interrupt it (a fence,
+  `:::`, an HTML tag, a LaTeX environment, or on its second line a definition's `:` or a
+  table's rule). Pandoc 3.9 is interrupted only by a backtick fence and block-level HTML,
+  and keeps one paragraph across the others; counting them too errs towards leaving the
+  paragraph unmarked, as it was. A piece that starts inside a fenced code block is never
+  marked: a `# comment` after a blank line in a listing read as a heading. What that
+  leaves:
   - *Anything else under a heading stays unmarked with it.* A list, code, a table, a
     definition list, a fence or HTML straight under a heading would be broken by a marker,
-    and so goes unmarked as the whole block always did; so does a paragraph with one of
-    those after it in the same block, `Text.` and then a code fence, and an edit to that
-    paragraph is not compared. A blank line after the heading avoids it.
+    and so goes unmarked as the whole block always did; so does a table's caption, which a
+    marker would part from its table. So does a paragraph that opens otherwise - with a
+    code span, an image, an escaped character, a no-break or full-width space, or an
+    indent of one to three spaces - and one with a fence, `:::`, an HTML tag or a LaTeX
+    environment after it in the same block. An edit to that paragraph is not compared. A
+    blank line after the heading avoids it.
+  - *Under a heading, a line that may open a definition stays unmarked.* A line opening
+    `[label]:` in a shape the strict rule does not take - its title on the next line,
+    `{attributes}`, words for an address - is a definition to pandoc, and a marker in front
+    of it would print it and break every link to it. So it is left as the whole block
+    always was, and prose that opens with `[label]:` under a heading is not compared.
+  - *Under a link's definition, what is not plainly a paragraph is marked with the block.*
+    Pandoc reads a paragraph under the definition whatever it opens with - a code span, an
+    em dash, an ellipsis, an indent, HTML, a TeX command - and left unmarked, an edit to it
+    was dropped. So the block is marked whole, as before this change: the definition
+    prints as text, visibly, and so does a list or a quotation under it, which the marker
+    runs into the paragraph. A fence or a `#.` list under a definition is left unmarked.
   - *A numeral of several letters is always counted as a list marker.* `II.` and `iv.` open
     a list with one space after them, as `A.` does only with two; but `dim.` is a word to
     pandoc and a numeral here, so a paragraph opening with it under a heading goes unmarked.
@@ -2313,10 +2331,20 @@ Closed since, and why each mattered:
     with `#`: the bookmark sat in the heading, and an edit to the heading in Word was
     refused. Like an ATX heading it is now not compared, and it is counted among the
     paragraphs without an identifier. A revision round opened before this change, with a
-    point anchored to a paragraph under a setext heading, reads that paragraph as revised.
+    point anchored to a paragraph under a setext heading, reads that paragraph as revised;
+    so does one anchored to a paragraph under a link's definition, whose identifier covered
+    the definition too.
   - *`#` opens no heading unless pandoc says so.* `#Methods`, `#1 priority` and ` # Methods`
     are paragraphs to pandoc, and are marked like any other; so is a `#` line under a line
-    holding a no-break or full-width space, where it is more of the paragraph above.
+    holding a no-break or full-width space, where it is more of the paragraph above. Code
+    indented four spaces or a tab that opens with a `# comment` stays unmarked, as it always
+    did; indented code that opens otherwise is marked, as it always was, and the identifier
+    prints in the code.
+  - *Fences are paired as `fenced_spans` pairs them.* Pandoc 3.9 reads no fence in
+    ```` ```{r} ```` or ```` ```{r, echo=FALSE} ````, nor in a `~~~` line straight under a
+    paragraph, and prints what follows as prose. The pieces after a blank line in there are
+    taken for code and go unmarked, so an edit to them is not compared. The code printed as
+    prose shows it.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

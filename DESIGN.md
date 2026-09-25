@@ -2086,15 +2086,17 @@ Closed since, and why each mattered:
   heading goes into the metadata for pandoc and the build alike, and nothing says so. Lines
   indented four spaces under it, a code block to Markdown, go into the value above as well.
   Any other prose under the heading makes the YAML invalid, and G2 and the build stop.
-- **YAML is read by PyYAML, and pandoc reads it with a library of its own.** An anchor
-  defined twice, which PyYAML refuses, is allowed as pandoc allows it, and the first of
-  several documents is the one that counts, as in pandoc. Two constructs still divide them,
-  both accepted by PyYAML and refused by pandoc: a key that is not a string, `? [a, b]`,
-  and a flow sequence holding `a:`, `k: [a:, b]`. Such a header is stripped and the file
-  builds, so no text is lost. Nesting over 100 levels is refused unread by a rough count
-  that does not know quotes or block scalars: a block scalar holding a hundred `- ` in a row
-  is left in the body, where pandoc hides it, and a header that deep is not reported even
-  when it is not YAML.
+- **YAML is read by PyYAML, and pandoc reads it with a library of its own.** PyYAML is made
+  to read as pandoc does: between a `---` and a `...` of its own, every document read, an
+  anchor carried into later documents, defined again if need be, and usable only once its
+  node is finished. A header is metadata when its first document is a mapping, or when it
+  holds nothing at all. On 109 layouts this agrees with pandoc but for three, each accepted
+  by PyYAML and refused by pandoc: a key that is not a string, `? [a, b]`; a flow sequence
+  holding `a:`, `k: [a:, b]`; and a lone carriage return for a line break. Such a header is
+  stripped and the file builds, so no text is lost. Nesting over 100 levels is refused
+  unread by a rough count that does not know quotes or block scalars, and nesting too deep
+  to compose, 600 levels by indentation, is refused the same way. Either is left in the
+  body, where pandoc hides it, and is not reported even when it is not YAML.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is

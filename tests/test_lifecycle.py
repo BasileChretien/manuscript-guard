@@ -156,6 +156,12 @@ def test_a_header_pandoc_cannot_read_is_reported_at_the_line_it_fails_on() -> No
     assert "unicode string" not in message and "mapping values" in message
     assert front_matter_problem('---\ntitle: "A study"\n---\n\nText.\n') is None
     assert front_matter_problem("Text only.\n") is None
+    # A quote left open fails at the end of the YAML; the line to fix is where it opened.
+    unclosed = front_matter_problem('---\na: 1\ntitle: "A study\nb: 2\n---\n\nText.\n')
+    assert unclosed is not None and unclosed[1] == 3, unclosed
+    # Word's Shift+Enter, a vertical tab, is named, not reported as an exception's class.
+    tab = front_matter_problem("---\na: 1\ntitle: A\N{LINE TABULATION}B\n---\n\nText.\n")
+    assert tab is not None and "character" in tab[0] and tab[1] == 3, tab
 
 
 # ---------------------------------------------------------------- the baseline

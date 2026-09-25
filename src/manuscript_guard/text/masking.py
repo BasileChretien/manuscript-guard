@@ -59,16 +59,44 @@ def _nesting(yaml_text: str) -> int:
 
 @lru_cache(maxsize=1)
 def _loader():
-    """PyYAML's safe loader, with an anchor allowed to be defined again, as pandoc allows.
-    PyYAML refuses `a: &x 1` and `b: &x 2` in one document; pandoc reads them."""
+    """PyYAML's safe loader, composing anchors as pandoc's YAML library does.
+
+    An anchor carries into the documents after it, exists only once its node is finished,
+    and may be defined again, the later definition winning. PyYAML forgets anchors between
+    documents, lets a node refer to itself, and refuses a second definition: pandoc builds
+    `title: &x T` with `--- *x` under it, refuses `a: &x [*x]`, and reads `a: &x 1` with
+    `b: &x 2`.
+    """
     import yaml
+    from yaml.composer import ComposerError
 
     class PandocLoader(yaml.SafeLoader):
+        def compose_document(self):
+            self.get_event()
+            node = self.compose_node(None, None)
+            self.get_event()
+            return node
+
         def compose_node(self, parent, index):
-            event = self.peek_event()
-            if not isinstance(event, yaml.AliasEvent) and event.anchor is not None:
-                self.anchors.pop(event.anchor, None)
-            return super().compose_node(parent, index)
+            if self.check_event(yaml.AliasEvent):
+                event = self.get_event()
+                if event.anchor not in self.anchors:
+                    raise ComposerError(
+                        None, None, f"found undefined alias {event.anchor!r}", event.start_mark
+                    )
+                return self.anchors[event.anchor]
+            anchor = self.peek_event().anchor
+            self.descend_resolver(parent, index)
+            if self.check_event(yaml.ScalarEvent):
+                node = self.compose_scalar_node(None)
+            elif self.check_event(yaml.SequenceStartEvent):
+                node = self.compose_sequence_node(None)
+            else:
+                node = self.compose_mapping_node(None)
+            self.ascend_resolver()
+            if anchor is not None:
+                self.anchors[anchor] = node
+            return node
 
     return PandocLoader
 
@@ -77,11 +105,12 @@ def _loader():
 def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
     """Whether pandoc keeps this YAML as metadata, and why and where it cannot read it.
 
-    Metadata is a mapping, or nothing: a comment alone, or a null. The reason is empty
-    unless the text is not YAML, which pandoc refuses to build, and the line is where the
-    reading failed, counted from 0 inside the YAML. Pandoc keeps the first of several
-    documents, so the first is what counts, but a later one must still read as YAML.
-    Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
+    Read as pandoc reads it: between a `---` and a `...` of its own, so a `---` line inside
+    starts another document, and every document is read. It is metadata when the first
+    document is a mapping, or when there is nothing: no document, or one that is empty, a
+    comment or a null. The reason is empty unless the text is not YAML, which pandoc
+    refuses to build, and the line is where the reading failed, counted from 0 inside the
+    YAML. Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
     `date: 2026-02-30`, and nothing here needs the values. With the pure-Python loader, as
     the C one overflowed its stack on deep nesting. Tabs are expanded first, every four
     columns, as pandoc expands them before it reads the YAML: PyYAML refuses
@@ -91,21 +120,36 @@ def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
 
     if _nesting(yaml_text) > _YAML_DEPTH:
         return False, "", 0
+    wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
     try:
-        documents = yaml.compose_all(yaml_text.expandtabs(4), Loader=_loader())
-        node = next(documents, None)
-        for _later in documents:
-            pass
+        documents = list(yaml.compose_all(wrapped, Loader=_loader()))
     except yaml.MarkedYAMLError as exc:
-        mark = exc.problem_mark or exc.context_mark
-        reason = exc.problem or exc.context or type(exc).__name__
-        return False, reason, mark.line if mark else 0
-    except Exception as exc:  # noqa: BLE001 - any failure to parse is "not metadata"
-        return False, type(exc).__name__, 0
-    empty = node is None or (
-        isinstance(node, yaml.ScalarNode) and node.tag == "tag:yaml.org,2002:null"
-    )
-    return empty or isinstance(node, yaml.MappingNode), "", 0
+        return (False, *_failed_at(exc, yaml_text.count("\n")))
+    except yaml.reader.ReaderError as exc:
+        where = wrapped.count("\n", 0, exc.position) - 1
+        character = f"#x{ord(exc.character):04x}" if isinstance(exc.character, str) else ""
+        return False, f"unacceptable character {character}: {exc.reason}", max(where, 0)
+    except RecursionError:
+        # Too deep to compose, like the nesting refused above; see Known gaps.
+        return False, "", 0
+    if not documents:
+        return True, "", 0
+    first = documents[0]
+    if isinstance(first, yaml.MappingNode):
+        return True, "", 0
+    empty = isinstance(first, yaml.ScalarNode) and first.tag == "tag:yaml.org,2002:null"
+    return empty and len(documents) == 1, "", 0
+
+
+def _failed_at(exc, lines: int) -> tuple[str, int]:
+    """The reason and the line inside the YAML for a composing error. One found at the end,
+    such as a quote never closed, is placed where the construct it was reading opened."""
+    mark = exc.problem_mark or exc.context_mark
+    if exc.context_mark is not None and mark is not None and mark.line > lines:
+        mark = exc.context_mark
+    reason = ", ".join(part for part in (exc.context, exc.problem) if part)
+    # Line 0 of the wrapped text is the `---` put in front of the YAML.
+    return reason or type(exc).__name__, max((mark.line - 1) if mark else 0, 0)
 
 
 def front_matter_problem(text: str) -> tuple[str, int] | None:

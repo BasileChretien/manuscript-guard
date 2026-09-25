@@ -203,14 +203,25 @@ FRONT_MATTER_CASES = {
     # two documents.
     "an anchor defined twice": "---\na: &x 1\nb: &x 2\n---\n\nProse 9.99.\n",
     "a second document": "---\ntitle: T\n--- # a note\n---\n\nProse 9.99.\n",
+    # Pandoc reads every document, and an anchor in one can be used in the next.
+    "an alias to an anchor in an earlier document": "---\ntitle: &x T\n--- *x\n---\n\nProse.\n",
 }
 # Pandoc keeps a header holding only a comment, or nothing, as empty metadata: nothing in
 # `meta`, and nothing printed either.
 STRIPPED_CASES = {
     **FRONT_MATTER_CASES,
     "only a comment": "---\n# a note\n---\n\nProse 9.99.\n",
-    "empty, closed by dashes, then a rule": "---\n---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
-    "empty, closed by dots, then a rule": "---\n...\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    # A line that reads as YAML between the empty header and the rule: run on to the rule,
+    # the header took it as metadata.
+    "empty, closed by dashes, then a rule": (
+        "---\n---\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    "empty, closed by dots, then a rule": (
+        "---\n...\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    # Metadata only when the first document is a mapping, or there is nothing at all.
+    "a comment document, then a mapping": "---\n--- # a note\n--- {a: 1}\n---\n\nProse.\n",
+    "two documents of comments": "---\n# a note\n--- # another\n---\n\nProse.\n",
 }
 # Headers pandoc refuses to build, and the toolkit must report; and some it reads, which
 # the toolkit must not.
@@ -220,6 +231,9 @@ REFUSED_OR_NOT = {
     "an unquoted colon in a value": "---\ntitle: A study: of things\n---\n\nProse.\n",
     "never closed before a rule": "---\ntitle: T\n\n# Methods\n\nProse.\n\n---\n\nMore.\n",
     "prose between two rules": "---\nNote: this draft: not final\n---\n\nProse.\n",
+    # An anchor exists only once its node is finished.
+    "an alias inside its own anchor": "---\na: &x [*x]\n---\n\nProse.\n",
+    "an alias to the whole document": "---\n&t\na: 1\nb: *t\n---\n\nProse.\n",
 }
 
 

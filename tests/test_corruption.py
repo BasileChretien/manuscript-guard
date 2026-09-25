@@ -1155,6 +1155,8 @@ _OPENING_RULES = [
     "----\nMethods\n\n## Results\n----\n",
     # Directly under a setext heading, the rule is not its underline.
     "Results\n-------\n---\nMethods\n---\n",
+    # A setext heading itself: `#` is the one way to write a heading with nothing to judge.
+    "Methods\n-------\n",
 ]
 
 
@@ -1175,7 +1177,30 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
     findings = json.loads(capsys.readouterr().out)["findings"]
     assert "rule-opens-a-block" in {f["code"] for f in findings if f["severity"] == "fail"}
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
-    assert "pandoc may read as YAML metadata, a table or text" in capsys.readouterr().out
+    assert "pandoc may read as a heading's underline, YAML metadata or a table" in (
+        capsys.readouterr().out
+    )
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_import_refuses_a_source_the_build_refuses(project: Path, tmp_path: Path, capsys) -> None:
+    """`import` rebuilds the document it sent to compare the returned one with, and threw
+    away what the assembly reported. With `--force` past a changed source, it rebuilt from
+    one the build refuses, where pandoc reads YAML the gates never saw."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    returned.write_bytes((project / "build" / "manuscript.docx").read_bytes())
+    source = main_md(project)
+    text = f"{source.read_text(encoding='utf-8')}\n## Results\n\nWe found it.\n\n{_EVIL}\n"
+    source.write_text(text, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--force"]) == 1
+    assert "a line of dashes with a line directly above or under it" in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == text
 
 
 _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
@@ -1220,6 +1245,35 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         # is still where the build puts a table, which takes the lines under it for caption.
         "{{ table.two_by_two }}\n---\nMethods\n---\n",
         "See {{table.two_by_two}}\n---\nMethods\n---\n",
+        # Found by the fourth, each a title the exemption for setext headings let through:
+        # a comment after the underline, which pandoc prints with it as text;
+        "Methods\n------- <!-- check -->\n\n",
+        "Methods\n-------<!-- x -->\n\n",
+        # a comment whose last line looks like a heading, taken for a break above the title;
+        "<!-- Removed at a reviewer's request:\n## Sensitivity analysis -->\nMethods\n-------\n\n",
+        # a rule with a blank line under it, under a line pandoc makes its heading;
+        "# Methods\n---\n\n## Statistical analysis\n\n",
+        "> Cases were compared with non-cases.\n---\n\n",
+        # a comment closing on the rule's line, its last line indented;
+        "<!-- reviewer note\n  on two lines --> ---\ntitle: Evil\n...\n\n",
+        # a comment inside a placeholder's braces, which the build removes first;
+        "{{table.baseline<!-- x -->}}\n---\ntitle: Evil\n...\n",
+        # a listing pandoc does not make, and an underline pandoc does not read.
+        "We also saw it.\n~~~\nx <- 1\n~~~\nMethods\n-------\n\n",
+        "We also saw\nPart\n====\nMethods\n-------\n\n",
+        # So no line of dashes passes under a title: every one of those was a title the
+        # exemption had to judge, and a plain one is refused with them, `#` doing the same.
+        "Results\n-------\n\nText.\n",
+        "Results\n---\nText directly under a heading.\n",
+        "Results\n-\n\nText.\n",
+        "```\nx\n```\nResults\n-------\n",
+        "## Section\nResults\n-------\n",
+        "Part\n====\nResults\n-------\n",
+        "2. Methods\n----------\n",
+        "2) Methods\n----------\n",
+        "{{results.cohort.n}} reports\n---\n",
+        # Nor over a line: pandoc reads an item, YAML or a table from it.
+        "-\n  an empty item's text\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
@@ -1247,26 +1301,19 @@ def test_a_fence_opened_in_the_front_matter_does_not_make_a_title_start_a_block(
     "block",
     [
         "Text.\n\n---\n\nMore text.\n",
-        "Results\n-------\n\nText.\n",
-        "Results\n---\nText directly under a heading.\n",
-        "Results\n-\n\nText.\n",
+        "Text.\n\n- - -\n\nMore text.\n",
+        "Text.\n \t\n---\n  \nMore text.\n",
+        "Text.\n\n-\n\nMore text.\n",
         "```\n---\nnote: v\n---\n```\n",
         "<!--\n---\nnote: v\n---\n-->\n",
-        "-\n  an empty item's text\n",
         "The end.\n\n---\n",
-        # A setext heading directly under a block that ends at its own line.
-        "```\nx\n```\nResults\n-------\n",
-        "## Section\nResults\n-------\n",
-        "Part\n====\nResults\n-------\n",
-        # Pandoc tries a setext heading before an ordered list, and a binding is text.
-        "2. Methods\n----------\n",
-        "2) Methods\n----------\n",
-        "{{results.cohort.n}} reports\n---\n",
+        "Results\n=======\n\nText.\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
-    """A thematic break with a blank line under it, a setext underline, and a rule inside
-    code or a comment open no block pandoc could read as YAML or a table."""
+    """A line of dashes between blank lines is a thematic break to pandoc, whatever is
+    around it; one in code or a comment is not read at all. A setext heading underlined
+    with `=` has no dashes to misread."""
     from manuscript_guard.text.sections import rules_opening_blocks
 
     text = f"---\ntitle: A study\n---\n\n# Introduction\n\n{block}"

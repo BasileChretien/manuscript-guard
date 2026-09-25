@@ -416,23 +416,23 @@ chosen in advance. Both of pandoc's readers were modelled in the heading scan fi
 with what the build's bookmarks do to them, and two rounds of review each found the model
 and the build printing different headings, the second round's worst caused by the first
 round's fix. So the shape is refused instead (`rule-opens-a-block`), by `check` and by the
-build. The first version exempted every rule the heading scan read as a setext underline,
-and review found that scan takes a div's fence, an HTML tag, a line of LaTeX, a table's row,
-a placeholder, indented code and a line continuing a paragraph, a quotation or a list item
-for titles, none of which pandoc does: a rule under any of them went through, with YAML under
-it. A rule is now exempt only under a plain title that starts a block: below a blank line,
-the end of a fenced listing or of the front matter, a heading or an underline. A comment on
-a line of its own is not such a break. Pandoc reads a title under it as more of the
-paragraph above, and at a block start the build's bookmark goes in front of the comment,
-which makes the title part of that paragraph; the second review found both passing `check`
-with the heading printed as text. A title holding a table or figure placeholder anywhere on
-its line, spaces inside the braces or not, is no plain title (the third review). The build
-puts a pipe table in place of a table's, and pandoc reads a table there, not a heading; in
-place of a figure's it puts an image, and pandoc makes the image the heading. A listing's
-end is found in the front matter and the body apart, so a fence opened in an abstract's
-value makes no prose in the body look like code. A rule the heading scan reads as the
-underline of anything else is refused even with a blank line under it. A thematic break
-with blank lines around it, and a rule in code, a comment or the front matter, is untouched.
+build.
+
+The refusal first exempted the underline of a setext heading, and that exemption was a model
+of its own. Four reviews each found titles the heading scan took and pandoc did not: a div's
+fence, an HTML tag, LaTeX, a table's row, indented code, and a line continuing a paragraph,
+a quotation or a list item (the first); a comment on the line above, which pandoc reads as
+no break (the second); a table placeholder with spaces in its braces or after other text
+(the third); and a comment after the underline, a comment whose last line looks like a
+heading, a listing pandoc does not make, and an `===` underline pandoc does not read above
+the title (the fourth, with four false passes through `check` and the build). The fourth
+also found the rule's other side open: `# Methods` or a quotation over `---` and a blank
+line is a setext heading to pandoc, made before the `#` heading or the quotation. So a line
+of dashes now passes only between blank lines, where pandoc reads nothing but a thematic
+break, and a heading is written with `#`. Nothing in `example/`, the scaffold or the skills
+underlines a heading with dashes; `===` has no dashes to misread and is untouched. A line in
+code, a comment or the front matter is not read, and a comment that closes on the line is
+taken off in front of it, as pandoc reads on from its `-->`.
 
 ## Zotero is never on the critical path
 
@@ -2097,7 +2097,9 @@ Closed since, and why each mattered:
   - a `<!--` or a fence opened in one YAML value and closed in another;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - front matter behind a UTF-8 byte-order mark, which G2 does not find;
+  - front matter behind a UTF-8 byte-order mark, which G2 does not find. Its delimiters
+    are refused as lines of dashes with a line beside them, rightly, since the build prints
+    the block as text, but the hint speaks of headings and thematic breaks, not of the mark;
   - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
     though not for the masking.
 
@@ -2107,11 +2109,10 @@ Closed since, and why each mattered:
   only lines indented three columns or fewer and not quoted. While every line of it stays
   inside the quotation or the item, the gates read it as quoted or listed text: its numbers
   are read, the safe side, and no heading is made from it. What goes unchecked is a `title:`
-  in such a block, which pandoc merges over paper.yaml's. A closing rule back at the margin is
-  refused only when the heading scan takes it for the underline of the line above, which is
-  so when that line is written without its `>` or its indentation; under `> title: Evil`
-  and a blank line it is not refused, and pandoc takes the title. A lone `-` over a line is
-  an empty list item and is refused only as such an underline.
+  in such a block, which pandoc merges over paper.yaml's. A closing rule back at the margin,
+  directly under the quotation or the item, is refused like any line of dashes with a line
+  above it; pandoc does take the title from `> ---`, `> title: Evil` and `---`. With a blank
+  line before the rule, pandoc closes the quotation first and reads no metadata.
 - **A comment the heading scan misreads can hide a rule from the refusal.** The refusal reads
   the text with comments blanked, so a `<!--` that pandoc prints, in inline code or in
   indented code, hides every rule up to the next `-->`, a YAML block's included, and a

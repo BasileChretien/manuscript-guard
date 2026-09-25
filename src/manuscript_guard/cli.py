@@ -350,7 +350,11 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
-    assembled, _ar = assemble(project, namespace, results)
+    assembled, assemble_report = assemble(project, namespace, results)
+    if not assemble_report.ok:
+        # The build refuses this source, so the document it sent cannot be rebuilt from it.
+        print(assemble_report.render(project.root))
+        return 1
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
     # compared with - so import needs everything a build needs, pandoc first. A second copy

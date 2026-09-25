@@ -3085,6 +3085,7 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "See `a` here <!-- a note `b`{.x}",
         "Commands are quoted in backticks (\\`); the estimate is $$x = u / w$$ as in `metafor`.",
         "Commands are quoted in backticks (\\`). <!-- an earlier draft, which quoted `grep`:",
+        "Files were written under C:\\\\`data` here. <!-- an earlier draft, which quoted `grep`:",
     ],
     ids=[
         "maths-after-a-code-span",
@@ -3092,6 +3093,7 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "comment-after-code-spans",
         "maths-after-an-escaped-backtick",
         "comment-after-an-escaped-backtick",
+        "comment-after-an-escaped-backslash",
     ],
 )
 def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
@@ -3148,6 +3150,58 @@ def test_pandocs_no_break_space_taken_out_of_a_held_paragraph_is_no_edit(tmp_pat
     returned = [Block(("z",), was.replace(nbsp, " ")), sent[1]]
     plan = plan_import(known, sent, returned)
     assert plan.empty, plan.refused
+
+
+@pytest.mark.parametrize("held", [True, False], ids=["held", "ordinary"])
+def test_a_no_break_space_the_author_wrote_is_an_edit_when_taken_out(
+    tmp_path: Path, held: bool
+) -> None:
+    """Every no-break space turned into a plain space was taken for pandoc's own and dropped,
+    exit 0 and "nothing came back", including one the author had written (`\\ `, a literal
+    one or `&nbsp;`): the next build put it back, and the co-author's change was lost. Only
+    a source with no no-break space of its own can have had one put in by pandoc."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    nbsp = chr(0xA0)
+    text = "Zeta cites Hy's\\ law for the liver, last inside the div."
+    paragraphs = {"z": text + ("\n:::" if held else ""), "o": "Omega."}
+    _path, known = source_of(tmp_path, paragraphs)
+    was = "Zeta cites Hy's" + nbsp + "law for the liver, last inside the div."
+    sent = [Block(("z",), was), Block(("o",), "Omega.")]
+    plan = plan_import(known, sent, [Block(("z",), was.replace(nbsp, " ")), sent[1]])
+    assert not plan.empty
+    assert ("z" in plan.merged) != held
+
+
+def test_a_split_around_an_equation_moved_between_its_halves_is_refused(
+    tmp_path: Path,
+) -> None:
+    """An equation from further down, cut and pasted between the halves of a paragraph split
+    in Word, still matches itself, and the search for new text beside the paragraph stopped
+    there: the paragraph was merged as its first half, the rest gone from the source."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "p": "First half here. Second half here.",
+        "q": "Another paragraph.",
+        "r": "A last one.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    b = {name: Block((name,), text) for name, text in paragraphs.items()}
+    equation = Block(kind="equation", key="x=y")
+    sent = [b["p"], b["q"], equation, b["r"]]
+    returned = [
+        Block(("p",), "First half here."),
+        equation,
+        Block((), "Second half here."),
+        b["q"],
+        b["r"],
+    ]
+    plan = plan_import(known, sent, returned)
+    assert "p" not in plan.merged
+    assert "p" in [r.name for r in plan.refused]
 
 
 @pytest.mark.parametrize("inserted", ["equation", "figure"])

@@ -100,12 +100,23 @@ def _same(a: str, b: str) -> bool:
 _NBSP = chr(0xA0)
 
 
-def _typeset_only(was: str, now: str) -> bool:
+#: A no-break space an author can write: the character itself, `\ `, or an entity.
+_WRITTEN_NBSP = re.compile(r"\\ |&nbsp;|&#160;|&#[xX]0*[aA]0;|" + _NBSP)
+
+
+def _typeset_only(was: str, now: str, source: str) -> bool:
     """Whether Word's text differs from the text sent only where a no-break space pandoc put
     in ("e.g." then a space) was taken out again. The next build puts it back, so there is
     nothing to merge. Decided by the rewording for an ordinary paragraph, it was never asked
     for a paragraph held in place, which refused the edit instead.
+
+    Only a source with no no-break space of its own, and no binding or citation whose value
+    could hold one, can have had one put in by pandoc. Asked of any source, the question
+    dropped a co-author's change to a no-break space the author had written - "Hy's`\\ `law" -
+    with "nothing came back", and one inside a binding's value.
     """
+    if _WRITTEN_NBSP.search(source) or "{{" in source or "@" in source:
+        return False
     was, now = spaced(was).strip(), spaced(now).strip()
     return len(was) == len(now) and all(
         a == b or (a == _NBSP and b == " ") for a, b in zip(was, now, strict=True)
@@ -143,7 +154,11 @@ def _beside_new_text(
         for i in indices:
             block = returned[i]
             if block.table:
-                return counterparts is not None and i not in counterparts
+                if counterparts is None or i not in counterparts:
+                    return counterparts is not None
+                # One that was there before is looked past, as an empty line is: an equation
+                # moved in between the halves of a split paragraph hid the second half.
+                continue
             if block.names:
                 return False
             if i in new:
@@ -175,11 +190,13 @@ _BLOCK_LINE = re.compile(
 )
 
 
-#: What `_bare` sets aside: a code span, by pandoc's rule that a run of backticks is closed
-#: by a run of the same length, and a comment that closes. Nothing more. A backtick escaped
-#: with a backslash opens nothing: taken for an opener, it began a "code span" that ran to the
-#: next real one and swallowed the `$$` or the `<!--` between them.
-_CODE_OR_COMMENT = re.compile(r"(?<![`\\])(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+#: What `_bare` sets aside: a backslash escape, a code span, by pandoc's rule that a run of
+#: backticks is closed by a run of the same length, and a comment that closes. Nothing more.
+#: Each escape is taken as a pair, so `\`` opens nothing and `\\` before a backtick leaves it
+#: free to open a span. Taken for an opener, an escaped backtick began a "code span" that ran
+#: to the next real one and swallowed the `$$` or the `<!--` between them; refused after any
+#: backslash, the backtick after `\\` did the same from the other end.
+_CODE_OR_COMMENT = re.compile(r"\\.|(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
@@ -675,7 +692,7 @@ def plan_import(
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
-        elif _same(was, now) or _typeset_only(was, now):
+        elif _same(was, now) or (name in held and _typeset_only(was, now, source)):
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))

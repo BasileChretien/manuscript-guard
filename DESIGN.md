@@ -1294,11 +1294,15 @@ span, and `~~ $$x$$ ~~` for struck-through text, so display maths went unseen an
 part of such a paragraph was moved without its equation. Setting aside too little only
 holds a paragraph that could have moved: `$$` inside a footnote does. A backtick escaped with
 a backslash opens no code span; taken for one, it swallowed the `$$` or `<!--` up to the next
-real code span. Display maths is also read from the document as sent, which says it
-outright: an equation directly after a paragraph is part of that paragraph, however its
-source is written. And a held paragraph whose only change is a no-break space pandoc put in
-and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
-refused instead.
+real code span. Escapes are read as pairs, so the backtick after an escaped backslash still
+opens one: refused after any backslash, the closing backtick of `\\` then `` `data` ``
+opened a false span of its own. Display maths is also read from the document as sent, which
+says it outright: an equation directly after a paragraph is part of that paragraph, however
+its source is written. And a held paragraph whose only change is a no-break space pandoc put
+in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
+refused instead. That is decided only for a source with no no-break space of its own and no
+binding or citation: asked of every paragraph, the check dropped a co-author's change to one
+the author had written, with "nothing came back".
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2406,7 +2410,9 @@ Closed since, and why each mattered:
   a link's address, an autolink, inline maths or an HTML attribute can still be taken for
   one that opens a code span; a comment opened after it and closed past a blank line is then
   not seen, and that paragraph can be moved.
-- **A table or figure is recognised by what it holds, and failing that by its place.** A
+- **A table, figure or equation is recognised by what it holds, and failing that by its
+  place.** An equation is paired as a table is, so one deleted or edited while another is
+  inserted in the same stretch is taken for it, and the deletion is not reported. A
   table with a corrected cell, or a picture Word stored again, no longer matches by content,
   and is taken to be the one in its place among its kind, between the same two headings,
   captions or matched tables and figures, when that stretch holds as many of its kind in
@@ -2438,7 +2444,9 @@ Closed since, and why each mattered:
   That is the price of never truncating a split paragraph. A table, figure or equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the
-  first block that was not prose.
+  first block that was not prose. One the document did have is looked past, as an empty line
+  is: an equation cut from further down and pasted between the halves still matched itself,
+  and the search stopped there too.
 - **A join that lost its bookmark is recognised by resemblance, which is a judgement.** A
   join made by selecting across the boundary deletes the second paragraph's bookmark. When
   a paragraph changed and the one after it vanished, the import asks which the returned text

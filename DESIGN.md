@@ -2251,18 +2251,23 @@ Closed since, and why each mattered:
     markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
     line a citation. No part holds a brace, because a binding is filled in after this
     reading and its value could change it. A footnote is its label and its text on one
-    line. Links come before notes, because a line under a note is more of the note. Anything
-    else - a definition wrapped over two lines, with attributes or a title on the next
-    line, a nested bracket in its label, a footnote whose text wraps, or one written
-    straight above prose - is marked, and prints as text, as it did before this fix. That
-    failure is visible. Three versions that modelled more of pandoc's grammar were each
-    caught in review failing the other way: they left a block unmarked that pandoc printed,
-    so a co-author's edit to it was dropped while `import` said nothing came back, and one
-    took minutes over a line of attributes, and a fourth left a definition unmarked under a
-    line that is blank here and not to pandoc: one holding only a no-break or full-width
-    space, or a form feed, which pandoc reads with the definition as a paragraph. One
-    definition per line, with a line before the block that is empty or holds only spaces
-    and tabs, is what works.
+    line. Links come before notes, because a line under a note is more of the note, and a
+    note runs on through every line pandoc does not take for blank - so a note is left
+    alone only with such a line below it. Anything else - a definition wrapped over two
+    lines, with attributes or a title on the next line, a nested bracket in its label, a
+    footnote whose text wraps, or one written straight above prose - is marked, and prints
+    as text, as it did before this fix. That failure is visible. Three versions that
+    modelled more of pandoc's grammar were each caught in review failing the other way: they
+    left a block unmarked that pandoc printed, so a co-author's edit to it was dropped while
+    `import` said nothing came back, and one took minutes over a line of attributes. A
+    fourth left a definition unmarked under a line that is blank here and not to pandoc -
+    one holding only a no-break or full-width space, or a form feed - which pandoc reads
+    with the definition as a paragraph; and a fifth, a note over such a line, into which
+    the next paragraph ran and left the body. One definition per line, with an empty line
+    before the block and after it, is what works.
+  - *A document built before this change is best sent again.* It shows each definition as
+    a paragraph, with an identifier the rebuild no longer has, so a co-author's edit to one
+    is not compared, and is not named in the report.
   - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
     `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
     definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and

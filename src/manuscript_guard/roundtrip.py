@@ -265,18 +265,30 @@ _LINK_LINE = re.compile(
 )
 # A footnote: its label and its text on one line. Pandoc parses a note's text by itself, so
 # nothing in it reaches the body - but a line under it is more of the note, even a link's
-# definition, and that link then resolves nowhere. So links come first.
+# definition, and that link then resolves nowhere. So links come first. And a note runs on
+# through every line pandoc does not take for blank: under a line holding only a no-break
+# space, the next paragraph went into the footnote and left the body, and a co-author's
+# edit to it was dropped. So a note is left alone only with a blank line below it.
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 
 
-def _only_definitions(block: str) -> bool:
+def _only_definitions(block: str, below: str) -> bool:
     """Whether every line of a block is a link or footnote definition in a shape pandoc
-    can only read as one, the links before the notes."""
+    can only read as one, the links before the notes, and no note takes in what is below."""
     lines = block.strip("\n").split("\n")
     links = 0
     while links < len(lines) and _LINK_LINE.fullmatch(lines[links]):
         links += 1
-    return all(_NOTE_LINE.fullmatch(line) for line in lines[links:])
+    notes = lines[links:]
+    return all(_NOTE_LINE.fullmatch(line) for line in notes) and (
+        not notes or _blank_below(below)
+    )
+
+
+def _blank_below(below: str) -> bool:
+    """Whether a line pandoc takes for blank - empty, or spaces and tabs - stands between a
+    block and the next. `below` is what separates them, empty at the end of the text."""
+    return below == "" or any(line.strip(" \t") == "" for line in below.split("\n")[1:-1])
 
 
 def _blank_above(above: str) -> bool:
@@ -289,10 +301,18 @@ def _blank_above(above: str) -> bool:
     return len(lines) < 2 or lines[-2].strip(" \t") == ""
 
 
-def _untagged(block: str, above: str) -> bool:
+def _around(pieces: list[str], index: int) -> tuple[str, str]:
+    """What separates `pieces[index]` from the blocks before and after it: `_untagged`'s
+    `above` and `below`, which `tag` and `tagged_paragraphs` must pass alike."""
+    above = pieces[index - 1] if index else ""
+    below = pieces[index + 1] if index + 1 < len(pieces) else ""
+    return above, below
+
+
+def _untagged(block: str, above: str, below: str) -> bool:
     """Headings, fences, link and footnote definitions, and a lone placeholder (which
-    becomes a table or a figure). `above` is what separates the block from the one before
-    it, empty at the start of the text."""
+    becomes a table or a figure). `above` and `below` are what separate the block from the
+    blocks before and after it, empty at the start and the end of the text."""
     stripped = block.strip()
     return (
         not stripped
@@ -303,7 +323,7 @@ def _untagged(block: str, above: str) -> bool:
         # pandoc too takes for blank: one holding a no-break or full-width space, or a form
         # feed, separates blocks here, while pandoc read it and the definition under it as
         # a paragraph.
-        or (_blank_above(above) and _only_definitions(block))
+        or (_blank_above(above) and _only_definitions(block, below))
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 
@@ -329,7 +349,7 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     pieces = re.split(r"(\n\s*\n)", text)
     for index, para in enumerate(pieces):
         stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(para, pieces[index - 1] if index else ""):
+        if para.strip("\n") == "" or _untagged(para, *_around(pieces, index)):
             out.append(para)
             continue
         marker = _TAG.format(slug=slug, index=index)
@@ -386,7 +406,7 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(para, pieces[index - 1] if index else ""):
+            if _untagged(para, *_around(pieces, index)):
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

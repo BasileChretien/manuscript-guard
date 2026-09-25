@@ -241,23 +241,38 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
 
 REGISTRY = "https://example.org/registry"
 
+#: (paragraph, its definitions, what the paragraph prints as)
 REFERENCE_LINKS = [
     pytest.param(
-        "See [the registry][reg] for details.", f"[reg]: {REGISTRY}", "the registry", id="full"
+        "See [the registry][reg] for details.",
+        f"[reg]: {REGISTRY}",
+        "See the registry for details.",
+        id="full",
     ),
-    pytest.param("See [reg][] for details.", f"[reg]: {REGISTRY}", "reg", id="collapsed"),
-    pytest.param("See [reg] for details.", f"[reg]: {REGISTRY}", "reg", id="shortcut"),
+    pytest.param(
+        "See [reg][] for details.", f"[reg]: {REGISTRY}", "See reg for details.", id="collapsed"
+    ),
+    pytest.param(
+        "See [reg] for details.", f"[reg]: {REGISTRY}", "See reg for details.", id="shortcut"
+    ),
     pytest.param(
         "See [reg] for details.",
         f"   [reg]: <{REGISTRY}> 'The registry'",
-        "reg",
+        "See reg for details.",
         id="indented-with-title",
     ),
     pytest.param(
         "See [reg] and [other] for details.",
         f"[other]: https://example.org/other\n[reg]: {REGISTRY} \"The registry\"",
-        "reg and other",
+        "See reg and other for details.",
         id="several-definitions",
+    ),
+    # A binding beside the link, so the marked build is not the plain one again.
+    pytest.param(
+        "See [the registry][reg] for {{results.ror.point}} details.",
+        f"[reg]: {REGISTRY}",
+        "See the registry for {{results.ror.point}} details.",
+        id="beside-a-binding",
     ),
 ]
 
@@ -272,9 +287,9 @@ BUILDS = pytest.mark.parametrize("mark", [False, True], ids=["plain", "marked"])
 
 @needs_pandoc
 @BUILDS
-@pytest.mark.parametrize(("paragraph", "definition", "shown"), REFERENCE_LINKS)
+@pytest.mark.parametrize(("paragraph", "definition", "printed"), REFERENCE_LINKS)
 def test_a_link_definition_is_left_for_pandoc_to_read(
-    paragraph: str, definition: str, shown: str, mark: bool, tmp_path: Path
+    paragraph: str, definition: str, printed: str, mark: bool, tmp_path: Path
 ) -> None:
     """`[reg]: https://...` standing as its own block defines a reference-style link. With an
     identifier in front of it, pandoc read it as a paragraph instead: every `[text][reg]` in
@@ -294,7 +309,11 @@ def test_a_link_definition_is_left_for_pandoc_to_read(
     assert "<w:hyperlink" in _docx_part(document, "word/document.xml")
     # The paragraph keeps its identifier and reads as the link's words; the definition
     # reaches the document as nothing at all.
-    assert list(paragraph_text(document).values()) == [f"See {shown} for details."]
+    assert list(paragraph_text(document).values()) == [printed]
+    if mark and "{{" in paragraph:
+        from manuscript_guard.docxtext import TOKEN
+
+        assert f'w:name="{TOKEN}' in _docx_part(document, "word/document.xml")
 
 
 @needs_pandoc
@@ -482,6 +501,33 @@ def test_a_definition_under_an_empty_line_below_a_line_of_spaces_is_left_alone(
     assert f'Target="{REGISTRY}"' in rels
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "space", [chr(0xA0), chr(0x3000), chr(12)], ids=["no-break", "full-width", "form-feed"]
+)
+def test_a_note_over_a_line_pandoc_does_not_take_for_blank_is_marked(space: str) -> None:
+    """A note runs on through every line pandoc does not take for blank. Under a line
+    holding only a no-break or full-width space, the next paragraph went into the footnote
+    and left the body, and a co-author's edit to it was dropped with nothing said."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n{space}\nIt was rare.\n"
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [b for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 2
+    assert all("mg-p-" in json.dumps(paragraph) for paragraph in paragraphs)
+
+
 def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
     from the stripped block in one and the raw block in the other, a definition ending in a
@@ -492,7 +538,8 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
 
     text = "\n\n".join(param.values[0] for param in BLOCKS)
     text += f"\n\n{chr(0x3000)}\n\n[later]: {REGISTRY}"
-    text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}\n"
+    text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}"
+    text += f"\n\n[^runs]: A note.\n{chr(0xA0)}\nIt runs on.\n"
     (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
     loaded, _report = load_project(project)
     known = {
@@ -502,9 +549,10 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     }
     marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "definitions.md")))
     assert marked == known
-    # Every block that is not a definition, and the definition directly under the full-width
-    # space; not the one with an empty line between.
-    expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 1
+    # Every block that is not a definition, the definition directly under the full-width
+    # space (not the one with an empty line between), and the note over the no-break space
+    # and the paragraph after it.
+    expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 3
     assert len(marked) == expected
 
 

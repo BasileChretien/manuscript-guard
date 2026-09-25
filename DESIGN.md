@@ -2085,6 +2085,13 @@ Closed since, and why each mattered:
 - **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
   typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
   mentions both markers hides everything between them.
+- **The other masked patterns match greedily, and can cover a number printed beside them.**
+  A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
+  is masked along with the address. A footnote label, a pandoc attribute and a placeholder
+  do the same inside their brackets, and so does each of them when its first character is
+  escaped. Where the old comment rule hid the start of such a match, text read again now
+  meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
+  rule left readable. The patterns are to be fixed separately.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

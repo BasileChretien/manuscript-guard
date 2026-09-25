@@ -559,6 +559,19 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
+    """`numbered-heading` took the number opening any setext title for section numbering, so
+    "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
+    text."""
+    path = main_md(project)
+    tail = "# Results\n\n412 serious reports\n-------------------\n\nOf these, most were hepatic.\n"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
 @pytest.mark.parametrize(
     "tail",
     [

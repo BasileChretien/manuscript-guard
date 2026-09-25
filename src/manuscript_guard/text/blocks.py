@@ -344,7 +344,8 @@ def _bare_tex(line: str) -> bool:
 
 
 _DIGIT_FIRST = re.compile(r"^[ \t]*\d")
-_DEFINITION = re.compile(r"^[ ]{0,3}[:~][ \t]+\S")
+# A definition marker, with its text or bare: `:` alone on its line is one too.
+_DEFINITION = re.compile(r"^[ ]{0,3}[:~](?:[ \t]|$)")
 
 
 def _lone_table(line: str) -> bool:
@@ -461,9 +462,6 @@ class _Walk:
         self._closers: dict[str, list[int]] = {}
         #: The last line holding a LaTeX block that ends on a bare command. See `_bare_tex`.
         self._bare_tex_line = -2
-        #: A definition line has turned the open list item's lazy lines into its paragraph,
-        #: where a marker starts no item.
-        self._defined = False
 
     def run(self) -> _Walk:
         index = self._title_block()
@@ -509,7 +507,6 @@ class _Walk:
         if _blank(line.shown):
             if line.blank and not line.commented:
                 self.open = None
-                self._defined = False
             return index + 1
         after = self._line(index)
         opened = _html_opens(line.shown)
@@ -540,19 +537,21 @@ class _Walk:
             self.inline = True
             if self.open == _ITEM:
                 # Inside a list, a marker ends the lazy lines and starts the next item. A
-                # paragraph gets no such line: a list cannot interrupt one, and nor can it
-                # interrupt a definition that the item's lazy lines have turned into one.
+                # paragraph gets no such line: a list cannot interrupt one.
                 shown = self.lines[index].shown
                 if _DEFINITION.match(shown):
-                    # Indented to the item's text, a definition starts a definition list
-                    # inside the item, and the item's lazy lines go on as before.
+                    # A definition under the item's text ends the list, and the rest is the
+                    # definition's paragraph: a marker starts no item there, a tilde fence
+                    # does not end it, and a line indented after a blank is not in the list.
+                    # Indented to the item's text, it is a definition list inside the item,
+                    # and the item goes on.
                     if _indent(shown) < (self.list_indent or 0):
-                        self._defined = True
-                elif not self._defined:
+                        self.open = _PARAGRAPH
+                        self.list_indent = None
+                else:
                     self._item(index)
             return self._paragraph_line(index)
         self.open = None
-        self._defined = False
         return self._block(index)
 
     def _item(self, index: int) -> bool:
@@ -602,12 +601,8 @@ class _Walk:
     def _fence(self, last: int, char: str, indented: bool) -> int:
         # A backtick fence at the margin interrupts a paragraph. A tilde one, or an indented
         # one, does not: pandoc prints it as text inside the paragraph, which goes on past it.
-        # Any fence ends a list item's lazy lines, unless a definition has made them its
-        # paragraph.
-        paragraph = self.open in (_PARAGRAPH, _QUOTE_LINES) or (
-            self.open == _ITEM and self._defined
-        )
-        if paragraph and (char == "~" or indented):
+        # Any fence ends a list item's lazy lines.
+        if self.open in (_PARAGRAPH, _QUOTE_LINES) and (char == "~" or indented):
             return last + 1
         self.open = None
         if not indented:
@@ -649,7 +644,8 @@ class _Walk:
         shown = self.lines[index].shown
         indent = _indent(shown)
         if indent < (self.list_indent or 0):
-            if not _LIST_ITEM.match(shown):
+            # A rule closes the list, though `* * *` has the shape of a marker.
+            if not _LIST_ITEM.match(shown) or _THEMATIC_BREAK.match(shown):
                 self.list_indent = None
             return False
         if indent >= (self.list_indent or 0) + 4:
@@ -767,10 +763,16 @@ class _Walk:
         html = self._html_block(index)
         if html is not None:
             return html
+        if shown.startswith(("    ", "\t")):
+            # An indented listing runs on to its last indented line, so its second line over
+            # a rule is code over a rule, not a heading. Indented as written: a comment
+            # blanked to spaces is not code.
+            end = index + 1
+            while end < len(self.lines) and self._indented_code(end):
+                end += 1
+            return end
         # A rule as written: `--- <!-- revised -->` is text, not a rule with a comment.
-        if shown.startswith(("    ", "\t")) or (
-            _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw)
-        ):
+        if _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw):
             return index + 1
         if self._item(index):
             self.open = _ITEM
@@ -790,6 +792,10 @@ class _Walk:
         if _REFERENCE.match(shown):
             return index + 1
         return self._environment(index) or self._table(index)
+
+    def _indented_code(self, index: int) -> bool:
+        line = self.lines[index]
+        return line.raw.startswith(("    ", "\t")) and not _blank(line.shown)
 
     def _table(self, index: int) -> int | None:
         """A pipe table runs while its rows have a pipe; a grid table or a line block while

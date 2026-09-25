@@ -62,8 +62,11 @@ structural:
     # `#` is an empty heading, and the number starting the next line is not part of it.
     # The hashes are optional because a setext title over its underline starts a heading
     # with none, and there may be more than six: pandoc prints `####### 3 Notes` as one.
+    # Numbering is short, and a title word after it is capitalised. Taken as any number,
+    # "412 serious reports" or "3.84 times higher" over dashes passed G2 as numbering, and so
+    # did a count opening a table cell between two rules, which the walk reads as a title.
     heading_only: true
-    pattern: '^(?:#+[ \t]+)?\d+(?:\.\d+)*[.)]?(?:[ \t]|$)'
+    pattern: '^(?:#+[ \t]+)?[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?(?:[ \t]+(?=[A-Z])|[ \t]*$)'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

@@ -365,6 +365,14 @@ CONSTRUCTS = {
         "## Methods\n\n- Disproportionality\n: a reporting odds ratio above one\n~~~\n"
         "x <- 1\n~~~\n## Results\n"
     ),
+    # An indented listing runs on to its last indented line: a rule under it is a rule.
+    "setext under the second line of an indented listing": "    code\n    Results\n---\n",
+    "setext under an indented listing after a wide list item": (
+        "1.   First\n\n    code\n    412 Results\n---\n"
+    ),
+    "atx under an indented comment after an indented listing": (
+        "    code\n <!-- c -->\n## Methods\n"
+    ),
     "atx under an inline latex index": "\\index{x}\n## Methods\n",
     "atx under an inline latex si unit": "\\SI{1}{m}\n## Methods\n",
 }
@@ -635,6 +643,21 @@ LIST_CONSTRUCTS = {
     "a numbered line past a fence under an indented definition": (
         "- An item\n  : a definition\n~~~\nx\n~~~\n2. Second\n"
     ),
+    # Found by the second review. A bare `:` or `~` is a definition marker too.
+    "a count after a bare definition marker in a list item": "1. First\n:\n412. Of these\n",
+    "a count after a bare tilde marker in a list item": "1. First\n~\n412. Of these\n",
+    "a count after a bare marker under an indented definition": (
+        "1. First\n   : a definition\n:\n412. Of these\n"
+    ),
+    # A rule between items closes the list, and a definition ends the item.
+    "a count under a paragraph after a rule after a list": (
+        "- First\n\n* * *\n\n  The count was\n412. Of these\n"
+    ),
+    "a count under a paragraph after a definition in an item": (
+        "1. First\n: a definition\n\n   More text\n412. Of these\n"
+    ),
+    # Indented, a comment is inline, and starts a paragraph a marker cannot interrupt.
+    "a count under an indented comment": "Intro.\n\n <!-- note -->\n412. Of these\n",
     # Pandoc numbers a list with ASCII digits only. Full-width ones are prose.
     "a full-width count at a block start": (
         "Intro.\n\n" + "".join(map(chr, (0xFF14, 0xFF11, 0xFF12))) + ". reports\n"

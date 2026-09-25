@@ -423,6 +423,9 @@ def test_a_heading_pandoc_prints_as_text_ends_a_section_and_never_opens_methods(
     assert not is_methods(("Methods", Unprinted("Results")))
     # Nested under a printed Methods, it is still Methods: pandoc prints it all there.
     assert is_methods(("Methods", Unprinted("Sensitivity")))
+    # Emphasis is a mark a title keeps: `## **Results**` is Results.
+    assert not is_methods(("**Results**", "Sensitivity analyses"))
+    assert not is_methods(("_Results_", "Sensitivity analyses"))
 
 
 @pytest.mark.parametrize(

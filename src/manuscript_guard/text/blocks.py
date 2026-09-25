@@ -182,6 +182,17 @@ _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*
 # A grid table opens on a border, `+---+---+`, and a line block on a pipe and a space:
 # "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose.
 _GRID_TOP = re.compile(r"^[ ]{0,3}\+(?:[-=:]+\+)+[ \t]*$")
+# A pipe table's row has a pipe that is a cell's edge: not escaped, and not in code or math.
+# Taken on any pipe, "Results \| x" over `===` under a table was a row, and the heading
+# pandoc prints there was lost to the gates.
+_ESCAPED_PIPE = re.compile(r"\\\|")
+_CODE_OR_MATH = re.compile(r"`[^`\n]*`|\$[^$\n]*\$")
+
+
+def _cell_pipe(line: str) -> bool:
+    return "|" in _CODE_OR_MATH.sub("", _ESCAPED_PIPE.sub("", line))
+
+
 _GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
 _LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
@@ -330,6 +341,12 @@ class _Line:
     commented: bool = False
 
 
+def _underline(line: _Line) -> bool:
+    """A setext underline, as written: `<!-- -->===` is text. With the comment blanked, it
+    read as `===`, and the prose above it as a heading."""
+    return bool(_UNDERLINE.match(line.shown) and _UNDERLINE.match(line.raw))
+
+
 def _lines(text: str) -> list[_Line]:
     shown_text, comments = _scanned(text)
     out = []
@@ -463,13 +480,15 @@ class _Walk:
         """Close the HTML blocks this line closes, wherever on it the closing tag stands:
         pandoc ends the block there. Counted only at the end of a line, a `<del>` closed in
         the middle of one stayed open for the rest of the file, and a later line ending in
-        `</del>` ended a paragraph pandoc goes on with."""
+        `</del>` ended a paragraph pandoc goes on with. The whole name: `</pre>` does not
+        close a `<p>`."""
         if not any(self.html.values()):
             return
         lowered = shown.lower()
         for name, count in self.html.items():
             if count:
-                self.html[name] = max(0, count - lowered.count(f"</{name}"))
+                closed = len(re.findall(rf"</{name}(?=[\s/>]|$)", lowered))
+                self.html[name] = max(0, count - closed)
 
     def _line(self, index: int) -> int:
         self.inline = False
@@ -584,6 +603,15 @@ class _Walk:
             if tag is not None and not _BLOCK_TAG.match(shown):
                 self._raw_tag_line = index
             return index + 1
+        # Over an underline the rest is a setext title, `#` and all: `<div># Methods` over
+        # `-` is a heading reading "# Methods".
+        if index + 1 < len(self.lines) and _underline(self.lines[index + 1]):
+            below = self.lines[index + 1]
+            level = 1 if below.shown.startswith("=") else 2
+            self.found.append(
+                Heading(self.lines[index].start, level, rest.strip(), setext=True)
+            )
+            return index + 2
         atx = _atx(rest)
         if atx is not None:
             self.found.append(Heading(self.lines[index].start, *atx))
@@ -630,7 +658,7 @@ class _Walk:
         # last row is a rule.
         if (
             below is not None
-            and _UNDERLINE.match(below.shown)
+            and _underline(below)
             and not _A_BLOCK_TAG.search(line.shown)
             and not _lone_table(line.shown)
         ):
@@ -649,7 +677,10 @@ class _Walk:
         html = self._html_block(index)
         if html is not None:
             return html
-        if shown.startswith(("    ", "\t")) or _THEMATIC_BREAK.match(shown):
+        # A rule as written: `--- <!-- revised -->` is text, not a rule with a comment.
+        if shown.startswith(("    ", "\t")) or (
+            _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw)
+        ):
             return index + 1
         item = _LIST_ITEM.match(shown)
         if item is not None:
@@ -677,7 +708,7 @@ class _Walk:
         below = self.lines[index + 1].shown if index + 1 < len(self.lines) else ""
         if "|" in shown and "|" in below and _TABLE_RULE.match(below):
             end = index + 2
-            while end < len(self.lines) and "|" in self.lines[end].shown:
+            while end < len(self.lines) and _cell_pipe(self.lines[end].shown):
                 end += 1
             self.rows.update(range(index, end))
             return self._caption(end)
@@ -769,9 +800,23 @@ def section_breaks(text: str) -> list[Heading]:
     back titled `Unprinted`, which `is_methods` never takes for Methods: it can close the
     Methods, and never open them. A table row is not such a line: the walk reads the table,
     and the rule under its last row is a rule.
+
+    Two kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
+    after a tag or a comment on its line, and a setext title starting with a tag. The scan
+    before the walk never read either, and wherever the walk wrongly starts a block, under a
+    stray `</script>` say, one could open Methods. And an empty `##` over a line of text
+    breaks there too, titled with that line: pandoc prints the line as a paragraph, and the
+    page shows "Results" over the numbers under it.
     """
     walk = _Walk(text)
-    found = walk.run()
+    raw_at = {line.start: line.raw for line in walk.lines}
+    found = [
+        replace(heading, title=Unprinted(heading.title))
+        if (not heading.setext and not raw_at[heading.start].startswith("#"))
+        or (heading.setext and _START_TAG.match(raw_at[heading.start]))
+        else heading
+        for heading in walk.run()
+    ]
     by_start = {heading.start: heading for heading in found}
     shown = [line.shown for line in walk.lines]
     placed = set(walk.rows)
@@ -779,7 +824,8 @@ def section_breaks(text: str) -> list[Heading]:
         heading = by_start.get(line.start)
         if heading is not None:
             placed.update((number, number + 1) if heading.setext else (number,))
-    for number in sorted(heading_shaped(shown) - placed):
+    shaped = heading_shaped(shown)
+    for number in sorted(shaped - placed):
         line = shown[number]
         below = shown[number + 1] if number + 1 < len(shown) else ""
         if not _blank(line) and _UNDERLINE.match(below):
@@ -788,6 +834,16 @@ def section_breaks(text: str) -> list[Heading]:
             level = len(line) - len(line.lstrip("#"))
             title, setext = line[level:].strip().rstrip("#").strip(), False
         found.append(Heading(walk.lines[number].start, level, Unprinted(title), setext))
+    for number, line in enumerate(walk.lines):
+        heading = by_start.get(line.start)
+        if heading is None or heading.setext or heading.title:
+            continue
+        after = number + 1
+        while after < len(shown) and _blank(shown[after]):
+            after += 1
+        if after < len(shown) and after not in placed and after not in shaped:
+            title = Unprinted(shown[after].strip())
+            found.append(Heading(walk.lines[after].start, heading.level, title))
     return sorted(found, key=lambda heading: heading.start)
 
 

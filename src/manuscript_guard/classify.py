@@ -260,14 +260,15 @@ def is_methods(section: Sequence[str] | None) -> bool:
     )
 
 
-_MARKS = re.compile(r"^[\s#>*+-]+")
+_MARKS = re.compile(r"^[\s#>*+_-]+")
 _ATTRIBUTES = re.compile(r"\s*\{[^{}]*\}\s*$")
+_EMPHASIS_END = re.compile(r"[\s*_]+$")
 
 
 def _unmarked(title: str) -> str:
     """A heading's title without the marks it may keep: leading hashes, quote and list
-    marks, and trailing attributes."""
-    return _MARKS.sub("", _ATTRIBUTES.sub("", title))
+    marks, emphasis around it (`**Results**`), and trailing attributes."""
+    return _EMPHASIS_END.sub("", _MARKS.sub("", _ATTRIBUTES.sub("", title)))
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:

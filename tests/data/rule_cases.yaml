@@ -200,6 +200,9 @@ structural:
       # is an empty heading, so the number on the next line is not part of it.
       - {text: "The ratio was\n## 2.1 times the background rate.", atom: "2.1"}
       - {text: "#\n2.1 times the background rate.", atom: "2.1"}
+      # A text classified on its own, a table cell or a keyword, can end on the number:
+      # `$` held there, where `main`'s `\s` needed a character after it.
+      - {text: "# 12", atom: "12"}
 
   author-year-citation:
     audit_only: true

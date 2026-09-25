@@ -470,6 +470,46 @@ RESULTS_READ_AS_METHODS = {
         "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n#" + chr(0xA0) + "Results\n\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    # Found by the fifth review. An underline or a rule written after a comment is text:
+    # blanked, the comment left a line the walk read as `===`, or as a rule.
+    "an underline after a comment": (
+        "# Results\n\nMethods\n<!-- -->===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a rule with a comment after it": (
+        "# Results\n\nThe excess was clear.\n\n--- <!-- revised -->\n<!-- TODO --># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Pandoc reads the rest of a tag's line over an underline as a setext title, "# Methods",
+    # not as a `#` heading.
+    "a tag and a hash over an underline": (
+        "# Results\n\n<div># Methods\n-\n\nThe excess was significant (p < 0.001).\n\n</div>\n"
+    ),
+    # A `#` heading after a tag or a comment on its line, which `main` never read, opened
+    # Methods wherever the walk wrongly started a block.
+    "a hash after a tag under a stray closing tag": (
+        "# Results\n\nSome text\n</script>\n<ins># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash after a comment under a raw tag and an indented line": (
+        "# Results\n\n<del>\n    Old sentence.\n<!-- moved --># Methods\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A pipe that is escaped, or in code, is text: the table ended above it, and the
+    # heading under it was skipped by the net as a table row.
+    "an escaped pipe under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results \\| x\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a pipe in code under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results `a|b`\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A lone `##` is an empty heading, and "Results" under it a paragraph. The page shows
+    # "Results" over the number; `main` read it as the heading's title.
+    "a lone hash over a results line": (
+        "# Methods\n\nAlpha was set in advance.\n\n##\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 

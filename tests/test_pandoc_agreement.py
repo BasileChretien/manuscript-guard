@@ -331,6 +331,18 @@ CONSTRUCTS = {
         "## Results\n\n<del>Not\nsignificant.</del> It was.\n\nIt was <del>not</del>\n"
         "## Methods\n"
     ),
+    # Found by the fifth review. What follows a comment on its line is text, not an underline
+    # or a rule; the rest of a tag's line over an underline is a setext title.
+    "setext under an underline after a comment": "## Results\n\nMethods\n<!-- -->===\n",
+    "atx under a rule with a comment after it": (
+        "## Results\n\nText.\n\n--- <!-- revised -->\n## Methods\n"
+    ),
+    "setext from the rest of a tag's line": "## Results\n\n<div># Methods\n-\n\nText.\n\n</div>\n",
+    # `</pre>` does not close a `<p>`: counted as one, the quote below ran on past the `</p>`
+    # that ends its lazy lines, and took the heading under it.
+    "atx under a quote stopped by a p closer after a pre closer": (
+        "<p>\nIntro </pre> here\n\n> Quote\n</p>\n## Results\n"
+    ),
     "atx under inline latex qty": "\\qty{1}{m}\n## Methods\n",
     "atx under inline latex ac": "\\ac{ROR}\n## Methods\n",
     "atx under inline latex acrshort": "\\acrshort{x}\n## Methods\n",

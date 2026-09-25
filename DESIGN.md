@@ -2342,9 +2342,10 @@ Closed since, and why each mattered:
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
-  Results, and "- Methods" never opens Methods. They do not see a heading pandoc finds further into an item: an indented
-  one, or one under a later item's own underline. The same goes for a definition list. The
-  old scan saw none of these either.
+  Results, and "- Methods" never opens Methods. They do not see a heading pandoc finds
+  further into an item: an indented one, one under a later item's own underline, or
+  `- # Results` on the item's own line. The same goes for a definition list. The old scan
+  saw none of these either.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,
@@ -2373,7 +2374,17 @@ Closed since, and why each mattered:
   so that a line starts "# of reports" therefore reports the thresholds after it. The line
   prints as text in the paper as well, so it is worth rewrapping, or escaping as `\#`.
   Rows of a table the walk reads, and `{{table.x}}`, are not such lines: the rule under the
-  last row is a rule.
+  last row is a rule. Two kinds of heading pandoc does print are read the same way: a `#`
+  heading after a tag or a comment on its line, and a setext title starting with a tag. The
+  scan before the walk never read either, and where the walk wrongly starts a block, under
+  a stray `</script>` say, one would open Methods; so a Methods section headed that way
+  reports its thresholds. A lone `##` over a line of text, an empty heading and a
+  paragraph to pandoc, ends the section there, titled with that line.
+- **A section is Results only by its title.** `## **Results**`, `- Results` and
+  `# Results` over a rule are read as Results, but a combined title such as "Results and
+  discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
+  old scan did the same. Reading every title that starts with "Results" as Results would
+  also report the thresholds under a Methods subsection called "Summary statistics".
 - **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
   build writes the caption as a paragraph after the table, and a heading cannot interrupt a
   paragraph, so the document loses the heading while G2 reads the one the source means. With
@@ -2395,11 +2406,16 @@ Closed since, and why each mattered:
   inside a paragraph ends the paragraph, where pandoc reads it inline. A comment at the
   margin is a block and the rest of its line starts the next one; indented one to three
   spaces it is inline, except directly under an "either" tag alone on its line, which takes
-  it into its raw block. Pandoc also drops the indentation of the line after a raw block,
-  and reads a setext title that is only an HTML comment as an empty heading, where the
-  gates see none. A heading's title keeps its raw
-  HTML and LaTeX, which pandoc's printed title does not show, so `## Methods <span>` is not
-  read as Methods.
+  it into its raw block, and inside a list, where the gates still read it as a block. What
+  follows a comment on its line is text, never an underline or a rule. Pandoc also drops
+  the indentation of the line after a raw block, `<hr>` or `\newpage` alone on a line, and
+  prints it as a paragraph; the gates read it as code, so a `## Methods` directly under it,
+  text to pandoc, is a heading to them and opens Methods, as it did for the scan before the
+  walk. Pandoc reads a setext title that is only an HTML comment as an empty heading,
+  where the gates see none. A heading's title keeps its raw HTML and LaTeX, which pandoc's
+  printed title does not show, so `## Methods <span>` is not read as Methods. In a file
+  with CRLF line endings the gates now see setext headings, which the scan before the walk
+  did not, and with them the list-heading gaps above.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

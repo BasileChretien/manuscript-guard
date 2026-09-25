@@ -1357,24 +1357,27 @@ typesetting; those are escaped only where they open a paragraph as a list would 
 `- `), and there nothing is typeset.
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
-the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
-what this module can see - a delimiter left unpaired, a span stretched over new words - and
-not where the reading and pandoc disagree. Its tokens must be the source's, each read as
-before and none touching the next. Counting them was not enough. An edit deleting a space
-made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
+the co-author wrote, or the merge is refused. That check uses the same reading, so it
+catches what this module can see - a delimiter left unpaired, a span stretched over new
+words - and not where the reading and pandoc disagree. Its tokens must be the source's, each
+read as before and none touching the next. Counting them was not enough. An edit deleting a
+space made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
 `@a [@b]` one citation, and one leaving `@a:{{results.x}}` gave pandoc the key `a:3.84`.
 Each still had as many tokens, and the build printed a raw key or a garbled citation. The
 reading takes a binding for digits, so what a value does beside a key is checked apart: a
-value that opens with `[`, left with only a space after a narrative key, is the key's
-locator to pandoc, and "(2019) [pooled]" printed as "(2019, pooled)". Every edited stretch
-has one more backstop, for
-what the list does not name: if its source, read as Word should show it, is not what the
-build printed of that stretch, something in it never reached Word as text, and the
-rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
-was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to pandoc, was deleted.
-At first only a paragraph without bindings had this check. With bindings, looking for the
-source's prose in the build did that work, and when marked extents replaced that search the
-check went with it.
+value that opens with `[`, left after a narrative key with only spaces, a tab or one line
+break between them, is the key's locator to pandoc, and "(2019) [pooled]" printed as "(2019,
+pooled)". Only for a key without a locator of its own: pandoc takes one, so `@key [p. 3]
+[pooled]` prints the value as it is, and a key that has its `]` is not read on into what
+follows. A no-break space between them makes no locator either. The check was once broader
+than pandoc on both counts, and refused edits that printed as Word showed them. Every edited
+stretch has one more backstop, for what the list does not name: if its source, read as Word
+should show it, is not what the build printed of that stretch, something in it never reached
+Word as text, and the rewording is refused rather than rebuilt from what did. `[Methods]`, a
+link to the heading, was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to
+pandoc, was deleted. At first only a paragraph without bindings had this check. With
+bindings, looking for the source's prose in the build did that work, and when marked extents
+replaced that search the check went with it.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first

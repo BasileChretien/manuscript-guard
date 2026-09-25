@@ -251,6 +251,15 @@ def test_the_abstract_in_front_matter_is_checked_like_any_other_prose() -> None:
     assert atoms_of(text) == ["3.84-fold", "3.84", "41200"]
 
 
+def test_a_rule_after_a_blank_line_is_not_front_matter() -> None:
+    """Pandoc prints `---` followed by a blank line as a horizontal rule, and the prose after
+    it. Masked as front matter up to the next rule, the numbers in it were read by nothing."""
+    assert atoms_of("---\n\nThe ROR was 3.84 in 41200 reports.\n\n---\n\nEnd.\n") == [
+        "3.84",
+        "41200",
+    ]
+
+
 METHODS_AND_RESULTS = """# Paper
 
 ## Methods

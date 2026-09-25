@@ -1511,11 +1511,14 @@ def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, pa
         "# Methods\n\n- Wrap the template in ```:\n```html\n<!-- template\n```\n\n"
         "# Results\n\nThe ROR was 9.99.\n\n<!-- TODO -->\n",
         "Set `x\n````\ny`\n```\n<!--\n````\n\nThe ROR was 9.99. -->\n",
+        "---\nabstract: |\n  Let $x <!-- y$. The ROR was 9.99.\n\n  ```\n  -->\n  ```\n"
+        "author: A. Author <!-- add B -->\n---\n\nBody.\n",
     ],
     ids=[
         "an opener pandoc prints as code, closed in a listing",
         "a code span pandoc ends at a list item",
         "a code span over a fence line",
+        "a front-matter key the old rule never read",
     ],
 )
 def test_the_comment_scanner_hides_nothing_the_old_rule_did_not(tmp_path: Path, paper: str) -> None:

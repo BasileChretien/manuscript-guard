@@ -150,15 +150,16 @@ def test_a_comment_marker_in_a_listing_does_not_hide_the_bindings_after_it() -> 
 
 
 def _old_rule(text: str) -> set[int]:
-    """Every offset `<!--.*?-->` hid, with fenced blocks blanked, on each side of the front
-    matter: the rule the three regexes applied before the scanner replaced them."""
+    """Every offset `<!--.*?-->` hid, with fenced blocks and the front matter's machinery
+    blanked, on each side of the front matter: the rule `mask` applied before the scanner
+    replaced the regexes."""
     import re
 
-    from manuscript_guard.text.masking import fenced_blocks, front_matter_end
+    from manuscript_guard.text.masking import _frontmatter_spans, fenced_blocks, front_matter_end
 
     blanked = list(text)
-    for fence in fenced_blocks(text):
-        blanked[fence.start : fence.end] = " " * (fence.end - fence.start)
+    for start, end in [*((f.start, f.end) for f in fenced_blocks(text)), *_frontmatter_spans(text)]:
+        blanked[start:end] = "\x00" * (end - start)
     flat, head = "".join(blanked), front_matter_end(text)
     comment = re.compile(r"<!--.*?-->", re.DOTALL)
     hidden: set[int] = set()
@@ -181,6 +182,7 @@ def test_the_scanner_hides_nothing_the_old_rule_did_not() -> None:
         FENCE, f"{FENCE}html", "````", "~~~", "<!-- a", "-->", "x -->", "    <!-- b", "",
         "- item ```", "- `a", "> q `", "b`", "`c` d", "$a <!-- b$", "\\<!-- e", "9.99",
         "Prose with 9.99.", "<!-- f -->", "`<!--`", "---", "title: <!-- g",
+        "author: <!-- h -->", "abstract: |", "  $x <!-- y$ 9.99", "  -->",
     ]
     rng = random.Random(20260925)
     for _ in range(4000):

@@ -2078,7 +2078,7 @@ Closed since, and why each mattered:
   does not know every place pandoc ends a code span. So a comment is hidden only where the
   old rule hid it too, from `<!--` to the first `-->` with the fences blanked, and the
   scanner can hide less than the regex did but never more. The price is noise: a comment
-  whose only `-->` pandoc finds inside what the toolkit takes for a listing is read.
+  pandoc drops is read if it opens or closes inside what the toolkit takes for a listing.
   Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
   interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
   code spans and comments together would close all of these.

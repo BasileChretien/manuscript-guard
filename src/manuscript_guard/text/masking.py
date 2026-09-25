@@ -175,11 +175,13 @@ def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[in
     view = _filled(text, _frontmatter_spans(text), NUL)
     if fences is None:
         fences = fenced_blocks(text)
-    return _within(comment_spans(view, fences), _fence_first_comments(text, fences))
+    bound = _fence_first_comments(view, fences, front_matter_end(text))
+    return _within(comment_spans(view, fences), bound)
 
 
-def _fence_first_comments(text: str, fences: list[Fence]) -> list[tuple[int, int]]:
-    """The comments the old rule found: from `<!--` to the first `-->`, fences blanked.
+def _fence_first_comments(view: str, fences: list[Fence], head: int) -> list[tuple[int, int]]:
+    """The comments the old rule found: from `<!--` to the first `-->`, with the fences and
+    the front matter's machinery blanked, as `mask` blanked them before looking.
 
     The scanner knows code spans and where pandoc ends a comment, but not every place pandoc
     ends a code span or starts a block: an indented code block, a list item, maths. Where it
@@ -189,12 +191,15 @@ def _fence_first_comments(text: str, fences: list[Fence]) -> list[tuple[int, int
     this rule hides it too: the scanner can hide less than the regexes it replaced, never
     more. Found with `find`, on each side of the front matter, and linear: once a `<!--`
     has no `-->` after it, none later can.
+
+    `view` has the machinery blanked already. Built from the raw text, the bound let a `-->`
+    in `author:`, which the old rule never read, close a comment the scanner had guessed in
+    the abstract.
     """
-    flat = list(text)
+    flat = list(view)
     for fence in fences:
         flat[fence.start : fence.end] = " " * (fence.end - fence.start)
     blanked = "".join(flat)
-    head = front_matter_end(text)
     found: list[tuple[int, int]] = []
     for low, high in ((0, head), (head, len(blanked))):
         position = low

@@ -80,11 +80,10 @@ structural:
       the audit reads "9.99)[12]" as the value 9.99 and the marker, and a whole-number range
       after the value it encloses, "64 [55-72]", as an interval.
     # No digit in the prefix: it filed a value glued to a marker, "(95% CI 1.20, 9.99)[12]",
-    # as part of the citation. No `]` either: it made `3.40][12]` one match. One word in its
-    # own brackets may come first, as in `[SmPC][4]`, whose run nothing cuts. `_` is a word
-    # character here, for `_E. coli_[3]`. The bracket leaves out the numbers that are no
-    # decimal digits, which `tokens.DIGIT` counts: `[½][12]` is a half, not a word.
-    pattern: '(?:\[[^\[\]\d\s¼½¾⅐-⅞↉①-⒛⓪⓵-⓾❶-➓]*\])?(?:[^\W\d]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
+    # as part of the citation. No `]` either: it made `3.40][12]` one match. `_` is a word
+    # character here, for `_E. coli_[3]`. A bracketed word before the marker, allowed for
+    # `[SmPC][4]`, took `½` and an interval, `[IQR][55-72]`, with it; that marker is listed.
+    pattern: '(?:[^\W\d]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
 
   - id: orcid
     why: >-

@@ -2405,11 +2405,12 @@ Closed since, and why each mattered:
   of `(2019; 95% CI 1.20, 9.99)[12]`; the other rules still apply, so `(Smith 2019, p.
   12)[5]` is a page. The cost, chosen: a number that is no result, the version in `(OEP
   2026.1)[15]`, is listed. A year is still a citation where the author-year rule reads one,
-  `(2019)[4]`, and listed where it does not, `in 2019[5]`. The one-word bracket the rule now
-  allows before a marker, for `[SmPC][4]`, takes no number: `[½][12]` is compared. The
-  brackets take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`,
-  was a citation too. It is read as an interval when its bounds enclose the value written
-  just before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
+  `(2019)[4]`, and listed where it does not, `in 2019[5]`. A marker after a bracketed word,
+  `[SmPC][4]`, is listed, as it was: allowing that bracket took a number written into it or
+  after it, `[x]½[12]`, and an interval, `[IQR][55-72]`, with the citation. The brackets
+  take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`, was a
+  citation too. It is read as an interval when its bounds enclose the value written just
+  before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
   misses: an interval separated from its value, `64 years [55-72]`, or after a value written
   with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
   [40-50]`, is still a citation. And a citation that happens to enclose a number before it,

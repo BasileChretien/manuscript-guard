@@ -495,12 +495,31 @@ def test_emphasis_before_a_marker_is_a_citation(tmp_path: Path) -> None:
     assert unmatched == [], unmatched
 
 
-def test_a_marker_after_a_one_word_bracket_is_a_citation(tmp_path: Path) -> None:
-    """Its run opens with its own `[`, so it is not cut, and the rule took no bracket before
-    the marker: `[SmPC][4]` was listed as an unexplained number."""
-    unmatched, _ = _audited(
-        tmp_path, ["5"], "See the Summary of Product Characteristics [SmPC][4] and [sic][3].\n"
+@pytest.mark.parametrize(
+    ("text", "listed"),
+    [
+        ("About [x]½[12] of them.\n", "x]½[12"),
+        ("Median [IQR][55-72] years.\n", "IQR][55-72"),
+        ("See the Summary of Product Characteristics [SmPC][4].\n", "SmPC][4"),
+    ],
+)
+def test_a_run_opening_on_a_bracketed_word_is_listed_whole(
+    tmp_path: Path, text: str, listed: str
+) -> None:
+    """The marker rule once allowed a bracketed word before a marker, so that `[SmPC][4]`
+    was not listed. It filed `½` and a whole-number interval with the citation too, where
+    they used to be compared; the false positive is the smaller cost, and it is listed."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert listed in unmatched, unmatched
+
+
+def test_a_value_before_a_spaced_citation_list_is_compared(tmp_path: Path) -> None:
+    """The atom stops at the list's first number, so the marker's `]` is not right after it:
+    requiring that left `9.99)[1` whole, and a correct value was listed as unexplained."""
+    unmatched, matched = _audited(
+        tmp_path, ["1.20", "9.99", "45"], "CI 1.20, 9.99)[1, 2] and 45%[3; 4] held.\n"
     )
+    assert "9.99" in matched and "45%" in matched, (matched, unmatched)
     assert unmatched == [], unmatched
 
 

@@ -557,8 +557,9 @@ _MARKER_AT_END = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d
 #: The runs the marker rule took whole before its prefix was narrowed: letters, digits and
 #: `.%)`, then the marker, as the atom has it.
 _ONCE_TAKEN = re.compile(r"[\w.%)]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?")
-#: The marker's closing bracket, which the atom's trimming took off and the rule required.
-_CLOSED = re.compile(r"\s*\]")
+#: The marker whole, from its `[` in the source: the rule required its `]`, and the atom may
+#: stop before it, at the first number of a spaced list, `[1, 2]`.
+_WHOLE_MARKER = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]")
 
 
 def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
@@ -577,8 +578,9 @@ def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
     """
     marker = _MARKER_AT_END.search(atom.text)
     value = atom.text[: marker.start()] if marker else ""
-    taken = _ONCE_TAKEN.fullmatch(atom.text) and _CLOSED.match(atom.source, atom.end)
-    if marker is None or not DIGIT.search(value) or not taken:
+    if marker is None or not DIGIT.search(value) or not _ONCE_TAKEN.fullmatch(atom.text):
+        return [(atom, False)]
+    if not _WHOLE_MARKER.match(atom.source, atom.start + marker.start()):
         return [(atom, False)]
     pieces: list[tuple[Atom, bool]] = []
     for raw, offset in ((value, 0), (marker.group(0), marker.start())):

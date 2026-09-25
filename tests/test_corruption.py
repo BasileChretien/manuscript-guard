@@ -1551,13 +1551,11 @@ def test_import_takes_back_a_document_built_before_the_build_asked_pandoc(
         "## See [the site][ref]\n\n[ref]: https://example.org",
         "## Aware**ness**",
         '## <span class="x">Results</span>',
-        # Found by the seventh: definitions whose text starts on the next line, an example
-        # reference, and headings in a list or a definition, which the gates do not read.
+        # Found by the seventh: definitions whose text starts on the next line, and an
+        # example reference.
         "## Methods[^m]\n\n[^m]:\n    A note.",
         "## See [the site][ref]\n\n[ref]:\n  https://example.org",
         "## See (@good)\n\n(@good) An example.",
-        "- ## Listed",
-        "Term\n:   ## Inside",
     ],
 )
 def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: str) -> None:
@@ -1597,9 +1595,113 @@ def test_a_placeholder_against_letters_is_read_as_its_value(written: str, built:
     source = f"# Introduction\n\nText.\n\n{written}\n\nMore text.\n"
     document = f"# Introduction\n\nText.\n\n{built}\n\nMore text.\n"
     found = misreading(
-        header + document, header, [("main.md", source)], shutil.which("pandoc"), Path()
+        header + document,
+        header,
+        [("main.md", source)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
     )
     assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("written", "built"),
+    [
+        # Found by the eighth: YAML in a footnote's definition, which the build copied into
+        # the text it read the header's metadata from, so the title it set went unseen.
+        (
+            "# Results\n\nA closing remark.[^n]\n\n[^n]:\n    ---\n    title: Evil\n    ...\n",
+            None,
+        ),
+        # A heading in a list item is a heading in the document, and the gates read text.
+        ("# Methods\n\n1. # Results\n\n   The excess (p < 0.001).\n", None),
+        ("# Methods\n\n- ## Listed\n\nText.\n", None),
+        ("# Methods\n\nTerm\n:   ## Inside\n\nText.\n", None),
+        # A heading that is only a placeholder matched any heading at its level, so two
+        # misreads that cancelled passed: the value is read now, not a wildcard.
+        (
+            "# Results\n\nWe also saw\n## {{results.x}}\n\nThe `<!--` marker.\n\n## Methods\n\n"
+            "The excess (p < 0.001). -->\n\n## Last\n",
+            "# Results\n\nWe also saw\n## Subgroups\n\nThe `<!--` marker.\n\n## Methods\n\n"
+            "The excess (p < 0.001). -->\n\n## Last\n",
+        ),
+        # A value that puts a heading in: the gates judged the file as written.
+        (
+            "# Results\n\nThe rate was {{results.rate}}.\n\nThe excess (p < 0.001).\n",
+            "# Results\n\nThe rate was 4.\n\n# Discussion\n\nThe excess (p < 0.001).\n",
+        ),
+    ],
+)
+def test_the_build_refuses_what_its_reading_used_to_let_through(
+    written: str, built: str | None
+) -> None:
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    document = built or written
+    found = misreading(
+        header + document,
+        header,
+        [("main.md", written)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
+    )
+    assert found is not None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
+    """Found reviewing #71: six hundred nested divs overflowed the recursive walk of
+    pandoc's reading, and the build stopped on a traceback. Two thousand overflow Python's
+    own JSON reader, and are refused rather than passed."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    for depth, agrees in ((600, True), (2000, False)):
+        body = (
+            "# Results\n\n"
+            + "".join(":" * (depth + 3 - i) + " {.d}\n\n" for i in range(depth))
+            + "Deep.\n\n"
+            + "".join(":" * (4 + i) + "\n\n" for i in range(depth))
+        )
+        found = misreading(
+            header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+        )
+        assert (found is None) == agrees, (depth, found)
+
+
+def test_opener_lines_are_read_in_linear_time() -> None:
+    """Roman numerals that were single letters too, a comment's pattern that ran across
+    later comments, a TeX argument that was also a footnote marker, and a command's name
+    that could stop at any letter let one line of a few hundred characters take minutes:
+    each could be read more ways than one."""
+    import time
+
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    backslash = chr(92)
+    for item, tail in [
+        ("i. ", "y ---"),
+        ("* <!-- --> ", "y ---"),
+        (f"{backslash}a[^x]: ", "y ---"),
+        (f"{backslash}ivx. ", "y ---"),
+        ("- ", "y - - -"),
+    ]:
+        text = "# Results\n\nx) " + item * 4000 + tail + "\ntitle: Evil\n"
+        started = time.perf_counter()
+        rules_opening_blocks(text)
+        assert time.perf_counter() - started < 2, item
 
 
 @pytest.mark.skipif(
@@ -1678,6 +1780,12 @@ def test_submit_refuses_a_pack_missing_its_document_or_its_supplement(
     missing = project / "build" / "manuscript.docx"
     assert main(["submit", str(project), "--document", str(missing), "--skip-checks"]) == 2
     assert main(["build", str(project), "--offline"]) == 0
+    # A document edited elsewhere is packed with the supplement the build made.
+    elsewhere = project / "final" / "manuscript-edited.docx"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(missing.read_bytes())
+    assert main(["submit", str(project), "--document", str(elsewhere), "--skip-checks"]) == 0
+    assert (project / "build" / "submission" / "supplementary.docx").exists()
     (project / "build" / "supplementary.docx").unlink()
     assert main(["submit", str(project), "--document", str(missing), "--skip-checks"]) == 2
 
@@ -1797,6 +1905,11 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n<!-- a\nb --> \\newpage ---\ntitle: Evil\n...\n",
         "## Note\n<!-- a\nb --> * ---\n  title: Evil\n  ...\n",
         "## Note\n\\newcommand{\\x}{\\textbf{\\emph{y}}}---\ntitle: Evil\n...\n",
+        # Found by the eighth: four more tags pandoc starts a block behind.
+        "## Note\n<applet> ---\ntitle: Evil\n...\n",
+        "## Note\n<area> ---\ntitle: Evil\n...\n",
+        "## Note\n<frameset> ---\ntitle: Evil\n...\n",
+        "## Note\n<isindex> ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:

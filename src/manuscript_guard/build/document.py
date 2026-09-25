@@ -259,9 +259,11 @@ def build_document(
     verify_reading: bool = True,
 ) -> BuildResult:
     """Make the document. `verify_reading` asks pandoc first whether it reads the sources
-    as the gates do (`reading.misreading`); only `import`, rebuilding a document already
-    sent in order to compare the returned one with it, goes without, since refusing there
-    stranded a document a co-author was holding."""
+    as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
+    document already sent in order to compare the returned one with it, since refusing
+    there stranded a document a co-author was holding; and the annotated copy, whose marks
+    change how a subscript or a code span reads, and which is for the author to read, not
+    to send."""
     from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
 
     build_dir = project.path("build")
@@ -312,7 +314,12 @@ def build_document(
         *((a.path.name, a.path.read_text(encoding="utf-8")) for a in ordered),
         ("the build's epilogue", epilogue),
     ]
-    differs = misreading(header + body, header, read, pandoc(), root) if verify_reading else None
+    built = [prologue, *(a.text for a in ordered), epilogue]
+    differs = (
+        misreading(header + body, header, read, pandoc(), root, built=built)
+        if verify_reading
+        else None
+    )
     if differs is not None:
         # The document from the last build is not this source's, and left in build/ it is
         # the one a co-author would be sent, or `submit` would pack.

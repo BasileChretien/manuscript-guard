@@ -441,7 +441,12 @@ instructions, or TeX commands with their groups, are refused wherever they stand
 quotation, and so is the same after a comment that closes on the line. Three dashes at
 least: two are an en dash, and a list item that is one opens nothing. Inline markup,
 `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block and is prose (the sixth and
-seventh reviews).
+seventh reviews). The eighth found four more of pandoc's block tags (`applet`, `area`,
+`frameset`, `isindex`), and the pattern reading one line more ways than one: a roman
+numeral that was a letter too, a comment running on across later ones, a TeX command's
+name stopping at any letter, and an optional argument that was a footnote's marker, so a
+line of a few hundred markers took minutes. Each now reads a line one way, and the dashes
+are split off from the end of the line before the rest is matched.
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -449,28 +454,38 @@ no refusal of a single file can see: a comment the heading scan misreads, and a 
 a fence carried from one file into the next. So before it writes the document, the build
 reads it with pandoc (`build/reading.py`) and refuses (`MisreadError`, exit 1) when the
 metadata of the whole text differs from that of the build's header alone, or when the
-headings pandoc makes differ from those the gates read in the sources, a placeholder in a
-title matching whatever its value prints as. Nothing there lists shapes, so most shapes
-nobody has found yet are caught too. The gates' titles are read by pandoc as well, in the
-same run as the header: compared as written, `$\beta_{1}$`, `HbA~1c~`, `&amp;`, a comment or
-a footnote in a title split into other words than pandoc's, and the sixth review found each
-refused. Raw markup and footnotes print no words in a heading and are left out on both
-sides, and so is a heading in a list, a definition or a table, where the gates read none. A
-placeholder matches its value inside a word too, `{{results.dose}}mg` as `50mg`. Each title
-is numbered and comes back to its own heading; one pandoc makes no paragraph of, block HTML
-in it, is compared in its own words, where the seventh review found it switching the check
-off for every heading of the document. The lists are aligned, so a refusal names the
-heading, with the file and line of one the gates read.
+headings pandoc makes differ from those the gates read in the sources. Nothing there lists
+shapes, so most shapes nobody has found yet are caught too. Each heading the gates read is
+paired with the one at its place in the same file with its values put in, and compared by
+that title, so `{{results.dose}}mg` reads as `50mg`; a file whose headings change when its
+values go in is refused. A placeholder used to match any text instead, and the eighth review
+found a title that was only a placeholder matching whatever heading pandoc made at its
+level, so two misreads that cancelled passed. The titles are read by pandoc as well, each a
+numbered paragraph of its own behind a lead made new each build: compared as written,
+`$\beta_{1}$`, `HbA~1c~`, `&amp;`, a comment or a footnote in a title split into other words
+than pandoc's, and the sixth review found each refused. One pandoc makes no paragraph of,
+block HTML in it, is compared in its own words, where the seventh review found it switching
+the check off for every heading of the document. Raw markup and footnotes print no words in
+a heading. A heading in a quotation, a note or a figure is left out on both sides, the
+gates reading none there by design; one in a list, a definition or a table is the
+document's, and the seventh round's leaving those out too passed `1. # Results` with a
+claim under it, which the gates read under the heading before (the eighth). The header's
+metadata is read on its own: read with the titles and the definitions they refer to, a
+footnote's definition holding a YAML block set a title there too, and the whole text
+matched it (the eighth). The lists are aligned, so a refusal names the heading, with the
+file and line of one the gates read. Pandoc's reading is walked without recursion, and a
+document nested too deep for Python's JSON reader, two thousand divs, is refused.
 
-It costs two more runs of pandoc's reader a document. It guards the document, not `check`:
-a source the build refuses can still pass `check`, and a number a misread hides from G2
-without touching metadata or headings is not compared. A refused build removes the
-document the last one left in build/, which is not this source's, so that it is not sent
-or packed; a refused supplement fails `build` and `submit` like the paper, and `submit
---document` refuses a pack missing either. Two builds go without asking: `import`'s, since
-the document it rebuilds has already been sent, and refusing there stranded it with the
-co-author holding it; and the annotated copy, marked up for the author to read, whose
-marks change how a subscript or a code span reads.
+It costs two more runs of pandoc's reader a document, and one on the header, kept for the
+next document with the same header. It guards the document, not `check`: a source the
+build refuses can still pass `check`, and a number a misread hides from G2 without touching
+metadata or headings is not compared. A refused build removes the document the last one
+left in build/, which is not this source's, so that it is not sent or packed; a refused
+supplement fails `build` and `submit` like the paper, and `submit --document` refuses a pack
+missing either, taking the supplement beside the document, or else the one in build/. Two
+builds go without asking: `import`'s, since the document it rebuilds has already been sent,
+and refusing there stranded it with the co-author holding it; and the annotated copy, marked
+up for the author to read, whose marks change how a subscript or a code span reads.
 
 ## Zotero is never on the critical path
 

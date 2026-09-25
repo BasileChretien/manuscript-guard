@@ -21,7 +21,6 @@ subject matter.
 from __future__ import annotations
 
 import os
-import re
 import sys
 import time
 from collections.abc import Callable
@@ -84,23 +83,6 @@ def test_the_fence_scanner_is_linear(assert_linear) -> None:
     assert_linear(opener_lines, fenced_spans, 500, "the fence scanner")
 
 
-def quadratic_fence_scan(text: str) -> list[tuple[int, int]]:
-    """Each opener searches the rest of the text for its closer, as the first attempt at
-    unterminated fences did. The search runs at C speed, so on small inputs the linear
-    part weighs as much as the quadratic one: 4x the input read 8 to 11 at 2,000 lines."""
-    spans = []
-    for opener in re.finditer(r"^(`{3,}|~{3,})", text, re.MULTILINE):
-        closer = text.find(f"\n{opener.group(1)}\n", opener.end())
-        spans.append((opener.start(), len(text) if closer < 0 else closer))
-    return spans
-
-
-def test_the_linear_check_fails_a_quadratic_scan(assert_linear) -> None:
-    """The check has to fail the regression it exists for, not just pass what is linear."""
-    with pytest.raises(AssertionError, match="the time; linear is 8, quadratic 64"):
-        assert_linear(opener_lines, quadratic_fence_scan, 500, "a quadratic fence scan")
-
-
 def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
     """A ratio of microseconds is noise, so a size that never reaches the floor is an error
     in the test, not a pass."""
@@ -149,9 +131,10 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
     assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
-# The check's handling of noise, on a clock that only the job below moves. Each test is a
-# change to the check that the real scans above cannot see: they pass it whichever way it
-# goes, because a real machine is not noisy on cue.
+# The check itself, on a clock that only the job below moves: that it fails a quadratic,
+# and how it handles noise. Each test is a change to the check that the real scans above
+# cannot see, because a real machine is neither quadratic nor noisy on cue. A real quadratic
+# scan was timed here too, and cost more CI time than it told: the one below is exact.
 
 
 def virtual_job(
@@ -219,8 +202,9 @@ def test_the_two_sizes_are_timed_in_alternation(assert_linear) -> None:
 def test_the_bound_fails_a_quadratic_part_of_a_seventh(
     assert_linear, share: float, fails: bool
 ) -> None:
-    """A job whose quadratic part is `share` of its time on the smaller input reads
-    8 + 56 * share: 19.2 at a fifth, which fails, and 13.6 at a tenth, which passes."""
+    """The check has to fail the regression it exists for, not just pass what is linear. A
+    job whose quadratic part is `share` of its time on the smaller input reads 8 + 56 *
+    share: 19.2 at a fifth, which fails, and 13.6 at a tenth, which passes."""
 
     def seconds(n: int) -> float:
         return 0.024 * ((1 - share) * n / 1000 + share * (n / 1000) ** 2)

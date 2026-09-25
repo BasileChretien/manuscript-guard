@@ -385,11 +385,13 @@ Two modes, and the choice is a fact about the machine rather than a preference:
 - **offline** — pandoc `--citeproc` against a committed `literature/references.bib` and a
   CSL style. Citations become formatted text rather than live fields. This is what a
   co-author without Zotero gets, and what CI builds with, and it is why the `.bib` is
-  committed rather than exported on demand. CI installs pandoc 3.9.0.2 and sets
-  `MANUSCRIPT_GUARD_REQUIRE_PANDOC` to it, so the suite refuses to start there without that
-  pandoc. Until it did, CI had none: every test that needs pandoc skipped on every job, and
-  each job passed. `manuscript-guard sync-bib` rewrites it from Zotero, containing exactly the
-  keys the manuscript cites.
+  committed rather than exported on demand. `manuscript-guard sync-bib` rewrites the `.bib`
+  from Zotero, containing exactly the keys the manuscript cites.
+
+CI installs the pandoc version pinned as `MANUSCRIPT_GUARD_REQUIRE_PANDOC` in
+`.github/workflows/ci.yml`, and with that variable set the test suite refuses to start
+unless that pandoc is on PATH. Until it did, no test job had pandoc: every test that needs
+it skipped on every job, and each job passed.
 
 `zotero.lua` is fetched and cached under `build/.cache/` rather than vendored: it belongs to
 Better BibTeX and tracks its behaviour, so a pinned copy would go stale.
@@ -1613,8 +1615,9 @@ so a cut in the wrong place shows.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
-- **One pandoc version is tested.** CI pins 3.9.0.2, the version the tests that assert on
-  pandoc's output were written against, and refuses to run with any other. An author's
+- **One pandoc version is tested.** CI pins one, in `.github/workflows/ci.yml`: the version
+  the tests that assert on pandoc's output were written against. It refuses to run the
+  suite with any other. An author's
   pandoc may be older or newer, and nothing here checks that the build and the import
   behave the same with it.
 - **Digests are byte-level, so line endings are part of the guarantee.** `.gitattributes`

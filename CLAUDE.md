@@ -23,14 +23,15 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # ~1470 tests, ~18 min (R, Zotero, Claude Code, pandoc tests skip if absent)
+pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, pandoc tests skip if absent)
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```
 
-CI installs pandoc 3.9.0.2 and sets `MANUSCRIPT_GUARD_REQUIRE_PANDOC=3.9.0.2`, and with that
-set `tests/conftest.py` refuses to start unless that pandoc is on PATH. Set it locally to run
-the suite as CI does; unset, a missing pandoc only skips the tests that need it.
+CI pins a pandoc version as `MANUSCRIPT_GUARD_REQUIRE_PANDOC` in `.github/workflows/ci.yml`,
+installs it, and with that variable set `tests/conftest.py` refuses to start unless that
+pandoc is on PATH. Set it to the same value locally to run the suite as CI does; unset, a
+missing pandoc only skips the tests that need it.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
 `./plugin`). Bump `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace

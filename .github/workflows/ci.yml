@@ -7,12 +7,13 @@ on:
 
 env:
   # The build, the import round trip and the checks on what pandoc prints all need pandoc,
-  # and each skips without it, so a runner without pandoc passed having run none of them.
-  # Each pytest step sets MANUSCRIPT_GUARD_REQUIRE_PANDOC to this version, and conftest.py
-  # then refuses to start unless it is the pandoc on PATH. Pinned, because those tests
-  # assert on pandoc's output and a release may print it differently: this is the version
-  # they were written against.
-  PANDOC_VERSION: "3.9.0.2"
+  # and each skips without it: before this was set, no test job had pandoc, and each passed
+  # having run none of them. Every job installs this version, and with the variable set,
+  # tests/conftest.py refuses to start unless it is the pandoc on PATH. Set here rather
+  # than per step, so a pytest step added later cannot forget it. Pinned, because those
+  # tests assert on pandoc's output and a release may print it differently: this is the
+  # version they were written against.
+  MANUSCRIPT_GUARD_REQUIRE_PANDOC: "3.9.0.2"
 
 jobs:
   test:
@@ -31,15 +32,13 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: r-lib/actions/setup-pandoc@v2
         with:
-          pandoc-version: ${{ env.PANDOC_VERSION }}
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pandoc --version
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
       # -rs names each test that still skips, and why.
       - run: pytest -q -rs
-        env:
-          MANUSCRIPT_GUARD_REQUIRE_PANDOC: ${{ env.PANDOC_VERSION }}
 
   plugin-manifests:
     # Validation reads JSON only: no model and no credentials are involved. Two versions,
@@ -73,10 +72,11 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: jsonlite, digest
+      # test_r_emitter.py calls no pandoc, but every pytest run here runs under the same
+      # requirement, and setup-r-dependencies leaves apt's older pandoc on PATH, which the
+      # requirement refuses. One rule for every job, rather than an exception to remember.
       - uses: r-lib/actions/setup-pandoc@v2
         with:
-          pandoc-version: ${{ env.PANDOC_VERSION }}
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pip install -e ".[dev]"
       - run: pytest -q tests/test_r_emitter.py
-        env:
-          MANUSCRIPT_GUARD_REQUIRE_PANDOC: ${{ env.PANDOC_VERSION }}

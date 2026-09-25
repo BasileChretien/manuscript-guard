@@ -106,7 +106,8 @@ def test_every_abuse_test_passes() -> None:
     # ignored - but a missing external tool is an environment fact, not missing coverage,
     # and on a machine without pandoc some of these skip. Where pandoc is required, as CI
     # requires it, a pandoc skip is not an environment fact: it is what the requirement is
-    # there to catch.
+    # there to catch. conftest.py already refuses such a run; this is the backstop, for a
+    # skip that names pandoc for some other reason.
     reasons = re.findall(r"^SKIPPED \[\d+\] ([^\n]+)$", finished.stdout, re.MULTILINE)
     required = os.environ.get("MANUSCRIPT_GUARD_REQUIRE_PANDOC", "").strip()
     unexplained = [

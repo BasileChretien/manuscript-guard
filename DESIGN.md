@@ -989,7 +989,8 @@ missed:
   bracketed citation whole once hid the one in `[@key, which reported 9.99]`. The audit's
   own rule for a printed marker such as `[12]` no longer takes a `]` before it: with one,
   `3.40][12]` was a single match, and a bound closed by a bracket and written hard against
-  the marker went unaudited. A value glued to the marker itself still does; see Known gaps.
+  the marker went unaudited. A value glued to the marker, and a bracketed whole-number
+  interval after its value, are audited too now; see Known gaps.
 - **Table captions and column headers were checked by nothing** — not by the emitter, not by
   `verify`. Both render with the table.
 
@@ -2440,19 +2441,30 @@ Closed since, and why each mattered:
   run wherever it stands, so an identifier written across one, `x]y2`, would be read as
   `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
   its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
-- **The audit files a value glued to a Vancouver marker as part of the citation.** The
+- **The audit tells a Vancouver marker from a value by shape and position.** The
   `numbered-citation` rule spans the word before a marker, since an atom runs to the next
-  space, and that prefix takes digits so that `2026.1)[15]` and `(2019)[4]` pass. So in
-  `(95% CI 1.20, 9.99)[12]`, `9.99[12]` or `45%[12]` the value is never compared with the
-  outputs, an ordinary way to print a result in a numbered-reference journal. Cutting atoms
-  at a `]` adds spellings such as `3.40]+9.99[12]`, where the whole run used to be reported
-  and `9.99` is now filed with the marker; with a space after the `]` it always was.
-  Narrowing the prefix would report the version and year forms instead. The rule also no
-  longer passes a marker after a one-word bracket, `[SmPC][4]` or `[sic][3]`: that run
-  opens with its own `[`, is not cut, and is reported, a false positive. And its brackets
-  take any run of whole numbers, so a median and interquartile range written with whole
-  bounds, `64 [55-72]` or `64 [55, 72]`, or a stay of `7 [4-12] days`, is read as a
-  citation and never audited, as on main; only a bracketed decimal is left alone.
+  space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
+  9.99)[12]` or `45%[12]`, was filed with the citation and never audited. The prefix takes
+  no decimal digit now, and the audit reads a number glued to a marker apart from it, but
+  only in a run the rule once took whole, its marker closed: that rule hid every number in
+  it, so reading one apart can only add to what is compared. A run it never took is listed
+  whole, as it always was, a correct value with it: `OR=3[1,20-9,99]`, `(N=2004)[4]`,
+  `2,51[1,20-9,99]`, `(Q1–Q3)[55–72]`. Splitting those handed the bracket to the marker
+  rule, and an interval's bounds were filed as a citation. A number read apart is not filed
+  by either audit-only citation rule, bar a year, as the author-year rule filed the `9.99`
+  of `(2019; 95% CI 1.20, 9.99)[12]`; the other rules still apply, so `(Smith 2019, p.
+  12)[5]` is a page. The cost, chosen: a number that is no result, the version in `(OEP
+  2026.1)[15]`, is listed. A year is still a citation where the author-year rule reads one,
+  `(2019)[4]`, and listed where it does not, `in 2019[5]`. A marker after a bracketed word,
+  `[SmPC][4]`, is listed, as it was: allowing that bracket took a number written into it or
+  after it, `[x]½[12]`, and an interval, `[IQR][55-72]`, with the citation. The brackets
+  take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`, was a
+  citation too. It is read as an interval when its bounds enclose the value written just
+  before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
+  misses: an interval separated from its value, `64 years [55-72]`, or after a value written
+  with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
+  [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
+  `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

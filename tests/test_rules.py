@@ -23,6 +23,7 @@ must leave alone.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -79,8 +80,12 @@ def test_every_rule_declares_what_it_must_not_absorb() -> None:
         f"Every shipped rule needs both what it accepts and a real measurement it must not."
     )
 
+    # A reject naming no atom tests the pattern's shape, not a measurement, so it does not
+    # count: every rule needs one real number it must leave alone.
     without_rejects = sorted(
-        rule_id for rule_id, spec in DECLARED.items() if not spec.get("rejects")
+        rule_id
+        for rule_id, spec in DECLARED.items()
+        if not any(case.get("atom") is not None for case in spec.get("rejects") or [])
     )
     assert not without_rejects, (
         f"rules with no `rejects` case: {without_rejects}. Six rules have already had to be "
@@ -129,3 +134,28 @@ def test_a_rule_leaves_a_real_measurement_alone(rule_id: str, text: str, atom: s
         f"{atom!r} in {text!r} was absorbed by {verdict.rule!r} as {verdict.kind}. "
         f"It is a measurement and must be bound to a source."
     )
+
+
+def _shapes(kind: str):
+    """The cases that name no atom: a rule for a line with no number in it, such as a
+    table's separator row, has none to classify. They used to be skipped, so the one such
+    rule was never tested at all."""
+    out = []
+    for rule_id, spec in sorted(DECLARED.items()):
+        for number, case in enumerate(spec.get(kind) or []):
+            if case.get("atom") is None:
+                out.append(pytest.param(rule_id, case["text"], id=f"{rule_id}:{number}"))
+    return out
+
+
+@pytest.mark.parametrize(("rule_id", "text"), _shapes("accepts"))
+def test_a_rule_matches_the_shape_it_is_for(rule_id: str, text: str) -> None:
+    pattern = re.compile(RULES[rule_id]["pattern"], re.MULTILINE)
+    assert pattern.fullmatch(text), f"{rule_id} should match {text!r}"
+
+
+@pytest.mark.parametrize(("rule_id", "text"), _shapes("rejects"))
+def test_a_rule_does_not_match_what_it_is_not_for(rule_id: str, text: str) -> None:
+    pattern = re.compile(RULES[rule_id]["pattern"], re.MULTILINE)
+    found = pattern.search(text)
+    assert found is None, f"{rule_id} matched {found.group()!r} in {text!r}"

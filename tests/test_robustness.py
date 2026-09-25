@@ -141,6 +141,27 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
     assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [" " * 20000, " " * 20000 + "x", "     \n" * 400, " |" * 10000 + "x"],
+    ids=["one line of spaces", "spaces then a letter", "lines of spaces", "spaces and pipes"],
+)
+def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
+    """`table-alignment-row` was `^\\s*\\|?[\\s:|-]+\\|[\\s:|-]*$`. Its three pieces could all
+    take the same spaces, and `\\s` took line breaks too, so the scan backtracked over every
+    way of sharing them out: one line of 20,000 spaces took about 7 s, and 400 lines holding
+    only spaces about 9 s. `check` scans every manuscript file with every rule.
+
+    Whitespace alone, which this rule stalled on. Other rules stall on a keyword followed by a
+    long run of spaces, "age" and 800 spaces say, and are not covered here."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load()
+    started = time.perf_counter()
+    classifier.scan(text)
+    assert time.perf_counter() - started < 2.0
+
+
 # ---------------------------------------------------------------- hostile files
 
 

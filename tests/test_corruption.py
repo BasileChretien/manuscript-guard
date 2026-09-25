@@ -1687,3 +1687,29 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Path) -> None:
+    """A `<!--` in a listing is code to pandoc. The placeholder parser on main read it as a
+    comment that ran on to a later note's `-->`, so the binding between was never
+    substituted, and the document printed `{{results.ror.point}}` while `check` passed.
+    `test_comments.py` holds the parser to it; this holds the build, end to end. A listing
+    of HTML is an ordinary thing to write, so the build must print the value, not refuse."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    ticks = "`" * 3
+    source.write_text(
+        f"{text}\n# Appendix\n\n{ticks}html\n<!-- a comment left open in a listing\n{ticks}\n\n"
+        "The reporting odds ratio was {{results.ror.point}}.\n\n<!-- a later note -->\n",
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+    assert "{{results.ror.point}}" not in built
+    value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
+    assert f"The reporting odds ratio was {value}." in built

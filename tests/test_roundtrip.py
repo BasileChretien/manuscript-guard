@@ -502,18 +502,27 @@ def test_a_definition_under_an_empty_line_below_a_line_of_spaces_is_left_alone(
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    "space", [chr(0xA0), chr(0x3000), chr(12)], ids=["no-break", "full-width", "form-feed"]
+    "between",
+    [
+        f"\n{chr(0xA0)}\n",
+        f"\n{chr(0x3000)}\n",
+        f"\n{chr(12)}\n",
+        f"\n\n    {chr(0xA0)}\n",
+        f"\n\n\t{chr(0x3000)}\n",
+    ],
+    ids=["no-break", "full-width", "form-feed", "indented-no-break", "tab-full-width"],
 )
-def test_a_note_over_a_line_pandoc_does_not_take_for_blank_is_marked(space: str) -> None:
-    """A note runs on through every line pandoc does not take for blank. Under a line
-    holding only a no-break or full-width space, the next paragraph went into the footnote
-    and left the body, and a co-author's edit to it was dropped with nothing said."""
+def test_a_note_over_a_line_pandoc_does_not_take_for_blank_is_marked(between: str) -> None:
+    """A note runs on through every line pandoc does not take for blank, and past a blank
+    line into an indented one. Under a line holding only a no-break or full-width space -
+    directly, or indented after a blank line - the next paragraph went into the footnote and
+    left the body, and a co-author's edit to it was dropped with nothing said."""
     import json
     import subprocess
 
     from manuscript_guard.roundtrip import tag
 
-    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n{space}\nIt was rare.\n"
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.{between}It was rare.\n"
     read = subprocess.run(
         ["pandoc", "-f", "markdown", "-t", "json"],
         input=tag(text, "main.md"),
@@ -522,8 +531,23 @@ def test_a_note_over_a_line_pandoc_does_not_take_for_blank_is_marked(space: str)
         encoding="utf-8",
         check=True,
     )
-    paragraphs = [b for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
-    assert len(paragraphs) == 2
+    blocks = json.loads(read.stdout)["blocks"]
+    notes: list[dict] = []
+
+    def gather(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("t") == "Note":
+                notes.append(node)
+            for value in node.values():
+                gather(value)
+        elif isinstance(node, list):
+            for value in node:
+                gather(value)
+
+    gather(blocks)
+    assert not any("rare" in json.dumps(note) for note in notes), "it ran into the note"
+    paragraphs = [b for b in blocks if b["t"] == "Para"]
+    assert any("rare" in json.dumps(paragraph) for paragraph in paragraphs)
     assert all("mg-p-" in json.dumps(paragraph) for paragraph in paragraphs)
 
 
@@ -546,13 +570,17 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
         for name, (path, _text, _start) in tagged_paragraphs(loaded).items()
         if path.name == "definitions.md"
     }
-    marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "definitions.md")))
+    tagged = tag(text, "definitions.md")
+    marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged))
     assert marked == known
     # Every block that is not a definition, the definition directly under the full-width
     # space (not the one with an empty line between), and the note over the no-break space
     # and the paragraph after it.
     expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 3
     assert len(marked) == expected
+    assert f"\n\n[later]: {REGISTRY}" in tagged
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[late\]", tagged)
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[\^runs\]", tagged)
 
 
 #: (block, the paragraph under its headings that carries the identifier, or None) - read off

@@ -197,6 +197,8 @@ FRONT_MATTER_CASES = {
     "after a blank first line": "\n---\ntitle: T\n---\n\nProse 9.99.\n",
     "after a line of spaces": "   \n---\ntitle: T\n---\n\nProse 9.99.\n",
     "a blank first line, then a rule": "\n---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "a tab after a key": "---\ntitle:\tT\n---\n\nProse 9.99.\n",
+    "a tab indenting a value": "---\nabstract: |\n\tA tabbed line.\n---\n\nProse 9.99.\n",
 }
 # Pandoc keeps a header holding only a comment as empty metadata: nothing in `meta`, and
 # nothing printed either.

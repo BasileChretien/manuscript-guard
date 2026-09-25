@@ -33,8 +33,9 @@ _FRONT_MATTER_BLOCK = re.compile(
     r"(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
     re.DOTALL,
 )
-# Nesting deeper than this is nobody's metadata. Composing thousands of levels took seconds
-# before the pure-Python loader hit the recursion limit.
+# Nesting deeper than this is nobody's metadata. Composing thousands of levels of brackets
+# took seconds before the pure-Python loader hit the recursion limit. The count is rough: it
+# does not know quotes or block scalars, and does not see nesting made by indentation.
 _YAML_DEPTH = 100
 _SEQUENCE_ITEMS = re.compile(r"(?:[ \t]*-(?:[ \t]+|$))+")
 
@@ -55,27 +56,42 @@ def _nesting(yaml_text: str) -> int:
     return deepest
 
 
-@lru_cache(maxsize=64)
-def _is_metadata(yaml_text: str) -> bool:
-    """Whether pandoc keeps this YAML as metadata: a mapping, or nothing at all.
+@lru_cache(maxsize=256)
+def _read_yaml(yaml_text: str) -> tuple[bool, str]:
+    """Whether pandoc keeps this YAML as metadata, and why it cannot read it at all.
 
-    Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
-    `date: 2026-02-30`, and nothing here needs the values. With the pure-Python loader, as
-    the C one overflowed its stack on deep nesting. A comment alone, or a null, is empty
-    metadata to pandoc.
+    Metadata is a mapping, or nothing: a comment alone, or a null. The second item is empty
+    unless the text is not YAML, which pandoc refuses to build. Composed, not loaded:
+    constructing values raises on YAML pandoc accepts, such as `date: 2026-02-30`, and
+    nothing here needs the values. With the pure-Python loader, as the C one overflowed its
+    stack on deep nesting. Tabs are expanded first, every four columns, as pandoc expands
+    them before it reads the YAML: PyYAML refuses `title:<tab>A study`, which pandoc reads.
     """
     import yaml
 
     if _nesting(yaml_text) > _YAML_DEPTH:
-        return False
+        return False, ""
     try:
-        node = yaml.compose(yaml_text, Loader=yaml.SafeLoader)
-    except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
-        return False
+        node = yaml.compose(yaml_text.expandtabs(4), Loader=yaml.SafeLoader)
+    except Exception as exc:  # noqa: BLE001 - any failure to parse is "not metadata"
+        return False, " ".join(str(exc).split())[:200] or type(exc).__name__
     empty = node is None or (
         isinstance(node, yaml.ScalarNode) and node.tag == "tag:yaml.org,2002:null"
     )
-    return empty or isinstance(node, yaml.MappingNode)
+    return empty or isinstance(node, yaml.MappingNode), ""
+
+
+def front_matter_problem(text: str) -> str:
+    """Why pandoc cannot read the YAML block that opens `text`; empty when it can, or when
+    nothing there looks like one.
+
+    Such a block is not front matter, and pandoc refuses to build the file. Left in the body
+    for pandoc to refuse, it never was: the identifier in front of its first paragraph made
+    it prose, the build printed the YAML as text, and the gates read a `# Methods` in it as a
+    heading. So the gates and the build report it instead, and stop.
+    """
+    found = _FRONT_MATTER_BLOCK.match(text)
+    return _read_yaml(found.group("yaml"))[1] if found else ""
 
 
 class _FrontMatter:
@@ -87,12 +103,13 @@ class _FrontMatter:
     to the next rule, where the text between is not YAML, and pandoc refuses the file. The
     pattern alone took all of these for front matter, and the build stripped them: with a
     rule further down, an Introduction under an unclosed header vanished from the document
-    with no warning. They are left where pandoc prints them, or refuses them.
+    with no warning. What pandoc prints is left in the body; what it refuses is reported by
+    `front_matter_problem`.
     """
 
     def match(self, text: str) -> re.Match[str] | None:
         found = _FRONT_MATTER_BLOCK.match(text)
-        if found is None or not _is_metadata(found.group("yaml")):
+        if found is None or not _read_yaml(found.group("yaml"))[0]:
             return None
         return found
 

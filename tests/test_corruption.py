@@ -1155,9 +1155,6 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         # A rule, not front matter: the heading prints.
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
-        # A comment on the YAML's first line makes it not YAML at all: pandoc refuses the
-        # file, and the build leaves it for pandoc to refuse, so both read a heading.
-        (f"---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
         (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
         (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
@@ -1212,6 +1209,37 @@ def test_the_front_matter_never_takes_the_body_with_it(text: str) -> None:
     assert "The first reports came in 2019." in body
     assert "Introduction" in headings(body)
     assert headings(body) == headings(text)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n",
+        "---\ntitle: A study\n\n# Methods\n\nCases were compared with non-cases.\n\n---\n",
+        "---\ntitle: Reporting of hepatic injury: a study\n---\n",
+    ],
+    ids=["a comment on its first line", "never closed before a rule", "an unquoted colon"],
+)
+def test_a_header_pandoc_cannot_read_stops_check_and_the_build(
+    project: Path, header: str
+) -> None:
+    """A header pandoc cannot read as YAML was left in the body, for pandoc to refuse. It
+    never did: the identifier in front of the header's first paragraph made it prose, the
+    build printed the YAML as text and exited 0, and the gates read the `# Methods` in it as
+    a heading, so `p < 0.001` under it passed as the alpha chosen in advance. Both now stop
+    and name the YAML's error."""
+    from manuscript_guard.build.assemble import assemble
+
+    source = main_md(project)
+    body = source.read_text(encoding="utf-8").split("\n---\n", 1)[1]
+    source.write_text(
+        header + "\nThe excess was significant (p < 0.001).\n" + body, encoding="utf-8"
+    )
+    assert "front-matter-unreadable" in codes(gate_report(project))
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    _assembled, built = assemble(projekt, namespace, results)
+    assert "front-matter-unreadable" in codes(built)
 
 
 @pytest.mark.parametrize(

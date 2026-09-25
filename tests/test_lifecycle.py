@@ -110,6 +110,8 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         (f'\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
         (f'\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
         (f'  \n\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        # Pandoc expands tabs before it reads the YAML, which PyYAML refuses after a colon.
+        (f"---\ntitle:\tA paper\n---\n\n{_BODY}", _BODY, "A paper"),
         # No front matter: a rule at the top, and a block that never closes.
         (f"---\n\n{_BODY}", f"---\n\n{_BODY}", ""),
         ('---\ntitle: "A paper"\n\nText.\n', '---\ntitle: "A paper"\n\nText.\n', ""),
@@ -125,6 +127,7 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         "behind a byte-order mark",
         "after a blank first line",
         "after a line of spaces and a blank line",
+        "a tab after a key",
         "a rule at the top",
         "never closed",
         "no front matter",

@@ -20,7 +20,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.text.masking import fenced_blocks, mask
+from manuscript_guard.text.masking import fenced_blocks, front_matter_problem, mask
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -101,6 +101,12 @@ def check_numbers(
         text = path.read_text(encoding="utf-8")
         loose = 0
         headings = heading_index(text)
+
+        # Read as prose until it is fixed, a `# Methods` in it heads a section here while
+        # pandoc refuses the whole file; see `front_matter_problem`.
+        problem = front_matter_problem(text)
+        if problem:
+            report = report.with_findings(unreadable_header(path, problem, GATE))
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -331,6 +337,21 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
 #: A sentence, for judging whether two bindings are quoted as one interval. Line breaks do
 #: not end one: every manuscript here is hard-wrapped.
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def unreadable_header(path: Path, problem: str, gate: str) -> Finding:
+    """A file that opens with a `---` block pandoc cannot read as YAML, and so refuses."""
+    return Finding(
+        gate=gate,
+        code="front-matter-unreadable",
+        message="the block at the top of this file opens like YAML front matter, and "
+        "pandoc cannot read it as YAML, so it refuses to build the paper",
+        path=path,
+        line=1,
+        context=problem,
+        hint="fix the YAML, or close the header with `---` or `...` before the text "
+        "starts; a line of dashes meant as a rule needs a blank line under it",
+    )
 
 
 def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text: str) -> Report:

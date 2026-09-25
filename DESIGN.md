@@ -180,8 +180,12 @@ stamp cannot tell the two documents apart: both are built from the same sources 
 the same one. The paragraph identifiers can, because each names its source file. A document
 whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
 the supplement, and one whose identifiers all come from the paper with a build of the paper.
-One carrying both, because a paragraph was pasted across, is refused: neither build accounts
-for it. So is one carrying none in a project that has a supplement, since it could be either.
+One carrying both is refused: neither build accounts for it. Word drops the identifier of a
+single paragraph it pastes, so only two or more paragraphs pasted across bring one along. A
+document carrying none is refused too when the project has a supplement, since it could be
+either. Whether there is a supplement is read from the source files: a supplement of
+headings and tables carries no identifier, and read from the identifiers it was taken for no
+supplement, so its document was compared with the paper.
 
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
@@ -2181,10 +2185,15 @@ Closed since, and why each mattered:
   not refused, and until now were not mentioned; the count of what went unexamined is
   printed, which is a report rather than a fix. A number corrected in a table is the case
   that matters, because that is where a stale number is likeliest to be.
-- **Text moved between the paper and its supplement is refused, never applied.** The two are
-  built and imported as separate documents, so a paragraph pasted from one into the other
-  brings an identifier the other's build does not have. The whole document is refused and
-  the author makes the move in the .md.
+- **Text moved between the paper and its supplement is not applied.** The two are built and
+  imported as separate documents. Word drops the identifier of a single pasted paragraph, so
+  one paragraph pasted from one into the other comes back as new text, which import does
+  not examine: "nothing came back", with the paragraph counted among those without an
+  identifier. Two or more bring the later ones' identifiers, and the whole document is
+  refused. Either way, the author makes the move in the .md.
+- **A supplement of headings, tables and figures cannot be imported.** It carries no
+  paragraph identifier, so its document is refused as one that could be either, even when
+  it comes back untouched. It holds nothing import compares.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval

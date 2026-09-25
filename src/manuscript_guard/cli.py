@@ -307,9 +307,11 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     The paragraph identifiers a document carries say which one it is, because each names its
     source file; the source stamp cannot, since both documents carry the same one. A document
     carrying neither kind is refused when the project has a supplement, because it could be
-    either, and compared with the paper when it has none.
+    either, and compared with the paper when it has none. Whether there is a supplement is
+    read from the source files: read from the identifiers, a supplement of headings and tables,
+    which has none, was taken for no supplement, and compared with the paper.
     """
-    from manuscript_guard.gates.numbers import is_supplementary
+    from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     manuscript_dir = project.path("manuscript")
     kinds = {
@@ -318,12 +320,14 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
         for identifier in block.names
         if identifier in known
     }
-    if not kinds and any(is_supplementary(manuscript_dir, path) for path, *_ in known.values()):
+    has_supplement = any(is_supplementary(manuscript_dir, p) for p in source_files(manuscript_dir))
+    if not kinds and has_supplement:
         print(
             f"{name} carries no paragraph identifier this manuscript knows, so there is no "
             f"telling whether it is the manuscript or its supplement, and import compares "
-            f"paragraphs only through those identifiers. Nothing was imported: import the "
-            f"document the co-author was sent, edited in place."
+            f"paragraphs only through those identifiers. Nothing was imported. A supplement of "
+            f"headings, tables and figures carries none, and holds nothing import compares; "
+            f"otherwise, import the document the co-author was sent, edited in place."
         )
         return None
     if kinds == {True, False}:
@@ -395,6 +399,9 @@ def cmd_import(args: argparse.Namespace) -> int:
     known = tagged_paragraphs(project)
     supplementary = _which_document(project, known, returned, edited.name)
     if supplementary is None:
+        # The comments need no identifier to be read, and are the most useful thing in the
+        # document: refusing the edits is no reason to drop them.
+        _report_comments(comments)
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
@@ -447,13 +454,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         if plan.merged:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
-    for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
-    if comments:
-        print(
-            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
-        )
+    _report_comments(comments)
 
     if unexamined:
         print(f"\n{unexamined}")
@@ -469,6 +470,17 @@ def cmd_import(args: argparse.Namespace) -> int:
         not args.apply and bool(plan.moved or plan.merged)
     )
     return 1 if outstanding else 0
+
+
+def _report_comments(comments) -> None:
+    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    for comment in comments:
+        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+    if comments:
+        print(
+            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
+            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
+        )
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool) -> None:

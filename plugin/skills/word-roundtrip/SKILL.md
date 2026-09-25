@@ -33,8 +33,10 @@ manuscript-guard build --offline
 - Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
   reading too. Each comes back as its own file and is imported on its own: `import` reads
   from the paragraph identifiers which of the two it is, and compares it with a fresh build
-  of that one. A paragraph pasted from one document into the other is refused, and so is a
-  document that has lost every identifier; move text between them in the .md.
+  of that one. Text pasted from one document into the other is not applied: one paragraph
+  comes back as new text, which import does not examine, and several are refused. Move
+  text between them in the .md. A document that has lost every identifier is refused, and
+  so is a supplement of only headings, tables and figures, which holds nothing to compare.
 - Do not send `manuscript.annotated.docx` to anyone who will edit it. It carries no source
   stamp and no paragraph identifiers, so nothing in it can come back. It is for someone who
   needs to see where each number came from.

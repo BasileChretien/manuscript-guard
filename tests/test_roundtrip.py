@@ -3263,7 +3263,8 @@ def test_a_supplement_that_comes_back_is_compared_with_the_supplement(
 def test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_refused(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A paragraph pasted from the paper into the supplement brings its identifier with it.
+    """Two paragraphs pasted from the paper into the supplement bring the second one's
+    identifier with them; Word drops the first one's, as it drops a single paragraph's.
     Compared with either document alone, the other's paragraphs read as deleted or moved;
     nothing in it is imported, and the refusal says why."""
     from manuscript_guard.cli import main
@@ -3271,7 +3272,9 @@ def test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_
     assert main(["build", str(project), "--offline"]) == 0
     with zipfile.ZipFile(project / "build" / "manuscript.docx") as archive:
         paper = archive.read("word/document.xml").decode("utf-8")
-    pasted = tagged_xml(paper)[1]
+    first, second = tagged_xml(paper)[1:3]
+    first = re.sub(r'<w:bookmark(Start|End) [^>]*/>', "", first)
+    pasted = first + second
     returned = rewrite(
         project / "build" / "supplementary.docx",
         tmp_path / "both.docx",
@@ -3311,3 +3314,64 @@ def test_a_document_carrying_no_identifier_is_refused_when_there_are_two_it_coul
     assert "deleted in Word" not in out
     assert "no telling whether it is the manuscript or its supplement" in out
     assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+def test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Whether the project has a supplement was read from the paragraphs carrying an
+    identifier, and a supplement of headings and tables has none. Returned untouched, it was
+    compared with the paper, and every paragraph of the paper was reported deleted in Word."""
+    from manuscript_guard.cli import main
+
+    (project / SUPPLEMENT).write_text(
+        "# Supplementary methods\n\n## Table S1. Code lists used to identify the outcome\n\n"
+        "{{table.outcome_codes}}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = shutil.copy(project / "build" / "supplementary.docx", tmp_path / "back.docx")
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+def test_a_document_refused_for_carrying_no_identifier_still_reports_its_comments(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The comments were read and then dropped when the document was refused, and with them
+    the prompt to record them for G11."""
+    from manuscript_guard.cli import main
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    comments = (
+        f'<w:comments xmlns:w="{w}"><w:comment w:id="0" w:author="Co-author" '
+        f'w:date="2026-09-25T10:00:00Z"><w:p><w:r><w:t>Please cite the 2024 review.</w:t>'
+        f"</w:r></w:p></w:comment></w:comments>"
+    )
+    bare = rewrite(
+        built(project),
+        tmp_path / "bare.docx",
+        lambda xml: re.sub(r'<w:bookmarkStart [^>]*w:name="mg-p-[^"]*"\s*/>', "", xml),
+    )
+    returned = tmp_path / "commented.docx"
+    with zipfile.ZipFile(bare) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            if item.filename != "word/comments.xml":
+                zout.writestr(item, zin.read(item.filename))
+        zout.writestr("word/comments.xml", comments)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert "Please cite the 2024 review." in out
+    assert "review/round-<n>/" in out

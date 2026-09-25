@@ -426,6 +426,49 @@ def test_a_comma_written_value_keeps_its_bracket(tmp_path: Path, text: str, boun
     assert any(bound in listed for listed in unmatched), unmatched
 
 
+@pytest.mark.parametrize(
+    ("text", "bound"),
+    [
+        ("The odds were OR=3[1,20-9,99] overall.\n", "9,99"),
+        ("Median stay N=1204[1,100-1,300] days.\n", "1,300"),
+        ("Age 64 (Q1–Q3)[55–72] years.\n", "55–72"),
+    ],
+)
+def test_a_run_the_marker_rule_never_took_whole_is_listed_whole(
+    tmp_path: Path, text: str, bound: str
+) -> None:
+    """Read apart, these left their bracket to the marker rule, which filed the bounds; the
+    rule never took the whole run, so it used to be listed. Only a run the rule took whole
+    is read apart now, and reading one apart can only add to what is compared."""
+    unmatched, _ = _audited(tmp_path, ["3", "64"], text)
+    assert any(bound in listed for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "As reported (Smith 2019, p. 12)[5], rates rose.\n",
+        "Fitted as before (Smith 2019; R 4.3.1)[5] here.\n",
+    ],
+)
+def test_a_number_read_apart_falls_through_to_the_other_rules(tmp_path: Path, text: str) -> None:
+    """The author-year verdict is not taken for a number read apart, but the locator and
+    version rules after it still are: `p. 12` is a page, `R 4.3.1` a version."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert unmatched == [], unmatched
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Rates of 12,5 [4-6] were seen.\n", "In n=1,204 [150-300] records.\n"],
+)
+def test_digits_after_a_comma_are_not_taken_for_the_value(tmp_path: Path, text: str) -> None:
+    """`12,5 [4-6]` read 5 as the value, which the citation range encloses, so the marker
+    was taken for an interval and listed."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert not any(listed in ("4-6", "150-300") for listed in unmatched), unmatched
+
+
 def test_emphasis_before_a_marker_is_a_citation(tmp_path: Path) -> None:
     unmatched, _ = _audited(tmp_path, ["7"], "Infection with _E. coli_[3] was common.\n")
     assert unmatched == [], unmatched

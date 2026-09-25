@@ -2220,13 +2220,17 @@ Closed since, and why each mattered:
   `numbered-citation` rule spans the word before a marker, since an atom runs to the next
   space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
   9.99)[12]` or `45%[12]`, was filed with the citation and never audited. The prefix takes
-  no decimal digit now, and the audit reads a number glued to a marker apart from it; no
-  citation rule may then file that number, bar a year, since inside `(N=2004)[4]` the
-  author-year rule took it for one. The cost, chosen: a number that is no result, the
-  version in `(OEP 2026.1)[15]`, is listed; a year, `(2019)[4]`, is still a citation. A
-  value with a comma between digits, `2,51[1,20-9,99]`, keeps its bracket and is listed
-  whole, as before: that bracket may be a decimal-comma interval, and a marker's shape fits
-  it too. The brackets take any run of whole numbers, so a median [IQR] with whole bounds,
+  no decimal digit now, and the audit reads a number glued to a marker apart from it, but
+  only in a run the rule once took whole: that rule hid every number in it, so reading one
+  apart can only add to what is compared. A run it never took is listed whole, as it always
+  was, a correct value with it: `OR=3[1,20-9,99]`, `(N=2004)[4]`, `2,51[1,20-9,99]`,
+  `(Q1–Q3)[55–72]`. Splitting those handed the bracket to the marker rule, and an interval's
+  bounds were filed as a citation. A number read apart is not filed by either audit-only
+  citation rule, bar a year, as the author-year rule filed the `9.99` of `(2019; 95% CI
+  1.20, 9.99)[12]`; the other rules still apply, so `(Smith 2019, p. 12)[5]` is a page. The
+  cost, chosen: a number that is no result, the version in `(OEP 2026.1)[15]`, is listed. A
+  year is still a citation where the author-year rule reads one, `(2019)[4]`, and listed
+  where it does not, `in 2019[5]`. The brackets take any run of whole numbers, so a median [IQR] with whole bounds,
   `64 [55-72]`, was a citation too. It is read as an interval when its bounds enclose the
   value written just before it, as an interval does and a citation range, `12% [4-6]`,
   does not. What that misses: an interval separated from its value, `64 years [55-72]`, or

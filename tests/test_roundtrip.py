@@ -3458,3 +3458,144 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert now in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------ end to end: a write the next build would not identify
+
+SHAPED = "[x]: https://example.org/xyz"
+
+
+def swapped(first: str, second: str):
+    """A co-author, simulated: the paragraph holding `second` cut and pasted above the one
+    holding `first`."""
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        above = next(p for p in paragraphs if first in p)
+        below = next(p for p in paragraphs if second in p)
+        return xml.replace(below, "", 1).replace(above, below + above, 1)
+
+    return swap
+
+
+@needs_pandoc
+def test_a_move_that_would_make_a_paragraph_a_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the way review of #64 found it. A line in a definition's shape is a
+    paragraph to pandoc under a line holding only a no-break space, so it is marked and
+    printed. Swapped in Word with the paragraph above it, it landed under a real blank line,
+    where the next build read it as a definition and printed nothing of it - while `import
+    --apply` exited 0 and said it had reordered a paragraph. The text stayed in the source;
+    the document lost it."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Alpha comes first.", f"{chr(0xA0)}\n{SHAPED}")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    assert "example.org/xyz" in _docx_part(document, "word/document.xml")
+    returned = rewrite(document, tmp_path / "moved.docx", swapped("Alpha comes", "example.org"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "no identifier" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+    assert "example.org/xyz" in _docx_part(built(project), "word/document.xml")
+
+
+@needs_pandoc
+def test_the_other_changes_beside_a_refused_move_are_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the paragraph the next build would lose is kept back, where it stood; a move and
+    a rewording elsewhere in the same file still land."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Alpha comes first.",
+        f"{chr(0xA0)}\n{SHAPED}",
+        "Beta was second.",
+        "Gamma was third.",
+    )
+    source = project / "manuscript" / "main.md"
+    document = built(project)
+    first = rewrite(document, tmp_path / "one.docx", swapped("Alpha comes", "example.org"))
+    both = rewrite(first, tmp_path / "two.docx", swapped("Beta was", "Gamma was"))
+    returned = edit_docx(both, tmp_path / "back.docx", {"Alpha comes first.": "Alpha came first."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    kept = f"Alpha came first.\n\n{chr(0xA0)}\n{SHAPED}"
+    assert f"{kept}\n\nGamma was third.\n\nBeta was second." in source.read_text(encoding="utf-8")
+    assert "no identifier" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
+    project: Path, tmp_path: Path
+) -> None:
+    """The other way a paragraph could take a definition's shape is typed in Word, and that
+    one never lost anything: the merge escapes the bracket, so the paragraph prints as it was
+    typed and keeps its identifier. Kept here beside the move, which has no such escape."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The registry is at https://example.org/xyz for anyone.")
+    edit = {"The registry is at https://example.org/xyz for anyone.": SHAPED}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert f"\n\n\\{SHAPED}\n\n" in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "example.org/xyz" in _docx_part(built(project), "word/document.xml")
+
+
+def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -> None:
+    """The plan itself, without pandoc: the paragraph is refused with the reason, pinned, and
+    no longer listed as moved, and applying the plan writes nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    source = tmp_path / "main.md"
+    text = f"Alpha.\n\n{chr(0xA0)}\n{SHAPED}\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "x": (source, SHAPED, text.index(SHAPED))}
+    sent = [Block((name,), known[name][1]) for name in known]
+
+    plan = plan_import(known, sent, [sent[1], sent[0]])
+    assert plan.held == {"x"}
+    assert [refusal.name for refusal in plan.refused] == ["x"]
+    assert "no identifier" in plan.refused[0].why[0]
+    assert "x" not in {name for name, _was, _now in plan.moved}
+    apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_write_that_would_cost_another_paragraph_its_identifier_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A paragraph not written keeps its own text, separators and indent, so on its own it
+    cannot lose its identifier; only a write beside it could, and which one cannot be told.
+    Then nothing in that file is written. Simulated, since `tag` has no such rule yet: the
+    next build is made to lose `Gamma.` once `Alpha.` is reworded."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    source = tmp_path / "main.md"
+    text = "Alpha.\n\nGamma.\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "g": (source, "Gamma.", 8)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    marked = merge.marked_blocks
+
+    def losing_gamma(raw: str) -> list:
+        return [block for block in marked(raw) if "Alpha now." not in raw or block[1] != "Gamma."]
+
+    monkeypatch.setattr(merge, "marked_blocks", losing_gamma)
+    plan = merge.plan_import(known, sent, [Block(("a",), "Alpha now."), sent[1]])
+    assert not plan.merged
+    assert plan.held == {"a"}
+    assert "another paragraph" in plan.refused[0].why[0]
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text

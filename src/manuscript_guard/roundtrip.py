@@ -405,27 +405,38 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
     found: dict[str, tuple[Path, str]] = {}
     root = project.path("manuscript")
     for path in source_files(root):
-        relative = path.relative_to(root).as_posix()
-        slug = paragraph_slug(relative)
-        # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing
-        # the raw source here while the document was tagged from the stripped text put every
-        # identifier one block out of step - the two must read the same string or the
-        # identifier stops naming anything.
-        from manuscript_guard.build.assemble import strip_front_matter
-
-        raw = path.read_text(encoding="utf-8")
-        text, _title = strip_front_matter(raw)
-        # Offsets are into the file on disk, not into the stripped copy: the merge splices
-        # into the real file, and a paragraph would land one front matter earlier.
-        cursor = len(raw) - len(text)
-        pieces = re.split(r"(\n\s*\n)", text)
-        for index, para in enumerate(pieces):
-            stripped = para.strip()
-            start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
-            cursor += len(para)
-            if _untagged(para, *_around(pieces, index)):
-                continue
+        slug = paragraph_slug(path.relative_to(root).as_posix())
+        for index, stripped, start in marked_blocks(path.read_text(encoding="utf-8")):
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
+    return found
+
+
+def marked_blocks(raw: str) -> list[tuple[int, str, int]]:
+    """Every block of one source file that `tag` gives an identifier: its place in the
+    split, its text, and where that text starts in `raw`.
+
+    `tagged_paragraphs` reads a file through this, and `import` reads through it the file as
+    it would write it, to refuse a change after which the next build would not find a
+    paragraph again.
+    """
+    # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
+    # raw source here while the document was tagged from the stripped text put every
+    # identifier one block out of step - the two must read the same string or the identifier
+    # stops naming anything.
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    text, _title = strip_front_matter(raw)
+    # Offsets are into the file on disk, not into the stripped copy: the merge splices into
+    # the real file, and a paragraph would land one front matter earlier.
+    cursor = len(raw) - len(text)
+    pieces = re.split(r"(\n\s*\n)", text)
+    found = []
+    for index, para in enumerate(pieces):
+        stripped = para.strip()
+        start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
+        cursor += len(para)
+        if not _untagged(para, *_around(pieces, index)):
+            found.append((index, stripped, start))
     return found
 
 

@@ -27,11 +27,11 @@ from __future__ import annotations
 
 import difflib
 from collections import Counter, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import Alignment, align, moves
+from manuscript_guard.roundtrip import Alignment, align, marked_blocks, moves
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,9 @@ class Plan:
     #: Identifier -> (file, section): the stretch between headings, tables and figures that
     #: the paragraph belongs to, which is what a move is applied within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
+    #: Kept where they stand, unreworded: written as the plan had them, the next build would
+    #: not find them again (see `_identified`). Each is also among `refused`.
+    held: frozenset[str] = frozenset()
 
     @property
     def empty(self) -> bool:
@@ -438,7 +441,7 @@ def plan_import(
     moved = moves([n for n in rendered if n in set(order)], order)
     misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
     moved = [entry for entry in moved if entry[0] not in set(misplaced)]
-    return Plan(
+    plan = Plan(
         reached=frozenset(rendered),
         order=tuple(order),
         merged=merged,
@@ -449,6 +452,7 @@ def plan_import(
         misplaced=tuple(misplaced),
         sections=sections,
     )
+    return _identified(known, plan)
 
 
 _SPLIT = (
@@ -473,6 +477,16 @@ _TOOK_IN = (
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "
     "paragraph cannot be told. Make the edit in the .md."
+)
+_STRANDED = (
+    "where this change would put it, the next build would give it no identifier: pandoc "
+    "would read it there as a link or footnote definition, a heading or a placeholder, and "
+    "print it as that or not at all, and a later edit to it could not come back. It stays "
+    "where it was, as it was. Make the change in the .md."
+)
+_STRANDS = (
+    "with this change, another paragraph in the file would reach the next build without its "
+    "identifier, so none of the changes to this file is applied. Make them in the .md."
 )
 
 
@@ -517,7 +531,9 @@ def why(aligned: Alignment) -> tuple[str, ...]:
     )
 
 
-def _arranged(slots: list[str], order: dict[str, int], fixed: set[str]) -> dict[str, str]:
+def _arranged(
+    slots: list[str], order: dict[str, int], fixed: set[str], pinned: frozenset[str]
+) -> dict[str, str]:
     """Which paragraph each slot of one section receives: slot -> paragraph.
 
     A paragraph with no place of its own in the returned document - deleted in Word, moved
@@ -525,12 +541,14 @@ def _arranged(slots: list[str], order: dict[str, int], fixed: set[str]) -> dict[
     travels with the paragraph it followed in the section, or stays first if it was first.
     It used to keep its slot while the others moved around it, so a move could land between
     the two halves of a join; and anchoring across a heading carried it into the section
-    before.
+    before. A pinned paragraph does keep its slot, and the others are arranged around it:
+    anywhere else, the next build would not find it again.
     """
-    placed = [n for n in slots if n in order and n not in fixed]
+    free = [n for n in slots if n not in pinned]
+    placed = [n for n in free if n in order and n not in fixed]
     followers: dict[str | None, list[str]] = {}
     anchor: str | None = None
-    for name in slots:
+    for name in free:
         if name in placed:
             anchor = name
         else:
@@ -538,15 +556,11 @@ def _arranged(slots: list[str], order: dict[str, int], fixed: set[str]) -> dict[
     sequence = list(followers.get(None, []))
     for name in sorted(placed, key=order.__getitem__):
         sequence += [name, *followers.get(name, [])]
-    return dict(zip(slots, sequence, strict=True))
+    return {**dict(zip(free, sequence, strict=True)), **{n: n for n in slots if n in pinned}}
 
 
-def apply_plan(known: dict, plan: Plan) -> list[Path]:
-    """Write the moves and the rewordings, together, from one snapshot of the offsets.
-
-    Per section of each file, every slot a paragraph occupied receives the paragraph that now
-    belongs there, in its reworded form if it has one. Returns the files that changed.
-    """
+def _occupants(known: dict, plan: Plan) -> dict[Path, list[tuple[str, str]]]:
+    """Per file, each slot a paragraph occupied and the paragraph that now belongs there."""
     order = {name: position for position, name in enumerate(plan.order)}
     fixed = set(plan.misplaced)
     by_section: dict[tuple[Path, int], list[str]] = {}
@@ -555,28 +569,115 @@ def apply_plan(known: dict, plan: Plan) -> list[Path]:
             where = plan.sections.get(name, (path, 0))
             by_section.setdefault(where, []).append(name)
 
-    occupant: dict[str, str] = {}
-    by_file: dict[Path, list[str]] = {}
+    by_file: dict[Path, list[tuple[str, str]]] = {}
     for (path, _section), slots in by_section.items():
-        occupant.update(_arranged(slots, order, fixed))
-        by_file.setdefault(path, []).extend(slots)
+        occupant = _arranged(slots, order, fixed, plan.held)
+        by_file.setdefault(path, []).extend((slot, occupant[slot]) for slot in slots)
+    return by_file
 
-    written = []
-    for path, slots in by_file.items():
-        edits = []
-        for slot in slots:
-            incoming = occupant[slot]
-            _p, original, start = known[slot]
-            replacement = plan.merged.get(incoming, known[incoming][1])
-            if replacement != original:
-                edits.append((start, start + len(original), replacement))
+
+def _edits(known: dict, plan: Plan, occupants: list[tuple[str, str]]) -> list[tuple]:
+    """The splices one file receives, in source order: (start, end, text, paragraph)."""
+    edits = []
+    for slot, incoming in occupants:
+        _p, original, start = known[slot]
+        replacement = plan.merged.get(incoming, known[incoming][1])
+        if replacement != original:
+            edits.append((start, start + len(original), replacement, incoming))
+    return sorted(edits)
+
+
+def _spliced(text: str, edits: list[tuple]) -> str:
+    # Right to left, so an earlier splice cannot move a later one, and at the offsets the
+    # identifiers carry, so a repeated paragraph cannot be confused for its twin.
+    for start, end, replacement, _name in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
+def _unidentified(known: dict, plan: Plan) -> dict[str, str]:
+    """The paragraphs this plan writes that the next build would not find again, each with
+    the reason.
+
+    Each file is worked out as `apply_plan` would write it and read the way `tag` reads it.
+    A paragraph written must be a block `tag` marks, at the offset the splice put it, with
+    the text that was written; one not written must still be marked, with its own text. The
+    first can go wrong on its own: a line in a definition's shape is marked where what
+    surrounds it makes it prose to pandoc, and moved or reworded into a place with blank
+    lines around it, it is a definition that prints nothing. The second can only follow from
+    another write, so then every paragraph written in that file is named.
+    """
+    lost: dict[str, str] = {}
+    for path, occupants in _occupants(known, plan).items():
+        edits = _edits(known, plan, occupants)
         if not edits:
             continue
-        text = path.read_text(encoding="utf-8")
-        # Right to left, so an earlier splice cannot move a later one, and at the offsets
-        # the identifiers carry, so a repeated paragraph cannot be confused for its twin.
-        for start, end, replacement in sorted(edits, reverse=True):
-            text = text[:start] + replacement + text[end:]
+        text = _spliced(path.read_text(encoding="utf-8"), edits)
+        marked = {start: body for _index, body, start in marked_blocks(text)}
+        written = {start: (replacement, name) for start, _end, replacement, name in edits}
+        spoilt = False
+        for slot, _incoming in occupants:
+            _p, original, start = known[slot]
+            shift = sum(len(r) - (e - s) for s, e, r, _n in edits if s < start)
+            body, name = written.get(start, (original, None))
+            if marked.get(start + shift + len(body) - len(body.lstrip())) != body.strip():
+                if name is None:
+                    spoilt = True
+                else:
+                    lost[name] = _STRANDED
+        if spoilt:
+            lost.update({name: _STRANDS for _s, _e, _r, name in edits if name not in lost})
+    return lost
+
+
+def _identified(known: dict, plan: Plan) -> Plan:
+    """The plan without a write the next build would not find again.
+
+    A paragraph whose move or rewording would leave it without an identifier is refused
+    whole - its rewording dropped, and pinned to its own slot - and the rest is worked out
+    again, since the paragraphs around it now fall differently. A pinned paragraph is not
+    written, so each round pins at least one more, and it ends.
+    """
+    held = set(plan.held)
+    merged = dict(plan.merged)
+    refused = {refusal.name: refusal for refusal in plan.refused}
+    while lost := {
+        name: reason
+        for name, reason in _unidentified(
+            known, replace(plan, merged=merged, held=frozenset(held))
+        ).items()
+        if name not in held
+    }:
+        for name, reason in sorted(lost.items()):
+            text = merged.pop(name, known[name][1])
+            earlier = refused.get(name)
+            refused[name] = (
+                Refusal(name, earlier.text, (*earlier.why, reason))
+                if earlier
+                else Refusal(name, text, (reason,))
+            )
+        held |= set(lost)
+    return replace(
+        plan,
+        merged=merged,
+        refused=tuple(refused.values()),
+        moved=tuple(entry for entry in plan.moved if entry[0] not in held),
+        held=frozenset(held),
+    )
+
+
+def apply_plan(known: dict, plan: Plan) -> list[Path]:
+    """Write the moves and the rewordings, together, from one snapshot of the offsets.
+
+    Per section of each file, every slot a paragraph occupied receives the paragraph that now
+    belongs there, in its reworded form if it has one. Returns the files that changed.
+    """
+    written = []
+    for path, occupants in _occupants(known, plan).items():
+        edits = _edits(known, plan, occupants)
+        if not edits:
+            continue
+        text = _spliced(path.read_text(encoding="utf-8"), edits)
         path.write_text(text, encoding="utf-8", newline="\n")
         written.append(path)
     return written

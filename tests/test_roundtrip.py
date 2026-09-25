@@ -278,8 +278,15 @@ def test_identifiers_are_pinned_to_the_tagging_scheme(tmp_path: Path) -> None:
     )
     expected = PINNED[TAGGING_SCHEME]
     found = {name: text for name, text, _at in identified(PINNED_SOURCE, "main.md")}
+    moved = sorted(name for name in found.keys() & expected.keys() if found[name] != expected[name])
+    assert not moved, (
+        f"{moved} now name other text: an identifier moved, so documents already sent out "
+        f"would be merged into the wrong paragraphs. Bump TAGGING_SCHEME, and pin a table "
+        f"for the new scheme"
+    )
     assert found == expected, (
-        "paragraph identifiers changed: bump TAGGING_SCHEME, and pin the new table"
+        "identifiers were added or removed but none moved: re-pin this scheme's table; no "
+        "bump is needed"
     )
     # The document and the import must number alike, or an identifier names nothing. The
     # build tags the source with its front matter stripped.
@@ -370,6 +377,35 @@ def test_an_unmarked_document_built_from_other_text_is_refused_even_with_force(
     assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
     assert path.read_text(encoding="utf-8") == source
     assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
+
+
+@needs_pandoc
+def test_an_identifier_the_manuscript_no_longer_gives_is_named(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A release that tags fewer kinds of block moves no identifier, so it needs no new
+    scheme. But the import walks the manuscript's identifiers, and one the document carries
+    that no paragraph has any longer was skipped without a word: an edit in it went nowhere,
+    and nothing said so."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"This work received no funding.": "This work received no external funding."},
+    )
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip, "_untagged", lambda text: was(text) or text.startswith("This work received")
+    )
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "no paragraph of the manuscript has now" in capsys.readouterr().out
 
 
 @needs_pandoc

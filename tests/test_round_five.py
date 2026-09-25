@@ -257,6 +257,36 @@ def test_an_anchor_is_found_by_its_text_when_a_paragraph_is_added_above_it(
 
 
 @needs_pandoc
+@pytest.mark.parametrize("change", ["heading glued above", "div around it", "blank line gone"])
+def test_an_anchor_is_found_by_its_text_inside_another_block(project: Path, change: str) -> None:
+    """Looked for among tagged paragraphs only, the reviewed paragraph was missed once the
+    revision wrote a heading straight above it, put a div round it, or dropped the blank
+    line under its heading: still there, printed the same, and passed as revised."""
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    by_text = {text: name for name, (_path, text, _at) in known.items()}
+    blocks = whole.split("\n\n")
+    # A paragraph straight under a heading, so every change below has something to act on.
+    index = next(
+        i for i in range(1, len(blocks))
+        if blocks[i - 1].startswith("#") and blocks[i].strip() in by_text
+    )
+    heading, paragraph = blocks[index - 1], blocks[index]
+    _anchored_round(project, known, by_text[paragraph.strip()])
+
+    replaced = {
+        "heading glued above": (paragraph, "## Case definition\n" + paragraph),
+        "div around it": (paragraph, '::: {custom-style="Note"}\n' + paragraph + "\n:::"),
+        "blank line gone": (heading + "\n\n" + paragraph, heading + "\n" + paragraph),
+    }[change]
+    path.write_text(whole.replace(*replaced, 1), encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" in codes(project)
+
+
+@needs_pandoc
 def test_an_anchor_numbered_by_older_rules_is_found_by_its_text(project: Path) -> None:
     """A round opened before 0.2.13 on a source whose front matter opens with a trailing-space
     `---` holds identifiers numbered by the rules of the time. Once the space was trimmed

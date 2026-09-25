@@ -399,6 +399,23 @@ def cmd_import(args: argparse.Namespace) -> int:
     # - is invisible to this command, and saying nothing about that let a co-author believe
     # they had corrected a table when the correction went nowhere.
     unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
+    # An identifier no paragraph of the manuscript has now. A release that tags fewer kinds
+    # of block than the one that built the document leaves them: nothing moved, so no edit
+    # lands in another paragraph, but an edit to one of these is not compared, and it was
+    # skipped without a word.
+    strangers = sorted({n for b in returned if not b.table for n in b.names if n not in known})
+    if strangers:
+        shown = ", ".join(strangers[:5]) + (", …" if len(strangers) > 5 else "")
+        unexamined = "\n  ".join(
+            part
+            for part in (
+                unexamined,
+                f"{len(strangers)} paragraph(s) in {edited.name} carry an identifier no "
+                f"paragraph of the manuscript has now ({shown}), so their edits were not "
+                f"compared. Check them against the manuscript by hand.",
+            )
+            if part
+        )
 
     if plan.empty and not comments:
         print("nothing came back: the document matches the manuscript on disk.")

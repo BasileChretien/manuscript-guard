@@ -47,15 +47,20 @@ _CUSTOM = "docProps/custom.xml"
 #: positional, so a document built under one set of rules and imported under another has
 #: its identifiers naming other paragraphs, and every edit in it lands in the wrong one.
 #: The number travels in the document beside the digest, and a mismatch is refused. Bump it
-#: with any change to `strip_front_matter`, `_untagged` or the split;
+#: with any change that moves an identifier onto another block: where the front matter ends
+#: (`strip_front_matter`), or how the rest splits into blocks.
 #: `test_identifiers_are_pinned_to_the_tagging_scheme` fails until you do, for the
-#: constructs its table holds. (A review round needs no scheme: G13 finds the paragraph a
-#: reviewer commented on by its text.)
+#: constructs its table holds. A change to which blocks are tagged (`_untagged`) needs no
+#: bump: an identifier counts every block, tagged or not, so it adds or removes identifiers
+#: without moving any, and `import` names a paragraph whose identifier the manuscript no
+#: longer gives. (A review round needs no scheme at all: G13 finds the paragraph a reviewer
+#: commented on by its text.)
 #:
 #: 1. Up to plugin release 0.2.12, and never recorded: front matter closed only by `---`
 #:    (`_SCHEME_1_FRONT`).
-#: 2. From 0.2.13: front matter where pandoc ends it (`masking.FRONTMATTER`). Recorded from
-#:    the release after, so a document built by 0.2.13 itself records nothing.
+#: 2. From 0.2.13: front matter where pandoc ends it (`masking.FRONTMATTER`). Recorded only
+#:    from the release that added this constant, so a document built by any release from
+#:    0.2.13 until then records nothing.
 TAGGING_SCHEME = 2
 SCHEME_PROPERTY = "manuscript-guard-tagging"
 
@@ -400,9 +405,10 @@ def renumbered(project) -> dict[str, str]:
     """The source files whose paragraphs scheme 1 numbered differently from this one, as
     their identifier slug and their path within `manuscript/`.
 
-    A document that records no scheme was numbered either under scheme 1 or, if built by
-    0.2.13, under this one. Where the two agree it does not matter which, and it is read as
-    it always was; only these files are a question.
+    A document that records no scheme was numbered either under scheme 1 or, if built by a
+    release from 0.2.13 until the scheme was recorded, under this one. Where the two agree
+    it does not matter which, and it is read as it always was; only these files are a
+    question.
     """
     return {
         paragraph_slug(relative): relative
@@ -437,8 +443,9 @@ def numbering_problem(project, document: Path, *, stale: bool) -> str | None:
     # the text it was built from, and a stale document was built from other text.
     if stale:
         return (
-            "records no numbering scheme and was built from other text than is on disk, so "
-            "there is no checking that its paragraphs are numbered as they are now"
+            "records no numbering scheme and was built from other inputs than are on disk "
+            "(the manuscript, its results, the ledger or the bibliography), so there is no "
+            "checking that its paragraphs are numbered as they are now"
         )
     # Only the files it carries: an identifier names its file, so a supplement read
     # differently now says nothing about the main text's document.

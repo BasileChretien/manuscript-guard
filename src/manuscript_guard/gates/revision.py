@@ -22,6 +22,7 @@ with a claimed revision that did not happen, fails.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_structured, validate
@@ -193,20 +194,51 @@ def _anchor_unchanged(
     if not any(entry["kind"] == "manuscript" for entry in changed):
         return None
 
-    import hashlib
-
-    from manuscript_guard.roundtrip import tagged_paragraphs
-
-    read = paragraphs[where]
-    if any(
-        hashlib.sha256(text.encode("utf-8")).hexdigest() == read
-        for _path, text, _start in tagged_paragraphs(project).values()
-    ):
+    if paragraphs[where] in _passages(project):
         return (
             f"the paragraph this point was attached to ({where}) is unchanged, though the "
             f"response says the manuscript was revised"
         )
     return None
+
+
+#: A line that opens or closes something rather than belonging to a paragraph: a heading, or
+#: a code fence or div marker.
+_STRUCTURAL = re.compile(r"^[ ]{0,3}(?:#|:::|```|~~~)")
+
+
+def _passages(project: Project) -> set[str]:
+    """The hash of every stretch of the manuscript that could be a paragraph a reviewer read.
+
+    Each block between blank lines, and each run of a block's lines between headings and
+    fence or div markers. The tagged paragraphs alone missed one the revision had written a
+    heading straight above, put a div round, or run on under its heading by dropping a blank
+    line: still in the manuscript, printed the same, and passed as revised.
+    """
+    import hashlib
+
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.gates.numbers import source_files
+
+    found: set[str] = set()
+
+    def keep(text: str) -> None:
+        if text.strip():
+            found.add(hashlib.sha256(text.strip().encode("utf-8")).hexdigest())
+
+    for path in source_files(project.path("manuscript")):
+        text, _title = strip_front_matter(path.read_text(encoding="utf-8"))
+        for block in re.split(r"\n\s*\n", text):
+            keep(block)
+            run: list[str] = []
+            for line in block.split("\n"):
+                if _STRUCTURAL.match(line):
+                    keep("\n".join(run))
+                    run = []
+                else:
+                    run.append(line)
+            keep("\n".join(run))
+    return found
 
 
 def _unverified(project: Project, entry: dict, submitted: dict, current: dict) -> str | None:

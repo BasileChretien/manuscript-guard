@@ -197,8 +197,9 @@ A document whose paragraphs were numbered by other rules is refused whatever you
 `--force` included, and so is `respond --open --from` on it. It happens across an upgrade
 that changed how paragraphs are numbered: each identifier would name another paragraph, so
 every edit and every comment would land in the wrong one. A document built before the rules
-were recorded in it is refused when its source has changed since the build, and otherwise
-only when a file it carries has front matter that is now read differently. Rebuild, send the
+were recorded in it is refused when anything it was built from has changed since the build,
+the results included, and otherwise only when a file it carries has front matter that is
+now read differently. Rebuild, send the
 new document, and carry over by hand anything already written in the old one.
 
 ## If you are a model doing this

@@ -1239,10 +1239,14 @@ the source digest (`roundtrip.TAGGING_SCHEME`). Under another scheme, or one it 
 `import` and `respond --open` refuse, and `--force` does not help. The plan shows what an
 edit becomes, not which paragraph it replaces, so there is no hunk to check. A document from
 before the scheme was recorded is refused only where it matters, which can only be judged
-against the text it was built from. If its source has changed since, it is refused, whatever
-is passed. If not, it is refused when a file it carries numbers differently under the rules
-kept from scheme 1. A table of identifiers in `test_roundtrip.py` fails when the numbering of
-the constructs it holds changes, until the scheme is bumped.
+against the text it was built from. If anything it was built from has changed since, it is
+refused, whatever is passed. If not, it is refused when a file it carries numbers
+differently under the rules kept from scheme 1. A table of identifiers in `test_roundtrip.py`
+fails when an identifier of the constructs it holds moves, until the scheme is bumped. A
+change to which blocks are tagged moves none, because an identifier counts every block,
+tagged or not: it only adds or removes identifiers, and needs no bump. `import` names a
+paragraph whose identifier the manuscript no longer gives, because an edit there is not
+compared, and it used to be skipped without a word.
 
 A review round needs no scheme, because G13 no longer compares by identifier. The round
 keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
@@ -2184,11 +2188,13 @@ Closed since, and why each mattered:
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
-  is the paragraph's position in the file, and applying a reorder moves text between slots -
-  so a `where:` anchor recorded before the reorder afterwards names different text. Content
-  is not the answer either: hashing the text means editing the paragraph a reviewer asked
-  about invalidates the anchor to it, which is the opposite failure. The real fix is to
-  persist the identifier in the source rather than derive it, and it is not done.
+  is the paragraph's position in the file, and applying a reorder moves text between slots,
+  so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
+  longer depends on it: it asks whether the text the reviewer read is still there, which is
+  the question it had, and a revision that edits the paragraph is exactly what should stop
+  it matching. What remains positional is the `where` a person reads in the round file, and
+  the identifiers of a document sent out before the source changed. Persisting the
+  identifier in the source rather than deriving it would fix both, and it is not done.
 - **`import` compares only paragraphs that carry an identifier.** Table cells, headings,
   captions and anything the co-author newly wrote carry none. Those edits are not merged,
   not refused, and until now were not mentioned; the count of what went unexamined is
@@ -2320,9 +2326,10 @@ Closed since, and why each mattered:
   `TAGGING_SCHEME` unprompted. Otherwise documents already sent out come back pointing at
   other paragraphs, as before the scheme existed.
 - **An unmarked document can be refused needlessly.** One built before the scheme was
-  recorded is refused whenever its source has changed since the build, `--force` or not,
-  because the numbering can only be checked against the text it was built from. One built
-  by plugin release 0.2.13 itself numbered paragraphs under the current rules, but it is
+  recorded is refused whenever anything it was built from has changed since, `--force` or
+  not, because the numbering can only be checked against the text it was built from; a
+  re-run analysis alone is enough. One built by a release from 0.2.13 until the scheme was
+  recorded numbered paragraphs under the current rules, but it is
   judged like a document built before the change: it is refused when a file it carries has
   a blank line after the opening `---`, a `...` closer or a trailing space on the opening
   `---`. `init` writes none of these. Either way, the refusal's own advice is the way

@@ -187,8 +187,13 @@ structural:
   ordered-list-marker:
     accepts:
       - {text: "1. The first criterion applied.", atom: "1"}
+      - {text: "# Criteria\n12. The twelfth applied.", atom: "12"}
     rejects:
       - {text: "We identified 1204 reports meeting it.", atom: "1204"}
+      # A hard wrap put the count at the start of a line. A list cannot interrupt a
+      # paragraph, so pandoc prints it as prose.
+      - {text: "The number of reports was\n412. Of these, most were hepatic.", atom: "412"}
+      - {text: "The number of reports was\n412) of them hepatic.", atom: "412"}
 
   numbered-heading:
     accepts:

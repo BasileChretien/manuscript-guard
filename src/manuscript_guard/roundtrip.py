@@ -332,16 +332,29 @@ def _blank_above(above: str) -> bool:
 # the line: `#Methods` and ` # Methods` are text to it. A link's definition is a
 # `_LINK_LINE`; a note's is never passed over, because the line under a note is more of it.
 _SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
+# A `<div>` line over an underline is no heading to pandoc, which reads a div around what
+# follows: a plain paragraph there carries the identifier all the same, but anything else
+# is marked with the block, as on `main`, rather than left unmarked inside the div.
+_DIV_TITLE = re.compile(r"[ \t]*<div\b", re.IGNORECASE)
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # A block whose first line is an ATX heading or a `#.` list item, which a marker would unmake;
 # or, indented four spaces or a tab, a line of code opening with a `# comment`, which a marker
 # would be printed in. Code opening otherwise has always been marked.
-_HASH_OPENS = re.compile(r"(?:[ \t]*\n)*(?:#+(?:[ \t\n]|\Z)|#[.)]|(?:[ ]{4,}|[ ]{0,3}\t)[ \t]*#)")
-# Under a heading, a line that may open a definition in a shape `_LINK_LINE` does not take:
-# its title on the next line, `{attributes}`, several words. The block is left unmarked, as it
-# always was; a marker in front of it would print the definition and break every link to it.
-_DEFINITION_OPENS = re.compile(r"[ ]{0,3}\[[^\n]*?\]:")
+_HASH_OPENS = re.compile(r"(?:[ \t]*\n)*(?:#+(?:[ \t\n]|\Z)|#[.)]|(?:[ ]{4}|[ ]{0,3}\t)[ \t]*#)")
+# Under a heading, a line that opens with what may be a definition's label in a shape
+# `_LINK_LINE` does not take: its title on the next line, `{attributes}`, several words. The
+# block is left unmarked, as it always was; a marker in front of it would print the
+# definition and break every link to it. A label may hold one level of brackets.
+_DEFINITION_OPENS = re.compile(r"[ ]{0,3}\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]:")
+# A footnote's label: under a heading, a note that would run on into what is below is marked.
+_NOTE_OPENS = re.compile(r"[ ]{0,3}\[\^[^\[\]\n]+\]:")
+# What may stand under a link's definition and be left unmarked with it: a `#.` list, code
+# indented on every line, and a fence closing on the block's last line, whose opening line
+# pandoc reads as one - backticks with no backtick after them, and no info or a bare word.
+_HASH_LIST = re.compile(r"(?:[ \t]*\n)*#[.)]")
+_CODE_LINE = re.compile(r"(?:[ ]{4}|[ ]{0,3}\t)|[ \t]*$")
+_FENCE_LINE = re.compile(r"[ ]{0,3}(?:`{3,}|~{3,})[ \t]*[\w.+#-]*[ \t]*$")
 # The line under a link's definition that may hold its title or attributes.
 _TITLE_NEXT = re.compile(r"[ \t]*[\"'({]")
 
@@ -423,19 +436,60 @@ def _marker_at(block: str, above: str, below: str) -> int | None:
     head = _lead_end(block, above)
     if head:
         rest = block[head:]
-        if not rest.strip() or _untagged(rest, "", below):
+        if not rest.strip():
             return None
         opening = _BLANK_LINES.match(block).end()
-        under_heading = (_SETEXT.match(block, opening) or _ATX.match(block, opening)) is not None
-        if under_heading and _DEFINITION_OPENS.match(rest):
+        if _SETEXT.match(block, opening) or _ATX.match(block, opening):
+            at = _under_heading(rest, below, head)
+            if at is not None or not _DIV_TITLE.match(block, opening):
+                return at
+        elif _left_under_a_link(rest, below):
             return None
-        if _plain_paragraph(rest):
+        elif _plain_paragraph(rest):
             return head
-        if under_heading:
-            return None
     if _untagged(block, above, below):
         return None
     return len(block) - len(block.lstrip())
+
+
+def _under_heading(rest: str, below: str, head: int) -> int | None:
+    """Where the identifier goes in a block that opens with a heading: in front of `rest`,
+    what follows the headings and definitions, or nowhere, as such a block always was.
+
+    A note there that would run on into what is below is marked, and prints as text: left
+    alone, the paragraph below went into the footnote with its identifier, on `main` too."""
+    if _untagged(rest, "", below):
+        return None
+    if _NOTE_OPENS.match(rest) and not _blank_below(below):
+        return head
+    if _DEFINITION_OPENS.match(rest) or not _plain_paragraph(rest):
+        return None
+    return head
+
+
+def _left_under_a_link(rest: str, below: str) -> bool:
+    """Whether what follows a block's link definitions prints no prose, so the block goes
+    unmarked and the definitions work: more definitions, a placeholder, a `#.` list, code
+    indented on every line, or a fence pandoc reads, closing where the block ends.
+
+    Anything else is marked with the block. Asking `_untagged` instead left prose unmarked
+    where it only opened like code - ```` ```glm()``` was used. ````, `~~~ text` that never
+    closes, a `{r}` chunk pandoc prints - and a co-author's edit to it was dropped."""
+    lines = rest.strip("\n").split("\n")
+    if _only_definitions(rest, below) or _HASH_LIST.match(rest):
+        return True
+    if re.fullmatch(r"\{\{[^}]*\}\}", rest.strip()):
+        return True
+    if all(_CODE_LINE.match(line) for line in lines):
+        return True
+    fences = fenced_spans(rest.strip("\n"))
+    return (
+        _FENCE_LINE.match(lines[0]) is not None
+        and len(fences) == 1
+        and fences[0].start == 0
+        and fences[0].body_end < fences[0].end
+        and not rest.strip("\n")[fences[0].end :].strip()
+    )
 
 
 def _markers(text: str) -> tuple[list[str], list[int | None]]:
@@ -443,8 +497,12 @@ def _markers(text: str) -> tuple[list[str], list[int | None]]:
 
     `tag` and `tagged_paragraphs` both read this, so the identifier the document carries and
     the text and offset `import` splices at cannot drift apart. A block that starts inside a
-    fenced code block gets none: code may hold blank lines, and the piece after one - a
-    `# comment` and a line of code - read as a heading and a paragraph, and was marked.
+    fenced code block and opens with `#` gets none: code may hold blank lines, and the piece
+    after one - a `# comment` and a line of code - read as a heading and a paragraph, and was
+    marked. Any other piece is marked as usual, as it was on `main`. Skipping every piece
+    inside took `fenced_spans` at its word, and it pairs openers pandoc does not read - one a
+    list item closes, one inside a comment - with a later closer, so prose between them lost
+    its identifier with nothing to show.
     """
     pieces = re.split(r"(\n\s*\n)", text)
     fences = fenced_spans(text)
@@ -454,7 +512,10 @@ def _markers(text: str) -> tuple[list[str], list[int | None]]:
         while next_fence < len(fences) and fences[next_fence].end <= at:
             next_fence += 1
         inside = next_fence < len(fences) and fences[next_fence].start < at
-        found.append(None if inside else _marker_at(piece, *_around(pieces, index)))
+        if inside and piece.strip().startswith("#"):
+            found.append(None)
+        else:
+            found.append(_marker_at(piece, *_around(pieces, index)))
         at += len(piece)
     return pieces, found
 

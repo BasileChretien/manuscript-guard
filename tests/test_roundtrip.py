@@ -773,7 +773,22 @@ HEADED = [
             ("definition-over-html", "<b>Bold</b> first."),
             ("definition-over-tex", "\\emph{Stress} first."),
             ("definition-over-decimal", ".5 of them."),
+            # Prose that only opens like code: pandoc reads each as a paragraph.
+            ("definition-over-inline-fence", "```glm()``` was used."),
+            ("definition-over-unclosed-tildes", "~~~ text that runs on."),
+            ("definition-over-indented-comment", "    # comment\nThe model was fitted."),
+            ("definition-over-r-chunk", "```{r}\nx <- 1\n```"),
         ]
+    ),
+    # What under a definition prints no prose is left unmarked with it.
+    pytest.param(f"[reg]: {REGISTRY}\n```r\nx <- 1\n```", None, id="definition-over-fence"),
+    pytest.param(f"[reg]: {REGISTRY}\n    x <- 1\n    y <- 2", None, id="definition-over-code"),
+    pytest.param(f"[reg]: {REGISTRY}\n#. First", None, id="definition-over-hash-list"),
+    # A link that opens a sentence is no definition, though a label follows it later.
+    pytest.param(
+        "# Results\n[Table 1](#t) shows [95% CI]: 1.2.",
+        "[Table 1](#t) shows [95% CI]: 1.2.",
+        id="link-then-label",
     ),
     # Prose that the first version left unmarked.
     pytest.param("# Methods\nE. coli was isolated.", "E. coli was isolated.", id="initial"),
@@ -852,6 +867,98 @@ def test_a_comment_in_fenced_code_is_not_read_as_a_heading(mark: bool) -> None:
     tagged = tag(f"Before.\n\n{code}\n\nAfter.\n", "main.md", mark=mark)
     assert f"\n\n{code}\n\n" in tagged
     assert tagged.count("[]{#mg-p-") == 2
+
+
+def _unidentified_paragraphs(text: str) -> list[str]:
+    """The body paragraphs pandoc prints from `tag(text)` without an identifier."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    shown = [json.dumps(b) for b in blocks if b["t"] == "Para"]
+    return [paragraph for paragraph in shown if "mg-p-" not in paragraph]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(
+            "- Fit the model:\n  ```r\n  m <- lm(y ~ x)\n\nThe model was fitted to all patients."
+            "\n\nResults were robust.\n\n```r\nsummary(m)\n```\n",
+            id="fence-a-list-item-closes",
+        ),
+        pytest.param(
+            "<!-- draft:\n```r\nold <- 1\n-->\n\nThe model was fitted to all patients.\n\n"
+            "```r\nsummary(m)\n```\n",
+            id="fence-inside-a-comment",
+        ),
+    ],
+)
+def test_prose_between_fences_pandoc_does_not_pair_is_marked(text: str) -> None:
+    """Review round three: `fenced_spans` pairs an opener pandoc closes at the end of a list
+    item, or never reads, inside a comment, with a later closer. Every piece in between was
+    left unmarked as code, and prose there lost its identifier with nothing to show. Inside
+    a fence only a piece opening with `#` is now left alone, as on `main`."""
+    assert _unidentified_paragraphs(text) == []
+
+
+@needs_pandoc
+def test_a_note_under_a_heading_that_would_run_on_is_marked() -> None:
+    """Review round eight of #54, on `main` too: a note straight under a heading sat in a
+    block left unmarked whole, so nobody asked whether it ran on. Under a line holding only
+    a no-break space, the paragraph below went into the footnote, identifier and all. The
+    note is now marked, and prints as text; the paragraph stays in the body."""
+    text = f"Doses were capped.[^c]\n\n## Notes\n[^c]: Capped.\n{chr(0xA0)}\nIt was rare.\n"
+    assert _unidentified_paragraphs(text) == []
+    from manuscript_guard.roundtrip import tag
+
+    assert re.search(r"## Notes\n\[\]\{#mg-p-[^}]+\}\[\^c\]:", tag(text, "main.md"))
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "block", ["<div>\n---\n`glm()` was used.", "<div>\n---\nPlain text."], ids=["code", "plain"]
+)
+def test_what_follows_a_div_over_an_underline_keeps_an_identifier(block: str) -> None:
+    """Round three: a `<div>` line over `---` was taken for a setext heading, and a paragraph
+    under it that was not plain went unmarked, inside the div pandoc reads there. A plain one
+    still carries the identifier; anything else is marked with the block, as on `main`."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(block, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert "mg-p-" in read.stdout
+
+
+def test_a_run_of_spaces_is_read_in_linear_time() -> None:
+    """`(?:[ ]{4,}|...)[ \\t]*#` could split a run of spaces between two quantifiers, which
+    took 1.4 s for a block opening with 20,000 spaces, and every block pays it."""
+    import time
+
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(" " * 40000 + "x\n", "main.md")
+    assert time.perf_counter() - started < 1.0
 
 
 @needs_pandoc

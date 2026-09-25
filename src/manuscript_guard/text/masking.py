@@ -124,11 +124,12 @@ def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
     try:
         documents = list(yaml.compose_all(wrapped, Loader=_loader()))
     except yaml.MarkedYAMLError as exc:
-        return (False, *_failed_at(exc, yaml_text.count("\n")))
+        return (False, *_failed_at(exc, wrapped))
     except yaml.reader.ReaderError as exc:
         where = wrapped.count("\n", 0, exc.position) - 1
-        character = f"#x{ord(exc.character):04x}" if isinstance(exc.character, str) else ""
-        return False, f"unacceptable character {character}: {exc.reason}", max(where, 0)
+        # PyYAML keeps the character as its code point, an int.
+        code = exc.character if isinstance(exc.character, int) else ord(exc.character)
+        return False, f"unacceptable character #x{code:04x}: {exc.reason}", max(where, 0)
     except RecursionError:
         # Too deep to compose, like the nesting refused above; see Known gaps.
         return False, "", 0
@@ -141,15 +142,21 @@ def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
     return empty and len(documents) == 1, "", 0
 
 
-def _failed_at(exc, lines: int) -> tuple[str, int]:
+def _failed_at(exc, wrapped: str) -> tuple[str, int]:
     """The reason and the line inside the YAML for a composing error. One found at the end,
-    such as a quote never closed, is placed where the construct it was reading opened."""
+    such as a quote never closed, is placed where the construct it was reading opened.
+
+    Lines are counted at `\\n` from the mark's position, as the file's are. PyYAML's own
+    line count also breaks at NEL, LS, PS and a lone CR, and put the error past the closer.
+    """
     mark = exc.problem_mark or exc.context_mark
-    if exc.context_mark is not None and mark is not None and mark.line > lines:
+    closer = len(wrapped) - len("...\n")
+    if exc.context_mark is not None and mark is not None and mark.index >= closer:
         mark = exc.context_mark
     reason = ", ".join(part for part in (exc.context, exc.problem) if part)
     # Line 0 of the wrapped text is the `---` put in front of the YAML.
-    return reason or type(exc).__name__, max((mark.line - 1) if mark else 0, 0)
+    line = wrapped.count("\n", 0, mark.index) - 1 if mark else 0
+    return reason or type(exc).__name__, max(line, 0)
 
 
 def front_matter_problem(text: str) -> tuple[str, int] | None:

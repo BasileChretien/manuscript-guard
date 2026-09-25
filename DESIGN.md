@@ -2090,12 +2090,13 @@ Closed since, and why each mattered:
   to read as pandoc does: between a `---` and a `...` of its own, every document read, an
   anchor carried into later documents, defined again if need be, and usable only once its
   node is finished. A header is metadata when its first document is a mapping, or when it
-  holds nothing at all. On 109 layouts this agrees with pandoc but for three, each accepted
+  holds nothing at all. On 183 layouts this agrees with pandoc but for four, each accepted
   by PyYAML and refused by pandoc: a key that is not a string, `? [a, b]`; a flow sequence
-  holding `a:`, `k: [a:, b]`; and a lone carriage return for a line break. Such a header is
-  stripped and the file builds, so no text is lost. Nesting over 100 levels is refused
-  unread by a rough count that does not know quotes or block scalars, and nesting too deep
-  to compose, 600 levels by indentation, is refused the same way. Either is left in the
+  holding `a:`, `k: [a:, b]`; a lone carriage return for a line break; and a byte-order
+  mark at the start of a later line. Such a header is stripped and the file builds, so no
+  text is lost. Nesting over 100 levels is refused unread by a rough count that does not
+  know quotes or block scalars, and nesting too deep to compose, about 500 levels by
+  indentation, is refused the same way. Either is left in the
   body, where pandoc hides it, and is not reported even when it is not YAML.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide

@@ -161,7 +161,11 @@ def test_a_header_pandoc_cannot_read_is_reported_at_the_line_it_fails_on() -> No
     assert unclosed is not None and unclosed[1] == 3, unclosed
     # Word's Shift+Enter, a vertical tab, is named, not reported as an exception's class.
     tab = front_matter_problem("---\na: 1\ntitle: A\N{LINE TABULATION}B\n---\n\nText.\n")
-    assert tab is not None and "character" in tab[0] and tab[1] == 3, tab
+    assert tab is not None and "#x000b" in tab[0] and tab[1] == 3, tab
+    # YAML breaks lines at NEL too, what a cp1252 ellipsis becomes when misread; the file's
+    # lines are still counted at `\n`.
+    nel = front_matter_problem(f"---\ntitle: A{chr(0x85)}B\n---\n\nText.\n")
+    assert nel is not None and nel[1] == 2, nel
 
 
 # ---------------------------------------------------------------- the baseline

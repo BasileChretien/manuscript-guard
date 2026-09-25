@@ -2587,8 +2587,10 @@ Closed since, and why each mattered:
   quadratic part is under a seventh of its time on the smaller input passes, and so does
   n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
   per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
-  Each of these tests used to rest on one timing per size, or on a budget, and a busy runner
-  decided one of them. They are tripwires for the scans that went quadratic before, not a
+  Each of these tests used to rest on one timing per size (one on a best of three, one size
+  after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
+  speed shows only at a size where it outweighs the per-item work, so the size a test starts
+  from is its sensitivity as well as its cost: paragraph tagging starts at 1,000 blocks. They are tripwires for the scans that went quadratic before, not a
   proof that nothing else does.
 
 ## Still open

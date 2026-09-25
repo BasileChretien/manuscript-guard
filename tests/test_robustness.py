@@ -109,32 +109,34 @@ def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
         "tables that each open straight under the last",
     ],
 )
-def test_paragraph_tagging_is_linear(opener: str) -> None:
+def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
     """A block that opens raw content with no closer used to search to the end of the text,
     once per block: 80,000 of them took 26 seconds, and `check` reaches this through G13.
     Distinct environment names are measured separately because a cache keyed by closing
     string fixed the repeated case and left each new name searching to the end of the text.
 
-    Padded, because with short blocks the per-block work hides the search: without the fix
-    the ratio below was 13 to 17, and with it about 4.
+    Padded, because with short blocks the per-block work hides the search: at four times
+    the input and without the fix the ratio was 13 to 17, and with it about 4.
+
+    From 1,000 blocks rather than a handful, because the search runs at C speed and only
+    outweighs the per-block work at that size. With a search to the end of the text for
+    each comment's closer put back, a start of 10 read 15 to 20, on the bound, and a start
+    of 1,000 read 32 to 37 and failed in about 28 s. It was timed once per size at 4,000 and
+    16,000 blocks, which took 37 s for the six cases on a loaded machine.
     """
     from manuscript_guard.roundtrip import tag
 
-    def measure(count: int) -> float:
-        text = "".join(opener.replace("#", str(i)) + "x" * 200 + "\n\n" for i in range(count))
-        started = time.perf_counter()
-        tag(text, "main.md")
-        return time.perf_counter() - started
+    def blocks(count: int) -> str:
+        return "".join(opener.replace("#", str(i)) + "x" * 200 + "\n\n" for i in range(count))
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(blocks, lambda text: tag(text, "main.md"), 1000, "paragraph tagging")
 
 
 # The check itself, on a clock that only the job below moves: that it fails a quadratic,
 # and how it handles noise. Each test catches a change to the check that the real scans
-# above cannot see, because a real machine is neither quadratic nor noisy on cue. A real quadratic
-# scan was timed here too, and cost more CI time than it told: the one below is exact.
+# above cannot see, because a real machine is neither quadratic nor noisy on cue. A real
+# quadratic scan was timed here too, and cost more CI time than it told: the one below is
+# exact.
 
 
 def virtual_job(

@@ -93,10 +93,13 @@ LINEAR_FACTOR = 8
 LINEAR_BOUND = 16.0
 #: Below this, one preemption decides the ratio. The input is doubled until the smaller
 #: case's best time reaches this, so a fast machine measures what a slow one does. The size
-#: a test starts from should be small: a quadratic that has come back is slow at once, and a
-#: large start times eight times a slow case, for minutes.
+#: a test starts from is the smallest it times. Too large, and a quadratic that has come back
+#: is timed at eight times a slow case, for minutes; too small, and a quadratic that runs at
+#: C speed hides under the per-item work, so it goes no smaller than where one would show.
 LINEAR_FLOOR_SECONDS = 0.02
-LINEAR_MAX_GROWTH = 1024
+#: Growth costs nothing unless a test never reaches the floor, so the cap only has to be far
+#: past where the fastest runner gets there: CI's were up to about four times this machine.
+LINEAR_MAX_GROWTH = 4096
 #: Every time is a best of three: interference only ever adds time, so one slow sample says
 #: nothing. A ratio between the bound and twice it is measured five times more before it
 #: fails; a linear scan does not read twice the bound on its best runs.
@@ -149,8 +152,9 @@ def check_linear(
 ) -> None:
     """Fail unless `work(build(8 * n))` takes under 16 times as long as `work(build(n))`.
 
-    Each of these tests was once a single timing per size, or a budget, and a busy runner
-    decided the fence scanner's few milliseconds: at four times the input, a macOS job read
+    Each of these tests once rested on a single timing per size (one on a best of three, one
+    size after the other), or on a budget, and a busy runner decided the fence scanner's few
+    milliseconds: at four times the input, a macOS job read
     13.5 for a scan that is linear, against a bound of 12. So inputs are built off the clock;
     `n` starts at `size` and doubles until the smaller case's best of three takes 20 ms; the
     sizes are measured in alternation, and each keeps its best; and a ratio just over the

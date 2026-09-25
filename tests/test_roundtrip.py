@@ -2197,9 +2197,10 @@ def test_writing_back_a_no_break_space_is_linear_in_a_long_word(assert_linear) -
     """Looking for a bare `@` in the word before the abbreviation searched the text before it
     with `\\S*\\Z`, which rescans a long run from every place in it: with a URL of 8,000
     characters ahead of a few "e.g.", `align` took 16 seconds. Timed as the URL grows, from
-    400 characters: the linear scan is quick enough that a CI runner found 51,200 (50 at the
-    check's largest growth) too little to time, and 400 doubles through the same sizes, so a
-    rescan that comes back still fails in seconds."""
+    1,600 characters: the linear scan is quick enough that CI runners found 51,200 (a start
+    of 50 at the check's largest growth) too little to time. A rescan put back fails from
+    1,600 at the same size as from 50, in 14 to 20 s, and the largest size is 1.6 million
+    characters."""
     from manuscript_guard.roundtrip import _respaced
 
     def with_url(length: int) -> str:
@@ -2208,7 +2209,7 @@ def test_writing_back_a_no_break_space_is_linear_in_a_long_word(assert_linear) -
     def respace(text: str) -> None:
         _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
 
-    assert_linear(with_url, respace, 400, "writing back a no-break space, by URL length")
+    assert_linear(with_url, respace, 1600, "writing back a no-break space, by URL length")
 
 
 @needs_pandoc

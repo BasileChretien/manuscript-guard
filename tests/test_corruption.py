@@ -1462,8 +1462,8 @@ def test_import_takes_back_a_document_built_before_its_source_was_refused(
         # read no rule, while pandoc merged the YAML block's title over paper.yaml's.
         ("Text \\<!-- aside\n\n::: note\n---\ntitle: Evil\n...\n:::\n\nlater -->\n", "title"),
         # A title continuing a paragraph over `===`: the gates read a Methods heading pandoc
-        # prints as text, and put the claim under it.
-        (f"We also saw\nMethods\n=======\n\n{_CLAIM}", "Methods"),
+        # prints as text, and put the claim under it. Named with its file and line.
+        (f"We also saw\nMethods\n=======\n\n{_CLAIM}", "'Methods' at main.md:"),
     ],
 )
 def test_the_build_refuses_what_pandoc_reads_otherwise(
@@ -1483,6 +1483,88 @@ def test_the_build_refuses_what_pandoc_reads_otherwise(
     err = capsys.readouterr().err
     assert "pandoc reads" in err and said in err, err
     assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_misread_supplement_fails_the_build_and_leaves_no_old_copy(
+    project: Path, capsys
+) -> None:
+    """The supplement was reported as not built and the build still exited 0, and `submit`
+    packed the supplement from the build before, a version behind the manuscript."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    old = project / "build" / "supplementary.docx"
+    assert old.exists()
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(f"{text}\nWe also saw\nMethods\n=======\n\nText.\n", "utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "pandoc reads" in capsys.readouterr().err
+    assert not old.exists()
+    assert main(["submit", str(project), "--offline", "--skip-checks"]) == 1
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_import_takes_back_a_document_built_before_the_build_asked_pandoc(
+    project: Path, tmp_path: Path
+) -> None:
+    """`import` rebuilds the document it sent, to compare the returned one with, and that
+    rebuild refused a source the build now refuses, a document already out with a
+    co-author included."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\nWe also saw\nMethods\n=======\n\nText.\n", "utf-8")
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, _assembly = assemble(loaded, namespace, results)
+    built = build_document(loaded, assembled, mode=OFFLINE, verify_reading=False)
+    returned = tmp_path / "back.docx"
+    returned.write_bytes(built.output.read_bytes())
+    assert main(["import", str(returned), str(project)]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## Limitations <!-- shorten this later -->",
+        "## Estimating $\\beta_{1}$",
+        "## Change in HbA~1c~ from baseline",
+        "## Effect of CO~2~ on growth",
+        "## Area in m^2^",
+        "## Strengths &amp; limitations",
+        "## The set {1, 2, 3}",
+        "## The `f{x}` call",
+        "## Methods^[A note.]",
+        "## Methods[^m]\n\n[^m]: A note.",
+        "## See [the site][ref]\n\n[ref]: https://example.org",
+        "## Aware**ness**",
+        '## <span class="x">Results</span>',
+    ],
+)
+def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: str) -> None:
+    """The sixth review found each refused by the build: the gates' raw title and pandoc's
+    printed one split into words differently. The gates' titles are now read by pandoc
+    too, so both sides are pandoc's words."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = f"# Introduction\n\nText.\n\n{heading}\n\nMore text.\n"
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is None, found
 
 
 @pytest.mark.skipif(
@@ -1584,6 +1666,10 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n* ---\n  title: Evil\n  ...\n",
         "## Note\n1. ---\n   title: Evil\n   ...\n",
         "## Note\n[^1]: ---\n    title: Evil\n    ...\n",
+        # Found by the sixth: markers nested on one line, and a TeX group closed with `}}`.
+        "## Note\n* * ---\n    title: Evil\n    ...\n",
+        "## Note\n- 1) ---\n     title: Evil\n     ...\n",
+        "## Note\n\\newcommand{\\x}{\\textbf{y}}---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
@@ -1607,6 +1693,12 @@ def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
         # Dashes in prose are dashes, a range split over lines included.
         "The interval ran from {{results.ror.ci_low}}--\n{{results.ror.ci_high}}.\n",
         "As we said ---\nand as the data show.\n",
+        # Found by the sixth: inline markup is no block, and a rule inside a quotation is the
+        # quotation's.
+        "An area of 3 m<sup>2</sup> ---\nlarge.\n",
+        "The [drug]{.smallcaps} --\nwas used.\n",
+        "Values x > --\nnext.\n",
+        "> Para one.\n>\n> ---\n>\n> Para two.\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:

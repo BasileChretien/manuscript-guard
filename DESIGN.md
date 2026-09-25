@@ -435,7 +435,10 @@ code, a comment or the front matter is not read, and a comment that closes on th
 taken off in front of it, as pandoc reads on from its `-->`. The fifth review found pandoc
 starting a block partway along a line, behind an HTML tag or comment, a TeX command, or a
 list, definition or footnote marker, and reading the dashes after it as YAML; dashes ending
-such a line are refused wherever they stand.
+a line that opens with block-level HTML tags or comments, a TeX command and its groups, or
+such markers, nested or not, are refused wherever they stand, outside a quotation. Inline
+markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block and is prose (the
+sixth review).
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -444,10 +447,20 @@ a fence carried from one file into the next. So before it writes the document, t
 reads it with pandoc (`build/reading.py`) and refuses (`MisreadError`, exit 1) when the
 metadata of the whole text differs from that of the build's header alone, or when the
 headings pandoc makes differ from those the gates read in the sources, a placeholder in a
-title matching whatever its value prints as. Nothing there lists shapes, so a shape nobody
-has found yet is caught too. It costs two more runs of pandoc's reader per build, and it
-guards the document, not `check`: a source the build refuses can still pass `check`, and a
-number a misread hides from G2 without touching metadata or headings is not compared.
+title matching whatever its value prints as. Nothing there lists shapes, so most shapes
+nobody has found yet are caught too. The gates' titles are read by pandoc as well, in the
+same run as the header: compared as written, `$\beta_{1}$`, `HbA~1c~`, `&amp;`, a comment or
+a footnote in a title split into other words than pandoc's, and the sixth review found each
+refused. Raw markup and footnotes print no words in a heading and are left out on both
+sides, and the lists are aligned, so a refusal names the heading and its file and line.
+
+It costs two more runs of pandoc's reader a document. It guards the document, not `check`:
+a source the build refuses can still pass `check`, and a number a misread hides from G2
+without touching metadata or headings is not compared. A refused build removes the
+document the last one left in build/, which is not this source's, so that it is not sent
+or packed; a refused supplement fails `build` and `submit` like the paper. `import` alone
+rebuilds without asking, since the document it rebuilds has already been sent, and refusing
+there stranded it with the co-author holding it.
 
 ## Zotero is never on the critical path
 
@@ -1493,6 +1506,17 @@ are counted as unexamined; the refusal still guards a document built before that
 empty line - has nowhere to put text typed there: merged, it replaced the comment's first
 half, and the second half built into the Methods. Text typed on such a line is refused.
 
+A paragraph cut down to its number is still a paragraph. `tag` gave no identifier to
+anything that was only a placeholder, because that is how a table or a figure is written,
+and it did not ask which kind. A co-author who deleted everything but `3.84` merged as
+`{{results.ror.point}}` alone, `check` passed, and the next build left that paragraph
+without a bookmark: its next edit in Word was skipped with "nothing came back". Now only a
+table, a figure, or a misspelt placeholder that `check` refuses goes without one when it
+stands alone. A rewording that would leave nothing but one of those is refused and named,
+because merged it would build with no identifier, and no later edit could come back to it.
+A table cannot get that far in practice, since pandoc makes a table of the whole paragraph
+it stands in; a misspelt placeholder in a document built with `--skip-checks` can.
+
 **The identifier marks where a paragraph starts, not where it ends.** Word keeps a
 paragraph's bookmark at its start, so a split leaves the first half carrying it and the
 second half anonymous, and merging "the paragraph" replaced the whole source paragraph with
@@ -2397,7 +2421,9 @@ Closed since, and why each mattered:
   hides every rule up to the next `-->` from the refusal. So does a comment or a fence left
   open at the end of one file and closed in the next, since the build joins the files and
   pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
-  a listing to the gates and text to pandoc (#71 refuses that one). Where the result is
+  a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line
+  straight under a line of text, `We also saw it.` over `# Sensitivity`, a heading to the
+  gates and text to pandoc (#38's walk reads it as pandoc does). Where the result is
   metadata in the text or a heading the gates read otherwise, the build refuses; `check`
   passes it. A number such a shape hides from G2, with neither, is caught by nothing.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
@@ -2412,15 +2438,17 @@ Closed since, and why each mattered:
   pair or a tilde fence in `abstract: |` hides the prose between from the gates. The build
   prints no front-matter value today, so nothing is printed wrongly, but a gate reading the
   abstract reads less of it than pandoc does.
+- **Two misreads that cancel pass the build's comparison.** Headings are compared in order,
+  not by where they stand, since pandoc's reading says nothing of where. A heading the gates
+  read in one place and not in another, `# Methods` straight under a line of text early on
+  and a real `# Methods` hidden by a misread comment later, lines up with pandoc's list, and
+  a claim between the two passes G2 under the wrong heading. It takes two misreads, each of
+  a shape above, of headings with the same title.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
   its headings with pandoc's and refuses the document. The heading walk of #38, which knows
   what continues a paragraph, reads it as pandoc does.
-- **A thematic break prints as a dash.** The build's paragraph bookmark (`roundtrip.tag`)
-  goes in front of a line of dashes between blank lines as in front of any paragraph, and
-  pandoc prints `[]{#mg-p-…}---` as a paragraph holding an em dash rather than a rule. It
-  sets no metadata and makes no heading, but it is not what was written.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2699,6 +2727,33 @@ Closed since, and why each mattered:
   first line, holds a tab, or is closed on the file's last line. `init` writes none of
   these either. The guard is a scheme version in the stamp and the round file, refused on
   a mismatch.
+- **Which paragraphs carry an identifier is decided by the code that imports, not the code
+  that built.** The document as sent is rebuilt from the source by what is installed now. A
+  paragraph that is only a value binding carries an identifier now, and in a document built
+  before that change it carried none. Returned after the change, even untouched, that
+  paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
+  to the paragraph on either side of it is refused as a possible split. A move is worse. A
+  paragraph with no place in the returned document stays after the paragraph it followed
+  in the source, or first in its section if it was first, so any move that changes what the
+  value paragraph follows goes wrong. Moving the paragraph before it takes it along:
+  `--apply` writes it where the co-author's document does not have it, and still reports it
+  as left in place. Moving another paragraph in front of it is reported and applied, with
+  the value paragraph left on the wrong side of it; a move that passes the value paragraph
+  and nothing else is not reported at all, and is dropped. No binding is harmed, but the
+  order is not the co-author's. Rebuild and send the document again rather than import one
+  built before the change. Every other identifier stays as it was, because an index counts
+  every block in its file; a change to how a file is split into blocks would renumber them.
+  A later change that starts tagging a block does the same as this one, once, to documents
+  already sent. One that stops tagging a block is quieter. In a document already sent, the
+  block's identifier names nothing the import knows, and is ignored: an edit to the block is
+  dropped without a report, with "nothing came back" if nothing else was edited, and a move
+  that changes what the block follows is dropped, applied with the block on the wrong side,
+  or refused as a move into another section - and only that last exits 1. A version number
+  for the tagging rules, stamped into the document and refused on a mismatch, would catch
+  either change in a document stamped with an earlier number, and neither in one built
+  before such a number existed, which records none. For this change, the fix is to
+  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
+  paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

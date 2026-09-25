@@ -1027,9 +1027,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         # instead of the message that names `--offline`.
         try:
             return _build_annotated(project, namespace, results, assembled, args)
-        except MisreadError as exc:
-            print(f"manuscript-guard: {exc}", file=sys.stderr)
-            return 1
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             if not args.offline:
@@ -1168,9 +1165,10 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
     # A build refused as a misread removes its document and its supplement, and a pack was
     # then assembled without either, and reported as made.
-    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
+    from manuscript_guard.build.submission import supplement_for
+    from manuscript_guard.gates.numbers import is_supplementary
 
-    supplement = document.parent / f"{SUPPLEMENTARY}.docx"
+    supplement = supplement_for(project, document)
     wants_supplement = any(
         is_supplementary(project.path("manuscript"), p)
         for p in source_files(project.path("manuscript"))

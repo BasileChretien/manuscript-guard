@@ -16,16 +16,19 @@ lines, a listing the gates read inside a raw block passed for a copy of the same
 elsewhere, and with a fixed line, for a copy of that line: the line is made new each
 build. Code pandoc makes that the gates read as prose, an indented listing, is let be.
 
-The gates read each source as it is on disk, placeholders and all. Their titles are read by
-pandoc as well, in the same run as the header, each a numbered paragraph of its own, so
-both sides are compared in pandoc's words: `HbA~1c~`, `$\\beta_{1}$` or `&amp;` in a title
-split into words as pandoc splits them. A placeholder stands for whatever its value prints
-as, inside a word too (`{{results.dose}}mg`). A title pandoc makes no paragraph of, block
-HTML in it, is compared in its own words: giving up on it gave up on every heading. Raw
-markup and footnotes print no words in a heading, and a heading in a quotation, a note, a
-figure, a list or a table is left out on both sides: the gates read none there, by design
-(see `test_a_quoted_heading_is_deliberately_not_a_section`). It takes two runs of pandoc's
-reader a document.
+The gates read each source as it is on disk, placeholders and all, and the build reads the
+same file with its values put in; each heading the gates read is paired with the one at
+its place in the built text, and a file whose headings change when its values go in is a
+misreading of its own. Titles are compared as built, in pandoc's words: each is read by
+pandoc as a numbered paragraph of its own, so `HbA~1c~`, `$\\beta_{1}$` or `&amp;` split
+into words as pandoc splits them. A title pandoc makes no paragraph of, block HTML in it,
+is compared in its own words: giving up on it gave up on every heading. Raw markup and
+footnotes print no words in a heading, and a heading in a quotation, a note or a figure is
+left out on both sides: the gates read none there, by design (see
+`test_a_quoted_heading_is_deliberately_not_a_section`). A heading in a list, a definition
+or a table is the document's, and the gates reading its section as text is a misreading.
+It takes three runs of pandoc's reader a document, one of them on the header alone and
+kept for the next document with the same header.
 """
 
 from __future__ import annotations
@@ -35,27 +38,22 @@ import re
 import secrets
 import subprocess
 from collections import Counter
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from manuscript_guard.text.fences import Fence, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
-from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index
 
 # Containers whose headings are quoted or set apart, not the document's own.
-_NESTED = frozenset(
-    {"BlockQuote", "Note", "Figure", "BulletList", "OrderedList", "DefinitionList", "Table"}
-)
+_NESTED = frozenset({"BlockQuote", "Note", "Figure"})
 # Inlines that print no words: raw markup, an HTML comment among them, and a footnote.
 _SILENT = frozenset({"RawInline", "Note"})
+# Inlines read whole, and not inside.
+_PRINTED = frozenset({"Str", "Code", "Math", "Space", "SoftBreak", "LineBreak"}) | _SILENT
 _WORDS = re.compile(r"[^\W_]+")
-# Written for a placeholder in a title, and matching whatever its value prints as.
-_VALUE = "mgvalue"
-# In front of each title read on its own, numbered, so that it is a paragraph whatever it
-# starts with, and so that each comes back to its own heading.
-_LEAD = "mgtitle"
-_LEAD_NUMBER = re.compile(rf"{_LEAD}(\d+)")
 # Link reference and footnote definitions, their text on the lines after included, and
 # example list items, which a title may refer to.
 _DEFINITION = re.compile(
@@ -65,8 +63,8 @@ _DEFINITION = re.compile(
 
 @dataclass(frozen=True)
 class _Read:
-    """A heading the gates read: where, its level, its title as written, and its words as
-    pandoc reads them, joined by spaces, `_VALUE` where a placeholder is."""
+    """A heading the gates read: where, its level, its title as built, and its words as
+    pandoc reads them, joined by spaces."""
 
     where: str
     level: int
@@ -74,7 +72,7 @@ class _Read:
     words: str
 
 
-def _json(markdown: str, pandoc: str, cwd: Path) -> dict | None:
+def _json(markdown: str, pandoc: str, cwd: Path | None) -> dict | None:
     """Pandoc's reading of `markdown`, or None when pandoc cannot read it at all, which
     the build's own run of pandoc then reports."""
     finished = subprocess.run(
@@ -88,23 +86,42 @@ def _json(markdown: str, pandoc: str, cwd: Path) -> dict | None:
     return json.loads(finished.stdout)
 
 
+@lru_cache(maxsize=16)
+def _header_meta(header: str, pandoc: str) -> str | None:
+    """The metadata of the build's header read alone, as JSON text so that nothing can
+    change the copy kept. It was read in one run with the titles and the definitions they
+    refer to, and a footnote's definition holding a YAML block set a title there too."""
+    read = _json(header, pandoc, None)
+    return None if read is None else json.dumps(read["meta"], sort_keys=True)
+
+
+def _nodes(tree, into: Callable[[dict], bool]) -> Iterator[dict]:
+    """Every element of pandoc's reading in document order, read inside only where `into`
+    says so. Without recursion: six hundred nested divs overflowed the stack."""
+    stack = [tree]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(reversed(item))
+        elif isinstance(item, dict):
+            yield item
+            if into(item):
+                stack.append(item.get("c"))
+
+
 def _plain(node) -> str:
     """The text of inlines as they print: `Str`, the text of code and maths, and a space
     for a space. Attributes and link targets are strings inside lists, and print nothing."""
-    if isinstance(node, list):
-        return "".join(_plain(item) for item in node)
-    if not isinstance(node, dict):
-        return ""
-    kind, content = node.get("t"), node.get("c")
-    if kind in _SILENT:
-        return " "
-    if kind == "Str":
-        return content
-    if kind in ("Space", "SoftBreak", "LineBreak"):
-        return " "
-    if kind in ("Code", "Math"):
-        return f" {content[1]} "
-    return _plain(content)
+    printed = []
+    for item in _nodes(node, lambda item: item.get("t") not in _PRINTED):
+        kind, content = item.get("t"), item.get("c")
+        if kind == "Str":
+            printed.append(content)
+        elif kind in ("Code", "Math"):
+            printed.append(f" {content[1]} ")
+        elif kind in _PRINTED:
+            printed.append(" ")
+    return "".join(printed)
 
 
 def _words(text: str) -> str:
@@ -112,83 +129,95 @@ def _words(text: str) -> str:
 
 
 def _headers(blocks: list) -> list[tuple[int, str, str]]:
-    """Each heading pandoc makes, outside quotations, notes, figures, lists and tables: its
-    level, its words, and its text for a message."""
+    """Each heading pandoc makes, outside quotations, notes and figures: its level, its
+    words, and its text for a message."""
     found: list[tuple[int, str, str]] = []
-
-    def walk(node) -> None:
-        if isinstance(node, dict):
-            if node.get("t") in _NESTED:
-                return
-            if node.get("t") == "Header":
-                level, _attributes, inlines = node["c"]
-                text = _plain(inlines)
-                found.append((level, _words(text), " ".join(text.split())))
-                return
-            walk(node.get("c"))
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(blocks)
+    for node in _nodes(blocks, lambda node: node.get("t") not in _NESTED | {"Header"}):
+        if node.get("t") == "Header":
+            level, _attributes, inlines = node["c"]
+            text = _plain(inlines)
+            found.append((level, _words(text), " ".join(text.split())))
     return found
 
 
-def _titles(sources: list[tuple[str, str]]) -> tuple[list[tuple[str, int, str]], str]:
-    """Every heading the gates read, where and at what level, and a document reading each
-    title as a numbered paragraph of its own, a placeholder written as `_VALUE`, with the
-    sources' definitions after them."""
+def _changed(name: str, written: str, written_at: list, built_at: list) -> str | None:
+    """How the headings the gates read in a file as written differ from those of its text
+    with the values put in, or None when they pair one to one at the same levels. A value
+    is data and holds no heading; one that changed the headings would have the gates judge
+    other sections than the ones the build prints."""
+    at = next(
+        (
+            k
+            for k, (w, b) in enumerate(zip(written_at, built_at, strict=False))
+            if w.level != b.level
+        ),
+        min(len(written_at), len(built_at)),
+    )
+    if at == len(written_at) == len(built_at):
+        return None
+    before = (
+        f"the level-{written_at[at].level} heading {written_at[at].title!r} at "
+        f"{name}:{written.count(chr(10), 0, written_at[at].start) + 1}"
+        if at < len(written_at)
+        else "no heading"
+    )
+    after = (
+        f"a level-{built_at[at].level} heading {built_at[at].title!r}"
+        if at < len(built_at)
+        else "none"
+    )
+    return (
+        f"{name} with its values put in as other headings than the gates read in it: "
+        f"{before} as written, and {after} as built"
+    )
+
+
+def _titles(
+    sources: list[tuple[str, str]], built: list[str], lead: str
+) -> tuple[list[tuple[str, int, str]], str] | str:
+    """Every heading the gates read, where and at what level, with its title as built, and
+    a document reading each title as a paragraph of its own behind `lead` and its number,
+    the built definitions after them. A phrase for `misreading` instead when a file's
+    headings change with its values put in."""
     found: list[tuple[str, int, str]] = []
     paragraphs: list[str] = []
     definitions: list[str] = []
-    for name, text in sources:
-        definitions += (match.group() for match in _DEFINITION.finditer(text))
-        for heading in heading_index(text):
-            where = f"{name}:{text.count(chr(10), 0, heading.start) + 1}"
-            paragraphs.append(f"{_LEAD}{len(found)} {PLACEHOLDER.sub(_VALUE, heading.title)}")
-            found.append((where, heading.level, heading.title))
+    for (name, written), made in zip(sources, built, strict=True):
+        definitions += (match.group() for match in _DEFINITION.finditer(made))
+        written_at, built_at = heading_index(written), heading_index(made)
+        changed = _changed(name, written, written_at, built_at)
+        if changed is not None:
+            return changed
+        for heading, shown in zip(written_at, built_at, strict=True):
+            where = f"{name}:{written.count(chr(10), 0, heading.start) + 1}"
+            paragraphs.append(f"{lead}{len(found)} {shown.title}")
+            found.append((where, heading.level, shown.title))
     return found, "\n\n".join([*paragraphs, *definitions])
 
 
-def _numbered(blocks: list) -> dict[int, str]:
-    """The text of each paragraph that opens with a numbered lead, by its number."""
+def _numbered(blocks: list, lead: str) -> dict[int, str]:
+    """The text of each paragraph that opens with `lead` and a number, by its number. A
+    number that comes back twice is dropped, and its title compared in its own words."""
+    pattern = re.compile(rf"{lead}(\d+)")
+
+    def number_of(node: dict) -> int | None:
+        content = node.get("c")
+        if node.get("t") not in ("Para", "Plain") or not content:
+            return None
+        if content[0].get("t") != "Str":
+            return None
+        numbered = pattern.fullmatch(content[0]["c"])
+        return None if numbered is None else int(numbered.group(1))
+
     found: dict[int, str] = {}
-
-    def walk(node) -> None:
-        if isinstance(node, dict):
-            content = node.get("c")
-            if node.get("t") in ("Para", "Plain") and content and content[0].get("t") == "Str":
-                lead = _LEAD_NUMBER.fullmatch(content[0]["c"])
-                if lead is not None:
-                    found.setdefault(int(lead.group(1)), _plain(content[1:]))
-                    return
-            walk(content)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(blocks)
-    return found
-
-
-def _fits(template: str, words: str) -> bool:
-    """Do `words` read as `template`, each `_VALUE` in it standing for any text, inside a
-    word or across several? The parts between are found in order, left to right."""
-    parts = template.split(_VALUE)
-    if len(parts) == 1:
-        return template == words
-    first, last = parts[0], parts[-1]
-    if len(words) < len(first) + len(last) or not (
-        words.startswith(first) and words.endswith(last)
-    ):
-        return False
-    at, end = len(first), len(words) - len(last)
-    for part in parts[1:-1]:
-        found = words.find(part, at, end)
-        if found < 0:
-            return False
-        at = found + len(part)
-    return True
+    twice: set[int] = set()
+    for node in _nodes(blocks, lambda node: number_of(node) is None):
+        number = number_of(node)
+        if number is not None:
+            if number in found:
+                twice.add(number)
+            found[number] = _plain(node["c"][1:])
+    return {number: text for number, text in found.items() if number not in twice}
 
 
 def _first_difference(read: list[_Read], printed: list[tuple[int, str, str]]) -> str | None:
@@ -197,7 +226,7 @@ def _first_difference(read: list[_Read], printed: list[tuple[int, str, str]]) ->
     rows, columns = len(read), len(printed)
 
     def same(i: int, j: int) -> bool:
-        return read[i].level == printed[j][0] and _fits(read[i].words, printed[j][1])
+        return read[i].level == printed[j][0] and read[i].words == printed[j][1]
 
     common = [[0] * (columns + 1) for _ in range(rows + 1)]
     for i in range(rows - 1, -1, -1):
@@ -255,40 +284,44 @@ def _marked(source: str, mark: str) -> tuple[str, list[Fence]]:
 
 def _first_lines(blocks: list) -> Counter[tuple[str, str]]:
     """The first line of every code block and raw block pandoc makes, with which it is,
-    counted. Walked with a list, not by recursion: quotations six hundred deep overflowed."""
+    counted."""
     found: Counter[tuple[str, str]] = Counter()
-    pending: list = [blocks]
-    while pending:
-        node = pending.pop()
-        if isinstance(node, dict):
-            if node.get("t") in ("CodeBlock", "RawBlock"):
-                found[(node["c"][1].split("\n", 1)[0], node["t"])] += 1
-            else:
-                pending.append(node.get("c"))
-        elif isinstance(node, list):
-            pending.extend(node)
+    for node in _nodes(blocks, lambda node: node.get("t") not in ("CodeBlock", "RawBlock")):
+        if node.get("t") in ("CodeBlock", "RawBlock"):
+            found[(node["c"][1].split("\n", 1)[0], node["t"])] += 1
     return found
 
 
 def _listing_misread(
-    blocks: list, source: str, fences: list[Fence], sources: list[tuple[str, str]], mark: str
+    blocks: list,
+    source: str,
+    fences: list[Fence],
+    sources: list[tuple[str, str]],
+    built: list[str],
+    mark: str,
 ) -> str | None:
     """The first listing the gates read in `sources` that pandoc does not make where it
-    stands: paired in order with the listings in `source`, the text the build hands pandoc,
-    each of which must be one code block, or raw block for `{=format}`, opening with its
-    marked line."""
+    stands. Each is paired with the one at its place in the same file as built, values in,
+    and in order with the listings in `source`, the text the build hands pandoc, each of
+    which must hold the same lines and be one code block, or raw block for `{=format}`,
+    opening with its marked line."""
     made = _first_lines(blocks)
     number = 0
-    for name, text in sources:
-        for fence in fenced_spans(text, front_matter_end(text)):
-            built = fences[number] if number < len(fences) else None
-            kind = "RawBlock" if built is not None and built.is_raw else "CodeBlock"
+    for (name, text), shown in zip(sources, built, strict=True):
+        written = fenced_spans(text, front_matter_end(text))
+        own = fenced_spans(shown, front_matter_end(shown))
+        if len(written) != len(own):
+            return (
+                f"{name} with its values put in as other listings than the gates read in it: "
+                f"{len(written)} as written, and {len(own)} as built"
+            )
+        for fence, as_built in zip(written, own, strict=True):
+            at = fences[number] if number < len(fences) else None
+            kind = "RawBlock" if at is not None and at.is_raw else "CodeBlock"
             if (
-                built is None
-                or not _fits(
-                    _lines(PLACEHOLDER.sub(_VALUE, text[fence.body_start : fence.body_end])),
-                    _lines(source[built.body_start : built.body_end]),
-                )
+                at is None
+                or _lines(shown[as_built.body_start : as_built.body_end])
+                != _lines(source[at.body_start : at.body_end])
                 or made[(f"{mark}{number}", kind)] != 1
             ):
                 where = f"{name}:{text.count(chr(10), 0, fence.start) + 1}"
@@ -303,27 +336,66 @@ def _listing_misread(
 
 
 def misreading(
-    source: str, header: str, sources: list[tuple[str, str]], pandoc: str, cwd: Path
+    source: str,
+    header: str,
+    sources: list[tuple[str, str]],
+    pandoc: str,
+    cwd: Path,
+    *,
+    built: list[str] | None = None,
 ) -> str | None:
     """What pandoc reads in `source`, the text the build hands it, otherwise than the gates
     read `sources`, each file's name and text as it is on disk, and anything the build adds,
-    in order: a phrase to follow "pandoc reads". None when they agree, and when pandoc
-    cannot read `source` at all, which the build's own run of pandoc then reports."""
-    found, titles = _titles(sources)
+    in order: a phrase to follow "pandoc reads". `built` is each of those texts as the
+    build puts it in `source`, values in; without it, the sources are taken as built. None
+    when they agree, and when pandoc cannot read `source` at all, which the build's own run
+    of pandoc then reports."""
+    try:
+        return _compared(source, header, sources, pandoc, cwd, built)
+    except RecursionError:
+        # Python's JSON reader recurses, and two thousand nested divs overflow it. Not
+        # compared is not agreed: the build stops.
+        return (
+            "a document nested too deep for its reading to be compared with the gates'. "
+            "Quotations, lists or divs nested hundreds deep do this"
+        )
+
+
+def _compared(
+    source: str,
+    header: str,
+    sources: list[tuple[str, str]],
+    pandoc: str,
+    cwd: Path,
+    built: list[str] | None,
+) -> str | None:
+    """`misreading`, which see."""
+    made = built if built is not None else [text for _name, text in sources]
+    # Leads nobody can type: a paragraph of the author's that opens with a fixed one came
+    # back as a title's, and a listing opening with one passed for another listing.
+    lead = f"mgtitle{secrets.token_hex(8)}n"
+    titled = _titles(sources, made, lead)
+    if isinstance(titled, str):
+        return titled
+    found, titles = titled
     mark = f"mglisting{secrets.token_hex(8)}n"
     marked, fences = _marked(source, mark)
     whole = _json(marked, pandoc, cwd)
-    alone = _json(f"{header}\n{titles}\n", pandoc, cwd)
-    if whole is None or alone is None:
-        if alone is not None and _json(source, pandoc, cwd) is not None:
+    meta = _header_meta(header, pandoc)
+    alone = _json(f"{titles}\n", pandoc, cwd) if found else {"blocks": []}
+    if meta is None or alone is None:
+        return None
+    if whole is None:
+        if _json(source, pandoc, cwd) is not None:
             # A line put first in a listing the gates read changed how the text reads, so
             # to pandoc the listing is something else.
             return "as something other than code a listing the gates read"
         return None
+    set_by_header = json.loads(meta)
     set_by_text = sorted(
         key
-        for key in set(whole["meta"]) | set(alone["meta"])
-        if whole["meta"].get(key) != alone["meta"].get(key)
+        for key in set(whole["meta"]) | set(set_by_header)
+        if whole["meta"].get(key) != set_by_header.get(key)
     )
     if set_by_text:
         return (
@@ -331,18 +403,16 @@ def misreading(
             "read and only the build's header, from paper.yaml, may set. A YAML block below "
             "the front matter does this; move what it holds into paper.yaml"
         )
-    numbered = _numbered(alone["blocks"])
+    numbered = _numbered(alone["blocks"], lead)
     read = [
         _Read(
             where,
             level,
             title,
-            _words(numbered[number])
-            if number in numbered
-            else _words(PLACEHOLDER.sub(_VALUE, title)),
+            _words(numbered[number]) if number in numbered else _words(title),
         )
         for number, (where, level, title) in enumerate(found)
     ]
     return _first_difference(read, _headers(whole["blocks"])) or _listing_misread(
-        whole["blocks"], source, fences, sources, mark
+        whole["blocks"], source, fences, sources, made, mark
     )

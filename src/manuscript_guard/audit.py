@@ -331,7 +331,9 @@ _BIBLIOGRAPHY = re.compile(
 )
 
 
-def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
+def is_bibliography_heading(
+    line: str, *, marked: bool = False, markdown: bool = True
+) -> bool:
     """A bibliography heading: a line that is marked as a heading, or has a heading's shape.
 
     `marked` is for a line the document itself calls a heading, a Markdown `#` or setext
@@ -340,13 +342,18 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
 
-    A marked line is read without the attribute block at its end, as pandoc reads it, and a
-    line opening with `#` without its closing `#`s. Pandoc users write an unnumbered
-    reference heading as `# References {-}`, and the audit found no heading there: it cut
-    nothing, and every number in a book or a web page in the list was reported among the
-    findings. On an unmarked line the braces are printed, so "References {-}" there is
-    text. Closing `#`s belong to an ATX heading alone: a setext heading or a Word heading
-    reading "References #" prints the `#`.
+    A marked line is read without the attribute block at its end, as pandoc reads it.
+    Pandoc users write an unnumbered reference heading as `# References {-}`, and the audit
+    found no heading there: it cut nothing, and every number in a book or a web page in the
+    list was reported among the findings. On an unmarked line the braces are printed, so
+    "References {-}" there is text. Only spaces and tabs may follow the block: `strip()`
+    takes every Unicode space, and a no-break space after `{-}`, which pandoc prints braces
+    and all, cut a list.
+
+    `markdown` says whether the marks are Markdown's. There a marked line opening with `#`
+    is an ATX heading and loses its closing `#`s. A setext heading reading "References #"
+    prints the `#`, and so does a .docx, where a style marks the heading and Word prints
+    every `#` in "# References #".
 
     An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
     and YAML, and `# References` in a code listing cut everything after it; where `#` does
@@ -354,9 +361,10 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     """
     text = line.strip()
     if marked:
-        text = strip_attributes(text)
-        if text.startswith("#"):
-            text = text.rstrip("#").rstrip()
+        text = strip_attributes(line.lstrip().rstrip(" \t"))
+        if markdown and text.startswith("#"):
+            text = text.rstrip("#").rstrip(" \t")
+        text = text.strip()
     found = _BIBLIOGRAPHY.match(text)
     if not found:
         return False
@@ -464,9 +472,11 @@ def bibliography_spans(
     knows them only from paragraph styles. Omitted, they are read as Markdown, and a line in
     a fenced block, an HTML comment or the front matter does not start a list, whatever it
     says: it is code, a note or metadata. `cells` are lines inside a table, where
-    "References" is a column header and not a heading.
+    "References" is a column header and not a heading. Given `headings`, the marks are not
+    Markdown's, so a heading keeps any `#` it prints.
     """
     lines = text.split("\n")
+    markdown = headings is None
     if headings is None:
         headings = _markdown_heading_lines(text)
         # Blanked in place, so the lines still count the same.
@@ -475,14 +485,17 @@ def bibliography_spans(
     last = len(lines) - text.endswith("\n")
     spans: list[tuple[int, int]] = []
     for start, line in enumerate(lines):
-        if start in cells or not is_bibliography_heading(line, marked=start in headings):
+        if start in cells or not is_bibliography_heading(
+            line, marked=start in headings, markdown=markdown
+        ):
             continue
         if spans and start < spans[-1][1]:
             continue
         after = (
             i
             for i in sorted(headings)
-            if i > start and not is_bibliography_heading(lines[i], marked=True)
+            if i > start
+            and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )
         spans.append((start, next(after, last)))
     return spans

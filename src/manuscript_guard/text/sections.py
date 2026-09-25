@@ -45,12 +45,24 @@ _SETEXT = re.compile(
 # Kept as the ATX pattern for callers that only ever meant `#` headings.
 HEADING = _ATX
 
+# The spaces pandoc's `isSpace` takes, which is Haskell's: space, tab, the line breaks, form
+# feed, vertical tab, the no-break space and the other space separators (category Zs). Not
+# `\s`, which also takes U+0085, U+2028, U+2029 and U+001C to U+001F: a quoted value opening
+# with one of those is a value to pandoc, and refusing it kept `{title="<U+0085>x y"}` in a
+# Results title.
+_PANDOC_SPACE = (
+    r" \t\n\r\f\v\xa0\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
+    r"\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}"
+)
+
 # One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
-# or `-`, which pandoc reads as `.unnumbered`. A value is quoted, and then may not open with
-# whitespace (`title=" Works"` is not one, and pandoc prints the braces), or runs to a
-# space, a tab, a line break or the closing brace. Only those: `\s` would also end it at a
-# no-break space, a thin space or a form feed, which pandoc reads as part of the value, so
-# a heading whose `lang=fr` and `FR` were joined by a no-break space kept its block.
+# or `-`, which pandoc reads as `.unnumbered`. A class or a key opens with a letter, which
+# `strip_attributes` checks, since `[^\W\d_]` also takes `²` and `Ⅷ`. A value is quoted,
+# and then may not open with one of pandoc's spaces (`title=" Works"` is not one, and pandoc
+# prints the braces), or runs to a space, a tab, a line break or the closing brace. Only
+# those: `\s` would also end it at a no-break space, a thin space or a form feed, which
+# pandoc reads as part of the value, so a heading whose `lang=fr` and `FR` were joined by a
+# no-break space kept its block.
 #
 # A value may hold backslash escapes, `title="the \"main\" one"` or `note=a\}b`, and an
 # escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints it. Each escape is one
@@ -63,9 +75,11 @@ HEADING = _ATX
 # would try every one of them.
 _ATTRIBUTE_ITEM = re.compile(
     r"#[\w:.-]+"
-    r"|\.[^\W\d_][\w:.-]*"
-    r"|[^\W\d_][\w:.-]*="
-    r"(?:\"(?!\s)(?:[^\"\\]|\\.)*\"|'(?!\s)(?:[^'\\]|\\.)*'|(?:[^ \t\n\r}\\]|\\.)*)"
+    r"|\.(?P<lead>[^\W\d_])[\w:.-]*"
+    r"|(?P<key>[^\W\d_])[\w:.-]*="
+    r"(?:\"(?![" + _PANDOC_SPACE + r"])(?:[^\"\\]|\\.)*\""
+    r"|'(?![" + _PANDOC_SPACE + r"])(?:[^'\\]|\\.)*'"
+    r"|(?:[^ \t\n\r}\\]|\\.)*)"
     r"|-"
 )
 
@@ -92,8 +106,12 @@ def strip_attributes(text: str) -> str:
     brace no backslash escapes, and `{k=a\\{b}` is one block. Nothing else in the title
     changes: `# **Results**` keeps its asterisks. `text` comes back unchanged when nothing
     goes, so a caller can tell.
+
+    Only spaces and tabs may follow the block, and only they are taken off what precedes it.
+    `rstrip()` takes every Unicode space, and `# References {-}` with a no-break space after
+    it, which pandoc prints braces and all, lost its block.
     """
-    body = text.rstrip()
+    body = text.rstrip(" \t")
     if not body.endswith("}"):
         return text
     opening = len(body)
@@ -110,9 +128,12 @@ def strip_attributes(text: str) -> str:
         while position < len(inner) and inner[position] in " \t":
             position += 1
         if position == len(inner):
-            return body[:opening].rstrip()
+            return body[:opening].rstrip(" \t")
         item = _ATTRIBUTE_ITEM.match(inner, position)
         if item is None:
+            return text
+        letter = item.group("lead") or item.group("key")
+        if letter and not letter.isalpha():
             return text
         position = item.end()
 
@@ -126,15 +147,16 @@ def _atx_title(found: re.Match[str]) -> str:
 
     Read to the end of the title's own line. `_ATX` can run on past a blank line to a line
     of `#`s, and read to the end of the match, `# Results {#sec-results}` above one ended in
-    `#` rather than a block, and kept it.
+    `#` rather than a block, and kept it. And only spaces and tabs are taken off before the
+    block or the closing `#`s are looked for: any other space after them is printed.
     """
     source, end = found.string, found.end()
     newline = source.find("\n", found.end("title"), end)
-    line = source[found.start("title") : newline if newline >= 0 else end].strip()
+    line = source[found.start("title") : newline if newline >= 0 else end].strip(" \t")
     printed = strip_attributes(line)
     if printed == line:
         return found.group("title").strip()
-    return printed.rstrip("#").rstrip()
+    return printed.rstrip("#").strip()
 
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
@@ -233,7 +255,7 @@ def _headings_in(text: str) -> list[_Found]:
         _Found(
             m.start(),
             1 if m.group("under").startswith("=") else 2,
-            strip_attributes(m.group("title").strip()),
+            strip_attributes(m.group("title").strip(" \t")).strip(),
         )
         for m in _SETEXT.finditer(rendered)
     ]

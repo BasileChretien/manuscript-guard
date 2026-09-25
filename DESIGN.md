@@ -2088,17 +2088,26 @@ Closed since, and why each mattered:
   reference heading is read as having none. Its lines are then taken for reference entries
   by their shape, as in any headingless paper, and a sentence with an entry's shape has its
   unmatched numbers listed apart, where `--strict` does not count them.
-- **A heading loses its attribute block as pandoc reads it, and nothing else.** Two
-  differences. A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or
-  `{k=a{b}`, is taken for the block's opening brace. And a block continued on the next
-  line, `# Results {#sec-results` above `.unnumbered}`, or a quoted value broken across
-  two lines, is looked for on the heading's own line alone, where pandoc reads on. Either
-  way the block stays in the title: G2 then does not read that heading as Results or
-  Methods, and the audit cuts no reference list at it. Other markup stays in the title,
-  so `# **Results**` is not Results to G2 either, and a subsection under it named like a
-  Methods one admits the Methods-only rules. In a .docx a heading style is what makes a
-  heading, so a styled paragraph typed as `References {-}` starts a list, although Word
-  prints the braces.
+- **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
+  differences remain.
+  - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
+    is taken for the block's opening brace, and the block stays in the title.
+  - A block continued on the next line, `# Results {#sec-results` above `.unnumbered}`,
+    or a quoted value broken across two lines, is looked for on the heading's own line
+    alone, where pandoc reads on. The block stays in the title.
+  - An unpaired `*` or `_` before the block or the closing `#`s, as in
+    `# *References {-}`, `# References _{-}` or `# References *##`, opens an emphasis
+    pandoc cannot close, and pandoc then prints the rest of the line, braces and `#`s
+    included. The toolkit takes them off, and the audit cuts a reference list there that
+    pandoc does not head, so the numbers under it go unread.
+
+  A block kept in the title is the strict way to be wrong: G2 does not read that heading
+  as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
+  is the loose way, and is recorded here rather than fixed because reading it right means
+  reading emphasis as pandoc does. Other markup stays in the title, so `# **Results**` is
+  not Results to G2 either, and a subsection under it named like a Methods one admits the
+  Methods-only rules. In a .docx a heading style is what makes a heading, so a styled
+  paragraph typed as `References {-}` starts a list, although Word prints the braces.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

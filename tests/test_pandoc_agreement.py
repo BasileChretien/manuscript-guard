@@ -117,12 +117,51 @@ CONSTRUCTS = {
     "atx escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n\nProse.\n",
     "atx escaped opening brace in a value": "# Results {k=a\\{b}\n\nProse.\n",
     # An unquoted value ends at a space, a tab, a line break or `}`, and at no other space.
-    "atx no-break space in a value": "# Results {#sec-results lang=fr FR}\n\nProse.\n",
-    "atx thin space in a value": "# Results {#sec-results lang=fr FR}\n\nProse.\n",
+    "atx no-break space in a value": "# Results {#sec-results lang=fr\u00a0FR}\n\nProse.\n",
+    "atx thin space in a value": "# Results {#sec-results lang=fr\u2009FR}\n\nProse.\n",
     "atx form feed in a value": "# Results {#sec-results lang=fr\fFR}\n\nProse.\n",
     "atx empty quoted value": '# References {title=""}\n\nProse.\n',
     "atx empty single-quoted value": "# References {title=''}\n\nProse.\n",
     "atx quoted value ending in a space": '# References {title="Works "}\n\nProse.\n',
+    # Only spaces and tabs may follow a block or closing `#`s; any other space is printed.
+    "atx no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx ideographic space after the block": "# References {-}\N{IDEOGRAPHIC SPACE}\n\nProse.\n",
+    "atx form feed after the block": "# References {-}\f\n\nProse.\n",
+    "atx no-break space after a closing hash": "# References #\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx no-break space between a hash and the block": (
+        "# References #\N{NO-BREAK SPACE}{-}\n\nProse.\n"
+    ),
+    # A class or a key opens with a letter, and a number that is not a digit is not one.
+    "atx class opening with a superscript": "# References {.\N{SUPERSCRIPT TWO}}\n\nProse.\n",
+    "atx key opening with a roman numeral": (
+        "# References {\N{ROMAN NUMERAL EIGHT}=1}\n\nProse.\n"
+    ),
+    "atx class opening with a titlecase letter": (
+        "# References {.\N{LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON}}\n\nProse.\n"
+    ),
+    "atx class opening with a modifier letter": (
+        "# References {.\N{MODIFIER LETTER SMALL H}}\n\nProse.\n"
+    ),
+    "atx identifier opening with a superscript": (
+        "# References {#\N{SUPERSCRIPT TWO}}\n\nProse.\n"
+    ),
+    # A quoted value may open with any character pandoc's `isSpace` refuses, which is not
+    # every character Python's `\s` takes.
+    "atx quoted value opening with a next line": (
+        '# Results {title="\N{NEXT LINE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a line separator": (
+        '# Results {title="\N{LINE SEPARATOR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a file separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR FOUR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a unit separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR ONE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a zero-width space": (
+        '# Results {title="\N{ZERO WIDTH SPACE}x y"}\n\nProse.\n'
+    ),
 }
 
 
@@ -152,6 +191,21 @@ BRACES = {
     "space after an opening single quote": "# References {k=' a'}\n",
     "tab after an opening quote": '# References {title="\tWorks"}\n',
     "no-break space after an opening quote": '# References {title="\u00a0Works"}\n',
+    # Every space pandoc's `isSpace` takes, after an opening quote.
+    "ideographic space after an opening quote": '# Results {title="\N{IDEOGRAPHIC SPACE}x y"}\n',
+    "ogham space mark after an opening quote": '# Results {title="\N{OGHAM SPACE MARK}x y"}\n',
+    "en quad after an opening quote": '# Results {title="\N{EN QUAD}x y"}\n',
+    "hair space after an opening quote": '# Results {title="\N{HAIR SPACE}x y"}\n',
+    "narrow no-break space after an opening quote": (
+        '# Results {title="\N{NARROW NO-BREAK SPACE}x y"}\n'
+    ),
+    "medium mathematical space after an opening quote": (
+        '# Results {title="\N{MEDIUM MATHEMATICAL SPACE}x y"}\n'
+    ),
+    "vertical tab after an opening quote": '# Results {title="\vx y"}\n',
+    "no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n",
+    "thin space after the block": "# References {-}\N{THIN SPACE}\n",
+    "class opening with a roman numeral": "# References {.\N{ROMAN NUMERAL EIGHT}}\n",
 }
 
 

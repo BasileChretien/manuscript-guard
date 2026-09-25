@@ -1206,13 +1206,70 @@ def test_audit_does_not_cut_at_a_heading_that_prints_its_braces_or_its_hash(
 
 
 @pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}\N{NO-BREAK SPACE}",
+        "# References {-}\N{IDEOGRAPHIC SPACE}",
+        "# References {-}\N{THIN SPACE}",
+        "# References {-}\f",
+        "# References #\N{NO-BREAK SPACE}",
+        "# References {.\N{SUPERSCRIPT TWO}}",
+        "# References {\N{SUPERSCRIPT TWO}=1}",
+        "# References {.\N{ROMAN NUMERAL EIGHT}}",
+    ],
+)
+def test_audit_does_not_cut_at_braces_or_a_hash_pandoc_prints(
+    tmp_path: Path, heading: str
+) -> None:
+    """`strip()` takes every Unicode space, and pandoc allows only spaces and tabs after a
+    block or a closing `#`: a no-break space after `{-}` leaves the braces printed. And a
+    class or a key opens with a letter, where `[^\\W\\d_]` also took `\u00b2` and `\u2167`. Each was
+    read as a reference heading, and the paragraph after it was cut unread."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77 cases.\n\n{heading}\n\nThe pooled ratio was 9.99.\n", encoding="utf-8"
+    )
+    report = audit([paper], [outputs])
+    assert "9.99" in [c.text.rstrip(".") for c in report.unmatched]
+    assert report.not_audited == []
+
+
+def test_audit_does_not_cut_at_a_word_heading_that_prints_its_hashes(tmp_path: Path) -> None:
+    """Closing `#`s are Markdown syntax. A Word Heading 1 reading "# References #" prints
+    both, and was read as a Markdown heading with its closing `#` taken off."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("# References #", "Heading1")
+        + _p("The pooled ratio was 9.99."),
+        {"word/styles.xml": styles},
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
     "results",
     [
         "# Results {#sec-results}",
         '# Results {#sec-results title="the \\"main\\" results"}',
         "# Results {#sec-results note=a\\}b}",
         "# Results {#sec-results}\n\n###",
-        "# Results {#sec-results lang=fr FR}",
+        "# Results {#sec-results lang=fr\u00a0FR}",
+        '# Results {#sec-results title="\N{NEXT LINE}x y"}',
+        '# Results {#sec-results title="\N{LINE SEPARATOR}x y"}',
     ],
 )
 def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
@@ -1224,7 +1281,9 @@ def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
     in advance. The first fix read no backslash escapes in a value, which pandoc reads, and
     read the heading's line to the end of the match, which ran on past a blank line to a
     line of `#`s. The second ended an unquoted value at a no-break space, where pandoc ends
-    one only at a space, a tab, a line break or `}`."""
+    one only at a space, a tab, a line break or `}`. The third refused a quoted value that
+    opens with any `\\s`, where pandoc refuses only its own spaces, and U+0085 or U+2028 is
+    not one of them."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
     text = text.replace("\n# Results\n", f"\n{results}\n", 1)

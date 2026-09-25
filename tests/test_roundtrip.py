@@ -202,151 +202,152 @@ def test_an_unstamped_document_is_refused(project: Path, tmp_path: Path) -> None
     assert main(["import", str(plain), str(project)]) == 1
 
 
-# ---------------------------------------------------------------- the tagging scheme
+# ---------------------------------------------------------------- what an identifier named
 
 
-def with_scheme(document: Path, value: str | None) -> Path:
-    """The document with its recorded tagging scheme rewritten, or removed as a build from
-    before the scheme was recorded would have it."""
-    scratch = document.with_suffix(".s.docx")
+def with_record(document: Path, change) -> Path:
+    """The document with its record of paragraphs rewritten: `change` takes the property
+    elements holding it, as one string, and returns their replacement."""
+    scratch = document.with_suffix(".p.docx")
     with zipfile.ZipFile(document) as zin, zipfile.ZipFile(scratch, "w") as zout:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == "docProps/custom.xml":
                 xml = data.decode("utf-8")
-                ours = r'<property\b[^>]*name="manuscript-guard-tagging"[^>]*>.*?</property>'
-                if value is None:
-                    xml = re.sub(ours, "", xml, flags=re.DOTALL)
-                else:
-                    xml = re.sub(
-                        r'(name="manuscript-guard-tagging"[^>]*>\s*<vt:lpwstr>)[^<]*',
-                        rf"\g<1>{value}",
-                        xml,
-                    )
+                ours = re.compile(
+                    r'<property\b[^>]*name="manuscript-guard-paragraphs-\d+"[^>]*>.*?</property>',
+                    re.DOTALL,
+                )
+                found = "".join(ours.findall(xml))
+                xml = ours.sub("", xml)
+                xml = xml.replace("</Properties>", change(found) + "</Properties>")
                 data = xml.encode("utf-8")
             zout.writestr(item, data)
     scratch.replace(document)
     return document
 
 
-#: A source touching every rule that decides which paragraph gets which identifier, and the
-#: identifiers the current scheme gives it. Changing how a source is split, which blocks are
-#: tagged or where the front matter ends changes this table - and points every document
-#: already sent out at other paragraphs. So a change here goes with a bump of
-#: `TAGGING_SCHEME`, and the table is re-pinned for the new scheme.
-#:
-#: Some entries are wrong: the half of a code block after its blank line is tagged, and so
-#: are list items (the marker turns `- one` into a paragraph), a pipe table (the marker
-#: becomes its first header cell), raw HTML, a link definition, indented code and a YAML
-#: block, while a paragraph that is only a binding is not. They are pinned anyway. The
-#: table records what the documents already sent out carry, not what is right, and fixing
-#: any of them is exactly a change that has to bump the scheme.
-PINNED_SOURCE = (
-    "---\ntitle: T\n...\n\n# Methods\n\nFirst {{results.a}} paragraph.\n\n"
-    "```r\nx <- 1\n\ny <- 2\n```\n\n::: {#refs}\n:::\n\n{{table.t1}}\n\n{{results.b}}\n\n"
-    "Second paragraph\nruns on.\n\n- one\n\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n"
-    "<div>\nraw html\n</div>\n\n[site]: https://example.org\n\n    indented code\n\n"
-    "---\nmid: yaml\n---\n\n## Results\n\nLast paragraph.\n"
-)
-PINNED = {
-    2: {
-        "mg-p-maincbb16c-2": "First {{results.a}} paragraph.",
-        "mg-p-maincbb16c-6": "y <- 2\n```",
-        "mg-p-maincbb16c-14": "Second paragraph\nruns on.",
-        "mg-p-maincbb16c-16": "- one",
-        "mg-p-maincbb16c-18": "- two",
-        "mg-p-maincbb16c-20": "| a | b |\n|---|---|\n| 1 | 2 |",
-        "mg-p-maincbb16c-22": "<div>\nraw html\n</div>",
-        "mg-p-maincbb16c-24": "[site]: https://example.org",
-        "mg-p-maincbb16c-26": "indented code",
-        "mg-p-maincbb16c-28": "---\nmid: yaml\n---",
-        "mg-p-maincbb16c-32": "Last paragraph.",
+def unrecorded(document: Path) -> Path:
+    """The document as a release from before paragraphs were recorded built it."""
+    return with_record(document, lambda found: "")
+
+
+FUNDING = {"This work received no funding.": "This work received no external funding."}
+
+
+@needs_pandoc
+def test_a_built_document_records_what_each_identifier_names(project: Path) -> None:
+    """Split over properties short enough that Word does not cut them when it saves."""
+    import hashlib
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import paragraphs_of, tagged_paragraphs
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = project / "build" / "manuscript.docx"
+    known = tagged_paragraphs(load_project(project)[0])
+    assert paragraphs_of(document) == {
+        name: hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+        for name, (_path, text, _start) in known.items()
     }
-}
+    xml = zipfile.ZipFile(document).read("docProps/custom.xml").decode("utf-8")
+    values = re.findall(r'name="manuscript-guard-paragraphs-\d+"[^>]*><vt:lpwstr>([^<]*)<', xml)
+    assert len(values) > 1 and all(len(value) < 255 for value in values)
 
 
-def test_identifiers_are_pinned_to_the_tagging_scheme(tmp_path: Path) -> None:
-    """A document carries its paragraphs' identifiers for weeks, and the identifier is
-    positional. When the rules that assign it changed, a document built before and imported
-    after had edits written into other paragraphs. The scheme number is what lets import
-    refuse that, and it only works if every such change bumps it: this fails until it does."""
-    from manuscript_guard.build.assemble import strip_front_matter
-    from manuscript_guard.roundtrip import TAGGING_SCHEME, identified, tag
+def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
+    from manuscript_guard.roundtrip import paragraphs_of
 
-    assert TAGGING_SCHEME in PINNED, (
-        f"no table for tagging scheme {TAGGING_SCHEME}: pin what it gives PINNED_SOURCE"
-    )
-    expected = PINNED[TAGGING_SCHEME]
-    found = {name: text for name, text, _at in identified(PINNED_SOURCE, "main.md")}
-    moved = sorted(name for name in found.keys() & expected.keys() if found[name] != expected[name])
-    assert not moved, (
-        f"{moved} now name other text: an identifier moved, so documents already sent out "
-        f"would be merged into the wrong paragraphs. Bump TAGGING_SCHEME, and pin a table "
-        f"for the new scheme"
-    )
-    assert found == expected, (
-        "identifiers were added or removed but none moved: re-pin this scheme's table; no "
-        "bump is needed"
-    )
-    # The document and the import must number alike, or an identifier names nothing. The
-    # build tags the source with its front matter stripped.
-    body, _title = strip_front_matter(PINNED_SOURCE)
-    assert re.findall(r"\{#(mg-p-[^}]+)\}", tag(body, "main.md")) == list(expected)
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    many = {f"mg-p-main-{2 * i}": f"Paragraph {i}." for i in range(60)}
+    stamp_into(document, "a" * 64, many)
+    stamp_into(document, "b" * 64, {"mg-p-main-2": "Only one."})
+    assert set(paragraphs_of(document)) == {"mg-p-main-2"}
+    assert stamp_of(document) == "b" * 64
 
 
 @needs_pandoc
-def test_a_built_document_carries_its_tagging_scheme(project: Path) -> None:
-    from manuscript_guard.cli import main
-    from manuscript_guard.roundtrip import TAGGING_SCHEME, scheme_of
-
-    assert main(["build", str(project), "--offline"]) == 0
-    assert scheme_of(project / "build" / "manuscript.docx") == str(TAGGING_SCHEME)
-
-
-@needs_pandoc
-# Another number, and values that are no number at all: a scheme that is recorded but
-# unreadable is not "records none", which would take the lenient path.
-@pytest.mark.parametrize("recorded", ["1", "3.0", " 2", ""])
-def test_a_document_numbered_under_other_rules_is_refused_even_with_force(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], recorded: str
+def test_an_edit_is_not_merged_where_the_identifier_now_names_other_text(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """--force exists for a stale digest, where every hunk can be checked by hand. Under
-    other numbering there is no hunk to check: each edit lands in whichever paragraph now
-    holds its identifier."""
+    """Whatever made an identifier name other text, a source edited since the build or a
+    release that numbers paragraphs by other rules, the edit made under it belongs to a
+    paragraph that is not there now. It is named and left, even with --force."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    returned = edit_docx(
-        project / "build" / "manuscript.docx",
-        tmp_path / "back.docx",
-        {"This work received no funding.": "This work received no external funding."},
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    funding = next(n for n, text in _texts(project).items() if text.startswith("This work"))
+    index, digest = funding.rpartition("-")[2], _recorded(returned)[funding]
+    # The record says the funding identifier named some other text at the build.
+    with_record(
+        returned,
+        lambda found: re.sub(rf"(?<=[:,]){index}\.{digest}(?=[,<])", f"{index}.00000000", found),
     )
-    with_scheme(returned, recorded)
     source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
 
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
     assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
-    assert "rebuild" in capsys.readouterr().out.lower()
-    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
-    assert not (project / "revision").exists(), "no round opened on misnumbered anchors"
+    assert "were not compared" in capsys.readouterr().out
+
+
+def _recorded(document: Path) -> dict[str, str]:
+    from manuscript_guard.roundtrip import paragraphs_of
+
+    return paragraphs_of(document) or {}
+
+
+def _texts(project: Path) -> dict[str, str]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    known = tagged_paragraphs(load_project(project)[0])
+    return {name: text for name, (_path, text, _start) in known.items()}
 
 
 @needs_pandoc
-def test_an_unmarked_document_whose_numbering_did_not_change_still_imports(
-    project: Path, tmp_path: Path
+def test_a_paragraph_tagged_now_and_not_at_the_build_is_not_reported_deleted(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A document built before the scheme was recorded carries none. Its source reading the
-    same under the old rules as the new is the ordinary case, and it merges as it did."""
+    """A release that tags more kinds of block gives the source identifiers the document
+    never carried. Walked as the manuscript's paragraphs, each read as deleted in Word, and
+    the author was told to delete it from the source."""
+    from manuscript_guard import roundtrip
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    returned = edit_docx(
-        project / "build" / "manuscript.docx",
-        tmp_path / "back.docx",
-        {"This work received no funding.": "This work received no external funding."},
+    returned = project / "build" / "manuscript.docx"
+    # From now on a paragraph that is only a table or a figure is tagged; at the build it
+    # was not.
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip,
+        "_untagged",
+        lambda text: was(text) and not re.fullmatch(r"\{\{(?:table|figure)\.[^}]*\}\}", text),
     )
-    with_scheme(returned, None)
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_an_unrecorded_document_whose_numbering_did_not_change_still_imports(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built before paragraphs were recorded carries no record. Its source
+    reading the same under the old rules as the new is the ordinary case, and it merges as
+    it did."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert "no external funding" in (project / "manuscript" / "main.md").read_text(
         encoding="utf-8"
@@ -354,22 +355,18 @@ def test_an_unmarked_document_whose_numbering_did_not_change_still_imports(
 
 
 @needs_pandoc
-def test_an_unmarked_document_built_from_other_text_is_refused_even_with_force(
+def test_an_unrecorded_document_built_from_other_text_is_refused_even_with_force(
     project: Path, tmp_path: Path
 ) -> None:
-    """Whether an unmarked document was numbered as its source is now can only be asked of
-    the text it was built from. Asked of the source as edited since, a forced import wrote
-    four paragraphs' text over their neighbours; the plan shows what an edit becomes and not
-    what it replaces, so checking every hunk could not have caught it."""
+    """Whether an unrecorded document was numbered as its source is now can only be asked
+    of the text it was built from. Asked of the source as edited since, a forced import
+    wrote four paragraphs' text over their neighbours; the plan shows what an edit becomes
+    and not what it replaces, so checking every hunk could not have caught it."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    returned = edit_docx(
-        project / "build" / "manuscript.docx",
-        tmp_path / "back.docx",
-        {"This work received no funding.": "This work received no external funding."},
-    )
-    with_scheme(returned, None)
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
     path = project / "manuscript" / "main.md"
     path.write_text(path.read_text(encoding="utf-8") + "\n\nA later paragraph.\n", "utf-8")
     source = path.read_text(encoding="utf-8")
@@ -380,41 +377,39 @@ def test_an_unmarked_document_built_from_other_text_is_refused_even_with_force(
 
 
 @needs_pandoc
-def test_an_identifier_the_manuscript_no_longer_gives_is_named(
+def test_a_paragraph_whose_identifier_the_manuscript_no_longer_gives_is_named(
     project: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A release that tags fewer kinds of block moves no identifier, so it needs no new
-    scheme. But the import walks the manuscript's identifiers, and one the document carries
-    that no paragraph has any longer was skipped without a word: an edit in it went nowhere,
-    and nothing said so."""
+    """A release that tags fewer kinds of block leaves the document carrying an identifier
+    the manuscript no longer gives. The import walks the manuscript's identifiers, so one
+    of these was skipped without a word: an edit in it went nowhere, the import said nothing
+    came back, and it exited 0."""
     from manuscript_guard import roundtrip
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    returned = edit_docx(
-        project / "build" / "manuscript.docx",
-        tmp_path / "back.docx",
-        {"This work received no funding.": "This work received no external funding."},
-    )
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
     was = roundtrip._untagged
     monkeypatch.setattr(
         roundtrip, "_untagged", lambda text: was(text) or text.startswith("This work received")
     )
     capsys.readouterr()
-    main(["import", str(returned), str(project)])
-    assert "no paragraph of the manuscript has now" in capsys.readouterr().out
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "were not compared" in out
+    assert "nothing came back" not in out
 
 
 @needs_pandoc
-def test_an_unmarked_document_is_judged_by_the_files_it_carries(
+def test_an_unrecorded_document_is_judged_by_the_files_it_carries(
     project: Path, tmp_path: Path
 ) -> None:
     """An identifier names its file. A supplement whose front matter is read differently now
     says nothing about the numbering of the main text's document, and refusing it for that
-    blocked every unmarked main document in a project with such a supplement."""
+    blocked every unrecorded main document in a project with such a supplement."""
     from manuscript_guard.cli import main
 
     supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
@@ -422,16 +417,36 @@ def test_an_unmarked_document_is_judged_by_the_files_it_carries(
         "---\ntitle: S1\n...\n\n" + supplement.read_text(encoding="utf-8"), "utf-8"
     )
     assert main(["build", str(project), "--offline"]) == 0
-    returned = edit_docx(
-        project / "build" / "manuscript.docx",
-        tmp_path / "back.docx",
-        {"This work received no funding.": "This work received no external funding."},
-    )
-    with_scheme(returned, None)
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert "no external funding" in (project / "manuscript" / "main.md").read_text(
         encoding="utf-8"
     )
+
+
+@needs_pandoc
+def test_a_comment_on_a_paragraph_whose_identifier_moved_opens_no_anchor(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Anchored to whatever paragraph sits there now, the point's revision was checked
+    against the wrong one, and a paragraph nobody revised could pass."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    # Every identifier the record covers now names other text.
+    with_record(returned, lambda found: re.sub(r"\.[0-9a-f]{8}", ".00000000", found))
+    capsys.readouterr()
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert not any(p.get("where") for r in document["reviewers"] for p in r["points"])
+    assert "recorded without one" in capsys.readouterr().out
 
 
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:

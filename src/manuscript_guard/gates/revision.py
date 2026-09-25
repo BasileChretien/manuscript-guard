@@ -60,6 +60,8 @@ def check_revision(project: Project, *, submission: bool = False) -> Report:
     current = file_digests(project)
     answered = 0
     total = 0
+    # What `_anchor_unchanged` reads the manuscript for, read once for every point.
+    seen: dict = {}
 
     for number, path in found:
         document = read_structured(path)
@@ -75,7 +77,7 @@ def check_revision(project: Project, *, submission: bool = False) -> Report:
                 total += 1
                 report, ok = _check_point(
                     report, project, number, reviewer["id"], point, submitted, current,
-                    severity, paragraphs,
+                    severity, paragraphs, seen,
                 )
                 answered += int(ok)
 
@@ -96,6 +98,7 @@ def _check_point(
     current: dict,
     severity: str,
     paragraphs: dict,
+    seen: dict,
 ) -> tuple[Report, bool]:
     where = f"round {number}, {reviewer} point {point['id']}"
     response = str(point.get("response", "")).strip()
@@ -135,7 +138,26 @@ def _check_point(
         )
 
     ok = True
-    anchored = _anchor_unchanged(project, point, paragraphs, changed)
+    anchor = point.get("where")
+    claims_manuscript = any(entry["kind"] == "manuscript" for entry in changed)
+    if anchor and paragraphs and anchor not in paragraphs and claims_manuscript:
+        # Only a round written by hand, or by an older version, has one: nothing now records
+        # an anchor the round's own baseline does not hold. Skipped, it passed unchecked.
+        ok = False
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="anchor-unrecorded",
+                severity=severity,
+                message=f"{where}: the paragraph this point was attached to ({anchor}) is not "
+                f"among the paragraphs the round recorded as submitted, so whether it changed "
+                f"cannot be checked",
+                context=response[:140],
+                hint="read that paragraph against the reviewer's comment yourself. Then delete "
+                "`where` from the point: the claimed change is checked against the whole file",
+            )
+        )
+    anchored = _anchor_unchanged(project, point, paragraphs, changed, seen)
     if anchored:
         ok = False
         report = report.with_findings(
@@ -171,7 +193,7 @@ def _check_point(
 
 
 def _anchor_unchanged(
-    project: Project, point: dict, paragraphs: dict, changed: list
+    project: Project, point: dict, paragraphs: dict, changed: list, seen: dict
 ) -> str | None:
     """Whether the paragraph the reviewer actually commented on is still as it was.
 
@@ -194,7 +216,9 @@ def _anchor_unchanged(
     if not any(entry["kind"] == "manuscript" for entry in changed):
         return None
 
-    if paragraphs[where] in _passages(project):
+    if "passages" not in seen:
+        seen["passages"] = _passages(project)
+    if paragraphs[where] in seen["passages"]:
         return (
             f"the paragraph this point was attached to ({where}) is unchanged, though the "
             f"response says the manuscript was revised"
@@ -202,18 +226,26 @@ def _anchor_unchanged(
     return None
 
 
-#: A line that opens or closes something rather than belonging to a paragraph: a heading, or
-#: a code fence or div marker.
-_STRUCTURAL = re.compile(r"^[ ]{0,3}(?:#|:::|```|~~~)")
+#: A line that ends one run of a paragraph's lines and starts another wherever it stands: a
+#: code fence or div marker, or a line that is a whole HTML tag.
+_MARKER = re.compile(r"^[ ]{0,3}(?::::|```|~~~)|^[ \t]*</?[A-Za-z][^>]*>[ \t]*$")
+#: A heading, which pandoc reads only where a paragraph could start: first in a block, or
+#: straight after a marker. Anywhere else a `#` line is part of the paragraph.
+_ATX = re.compile(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)")
+_UNDERLINE = re.compile(r"^[ ]{0,3}(?:=+|-+)[ \t]*$")
+#: A line that is a whole HTML comment prints nothing, so a paragraph reads as if it were not
+#: there, wherever it stands.
+_COMMENT_LINE = re.compile(r"^[ \t]*<!--.*-->[ \t]*$")
 
 
 def _passages(project: Project) -> set[str]:
     """The hash of every stretch of the manuscript that could be a paragraph a reviewer read.
 
-    Each block between blank lines, and each run of a block's lines between headings and
-    fence or div markers. The tagged paragraphs alone missed one the revision had written a
-    heading straight above, put a div round, or run on under its heading by dropping a blank
-    line: still in the manuscript, printed the same, and passed as revised.
+    Each block between blank lines, and each run of a block's lines between the headings and
+    markers inside it, with any line that is a whole HTML comment left out. The tagged
+    paragraphs alone missed one the revision had written a heading straight above, put a div
+    or a comment round, or run on under its heading by dropping a blank line: still in the
+    manuscript, printed the same, and passed as revised.
     """
     import hashlib
 
@@ -222,22 +254,30 @@ def _passages(project: Project) -> set[str]:
 
     found: set[str] = set()
 
-    def keep(text: str) -> None:
-        if text.strip():
-            found.add(hashlib.sha256(text.strip().encode("utf-8")).hexdigest())
+    def keep(lines: list[str]) -> None:
+        text = "\n".join(lines).strip()
+        if text:
+            found.add(hashlib.sha256(text.encode("utf-8")).hexdigest())
 
     for path in source_files(project.path("manuscript")):
         text, _title = strip_front_matter(path.read_text(encoding="utf-8"))
         for block in re.split(r"\n\s*\n", text):
-            keep(block)
+            keep(block.split("\n"))
             run: list[str] = []
+            # Whether the run in hand started where a heading could: the block's first line,
+            # or straight after a marker or another heading.
+            clean = True
             for line in block.split("\n"):
-                if _STRUCTURAL.match(line):
-                    keep("\n".join(run))
-                    run = []
+                if _COMMENT_LINE.match(line):
+                    continue
+                if _MARKER.match(line) or (clean and not run and _ATX.match(line)):
+                    keep(run)
+                    run, clean = [], True
+                elif clean and len(run) == 1 and _UNDERLINE.match(line):
+                    run = []  # a setext heading: its title and its underline
                 else:
                     run.append(line)
-            keep("\n".join(run))
+            keep(run)
     return found
 
 

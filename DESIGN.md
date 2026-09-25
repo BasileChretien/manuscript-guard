@@ -1242,26 +1242,34 @@ rules change. The front-matter reading changed in plugin release 0.2.13. After t
 document built before the change and imported after it had every identifier a block out of
 step: `import --apply` wrote three paragraphs' text over three others and printed "merged 3
 reworded paragraph(s), bindings intact". A review round's anchors went the same way, and G13
-compared the wrong paragraph and passed. The document now records its tagging scheme beside
-the source digest (`roundtrip.TAGGING_SCHEME`). Under another scheme, or one it cannot read,
-`import` and `respond --open` refuse, and `--force` does not help. The plan shows what an
-edit becomes, not which paragraph it replaces, so there is no hunk to check. A document from
-before the scheme was recorded is refused only where it matters, which can only be judged
-against the text it was built from. If anything it was built from has changed since, it is
-refused, whatever is passed. If not, it is refused when a file it carries numbers
-differently under the rules kept from scheme 1. A table of identifiers in `test_roundtrip.py`
-fails when an identifier of the constructs it holds moves, until the scheme is bumped. A
-change to which blocks are tagged moves none, because an identifier counts every block,
-tagged or not: it only adds or removes identifiers, and needs no bump. `import` names a
-paragraph whose identifier the manuscript no longer gives, because an edit there is not
-compared, and it used to be skipped without a word.
+compared the wrong paragraph and passed. The same happened, with no change of rules, to a
+document forced in after a paragraph was added to the source above the one a co-author
+edited: `--force` said to check every hunk, and the plan showed what each edit became,
+never which paragraph it replaced.
 
-A review round needs no scheme, because G13 no longer compares by identifier. The round
-keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
-commented on counts as unrevised while the manuscript still holds that exact text,
-wherever it now sits. Compared by identifier, it broke without any change of rules as
-well: a paragraph added above the anchor during the revision pointed it at a neighbour,
-and a paragraph nobody touched passed as revised.
+So the document now records what each identifier named: a short hash of every paragraph's
+source text, beside the source digest (`roundtrip.PARAGRAPHS_PROPERTY`, split across
+properties short of the 255 characters Word may cut one to). `import` compares, moves and
+merges only the paragraphs whose identifier still names text that reads as it did at the
+build, and names the rest as not compared; `respond --open` keeps a comment's anchor only
+on such a paragraph. It does not matter why an identifier came to name other text, a source
+edited since, a release that numbers or tags paragraphs by other rules: each is caught the
+same way, one paragraph at a time, and `--force` is safe to use for the rest. A number for
+the rules was tried first and had to be bumped by every change to them; three reviews each
+found a change that would not have.
+
+A document from before paragraphs were recorded is refused only where it matters, which
+can only be judged against the text it was built from. If anything it was built from has
+changed since, it is refused, whatever is passed. If not, it is refused when a file it
+carries numbers differently under the front-matter rule of releases up to 0.2.12.
+
+A review round needs nothing of the kind, because G13 no longer compares by identifier. The
+round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
+commented on counts as unrevised while the manuscript still holds that exact text: in any
+block, or in any run of a block's lines between the headings and markers inside it, with
+whole-line HTML comments left out. Compared by identifier, it broke without any change of
+rules as well: a paragraph added above the anchor during the revision pointed it at a
+neighbour, and a paragraph nobody touched passed as revised.
 
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
@@ -2346,22 +2354,22 @@ Closed since, and why each mattered:
   "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
-- **The tagging scheme is only as good as its bumps.** A change to how paragraphs are
-  numbered is caught by the pinned table in `test_roundtrip.py` only when it moves an
-  identifier of that one source. The source covers front matter, fenced code with a blank
-  line in it, divs, lone placeholders, lists, tables, raw HTML, a link definition, indented
-  code and a YAML block. A change to anything else needs its author to bump
-  `TAGGING_SCHEME` unprompted. Otherwise documents already sent out come back pointing at
-  other paragraphs, as before the scheme existed.
-- **An unmarked document can be refused needlessly.** One built before the scheme was
-  recorded is refused whenever anything it was built from has changed since, `--force` or
-  not, because the numbering can only be checked against the text it was built from; a
-  re-run analysis alone is enough. One built by a release from 0.2.13 until the scheme was
-  recorded numbered paragraphs under the current rules, but it is
-  judged like a document built before the change: it is refused when a file it carries has
-  a blank line after the opening `---`, a `...` closer or a trailing space on the opening
-  `---`. `init` writes none of these. Either way, the refusal's own advice is the way
-  through: rebuild and resend.
+- **A document from before paragraphs were recorded is judged by one rule only.** Whether
+  it still names the right paragraphs is worked out from the front-matter change of 0.2.13,
+  the one change to numbering there has been. A later change to how paragraphs are numbered
+  or tagged cannot be detected for such a document, so after one, rebuild every document
+  still out from before this release.
+- **Such a document can also be refused needlessly.** It is refused whenever anything it
+  was built from has changed since, `--force` or not, because its numbering can only be
+  checked against the text it was built from; a re-run analysis alone is enough. And one
+  built by a release from 0.2.13 until this one numbered paragraphs under the current rules
+  but is judged like one built before: it is refused when a file it carries has a blank line
+  after the opening `---`, a `...` closer or a trailing space on the opening `---`. `init`
+  writes none of these. Either way, the refusal's own advice is the way through: rebuild and
+  resend.
+- **A paragraph the source changed since the build takes no co-author edit, even under
+  `--force`.** Its identifier no longer names the text they edited, so the edit is named and
+  left, to be carried over by hand, even when it would have merged cleanly.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still

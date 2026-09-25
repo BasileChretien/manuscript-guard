@@ -160,11 +160,7 @@ def test_stamping_keeps_the_documents_other_custom_properties(tmp_path: Path) ->
 
     properties = zipfile.ZipFile(document).read("docProps/custom.xml").decode("utf-8")
     names = re.findall(r'name="([^"]+)"', properties)
-    assert sorted(names) == [
-        "ZOTERO_PREF_1",
-        "manuscript-guard-source",
-        "manuscript-guard-tagging",
-    ]
+    assert sorted(names) == ["ZOTERO_PREF_1", "manuscript-guard-source"]
     pids = re.findall(r'pid="(\d+)"', properties)
     assert len(pids) == len(set(pids)) and min(map(int, pids)) == 2
     assert stamp_of(document) == "b" * 64

@@ -1290,7 +1290,7 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
         assert main(["build", str(project), "--offline"]) == 0
     returned = tmp_path / "back.docx"
     shutil.copy(project / "build" / "manuscript.docx", returned)
-    # A co-author's edit, in a document that records no numbering, as 0.2.12's did not.
+    # A co-author's edit, in a document that records no paragraphs, as 0.2.12's did not.
     scratch = tmp_path / "t.docx"
     with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
         for item in zin.infolist():
@@ -1299,7 +1299,7 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
                 data = data.replace(b"received no funding", b"received no external funding")
             elif item.filename == "docProps/custom.xml":
                 data = re.sub(
-                    rb'<property\b[^>]*name="manuscript-guard-tagging".*?</property>',
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
                     b"",
                     data,
                     flags=re.DOTALL,
@@ -1307,6 +1307,40 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
             zout.writestr(item, data)
 
     main(["import", str(scratch), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
+    project: Path, tmp_path: Path
+) -> None:
+    """Identifiers are positional. With a paragraph added to the source since the build,
+    above the one a co-author edited, every identifier after it named the paragraph before,
+    and `import --apply --force` wrote three edits over their neighbours and printed "merged
+    3 reworded paragraph(s), bindings intact". The plan showed what each edit became, never
+    which paragraph it replaced, so reading every hunk could not have caught it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            zout.writestr(item, data)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
     assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
 
 

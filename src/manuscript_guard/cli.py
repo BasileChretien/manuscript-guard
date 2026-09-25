@@ -313,7 +313,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     from manuscript_guard.roundtrip import (
         RoundTripError,
         comments_in,
-        numbering_problem,
+        numbering,
         numbering_refusal,
         read_blocks,
         stamp_of,
@@ -342,14 +342,12 @@ def cmd_import(args: argparse.Namespace) -> int:
     # Before the digest, and past --force: under other numbering an edit has no hunk to
     # check by hand, only a paragraph that is not the one it was made in.
     try:
-        problem = numbering_problem(
-            project, edited, stale=carried != document_digest(project)
-        )
+        numbered = numbering(project, edited, stale=carried != document_digest(project))
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    if problem:
-        print(numbering_refusal(edited.name, problem))
+    if numbered.refusal:
+        print(numbering_refusal(edited.name, numbered.refusal))
         return 1
     if carried != document_digest(project) and not args.force:
         print(
@@ -357,7 +355,8 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"one on disk. Merging edits made against text that has since changed is how a "
             f"correction lands on the wrong sentence.\n"
             f"  Resolve it by hand, or re-send the co-author a current build.\n"
-            f"  --force imports anyway, and you will have to check every hunk."
+            f"  --force imports anyway: an edit is merged only where the paragraph it was "
+            f"made in reads as it did at the build, and every hunk still has to be read."
         )
         return 1
 
@@ -391,7 +390,13 @@ def cmd_import(args: argparse.Namespace) -> int:
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    known = tagged_paragraphs(project)
+    # Only the identifiers that still name the paragraph they named at the build. The rest
+    # would put an edit into whichever paragraph now sits there.
+    known = {
+        name: entry
+        for name, entry in tagged_paragraphs(project).items()
+        if name in numbered.trusted
+    }
     plan = plan_import(known, sent, returned, marked)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
@@ -399,10 +404,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     # - is invisible to this command, and saying nothing about that let a co-author believe
     # they had corrected a table when the correction went nowhere.
     unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
-    # An identifier no paragraph of the manuscript has now. A release that tags fewer kinds
-    # of block than the one that built the document leaves them: nothing moved, so no edit
-    # lands in another paragraph, but an edit to one of these is not compared, and it was
-    # skipped without a word.
+    # A paragraph whose identifier no longer names the text it was built from: the source
+    # changed there since, or this version numbers or tags paragraphs by other rules. Its
+    # edit belongs to a paragraph that is not there now, so it is not compared; saying so is
+    # the only way it does not vanish.
     strangers = sorted({n for b in returned if not b.table for n in b.names if n not in known})
     if strangers:
         shown = ", ".join(strangers[:5]) + (", …" if len(strangers) > 5 else "")
@@ -410,14 +415,15 @@ def cmd_import(args: argparse.Namespace) -> int:
             part
             for part in (
                 unexamined,
-                f"{len(strangers)} paragraph(s) in {edited.name} carry an identifier no "
-                f"paragraph of the manuscript has now ({shown}), so their edits were not "
-                f"compared. Check them against the manuscript by hand.",
+                f"{len(strangers)} paragraph(s) in {edited.name} were not compared, because "
+                f"their identifier no longer names the paragraph it named when the document "
+                f"was built ({shown}): the source changed there since, or this version "
+                f"numbers paragraphs differently. Carry any edit in them over by hand.",
             )
             if part
         )
 
-    if plan.empty and not comments:
+    if plan.empty and not comments and not strangers:
         print("nothing came back: the document matches the manuscript on disk.")
         if unexamined:
             print(f"  {unexamined}")
@@ -453,7 +459,8 @@ def cmd_import(args: argparse.Namespace) -> int:
     outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
         not args.apply and bool(plan.moved or plan.merged)
     )
-    return 1 if outstanding else 0
+    # A paragraph not compared is not applied either.
+    return 1 if outstanding or strangers else 0
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
@@ -505,8 +512,12 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print("    delete it in the .md yourself if that was intended.")
 
 
-def _seeded(source: Path) -> list[dict]:
+def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
     """Reviewers and their points, read from the comments in a returned document.
+
+    A comment keeps its paragraph only where the identifier is in `trusted`, still naming
+    the text it named at the build. Anywhere else it would anchor the point to whatever
+    paragraph sits there now, and G13 would then check the revision against the wrong one.
 
     A journal usually sends a PDF or an email and the points get typed in, which is where
     a point quietly becomes the easier point next to it. When the reviewer commented in a
@@ -526,7 +537,7 @@ def _seeded(source: Path) -> list[dict]:
                 "id": "",
                 "comment": comment.text,
                 "response": "",
-                **({"where": comment.where} if comment.where else {}),
+                **({"where": comment.where} if comment.where in trusted else {}),
             }
         )
 
@@ -565,7 +576,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             from manuscript_guard.gates.review import document_digest
             from manuscript_guard.roundtrip import (
                 RoundTripError,
-                numbering_problem,
+                numbering,
                 numbering_refusal,
                 stamp_of,
             )
@@ -587,15 +598,16 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 )
                 return 1
             try:
-                problem = numbering_problem(
+                numbered = numbering(
                     project, args.source, stale=carried != document_digest(project)
                 )
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
-            if problem:
-                print(numbering_refusal(args.source.name, problem))
+            if numbered.refusal:
+                print(numbering_refusal(args.source.name, numbered.refusal))
                 return 1
+            trusted = numbered.trusted
             if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "
@@ -613,7 +625,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": _seeded(args.source) if args.source else [
+            "reviewers": _seeded(args.source, trusted) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [
@@ -656,6 +668,15 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 f"  {seeded} point(s) read from {args.source.name}, {anchored} of them "
                 f"knowing which paragraph they are about."
             )
+            from manuscript_guard.roundtrip import comments_in
+
+            loose = sum(1 for c in comments_in(args.source) if c.where and c.where not in trusted)
+            if loose:
+                print(
+                    f"  {loose} comment(s) were attached to a paragraph whose identifier no "
+                    f"longer names the text commented on, so they are recorded without one: "
+                    f"say in each point which paragraph it is about."
+                )
         print(
             "  submitted_files records the manuscript as it stands now, which is what a\n"
             "  claimed revision is checked against. Open the round *before* you start\n"

@@ -166,6 +166,8 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     for block in reference:
         if block.names and not block.table:
             here = rank(block.names[0])
+            if here is None:
+                continue
             if previous is None or previous[:2] != here[:2]:
                 for key in pending:
                     found.setdefault(key, deque()).append((*here[:2], 0))
@@ -364,7 +366,14 @@ def plan_import(
     citation: one character for one, so the extents still fit, and every edit to "Smith et
     al. [@key]" was refused without it.
     """
-    rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+    # Only the identifiers in `known`. The import leaves out one that no longer names the
+    # paragraph it named when the document was built, and its block is then neither
+    # compared nor moved: the edit in it belongs to a paragraph that is not there now.
+    rendered = {
+        b.names[0]: b.text
+        for b in reference
+        if b.names and not b.table and b.names[0] in known
+    }
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
@@ -431,7 +440,10 @@ def plan_import(
     for name in rendered:
         files.setdefault(known[name][0], len(files))
 
-    def rank(name: str) -> tuple:
+    def rank(name: str) -> tuple | None:
+        # None for an identifier left out of `known`, whose paragraph is not ranked at all.
+        if name not in sections:
+            return None
         path, section = sections[name]
         return (files[path], section, 1)
 

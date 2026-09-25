@@ -27,6 +27,7 @@ possible: a paragraph can be reworded around its bindings without them being tou
 from __future__ import annotations
 
 import difflib
+import hashlib
 import html
 import re
 import unicodedata
@@ -42,31 +43,23 @@ from manuscript_guard.docxtext import TOKEN, spaced
 PROPERTY = "manuscript-guard-source"
 _CUSTOM = "docProps/custom.xml"
 
-#: The rules that turn a source into paragraph identifiers: where the front matter ends,
-#: how the rest splits into blocks, and which blocks are tagged. An identifier is
-#: positional, so a document built under one set of rules and imported under another has
-#: its identifiers naming other paragraphs, and every edit in it lands in the wrong one.
-#: The number travels in the document beside the digest, and a mismatch is refused. Bump it
-#: with any change that moves an identifier onto another block: where the front matter ends
-#: (`strip_front_matter`), or how the rest splits into blocks.
-#: `test_identifiers_are_pinned_to_the_tagging_scheme` fails until you do, for the
-#: constructs its table holds. A change to which blocks are tagged (`_untagged`) needs no
-#: bump: an identifier counts every block, tagged or not, so it adds or removes identifiers
-#: without moving any, and `import` names a paragraph whose identifier the manuscript no
-#: longer gives. (A review round needs no scheme at all: G13 finds the paragraph a reviewer
-#: commented on by its text.)
+#: What each identifier named when the document was built: a short hash of its source
+#: paragraph. An identifier is positional, `mg-p-<file>-<n>`, so once the source changed
+#: above a paragraph, or a release numbered paragraphs by other rules, the same identifier
+#: names other text, and an edit made under it lands in another paragraph. Recorded, the
+#: question is exact for each paragraph whatever the cause: an identifier whose paragraph no
+#: longer reads as it did is not merged into. A number for the rules would do it only as
+#: long as every change to them remembered to bump it, and each review of that found
+#: another change that had not.
 #:
-#: 1. Up to plugin release 0.2.12, and never recorded: front matter closed only by `---`
-#:    (`_SCHEME_1_FRONT`).
-#: 2. From 0.2.13: front matter where pandoc ends it (`masking.FRONTMATTER`). Recorded only
-#:    from the release that added this constant, so a document built by any release from
-#:    0.2.13 until then records nothing.
-TAGGING_SCHEME = 2
-SCHEME_PROPERTY = "manuscript-guard-tagging"
+#: Split over several properties, each short of 255 characters, which Word may cut a text
+#: property to when it saves.
+PARAGRAPHS_PROPERTY = "manuscript-guard-paragraphs"
+_CHUNK = 240
 
-#: Where scheme 1 took the front matter to end. Kept for one question only: whether a
-#: document that records no scheme still names the right paragraphs.
-_SCHEME_1_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+#: Where releases up to 0.2.12 took the front matter to end. Kept for documents built
+#: before paragraphs were recorded: whether they still name the right paragraphs.
+_OLD_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
 
 _CUSTOM_XML = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
@@ -112,7 +105,40 @@ _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 _BUILD_INPUTS = ("bibliography", "csl")
 
 
-def _custom_properties(existing: str | None, digest: str) -> str:
+def _paragraph_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+
+
+def _encoded(paragraphs: dict[str, str]) -> list[str]:
+    """The paragraph map as property values, `<slug>:<index>.<hash>,...`, each value one
+    file's and shorter than `_CHUNK`. Always at least one, so that an empty map still says
+    it was recorded."""
+    by_slug: dict[str, list[str]] = {}
+    for name, text in paragraphs.items():
+        slug, _, index = name.removeprefix("mg-p-").rpartition("-")
+        by_slug.setdefault(slug, []).append(f"{index}.{_paragraph_hash(text)}")
+    chunks: list[str] = []
+    for slug, entries in by_slug.items():
+        current: list[str] = []
+        for entry in entries:
+            if current and len(slug) + 1 + len(",".join([*current, entry])) > _CHUNK:
+                chunks.append(f"{slug}:{','.join(current)}")
+                current = []
+            current.append(entry)
+        chunks.append(f"{slug}:{','.join(current)}")
+    return chunks or [""]
+
+
+def _ours(element: str) -> bool:
+    """A property this stamp writes, or one of pandoc's inputs, which it drops."""
+    found = re.search(r'name="([^"]*)"', element)
+    name = found.group(1) if found else ""
+    return name in (PROPERTY, *_BUILD_INPUTS) or name.startswith(f"{PARAGRAPHS_PROPERTY}-")
+
+
+def _custom_properties(
+    existing: str | None, digest: str, paragraphs: dict[str, str] | None = None
+) -> str:
     """The custom-properties part with the source stamp added, every other property kept.
 
     It used to be replaced whole. Pandoc writes metadata there, and Word's Zotero plugin
@@ -120,17 +146,18 @@ def _custom_properties(existing: str | None, digest: str) -> str:
     style, and Word asked for one again after every build. Kept, except pandoc's own inputs:
     `bibliography` carried the absolute path of references.bib to every co-author.
 
-    The tagging scheme goes in beside the digest: see `TAGGING_SCHEME`.
+    The paragraph map goes in beside the digest: see `PARAGRAPHS_PROPERTY`.
     """
-    ours = [
-        _CUSTOM_PROPERTY.format(name=PROPERTY, value=digest),
-        _CUSTOM_PROPERTY.format(name=SCHEME_PROPERTY, value=TAGGING_SCHEME),
-    ]
-    dropped = (PROPERTY, SCHEME_PROPERTY, *_BUILD_INPUTS)
+    ours = [_CUSTOM_PROPERTY.format(name=PROPERTY, value=digest)]
+    if paragraphs is not None:
+        ours += [
+            _CUSTOM_PROPERTY.format(name=f"{PARAGRAPHS_PROPERTY}-{number}", value=chunk)
+            for number, chunk in enumerate(_encoded(paragraphs), start=1)
+        ]
     kept = [
         element
         for element in _PROPERTY_ELEMENT.findall(existing or "")
-        if not any(f'name="{name}"' in element for name in dropped)
+        if not _ours(element)
     ]
     # Property ids must be unique, and custom properties number from 2.
     numbered = [
@@ -140,8 +167,11 @@ def _custom_properties(existing: str | None, digest: str) -> str:
     return _CUSTOM_XML.format(properties="".join(numbered))
 
 
-def stamp_into(document: Path, digest: str) -> None:
-    """Record the source digest inside the .docx itself.
+def stamp_into(
+    document: Path, digest: str, paragraphs: dict[str, str] | None = None
+) -> None:
+    """Record the source digest inside the .docx itself, and what each paragraph
+    identifier named, `{identifier: source text}`, when `paragraphs` is given.
 
     The sidecar `.source.sha256` tells *this* machine whether its own build is current. It
     cannot survive an email, and a document coming back from a co-author is precisely the
@@ -167,7 +197,7 @@ def stamp_into(document: Path, digest: str) -> None:
                 )
                 data = data.encode("utf-8")
             zout.writestr(item, data)
-        zout.writestr(_CUSTOM, _custom_properties(existing, digest))
+        zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs))
     scratch.replace(document)
 
 
@@ -186,10 +216,13 @@ def stamp_of(document: Path) -> str | None:
     return found.group(1) if found else None
 
 
-def scheme_of(document: Path) -> str | None:
-    """The tagging scheme a document's paragraphs were numbered under, as recorded, or None
-    when it records none. Returned as written: a value that is not this version's number,
-    readable or not, is another scheme."""
+def paragraphs_of(document: Path) -> dict[str, str] | None:
+    """What each identifier named when the document was built, `{identifier: hash}`, or
+    None when it records nothing: a document built before paragraphs were recorded.
+
+    Whatever cannot be read is left out, so an identifier it would have covered is not
+    trusted: a damaged record can refuse a paragraph, never merge into the wrong one.
+    """
     try:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
@@ -197,8 +230,21 @@ def scheme_of(document: Path) -> str | None:
             xml = archive.read(_CUSTOM).decode("utf-8")
     except (OSError, zipfile.BadZipFile) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
-    found = re.search(rf'name="{SCHEME_PROPERTY}"[^>]*>\s*<vt:lpwstr>([^<]*)</vt:lpwstr>', xml)
-    return found.group(1) if found else None
+    values = re.findall(
+        rf'name="{PARAGRAPHS_PROPERTY}-\d+"[^>]*>\s*<vt:lpwstr>([^<]*)</vt:lpwstr>', xml
+    )
+    if not values:
+        return None
+    recorded: dict[str, str] = {}
+    for value in values:
+        slug, separator, entries = value.partition(":")
+        if not separator:
+            continue
+        for entry in entries.split(","):
+            index, dot, digest = entry.partition(".")
+            if dot and index.isdigit() and re.fullmatch(r"[0-9a-f]{8}", digest):
+                recorded[f"mg-p-{slug}-{index}"] = digest
+    return recorded
 
 
 def comments_in(document: Path) -> list[Comment]:
@@ -367,26 +413,24 @@ def _sources(project) -> list[tuple[Path, str, str]]:
 
 
 def identified(
-    raw: str, relative: str, scheme: int = TAGGING_SCHEME
+    raw: str, relative: str, *, old_front_matter: bool = False
 ) -> list[tuple[str, str, int]]:
     """Each tagged paragraph of one source file: its identifier, its text, and its offset.
 
-    Under `scheme`, which is the current one except when asking whether a document that
-    records none still names the right paragraphs.
+    `old_front_matter` numbers them as releases up to 0.2.12 did, for a document built
+    before paragraphs were recorded.
     """
     # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
     # raw source here while the document was tagged from the stripped text put every
     # identifier one block out of step - the two must read the same string or the
     # identifier stops naming anything.
-    if scheme == TAGGING_SCHEME:
+    if old_front_matter:
+        found = _OLD_FRONT.match(raw)
+        text = raw[found.end() :].lstrip("\n") if found else raw
+    else:
         from manuscript_guard.build.assemble import strip_front_matter
 
         text, _title = strip_front_matter(raw)
-    elif scheme == 1:
-        found = _SCHEME_1_FRONT.match(raw)
-        text = raw[found.end() :].lstrip("\n") if found else raw
-    else:
-        raise ValueError(f"no rules are kept for tagging scheme {scheme}")
     slug = paragraph_slug(relative)
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
@@ -402,18 +446,18 @@ def identified(
 
 
 def renumbered(project) -> dict[str, str]:
-    """The source files whose paragraphs scheme 1 numbered differently from this one, as
-    their identifier slug and their path within `manuscript/`.
+    """The source files whose paragraphs releases up to 0.2.12 numbered differently from
+    this one, as their identifier slug and their path within `manuscript/`.
 
-    A document that records no scheme was numbered either under scheme 1 or, if built by a
-    release from 0.2.13 until the scheme was recorded, under this one. Where the two agree
+    A document that records no paragraphs was numbered either by those releases or, if
+    built by a later one from before paragraphs were recorded, as now. Where the two agree
     it does not matter which, and it is read as it always was; only these files are a
     question.
     """
     return {
         paragraph_slug(relative): relative
         for _path, relative, raw in _sources(project)
-        if [entry[:2] for entry in identified(raw, relative, 1)]
+        if [entry[:2] for entry in identified(raw, relative, old_front_matter=True)]
         != [entry[:2] for entry in identified(raw, relative)]
     }
 
@@ -423,48 +467,67 @@ def _slug_of(identifier: str) -> str:
     return identifier.removeprefix("mg-p-").rpartition("-")[0]
 
 
-def numbering_problem(project, document: Path, *, stale: bool) -> str | None:
-    """Why a document's paragraph identifiers cannot be trusted to name the paragraphs they
-    were made in, or None when they can. `stale` says it was built from other text than is
-    on disk.
+@dataclass(frozen=True)
+class Numbering:
+    """Which of the manuscript's paragraph identifiers a returned document can be read by."""
 
-    The document's paragraphs are read only when the answer depends on which files it
-    carries, so a document that records this version's scheme is not opened here at all.
+    #: Why the document cannot be read against this manuscript at all, or None.
+    refusal: str | None = None
+    #: The identifiers that name, in the source on disk, the paragraph they named when the
+    #: document was built. Only these are compared, moved or anchored.
+    trusted: frozenset[str] = frozenset()
+
+
+def numbering(project, document: Path, *, stale: bool) -> Numbering:
+    """Which identifiers `document` still names its paragraphs by. `stale` says it was
+    built from other inputs than are on disk.
+
+    A document that records its paragraphs is read paragraph by paragraph: an identifier
+    whose paragraph on disk no longer reads as it did at the build, because the source
+    changed there or a release numbers paragraphs by other rules, is left out, and nothing
+    is merged into it. One that records nothing was built before paragraphs were recorded;
+    it is refused whole where its numbering cannot be vouched for.
     """
-    carried = scheme_of(document)
-    if carried == str(TAGGING_SCHEME):
-        return None
-    if carried is not None:
-        return (
-            f"numbers its paragraphs by other rules (tagging scheme {carried!r}; this "
-            f"version uses {TAGGING_SCHEME})"
+    known = tagged_paragraphs(project)
+    recorded = paragraphs_of(document)
+    if recorded is not None:
+        return Numbering(
+            trusted=frozenset(
+                name
+                for name, (_path, text, _start) in known.items()
+                if recorded.get(name) == _paragraph_hash(text)
+            )
         )
-    # Unmarked. Whether scheme 1 and this one number its files alike can only be asked of
-    # the text it was built from, and a stale document was built from other text.
+    # Whether the old rules and these number its files alike can only be asked of the text
+    # it was built from, and a stale document was built from other text.
     if stale:
-        return (
-            "records no numbering scheme and was built from other inputs than are on disk "
-            "(the manuscript, its results, the ledger or the bibliography), so there is no "
-            "checking that its paragraphs are numbered as they are now"
+        return Numbering(
+            refusal="records nothing of the paragraphs it was built from, and was built from "
+            "other inputs than are on disk (the manuscript, its results, the ledger or the "
+            "bibliography), so there is no checking that its paragraphs are numbered as they "
+            "are now"
         )
     # Only the files it carries: an identifier names its file, so a supplement read
-    # differently now says nothing about the main text's document.
+    # differently now says nothing about the main text's document. The document's
+    # paragraphs are read only here, where the answer depends on them.
     changed = renumbered(project)
-    if not changed:
-        return None
-    names = paragraph_order(document)
-    carried_files = sorted({changed[slug] for slug in map(_slug_of, names) if slug in changed})
-    if not carried_files:
-        return None
-    return (
-        f"records no numbering scheme, and the front matter of {', '.join(carried_files)} "
-        f"is taken to end in a different place than it was before the scheme was recorded, "
-        f"so the version that built it may have numbered its paragraphs differently"
+    carried = (
+        sorted({changed[s] for s in map(_slug_of, paragraph_order(document)) if s in changed})
+        if changed
+        else []
     )
+    if carried:
+        return Numbering(
+            refusal=f"records nothing of the paragraphs it was built from, and the front "
+            f"matter of {', '.join(carried)} is taken to end in a different place now than "
+            f"when that was not recorded, so the version that built it may have numbered its "
+            f"paragraphs differently"
+        )
+    return Numbering(trusted=frozenset(known))
 
 
 def numbering_refusal(name: str, problem: str) -> str:
-    """The refusal `import` and `respond --open` print for `numbering_problem`."""
+    """The refusal `import` and `respond --open` print for `Numbering.refusal`."""
     return (
         f"{name} {problem}. An edit or comment in it could land in a paragraph other than "
         f"the one it was made in.\n"

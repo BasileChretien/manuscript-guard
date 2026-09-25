@@ -72,9 +72,10 @@ It changes nothing and reports each paragraph:
 | `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
 | `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
+| `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers paragraphs differently. Not applied; carry any edit in it over by hand (step 6) |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted, not compared, or moved between sections or files makes the
+command exit 1, with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -185,22 +186,24 @@ Comments are printed, never stored. Recording them is the reader's job:
   applying changes the source the comments point at. See
   [reviewer-response](../reviewer-response/SKILL.md).
 
+A built document records what each of its paragraphs said in the source. `import` merges
+an edit only into a paragraph that still reads that way; any other is listed as `were not
+compared`, because its identifier now names other text, and has to be carried over by hand.
+That happens where the source changed since the build, and across an upgrade that numbers
+paragraphs differently.
+
 When several people edited copies of the same build, dry-run every copy before applying any.
-Apply one, and port the others by hand. `--force` on the second copy compares it against the
-source as it now stands, so it offers to revert everything the first co-author changed.
+Apply one, then `--force` the others: each merges only into paragraphs the earlier imports
+left alone, and lists the ones they changed as not compared, for you to port by hand.
+`--force` never writes an edit into a paragraph that changed since the build, but every hunk
+still has to be read: a changed result changes what a paragraph displays without changing
+its source.
 
-`--force` is reasonable only when nothing since the build added, removed, reordered or split
-a paragraph, or changed what a compared paragraph displays, and even then every hunk has to
-be read.
-
-A document whose paragraphs were numbered by other rules is refused whatever you pass,
-`--force` included, and so is `respond --open --from` on it. It happens across an upgrade
-that changed how paragraphs are numbered: each identifier would name another paragraph, so
-every edit and every comment would land in the wrong one. A document built before the rules
-were recorded in it is refused when anything it was built from has changed since the build,
-the results included, and otherwise only when a file it carries has front matter that is
-now read differently. Rebuild, send the
-new document, and carry over by hand anything already written in the old one.
+A document built before paragraphs were recorded in it is refused, `--force` included, and
+so is `respond --open --from` on it, when anything it was built from has changed since the
+build, the results included. Otherwise it is refused only when a file it carries has front
+matter that is now read differently. Rebuild, send the new document, and carry over by hand
+anything already written in the old one.
 
 ## If you are a model doing this
 

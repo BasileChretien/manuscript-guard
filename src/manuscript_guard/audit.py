@@ -23,6 +23,7 @@ It is a triage tool for existing work. For a paper being written, bind the numbe
 
 from __future__ import annotations
 
+import bisect
 import codecs
 import csv
 import io
@@ -523,26 +524,32 @@ def read_figure(path: Path) -> str | None:
 _MARKER_AT_END = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?$")
 
 
-def _apart(atom: Atom) -> list[Atom]:
-    """An atom with a citation marker glued to a number, as the number and the marker.
+def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
+    """An atom with a citation marker glued to a number, as the number and the marker, each
+    with whether it is the number read apart.
 
     An atom runs to the next space, so `(95% CI 1.20, 9.99)[12]` arrives as `9.99)[12`, and
     the marker rule, spanning the word before a marker, filed the bound with the citation: it
     was never compared with the outputs. Read apart, the value is audited like any other and
-    the marker is still a citation. A word before a marker has no digit, and stays whole.
+    the marker is still a citation. A word before a marker has no digit, and stays whole. So
+    does a value with a comma between digits: the bracket glued to `2,51` may be a
+    decimal-comma interval, `[1,20-9,99]`, which a marker's shape fits too.
     """
     marker = _MARKER_AT_END.search(atom.text)
-    if marker is None or not DIGIT.search(atom.text[: marker.start()]):
-        return [atom]
-    pieces: list[Atom] = []
-    for raw, offset in ((atom.text[: marker.start()], 0), (marker.group(0), marker.start())):
+    value = atom.text[: marker.start()] if marker else ""
+    if marker is None or not DIGIT.search(value) or re.search(r"\d,\d", value):
+        return [(atom, False)]
+    pieces: list[tuple[Atom, bool]] = []
+    for raw, offset in ((value, 0), (marker.group(0), marker.start())):
         text, start = trim(raw, atom.start + offset)
         if text and DIGIT.search(text):
-            shift = start - atom.start
-            pieces.append(
-                replace(atom, text=text, start=start, end=start + len(text), col=atom.col + shift)
-            )
+            end, col = start + len(text), atom.col + start - atom.start
+            pieces.append((replace(atom, text=text, start=start, end=end, col=col), offset == 0))
     return pieces
+
+
+#: A year on its own, which a number read apart from a marker may be: `(2019)[4]`.
+_YEAR = re.compile(r"(?:19|20)\d{2}[a-z]?")
 
 
 #: A bracketed range or pair of whole numbers after a value, `64 [55-72]` or `7 [4, 12]`.
@@ -550,6 +557,12 @@ _AFTER_A_VALUE = re.compile(
     r"(?<![\w.\[])(?P<value>\d+(?:\.\d+)?)%?\s*"
     r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\]"
 )
+
+
+def _within(spans: list[tuple[int, int]], starts: list[int], atom: Atom) -> bool:
+    """Whether `atom` lies inside one of `spans`, which are sorted and do not overlap."""
+    index = bisect.bisect_right(starts, atom.start) - 1
+    return index >= 0 and atom.end <= spans[index][1]
 
 
 def _intervals(text: str) -> list[tuple[int, int]]:
@@ -614,15 +627,24 @@ def audit(
         sources.append((path, text, False))
 
     report.papers = tuple(path for path, _text, _shape in sources)
+    rendered_only = {
+        rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
+    }
 
     for path, text, by_shape in sources:
         intervals = _intervals(text)
-        atoms = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
-        for atom in atoms:
-            interval = any(start <= atom.start and atom.end <= end for start, end in intervals)
-            if not interval and classifier.classify(atom).kind != UNCLASSIFIED:
-                report.classified += 1
-                continue
+        starts = [start for start, _end in intervals]
+        pieces = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
+        for atom, read_apart in pieces:
+            if not _within(intervals, starts, atom):
+                verdict = classifier.classify(atom)
+                # A number read apart from its marker may still be a label, `COVID-19[3]`,
+                # but not part of a citation, bar a year: inside `(N=2004)[4]` the author-year
+                # rule took `N=2004` for one, where the whole run used to be listed.
+                cited = verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text)
+                if verdict.kind != UNCLASSIFIED and not (read_apart and cited):
+                    report.classified += 1
+                    continue
             candidate = Candidate(
                 text=atom.text,
                 normalised=normalise_number(atom.text),

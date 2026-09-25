@@ -81,8 +81,9 @@ structural:
       after the value it encloses, "64 [55-72]", as an interval.
     # No digit in the prefix: it filed a value glued to a marker, "(95% CI 1.20, 9.99)[12]",
     # as part of the citation. No `]` either: it made `3.40][12]` one match. One word in its
-    # own brackets may come first, as in `[SmPC][4]`, whose run nothing cuts.
-    pattern: '(?:\[[^\[\]\d\s]*\])?(?:[^\W\d_]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
+    # own brackets may come first, as in `[SmPC][4]`, whose run nothing cuts. `_` is a word
+    # character here, for `_E. coli_[3]`.
+    pattern: '(?:\[[^\[\]\d\s]*\])?(?:[^\W\d]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
 
   - id: orcid
     why: >-

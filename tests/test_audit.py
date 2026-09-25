@@ -393,6 +393,44 @@ def test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation(
     assert unmatched == [], unmatched
 
 
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ("The earlier trial (N=2004)[4] was larger.\n", "2004"),
+        ("A registry study (reported in 2019, n=412)[5] found it.\n", "412"),
+        ("The pooled estimate (2019; 95% CI 1.20–9.99)[12] held.\n", "9.99"),
+        ("As before (Smith 2019, n=412)[5], rates rose.\n", "412"),
+    ],
+)
+def test_a_value_read_apart_from_its_marker_is_not_filed_as_an_author_year_citation(
+    tmp_path: Path, text: str, value: str
+) -> None:
+    """Read apart from the marker, the value sat inside a parenthetical holding a year, and
+    the author-year rule filed it: `(N=2004)[4]` was listed whole before, and hidden after."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(value in listed for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "bound"),
+    [
+        ("Le rapport était de 2,51[1,20-9,99] dans la cohorte.\n", "9,99"),
+        ("Median stay was 1,204[1,100-1,300] days.\n", "1,300"),
+    ],
+)
+def test_a_comma_written_value_keeps_its_bracket(tmp_path: Path, text: str, bound: str) -> None:
+    """With a comma in the value, the bracket glued to it may be a decimal-comma interval,
+    `[1,20-9,99]`, which a marker's shape also fits: split off, its bounds were filed as a
+    citation. The run is left whole, and listed, as before."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(bound in listed for listed in unmatched), unmatched
+
+
+def test_emphasis_before_a_marker_is_a_citation(tmp_path: Path) -> None:
+    unmatched, _ = _audited(tmp_path, ["7"], "Infection with _E. coli_[3] was common.\n")
+    assert unmatched == [], unmatched
+
+
 def test_a_marker_after_a_one_word_bracket_is_a_citation(tmp_path: Path) -> None:
     """Its run opens with its own `[`, so it is not cut, and the rule took no bracket before
     the marker: `[SmPC][4]` was listed as an unexplained number."""

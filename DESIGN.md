@@ -2220,14 +2220,20 @@ Closed since, and why each mattered:
   `numbered-citation` rule spans the word before a marker, since an atom runs to the next
   space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
   9.99)[12]` or `45%[12]`, was filed with the citation and never audited. The prefix takes
-  no digit now, and the audit reads a number glued to a marker apart from it. The cost,
-  chosen: a number that is no result, the version in `(OEP 2026.1)[15]`, is listed; a year,
-  `(2019)[4]`, is still a citation. The brackets take any run of whole numbers, so a median
-  [IQR] with whole bounds, `64 [55-72]`, was a citation too. It is read as an interval when
-  its bounds enclose the value written just before it, as an interval does and a citation
-  range, `12% [4-6]`, does not. What that misses: an interval separated from its value,
-  `64 years [55-72]`, is still a citation, and a citation that happens to enclose a number
-  before it, `found 2 [1,3]`, is listed as unexplained.
+  no decimal digit now, and the audit reads a number glued to a marker apart from it; no
+  citation rule may then file that number, bar a year, since inside `(N=2004)[4]` the
+  author-year rule took it for one. The cost, chosen: a number that is no result, the
+  version in `(OEP 2026.1)[15]`, is listed; a year, `(2019)[4]`, is still a citation. A
+  value with a comma between digits, `2,51[1,20-9,99]`, keeps its bracket and is listed
+  whole, as before: that bracket may be a decimal-comma interval, and a marker's shape fits
+  it too. The brackets take any run of whole numbers, so a median [IQR] with whole bounds,
+  `64 [55-72]`, was a citation too. It is read as an interval when its bounds enclose the
+  value written just before it, as an interval does and a citation range, `12% [4-6]`,
+  does not. What that misses: an interval separated from its value, `64 years [55-72]`, or
+  after a value written with a comma or a spaced percent sign, `12,5 [10-15]`,
+  `1,204 [1,100-1,300]`, `45 % [40-50]`, is still a citation. And a citation that happens to
+  enclose a number before it, `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed
+  as unexplained.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

@@ -178,6 +178,167 @@ def test_an_emoji_word_saves_as_a_choice_is_no_edit(project: Path, tmp_path: Pat
     assert main_md.read_text(encoding="utf-8") == source
 
 
+def _funding(inserted: str) -> dict[str, str]:
+    """"no funding." with `inserted` runs typed before the full stop."""
+    return {"no funding.</w:t>": f"no funding </w:t></w:r>{inserted}<w:r><w:t>.</w:t>"}
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("inserted", "merged"),
+    [
+        (
+            '<w:r><w:sym w:font="Symbol" w:char="F0B1"/></w:r>',
+            f"This work received no funding {chr(0xB1)}.",
+        ),
+        (
+            '<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr><w:t>m</w:t></w:r>'
+            "<w:r><w:t>g</w:t></w:r>",
+            f"This work received no funding {chr(0x03BC)}g.",
+        ),
+    ],
+    ids=["symbol-plus-minus", "typed-mu"],
+)
+def test_a_symbol_font_character_inserted_in_word_merges_as_what_word_shows(
+    project: Path, tmp_path: Path, inserted: str, merged: str
+) -> None:
+    """Read as nothing, an inserted ± was dropped and the rest of the edit merged without
+    it, and a μ typed in the Symbol font read as the `m` it is stored as: "5 μg" merged into
+    the source as "5 mg"."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", _funding(inserted)
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert merged in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_a_second_private_use_character_of_a_code_in_the_source_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Counted once for each kind, a second U+F06D beside one the source held matched the
+    document as sent, and `--apply` wrote it into the source."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    pua = chr(0xF06D)
+    source = main_md.read_text(encoding="utf-8").replace("no funding.", f"no funding ({pua}).")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    # In the body font, so the second is the same kind as the first, only more of it.
+    added = f" and </w:t></w:r>{in_font(pua, 'Times New Roman')}<w:r><w:t>."
+    returned = _edit_part(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        "word/document.xml",
+        f"no funding ({pua}).",
+        f"no funding ({pua}){added}",
+    )
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert main_md.read_text(encoding="utf-8") == source
+    assert "private-use character F06D" in capsys.readouterr().out
+
+
+@needs_pandoc
+@pytest.mark.parametrize("edit", ["elsewhere", "font-only"])
+def test_a_private_use_character_in_the_source_is_kept(
+    project: Path, tmp_path: Path, edit: str
+) -> None:
+    """Text pasted from an old document can hold a symbol font's private-use character.
+    Dropped from both copies, it put every paragraph holding one beyond merging - "could not
+    be lined up with its own source" - and named after the font it resolved to, a co-author
+    who only changed the body font had it refused as their own insertion."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    source = main_md.read_text(encoding="utf-8")
+    source = source.replace("no funding.", f"no funding ({chr(0xF06D)}).")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    built = project / "build" / "manuscript.docx"
+    if edit == "elsewhere":
+        was, now = "received no funding", "received no external funding"
+        returned = _edit_part(built, tmp_path / "back.docx", "word/document.xml", was, now)
+        expected = source.replace(was, now)
+    else:
+        normal = '<w:name w:val="Normal" />'
+        times = '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'
+        now = f"{normal}<w:rPr>{times}</w:rPr>"
+        returned = _edit_part(built, tmp_path / "back.docx", "word/styles.xml", normal, now)
+        expected = source
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert main_md.read_text(encoding="utf-8") == expected
+
+
+def _edit_part(document: Path, target: Path, part: str, was: str, now: str) -> Path:
+    """A copy of `document` with `was` replaced once in `part`, which must hold it."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == part:
+                text = data.decode("utf-8")
+                assert was in text, (part, was)
+                data = text.replace(was, now, 1).encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+def test_a_symbol_font_minus_before_a_number_is_refused_and_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Symbol-font minus read as nothing left the bound estimate as it was: "nothing came
+    back", and a sign the co-author put on it was dropped without a word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    minus = '<w:r><w:sym w:font="Symbol" w:char="F02D"/></w:r>'
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"ratio was 3.84</w:t>": f"ratio was </w:t></w:r>{minus}<w:r><w:t>3.84</w:t>"},
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    out = capsys.readouterr().out
+    assert "'3.84' comes from results.ror.point" in out, out
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "smiley",
+    [
+        '<w:r><w:sym w:font="Wingdings" w:char="F04A"/></w:r>',
+        '<w:r><w:rPr><w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/></w:rPr><w:t>J</w:t></w:r>',
+    ],
+    ids=["inserted", "typed"],
+)
+def test_a_symbol_with_no_text_is_refused_and_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], smiley: str
+) -> None:
+    """A Wingdings glyph read as nothing merged the rest of the edit without it: "no
+    funding ." went into the source. Typed in Wingdings, it is the letter J, which Word
+    draws as the smiley: read as written, "no funding J." went in."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", _funding(smiley)
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    out = capsys.readouterr().out
+    assert "Wingdings character F04A" in out, out
+
+
 @needs_pandoc
 def test_a_document_built_from_older_source_is_refused(project: Path, tmp_path: Path) -> None:
     """Merging edits made against text that has since changed is how a correction lands on
@@ -1909,6 +2070,409 @@ def test_word_text_reads_an_emoji_word_writes_as_a_choice(tmp_path: Path) -> Non
     with zipfile.ZipFile(document, "w") as archive:
         archive.writestr("word/document.xml", xml)
     assert [b.text for b in blocks(document)] == [f"Scored 12{EMOJI}34 today"]
+
+
+MU, MINUS, PLUS_MINUS = chr(0x03BC), chr(0x2212), chr(0x00B1)
+WORD_MAIN = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def word_document(tmp_path: Path, runs: str, styles: str = "", paragraph_style: str = "") -> Path:
+    """A one-paragraph document carrying an identifier, with `word/styles.xml` if given."""
+    style = f'<w:pPr><w:pStyle w:val="{paragraph_style}"/></w:pPr>' if paragraph_style else ""
+    xml = (
+        f'<w:document xmlns:w="{WORD_MAIN}"><w:body><w:p>{style}'
+        f'<w:bookmarkStart w:id="0" w:name="mg-p-x-0"/>{runs}</w:p></w:body></w:document>'
+    )
+    document = tmp_path / "a.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+        if styles:
+            archive.writestr(
+                "word/styles.xml", f'<w:styles xmlns:w="{WORD_MAIN}">{styles}</w:styles>'
+            )
+    return document
+
+
+def text_run(text: str) -> str:
+    return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
+def symbol(code: str, font: str = "Symbol") -> str:
+    """What Insert > Symbol writes (verified with Word 16): the font and the code in it."""
+    return f'<w:r><w:sym w:font="{font}" w:char="{code}"/></w:r>'
+
+
+def in_font(text: str, font: str = "Symbol", *, hint: bool = False) -> str:
+    """A run in `font`. Word 16 with a Japanese interface adds `w:hint="eastAsia"` to one
+    typed there, which sends the private-use characters to the East Asian font instead."""
+    hinted = ' w:hint="eastAsia"' if hint else ""
+    fonts = f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}"{hinted}/>'
+    return f"<w:r><w:rPr>{fonts}</w:rPr><w:t>{text}</w:t></w:r>"
+
+
+#: A character style whose font is Symbol, and a run using it.
+SYMBOL_STYLE = (
+    '<w:style w:type="character" w:styleId="Greek"><w:name w:val="Greek"/>'
+    '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:style>'
+)
+STYLED_M = '<w:r><w:rPr><w:rStyle w:val="Greek"/></w:rPr><w:t>m</w:t></w:r>'
+
+
+@pytest.mark.parametrize(
+    ("runs", "expected"),
+    [
+        (
+            text_run("Mean 3.2 ") + symbol("F0B1") + text_run(" 0.4 kg"),
+            f"Mean 3.2 {PLUS_MINUS} 0.4 kg",
+        ),
+        (text_run("5 ") + symbol("F06D") + text_run("g"), f"5 {MU}g"),
+        (text_run("CI ") + symbol("F02D") + text_run("0.3"), f"CI {MINUS}0.3"),
+        (text_run("5 ") + in_font("m", hint=True) + text_run("g"), f"5 {MU}g"),
+        (text_run("5 ") + in_font(chr(0xF06D)) + text_run("g"), f"5 {MU}g"),
+        (text_run("in ") + in_font(chr(0xF034) + chr(0xF030)) + text_run(" days"), "in 40 days"),
+    ],
+    ids=[
+        "symbol-plus-minus",
+        "symbol-mu",
+        "symbol-minus",
+        "typed-m",
+        "typed-private-use",
+        "typed-digits",
+    ],
+)
+def test_word_text_reads_the_symbol_font_as_what_it_draws(
+    tmp_path: Path, runs: str, expected: str
+) -> None:
+    """Insert > Symbol with the Symbol font writes `w:sym`, not text, and text typed in that
+    font is in the font's own encoding: an `m` it draws as μ, or the private-use U+F06D. Read
+    as nothing, an inserted ± was dropped and the rest of the edit merged without it; read as
+    written, "5 μg" was "5 mg"."""
+    from manuscript_guard.docxtext import blocks
+
+    [block] = blocks(word_document(tmp_path, runs))
+    assert block.text == expected
+    assert block.unread == ()
+
+
+@pytest.mark.parametrize(
+    ("runs", "styles", "named"),
+    [
+        (text_run("Done ") + symbol("F04A", "Wingdings"), "", "Wingdings character F04A"),
+        (text_run("Done ") + in_font(chr(0xF0FE), "Wingdings"), "", "Wingdings character F0FE"),
+        (text_run("A ") + symbol("F0E6") + text_run("b"), "", "Symbol character F0E6"),
+        (
+            text_run("5 ") + STYLED_M + text_run("g"),
+            SYMBOL_STYLE,
+            "Symbol font from the style Greek",
+        ),
+        (
+            text_run("5 ") + in_font(chr(0xF06D), hint=True) + text_run("g"),
+            "",
+            "private-use character F06D",
+        ),
+        (
+            text_run("Done ") + in_font(chr(0xE73E), "Segoe MDL2 Assets"),
+            "",
+            "private-use character E73E",
+        ),
+        (text_run("Done ") + in_font("J", "Wingdings"), "", "Wingdings character F04A"),
+        (text_run("Done ") + in_font(chr(0xFC), "Webdings"), "", "Webdings character F0FC"),
+    ],
+    ids=[
+        "wingdings-symbol",
+        "wingdings-typed",
+        "bracket-piece",
+        "symbol-style",
+        "hinted",
+        "icon",
+        "wingdings-typed-letter",
+        "webdings-typed-latin",
+    ],
+)
+def test_word_text_names_what_it_cannot_read(
+    tmp_path: Path, runs: str, styles: str, named: str
+) -> None:
+    """Wingdings has no text for most of what it draws, a piece of a tall bracket has none,
+    and a font set by a style is not read as exactly as one set on the text itself. Each is
+    named, so the import can refuse the paragraph rather than merge it without."""
+    from manuscript_guard.docxtext import blocks
+
+    [block] = blocks(word_document(tmp_path, runs, styles))
+    assert block.unread == (named,)
+
+
+def _style(kind: str, ident: str, font: str = "", based_on: str = "", default: bool = False) -> str:
+    """A `w:style` with a font, a `basedOn`, or neither."""
+    flag = ' w:default="1"' if default else ""
+    based = f'<w:basedOn w:val="{based_on}"/>' if based_on else ""
+    fonts = f'<w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/></w:rPr>' if font else ""
+    return (
+        f'<w:style w:type="{kind}"{flag} w:styleId="{ident}"><w:name w:val="{ident}"/>'
+        f"{based}{fonts}</w:style>"
+    )
+
+
+def _run(text: str, style: str = "", font: str = "", hint: bool = False) -> str:
+    props = f'<w:rStyle w:val="{style}"/>' if style else ""
+    if font:
+        hinted = ' w:hint="eastAsia"' if hint else ""
+        props += f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}"{hinted}/>'
+    return f"<w:r><w:rPr>{props}</w:rPr><w:t>{text}</w:t></w:r>"
+
+
+@pytest.mark.parametrize(
+    ("run", "styles", "paragraph_style", "shown"),
+    [
+        pytest.param(
+            _run("m", style="Greek"),
+            _style("character", "Greek", "Symbol") + _style("paragraph", "Body", "Times New Roman"),
+            "Body",
+            MU,
+            id="character-style-over-paragraph-style",
+        ),
+        pytest.param(
+            _run("m", style="Roman"),
+            _style("character", "Roman", "Times New Roman") + _style("paragraph", "Body", "Symbol"),
+            "Body",
+            "m",
+            id="paragraph-style-under-character-style",
+        ),
+        pytest.param(
+            _run("m", style="Greek", font="Times New Roman"),
+            _style("character", "Greek", "Symbol"),
+            "",
+            "m",
+            id="run-over-character-style",
+        ),
+        pytest.param(
+            _run("m", style="Greek2"),
+            _style("character", "Greek", "Symbol")
+            + _style("character", "Greek2", based_on="Greek"),
+            "",
+            MU,
+            id="based-on",
+        ),
+        pytest.param(
+            _run("m"),
+            _style("paragraph", "Normal", "Symbol", default=True),
+            "",
+            MU,
+            id="default-paragraph-style",
+        ),
+        pytest.param(
+            _run("m", style="A"),
+            _style("character", "A", based_on="B") + _style("character", "B", based_on="A"),
+            "",
+            "m",
+            id="based-on-cycle",
+        ),
+        pytest.param(_run(chr(0xD7), font="Symbol"), "", "", chr(0x22C5), id="times-in-symbol"),
+        pytest.param(
+            _run(chr(0xD7), font="Symbol", hint=True), "", "", chr(0xD7), id="times-hinted"
+        ),
+    ],
+)
+def test_word_text_takes_a_runs_font_where_word_takes_it(
+    tmp_path: Path, run: str, styles: str, paragraph_style: str, shown: str
+) -> None:
+    """The rules, each checked against Word 16: the run's own font, else its character
+    style, else its paragraph style, else the default paragraph style, following `basedOn`;
+    and `w:hint="eastAsia"` draws × with the East Asian font, where the Symbol font draws ⋅
+    at the same code. Following no `basedOn`, a μ from a style merged as "5 mg"."""
+    from manuscript_guard.docxtext import blocks
+
+    # The "g" names its own font: in a paragraph whose style is Symbol, Word draws it as γ.
+    runs = text_run("5 ") + run + _run("g", font="Times New Roman")
+    [block] = blocks(word_document(tmp_path, runs, styles, paragraph_style))
+    assert block.text == f"5 {shown}g"
+
+
+def test_word_text_takes_a_symbol_font_from_the_font_table(tmp_path: Path) -> None:
+    """Word marks a symbol font in the document's font table with `w:charset w:val="02"`,
+    as it does Symbol, Wingdings and Webdings (Word 16), and draws text in it as the font's
+    own characters; one the reader has no name for is known from there. A space in it is a
+    space."""
+    from manuscript_guard.docxtext import blocks
+
+    document = word_document(tmp_path, text_run("Done ") + in_font("J J", "MyDings"))
+    table = (
+        f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="MyDings"><w:charset w:val="02"/>'
+        '</w:font><w:font w:name="Times New Roman"><w:charset w:val="00"/></w:font></w:fonts>'
+    )
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/fontTable.xml", table)
+    [block] = blocks(document)
+    assert block.text == "Done"
+    assert block.unread == ("MyDings character F04A",) * 2
+
+
+@pytest.mark.parametrize(
+    ("font", "code", "shown", "unread"),
+    [
+        ("Symbol", "F06D", MU, ()),
+        ("Segoe Fluent Icons", "F0041", chr(0xF0041), ("private-use character F0041",)),
+    ],
+    ids=["symbol", "icon-plane-15"],
+)
+def test_word_text_reads_a_symbol_extension_in_the_font_it_names(
+    tmp_path: Path, font: str, code: str, shown: str, unread: tuple[str, ...]
+) -> None:
+    """`w16se:symEx` names its font as a run does, and was read as its code whatever the
+    font: U+F06D, which the Symbol font draws as μ, merged into the source as it was."""
+    from manuscript_guard.docxtext import blocks
+
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    run = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        f'<w16se:symEx w16se:font="{font}" w16se:char="{code}"/></mc:Choice>'
+        "<mc:Fallback><w:t>?</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    [block] = blocks(word_document(tmp_path, text_run("5 ") + run + text_run("g")))
+    assert block.text == f"5 {shown}g"
+    assert block.unread == unread
+
+
+def test_a_new_paragraph_holding_only_a_symbol_is_new_text_beside_its_neighbour(
+    tmp_path: Path,
+) -> None:
+    """A paragraph with no text was skipped as empty, so the rewording beside it merged and
+    the check box in it was dropped. The same edit with a check mark typed as text was
+    refused as a split."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    sent = [Block(("a",), "The task is done.")]
+    box = Block((), "", unread=("Wingdings character F0FE",))
+    plan = plan_import(known, sent, [Block(("a",), "The task is now done."), box])
+    assert not plan.merged
+    assert [r.name for r in plan.refused] == ["a"]
+
+
+def test_a_paragraph_replaced_by_a_symbol_is_refused_not_deleted(tmp_path: Path) -> None:
+    """Read as empty, it was reported deleted in Word, and deleting it in the .md, as the
+    report advised, lost the symbol."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "None declared."})
+    sent = [Block(("a",), "None declared.")]
+    returned = [Block(("a",), "", unread=("Wingdings character F0FC",))]
+    plan = plan_import(known, sent, returned)
+    assert not plan.gone
+    assert [r.name for r in plan.refused] == ["a"]
+
+
+@pytest.mark.parametrize("where", ["theme", "defaults"])
+def test_word_text_names_the_symbol_font_from_the_theme_or_the_defaults(
+    tmp_path: Path, where: str
+) -> None:
+    """A run's font can come from the theme, by `w:asciiTheme`, or from the document's
+    defaults, and is followed there as Word follows it."""
+    from manuscript_guard.docxtext import blocks
+
+    if where == "theme":
+        run = '<w:r><w:rPr><w:rFonts w:asciiTheme="minorHAnsi"/></w:rPr><w:t>m</w:t></w:r>'
+        styles = ""
+    else:
+        run = "<w:r><w:t>m</w:t></w:r>"
+        styles = (
+            '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Symbol"/>'
+            "</w:rPr></w:rPrDefault></w:docDefaults>"
+        )
+    document = word_document(tmp_path, text_run("5 ") + run, styles)
+    if where == "theme":
+        theme = (
+            '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            "<a:themeElements><a:fontScheme><a:majorFont><a:latin typeface=\"Cambria\"/>"
+            '</a:majorFont><a:minorFont><a:latin typeface="Symbol"/></a:minorFont>'
+            "</a:fontScheme></a:themeElements></a:theme>"
+        )
+        rels = (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId9" Target="theme/theme1.xml" Type="http://schemas.'
+            'openxmlformats.org/officeDocument/2006/relationships/theme"/></Relationships>'
+        )
+        with zipfile.ZipFile(document, "a") as archive:
+            archive.writestr("word/theme/theme1.xml", theme)
+            archive.writestr("word/_rels/document.xml.rels", rels)
+    [block] = blocks(document)
+    assert block.text == f"5 {MU}"
+    origin = "the document's theme" if where == "theme" else "the document's defaults"
+    # Named once for each character the font draws: the defaults draw "5 " in it too.
+    assert set(block.unread) == {f"Symbol font from {origin}"}
+
+
+@pytest.mark.parametrize("before", ["The task is done.", "The task is done"])
+def test_a_paragraph_holding_something_with_no_text_is_refused(
+    tmp_path: Path, before: str
+) -> None:
+    """Pandoc never writes a symbol-font character, so one that came back was inserted in
+    Word. Merged, the rest of the edit landed without it; with nothing else edited, the
+    paragraph read as unchanged and the co-author's symbol was dropped without a word."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": before})
+    sent = [Block(("a",), before)]
+    returned = [Block(("a",), "The task is done.", unread=("Wingdings character F04A",))]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    [refusal] = plan.refused
+    assert "Wingdings character F04A" in " ".join(refusal.why)
+
+
+def test_text_whose_symbol_font_a_style_sets_is_refused_as_read(tmp_path: Path) -> None:
+    """It is read as the Symbol font draws it, so "no text the source can hold" was wrong
+    about it: what is refused is taking a style's font as exact."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The dose was 5 mg daily."})
+    sent = [Block(("a",), "The dose was 5 mg daily.")]
+    now = f"The dose was 5 {MU}g daily."
+    returned = [Block(("a",), now, unread=("Symbol font from the style Greek",))]
+    [refusal] = plan_import(known, sent, returned).refused
+    why = " ".join(refusal.why)
+    assert "set by the style Greek" in why, why
+    assert "no text" not in why, why
+
+
+def test_a_second_private_use_character_of_a_code_already_sent_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Each kind was named once, so a second of a code the paragraph held already matched
+    what was sent, and merged into the source as a character the build cannot draw."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    pua = chr(0xF06D)
+    _path, known = source_of(tmp_path, {"a": f"The mark {pua} is here."})
+    once = ("private-use character F06D",)
+    sent = [Block(("a",), f"The mark {pua} is here.", unread=once)]
+    returned = [Block(("a",), f"The mark {pua} is here and {pua} there.", unread=once * 2)]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    [refusal] = plan.refused
+    why = " ".join(refusal.why)
+    assert "private-use character F06D" in why and "body font" in why, why
+    assert "no text" not in why, why
+
+
+def test_what_the_sent_document_could_not_read_either_is_no_edit(tmp_path: Path) -> None:
+    """A reference document can give a style the Symbol font, and then the document as sent
+    holds the same: it is not the co-author's, and refusing it would refuse every import."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    unread = ("Symbol font from the style Greek",)
+    sent = [Block(("a",), "The task is done.", unread=unread)]
+    returned = [Block(("a",), "The task is done at last.", unread=unread)]
+    plan = plan_import(known, sent, returned)
+    assert not plan.refused
+    assert plan.merged
 
 
 @pytest.mark.parametrize("bookmark", ["kept", "lost"])

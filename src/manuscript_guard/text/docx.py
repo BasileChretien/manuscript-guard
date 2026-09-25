@@ -37,6 +37,7 @@ from xml.etree import ElementTree as ET
 
 from manuscript_guard.docxtext import W16SE, extended_symbol, runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+from manuscript_guard.wordfonts import Fonts, symbol
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
@@ -145,19 +146,12 @@ def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
 #: -0.5 and 1, and parted a minus from its number.
 _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 
-# The Symbol font's characters, by their code in that font, that can stand beside a number.
-_SYMBOL_FONT = {0x2D: "−", 0xB1: "\xb1", 0xA3: "≤", 0xB3: "≥", 0xB4: "\xd7"}
-
 
 def _symbol(node: ET.Element) -> str:
-    """A `w:sym` character: a minus inserted from the Symbol font is an element, not text."""
-    if node.get(W + "font", "").lower() != "symbol":
-        return " "
-    try:
-        code = int(node.get(W + "char", ""), 16)
-    except ValueError:
-        return " "
-    return _SYMBOL_FONT.get(code - 0xF000 if code >= 0xF000 else code, " ")
+    """A `w:sym` character: Insert > Symbol writes one, not text; see `wordfonts`. One with
+    no text of its own reads as a space, so the numbers either side stay apart."""
+    shown, _name = symbol(node)
+    return shown if shown is not None else " "
 
 
 #: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
@@ -178,10 +172,18 @@ _SHOWN = {W + "t", *_SPACES, *_CHARACTERS}
 _BREAKS = {W + "p", W + "tr", W + "tc"}
 
 
-def _shown(node: ET.Element) -> str:
-    """What one element puts on the page: its text, a space, or a character."""
+def _shown(node: ET.Element, fonts: Fonts, parents: dict, paragraph: ET.Element | None) -> str:
+    """What one element puts on the page: its text, a space, or a character.
+
+    Text is read as its font draws it: typed in the Symbol font, "40" can be the private-use
+    U+F034 U+F030, which are not digits, and the number went unaudited. See `wordfonts`.
+    """
     if node.tag == W + "t":
-        return node.text or ""
+        run = parents.get(node)
+        run = run if run is not None and run.tag == W + "r" else None
+        return fonts.run(run, paragraph).read(node.text or "", missing=" ")[0]
+    if node.tag == W16SE + "symEx":
+        return fonts.drawn(extended_symbol(node), node.get(W16SE + "font"), missing=" ")[0]
     if node.tag in _SPACES:
         return " "
     return _CHARACTERS[node.tag](node)
@@ -226,7 +228,10 @@ def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: fro
     return "\n" + heading + cell
 
 
-def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
+def _part_text(
+    root: ET.Element, headings: frozenset[str] = frozenset(), fonts: Fonts | None = None
+) -> str:
+    fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
     joins = _joins(root, parents)
     # Each paragraph's line, shared with the paragraph it runs on into. A text box's
@@ -255,7 +260,8 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
         elif node.tag in _SHOWN:
             owner, seen = _placed(node, parents)
             if seen:
-                (lines[owner] if owner is not None else pieces).append(_shown(node))
+                shown = _shown(node, fonts, parents, owner)
+                (lines[owner] if owner is not None else pieces).append(shown)
 
     return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
@@ -281,11 +287,19 @@ def read_docx_text(path: Path) -> DocxText:
     if BODY not in names:
         raise NotADocx(f"{path.name}: no word/document.xml; is this really a .docx?")
 
+    try:
+        fonts = Fonts.of(archive, path.name)
+    except UnsafeDocument:
+        # As for the heading styles: what cannot be read safely is not read, and only the
+        # fonts a run names itself are known.
+        fonts = Fonts()
+
     def text_of(part: str, styles: frozenset[str] = frozenset()) -> str:
         try:
-            return _part_text(read_part(archive, part, what=f"{path.name}:{part}"), styles)
+            root = read_part(archive, part, what=f"{path.name}:{part}")
         except UnsafeDocument as exc:
             raise NotADocx(str(exc)) from exc
+        return _part_text(root, styles, fonts)
 
     marked = _tidy(text_of(BODY, _heading_styles(archive, names, path.name)))
     lines = marked.split("\n")

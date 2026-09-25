@@ -1571,6 +1571,21 @@ def test_audit_reads_an_emoji_word_writes_only_as_a_choice(tmp_path: Path) -> No
     assert [c.text.rstrip(".") for c in report.unmatched] == [f"12{chr(0x1F642)}34"]
 
 
+def test_audit_reads_a_number_typed_in_the_symbol_font(tmp_path: Path) -> None:
+    """Word can keep text typed in the Symbol font as that font's private-use characters:
+    "40" as U+F034 U+F030 (found in a real document). They are not digits, so the number was
+    never seen, and a wrong one went unaudited while the file was reported as audited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"days": 41}')
+    fonts = '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr>'
+    digits = f"<w:r>{fonts}<w:t>{chr(0xF034)}{chr(0xF030)}</w:t></w:r>"
+    body = f'<w:p><w:r><w:t xml:space="preserve">Follow-up was </w:t></w:r>{digits}'
+    body += '<w:r><w:t xml:space="preserve"> days.</w:t></w:r></w:p>'
+    paper = _docx(tmp_path / "paper.docx", body)
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["40"]
+
+
 def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Path) -> None:
     """A deleted text box's text was dropped, but its paragraphs still started lines. One
     styled as a heading was an empty heading, which ended the reference list there, and the

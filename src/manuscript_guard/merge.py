@@ -363,6 +363,7 @@ def plan_import(
     reference: list[Block],
     returned: list[Block],
     marked: list[Block] | None = None,
+    abbreviations: frozenset[str] = frozenset(),
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -373,12 +374,16 @@ def plan_import(
     pandoc's no-break space, which it puts after "et al." before a bookmark and not before a
     citation: one character for one, so the extents still fit, and every edit to "Smith et
     al. [@key]" was refused without it.
+
+    `abbreviations` are the words pandoc puts that no-break space after, from
+    `build.document.abbreviations`: a rewording writes it back as the space pandoc makes one
+    of again, rather than into the source as a character nobody can see.
     """
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
-        return sent is not None and sent.replace(" ", " ") == text.replace(" ", " ")
+        return sent is not None and sent.replace("\u00a0", " ") == text.replace("\u00a0", " ")
 
     extents = {
         b.names[0]: b.tokens
@@ -427,7 +432,7 @@ def plan_import(
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
-            aligned = align(source, was, now, extents.get(name))
+            aligned = align(source, was, now, extents.get(name), abbreviations)
             if aligned.rebuilt == source:
                 # Only pandoc's typesetting was undone in Word - a no-break space it put after
                 # "e.g." taken out again - and the next build puts it back. Nothing to merge.

@@ -245,26 +245,33 @@ def headings(text: str) -> list[str]:
 _DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
 _RULE_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*){2,}$")
 # What a setext title must not start with to be one pandoc reads: a div's fence, HTML, LaTeX,
-# a grid table's border, a placeholder (the build puts a table there), a quotation, a list
-# item. A line holding a pipe may be a table's row.
-_NOT_A_TITLE = re.compile(r"(?::::|<|\\|\+|\{\{|>|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$))")
+# a grid table's border, a table or figure placeholder (the build puts a table or an image
+# there), a quotation, a bullet, which pandoc reads before a heading. A numbered line is a
+# title: pandoc tries a heading before an ordered list. A line holding a pipe may be a row.
+_NOT_A_TITLE = re.compile(r"(?::::|<|\\|\+[-=:]|\{\{(?:table|figure)\.|>|[-*+](?:[ \t]|$))")
 
 
-def _setext_title(shown: list[str], source: list[str], title: int, underlines: set[int]) -> bool:
+def _setext_title(
+    source: list[str], fenced: list[str], body: int, title: int, underlines: set[int]
+) -> bool:
     """Whether line `title` is one pandoc reads as a setext title: plain text, indented less
-    than four columns, starting a block. A block starts under a line that prints nothing, a
-    heading or a setext underline; under anything else, a lone `-` included, the line
-    continues what is above it, a paragraph, a quotation or a list item."""
+    than four columns, starting a block. A block starts under a blank line, the last line of
+    a fenced listing or of the front matter, a heading or a setext underline. Under anything
+    else, a lone `-` or a comment on a line of its own included, the line continues what is
+    above it: a paragraph, a quotation or a list item. A comment is no break to pandoc, and
+    at a block start the build's bookmark goes in front of it, so the title continues it."""
     line = source[title].rstrip("\r")
     expanded = line.expandtabs(4)
     if "|" in line or len(expanded) - len(expanded.lstrip(" ")) >= 4:
         return False
     if _NOT_A_TITLE.match(expanded.lstrip(" ")):
         return False
-    if title == 0:
+    if title <= body:
         return True
-    above = shown[title - 1].rstrip("\r")
-    return not above.strip() or bool(_ATX.match(above)) or title - 1 in underlines
+    above = source[title - 1].rstrip("\r")
+    if not above.strip(" \t") or not fenced[title - 1].strip():
+        return True  # blank, or a fence: `fenced` blanks listings and nothing else
+    return bool(_ATX.match(above)) or title - 1 in underlines
 
 
 def rules_opening_blocks(text: str) -> list[int]:
@@ -287,6 +294,9 @@ def rules_opening_blocks(text: str) -> list[int]:
     """
     shown = scannable(text).split("\n")
     source = text.split("\n")
+    fenced = blank_fences(text).split("\n")
+    opening = FRONTMATTER.match(text)
+    body = text.count("\n", 0, opening.end()) if opening else 0
     underlines = {
         text.count("\n", 0, found.start) + 1
         for found in _headings_in(text)
@@ -301,7 +311,7 @@ def rules_opening_blocks(text: str) -> list[int]:
         if not _DASH_LINE.match(rule):
             continue
         underline = number in underlines
-        if underline and _setext_title(shown, source, number - 1, underlines):
+        if underline and _setext_title(source, fenced, body, number - 1, underlines):
             continue
         below = source[number + 1] if number + 1 < len(source) else ""
         if underline or (below.strip(" \t\r") and _RULE_LINE.match(rule)):

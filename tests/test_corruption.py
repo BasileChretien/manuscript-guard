@@ -1211,6 +1211,11 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "- -\ncell\n\n## Results\n- -\n",
         # A comment closing on the rule's line: pandoc reads on from the `-->`.
         f"<!-- x\nabc -->{_EVIL}",
+        # Found by the second review: a comment on the line above the title is no break.
+        # In a paragraph the title continues it; at a block start the build's bookmark goes
+        # in front of the comment, and the title then continues that paragraph.
+        "We also saw it.\n<!-- check with reviewer 2 -->\nMethods\n-------\n",
+        "<!-- reviewer 2 asked for this -->\nMethods\n-------\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
@@ -1233,9 +1238,12 @@ def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
         "The end.\n\n---\n",
         # A setext heading directly under a block that ends at its own line.
         "```\nx\n```\nResults\n-------\n",
-        "<!-- a note -->\nResults\n-------\n",
         "## Section\nResults\n-------\n",
         "Part\n====\nResults\n-------\n",
+        # Pandoc tries a setext heading before an ordered list, and a binding is text.
+        "2. Methods\n----------\n",
+        "2) Methods\n----------\n",
+        "{{results.cohort.n}} reports\n---\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:

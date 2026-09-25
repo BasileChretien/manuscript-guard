@@ -1329,7 +1329,14 @@ and names it: "the edited text carries an HTML comment and a footnote". A stretc
 co-author left alone is rebuilt from the source, so a footnote before a binding survives an
 edit after it. Emphasis or code wrapped around a binding is refused the same way, because
 each side holds a delimiter whose partner is on the other, and rebuilding one side left the
-other unpaired, printed as literal asterisks.
+other unpaired, printed as literal asterisks. So is code holding what pandoc typesets in
+prose, a `--`, a `...` or a quote: rebuilt from Word's text it was prose, and `--offline`
+printed as "–offline" and `<!--` as "<!–". Escaping those characters would print Word's
+text as it is, but a `--` a co-author typed with AutoCorrect off would then print as `--`
+and not as the dash pandoc makes of it, which is what they meant. Other code merges as
+text, and prints the same without its formatting, but for the no-break space pandoc puts
+after an abbreviation it knows: `e.g. x` in code comes back with one after "e.g.". An edit
+that deleted the code leaves nothing to typeset, and merges.
 
 The paragraph is read whole, with each binding filled in as digits, because what a stretch
 is depends on its neighbours: `*{{results.x}}*` is italics around a number, and
@@ -1357,24 +1364,27 @@ typesetting; those are escaped only where they open a paragraph as a list would 
 `- `), and there nothing is typeset.
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
-the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
-what this module can see - a delimiter left unpaired, a span stretched over new words - and
-not where the reading and pandoc disagree. Its tokens must be the source's, each read as
-before and none touching the next. Counting them was not enough. An edit deleting a space
-made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
+the co-author wrote, or the merge is refused. That check uses the same reading, so it
+catches what this module can see - a delimiter left unpaired, a span stretched over new
+words - and not where the reading and pandoc disagree. Its tokens must be the source's, each
+read as before and none touching the next. Counting them was not enough. An edit deleting a
+space made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
 `@a [@b]` one citation, and one leaving `@a:{{results.x}}` gave pandoc the key `a:3.84`.
 Each still had as many tokens, and the build printed a raw key or a garbled citation. The
 reading takes a binding for digits, so what a value does beside a key is checked apart: a
-value that opens with `[`, left with only a space after a narrative key, is the key's
-locator to pandoc, and "(2019) [pooled]" printed as "(2019, pooled)". Every edited stretch
-has one more backstop, for
-what the list does not name: if its source, read as Word should show it, is not what the
-build printed of that stretch, something in it never reached Word as text, and the
-rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
-was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to pandoc, was deleted.
-At first only a paragraph without bindings had this check. With bindings, looking for the
-source's prose in the build did that work, and when marked extents replaced that search the
-check went with it.
+value that opens with `[`, left after a narrative key with only spaces, a tab or one line
+break between them, is the key's locator to pandoc, and "(2019) [pooled]" printed as "(2019,
+pooled)". Only for a key without a locator of its own: pandoc takes one, so `@key [p. 3]
+[pooled]` prints the value as it is, and a key that has its `]` is not read on into what
+follows. A no-break space between them makes no locator either. The check was once broader
+than pandoc on both counts, and refused edits that printed as Word showed them. Every edited
+stretch has one more backstop, for what the list does not name: if its source, read as Word
+should show it, is not what the build printed of that stretch, something in it never reached
+Word as text, and the rewording is refused rather than rebuilt from what did. `[Methods]`, a
+link to the heading, was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to
+pandoc, was deleted. At first only a paragraph without bindings had this check. With
+bindings, looking for the source's prose in the build did that work, and when marked extents
+replaced that search the check went with it.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -2223,12 +2233,12 @@ Closed since, and why each mattered:
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
   footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
   HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
-  struck-through text, a hard line break, or one end of emphasis or code wrapped around a
-  binding. What comes back is escaped, and a merge that this module reads differently from
-  what came back is refused. A no-break space is no longer on that list: Word's text keeps
-  it (U+00A0, U+202F and every other space except layout whitespace), so it merges back as
-  typed, whether the source had it or the co-author's French AutoCorrect put it before a
-  colon. What remains:
+  struck-through text, a hard line break, one end of emphasis or code wrapped around a
+  binding, or code holding a `--`, a `...` or a quote. What comes back is escaped, and a
+  merge that this module reads differently from what came back is refused. A no-break space
+  is no longer on that list: Word's text keeps it (U+00A0, U+202F and every other space
+  except layout whitespace), so it merges back as typed, whether the source had it or the
+  co-author's French AutoCorrect put it before a colon. What remains:
   - *The refusal costs the edit.* The markup is never carried over into the new wording, even
     where the words either side of a footnote came back unchanged and its place is certain.
     In a paragraph without bindings the whole paragraph is one stretch, so one `kg/m^2^` or
@@ -2259,6 +2269,14 @@ Closed since, and why each mattered:
     `import` reads none of them. An edit inside a footnote or an equation, a changed link
     address, or a footnote deleted in Word leaves the paragraph's text as it was, and
     nothing is merged or reported.
+  - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
+    outside code, with AutoCorrect off, is typeset like one in the source; and code holding
+    such a character refuses an edit anywhere in its stretch, even one that leaves the code
+    as it was, because Word's text does not say which words were code. Only the code's own
+    stretch is read: code cut and pasted past a binding or a citation merges as prose there,
+    and `--offline` prints as "–offline", as it does on a move into another paragraph. And
+    an edit that deleted the code but left a literal `--` or straight quote in its stretch is
+    refused under the code's name.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
     the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped

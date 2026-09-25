@@ -11,6 +11,7 @@ from manuscript_guard.build.document import (
     OFFLINE,
     BuildError,
     BuildResult,
+    MisreadError,
     build_document,
     ensure_zotero_lua,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "Assembled",
     "BuildError",
     "BuildResult",
+    "MisreadError",
     "Pack",
     "SubmissionError",
     "assemble",

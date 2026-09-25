@@ -18,7 +18,14 @@ from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
-from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
+from manuscript_guard.build import (
+    LIVE,
+    OFFLINE,
+    BuildError,
+    MisreadError,
+    assemble,
+    build_document,
+)
 from manuscript_guard.build.assemble import check_rules
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
@@ -351,11 +358,10 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
-    assembled, assemble_report = assemble(project, namespace, results)
-    if not assemble_report.ok:
-        # The build refuses this source, so the document it sent cannot be rebuilt from it.
-        print(assemble_report.render(project.root))
-        return 1
+    # What the assembly reports is not import's to enforce: a source the build refuses is
+    # still refused by `check` and the build after the import, and refusing here blocked
+    # the return of a document built before a refusal existed.
+    assembled, _ar = assemble(project, namespace, results)
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
     # compared with - so import needs everything a build needs, pandoc first. A second copy
@@ -958,6 +964,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         # instead of the message that names `--offline`.
         try:
             return _build_annotated(project, namespace, results, assembled, args)
+        except MisreadError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 1
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             if not args.offline:
@@ -979,6 +988,10 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     try:
         result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
+    except MisreadError as exc:
+        # A refusal, like a failing gate, not a build that could not run.
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 1
     except BuildError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         if not args.offline:
@@ -1055,6 +1068,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
         mode = OFFLINE if args.offline else LIVE
         try:
             built = build_document(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 1
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2

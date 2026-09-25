@@ -1208,22 +1208,75 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
-def test_import_refuses_a_source_the_build_refuses(project: Path, tmp_path: Path, capsys) -> None:
-    """`import` rebuilds the document it sent to compare the returned one with, and threw
-    away what the assembly reported. With `--force` past a changed source, it rebuilt from
-    one the build refuses, where pandoc reads YAML the gates never saw."""
+def test_import_takes_back_a_document_built_before_its_source_was_refused(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built from a setext heading before the refusal existed came back and was
+    refused, and rewriting the heading as the hint said changed the digest, so it was then
+    refused as built from another version. The refusal belongs to `check` and the build,
+    which still make the author rewrite the heading before the next document."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
     from manuscript_guard.cli import main
 
-    assert main(["build", str(project), "--offline"]) == 0
-    returned = tmp_path / "back.docx"
-    returned.write_bytes((project / "build" / "manuscript.docx").read_bytes())
     source = main_md(project)
-    text = f"{source.read_text(encoding='utf-8')}\n## Results\n\nWe found it.\n\n{_EVIL}\n"
-    source.write_text(text, encoding="utf-8")
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\nSensitivity analyses\n--------------------\n\nText.\n", "utf-8")
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, report = assemble(loaded, namespace, results)
+    assert not report.ok, "the source is refused now"
+    built = build_document(loaded, assembled, mode=OFFLINE)
+    returned = tmp_path / "back.docx"
+    returned.write_bytes(built.output.read_bytes())
+    assert main(["import", str(returned), str(project)]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("block", "said"),
+    [
+        # A `<!--` pandoc prints as text opens a comment for the heading scan, which then
+        # read no rule, while pandoc merged the YAML block's title over paper.yaml's.
+        ("Text \\<!-- aside\n\n::: note\n---\ntitle: Evil\n...\n:::\n\nlater -->\n", "title"),
+        # A title continuing a paragraph over `===`: the gates read a Methods heading pandoc
+        # prints as text, and put the claim under it.
+        (f"We also saw\nMethods\n=======\n\n{_CLAIM}", "Methods"),
+    ],
+)
+def test_the_build_refuses_what_pandoc_reads_otherwise(
+    project: Path, block: str, said: str, capsys
+) -> None:
+    """Every shape the refusals list was found by a review, and each round found more: the
+    fifth found five that put another title on the title page. So the build asks pandoc
+    how it reads the document it is about to make, and stops when the metadata holds
+    anything the build's header did not set, or the headings differ from the gates'."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
     capsys.readouterr()
-    assert main(["import", str(returned), str(project), "--force"]) == 1
-    assert "a line of dashes with a line directly above or under it" in capsys.readouterr().out
-    assert source.read_text(encoding="utf-8") == text
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "pandoc reads" in err and said in err, err
+    assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_reads_a_binding_in_a_heading_as_its_value(project: Path) -> None:
+    """The gates read `{{results.cohort.n}}` where pandoc reads the number: not a
+    difference, and neither are emphasis or an identifier."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    heading = "\n## A cohort of {{results.cohort.n}} *reports* {#sec-cohort}\n\nText.\n"
+    source.write_text(f"{text}{heading}", encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
 
 
 _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
@@ -1297,26 +1350,25 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "{{results.cohort.n}} reports\n---\n",
         # Nor over a line: pandoc reads an item, YAML or a table from it.
         "-\n  an empty item's text\n",
+        # Found by the fifth: pandoc starts a block after markup, or a list, definition or
+        # footnote marker, and reads the dashes after it as YAML.
+        "<div>---\ntitle: Evil\n...\n</div>\n",
+        "<hr>---\ntitle: Evil\n...\n",
+        "<div>\nA note.\n\n</div>---\ntitle: Evil\n...\n",
+        "## Note\n<!-- aside -->    ---\ntitle: Evil\n...\n",
+        "## Note\n<!-- aside -->\t---\ntitle: Evil\n...\n",
+        "## Note\n\\newpage ---\ntitle: Evil\n...\n",
+        "## Note\n\\end{center}---\ntitle: Evil\n...\n",
+        "Term\n:   ---\n    title: Evil\n    ...\n",
+        "## Note\n* ---\n  title: Evil\n  ...\n",
+        "## Note\n1. ---\n   title: Evil\n   ...\n",
+        "## Note\n[^1]: ---\n    title: Evil\n    ...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
     from manuscript_guard.text.sections import rules_opening_blocks
 
     text = f"---\ntitle: A study\n---\n\n# Introduction\n\nProse.\n\n{block}\nThe end.\n"
-    assert rules_opening_blocks(text) != []
-
-
-def test_a_fence_opened_in_the_front_matter_does_not_make_a_title_start_a_block() -> None:
-    """The fence opened in an abstract's value paired with one closing a listing in the
-    body, so the body between read as code, and a title under a line of prose passed for one
-    directly under a listing."""
-    from manuscript_guard.text.sections import rules_opening_blocks
-
-    fence = "`" * 3
-    text = (
-        f"---\ntitle: A study\nabstract: |\n  {fence}\n---\n\n# Results\n\n"
-        f"We also saw it.\nMethods\n-------\n\nThe excess.\n\n{fence}r\nx <- 1\n{fence}\n"
-    )
     assert rules_opening_blocks(text) != []
 
 
@@ -1331,6 +1383,9 @@ def test_a_fence_opened_in_the_front_matter_does_not_make_a_title_start_a_block(
         "<!--\n---\nnote: v\n---\n-->\n",
         "The end.\n\n---\n",
         "Results\n=======\n\nText.\n",
+        # Dashes in prose are dashes, a range split over lines included.
+        "The interval ran from {{results.ror.ci_low}}--\n{{results.ror.ci_high}}.\n",
+        "As we said ---\nand as the data show.\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:

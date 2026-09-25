@@ -244,6 +244,14 @@ def headings(text: str) -> list[str]:
 # over one, YAML with three at the margin, a table's rule with two or more, and an empty
 # list item with one.
 _DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
+# Dashes ending a line after something pandoc starts a block behind: an HTML tag or
+# comment, a TeX command or its closing brace (a placeholder's `}}` is text), or a list,
+# definition or footnote marker. Pandoc reads the dashes there as YAML or a table's rule.
+_AFTER_MARKUP = re.compile(r"(?:>|(?<!\})\}(?!\})|\\[A-Za-z@]+)[ \t]*(?:-[ \t]*){2,}$")
+_AFTER_MARKER = re.compile(
+    r"^[ ]{0,3}(?:[*+:~]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)[ \t]+(?:-[ \t]*){2,}$"
+)
 
 
 def _blank(line: str) -> bool:
@@ -262,12 +270,19 @@ def rules_opening_blocks(text: str) -> list[int]:
     title: four reviews each found titles pandoc reads otherwise, under a comment, a listing
     or a quotation, or holding a placeholder. So a line of dashes passes only between blank
     lines, where pandoc reads nothing but a thematic break, and a heading is written with
-    `#`. A line in code, in a comment or in the front matter is not read.
+    `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
+    pandoc starts a block behind either. A line in code, a comment or the front matter is
+    not read.
     """
     shown = scannable(text).split("\n")
     source = text.split("\n")
     found = []
     for number, line in enumerate(shown):
+        bare = source[number].rstrip("\r")
+        visible = line.rstrip(" \t\r").endswith("-")
+        if visible and (_AFTER_MARKUP.search(bare) or _AFTER_MARKER.match(line.rstrip("\r"))):
+            found.append(number + 1)
+            continue
         # A comment that closes on this line is blanked in front of the rule, and pandoc
         # reads on from its `-->` as from the margin.
         closes = source[number].rfind("-->")

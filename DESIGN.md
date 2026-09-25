@@ -432,7 +432,22 @@ of dashes now passes only between blank lines, where pandoc reads nothing but a 
 break, and a heading is written with `#`. Nothing in `example/`, the scaffold or the skills
 underlines a heading with dashes; `===` has no dashes to misread and is untouched. A line in
 code, a comment or the front matter is not read, and a comment that closes on the line is
-taken off in front of it, as pandoc reads on from its `-->`.
+taken off in front of it, as pandoc reads on from its `-->`. The fifth review found pandoc
+starting a block partway along a line, behind an HTML tag or comment, a TeX command, or a
+list, definition or footnote marker, and reading the dashes after it as YAML; dashes ending
+such a line are refused wherever they stand.
+
+**The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
+time, and the fifth still found five that put another title on the title page, and shapes
+no refusal of a single file can see: a comment the heading scan misreads, and a comment or
+a fence carried from one file into the next. So before it writes the document, the build
+reads it with pandoc (`build/reading.py`) and refuses (`MisreadError`, exit 1) when the
+metadata of the whole text differs from that of the build's header alone, or when the
+headings pandoc makes differ from those the gates read in the sources, a placeholder in a
+title matching whatever its value prints as. Nothing there lists shapes, so a shape nobody
+has found yet is caught too. It costs two more runs of pandoc's reader per build, and it
+guards the document, not `check`: a source the build refuses can still pass `check`, and a
+number a misread hides from G2 without touching metadata or headings is not compared.
 
 ## Zotero is never on the critical path
 
@@ -2105,27 +2120,32 @@ Closed since, and why each mattered:
   - a `<!--` or a fence opened in one YAML value and closed in another;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - front matter behind a UTF-8 byte-order mark, which G2 does not find. Its delimiters
-    are refused as lines of dashes with a line beside them, rightly, since the build prints
-    the block as text, but the hint speaks of headings and thematic breaks, not of the mark;
+  - front matter behind a UTF-8 byte-order mark, which G2 does not find, and which the
+    build prints as text. A `---` closer is refused as a line of dashes with a line above
+    it, under a hint about headings and thematic breaks that does not name the mark; with a
+    `...` closer nothing is refused;
   - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
     though not for the masking.
 
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
 - **A line of dashes wholly inside a block quote, or indented four columns in a list item,
-  is not refused.** Pandoc reads YAML metadata and tables inside either; the refusal reads
-  only lines indented three columns or fewer and not quoted. While every line of it stays
-  inside the quotation or the item, the gates read it as quoted or listed text: its numbers
-  are read, the safe side, and no heading is made from it. What goes unchecked is a `title:`
-  in such a block, which pandoc merges over paper.yaml's. A closing rule back at the margin,
-  directly under the quotation or the item, is refused like any line of dashes with a line
-  above it; pandoc does take the title from `> ---`, `> title: Evil` and `---`. With a blank
-  line before the rule, pandoc closes the quotation first and reads no metadata.
-- **A comment the heading scan misreads can hide a rule from the refusal.** The refusal reads
-  the text with comments blanked, so a `<!--` that pandoc prints, in inline code or in
-  indented code, hides every rule up to the next `-->`, a YAML block's included, and a
-  `title:` in that block replaces paper.yaml's. It is the inline-code comment gap above, one
-  consequence further on.
+  is not refused by `check`.** Pandoc reads YAML metadata and tables inside either; the
+  refusal reads lines at the margin, or behind a list marker on the same line. While every
+  line of it stays inside the quotation or the item, the gates read it as quoted or listed
+  text: its numbers are read, the safe side, and no heading is made from it. A `title:` in
+  such a block is caught by the build, which compares pandoc's metadata with its header's,
+  and not by `check`. A closing rule back at the margin, directly under the quotation or the
+  item, is refused like any line of dashes with a line above it; pandoc does take the title
+  from `> ---`, `> title: Evil` and `---`. With a blank line before the rule, pandoc closes
+  the quotation first and reads no metadata.
+- **Some shapes only the build catches.** A comment the heading scan misreads, a `<!--` that
+  pandoc prints (in inline or indented code, or written `\<!--`, `<!-->` or `<!--->`),
+  hides every rule up to the next `-->` from the refusal. So does a comment or a fence left
+  open at the end of one file and closed in the next, since the build joins the files and
+  pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
+  a listing to the gates and text to pandoc (#71 refuses that one). Where the result is
+  metadata in the text or a heading the gates read otherwise, the build refuses; `check`
+  passes it. A number such a shape hides from G2, with neither, is caught by nothing.
 - **A fence after a form feed on the same line is code to the gates and prose to pandoc.**
   The fence reader splits lines where Python does, at a form feed, a vertical tab, U+0085
   and a few other separators as well as at a newline; pandoc splits at the newline alone. So
@@ -2133,10 +2153,15 @@ Closed since, and why each mattered:
   that pandoc never makes, and every gate stops reading what pandoc prints until a second
   one closes it. A rule in there escapes the refusal, and a `title:` under it replaces
   paper.yaml's. No editor types either separator in prose; a pasted one would do it.
-- **A title continuing a paragraph over `===` is still read as a heading.** Pandoc reads
-  `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1 Methods
-  heading; the refusal covers the same misread only for underlines of dashes. The heading
-  walk of #38, which knows what continues a paragraph, reads both as pandoc does.
+- **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
+  reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
+  Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
+  its headings with pandoc's and refuses the document. The heading walk of #38, which knows
+  what continues a paragraph, reads it as pandoc does.
+- **A thematic break prints as a dash.** The build's paragraph bookmark (`roundtrip.tag`)
+  goes in front of a line of dashes between blank lines as in front of any paragraph, and
+  pandoc prints `[]{#mg-p-…}---` as a paragraph holding an em dash rather than a rule. It
+  sets no metadata and makes no heading, but it is not what was written.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

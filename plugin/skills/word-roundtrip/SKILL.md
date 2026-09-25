@@ -161,8 +161,9 @@ Read the whole diff. What to look for:
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
   `<µg`) stands earlier in the paragraph, a `>` in an edited stretch comes back as `\>`, or
-  as `&gt;` where it ends a value after an `=` (`=>`, `HR=2.1>1`), and a straight quote
-  typed just after an `=` comes back as `\'` or `\"`. Leave them: pandoc can read a bare
+  as `&gt;` where it ends a value after an `=` (`=>`, `HR=2.1>1`). If that `<` is yours or
+  a value's rather than the co-author's, a straight quote typed just after an `=` comes
+  back as `\'` or `\"`, and prints straight. Leave them: pandoc can read a bare
   `<` and `>` with words between them as an HTML tag and drop everything from one to the
   other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
   a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.

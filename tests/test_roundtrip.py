@@ -1899,6 +1899,53 @@ def test_a_quote_after_an_equals_keeps_the_next_paragraph(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Costs were low.",
+            "Costs were low.",
+            "Models were fitted with <LOD handled by family='binomial' as usual.",
+            r"Models were fitted with \<LOD handled by family='binomial' as usual.",
+            id="whole-paragraph",
+        ),
+        pytest.param(
+            "Models of {{results.x}} were fitted.",
+            "Models of 3.84 were fitted.",
+            "Models of 3.84 were fitted with <LOD handled by family='binomial'.",
+            r"Models of {{results.x}} were fitted with \<LOD handled by family='binomial'.",
+            id="beside-a-binding",
+        ),
+    ],
+)
+def test_a_quote_after_an_equals_is_left_alone_after_words_own_angle(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Word's own `<` is escaped and opens no tag, so a quote after an `=` beside it needs no
+    backslash. Escaped for it all the same, the quote printed straight where pandoc curled
+    its partner: `family='binomial’`, where `‘binomial’` had printed before."""
+    assert realign(source, rendered, returned) == expected
+
+
+def test_a_closing_quote_after_an_equals_is_left_curly() -> None:
+    """A `’` that closes a quotation opened by a straight `'` kept from the source is written
+    straight, so that pandoc pairs the two. Straight after an `=`, once a `<` of the source's
+    stands before it, it would then open an attribute's value and be escaped, and neither
+    quote printed as Word's; left curly, it opens nothing."""
+    rendered = "Values <LOD in mg/L were coded ‘HR 3.84 or LOD’ in all."
+    # Where each token's rendering sits, as the bookmarked build gives it to `import`.
+    extents = [(rendered.index(shown), rendered.index(shown) + 4) for shown in ("mg/L", "3.84")]
+    merged = realign(
+        "Values <LOD in {{results.unit}} were coded 'HR {{results.x}} or LOD' in all.",
+        rendered,
+        "Values <LOD in mg/L were coded ‘HR 3.84 or LOD=’ in all.",
+        extents,
+    )
+    assert merged == (
+        "Values <LOD in {{results.unit}} were coded 'HR {{results.x}} or LOD=’ in all."
+    )
+
+
+@pytest.mark.parametrize(
     "returned", ["Alpha beta {aspirin gamma delta.", "Alpha beta {{aspirin gamma delta."]
 )
 def test_a_brace_before_a_binding_leaves_check_nothing_to_refuse(returned: str) -> None:

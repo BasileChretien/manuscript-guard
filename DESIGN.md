@@ -2256,10 +2256,17 @@ Closed since, and why each mattered:
     of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
     At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
     part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
-    ends only at ASCII whitespace, so a no-break space does not end it, and it is read in
-    the source, where a citation is its key. A straight quote straight after the `=` opens a
-    quoted value that runs past the paragraph's end and closed at a `>` in the next one;
-    it is written `\'` or `\"`, which prints straight, as Word showed it. G2 reads
+    ends only at ASCII whitespace, so a no-break space does not end it, and each citation
+    ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
+    quote straight after the `=` opens a quoted value that runs past the paragraph's end and
+    closed at a `>` in the next one; once a `<` the merge leaves bare (the source's, or a
+    value's) stands before it, it is written `\'` or `\"`, which prints straight. Word's own
+    `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl, and a
+    `’` Word typed there to close a quote of the source's stays curly. An `=` that ends an
+    edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
+    of a paragraph with a `>` of its own merges, and the two print as the words after that
+    `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
+    in `=` itself, which the next paragraph's escaper cannot see. G2 reads
     `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
     source is not Word's to escape, after a `<` kept from the source or brought by a value.
     Pandoc read the two as text only because something between them was not an attribute
@@ -2323,7 +2330,10 @@ Closed since, and why each mattered:
   within a paragraph. Across one they did: a straight quote after an `=`, once a `<` that
   can open a tag stood before it, opened a quoted value that ran on into the next
   paragraph, whose `>` closed the tag, and both printed as the words after that `>`. That
-  quote is now escaped; see "The read-back reads a binding as digits" above.
+  quote is now escaped, and an `=` ending an edited stretch still does the same; see "The
+  read-back reads a binding as digits" above. Escaped, the quote prints straight, and a
+  `’` that closes a straight `'` of the source's, left curly there, leaves that `'` to
+  print as an apostrophe.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier

@@ -843,7 +843,8 @@ _TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
 _TAG_OPENS = re.compile(_TAG_OPEN)
 
 #: Inside a tag, pandoc's whitespace is ASCII's. A no-break space, or pandoc's own after
-#: "e.g.", is part of an attribute's value: `dose=5 mg\>1` closed the tag with Python's `\s`.
+#: "e.g.", is part of an attribute's value: `dose=5 mg\>1`, with a no-break space in "5 mg",
+#: closed the tag when Python's `\s` was taken for pandoc's.
 _TAG_SPACE = "[ \t\n\r\f]"
 #: An attribute's value about to begin: an `=` and nothing after it but spaces.
 _VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
@@ -853,27 +854,45 @@ _VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
 _UNQUOTED = re.compile(rf"={_TAG_SPACE}*[^ \t\n\r\f]*\Z")
 #: What a would-be tag can be closed or carried on by.
 _TAG_PUNCTUATION = re.compile("[>'\"]")
+#: A `<` Word typed, set aside where it is escaped and so opens nothing; see `_opens_value`.
+_SET_ASIDE = "\x00"
 
 
-def _closers(shown_before: str, text: str) -> list[str]:
+def _opens_value(shown_before: str, bare_before: str, text: str, at: int) -> bool:
+    """Whether a straight quote at `at` in Word's `text` would open a quoted attribute
+    value: straight after an `=`, once a `<` the merge leaves bare stands before it.
+
+    `bare_before` is `shown_before` with each `<` Word typed set aside. Only a bare `<`
+    counts: Word's own is escaped and opens nothing, and a quote escaped for it printed
+    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`.
+    """
+    where = len(shown_before) + at
+    bare = _TAG_OPENS.search(bare_before + text.replace("<", _SET_ASIDE))
+    if bare is None or bare.start() >= where:
+        return False
+    return _VALUE.search(shown_before + text, 0, where) is not None
+
+
+def _closers(shown_before: str, text: str, bare_before: str = "") -> list[str]:
     """How to write each `>`, `'` and `"` of Word's `text`, read after `shown_before`.
 
-    Each is bare where no `<` that can open a tag stands before it. After one, a `>` is
-    `\\>`, or `&gt;` at the end of an unquoted attribute value, where a backslash would be
-    read as part of the value: an entity closes no tag anywhere, but G2 reads `\\>` as a
-    threshold's `>` and not `&gt;`. A straight quote straight after an `=` opens a quoted
-    value, which runs on past the paragraph's end, and the tag closed at a `>` in the next
-    one; escaped, it opens nothing, and prints straight, as Word showed it.
+    A `>` is bare where no `<` that can open a tag stands before it. After one it is `\\>`,
+    or `&gt;` at the end of an unquoted attribute value, where a backslash would be read as
+    part of the value: an entity closes no tag anywhere, but G2 reads `\\>` as a threshold's
+    `>` and not `&gt;`. A straight quote straight after an `=` opened a quoted value, which
+    ran on past the paragraph's end, and the tag closed at a `>` in the next one. Escaped
+    where `_opens_value` says it would, it opens nothing, and prints straight.
     """
     shown = shown_before + text
     opens = _TAG_OPENS.search(shown)
     out = []
     for found in _TAG_PUNCTUATION.finditer(text):
         char, at = found.group(), len(shown_before) + found.start()
-        if opens is None or opens.start() >= at:
-            out.append(char)
-        elif char != ">":
-            out.append("\\" + char if _VALUE.search(shown, 0, at) else char)
+        if char != ">":
+            quoted = _opens_value(shown_before, bare_before, text, found.start())
+            out.append("\\" + char if quoted else char)
+        elif opens is None or opens.start() >= at:
+            out.append(">")
         elif _UNQUOTED.search(shown, 0, at):
             out.append("&gt;")
         else:
@@ -903,6 +922,7 @@ def _escaped(
     after_token: bool = False,
     before_token: bool = False,
     shown_before: str = "",
+    bare_before: str = "",
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -924,7 +944,9 @@ def _escaped(
     into the prose, and `check` refuses that as a number bound to no source.
 
     A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
-    this text, or in `shown_before`, what Word shows ahead of it. That `<` need not be Word's:
+    this text, or in `shown_before`, the text ahead of it (Word's, with each citation as its
+    key, as pandoc reads it; `bare_before` is the same with Word's own `<` set aside, since
+    this escapes it). That `<` need not be Word's:
     one the source kept bare, or one a binding's value brings, opens a tag that a `>` later in
     Word's text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples
     ULOQ". Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits,
@@ -932,11 +954,11 @@ def _escaped(
     ROR > 2` stays as typed. A `<` in Word's text is escaped itself, above or at a token's
     edge, so counting one only adds a backslash pandoc does not need; it is counted all the
     same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
-    prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash;
-    see `_closers`.
+    prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash
+    after a `<` the merge leaves bare, and only then; see `_closers`.
     """
     brace = before_token and text.endswith("{")
-    closers = _closers(shown_before, text)
+    closers = _closers(shown_before, text, bare_before)
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
     # `_MARKDOWN` neither adds nor removes a `>` or a quote, so they are the ones `closers` read.
     head, *rest = _TAG_PUNCTUATION.split(text)
@@ -1175,16 +1197,13 @@ def align(
     # is compared with, rendered text against rendered text.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
-    # What pandoc reads ahead of each stretch. A `<` there that can open a tag, kept from the
-    # source or brought by a binding's value, is bare, and a `>` in the stretch would close
-    # it; an `=` there can make the `>` end an attribute's value. See `_closers`. Word's
-    # text, but a citation as its key: `(Smith 2020)` has a space, `[@smith2020]` has none,
-    # and `HR=[@smith2020]\>1` closed a tag where Word's text said it could not.
-    shown_before = [""]
-    for index, (start, end) in enumerate(placed):
-        shown = "".join(after[start:end])
-        token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
-        shown_before.append(shown_before[-1] + new_prose[index] + token)
+    # What lies ahead of each stretch, for the rules that read a would-be tag; see `_closers`.
+    # A `<` there that can open one, kept from the source or brought by a binding's value, is
+    # bare, and a `>` in the stretch would close it; an `=` can make the `>` end an attribute's
+    # value. Word's text, but a citation as its key: `(Smith 2020)` has a space,
+    # `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag where Word's text said
+    # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
+    ahead = bare = ""
     out: list[str] = []
     lost: list[str] = []
     unread = False
@@ -1205,21 +1224,32 @@ def align(
             # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
             opened = quote_open or "\u2018" in was_prose[index]
             quote_open = opened and _left_open(prose[index], index == 0, quote_open)
+            bare += piece
         else:
             lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
             # What the build printed of the stretch must be what the source reads as, or
             # part of it is something Word's text does not hold: `[Methods]` is a link to
             # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
             unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
-            if quote_open and _WORD_CLOSES.search(piece):
-                piece = _WORD_CLOSES.sub("'", piece, count=1)
+            if quote_open and (closing := _WORD_CLOSES.search(piece)):
+                straight = piece[: closing.start()] + "'" + piece[closing.end() :]
+                # Left curly where, straight, it would open an attribute's value and be
+                # escaped: `LOD=’` came back `LOD=\'`, and neither quote printed as Word's.
+                if not _opens_value(ahead, bare, straight, closing.start()):
+                    piece = straight
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            out.append(
-                _escaped(piece, opening=index == 0, shown_before=shown_before[index], **beside)
-            )
+            tag = {"shown_before": ahead, "bare_before": bare}
+            out.append(_escaped(piece, opening=index == 0, **tag, **beside))
+            bare += piece.replace("<", _SET_ASIDE)
+        ahead += piece
         if index < len(protected):
             out.append(protected[index])
+            start, end = placed[index]
+            shown = "".join(after[start:end])
+            token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
+            ahead += token
+            bare += token
     if lost:
         return Alignment(None, markup=tuple(lost))
     # With nothing between them there is nothing to escape: a citation's `]` against a value

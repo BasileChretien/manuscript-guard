@@ -51,6 +51,27 @@ def test_the_built_document_says_what_the_manuscript_says(project: Path) -> None
 
 
 @needs_pandoc
+def test_front_matter_closed_by_dots_keeps_the_introduction(project: Path) -> None:
+    """YAML closes a header with `...` as well as `---`. The build looked only for `---`, so
+    it ran on to the next `---` in the file, a horizontal rule, and the Introduction between
+    the two never reached the document. Nothing said so."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    lines = source.read_text(encoding="utf-8").split("\n")
+    closing = lines.index("---", 1)
+    lines[closing] = "..."
+    lines.insert(lines.index("# Methods"), "---\n")
+    source.write_text("\n".join(lines), encoding="utf-8")
+
+    assert main(["build", str(project), "--offline"]) == 0
+    text = visible(project / "build" / "manuscript.docx")
+    assert "Introduction" in text, "the Introduction heading is missing"
+    assert "remains among the commonest reasons" in text, "the Introduction's text is missing"
+    assert "Methods" in text
+
+
+@needs_pandoc
 def test_the_built_document_contains_its_tables_and_figure(project: Path) -> None:
     from manuscript_guard.cli import main
 

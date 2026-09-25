@@ -566,9 +566,10 @@ Two smaller decisions fell out of this:
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
 rule used is written down and the count reported beside the limit: whitespace-separated
 tokens after citations, tables, images, code and markup are removed; abstract and
-references counted separately; headings counted, because they are printed. Counting is done
-on the source rather than the built document, so a binding counts as one word whatever it
-resolves to and the count does not move when the analysis is re-run.
+references counted separately; headings counted, because they are printed, and their
+attribute blocks (`{#sec-methods}`, `{-}`) not, because pandoc does not print them. Counting
+is done on the source rather than the built document, so a binding counts as one word
+whatever it resolves to and the count does not move when the analysis is re-run.
 
 ## The AI-writing lint measures rate, not presence
 
@@ -839,7 +840,10 @@ predecessor:
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
   appendix or a footnote after it is still read. Otherwise every volume number and page
-  range is reported.
+  range is reported. A heading is read without the attribute block pandoc takes off it:
+  `# References {-}`, the usual way to leave the list unnumbered, was no heading at all, so
+  nothing was cut and a book or a web page in the list had every number reported. On a line
+  nothing marks as a heading the braces are printed, and it is not one.
 - **Rendered citations classified.** In source a citation is `[@key]` and gets masked; in a
   built document it has already become "(Smith and Jones 2019)", and without a rule for that
   every citation in the paper is an unexplained number.
@@ -900,7 +904,10 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   below, hiding everything between from G2 and the audit, and the bindings between from
   G2's binding checks. The masking, `explain`, G2's fence and binding readers and the
   heading scan all stop at `front_matter_end`; all but the binding reader also look for
-  fences on each side of it. What is still open is under Known gaps.)
+  fences on each side of it. What is still open is under Known gaps.
+  Later still: the one pattern counts a block only where pandoc keeps it as metadata, so a
+  header opening on an HTML comment is not front matter at all, and pandoc refuses it; see
+  "Front matter closed by `...` took the body with it" under Known gaps.)
 
 **Two were the same value compared the wrong way.**
 
@@ -951,7 +958,11 @@ fix, not of the original code.**
   detection now runs over text with fences and comments blanked.
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
-  every threshold rule beneath it. Anchored at both ends now.
+  every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
+  kept its pandoc attribute block was another word. `# Results {#sec-results}` was not
+  Results, so a "Sensitivity analyses" subsection under it made a reported `p < 0.001` the
+  alpha chosen in advance. A title is now read without its attribute block, backslash
+  escapes in its values included. Other markup stays: `# **Results**` is not Results.)
 - Table cells were classified with no section at all, which meant every `methods_only` rule
   applied — in the one place a *reported* p-value is most likely to be typed.
 - `display=` was checked against its value, so the same fabrication moved one line across
@@ -1857,6 +1868,24 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
+  with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
+  next `---` line in the file, a horizontal rule, and the Introduction above the rule
+  vanished from the document, from `import` and from G13, with no warning. The build now
+  uses the pattern the gates use, which closes on the first `---` or `...` line, the file's
+  last line included, and the line straight after the opening, where an empty header had
+  run on to the next rule the same way. And it counts a block as front matter only where pandoc keeps it as
+  metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
+  it is no longer stripped or masked. A header never closed before a later rule, with prose
+  in it, is not YAML, and pandoc refuses the file. The build had stripped it into one that
+  built without the Introduction. Now G2 and the build stop on it and name the YAML's
+  error, as they do for any header pandoc cannot read. Leaving such a header in the body for
+  pandoc to refuse was not enough: the identifier in front of its first paragraph made it
+  prose, so the build printed the YAML as text, and a `# Methods` in it let `p < 0.001`
+  pass G2 as the alpha chosen in advance. A header behind a byte-order mark or a blank first
+  line is found too, as pandoc finds it, and tabs are expanded before the YAML is read, as
+  pandoc expands them. Left in the body, such a header's title never met the two-titles
+  warning, and G2 read its keys as prose.
 - **A token straight after inline code stopped `import` for the whole manuscript.** The
   bookmark around a binding or citation is raw inline code, and against a code span's
   closing backtick its own backtick joined that run. Pandoc read the code and the bookmark
@@ -1864,7 +1893,6 @@ Closed since, and why each mattered:
   that build unreadable, and `import` exited 2 over a file the author had never seen. An
   empty comment now keeps the two apart, which the Word writer drops, so the paragraph
   still takes a rewording. And a marked build that cannot be read no longer stops the run.
-
 - **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
   the same value with different displays, so a duplicate was caught while it still agreed
   and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
@@ -2213,10 +2241,30 @@ Closed since, and why each mattered:
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
-- **A `---` block at the top that is not YAML is taken for front matter.** Pandoc wants a
-  YAML mapping there, and prints anything else, "---", a sentence, "---", as a table. The
-  gates mask it and the build strips it, so for a paper built here they agree and nothing
-  unread prints. The audit of a Markdown paper rendered some other way does not read it.
+- **A header pandoc cannot read is read as prose until it is fixed.** A `---` block at the
+  top that is not YAML at all, such as one opening on an HTML comment or one never closed
+  before a later rule, stops G2 and the build, which name the YAML's error. Meanwhile the
+  other gates read it as prose: a `# Methods` in it heads a section, and the audit of a
+  Markdown paper starts its reference list at a `# References` in it and names the cut
+  under "Not audited".
+- **A heading under a header that is never closed can be read as a YAML comment.** Pandoc
+  reads the header to the first `---` or `...` line, so `---`, `title: x`, a blank line,
+  `# Introduction`, a blank line and a rule make a valid mapping with a comment in it. The
+  heading goes into the metadata for pandoc and the build alike, and nothing says so. Lines
+  indented four spaces under it, a code block to Markdown, go into the value above as well.
+  Any other prose under the heading makes the YAML invalid, and G2 and the build stop.
+- **YAML is read by PyYAML, and pandoc reads it with a library of its own.** PyYAML is made
+  to read as pandoc does: between a `---` and a `...` of its own, every document read, an
+  anchor carried into later documents, defined again if need be, and usable only once its
+  node is finished. A header is metadata when its first document is a mapping, or when it
+  holds nothing at all. On 183 layouts this agrees with pandoc but for four, each accepted
+  by PyYAML and refused by pandoc: a key that is not a string, `? [a, b]`; a flow sequence
+  holding `a:`, `k: [a:, b]`; a lone carriage return for a line break; and a byte-order
+  mark at the start of a later line. Such a header is stripped and the file builds, so no
+  text is lost. Nesting over 100 levels is refused unread by a rough count that does not
+  know quotes or block scalars, and nesting too deep to compose, about 500 levels by
+  indentation, is refused the same way. Either is left in the
+  body, where pandoc hides it, and is not reported even when it is not YAML.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
@@ -2248,7 +2296,6 @@ Closed since, and why each mattered:
   - a `<!--` or a fence opened in one YAML value and closed in another;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - front matter behind a UTF-8 byte-order mark, which G2 does not find;
   - a YAML block in the middle of the body;
   - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
     though not for the masking.
@@ -2260,6 +2307,26 @@ Closed since, and why each mattered:
   reference heading is read as having none. Its lines are then taken for reference entries
   by their shape, as in any headingless paper, and a sentence with an entry's shape has its
   unmatched numbers listed apart, where `--strict` does not count them.
+- **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
+  differences remain.
+  - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
+    is taken for the block's opening brace, and the block stays in the title.
+  - A block continued on the next line, `# Results {#sec-results` above `.unnumbered}`,
+    or a quoted value broken across two lines, is looked for on the heading's own line
+    alone, where pandoc reads on. The block stays in the title.
+  - An unpaired `*` or `_` before the block or the closing `#`s, as in
+    `# *References {-}`, `# References _{-}` or `# References *##`, opens an emphasis
+    pandoc cannot close, and pandoc then prints the rest of the line, braces and `#`s
+    included. The toolkit takes them off, and the audit cuts a reference list there that
+    pandoc does not head, so the numbers under it go unread.
+
+  A block kept in the title is the strict way to be wrong: G2 does not read that heading
+  as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
+  is the loose way, and is recorded here rather than fixed because reading it right means
+  reading emphasis as pandoc does. Other markup stays in the title, so `# **Results**` is
+  not Results to G2 either, and a subsection under it named like a Methods one admits the
+  Methods-only rules. In a .docx a heading style is what makes a heading, so a styled
+  paragraph typed as `References {-}` starts a list, although Word prints the braces.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
@@ -2541,7 +2608,11 @@ Closed since, and why each mattered:
   wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
   the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
   none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
-  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
+  So is the change that counts front matter only where pandoc keeps it as metadata, for a
+  source whose header is a list or a sentence, sits behind a byte-order mark or a blank
+  first line, holds a tab, or is closed on the file's last line. `init` writes none of
+  these either. The guard is a scheme version in the stamp and the round file, refused on
+  a mismatch.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

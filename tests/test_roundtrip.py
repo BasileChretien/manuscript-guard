@@ -3127,6 +3127,49 @@ def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
     assert _held_in_place(known, {"p": para.split("\n")[0]}).get("p") in ("in-parts", "runs-on")
 
 
+TAIL = " <!-- an earlier draft, which quoted `grep`:"
+
+
+@pytest.mark.parametrize(
+    "para",
+    [
+        "Let $f = \\text{if $x$ is positive}$, as coded. <!-- a draft ($f$ was the mean) said:",
+        "The $a" + chr(0xA0) + "$-fold ratio came from ror. <!-- a draft ($y$) said:",
+        "The $a${{results.x}}-fold ratio came from `ror`. <!-- a draft ($y$) said:",
+        "The \\emph{so-called}{crude" + TAIL + "}",
+        "The ratio\\ldots{crude" + TAIL + "}",
+        "The \\textbf{so}{called`x} ratio came from `ror." + TAIL,
+        "See [the pattern `f](x)` here, which came from ror." + TAIL,
+        "As shown[^note](a`b) and `ror." + TAIL,
+        "See <zzz:a`b> and `ror." + TAIL,
+        'See <span data.x="a`b">this</span> and `ror.' + TAIL,
+    ],
+    ids=[
+        "maths-closing-inside-its-text",
+        "maths-closing-after-a-no-break-space",
+        "maths-closing-before-a-binding-that-may-print-a-minus",
+        "raw-tex-with-a-group-that-is-not-its-argument",
+        "raw-tex-that-takes-no-argument",
+        "raw-tex-with-a-second-group-holding-a-backtick",
+        "brackets-around-code-that-holds-a-link-end",
+        "a-footnote-reference-before-parentheses",
+        "an-autolink-with-a-scheme-pandoc-does-not-know",
+        "an-html-attribute-name-pandoc-does-not-accept",
+    ],
+)
+def test_what_pandoc_reads_as_text_is_not_set_aside_over_a_comment(
+    tmp_path: Path, para: str
+) -> None:
+    """The reading that sets aside maths, raw TeX, links, autolinks and HTML tags took each
+    of these for one where pandoc reads text, and hid the `<!--` pandoc opens: a paragraph
+    swapped past was written into the comment, exit 0. The reading before it holds each, so
+    a paragraph is held when either reading finds the comment."""
+    from manuscript_guard.merge import _held_in_place
+
+    _path, known = source_of(tmp_path, {"p": para})
+    assert _held_in_place(known, {"p": para}).get("p") == "runs-on"
+
+
 def test_an_equation_after_a_paragraph_in_the_document_as_sent_holds_that_paragraph(
     tmp_path: Path,
 ) -> None:
@@ -3399,22 +3442,31 @@ def test_a_move_to_the_end_of_the_methods_does_not_land_inside_its_comment(
 
 
 @needs_pandoc
-def test_a_swap_does_not_land_inside_a_comment_after_backticks_in_maths(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    "middle",
+    [
+        "so-called $\\text{``crude''}$ ratio came from `ror`.\n"
+        "<!-- an earlier draft, which quoted `grep`:\n\n",
+        "\\emph{so-called}{crude <!-- an earlier draft}, which quoted grep:\n\n",
+    ],
+    ids=["backticks-in-maths", "a-brace-group-that-is-not-an-argument"],
+)
+def test_a_swap_does_not_land_inside_a_comment_that_runs_on(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], middle: str
 ) -> None:
-    """End to end: a paragraph holding `$\\text{``crude''}$`, then a code span, then a comment
-    that runs past a heading. The backticks in the maths were taken for code, the comment
-    was hidden, and a swap of the Introduction's two paragraphs wrote the first one inside
-    the comment, exit 0: it was gone from the next build."""
+    """End to end: a paragraph whose comment runs past a heading, opened after backticks in
+    maths, or after a brace group pandoc does not give the TeX command before it. The first
+    was taken for code, the second for the command's argument, the comment was hidden, and
+    a swap of the Introduction's two paragraphs wrote the first one inside the comment,
+    exit 0: it was gone from the next build."""
     from manuscript_guard.cli import main
 
     source = project / "manuscript" / "main.md"
     old = "Whether the signal extends to example-drug specifically has not been examined.\n"
     new = (
         "Whether the signal extends to example-drug specifically has not been examined. The\n"
-        "so-called $\\text{``crude''}$ ratio came from `ror`.\n"
-        "<!-- an earlier draft, which quoted `grep`:\n\n"
-        "## Earlier background\n\n"
+        + middle
+        + "## Earlier background\n\n"
         "An older paragraph kept for reference. -->\n"
     )
     text = source.read_text(encoding="utf-8")

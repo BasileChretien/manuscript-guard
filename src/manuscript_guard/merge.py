@@ -191,8 +191,16 @@ _BLOCK_LINE = re.compile(
 )
 
 
-#: What `_bare` sets aside, read in one pass from the left with the first alternative winning
-#: at each position, as pandoc reads inline Markdown:
+#: What `_bare` sets aside before it looks for an open comment or display maths, in two
+#: readings. A paragraph is held when either finds one, because each hides some that pandoc
+#: shows, and missing one lets a move write a paragraph into the comment; finding one that
+#: pandoc does not show only holds a paragraph that could have moved.
+#:
+#: The first sets aside a backslash escape, a code span and a comment that closes.
+_CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+
+#: The second also sets aside what pandoc reads before code spans. It reads in one pass from
+#: the left, the first alternative winning at each position, as pandoc reads inline Markdown:
 #:
 #: - raw TeX, a command with its arguments, braces nested three deep. Before the escapes:
 #:   `\e` escapes nothing. Pandoc reads it only if every brace straight after it closes,
@@ -217,8 +225,13 @@ _BLOCK_LINE = re.compile(
 #:   A `<!--` is a comment, closed or not, never an autolink to an address.
 #:
 #: Backticks inside maths, raw TeX, an address or an attribute are not code to pandoc. Read
-#: as code, two of them closed at a real span's opener, whose closer then opened a false
-#: span that hid the `<!--` after it: a paragraph swapped past was written into the comment.
+#: as code by the first reading, two of them closed at a real span's opener, whose closer
+#: then opened a false span that hid the `<!--` after it: a paragraph swapped past was
+#: written into the comment. But these patterns are not pandoc's either. Pandoc gives a TeX
+#: command only the arguments it takes, lets `\text{...}` inside maths hold a `$`, closes
+#: maths after a no-break space, makes no link of brackets around code holding `](`, and no
+#: autolink or tag of an unknown scheme or an attribute name with a dot in it. Taken by the
+#: second reading alone, each hid a comment that the first finds.
 _TEX_HELD = r"(?:[^{}$%\\]|\\.|\$(?:[^$\\]|\\.)*\$)"
 _TEX_BRACES = r"\{" + _TEX_HELD + r"*\}"
 for _ in range(2):
@@ -246,6 +259,10 @@ _ASIDE = re.compile(
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
+def _blank(match: re.Match[str]) -> str:
+    return " " * len(match.group(0))
+
+
 def _set_aside(match: re.Match[str]) -> str:
     """What is left of one construct `_ASIDE` found: blanks, the same length."""
     if match.group("display"):
@@ -253,15 +270,15 @@ def _set_aside(match: re.Match[str]) -> str:
     if match.group("link"):
         return (
             " " * len(match.group("open"))
-            + _bare(match.group("text"))[0]
+            + _ASIDE.sub(_set_aside, match.group("text"))
             + " " * len(match.group("address"))
         )
-    return " " * len(match.group(0))
+    return _blank(match)
 
 
-def _bare(para: str) -> tuple[str, bool]:
-    """A paragraph's source with what pandoc does not read as its prose blanked out, and
-    whether what is left holds display maths, which Word sets apart as a paragraph of its own.
+def _bare(para: str) -> tuple[bool, bool]:
+    """Whether a paragraph's source opens a comment it does not close, and whether it holds
+    display maths, which Word sets apart as a paragraph of its own.
 
     Searched for as written, `$$` or `<!--` inside backticks held a paragraph that explained
     them. The rewording's own scan of inline markup was tried next, and it sets aside more
@@ -269,9 +286,13 @@ def _bare(para: str) -> tuple[str, bool]:
     with attributes, or `~~ $$x$$ ~~` for struck-through text, it hid display maths, and a
     paragraph that was not held had its first part moved without its equation. Setting
     aside too little only holds a paragraph that could have moved - `$$` in a footnote does.
+    So it is read two ways, and what either finds counts; see `_ASIDE`.
     """
-    bare = _ASIDE.sub(_set_aside, para)
-    return bare, _DISPLAY_MATHS.search(bare) is not None
+    readings = (_CODE_OR_COMMENT.sub(_blank, para), _ASIDE.sub(_set_aside, para))
+    return (
+        any("<!--" in reading for reading in readings),
+        any(_DISPLAY_MATHS.search(reading) for reading in readings),
+    )
 
 
 def _held_in_place(
@@ -312,10 +333,9 @@ def _held_in_place(
                 found.setdefault(before[path][0], "runs-on")
         elif not rendered[name].strip():
             found[name] = "empty"
-        elif "<!--" in (bare := _bare(para))[0]:
+        elif (bare := _bare(para))[0]:
             # Found by what it opens, not by what follows it: whatever the comment holds
             # after the blank line - a heading, a fence - comes before any tagged paragraph.
-            # A closed comment is blanked out of `bare`, so an opening left in it is unclosed.
             found[name] = "runs-on"
         elif _BLOCK_LINE.search(para):
             found[name] = "glued"

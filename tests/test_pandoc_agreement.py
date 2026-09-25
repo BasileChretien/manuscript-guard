@@ -275,6 +275,18 @@ HOLD_CASES = {
     "a comment opener that reads like an email": "The <!--a@b.org> note, and more",
     "a display opener that does not close": "The $$x$ y <!-- z",
     "inline maths opened by the second dollar": "The a$$x <!-- z$ and more",
+    # Each of these, read as something set aside, hid a comment pandoc opens.
+    "maths closing inside its text": "Let $f = \\text{if $x$ is positive}$. <!-- a ($f$) said",
+    "maths closing after a no-break space": "The $a" + chr(0xA0) + "$-fold. <!-- a ($y$) said",
+    "raw TeX with a group that is not its argument": "The \\emph{a}{crude <!-- a draft}, b",
+    "raw TeX that takes no argument": "The ratio\\ldots{crude <!-- a draft}, b",
+    "raw TeX with an optional argument": "The \\emph[x]{a" + TICKS + "b}" + AFTER,
+    "raw TeX naming no command": "The \\LaTeX{a" + TICKS + "b}" + AFTER,
+    "brackets around code that holds a link end": "See [the `f](x)` here" + AFTER,
+    "a footnote reference before parentheses": "As shown[^note](a`b) and `ror." + AFTER,
+    "a reference link before parentheses": "The [a][b](x" + TICKS + "y)" + AFTER,
+    "an autolink with a scheme pandoc does not know": "See <zzz:a`b> and `ror." + AFTER,
+    "an attribute name pandoc does not accept": 'See <span data.x="a`b">it</span>' + AFTER,
 }
 
 
@@ -322,18 +334,20 @@ def _nodes(node, out: list) -> None:
 
 
 def test_import_holds_the_paragraphs_pandoc_runs_on_or_shows_maths_in() -> None:
-    """Named cases: what `_bare` leaves of each paragraph shows an open `<!--` exactly when
-    pandoc runs a comment past it, and `$$` exactly when pandoc shows display maths. Each is
-    asked of pandoc on its own, so that a brace one leaves open cannot close in another."""
+    """Named cases: `_bare` finds an open comment wherever pandoc runs one past the
+    paragraph, and display maths wherever pandoc shows it. Finding one where pandoc does not
+    only holds a paragraph that could have moved; missing one lets a move write into the
+    comment. Each is asked of pandoc on its own, so that a brace one leaves open cannot
+    close in another."""
     from manuscript_guard.merge import _bare
 
     wrong = []
     for name in sorted(HOLD_CASES):
         [(runs_on, display)] = pandoc_holds([HOLD_CASES[name]])
-        bare, maths = _bare(HOLD_CASES[name])
-        if ("<!--" in bare, maths) != (runs_on, display):
+        opens, maths = _bare(HOLD_CASES[name])
+        if (runs_on and not opens) or (display and not maths):
             wrong.append(
                 f"{name}: pandoc runs on {runs_on}, display {display}; "
-                f"_bare keeps <!-- {'<!--' in bare}, display {maths}"
+                f"_bare finds a comment {opens}, display {maths}"
             )
     assert not wrong, "\n".join(wrong)

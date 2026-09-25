@@ -108,6 +108,14 @@ CONSTRUCTS = {
     "atx braces that are not attributes": "# Results {and more}\n\nProse.\n",
     "atx closing hashes after braces": "# Results {-} ##\n\nProse.\n",
     "atx two blocks": "# Results {.a} {-}\n\nProse.\n",
+    # A value may hold backslash escapes, as pandoc reads them.
+    "atx escaped quote in a quoted value": (
+        '# Results {#sec-results title="the \\"main\\" results"}\n\nProse.\n'
+    ),
+    "atx escaped quote in a single-quoted value": "# Results {k='a\\'b'}\n\nProse.\n",
+    "atx escaped space in a value": "# Results {k=a\\ b}\n\nProse.\n",
+    "atx escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n\nProse.\n",
+    "atx escaped opening brace in a value": "# Results {k=a\\{b}\n\nProse.\n",
 }
 
 
@@ -118,6 +126,30 @@ def test_the_toolkit_sees_the_headings_pandoc_renders(name: str) -> None:
     assert headings(markdown) == pandoc_headings(markdown), (
         f"{name}: toolkit saw {headings(markdown)}, pandoc renders "
         f"{pandoc_headings(markdown)}"
+    )
+
+
+# Where pandoc prints the braces, it also prints `\}` as `}`, and the toolkit does not undo
+# escapes in a title. So these are compared on the one thing in question: whether the heading
+# still ends in its braces.
+ESCAPED_BLOCKS = {
+    "escaped closing brace ends no block": "# References {k=\\}\n\nProse.\n",
+    "escaped closing brace after a value": "# Results {k=a\\}\n\nProse.\n",
+    "escaped quote in a quoted value": '# Results {title="the \\"main\\" results"}\n',
+    "escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n",
+    "escaped backslash before a closing brace": "# Results {k=a\\\\}\n",
+    "escaped quote that leaves a quote open": '# Results {k="a\\"}\n',
+    "escaped opening brace before the block": "# Results \\{-}\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(ESCAPED_BLOCKS))
+def test_the_toolkit_takes_off_the_attribute_blocks_pandoc_takes_off(name: str) -> None:
+    markdown = ESCAPED_BLOCKS[name]
+    (toolkit,) = headings(markdown)
+    (printed,) = pandoc_headings(markdown)
+    assert toolkit.endswith("}") == printed.endswith("}"), (
+        f"{name}: toolkit saw {toolkit!r}, pandoc renders {printed!r}"
     )
 
 

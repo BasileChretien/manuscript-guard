@@ -1164,14 +1164,27 @@ def test_audit_does_not_take_an_unmarked_line_with_braces_for_a_references_headi
         assert report.not_audited == [], paper.name
 
 
-def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(project: Path) -> None:
+@pytest.mark.parametrize(
+    "results",
+    [
+        "# Results {#sec-results}",
+        '# Results {#sec-results title="the \\"main\\" results"}',
+        "# Results {#sec-results note=a\\}b}",
+        "# Results {#sec-results}\n\n###",
+    ],
+)
+def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
+    project: Path, results: str
+) -> None:
     """A heading's title kept its attribute block, and `is_methods` matches a title whole.
     So `# Results {#sec-results}` was not a Results heading, and a subsection under it named
     like a Methods one, "Sensitivity analyses", made a reported `p < 0.001` the alpha chosen
-    in advance."""
+    in advance. The first fix read no backslash escapes in a value, which pandoc reads, and
+    read the heading's line to the end of the match, which ran on past a blank line to a
+    line of `#`s."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
-    text = text.replace("\n# Results\n", "\n# Results {#sec-results}\n", 1)
+    text = text.replace("\n# Results\n", f"\n{results}\n", 1)
     text = text.replace(
         "\n# Discussion\n",
         "\n## Sensitivity analyses\n\nThe excess was significant (p < 0.001).\n\n# Discussion\n",

@@ -340,8 +340,8 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
 
-    A marked line is read as pandoc prints it, without the attribute block at its end and
-    the closing `#`s before one. Pandoc users write an unnumbered reference heading as
+    A marked line is read without the attribute block at its end and without closing `#`s,
+    as pandoc reads it. Pandoc users write an unnumbered reference heading as
     `# References {-}`, and the audit found no heading there: it cut nothing, and every
     number in a book or a web page in the list was reported among the findings. On an
     unmarked line the braces are printed, so "References {-}" there is text.

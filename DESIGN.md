@@ -840,10 +840,10 @@ predecessor:
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
   appendix or a footnote after it is still read. Otherwise every volume number and page
-  range is reported. A heading is read as pandoc prints it: `# References {-}`, the usual
-  way to leave the list unnumbered, was no heading at all, so nothing was cut and a book or
-  a web page in the list had every number reported. On a line nothing marks as a heading
-  the braces are printed, and it is not one.
+  range is reported. A heading is read without the attribute block pandoc takes off it:
+  `# References {-}`, the usual way to leave the list unnumbered, was no heading at all, so
+  nothing was cut and a book or a web page in the list had every number reported. On a line
+  nothing marks as a heading the braces are printed, and it is not one.
 - **Rendered citations classified.** In source a citation is `[@key]` and gets masked; in a
   built document it has already become "(Smith and Jones 2019)", and without a rule for that
   every citation in the paper is an unexplained number.
@@ -958,7 +958,8 @@ fix, not of the original code.**
   every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
   kept its pandoc attribute block was another word. `# Results {#sec-results}` was not
   Results, so a "Sensitivity analyses" subsection under it made a reported `p < 0.001` the
-  alpha chosen in advance. A title is now what pandoc prints, without the block.)
+  alpha chosen in advance. A title is now read without its attribute block, backslash
+  escapes in its values included. Other markup stays: `# **Results**` is not Results.)
 - Table cells were classified with no section at all, which meant every `methods_only` rule
   applied — in the one place a *reported* p-value is most likely to be typed.
 - `display=` was checked against its value, so the same fabrication moved one line across
@@ -2080,12 +2081,14 @@ Closed since, and why each mattered:
   reference heading is read as having none. Its lines are then taken for reference entries
   by their shape, as in any headingless paper, and a sentence with an entry's shape has its
   unmatched numbers listed apart, where `--strict` does not count them.
-- **A heading's attribute block is read as pandoc reads it, with two differences.** A `{`
-  inside a quoted value, `{title="a{b"}`, is taken for the block's opening brace, so the
-  block stays in the title: G2 does not read that heading as Results or Methods, and the
-  audit cuts no reference list at it. And in a .docx a heading style is what makes a
-  heading, so a styled paragraph typed as `References {-}` starts a list, although Word
-  prints the braces.
+- **A heading loses its attribute block as pandoc reads it, and nothing else.** One
+  difference: a `{` inside a value that no backslash escapes, as in `{title="a{b"}` or
+  `{k=a{b}`, is taken for the block's opening brace, so the block stays in the title. G2
+  then does not read that heading as Results or Methods, and the audit cuts no reference
+  list at it. Other markup stays in the title, so `# **Results**` is not Results to G2
+  either, and a subsection under it named like a Methods one admits the Methods-only
+  rules. In a .docx a heading style is what makes a heading, so a styled paragraph typed
+  as `References {-}` starts a list, although Word prints the braces.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

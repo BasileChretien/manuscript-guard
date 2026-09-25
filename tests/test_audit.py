@@ -460,6 +460,9 @@ def test_other_bibliography_headings_are_recognised(heading: str) -> None:
         "**References** {-}",
         "# References # {-}",
         "# References ##",
+        '# References {#refs title="the \\"cited\\" works"}',
+        "# References {#refs note=a\\}b}",
+        "# References {k=a\\{b}",
     ],
 )
 def test_a_marked_heading_may_end_in_what_pandoc_does_not_print(heading: str) -> None:
@@ -483,14 +486,37 @@ def test_an_unmarked_line_with_an_attribute_block_is_not_a_heading(line: str) ->
 
 
 @pytest.mark.parametrize(
-    "heading", ["# References {and further reading}", "# References \\{-}", "# References {-} ##"]
+    "heading",
+    [
+        "# References {and further reading}",
+        "# References \\{-}",
+        "# References {-} ##",
+        "# References {k=\\}",
+        "# References {k=a\\}",
+    ],
 )
 def test_braces_pandoc_prints_are_part_of_the_heading(heading: str) -> None:
     """Pandoc takes off an attribute block and nothing else in braces: these print as they
-    stand, so none of them is a heading that says only "References"."""
+    stand, so none of them is a heading that says only "References". In the last two the
+    closing brace is escaped, so there is no block to take off."""
     from manuscript_guard.audit import is_bibliography_heading
 
     assert not is_bibliography_heading(heading, marked=True)
+
+
+@pytest.mark.parametrize(
+    ("title", "printed"),
+    [
+        ("Results \\{-}", "Results \\{-}"),
+        ("Results \\\\{-}", "Results \\\\"),
+        ("Results \\\\\\{-}", "Results \\\\\\{-}"),
+    ],
+)
+def test_a_brace_after_an_odd_run_of_backslashes_is_escaped(title: str, printed: str) -> None:
+    """`\\{` is a brace, and `\\\\{` a backslash and then the block."""
+    from manuscript_guard.text.sections import strip_attributes
+
+    assert strip_attributes(title) == printed
 
 
 @pytest.mark.parametrize(
@@ -622,17 +648,27 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
 
     from manuscript_guard.audit import is_bibliography_heading
 
+    # 20,000 characters each: a quadratic reading of any of them takes seconds, and a linear
+    # one a few milliseconds even item by item in Python.
+    n = 10000
     started = time.perf_counter()
     for line in (
-        "# References {" + "#a" * 30000 + " !}",
-        "# References {" + ".a" * 30000 + "!}",
-        "# References {" + "a" * 60000 + "}",
-        '# References {k="' + "a" * 60000 + " !}",
-        "# References {" + " " * 60000 + "!}",
-        "# References {" + "-" * 60000 + "!}",
-        "# References " + "{" * 60000 + "}",
-        "# References " + "{}" * 30000,
-        "# References " + "{-} " * 15000,
+        "# References {" + "#a" * n + " !}",
+        "# References {" + ".a" * n + "!}",
+        "# References {" + "a" * 2 * n + "}",
+        '# References {k="' + "a" * 2 * n + " !}",
+        "# References {" + " " * 2 * n + "!}",
+        "# References {" + "-" * 2 * n + "!}",
+        "# References " + "{" * 2 * n + "}",
+        "# References " + "{}" * n,
+        "# References " + "{-} " * (n // 2),
+        '# References {k="' + '\\"' * n + " !}",
+        "# References {k='" + "\\'" * n + " !}",
+        "# References {k=" + "\\}" * n + " !}",
+        "# References {k=" + "\\" * (2 * n + 1) + "}",
+        "# References " + "\\{" * n + "}",
+        "# References " + ("\\" * 999 + "{") * 20 + "}",
+        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
     ):
         assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 0.5

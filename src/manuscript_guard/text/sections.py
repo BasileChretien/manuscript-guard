@@ -47,22 +47,35 @@ HEADING = _ATX
 
 # One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
 # with the value quoted or running to a space or the closing brace, or `-`, which pandoc
-# reads as `.unnumbered`. Items need no space between them: `{#a.b}` is one identifier and
-# `{#a#b}` two, because pandoc takes the longest item it can at each point and never goes
-# back. `strip_attributes` does the same, one item at a time, so each character is read
-# once. With the items under one quantifier in a single pattern, a run such as `#a.b.c`
+# reads as `.unnumbered`. A value may hold backslash escapes, `title="the \"main\" one"` or
+# `note=a\}b`, and an escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints
+# it. Each escape is one backslash and the character after it, and every other character
+# is one of the rest, so a value can be read only one way. Items need no space between
+# them: `{#a.b}` is one identifier and `{#a#b}` two, because pandoc takes the longest item
+# it can at each point and never goes back. `strip_attributes` does the same, one item at a
+# time. With the items under one quantifier in a single pattern, a run such as `#a.b.c`
 # could be divided between items in more ways than it has characters, and a block that
 # failed at its last character would try every one of them.
 _ATTRIBUTE_ITEM = re.compile(
     r"#[\w:.-]+"
     r"|\.[^\W\d_][\w:.-]*"
-    r"|[^\W\d_][\w:.-]*=(?:\"[^\"]*\"|'[^']*'|[^\s}]*)"
+    r"|[^\W\d_][\w:.-]*="
+    r"(?:\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|(?:[^\s}\\]|\\.)*)"
     r"|-"
 )
 
 
+def _escaped(text: str, index: int) -> tuple[bool, int]:
+    """Whether the character at `index` is escaped, and where the backslashes before it
+    start. An odd run escapes it: `\\{` is a brace, `\\\\{` a backslash and then a brace."""
+    start = index
+    while start > 0 and text[start - 1] == "\\":
+        start -= 1
+    return (index - start) % 2 == 1, start
+
+
 def strip_attributes(text: str) -> str:
-    """`text` without the pandoc attribute block it ends with, as pandoc prints a heading.
+    """`text` without the pandoc attribute block it ends with, if it ends with one.
 
     `# References {-}` prints as "References", unnumbered, and `## Results {#sec-results}`
     as "Results". Kept in the title, the block made it another word: `is_methods` matches a
@@ -70,13 +83,23 @@ def strip_attributes(text: str) -> str:
     like a Methods one made a reported `p < 0.001` the alpha chosen in advance.
 
     Only what pandoc reads as attributes goes. "Results {and more}" and "Results \\{-}"
-    print as they stand, and so does every block but the last. `text` comes back unchanged
-    when nothing goes, so a caller can tell.
+    print as they stand, and so does every block but the last. The block opens at the last
+    brace no backslash escapes, and `{k=a\\{b}` is one block. Nothing else in the title
+    changes: `# **Results**` keeps its asterisks. `text` comes back unchanged when nothing
+    goes, so a caller can tell.
     """
     body = text.rstrip()
-    opening = body.rfind("{")
-    if not body.endswith("}") or opening < 0 or body[opening - 1 : opening] == "\\":
+    if not body.endswith("}"):
         return text
+    opening = len(body)
+    while True:
+        opening = body.rfind("{", 0, opening)
+        if opening < 0:
+            return text
+        escaped, before = _escaped(body, opening)
+        if not escaped:
+            break
+        opening = before
     inner, position = body[opening + 1 : -1], 0
     while True:
         while position < len(inner) and inner[position] in " \t":
@@ -90,13 +113,19 @@ def strip_attributes(text: str) -> str:
 
 
 def _atx_title(found: re.Match[str]) -> str:
-    """An ATX heading's title as pandoc prints it.
+    """An ATX heading's title, without its attribute block and the closing `#`s before it.
 
     Pandoc reads the closing `#`s, then spaces, then the attribute block, so
     `## Results ## {#sec-results}` is "Results". A block before the closing `#`s is text:
     `# Results {-} ##` is "Results {-}".
+
+    Read to the end of the title's own line. `_ATX` can run on past a blank line to a line
+    of `#`s, and read to the end of the match, `# Results {#sec-results}` above one ended in
+    `#` rather than a block, and kept it.
     """
-    line = found.group(0)[len(found.group("hashes")) :].strip()
+    source, end = found.string, found.end()
+    newline = source.find("\n", found.end("title"), end)
+    line = source[found.start("title") : newline if newline >= 0 else end].strip()
     printed = strip_attributes(line)
     if printed == line:
         return found.group("title").strip()
@@ -189,7 +218,7 @@ class _Found:
 
 
 def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order, titled as pandoc prints it."""
+    """Every heading, ATX and setext, in document order, titled without its attribute block."""
     rendered = scannable(text)
     found = [
         _Found(m.start(), len(m.group("hashes")), _atx_title(m))

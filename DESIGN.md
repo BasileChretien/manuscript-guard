@@ -1416,6 +1416,19 @@ what pandoc prints, except before a quote, a hyphen or a full stop, which it wou
 typesetting; those are escaped only where they open a paragraph as a list would (`1990.`,
 `- `), and there nothing is typeset.
 
+The writer and the tagger have to read an opening the same way. The tagger judges a block by
+pandoc's rules, and the writer kept a short list of its own: `B) the ratio was...`, `IV.
+The`, `| The` and `Table: The` merged as typed, pandoc made a list, a line block or a caption
+of them at the next build, `tag` gave the paragraph no identifier, and its next edit in Word
+was dropped with nothing reported. The writer now asks the tagger's own reading of a
+numbered list and a caption, so "E. coli" stays a sentence and "IV. The" is escaped, and the
+property is tested as it is meant: whatever the merge writes, pandoc reads as one paragraph
+and `tag` names it. The tagger, for its part, took any HTML tag it did not know for a block
+and counted an escaped brace. Pandoc reads a tag it does not know as inline and `\{` as a
+brace, so "Concentrations <LLOQ and >ULOQ were excluded." lost its identifier when the
+tagger learned pandoc's blocks. Its block tags are measured now, element by element, by a
+test that asks pandoc about each one where it stands.
+
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
 catches what this module can see - a delimiter left unpaired, a span stretched over new
@@ -1787,11 +1800,11 @@ Added by the adversarial review, verified and **not** fixed:
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
   and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI skips because
   CI has no pandoc. Where the patterns are unsure they leave a block unmarked, which costs a
-  comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
-  tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
-  one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
-  after a `<!--` written inside inline code, up to the next `-->`; a paragraph whose braces
-  do not pair. Raw TeX other than an environment is not followed across a blank line. When
+  comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
+  (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
+  (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
+  inside inline code, up to the next `-->`; a paragraph whose braces do not pair, escaped
+  ones aside. Raw TeX other than an environment is not followed across a blank line. When
   the blank line falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
@@ -1803,7 +1816,14 @@ Added by the adversarial review, verified and **not** fixed:
   interval such as `[0, 1)`. Every review round on these patterns found holes in the
   version before it,
   each by running pandoc on a construct the table did not yet hold, so the table is
-  evidence for what is in it and no more.
+  evidence for what is in it and no more. The HTML block tags are pandoc 3.9's; a pandoc
+  that takes another tag for a block marks a paragraph it splits, until the agreement test
+  is run against it.
+- **A caption or a definition is told from a paragraph by its opening alone.** A block
+  opening `Table:` is a paragraph to pandoc unless a table stands beside it, and one opening
+  `: ` is a paragraph when nothing stands before it; the tagger sees one block at a time and
+  leaves both without an identifier. The merge escapes either when a co-author types it, so
+  an import cannot make one, but a paragraph written that way in the `.md` is never compared.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the

@@ -282,23 +282,36 @@ _REFERENCE = re.compile(r" {0,3}\[[^\]\n]+\]:")
 _FIGURE = re.compile(r"!\[.*[)\]}]", re.DOTALL)
 # A TeX command. `\newpage` alone is a raw block, and marked it became an empty paragraph.
 _TEX = re.compile(r" {0,3}\\[A-Za-z]")
-# Tags pandoc reads as inline, so a paragraph may open with one and stay a paragraph. Any
-# other tag at the start of a line may open a raw HTML block - `<div>`, `<table>`, `<del>` -
-# and is treated as one: leaving a paragraph unmarked costs it its identifier, while marking
-# an HTML block rewrites it.
-_INLINE_HTML = (
-    "a|abbr|b|bdi|bdo|br|cite|code|data|dfn|em|font|i|img|kbd|mark|q|s|samp|small|span|"
-    "strike|strong|sub|sup|time|tt|u|var|wbr"
+# The tags pandoc's reader takes for a block, measured against pandoc 3.9 rather than
+# recalled: `test_a_tag_ends_a_paragraph_exactly_when_pandoc_ends_it` asks it about every
+# HTML element. These end a paragraph wherever they stand: `text <div>x</div> more` is three
+# blocks to pandoc.
+_BLOCK_HTML = (
+    "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|dir|"
+    "div|dl|dt|fieldset|figcaption|figure|footer|form|frameset|h[1-6]|head|header|hgroup|hr|"
+    "html|isindex|li|main|menu|meta|nav|noframes|ol|output|p|pre|script|section|summary|table|"
+    "tbody|td|textarea|tfoot|th|thead|title|tr|ul"
 )
+# These open a raw HTML block only at the start of a line, and are inline after text.
+_OPENING_HTML = (
+    "applet|area|audio|button|del|embed|iframe|ins|map|noscript|object|progress|source|style|"
+    "svg|track|video"
+)
+# A tag pandoc does not know is inline wherever it stands, so "Concentrations <LLOQ and
+# >ULOQ were excluded." is one paragraph. Anything but these used to be taken for a block,
+# and such a paragraph went without an identifier.
 _HTML_TAG = re.compile(
-    rf" {{0,3}}</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?=[\s/>]|$)", re.IGNORECASE
+    rf" {{0,3}}</?(?:{_BLOCK_HTML}|{_OPENING_HTML})(?=[\s/>]|$)", re.IGNORECASE
 )
-# The same tags, whole, anywhere in a line. Mid-line too `text <div>x</div> more` is three
-# paragraphs to pandoc. Whole, because "values <LOQ were imputed" is a sentence.
+# A block tag, whole, anywhere in a line - and not escaped: `\<div>` is text to pandoc, which
+# is how `import` writes a `<div>` a co-author typed. `\\<div>` is a backslash and a tag.
 _HTML_BLOCK_TAG = re.compile(
-    rf"</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?:\s[^<>]*)?/?>", re.IGNORECASE
+    rf"(?<!\\)(?:\\\\)*</?(?:{_BLOCK_HTML})(?![\w-])(?:\s[^<>]*)?/?>", re.IGNORECASE
 )
 _TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
+# A brace not escaped: after an even number of backslashes, none included.
+_UNESCAPED_OPEN = re.compile(r"(?<!\\)(?:\\\\)*\{")
+_UNESCAPED_CLOSE = re.compile(r"(?<!\\)(?:\\\\)*\}")
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -373,8 +386,10 @@ def _untagged(block: str) -> bool:
         or "$$" in stripped
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
-        # is the paragraph the bookmark lands in.
-        or stripped.count("{") != stripped.count("}")
+        # is the paragraph the bookmark lands in. An escaped brace is text, and opens nothing:
+        # counted, the `\{` `import` writes for a brace a co-author typed left the paragraph
+        # without an identifier.
+        or len(_UNESCAPED_OPEN.findall(stripped)) != len(_UNESCAPED_CLOSE.findall(stripped))
         or _FENCE.match(stripped) is not None
         # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
         # paragraph printing a number: skipped, a paragraph cut down to its number in Word
@@ -1464,13 +1479,35 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     )
 
 
-#: A paragraph that opens like a block: a heading, a list item, a block quote, a fenced div.
-#: Word's text rarely does, and "1990. The year..." at the start of a paragraph is a list.
-_OPENER = re.compile(
-    r"(?P<mark>[#>]|:(?=::))|(?P<bullet>[-+])(?=\s)"
-    r"|(?:\d+|[a-z]|[ivxlcdm]+)(?P<delim>[.)])(?=\s)"
-    r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
-)
+#: A paragraph that opens like a block by its first character: a heading, a block quote, a
+#: line block, a fenced div, a definition, a bullet. A numbered list and a table's caption
+#: are judged by `_opened`, with the tagger's own reading of them.
+_OPENER = re.compile(r"(?P<mark>[#>|]|:(?=::)|:(?=[ \t]))|(?P<bullet>[-+])(?=\s)")
+
+
+def _opened(text: str) -> str:
+    """Word's text escaped where it would open a paragraph as something else.
+
+    The writer used to keep its own short list of openers, and the tagger read blocks by
+    pandoc's rules: `B) the ratio was...` merged as typed, pandoc made a list of it at the
+    next build, `tag` gave it no identifier, and its next edit in Word was dropped with
+    nothing reported. So a numbered list is judged here by the same `_enumerates` that
+    `tag` asks, which knows "E. coli" is a sentence and "IV. The" is not, and a caption by
+    the same `_CAPTION`. What they would read as a block gets one backslash, and pandoc
+    prints it as typed.
+    """
+    if block := _OPENER.match(text):
+        at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
+        return text[:at] + "\\" + text[at:]
+    # Judged as it may end up: `_respaced` turns pandoc's no-break space after an
+    # abbreviation into a plain one after this, and "p." then "4" opens a list.
+    first = text.split("\n", 1)[0].replace(_NBSP, " ")
+    if (found := _ENUMERATOR.match(first)) and _enumerates(first):
+        at = found.start("open") if found.group("open") else found.start("delim")
+        return text[:at] + "\\" + text[at:]
+    if found := _CAPTION.match(first):
+        return text[: found.end() - 1] + "\\" + text[found.end() - 1 :]
+    return text
 
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
@@ -1478,7 +1515,7 @@ _OPENER = re.compile(
 #: and was text to it, so the words were merged bare and deleted at the next build. A
 #: backslash before punctuation never changes what pandoc prints, except before a quote, a
 #: hyphen or a full stop, which it would stop typesetting; those are left alone here, and
-#: only `_OPENER` escapes one, where it would open the paragraph as a list.
+#: only `_opened` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
     r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
@@ -1519,10 +1556,7 @@ def _escaped(
         text = text[:-1] + "\\" + text[-1]
     if brace:
         text = text.removesuffix("\\{") + "&lbrace;"
-    if opening and (block := _OPENER.match(text)):
-        at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
-        text = text[:at] + "\\" + text[at:]
-    return text
+    return _opened(text) if opening else text
 
 
 _NBSP = "\u00a0"

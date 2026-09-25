@@ -1301,17 +1301,29 @@ backtick is an escaped one, as in `` \``onset` ``, or one of a run that never cl
 pandoc opens a span on a run's last backtick, as in ``` ``crude'' ratio came from `ror ```.
 Stopped, the real span's closer was taken for an opener, and the false span it began hid
 the `<!--` after it: a paragraph swapped in the Introduction was written inside the
-comment, exit 0. Display maths is also read from the document as sent, which
-says it outright: an equation directly after a paragraph is part of that paragraph, however
-its source is written. And a held paragraph whose only change is a no-break space pandoc put
-in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
-refused instead. That is decided only for a source with no no-break space of its own and no
-binding or citation: asked of every paragraph, the check dropped a co-author's change to one
-the author had written, with "nothing came back". An author can write one as `\ `, as the
-character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
-also decided only when no new text stands beside the paragraph. Only the part carrying the
-identifier is compared, so when the part after an equation had been reworded, skipping the
-paragraph dropped that rewording.
+comment, exit 0. That was not the only way to begin one. Backticks inside inline maths,
+raw TeX, a link's address, an autolink or an HTML attribute are not code to pandoc, and
+`$\text{``crude''}$` did the same. So before code spans are looked for, what pandoc reads
+first at each position is set aside too: raw TeX with its arguments, maths, a link's
+address and title (not its text, which is Markdown), an autolink and an HTML tag. Each is
+read as pandoc reads it. Raw TeX counts only when every brace straight after it closes.
+After a `$$` that does not close, the second `$` can open inline maths. A `<!--` is a
+comment even unclosed, never an autolink. Compared with pandoc on 60,000 random paragraphs
+built from these pieces, it missed a comment or display maths pandoc shows in 7, where the
+pattern before missed 44. Three of the 7 hold a binding, which pandoc was given unfilled;
+filled with a number, as a build fills it, none is missed. The other four are raw TeX or an
+attribute that runs past its paragraph, a gap listed below. Paragraphs held with nothing to
+hold them fell from 11.8% of the sample to 9.2%. Display maths is also read from the
+document as sent, which says it outright: an equation directly after a paragraph is part of
+that paragraph, however its source is written. And a held paragraph whose only change is a
+no-break space pandoc put in and Word's editor took out again has nothing to merge, as an
+ordinary one has not; it was refused instead. That is decided only for a source with no
+no-break space of its own and no binding or citation: asked of every paragraph, the check
+dropped a co-author's change to one the author had written, with "nothing came back". An
+author can write one as `\ `, as the character, or as an entity pandoc reads,
+`&NonBreakingSpace;` and `&#0160;` included. It is also decided only when no new text stands
+beside the paragraph. Only the part carrying the identifier is compared, so when the part
+after an equation had been reworded, skipping the paragraph dropped that rewording.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2415,10 +2427,18 @@ Closed since, and why each mattered:
   that paragraph reported as moved; dragged past two or more, or past a heading, the line
   itself is reported. A paragraph with display maths is held too, so dragging it whole,
   equation and all, is refused like dragging its first part. A comment opened in a
-  paragraph is found by reading the source with its code spans set aside, and a backtick in
-  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
-  one that opens a code span; a comment opened after it and closed past a blank line is then
-  not seen, and that paragraph can be moved.
+  paragraph is found by reading the source with what pandoc does not read as prose set
+  aside: code spans, maths, raw TeX, a link's address, autolinks and HTML tags. Raw TeX with
+  braces nested more than three deep, and a link whose text nests brackets more than one
+  deep, are read as prose, so a backtick inside them can still be taken for one that opens
+  a code span, and a comment after it goes unseen. A binding straight after a closing `$`
+  is taken to print a digit, which stops pandoc closing the maths there; one that prints a
+  minus sign does not stop it, and the maths is read as running on to a later `$`, over
+  whatever lies between. A comment is the only thing looked for
+  that runs past a paragraph, and pandoc runs two others past it too. Raw TeX whose brace
+  closes only in a later paragraph, and an HTML attribute whose quote does, swallow
+  everything up to that close. Such a paragraph is held only when it swallows a tagged
+  paragraph, which is then found hidden; otherwise it can be moved.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A

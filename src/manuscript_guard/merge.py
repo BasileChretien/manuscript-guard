@@ -191,22 +191,77 @@ _BLOCK_LINE = re.compile(
 )
 
 
-#: What `_bare` sets aside: a backslash escape, a code span, by pandoc's rule that a run of
-#: backticks is closed by a run of the same length, and a comment that closes. Nothing more.
-#: Each escape is taken as a pair, so `\`` opens nothing and `\\` before a backtick leaves it
-#: free to open a span. Taken for an opener, an escaped backtick began a "code span" that ran
-#: to the next real one and swallowed the `$$` or the `<!--` between them; refused after any
-#: backslash, the backtick after `\\` did the same from the other end. Nor may the raw text
-#: before an opener stop it: a backtick there was either an escaped one, as in \``x`, or one
-#: of a run that never closes, whose last backtick pandoc opens a span on, as in ``a'' `b.
-#: Refused, the span's closer was taken for an opener and swallowed what followed.
-_CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+#: What `_bare` sets aside, read in one pass from the left with the first alternative winning
+#: at each position, as pandoc reads inline Markdown:
+#:
+#: - raw TeX, a command with its arguments, braces nested three deep. Before the escapes:
+#:   `\e` escapes nothing. Pandoc reads it only if every brace straight after it closes,
+#:   and only if what the braces hold reads as TeX: no `%`, which comments out the rest of
+#:   the line, and no `$` without its pair. Otherwise it is text, `\text{a}{b` or
+#:   `\emph{a$b}`, and a `<!--` inside it opens a comment.
+#: - a backslash escape. Each is taken as a pair, so `\`` opens nothing and `\\` before a
+#:   backtick leaves it free to open a span. Taken for an opener, an escaped backtick began
+#:   a "code span" that ran to the next real one and swallowed the `$$` or `<!--` between.
+#: - a code span: a run of backticks, closed by a run of the same length. Nothing before its
+#:   opener stops it. A backtick there is an escaped one, as in \``x`, or one of a run that
+#:   never closes, whose last backtick pandoc opens a span on, as in ``a'' `b; refused, the
+#:   span's closer was taken for an opener and swallowed what followed.
+#: - a comment that closes.
+#: - display maths, of which the `$$` at each end are kept, so that it is still found, and
+#:   inline maths, by pandoc's rule: no space just inside either `$`, and no digit (or a
+#:   binding, which prints digits) straight after the closing one. Of a `$$` that does not
+#:   close, the second `$` can open inline maths.
+#: - an autolink, an HTML tag with its attributes, and the address and title of a link or
+#:   an image. The link's text is read like the rest, because pandoc reads it as Markdown.
+#:   An autolink's address runs to the first space or `>`, and may hold `<` or backticks.
+#:   A `<!--` is a comment, closed or not, never an autolink to an address.
+#:
+#: Backticks inside maths, raw TeX, an address or an attribute are not code to pandoc. Read
+#: as code, two of them closed at a real span's opener, whose closer then opened a false
+#: span that hid the `<!--` after it: a paragraph swapped past was written into the comment.
+_TEX_HELD = r"(?:[^{}$%\\]|\\.|\$(?:[^$\\]|\\.)*\$)"
+_TEX_BRACES = r"\{" + _TEX_HELD + r"*\}"
+for _ in range(2):
+    _TEX_BRACES = r"\{(?:" + _TEX_HELD + "|" + _TEX_BRACES + r")*\}"
+_ASIDE = re.compile(
+    "|".join(
+        (
+            r"(?P<tex>\\[A-Za-z]+(?![A-Za-z])\*?(?:\[[^\]]*\])*(?:" + _TEX_BRACES + r")*(?!\{))",
+            r"(?P<escape>\\.)",
+            r"(?P<code>(?P<ticks>`+)(?!`).+?(?<!`)(?P=ticks)(?!`))",
+            r"(?P<comment><!--.*?-->)",
+            r"(?P<display>\$\$.+?\$\$)",
+            r"(?P<maths>\$(?![\s$])(?:[^$\\]|\\.)+?(?<!\s)\$(?!\d|\{\{))",
+            r"(?P<autolink><(?!!--)"
+            r"(?:[A-Za-z][A-Za-z0-9+.-]*:[^\s>]+|[^\s<>@`]+@[^\s<>@`]+)>)",
+            r"(?P<html></?[A-Za-z][A-Za-z0-9-]*"
+            r"(?:\s+[A-Za-z_:][\w:.-]*(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*\s*/?>)",
+            r"(?P<link>(?P<open>!?\[)(?P<text>(?:[^\[\]\\]|\\.|\[(?:[^\[\]\\]|\\.)*\])*)"
+            r"(?P<address>\]\((?:<[^<>\n]*>|(?:[^\s()\\]|\\.|\((?:[^\s()\\]|\\.)*\))*)"
+            r"(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^()]*\)))?\s*\)))",
+        )
+    ),
+    re.DOTALL,
+)
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
+def _set_aside(match: re.Match[str]) -> str:
+    """What is left of one construct `_ASIDE` found: blanks, the same length."""
+    if match.group("display"):
+        return "$$" + " " * (len(match.group(0)) - 4) + "$$"
+    if match.group("link"):
+        return (
+            " " * len(match.group("open"))
+            + _bare(match.group("text"))[0]
+            + " " * len(match.group("address"))
+        )
+    return " " * len(match.group(0))
+
+
 def _bare(para: str) -> tuple[str, bool]:
-    """A paragraph's source with its code spans and closed comments blanked out, and whether
-    what is left holds display maths, which Word sets apart as a paragraph of its own.
+    """A paragraph's source with what pandoc does not read as its prose blanked out, and
+    whether what is left holds display maths, which Word sets apart as a paragraph of its own.
 
     Searched for as written, `$$` or `<!--` inside backticks held a paragraph that explained
     them. The rewording's own scan of inline markup was tried next, and it sets aside more
@@ -215,7 +270,7 @@ def _bare(para: str) -> tuple[str, bool]:
     paragraph that was not held had its first part moved without its equation. Setting
     aside too little only holds a paragraph that could have moved - `$$` in a footnote does.
     """
-    bare = _CODE_OR_COMMENT.sub(lambda match: " " * len(match.group(0)), para)
+    bare = _ASIDE.sub(_set_aside, para)
     return bare, _DISPLAY_MATHS.search(bare) is not None
 
 

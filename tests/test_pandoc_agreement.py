@@ -235,3 +235,105 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
         f"code block; the toolkit thinks the opposite"
     )
+
+
+# ------------------------------------------------ what import holds a paragraph in place for
+
+TICKS = "`" * 2
+AFTER = " ratio from `ror` was used. <!-- a draft quoted `grep`:"
+
+#: A paragraph whose comment runs past it, or which holds display maths, is held in place by
+#: `import`: moved, it would carry the comment's opening or the equation away from the rest.
+#: `merge._bare` decides both without pandoc, by setting aside what pandoc does not read as
+#: prose. Backticks pandoc reads as something other than code, taken for code, paired with a
+#: real code span and hid the `<!--` after it, and the paragraph was moved into the comment.
+HOLD_CASES = {
+    "inline maths holding backticks": "The $\\text{" + TICKS + "crude''}$" + AFTER,
+    "raw TeX holding backticks": "The \\emph{" + TICKS + "crude''}" + AFTER,
+    "raw TeX with nested braces": "The \\textbf{a{" + TICKS + "b}c}" + AFTER,
+    "link address holding backticks": "The [link](http://x/" + TICKS + "y)" + AFTER,
+    "link title holding backticks": 'The [link](http://x/y "a' + TICKS + 'b")' + AFTER,
+    "image address holding backticks": "The ![alt](pic" + TICKS + ".png)" + AFTER,
+    "link text holding code": "The [`a`](http://x/" + TICKS + "y)" + AFTER,
+    "autolink holding backticks": "The <http://x.org/" + TICKS + "y>" + AFTER,
+    "html attribute holding backticks": 'The <span title="' + TICKS + 'q">a</span>' + AFTER,
+    "display maths holding backticks": "The $$\\text{" + TICKS + "x''}$$" + AFTER,
+    "maths holding a comment opener": "The $a <!-- b$ and `c` done.",
+    "code holding a comment opener": "The `<!--` opener, and `$$` for maths.",
+    "escaped backtick before a code span": "The \\`" + "`onset`" + AFTER,
+    "latex quotes in prose": "The " + TICKS + "crude''" + AFTER,
+    "a bracket that makes no link": "The ](http://x/" + TICKS + "y)" + AFTER,
+    "a space between bracket and address": "The [a] (http://x/" + TICKS + "y)" + AFTER,
+    "dollar amounts": "It cost $5 and $10 by `ror`. <!-- a",
+    "an unclosed comment and nothing else": "Plain prose. <!-- a draft",
+    "raw TeX then a brace that does not close": "The \\text{a<!--}{b and more",
+    "raw TeX holding a dollar without its pair": "The \\emph{a$b} `c`" + AFTER,
+    "raw TeX holding a dollar pair": "The \\emph{a$b$ " + TICKS + "c} d" + AFTER,
+    "raw TeX holding a percent sign": "The \\emph{a%b} `c`" + AFTER,
+    "raw TeX with braces nested three deep": "The \\textbf{a{b{" + TICKS + "c}}}" + AFTER,
+    "an autolink holding a tag and a backtick": "The <http://x/`<br/> page" + AFTER,
+    "a comment opener that reads like an email": "The <!--a@b.org> note, and more",
+    "a display opener that does not close": "The $$x$ y <!-- z",
+    "inline maths opened by the second dollar": "The a$$x <!-- z$ and more",
+}
+
+
+def pandoc_holds(paragraphs: list[str]) -> list[tuple[bool, bool]]:
+    """For each paragraph: does a comment it opens run past it, and does it show display
+    maths? Each is followed by a heading and a paragraph of its own, which a comment that
+    runs on hides."""
+    markdown = "".join(f"# H{i}\n\n{p}\n\nTAIL{i} -->\n\n" for i, p in enumerate(paragraphs))
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    per: dict[int, list] = {i: [] for i in range(len(paragraphs))}
+    current = None
+    for block in json.loads(finished.stdout)["blocks"]:
+        label = _inline_text(block["c"][2]) if block["t"] == "Header" else ""
+        if label.startswith("H") and label[1:].isdigit():
+            current = int(label[1:])
+        elif current is not None:
+            per[current].append(block)
+    found = []
+    for i in range(len(paragraphs)):
+        nodes: list = []
+        _nodes(per[i], nodes)
+        shown = {node["c"] for node in nodes if node.get("t") == "Str"}
+        display = any(
+            node.get("t") == "Math" and node["c"][0].get("t") == "DisplayMath" for node in nodes
+        )
+        found.append((f"TAIL{i}" not in shown, display))
+    return found
+
+
+def _nodes(node, out: list) -> None:
+    if isinstance(node, dict):
+        out.append(node)
+        for value in node.values():
+            _nodes(value, out)
+    elif isinstance(node, list):
+        for value in node:
+            _nodes(value, out)
+
+
+def test_import_holds_the_paragraphs_pandoc_runs_on_or_shows_maths_in() -> None:
+    """Named cases: what `_bare` leaves of each paragraph shows an open `<!--` exactly when
+    pandoc runs a comment past it, and `$$` exactly when pandoc shows display maths. Each is
+    asked of pandoc on its own, so that a brace one leaves open cannot close in another."""
+    from manuscript_guard.merge import _bare
+
+    wrong = []
+    for name in sorted(HOLD_CASES):
+        [(runs_on, display)] = pandoc_holds([HOLD_CASES[name]])
+        bare, maths = _bare(HOLD_CASES[name])
+        if ("<!--" in bare, maths) != (runs_on, display):
+            wrong.append(
+                f"{name}: pandoc runs on {runs_on}, display {display}; "
+                f"_bare keeps <!-- {'<!--' in bare}, display {maths}"
+            )
+    assert not wrong, "\n".join(wrong)

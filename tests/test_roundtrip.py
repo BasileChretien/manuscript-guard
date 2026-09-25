@@ -3089,6 +3089,11 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "Each field had a backtick before it, as in \\``onset`.\n"
         "<!-- an earlier draft, which quoted `grep`:",
         "A so-called ``crude'' ratio came from `ror.\n<!-- an earlier draft, which quoted `grep`:",
+        "The so-called $\\text{``crude''}$ ratio came from `ror`. <!-- a draft quoted `grep`:",
+        "The so-called \\emph{``crude''} ratio came from `ror`. <!-- a draft quoted `grep`:",
+        "The [manual](https://example.org/a``b) says `ror`. <!-- a draft quoted `grep`:",
+        "The <https://example.org/a``b> page says `ror`. <!-- a draft quoted `grep`:",
+        'The <span title="a``b">note</span> says `ror`. <!-- a draft quoted `grep`:',
     ],
     ids=[
         "maths-after-a-code-span",
@@ -3099,6 +3104,11 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "comment-after-an-escaped-backslash",
         "comment-after-a-code-span-behind-an-escaped-backtick",
         "comment-after-a-double-backtick-that-never-closes",
+        "comment-after-inline-maths-holding-backticks",
+        "comment-after-raw-tex-holding-backticks",
+        "comment-after-a-link-address-holding-backticks",
+        "comment-after-an-autolink-holding-backticks",
+        "comment-after-an-html-attribute-holding-backticks",
     ],
 )
 def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
@@ -3106,7 +3116,11 @@ def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
 ) -> None:
     """Read with the rewording's scan, `$$` or `<!--` could be swallowed by what it took for
     one long code span with attributes, or for struck-through text, and the paragraph was
-    not held: its first part dragged up was applied, carrying the equation along."""
+    not held: its first part dragged up was applied, carrying the equation along.
+
+    Backticks inside maths, raw TeX, a link's address, an autolink or an HTML attribute are
+    not code to pandoc. Taken for code, a pair of them closed at a real span's opener, whose
+    closer then opened a false span that hid the `<!--` after it."""
     from manuscript_guard.merge import _held_in_place
 
     _path, known = source_of(tmp_path, {"p": para})
@@ -3381,6 +3395,43 @@ def test_a_move_to_the_end_of_the_methods_does_not_land_inside_its_comment(
     assert comment in after, "the comment is whole"
     assert "was computed" in re.sub(r"<!--.*?-->", "", after, flags=re.DOTALL)
     assert after == before
+    assert "different section" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_swap_does_not_land_inside_a_comment_after_backticks_in_maths(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: a paragraph holding `$\\text{``crude''}$`, then a code span, then a comment
+    that runs past a heading. The backticks in the maths were taken for code, the comment
+    was hidden, and a swap of the Introduction's two paragraphs wrote the first one inside
+    the comment, exit 0: it was gone from the next build."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    old = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    new = (
+        "Whether the signal extends to example-drug specifically has not been examined. The\n"
+        "so-called $\\text{``crude''}$ ratio came from `ror`.\n"
+        "<!-- an earlier draft, which quoted `grep`:\n\n"
+        "## Earlier background\n\n"
+        "An older paragraph kept for reference. -->\n"
+    )
+    text = source.read_text(encoding="utf-8")
+    assert old in text
+    source.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+    before = source.read_text(encoding="utf-8")
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        first = next(p for p in paragraphs if "Drug-induced hepatic injury remains" in p)
+        second = next(p for p in paragraphs if "Whether the signal extends" in p)
+        return xml.replace(second, "", 1).replace(first, second + first, 1)
+
+    returned = rewrite(built(project), tmp_path / "swap.docx", swap)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
     assert "different section" in capsys.readouterr().out
 
 

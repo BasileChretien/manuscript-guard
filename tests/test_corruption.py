@@ -1101,6 +1101,224 @@ def test_audit_does_not_take_a_wrapped_line_for_a_references_heading(tmp_path: P
     assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
 
 
+_BOOK = "Smith J. Pharmacovigilance: a practical guide. 3rd ed. Oxford: Wiley; 2019. 412 p."
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}",
+        "# References {.unnumbered}",
+        "# References {#refs .unnumbered}",
+        "References {-}\n==============",
+        "# References # {-}",
+    ],
+)
+def test_audit_cuts_at_a_references_heading_with_pandoc_attributes(
+    tmp_path: Path, heading: str
+) -> None:
+    """Pandoc users write an unnumbered reference heading as `# References {-}`, and only
+    `[\\s*_:.|]` could follow the heading word. No heading was found, nothing was cut, and
+    an entry no shape recognises, a book here, had every number reported as a finding, so
+    `--strict` failed on the bibliography."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77 cases.\n\n{heading}\n\n{_BOOK}\n\n# Appendix {{#sec-appendix}}\n\n"
+        "The sensitivity estimate was 4.65.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert report.reference_like == []
+    assert len(report.not_audited) == 1
+
+
+def test_audit_cuts_at_a_styled_references_heading_with_pandoc_attributes(
+    tmp_path: Path,
+) -> None:
+    """A heading style marks the paragraph as a heading, as `#` does in Markdown."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References {-}", "Heading1")
+        + _p(_BOOK)
+        + _p("Appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+        {"word/styles.xml": styles},
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert len(report.not_audited) == 1
+
+
+def test_audit_does_not_take_an_unmarked_line_with_braces_for_a_references_heading(
+    tmp_path: Path,
+) -> None:
+    """An attribute block is markup only on a heading. On a line of prose, or a paragraph
+    in Word with no heading style, pandoc and Word print "References {-}" as it stands, and
+    taking it for a heading would hide everything after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    markdown = tmp_path / "paper.md"
+    markdown.write_text(
+        "We saw 77 cases, as the section headed\nReferences {-}\n"
+        "explains. The pooled reporting odds ratio was 9.99.\n",
+        encoding="utf-8",
+    )
+    word = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.") + _p("References {-}") + _p("The pooled ratio was 9.99."),
+    )
+    for paper in (markdown, word):
+        report = audit([paper], [outputs])
+        assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"], paper.name
+        assert report.not_audited == [], paper.name
+
+
+def test_audit_does_not_cut_at_a_heading_that_prints_its_braces_or_its_hash(
+    tmp_path: Path,
+) -> None:
+    """Pandoc reads no quoted value that opens with a space, so it prints
+    `# References {title=" Works cited"}` braces and all. And closing `#`s belong to an ATX
+    heading: a setext heading or a Word heading reading "References #" prints the `#`.
+    Taken for reference headings, each cut the paragraph after it, and its number went
+    unread."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    papers = []
+    for index, heading in enumerate(
+        ['# References {title=" Works cited"}', "References #\n------------"]
+    ):
+        path = tmp_path / f"paper{index}.md"
+        path.write_text(
+            f"We saw 77 cases.\n\n{heading}\n\nThe pooled reporting odds ratio was 9.99.\n",
+            encoding="utf-8",
+        )
+        papers.append(path)
+    papers.append(
+        _docx(
+            tmp_path / "paper.docx",
+            _p("We saw 77 cases.")
+            + _p("References #", "Heading1")
+            + _p("The pooled ratio was 9.99."),
+            {"word/styles.xml": styles},
+        )
+    )
+    for paper in papers:
+        report = audit([paper], [outputs])
+        assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"], paper.name
+        assert report.not_audited == [], paper.name
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}\N{NO-BREAK SPACE}",
+        "# References {-}\N{IDEOGRAPHIC SPACE}",
+        "# References {-}\N{THIN SPACE}",
+        "# References {-}\f",
+        "# References #\N{NO-BREAK SPACE}",
+        "# References {.\N{SUPERSCRIPT TWO}}",
+        "# References {\N{SUPERSCRIPT TWO}=1}",
+        "# References {.\N{ROMAN NUMERAL EIGHT}}",
+    ],
+)
+def test_audit_does_not_cut_at_braces_or_a_hash_pandoc_prints(
+    tmp_path: Path, heading: str
+) -> None:
+    """`strip()` takes every Unicode space, and pandoc allows only spaces and tabs after a
+    block or a closing `#`: a no-break space after `{-}` leaves the braces printed. And a
+    class or a key opens with a letter, where `[^\\W\\d_]` also took `\u00b2` and `\u2167`. Each was
+    read as a reference heading, and the paragraph after it was cut unread."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77 cases.\n\n{heading}\n\nThe pooled ratio was 9.99.\n", encoding="utf-8"
+    )
+    report = audit([paper], [outputs])
+    assert "9.99" in [c.text.rstrip(".") for c in report.unmatched]
+    assert report.not_audited == []
+
+
+def test_audit_does_not_cut_at_a_word_heading_that_prints_its_hashes(tmp_path: Path) -> None:
+    """Closing `#`s are Markdown syntax. A Word Heading 1 reading "# References #" prints
+    both, and was read as a Markdown heading with its closing `#` taken off."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("# References #", "Heading1")
+        + _p("The pooled ratio was 9.99."),
+        {"word/styles.xml": styles},
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        "# Results {#sec-results}",
+        '# Results {#sec-results title="the \\"main\\" results"}',
+        "# Results {#sec-results note=a\\}b}",
+        "# Results {#sec-results}\n\n###",
+        "# Results {#sec-results lang=fr\u00a0FR}",
+        '# Results {#sec-results title="\N{NEXT LINE}x y"}',
+        '# Results {#sec-results title="\N{LINE SEPARATOR}x y"}',
+    ],
+)
+def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
+    project: Path, results: str
+) -> None:
+    """A heading's title kept its attribute block, and `is_methods` matches a title whole.
+    So `# Results {#sec-results}` was not a Results heading, and a subsection under it named
+    like a Methods one, "Sensitivity analyses", made a reported `p < 0.001` the alpha chosen
+    in advance. The first fix read no backslash escapes in a value, which pandoc reads, and
+    read the heading's line to the end of the match, which ran on past a blank line to a
+    line of `#`s. The second ended an unquoted value at a no-break space, where pandoc ends
+    one only at a space, a tab, a line break or `}`. The third refused a quoted value that
+    opens with any `\\s`, where pandoc refuses only its own spaces, and U+0085 or U+2028 is
+    not one of them."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("\n# Results\n", f"\n{results}\n", 1)
+    text = text.replace(
+        "\n# Discussion\n",
+        "\n## Sensitivity analyses\n\nThe excess was significant (p < 0.001).\n\n# Discussion\n",
+        1,
+    )
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: Path) -> None:
     """A .docx table cell is its own line, so a column headed "References" read as the
     start of the bibliography and hid everything up to the next styled heading."""

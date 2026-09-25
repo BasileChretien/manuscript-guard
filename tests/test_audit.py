@@ -622,6 +622,115 @@ def test_other_bibliography_headings_are_recognised(heading: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}",
+        "# References {.unnumbered}",
+        "# References {#refs .unnumbered}",
+        '## Bibliography {#refs .unnumbered title="Works cited"}',
+        "References {-}",
+        "**References** {-}",
+        "# References # {-}",
+        "# References ##",
+        '# References {#refs title="the \\"cited\\" works"}',
+        "# References {#refs note=a\\}b}",
+        "# References {k=a\\{b}",
+        "# References {#refs lang=fr\u00a0FR}",
+        '# References {title=""}',
+        '# References {title="\N{NEXT LINE}x y"}',
+        '# References {title="\N{LINE SEPARATOR}x y"}',
+        "# References {.\N{LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON}}",
+        "# References {-} \t",
+    ],
+)
+def test_a_marked_heading_may_end_in_what_pandoc_does_not_print(heading: str) -> None:
+    """Pandoc prints `# References {-}` as "References", unnumbered. Only the heading word and
+    `[\\s*_:.|]` were allowed after it, so the attribute block, or the closing `#`s it may
+    follow, made the line no heading at all."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert is_bibliography_heading(heading, marked=True)
+
+
+@pytest.mark.parametrize(
+    "line", ["References {-}", "References {.unnumbered}", "**References** {#refs}"]
+)
+def test_an_unmarked_line_with_an_attribute_block_is_not_a_heading(line: str) -> None:
+    """Braces are markup only where pandoc reads a heading. A line judged by its shape is
+    printed as it stands, so "References {-}" there is text."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(line)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {and further reading}",
+        "# References \\{-}",
+        "# References {-} ##",
+        "# References {k=\\}",
+        "# References {k=a\\}",
+        '# References {title=" Works cited"}',
+        "# References {k=' a'}",
+        '# References {title="\tWorks"}',
+        '# References {title="\N{IDEOGRAPHIC SPACE}x y"}',
+        "# References {-}\N{NO-BREAK SPACE}",
+        "# References {-}\N{IDEOGRAPHIC SPACE}",
+        "# References {-}\f",
+        "# References #\N{NO-BREAK SPACE}",
+        "# References {.\N{SUPERSCRIPT TWO}}",
+        "# References {\N{SUPERSCRIPT TWO}=1}",
+        "# References {.\N{ROMAN NUMERAL EIGHT}}",
+    ],
+)
+def test_braces_pandoc_prints_are_part_of_the_heading(heading: str) -> None:
+    """Pandoc takes off an attribute block and nothing else in braces: these print as they
+    stand, so none of them is a heading that says only "References". In `{k=\\}` and
+    `{k=a\\}` the closing brace is escaped, so there is no block to take off; pandoc reads
+    no quoted value that opens with a space; only spaces and tabs may follow a block or a
+    closing `#`; and a class or a key opens with a letter."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(heading, marked=True)
+
+
+def test_a_word_heading_keeps_its_hashes() -> None:
+    """Closing `#`s are Markdown syntax. In a .docx a heading style marks the paragraph, and
+    Word prints every `#` in "# References #"."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert is_bibliography_heading("# References #", marked=True)
+    assert not is_bibliography_heading("# References #", marked=True, markdown=False)
+    assert is_bibliography_heading("# References", marked=True, markdown=False)
+
+
+@pytest.mark.parametrize("line", ["References #", "References ##", "Bibliography #"])
+def test_a_hash_ends_only_a_heading_that_opens_with_one(line: str) -> None:
+    """Closing `#`s belong to an ATX heading. A setext heading or a styled Word paragraph
+    reading "References #" prints the `#`, so it is not a heading that says only
+    "References"."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(line, marked=True)
+
+
+@pytest.mark.parametrize(
+    ("title", "printed"),
+    [
+        ("Results \\{-}", "Results \\{-}"),
+        ("Results \\\\{-}", "Results \\\\"),
+        ("Results \\\\\\{-}", "Results \\\\\\{-}"),
+    ],
+)
+def test_a_brace_after_an_odd_run_of_backslashes_is_escaped(title: str, printed: str) -> None:
+    """`\\{` is a brace, and `\\\\{` a backslash and then the block."""
+    from manuscript_guard.text.sections import strip_attributes
+
+    assert strip_attributes(title) == printed
+
+
+@pytest.mark.parametrize(
     "entry",
     [
         "Smith J, Jones K. Hepatic injury in reports. Lancet. 2019;393:100-10.",
@@ -739,6 +848,42 @@ def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
     started = time.perf_counter()
     for line in (" " * 200 + "references" + " " * 200 + "x", "References" + " " * 300 + "12"):
         assert not is_bibliography_heading(line)
+    assert time.perf_counter() - started < 0.5
+
+
+def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
+    """A marked heading's attribute block is read item by item, each character once. None
+    of these is a heading, and most fail only at their last character, where a pattern with
+    a quantifier inside a quantifier would try every way of dividing the run between items."""
+    import time
+
+    from manuscript_guard.audit import is_bibliography_heading
+
+    # 20,000 characters each: a quadratic reading of any of them takes seconds, and a linear
+    # one a few milliseconds even item by item in Python.
+    n = 10000
+    started = time.perf_counter()
+    for line in (
+        "# References {" + "#a" * n + " !}",
+        "# References {" + ".a" * n + "!}",
+        "# References {" + "a" * 2 * n + "}",
+        '# References {k="' + "a" * 2 * n + " !}",
+        "# References {" + " " * 2 * n + "!}",
+        "# References {" + "-" * 2 * n + "!}",
+        "# References " + "{" * 2 * n + "}",
+        "# References " + "{}" * n,
+        "# References " + "{-} " * (n // 2),
+        '# References {k="' + '\\"' * n + " !}",
+        "# References {k='" + "\\'" * n + " !}",
+        "# References {k=" + "\\}" * n + " !}",
+        "# References {k=" + "\\" * (2 * n + 1) + "}",
+        "# References " + "\\{" * n + "}",
+        "# References " + ("\\" * 999 + "{") * 20 + "}",
+        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
+        "# References {k=" + "\u00a0" * 2 * n + " !}",
+        '# References {k=" ' + "a" * 2 * n + '"}',
+    ):
+        assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 0.5
 
 

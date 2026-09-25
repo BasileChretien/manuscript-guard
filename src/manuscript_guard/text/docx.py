@@ -15,7 +15,9 @@ wrong count in Table 1 survived every check for exactly that reason.
 **Tracked changes must be resolved.** A document under review contains both the old text and
 the new. Reading it raw gives numbers that were deleted and numbers that were inserted, mixed
 together, so the audit reports corrections as errors and misses the text that will actually
-be published. Insertions are kept and deletions dropped, which is what the reader will see.
+be published. Insertions are kept and deletions dropped, which is what the reader will see,
+and so is text moved away: the reader sees it where it was moved to. A deleted line break
+or tab is dropped with the text, not read as a space.
 
 **The body and the notes are kept apart**, and the body says which of its lines are
 headings. Both are for finding the reference list: the audit drops it, and used to drop
@@ -77,8 +79,13 @@ def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
     return False
 
 
+#: What Word no longer shows at this place once every tracked change is accepted: deleted
+#: text, and text moved away, which it shows where it was moved to.
+_GONE = (W + "del", W + "moveFrom")
+
+
 def _in_deletion(node: ET.Element, parents: dict) -> bool:
-    return _inside(node, parents, W + "del")
+    return any(_inside(node, parents, tag) for tag in _GONE)
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -113,6 +120,8 @@ def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
 
 #: Layout elements that read as a space. A manual line break read as nothing ran the
 #: numbers either side of it together: "-0.51" over "-0.72 to -0.30" became "-0.51-0.72".
+#: A deleted one reads as nothing, as Word shows it: read as a space, it split "-0.51" into
+#: -0.5 and 1, and parted a minus from its number.
 _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 
 # The Symbol font's characters, by their code in that font, that can stand beside a number.
@@ -154,7 +163,7 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
             pieces.append("\n" + heading + cell)
         elif node.tag == W + "tr":
             pieces.append("\n")
-        elif node.tag in _SPACES:
+        elif node.tag in _SPACES and not _in_deletion(node, parents):
             pieces.append(" ")
         elif node.tag in _CHARACTERS and not _in_deletion(node, parents):
             pieces.append(_CHARACTERS[node.tag](node))

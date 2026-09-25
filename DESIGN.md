@@ -435,10 +435,13 @@ code, a comment or the front matter is not read, and a comment that closes on th
 taken off in front of it, as pandoc reads on from its `-->`. The fifth review found pandoc
 starting a block partway along a line, behind an HTML tag or comment, a TeX command, or a
 list, definition or footnote marker, and reading the dashes after it as YAML; dashes ending
-a line that opens with block-level HTML tags or comments, a TeX command and its groups, or
-such markers, nested or not, are refused wherever they stand, outside a quotation. Inline
-markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block and is prose (the
-sixth review).
+a line that opens with any run of such markers, block-level HTML tags (pandoc's list, and
+the tags it takes for a block or inline as it finds them), comments, processing
+instructions, or TeX commands with their groups, are refused wherever they stand, outside a
+quotation, and so is the same after a comment that closes on the line. Three dashes at
+least: two are an en dash, and a list item that is one opens nothing. Inline markup,
+`m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block and is prose (the sixth and
+seventh reviews).
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -452,15 +455,22 @@ nobody has found yet are caught too. The gates' titles are read by pandoc as wel
 same run as the header: compared as written, `$\beta_{1}$`, `HbA~1c~`, `&amp;`, a comment or
 a footnote in a title split into other words than pandoc's, and the sixth review found each
 refused. Raw markup and footnotes print no words in a heading and are left out on both
-sides, and the lists are aligned, so a refusal names the heading and its file and line.
+sides, and so is a heading in a list, a definition or a table, where the gates read none. A
+placeholder matches its value inside a word too, `{{results.dose}}mg` as `50mg`. Each title
+is numbered and comes back to its own heading; one pandoc makes no paragraph of, block HTML
+in it, is compared in its own words, where the seventh review found it switching the check
+off for every heading of the document. The lists are aligned, so a refusal names the
+heading, with the file and line of one the gates read.
 
 It costs two more runs of pandoc's reader a document. It guards the document, not `check`:
 a source the build refuses can still pass `check`, and a number a misread hides from G2
 without touching metadata, headings or listings is not compared. A refused build removes the
 document the last one left in build/, which is not this source's, so that it is not sent
-or packed; a refused supplement fails `build` and `submit` like the paper. `import` alone
-rebuilds without asking, since the document it rebuilds has already been sent, and refusing
-there stranded it with the co-author holding it.
+or packed; a refused supplement fails `build` and `submit` like the paper, and `submit
+--document` refuses a pack missing either. Two builds go without asking: `import`'s, since
+the document it rebuilds has already been sent, and refusing there stranded it with the
+co-author holding it; and the annotated copy, marked up for the author to read, whose
+marks change how a subscript or a code span reads.
 
 ## Zotero is never on the critical path
 
@@ -2416,7 +2426,7 @@ Closed since, and why each mattered:
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
 - **A line of dashes wholly inside a block quote, or indented four columns in a list item,
   is not refused by `check`.** Pandoc reads YAML metadata and tables inside either; the
-  refusal reads lines at the margin, or behind a list marker on the same line. While every
+  refusal reads lines at the margin, or behind markup or a list marker. While every
   line of it stays inside the quotation or the item, the gates read it as quoted or listed
   text: its numbers are read, the safe side, and no heading is made from it. A `title:` in
   such a block is caught by the build, which compares pandoc's metadata with its header's,

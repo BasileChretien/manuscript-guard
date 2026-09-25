@@ -983,6 +983,9 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         reference_doc=reference,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
+        # Marked up for the author to read, not the document sent, and the marks change how
+        # a subscript or a code span reads: checked, it was refused as a misread.
+        verify_reading=False,
     )
     added = finish(result.output, marks)
     print(result.report.render(project.root))
@@ -1162,6 +1165,20 @@ def cmd_submit(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
             print("\nThe pack is not assembled.")
             return 1
+
+    # A build refused as a misread removes its document and its supplement, and a pack was
+    # then assembled without either, and reported as made.
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
+
+    supplement = document.parent / f"{SUPPLEMENTARY}.docx"
+    wants_supplement = any(
+        is_supplementary(project.path("manuscript"), p)
+        for p in source_files(project.path("manuscript"))
+    )
+    for needed in [document, *([supplement] if wants_supplement else [])]:
+        if not needed.is_file():
+            print(f"manuscript-guard: {needed} does not exist; build it first", file=sys.stderr)
+            return 2
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

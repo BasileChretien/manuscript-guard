@@ -318,7 +318,8 @@ def build_document(
         # the one a co-author would be sent, or `submit` would pack.
         if output.resolve().is_relative_to(build_dir.resolve()):
             for stale in (output, output.with_name(output.name + SOURCE_STAMP)):
-                stale.unlink(missing_ok=True)
+                if stale.is_file():
+                    stale.unlink()
         raise MisreadError(
             f"pandoc reads {differs}. The gates judged the sources as they read them, so "
             "the document is not built; `check` cannot see this, and the build asks pandoc."

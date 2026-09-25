@@ -2308,7 +2308,8 @@ Closed since, and why each mattered:
   wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
   the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
   none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
-  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
+  The guard is a scheme version in the stamp and the round file, refused on a mismatch. The
+  entry below is the same limit for a change to which blocks are given an identifier.
 - **Which paragraphs carry an identifier is decided by the code that imports, not the code
   that built.** The document as sent is rebuilt from the source by what is installed now. A
   paragraph that is only a value binding carries an identifier now, and in a document built
@@ -2319,13 +2320,16 @@ Closed since, and why each mattered:
   in the source, or first in its section if it was first, so any move that changes what the
   value paragraph follows goes wrong. Moving the paragraph before it takes it along:
   `--apply` writes it where the co-author's document does not have it, and still reports it
-  as left in place. Moving another paragraph in front of it is not reported at all, and the
-  co-author's move is dropped. No binding is harmed, but the order is not the co-author's.
-  Rebuild and send the document again rather than import one built before the change.
-  Every other identifier stays as it was, because an index counts every block in its file.
-  Any later change to what `tag` skips will do the same, once, to documents already sent.
-  The fix is to recognise a paragraph that lost its bookmark but kept its text, which Word
-  can do to any paragraph, and it is not done.
+  as left in place. Moving another paragraph in front of it is reported and applied, with
+  the value paragraph left on the wrong side of it; a move that passes the value paragraph
+  and nothing else is not reported at all, and is dropped. No binding is harmed, but the
+  order is not the co-author's. Rebuild and send the document again rather than import one
+  built before the change. Every other identifier stays as it was, because an index counts
+  every block in its file - unlike the change in the entry above, which moves them. Any
+  later change to what `tag` skips will do the same as this one, once, to documents already
+  sent, and the scheme version that entry proposes would refuse both. The fix here is to
+  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
+  paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

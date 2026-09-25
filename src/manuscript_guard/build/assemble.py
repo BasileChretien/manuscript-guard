@@ -99,10 +99,14 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     return text[found.end():].lstrip("\n"), declared
 
 
-def assemble(project: Project, namespace: dict[str, Value], results: Results) -> tuple[
-    list[Assembled], Report
-]:
-    """Substitute every binding in every source file. Nothing is written to disk here."""
+def assemble(
+    project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
+) -> tuple[list[Assembled], Report]:
+    """Substitute every binding in every source file. Nothing is written to disk here.
+
+    `mark` wraps each binding and citation in a bookmark of its own, for the build `import`
+    compares with and for nothing else; see `roundtrip.tag`.
+    """
     report = Report()
     out: list[Assembled] = []
 
@@ -127,7 +131,7 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
                     "delete the title from the manuscript or make them agree",
                 )
             )
-        text = tag(raw, relative)
+        text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
         rendered = text
 

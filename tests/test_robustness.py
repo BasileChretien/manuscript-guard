@@ -86,6 +86,20 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
+def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
+    """Front matter counts only where pandoc keeps it as metadata, which means reading the
+    YAML, and every gate asks. Thousands of nesting levels took the pure-Python loader
+    seconds to give up on, so nesting that deep is refused unread: it is nobody's metadata.
+    """
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    text = f"---\nnote: {value}\n---\n\nBody.\n"
+    started = time.perf_counter()
+    assert strip_front_matter(text) == (text, "")
+    assert time.perf_counter() - started < 1.0
+
+
 @pytest.mark.parametrize(
     "opener",
     [

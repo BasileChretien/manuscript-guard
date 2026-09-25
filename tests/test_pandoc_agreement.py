@@ -297,6 +297,53 @@ FRONT_MATTER_CASES = {
     "a blank line after the opening": "---\n\ntitle: T\n---\n\nProse 9.99.\n",
     "a line of spaces after the opening": "---\n  \ntitle: T\n---\n\nProse 9.99.\n",
     "a rule, prose, and a rule": "---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots, then a rule": "---\ntitle: T\n...\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots on the last line": "---\ntitle: T\n...",
+    "closed by dashes on the last line": "---\ntitle: T\n---",
+    "a list between the delimiters": "---\n- a\n- b\n---\n\nProse 9.99.\n",
+    "a sentence closed by dots": "---\nJust a sentence.\n...\n\nProse 9.99.\n",
+    "never closed": "---\ntitle: T\n\nProse 9.99.\n",
+    "behind a byte-order mark": "\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a blank first line": "\n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a line of spaces": "   \n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "a blank first line, then a rule": "\n---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "a tab after a key": "---\ntitle:\tT\n---\n\nProse 9.99.\n",
+    "a tab indenting a value": "---\nabstract: |\n\tA tabbed line.\n---\n\nProse 9.99.\n",
+    # PyYAML refuses both; pandoc lets an anchor be defined again, and reads the first of
+    # two documents.
+    "an anchor defined twice": "---\na: &x 1\nb: &x 2\n---\n\nProse 9.99.\n",
+    "a second document": "---\ntitle: T\n--- # a note\n---\n\nProse 9.99.\n",
+    # Pandoc reads every document, and an anchor in one can be used in the next.
+    "an alias to an anchor in an earlier document": "---\ntitle: &x T\n--- *x\n---\n\nProse.\n",
+}
+# Pandoc keeps a header holding only a comment, or nothing, as empty metadata: nothing in
+# `meta`, and nothing printed either.
+STRIPPED_CASES = {
+    **FRONT_MATTER_CASES,
+    "only a comment": "---\n# a note\n---\n\nProse 9.99.\n",
+    # A line that reads as YAML between the empty header and the rule: run on to the rule,
+    # the header took it as metadata.
+    "empty, closed by dashes, then a rule": (
+        "---\n---\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    "empty, closed by dots, then a rule": (
+        "---\n...\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    # Metadata only when the first document is a mapping, or there is nothing at all.
+    "a comment document, then a mapping": "---\n--- # a note\n--- {a: 1}\n---\n\nProse.\n",
+    "two documents of comments": "---\n# a note\n--- # another\n---\n\nProse.\n",
+}
+# Headers pandoc refuses to build, and the toolkit must report; and some it reads, which
+# the toolkit must not.
+REFUSED_OR_NOT = {
+    **STRIPPED_CASES,
+    "a comment on its first line": "---\n<!-- a note -->\ntitle: T\n---\n\nProse.\n",
+    "an unquoted colon in a value": "---\ntitle: A study: of things\n---\n\nProse.\n",
+    "never closed before a rule": "---\ntitle: T\n\n# Methods\n\nProse.\n\n---\n\nMore.\n",
+    "prose between two rules": "---\nNote: this draft: not final\n---\n\nProse.\n",
+    # An anchor exists only once its node is finished.
+    "an alias inside its own anchor": "---\na: &x [*x]\n---\n\nProse.\n",
+    "an alias to the whole document": "---\n&t\na: 1\nb: *t\n---\n\nProse.\n",
 }
 
 
@@ -323,6 +370,69 @@ def test_the_toolkit_finds_the_front_matter_pandoc_reads(name: str) -> None:
         f"{name}: pandoc {'reads' if not toolkit else 'does not read'} front matter here; "
         f"the toolkit thinks the opposite"
     )
+
+
+def pandoc_blocks(markdown: str) -> list:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)["blocks"]
+
+
+@pytest.mark.parametrize("name", sorted(STRIPPED_CASES))
+def test_the_build_strips_only_what_pandoc_does_not_print(name: str) -> None:
+    """The build takes each file's front matter off before pandoc sees it, so what it takes
+    must be exactly what pandoc would not have printed. A list or a sentence between two
+    delimiters is not metadata to pandoc, which prints it; stripped, it vanished."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = STRIPPED_CASES[name]
+    body, _title = strip_front_matter(markdown)
+    assert pandoc_blocks(body) == pandoc_blocks(markdown), f"{name}: stripped {markdown!r}"
+
+
+@pytest.mark.parametrize("name", sorted(REFUSED_OR_NOT))
+def test_a_header_is_reported_exactly_when_pandoc_refuses_it(name: str) -> None:
+    """G2 and the build stop on a header pandoc cannot read. Stopping on one it reads blocks
+    a build for nothing, and PyYAML refuses some pandoc takes: an anchor defined twice, or a
+    second document after the first."""
+    from manuscript_guard.text.masking import front_matter_problem
+
+    markdown = REFUSED_OR_NOT[name]
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    refused = finished.returncode != 0
+    assert (front_matter_problem(markdown) is not None) == refused, (
+        f"{name}: pandoc {'refuses' if refused else 'reads'} it; the toolkit thinks otherwise"
+    )
+
+
+def test_front_matter_pandoc_refuses_is_left_for_pandoc_to_refuse() -> None:
+    """A header that is never closed, with a rule further down, is YAML to pandoc up to the
+    rule; with prose in it, it is not valid YAML, and pandoc refuses the file. Stripped to
+    the rule, the file built, without the Introduction between."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = "---\ntitle: T\n\n# Introduction\n\nProse 9.99.\n\n---\n\nMore prose.\n"
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode != 0, "pandoc read this front matter; the test assumes not"
+    assert strip_front_matter(markdown) == (markdown, "")
 
 
 @pytest.mark.parametrize("name", sorted(FENCE_CASES))

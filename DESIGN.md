@@ -2224,7 +2224,10 @@ Closed since, and why each mattered:
   and `9.99` is now filed with the marker; with a space after the `]` it always was.
   Narrowing the prefix would report the version and year forms instead. The rule also no
   longer passes a marker after a one-word bracket, `[SmPC][4]` or `[sic][3]`: that run
-  opens with its own `[`, is not cut, and is reported, a false positive.
+  opens with its own `[`, is not cut, and is reported, a false positive. And its brackets
+  take any run of whole numbers, so a median and interquartile range written with whole
+  bounds, `64 [55-72]` or `64 [55, 72]`, or a stay of `7 [4-12] days`, is read as a
+  citation and never audited, as on main; only a bracketed decimal is left alone.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

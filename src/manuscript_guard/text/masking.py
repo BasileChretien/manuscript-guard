@@ -72,8 +72,9 @@ _BACKSLASHES = re.compile(r"\\+(?=[<>])")
 # A run of backticks, closed by the next run exactly as long, within a paragraph: pandoc's
 # rule, less its fallbacks. It is not pandoc's reader: a `~~~` block, or a ```` ``` ```` one
 # with a blank line inside, is not seen as code here, nor is code handed over without its
-# fence, a listing's string or a figure script's. `mask` blanks fenced blocks whole, so only
-# the last matters to G2; DESIGN.md's Known gaps has the rest.
+# fence, a listing's string or a figure script's. And the runs are paired in the text as it
+# stands, so a backtick inside a `~~~` block pairs with one in the prose after it, and a
+# code span there goes unseen. DESIGN.md's Known gaps has the rest.
 _CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
 
 

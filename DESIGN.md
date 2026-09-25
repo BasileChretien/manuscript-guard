@@ -2077,8 +2077,9 @@ Closed since, and why each mattered:
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
     backslash there counts as an escape. An escaped backtick, which `import` writes for every
     one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
-    paired across the front matter's edge, too, which pandoc never does. This needs a reader
-    that knows code spans as pandoc does, the one the comment scanner needs.
+    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
+    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    spans as pandoc does, the one the comment scanner needs.
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
@@ -2254,7 +2255,11 @@ Closed since, and why each mattered:
     once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
     of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
     At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
-    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. G2 reads
+    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
+    ends only at ASCII whitespace, so a no-break space does not end it, and it is read in
+    the source, where a citation is its key. A straight quote straight after the `=` opens a
+    quoted value that runs past the paragraph's end and closed at a `>` in the next one;
+    it is written `\'` or `\"`, which prints straight, as Word showed it. G2 reads
     `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
     source is not Word's to escape, after a `<` kept from the source or brought by a value.
     Pandoc read the two as text only because something between them was not an attribute
@@ -2314,7 +2319,11 @@ Closed since, and why each mattered:
   them curled at the next build; the second change is lost with nothing reported, since the
   rebuilt paragraph equals the source. A straight quote typed in an edited stretch can also
   pair with a straight one kept from the source across a token: `'high' at "{{x}} and
-  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
+  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes
+  within a paragraph. Across one they did: a straight quote after an `=`, once a `<` that
+  can open a tag stood before it, opened a quoted value that ran on into the next
+  paragraph, whose `>` closed the tag, and both printed as the words after that `>`. That
+  quote is now escaped; see "The read-back reads a binding as digits" above.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier

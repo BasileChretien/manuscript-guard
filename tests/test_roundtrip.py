@@ -1760,6 +1760,20 @@ BESIDE_A_TOKEN = [
         id="equals-kept-before-a-value",
     ),
     pytest.param(
+        "Values <LOD in {{results.unit}} were imputed.",
+        "Values <LOD in mg/L were imputed.",
+        "Values <LOD in mg/L were imputed at dose=5 mg>1 only.",
+        "Values <LOD in {{results.unit}} were imputed at dose=5 mg&gt;1 only.",
+        id="equals-then-a-no-break-space",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} had HR=[@smith2019] here.",
+        "Values <LOD in mg/L had HR=(Smith 2019) here.",
+        "Values <LOD in mg/L had HR=(Smith 2019)>1 here.",
+        "Values <LOD in {{results.unit}} had HR=[@smith2019]&gt;1 here.",
+        id="equals-then-a-citation",
+    ),
+    pytest.param(
         "Alpha beta {{results.drug}} gamma delta.",
         "Alpha beta aspirin gamma delta.",
         "Alpha beta {aspirin gamma delta.",
@@ -1806,7 +1820,7 @@ BESIDE_VALUES = {
     "results.y": "7.02",
     "results.ci": "(1.2-3.4)",
 }
-BESIDE_CITED = {"(Jones 2019)": "[@jones2019]"}
+BESIDE_CITED = {"(Jones 2019)": "[@jones2019]", "(Smith 2019)": "[@smith2019]"}
 
 
 @pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
@@ -1855,6 +1869,33 @@ def test_text_beside_a_token_prints_as_typed(
     for shown, cited in BESIDE_CITED.items():
         typed = typed.replace(shown, cited)
     assert printed == typed
+
+
+@needs_pandoc
+def test_a_quote_after_an_equals_keeps_the_next_paragraph(tmp_path: Path) -> None:
+    """A straight quote after an `=` opens a quoted attribute value, which runs on past the
+    paragraph's end and its neighbour's identifier: the tag opened by `<LOD` closed at the
+    `>` of the next paragraph, and "Values 0.5 in all." was all that printed of the two."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    returned = "Values <LOD in mg/L were set to label='low."
+    merged = realign(
+        "Values <LOD in {{results.unit}} were set to low.",
+        "Values <LOD in mg/L were set to low.",
+        returned,
+    )
+    assert merged == r"Values <LOD in {{results.unit}} were set to label=\'low."
+    path = tmp_path / "a.md"
+    body = merged.replace("{{results.unit}}", "mg/L")
+    path.write_text(
+        f"[]{{#mg-p-x-0}}{body}\n\n[]{{#mg-p-x-2}}Cohen's d was >0.5 in all.\n", encoding="utf-8"
+    )
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")
+    assert printed["mg-p-x-0"] == returned
+    assert printed["mg-p-x-2"] == "Cohen’s d was >0.5 in all."
 
 
 @pytest.mark.parametrize(

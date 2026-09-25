@@ -1175,7 +1175,49 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
     findings = json.loads(capsys.readouterr().out)["findings"]
     assert "rule-opens-a-block" in {f["code"] for f in findings if f["severity"] == "fail"}
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
-    assert "pandoc reads as YAML metadata or as a table" in capsys.readouterr().out
+    assert "pandoc may read as YAML metadata, a table or text" in capsys.readouterr().out
+
+
+_EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        # Found by review: a line the heading scan takes for a setext title but pandoc does
+        # not, so the rule under it was let through as an underline while pandoc read YAML
+        # and took its title for the document's.
+        f"::: note\nA note.\n:::\n{_EVIL}",
+        f"::: note\n{_EVIL}:::\n",
+        f"<div>\nA note.\n</div>\n{_EVIL}",
+        f"\\begin{{center}}\nx\n\\end{{center}}\n{_EVIL}",
+        f"+---+---+\n| a | b |\n+---+---+\n{_EVIL}",
+        f"a | b\n--|--\nc | d\n{_EVIL}",
+        f"    x <- 1\n    y <- 2\n{_EVIL}",
+        f"{{{{table.two_by_two}}}}\n{_EVIL}",
+        # A lazy line of a quotation or a list item under the rule: pandoc reads a table in
+        # the quotation or the item, the heading scan a heading from the closing rule.
+        "> ---\nMethods\n---\n",
+        "* ---\n  Methods\n---\n",
+        "-\nMethods\n-\n",
+        # Under the second line of a paragraph a rule is text to pandoc, not an underline.
+        "We also saw\nMethods\n---\n",
+        # Rules of two dashes, spaced dashes, or indented a little open tables too.
+        "--\nMethods\n--\n",
+        "- - -\nMethods\n- - -\n",
+        "  ---\nMethods\n  ---\n",
+        # ...where only the opening rule can be caught: the closing one is under a heading.
+        "--\ncell\n\n## Results\n--\n",
+        "- -\ncell\n\n## Results\n- -\n",
+        # A comment closing on the rule's line: pandoc reads on from the `-->`.
+        f"<!-- x\nabc -->{_EVIL}",
+    ],
+)
+def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    text = f"---\ntitle: A study\n---\n\n# Introduction\n\nProse.\n\n{block}\nThe end.\n"
+    assert rules_opening_blocks(text) != []
 
 
 @pytest.mark.parametrize(
@@ -1184,10 +1226,16 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
         "Text.\n\n---\n\nMore text.\n",
         "Results\n-------\n\nText.\n",
         "Results\n---\nText directly under a heading.\n",
+        "Results\n-\n\nText.\n",
         "```\n---\nnote: v\n---\n```\n",
         "<!--\n---\nnote: v\n---\n-->\n",
         "-\n  an empty item's text\n",
         "The end.\n\n---\n",
+        # A setext heading directly under a block that ends at its own line.
+        "```\nx\n```\nResults\n-------\n",
+        "<!-- a note -->\nResults\n-------\n",
+        "## Section\nResults\n-------\n",
+        "Part\n====\nResults\n-------\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:

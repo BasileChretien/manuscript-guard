@@ -299,15 +299,16 @@ _LINK_LINE = re.compile(
     r"|\([^()\\\[\]{\n]*\)))?"
     r"[ \t]*"
 )
-# A footnote: its label and its text on one line. Pandoc parses a note's text by itself, so
-# nothing in it reaches the body - but a line under it is more of the note, even a link's
-# definition, and that link then resolves nowhere. So links come first. And a note runs on
+# A footnote: its label and its text, which may wrap onto the lines under it
+# (`_continues_a_note`). Pandoc parses a note's text by itself, so nothing in it reaches the
+# body - but a line under it is more of the note, even a link's definition, and that link
+# then resolves nowhere. So links come first. And a note runs on
 # through every line pandoc does not take for blank, and past a blank line into an indented
 # one, and the paragraph it takes in leaves the body. So a note is left alone only when a
 # blank line ends it and the block after that is not indented (`_blank_below`). A line
 # holding only a no-break space is no blank line to pandoc; beside one, `_blocks` leaves
-# both blocks unmarked anyway. At the end of a file nothing follows; the build puts a
-# comment between files, so the next file's first paragraph cannot run into it either.
+# both blocks unmarked anyway. At the end of a file nothing follows; the build puts an
+# empty div between files, so the next file's first paragraph cannot run into it either.
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 _INDENT = re.compile(r"[ \t]*")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
@@ -830,8 +831,29 @@ def _only_definitions(block: str, below: str) -> bool:
     while links < len(lines) and _LINK_LINE.fullmatch(lines[links]):
         links += 1
     notes = lines[links:]
-    return all(_NOTE_LINE.fullmatch(line) for line in notes) and (
-        not notes or _blank_below(below)
+    if not notes:
+        return True
+    return (
+        _NOTE_LINE.fullmatch(notes[0]) is not None
+        and all(_NOTE_LINE.fullmatch(line) or _continues_a_note(line) for line in notes[1:])
+        and _blank_below(below)
+    )
+
+
+def _continues_a_note(line: str) -> bool:
+    """Whether pandoc reads `line`, under a footnote's first line, as more of that footnote.
+
+    A note's label decides it, and pandoc takes almost any line under it into the note: a
+    hard-wrapped footnote is one. Marked for its second line, it printed as text on every
+    build, though #25 had let it work. Not a line opening `[^` without a colon, which pandoc
+    ends the note at and prints; not a link's definition, which would resolve nowhere
+    inside the note; and not an underline or a definition list's `:` or `~`, which make the
+    note's first line a heading or a term."""
+    return not (
+        re.match(r"[ \t]*\[\^", line)
+        or _LINK_LINE.fullmatch(line)
+        or _RULE.fullmatch(line)
+        or _DEFINITION.match(line)
     )
 
 
@@ -936,16 +958,18 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
                     hidden = max(hidden, ends[table])
             yield index, piece, False
             continue
+        # A definition's text is read by itself: a `<!--` or a `<pre>` in a note, or in a
+        # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
+        # note up to the next `-->`, while pandoc printed them all.
+        definitions = apart and _definitions(piece, *_around(pieces, index))
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
-        runs_on = _raw_end(text, origin, end, closers)
-        closer = ruled.end(index)
+        runs_on = 0 if definitions else _raw_end(text, origin, end, closers)
+        closer = None if definitions else ruled.end(index)
         if closer is not None:
             runs_on = max(runs_on, ends[closer])
         hidden = max(hidden, runs_on)
-        yield index, piece, apart and not (
-            runs_on or _untagged(piece) or _definitions(piece, *_around(pieces, index))
-        )
+        yield index, piece, apart and not (runs_on or _untagged(piece) or definitions)
 
 
 def tag(text: str, relative: str, *, mark: bool = False) -> str:

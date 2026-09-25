@@ -581,6 +581,25 @@ _EMPHASIS = (
 #: the document, where the author had bold.
 _HALF_SPAN = "one end of an emphasis or code span"
 
+#: Code keeps literal what pandoc typesets in prose: dashes, an ellipsis, quotes. Rebuilt
+#: from Word's text, code is prose, and `--offline` printed as "–offline", `<!--` as "<!–"
+#: and `"exact"` with curly quotes. Escaping them would print Word's text as it is, and
+#: would print a `--` a co-author typed as `--` too, where pandoc makes it the dash they
+#: meant; so an edited stretch holding such code is refused instead.
+_TYPESET_IN_CODE = "code with `--`, `...` or a quote in it"
+_TYPESETS = re.compile(r"--|\.\.\.|['\"]")
+
+
+def _uncarried(names: Sequence[str], edited: str) -> tuple[str, ...]:
+    """What an edited stretch held that Word's text cannot carry back, as `edited` came back.
+
+    Code pandoc would typeset counts only while Word's text still holds something to
+    typeset: an edit that deleted the code was refused, naming code Word no longer showed.
+    """
+    return tuple(
+        name for name in names if name != _TYPESET_IN_CODE or _TYPESETS.search(edited)
+    )
+
 #: Every space but layout, as a character that is neither a space nor a letter, for pairing
 #: emphasis. Pandoc reads a no-break space as text, so a `*` with one just inside it still
 #: opens or closes italics; `_EMPHASIS` reads `\s`, took it for a space, and the paragraph
@@ -772,6 +791,8 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             ticks = len(m.group(f"{kind}_ticks"))
             closing = m.end(f"{kind}_text")
             marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
+        elif kind == "code" and _TYPESETS.search(m.group("code_text")):
+            marks.append((start, end, _TYPESET_IN_CODE))
 
     # A key the token patterns missed: Word's text holds its rendering, not the key.
     marks += [
@@ -1109,7 +1130,7 @@ def align(
             opened = quote_open or "\u2018" in was_prose[index]
             quote_open = opened and _left_open(prose[index], index == 0, quote_open)
         else:
-            lost += [name for name in reading.lost[index] if name not in lost]
+            lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
             # What the build printed of the stretch must be what the source reads as, or
             # part of it is something Word's text does not hold: `[Methods]` is a link to
             # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
@@ -1150,8 +1171,8 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
         returned.strip(), reading.shown[0].strip(), rendered
     ):
         return Alignment(source)
-    if reading.lost[0]:
-        return Alignment(None, markup=reading.lost[0])
+    if lost := _uncarried(reading.lost[0], returned):
+        return Alignment(None, markup=lost)
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
     rebuilt = _escaped(returned.strip(), opening=True)

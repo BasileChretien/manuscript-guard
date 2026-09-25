@@ -69,12 +69,15 @@ It changes nothing and reports each paragraph:
 | `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables or figures); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table or figure, or into another file. Not applied; move it in the `.md` yourself |
-| `N of M paragraphs … carry no identifier` | headings, table cells, captions and new paragraphs. **None of these was compared** |
+| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, or into another file. Not applied; move it in the `.md` yourself |
+| `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
+| `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
+| `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 
-Anything refused, joined, deleted or moved between sections or files makes the command exit
-1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted or moved between sections or files, and any paragraph
+without an identifier that came back different or in a different order, makes the command
+exit 1, with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -89,8 +92,8 @@ pandoc returned.docx -t plain -o returned.txt
 git diff --no-index sent.txt returned.txt
 ```
 
-A new paragraph, a changed heading or a table edit is typed into the `.md`, or taken back to
-the analysis if it touched a number.
+A new paragraph, a changed heading, a list or quotation edit, or a table edit is typed into
+the `.md`, or taken back to the analysis if it touched a number.
 
 ## 4. What `import` refuses on its own, and what still needs you
 

@@ -72,6 +72,29 @@ def test_clean_example_passes(project: Path) -> None:
     assert report.counts["results_uncovered"] == 0
 
 
+@pytest.mark.parametrize("tail", ["/", "//", ":/", " "])
+def test_a_citation_locator_hard_against_punctuation_passes_g2(project: Path, tail: str) -> None:
+    """`import` writes `@key [p. 3]/{{results.x}}` when a co-author deletes the words between
+    a citation and a value. The locator ran on through its `]` as `3]/`, G2 failed it as an
+    unbound number, and the build refused a paragraph pandoc prints correctly."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = f"As @fictionalClassSignal2019 [p. 3]{tail}{{{{results.ror.point}}}} overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+def test_a_value_written_hard_after_a_citation_locator_is_still_caught(project: Path) -> None:
+    """Cutting the atom at the locator's `]` must not hide what follows it: 9.99 is a claim."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = "As @fictionalClassSignal2019 [p. 3]/9.99 overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    messages = [f.message for f in report.failures]
+    assert any("9.99" in m for m in messages), messages
+    assert not any("'3" in m for m in messages), "the locator is not the unbound number"
+
+
 # --------------------------------------------------------------------------------------
 # The headline: every binding, replaced by its own current value, must be caught.
 # --------------------------------------------------------------------------------------

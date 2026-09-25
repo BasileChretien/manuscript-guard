@@ -340,11 +340,13 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
 
-    A marked line is read without the attribute block at its end and without closing `#`s,
-    as pandoc reads it. Pandoc users write an unnumbered reference heading as
-    `# References {-}`, and the audit found no heading there: it cut nothing, and every
-    number in a book or a web page in the list was reported among the findings. On an
-    unmarked line the braces are printed, so "References {-}" there is text.
+    A marked line is read without the attribute block at its end, as pandoc reads it, and a
+    line opening with `#` without its closing `#`s. Pandoc users write an unnumbered
+    reference heading as `# References {-}`, and the audit found no heading there: it cut
+    nothing, and every number in a book or a web page in the list was reported among the
+    findings. On an unmarked line the braces are printed, so "References {-}" there is
+    text. Closing `#`s belong to an ATX heading alone: a setext heading or a Word heading
+    reading "References #" prints the `#`.
 
     An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
     and YAML, and `# References` in a code listing cut everything after it; where `#` does
@@ -352,7 +354,9 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     """
     text = line.strip()
     if marked:
-        text = strip_attributes(text).rstrip("#").rstrip()
+        text = strip_attributes(text)
+        if text.startswith("#"):
+            text = text.rstrip("#").rstrip()
     found = _BIBLIOGRAPHY.match(text)
     if not found:
         return False

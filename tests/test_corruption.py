@@ -1164,6 +1164,47 @@ def test_audit_does_not_take_an_unmarked_line_with_braces_for_a_references_headi
         assert report.not_audited == [], paper.name
 
 
+def test_audit_does_not_cut_at_a_heading_that_prints_its_braces_or_its_hash(
+    tmp_path: Path,
+) -> None:
+    """Pandoc reads no quoted value that opens with a space, so it prints
+    `# References {title=" Works cited"}` braces and all. And closing `#`s belong to an ATX
+    heading: a setext heading or a Word heading reading "References #" prints the `#`.
+    Taken for reference headings, each cut the paragraph after it, and its number went
+    unread."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    papers = []
+    for index, heading in enumerate(
+        ['# References {title=" Works cited"}', "References #\n------------"]
+    ):
+        path = tmp_path / f"paper{index}.md"
+        path.write_text(
+            f"We saw 77 cases.\n\n{heading}\n\nThe pooled reporting odds ratio was 9.99.\n",
+            encoding="utf-8",
+        )
+        papers.append(path)
+    papers.append(
+        _docx(
+            tmp_path / "paper.docx",
+            _p("We saw 77 cases.")
+            + _p("References #", "Heading1")
+            + _p("The pooled ratio was 9.99."),
+            {"word/styles.xml": styles},
+        )
+    )
+    for paper in papers:
+        report = audit([paper], [outputs])
+        assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"], paper.name
+        assert report.not_audited == [], paper.name
+
+
 @pytest.mark.parametrize(
     "results",
     [
@@ -1171,6 +1212,7 @@ def test_audit_does_not_take_an_unmarked_line_with_braces_for_a_references_headi
         '# Results {#sec-results title="the \\"main\\" results"}',
         "# Results {#sec-results note=a\\}b}",
         "# Results {#sec-results}\n\n###",
+        "# Results {#sec-results lang=fr FR}",
     ],
 )
 def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
@@ -1181,7 +1223,8 @@ def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
     like a Methods one, "Sensitivity analyses", made a reported `p < 0.001` the alpha chosen
     in advance. The first fix read no backslash escapes in a value, which pandoc reads, and
     read the heading's line to the end of the match, which ran on past a blank line to a
-    line of `#`s."""
+    line of `#`s. The second ended an unquoted value at a no-break space, where pandoc ends
+    one only at a space, a tab, a line break or `}`."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
     text = text.replace("\n# Results\n", f"\n{results}\n", 1)

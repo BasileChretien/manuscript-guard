@@ -463,6 +463,8 @@ def test_other_bibliography_headings_are_recognised(heading: str) -> None:
         '# References {#refs title="the \\"cited\\" works"}',
         "# References {#refs note=a\\}b}",
         "# References {k=a\\{b}",
+        "# References {#refs lang=fr FR}",
+        '# References {title=""}',
     ],
 )
 def test_a_marked_heading_may_end_in_what_pandoc_does_not_print(heading: str) -> None:
@@ -493,15 +495,29 @@ def test_an_unmarked_line_with_an_attribute_block_is_not_a_heading(line: str) ->
         "# References {-} ##",
         "# References {k=\\}",
         "# References {k=a\\}",
+        '# References {title=" Works cited"}',
+        "# References {k=' a'}",
+        '# References {title="\tWorks"}',
     ],
 )
 def test_braces_pandoc_prints_are_part_of_the_heading(heading: str) -> None:
     """Pandoc takes off an attribute block and nothing else in braces: these print as they
-    stand, so none of them is a heading that says only "References". In the last two the
-    closing brace is escaped, so there is no block to take off."""
+    stand, so none of them is a heading that says only "References". In `{k=\\}` and
+    `{k=a\\}` the closing brace is escaped, so there is no block to take off, and pandoc
+    reads no quoted value that opens with a space or a tab."""
     from manuscript_guard.audit import is_bibliography_heading
 
     assert not is_bibliography_heading(heading, marked=True)
+
+
+@pytest.mark.parametrize("line", ["References #", "References ##", "Bibliography #"])
+def test_a_hash_ends_only_a_heading_that_opens_with_one(line: str) -> None:
+    """Closing `#`s belong to an ATX heading. A setext heading or a styled Word paragraph
+    reading "References #" prints the `#`, so it is not a heading that says only
+    "References"."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(line, marked=True)
 
 
 @pytest.mark.parametrize(
@@ -669,6 +685,8 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
         "# References " + "\\{" * n + "}",
         "# References " + ("\\" * 999 + "{") * 20 + "}",
         "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
+        "# References {k=" + " " * 2 * n + " !}",
+        '# References {k=" ' + "a" * 2 * n + '"}',
     ):
         assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 0.5

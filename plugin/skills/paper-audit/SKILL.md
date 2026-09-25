@@ -103,11 +103,13 @@ A reference list starts at a line that is only a heading such as `References`,
 (`5`, `5.`, `5)`), bold, or a trailing colon. A line the document marks as a heading (a
 Markdown `#` or underline, a heading style in a `.docx`) needs nothing more, and may end in
 a pandoc attribute block, as in `# References {-}`, `{.unnumbered}` or
-`{#refs .unnumbered}`, which is dropped, as pandoc drops it; so are closing `#`s. Braces that
-pandoc does not read as attributes, as in `# References {and further reading}`, are
-printed, so that heading does not start a list. Any other line also has to be capitalised,
-not end in a full stop or in braces, and not start with `#`: a wrapped
-"…duplicate / references." is not a heading, nor is `References {-}` on a line of prose,
+`{#refs .unnumbered}`, which is dropped, as pandoc drops it; so are the closing `#`s of a
+`#` heading. What pandoc or Word prints is not dropped: braces pandoc does not read as
+attributes, as in `# References {and further reading}` or `{title=" Works cited"}`, and
+the `#` of a setext or Word heading reading `References #`. None of these starts a list.
+Any other line also has to be capitalised, not end in a full stop or in braces, and not
+start with `#`: a wrapped "…duplicate / references." is not a heading, nor is
+`References {-}` on a line of prose,
 and neither is `# References` as a comment in a fenced R listing or typed into a Word
 paragraph with no heading style. In Markdown, nothing in a fenced block, an HTML comment or
 the front matter starts a list. A table cell

@@ -116,6 +116,13 @@ CONSTRUCTS = {
     "atx escaped space in a value": "# Results {k=a\\ b}\n\nProse.\n",
     "atx escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n\nProse.\n",
     "atx escaped opening brace in a value": "# Results {k=a\\{b}\n\nProse.\n",
+    # An unquoted value ends at a space, a tab, a line break or `}`, and at no other space.
+    "atx no-break space in a value": "# Results {#sec-results lang=fr FR}\n\nProse.\n",
+    "atx thin space in a value": "# Results {#sec-results lang=fr FR}\n\nProse.\n",
+    "atx form feed in a value": "# Results {#sec-results lang=fr\fFR}\n\nProse.\n",
+    "atx empty quoted value": '# References {title=""}\n\nProse.\n',
+    "atx empty single-quoted value": "# References {title=''}\n\nProse.\n",
+    "atx quoted value ending in a space": '# References {title="Works "}\n\nProse.\n',
 }
 
 
@@ -129,10 +136,10 @@ def test_the_toolkit_sees_the_headings_pandoc_renders(name: str) -> None:
     )
 
 
-# Where pandoc prints the braces, it also prints `\}` as `}`, and the toolkit does not undo
-# escapes in a title. So these are compared on the one thing in question: whether the heading
-# still ends in its braces.
-ESCAPED_BLOCKS = {
+# Where pandoc prints the braces, it also typesets what is between them, `\}` as `}` and a
+# straight quote as a curly one, and the toolkit does neither to a title. So these are
+# compared on the one thing in question: whether the heading still ends in its braces.
+BRACES = {
     "escaped closing brace ends no block": "# References {k=\\}\n\nProse.\n",
     "escaped closing brace after a value": "# Results {k=a\\}\n\nProse.\n",
     "escaped quote in a quoted value": '# Results {title="the \\"main\\" results"}\n',
@@ -140,12 +147,17 @@ ESCAPED_BLOCKS = {
     "escaped backslash before a closing brace": "# Results {k=a\\\\}\n",
     "escaped quote that leaves a quote open": '# Results {k="a\\"}\n',
     "escaped opening brace before the block": "# Results \\{-}\n",
+    # A quoted value may not open with a space or a tab.
+    "space after an opening quote": '# References {title=" Works cited"}\n',
+    "space after an opening single quote": "# References {k=' a'}\n",
+    "tab after an opening quote": '# References {title="\tWorks"}\n',
+    "no-break space after an opening quote": '# References {title="\u00a0Works"}\n',
 }
 
 
-@pytest.mark.parametrize("name", sorted(ESCAPED_BLOCKS))
+@pytest.mark.parametrize("name", sorted(BRACES))
 def test_the_toolkit_takes_off_the_attribute_blocks_pandoc_takes_off(name: str) -> None:
-    markdown = ESCAPED_BLOCKS[name]
+    markdown = BRACES[name]
     (toolkit,) = headings(markdown)
     (printed,) = pandoc_headings(markdown)
     assert toolkit.endswith("}") == printed.endswith("}"), (

@@ -46,21 +46,26 @@ _SETEXT = re.compile(
 HEADING = _ATX
 
 # One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
-# with the value quoted or running to a space or the closing brace, or `-`, which pandoc
-# reads as `.unnumbered`. A value may hold backslash escapes, `title="the \"main\" one"` or
-# `note=a\}b`, and an escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints
-# it. Each escape is one backslash and the character after it, and every other character
-# is one of the rest, so a value can be read only one way. Items need no space between
-# them: `{#a.b}` is one identifier and `{#a#b}` two, because pandoc takes the longest item
-# it can at each point and never goes back. `strip_attributes` does the same, one item at a
-# time. With the items under one quantifier in a single pattern, a run such as `#a.b.c`
-# could be divided between items in more ways than it has characters, and a block that
-# failed at its last character would try every one of them.
+# or `-`, which pandoc reads as `.unnumbered`. A value is quoted, and then may not open with
+# whitespace (`title=" Works"` is not one, and pandoc prints the braces), or runs to a
+# space, a tab, a line break or the closing brace. Only those: `\s` would also end it at a
+# no-break space, a thin space or a form feed, which pandoc reads as part of the value, so
+# a heading whose `lang=fr` and `FR` were joined by a no-break space kept its block.
+#
+# A value may hold backslash escapes, `title="the \"main\" one"` or `note=a\}b`, and an
+# escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints it. Each escape is one
+# backslash and the character after it, and every other character is one of the rest, so a
+# value can be read only one way. Items need no space between them: `{#a.b}` is one
+# identifier and `{#a#b}` two, because pandoc takes the longest item it can at each point
+# and never goes back. `strip_attributes` does the same, one item at a time. With the items
+# under one quantifier in a single pattern, a run such as `#a.b.c` could be divided between
+# items in more ways than it has characters, and a block that failed at its last character
+# would try every one of them.
 _ATTRIBUTE_ITEM = re.compile(
     r"#[\w:.-]+"
     r"|\.[^\W\d_][\w:.-]*"
     r"|[^\W\d_][\w:.-]*="
-    r"(?:\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|(?:[^\s}\\]|\\.)*)"
+    r"(?:\"(?!\s)(?:[^\"\\]|\\.)*\"|'(?!\s)(?:[^'\\]|\\.)*'|(?:[^ \t\n\r}\\]|\\.)*)"
     r"|-"
 )
 

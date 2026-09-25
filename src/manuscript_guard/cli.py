@@ -298,6 +298,45 @@ def _unexamined(document: Path, identified: int) -> str:
     )
 
 
+def _which_document(project, known: dict, returned, name: str) -> bool | None:
+    """Whether a returned document is the supplement; None when it is not one document.
+
+    `build` writes the supplement as a document of its own, and import compared every
+    returned document with a fresh build of the paper. An edited supplementary.docx reported
+    every paragraph of the paper as deleted in Word, exit 1, and its own edits went nowhere.
+    The paragraph identifiers a document carries say which one it is, because each names its
+    source file; the source stamp cannot, since both documents carry the same one. A document
+    carrying neither kind is refused when the project has a supplement, because it could be
+    either, and compared with the paper when it has none.
+    """
+    from manuscript_guard.gates.numbers import is_supplementary
+
+    manuscript_dir = project.path("manuscript")
+    kinds = {
+        is_supplementary(manuscript_dir, known[identifier][0])
+        for block in returned
+        for identifier in block.names
+        if identifier in known
+    }
+    if not kinds and any(is_supplementary(manuscript_dir, path) for path, *_ in known.values()):
+        print(
+            f"{name} carries no paragraph identifier this manuscript knows, so there is no "
+            f"telling whether it is the manuscript or its supplement, and import compares "
+            f"paragraphs only through those identifiers. Nothing was imported: import the "
+            f"document the co-author was sent, edited in place."
+        )
+        return None
+    if kinds == {True, False}:
+        print(
+            f"{name} carries paragraphs of both the manuscript and its supplement. They are "
+            f"built as two documents and imported one at a time, and a paragraph pasted from "
+            f"one into the other is not something import can apply. Nothing was imported: "
+            f"make the move in the .md yourself, and import each document on its own."
+        )
+        return None
+    return kinds == {True}
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     """Bring a co-author's edits back from Word, without losing the bindings.
 
@@ -347,6 +386,17 @@ def cmd_import(args: argparse.Namespace) -> int:
         )
         return 1
 
+    try:
+        returned = read_blocks(edited)
+        comments = comments_in(edited)
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    known = tagged_paragraphs(project)
+    supplementary = _which_document(project, known, returned, edited.name)
+    if supplementary is None:
+        return 1
+
     namespace, results, _literature, _r = load_namespace(project)
     assembled, _ar = assemble(project, namespace, results)
 
@@ -359,8 +409,10 @@ def cmd_import(args: argparse.Namespace) -> int:
         reference = Path(scratch) / "reference.docx"
         tokens = Path(scratch) / "reference-tokens.docx"
         try:
-            build_document(project, assembled, mode=OFFLINE, output=reference)
-            build_document(project, marked_assembly, mode=OFFLINE, output=tokens)
+            for assembly, output in ((assembled, reference), (marked_assembly, tokens)):
+                build_document(
+                    project, assembly, mode=OFFLINE, output=output, supplementary=supplementary
+                )
         except BuildError as exc:
             print(
                 f"manuscript-guard: import compares {edited.name} with a fresh build of the "
@@ -371,13 +423,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         sent = read_blocks(reference)
         marked = read_blocks(tokens)
 
-    try:
-        returned = read_blocks(edited)
-        comments = comments_in(edited)
-    except RoundTripError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        return 2
-    known = tagged_paragraphs(project)
     plan = plan_import(known, sent, returned, marked)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
@@ -387,7 +432,8 @@ def cmd_import(args: argparse.Namespace) -> int:
     unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
 
     if plan.empty and not comments:
-        print("nothing came back: the document matches the manuscript on disk.")
+        what = "supplement" if supplementary else "manuscript"
+        print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
             print(f"  {unexamined}")
         return 0

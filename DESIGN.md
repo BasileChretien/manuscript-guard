@@ -173,6 +173,16 @@ It builds as `supplementary.docx` and reaches the pack as its own file. A direct
 than a declaration, matching how figures and results already work, and because a heading can
 be renamed without anyone noticing what left the submission.
 
+A document of its own also comes back from a co-author on its own. `import` compared every
+returned document with a fresh build of the paper, so an edited `supplementary.docx` reported
+every paragraph of the paper as deleted in Word and applied none of its own edits. The source
+stamp cannot tell the two documents apart: both are built from the same sources and carry
+the same one. The paragraph identifiers can, because each names its source file. A document
+whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
+the supplement, and one whose identifiers all come from the paper with a build of the paper.
+One carrying both, because a paragraph was pasted across, is refused: neither build accounts
+for it. So is one carrying none in a project that has a supplement, since it could be either.
+
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
 contribution groups, ORCID, funding and competing interests. One validated file fills the
@@ -2171,6 +2181,10 @@ Closed since, and why each mattered:
   not refused, and until now were not mentioned; the count of what went unexamined is
   printed, which is a report rather than a fix. A number corrected in a table is the case
   that matters, because that is where a stale number is likeliest to be.
+- **Text moved between the paper and its supplement is refused, never applied.** The two are
+  built and imported as separate documents, so a paragraph pasted from one into the other
+  brings an identifier the other's build does not have. The whole document is refused and
+  the author makes the move in the .md.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval

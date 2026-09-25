@@ -3034,16 +3034,30 @@ def test_import_without_pandoc_says_so_rather_than_crashing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Import rebuilds the document to compare against, and died with a BuildError traceback
-    when pandoc was missing."""
+    when pandoc was missing. The returned document is read first, to know which document to
+    rebuild, so it has to be readable and carry one of the paper's identifiers."""
     import manuscript_guard.build.document as document
     from manuscript_guard.cli import main
     from manuscript_guard.contracts import load_project
     from manuscript_guard.gates.review import document_digest
+    from manuscript_guard.roundtrip import tagged_paragraphs
 
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    loaded = load_project(project)[0]
+    identifier = next(
+        name
+        for name, (path, _text, _start) in tagged_paragraphs(loaded).items()
+        if path.name == "main.md"
+    )
     returned = tmp_path / "back.docx"
     with zipfile.ZipFile(returned, "w") as archive:
-        archive.writestr("word/document.xml", "<w:document/>")
-    stamp_into(returned, document_digest(load_project(project)[0]))
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{w}"><w:body><w:p>'
+            f'<w:bookmarkStart w:id="0" w:name="{identifier}"/><w:bookmarkEnd w:id="0"/>'
+            f"<w:r><w:t>Text.</w:t></w:r></w:p></w:body></w:document>",
+        )
+    stamp_into(returned, document_digest(loaded))
 
     real = shutil.which
     monkeypatch.setattr(
@@ -3206,3 +3220,94 @@ def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert "a footnote" in capsys.readouterr().out
     assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+# --------------------------------------------------- a supplement is a document of its own
+
+SUPPLEMENT = Path("manuscript") / "supplementary" / "S1_code_lists.md"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("edited", ["reworded", "untouched"])
+def test_a_supplement_that_comes_back_is_compared_with_the_supplement(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], edited: str
+) -> None:
+    """`build` writes the supplement as its own document, and `import` compared every
+    returned document with a fresh build of the paper. An edited supplementary.docx reported
+    every paragraph of the paper as deleted in Word, exit 1, and its own edits went nowhere."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    source = project / SUPPLEMENT
+    main_md = project / "manuscript" / "main.md"
+    before, paper = source.read_text(encoding="utf-8"), main_md.read_text(encoding="utf-8")
+    was = "This supplement is referred to from the Methods"
+    now = "This supplement is cited from the Methods" if edited == "reworded" else was
+    supplement = project / "build" / "supplementary.docx"
+    returned = edit_docx(supplement, tmp_path / "back.docx", {was: now})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert main_md.read_text(encoding="utf-8") == paper
+    after = source.read_text(encoding="utf-8")
+    if edited == "reworded":
+        # A merged paragraph comes back unwrapped, so its line breaks are not compared.
+        assert blocks(after) == blocks(before.replace(was, now, 1))
+    else:
+        assert after == before and "nothing came back" in out
+
+
+@needs_pandoc
+def test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph pasted from the paper into the supplement brings its identifier with it.
+    Compared with either document alone, the other's paragraphs read as deleted or moved;
+    nothing in it is imported, and the refusal says why."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as archive:
+        paper = archive.read("word/document.xml").decode("utf-8")
+    pasted = tagged_xml(paper)[1]
+    returned = rewrite(
+        project / "build" / "supplementary.docx",
+        tmp_path / "both.docx",
+        lambda xml: xml.replace("</w:body>", pasted + "</w:body>", 1)
+        if "<w:sectPr" not in xml
+        else xml.replace("<w:sectPr", pasted + "<w:sectPr", 1),
+    )
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "paragraphs of both the manuscript and its supplement" in capsys.readouterr().out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+@pytest.mark.parametrize("document", ["manuscript", "supplementary"])
+def test_a_document_carrying_no_identifier_is_refused_when_there_are_two_it_could_be(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], document: str
+) -> None:
+    """Which document came back is read from its identifiers, and both carry the same stamp.
+    One that lost every identifier (pasted into a fresh file, say) was compared with the
+    paper whichever it was, and every paragraph of the paper was reported deleted in Word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = rewrite(
+        project / "build" / f"{document}.docx",
+        tmp_path / "bare.docx",
+        lambda xml: re.sub(r'<w:bookmarkStart [^>]*w:name="mg-p-[^"]*"\s*/>', "", xml),
+    )
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources

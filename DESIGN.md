@@ -2272,6 +2272,29 @@ Closed since, and why each mattered:
   - *A definition between two paragraphs is a section boundary.* It is untagged text in the
     source, so a move across it is refused as a move past a heading, a table or a figure.
     Safe, and the reason given is wrong.
+- **A paragraph under a heading is marked only when it is plainly a paragraph.** Pandoc
+  needs no blank line after a heading, so `# Methods` with its paragraph on the next line
+  is a heading and a paragraph. Every block starting with `#` used to go unmarked, and a
+  co-author's edit to that paragraph was dropped while `import` said nothing came back. Now
+  the headings a block opens with - ATX or setext, under a line pandoc takes for blank -
+  stay unmarked, and the paragraph after them carries the identifier, provided every line
+  of it opens with a letter, a digit or inline markup and the first is not a list marker.
+  What that leaves:
+  - *Anything else under a heading stays unmarked with it.* A list, code, a table, a
+    definition list, a fence or HTML straight under a heading would be broken by a marker,
+    and so goes unmarked as the whole block always did; so does a paragraph with one of
+    those after it in the same block, `Text.` and then a code fence, and an edit to that
+    paragraph is not compared. A blank line after the heading avoids it.
+  - *`I. Aims` is counted as a list.* A roman numeral or a single capital with a full stop
+    opens a list only with two spaces after it, but it is counted either way, so such a
+    paragraph under a heading goes unmarked.
+  - *A `#` that is not a heading still leaves its block unmarked.* Pandoc prints `#Methods`,
+    `#1 priority` and ` # Methods` as paragraphs. Only under a line holding a no-break or
+    full-width space, where `#` cannot open a heading at all, is such a block marked.
+  - *A setext heading no longer carries an identifier.* It did, because it does not start
+    with `#`: the bookmark sat in the heading, and an edit to the heading in Word was
+    refused. Like an ATX heading it is now not compared, and it is counted among the
+    paragraphs without an identifier.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

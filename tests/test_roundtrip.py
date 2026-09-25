@@ -482,6 +482,146 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     assert len(marked) == expected
 
 
+#: (block, the paragraph under its headings that carries the identifier, or None) - read off
+#: pandoc 3.9. Pandoc needs no blank line after a heading, and the paragraph is always last.
+HEADED = [
+    pytest.param("# Methods\nPatients were enrolled.", "Patients were enrolled.", id="atx"),
+    pytest.param("## Methods ##\nPatients.", "Patients.", id="atx-closed"),
+    pytest.param("#\tMethods {#sec-methods}\nPatients.", "Patients.", id="atx-attributes"),
+    pytest.param("#\nPatients.", "Patients.", id="atx-empty"),
+    pytest.param("Methods\n=======\nPatients.", "Patients.", id="setext"),
+    pytest.param("Methods\n-\nPatients.", "Patients.", id="setext-one-dash"),
+    pytest.param("    Methods\n=======\nPatients.", "Patients.", id="setext-indented"),
+    pytest.param("# Results\n## Methods\nPatients.", "Patients.", id="two-headings"),
+    pytest.param("# Results\nMethods\n=======\nPatients.", "Patients.", id="atx-then-setext"),
+    pytest.param("# Methods\nText one.\nText two.", "Text one.\nText two.", id="two-lines"),
+    pytest.param("# Methods\nText.\n1. Not a list here.", "Text.\n1. Not a list here.", id="later"),
+    pytest.param(
+        "# Methods\n[@fictionalClassSignal2019] found it.",
+        "[@fictionalClassSignal2019] found it.",
+        id="citation-first",
+    ),
+    pytest.param(
+        "# Methods\n{{results.ror.point}} was the ratio.",
+        "{{results.ror.point}} was the ratio.",
+        id="binding-first",
+    ),
+    pytest.param("# Methods\n*Emphasis* first.", "*Emphasis* first.", id="emphasis-first"),
+    # A heading alone, and what a marker would break: these stay unmarked, as before.
+    pytest.param("# Methods", None, id="heading-alone"),
+    pytest.param("Methods\n=======", None, id="setext-alone"),
+    pytest.param("# Methods\nText.\n---", None, id="underlined-into-a-heading"),
+    pytest.param("# Methods\n- first item", None, id="bullets"),
+    pytest.param("# Methods\na) first item", None, id="letters"),
+    pytest.param("# Methods\n12. Twelve were chosen.", None, id="numbers"),
+    pytest.param("# Methods\n    indented code", None, id="code"),
+    pytest.param("# Methods\nText.\n```\ncode\n```", None, id="fence-below"),
+    pytest.param("# Methods\nTerm\n: definition", None, id="definition-list"),
+    pytest.param("# Methods\n<div>x</div>", None, id="html"),
+    pytest.param("# Methods\n{{table.baseline}}", None, id="placeholder"),
+    pytest.param(f"# References\n[reg]: {REGISTRY}", None, id="link-definition"),
+]
+
+
+@BUILDS
+@pytest.mark.parametrize(("block", "paragraph"), HEADED)
+def test_the_paragraph_under_a_heading_carries_the_identifier(
+    block: str, paragraph: str | None, mark: bool
+) -> None:
+    """In front of the paragraph, never in front of the heading: `[]{#id}# Methods` is not
+    a heading. Only a plain paragraph is marked; a list or code under a heading would be
+    broken by a marker, and is left alone as the whole block always was."""
+    from manuscript_guard.roundtrip import paragraph_slug, tag
+
+    tagged = tag(block, "main.md", mark=mark)
+    if paragraph is None:
+        assert tagged == block
+        return
+    headings = block[: len(block) - len(paragraph)]
+    assert tagged.startswith(f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}")
+    if not mark:
+        assert tagged == f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}{paragraph}"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("block", "paragraph"), HEADED)
+def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
+    block: str, paragraph: str | None
+) -> None:
+    """The artefact: the headings stay headings without an identifier in them, and the one
+    paragraph after them carries it."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(block, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    assert blocks[0]["t"] == "Header"
+    assert all("mg-p-" not in json.dumps(b) for b in blocks if b["t"] == "Header")
+    if paragraph is not None:
+        assert blocks[-1]["t"] == "Para"
+        assert "mg-p-" in json.dumps(blocks[-1])
+        assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+def test_tagged_paragraphs_splices_only_the_paragraph_under_a_heading(project: Path) -> None:
+    """`import` splices a merged paragraph at the offset `tagged_paragraphs` gives, over
+    exactly the text it gives. Under a heading, that is the paragraph alone: the heading
+    stays where it is, and `tag` marks the same paragraph."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    blocks = [param.values for param in HEADED]
+    text = "\n\n".join(block for block, _paragraph in blocks) + "\n"
+    source = project / "manuscript" / "headed.md"
+    source.write_text(text, encoding="utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name: (found, start)
+        for name, (path, found, start) in tagged_paragraphs(loaded).items()
+        if path.name == "headed.md"
+    }
+    marked = re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "headed.md"))
+    assert set(marked) == set(known)
+    raw = source.read_text(encoding="utf-8")
+    expected = [paragraph for _block, paragraph in blocks if paragraph is not None]
+    assert [found for found, _start in known.values()] == expected
+    assert all(raw[start : start + len(found)] == found for found, start in known.values())
+
+
+@needs_pandoc
+@pytest.mark.parametrize("space", [chr(0xA0), chr(0x3000)], ids=["no-break", "full-width"])
+def test_a_hash_under_a_line_pandoc_does_not_take_for_blank_is_marked(space: str) -> None:
+    """Pandoc wants a blank line before a heading. Under a line holding only a no-break or
+    full-width space, `# Methods` is more of the paragraph that line opens, and that
+    paragraph went unmarked because the block started with `#`."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Before.\n\n{space}\n# Methods\nPatients were enrolled.\n"
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    assert [b["t"] for b in blocks] == ["Para", "Para"]
+    assert all("mg-p-" in json.dumps(b) for b in blocks)
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for
@@ -3308,3 +3448,30 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert now in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "heading",
+    [
+        pytest.param("# Findings", id="atx"),
+        pytest.param("Findings\n========", id="setext"),
+        pytest.param("# Results\n## Findings", id="two-headings"),
+    ],
+)
+def test_import_merges_a_paragraph_written_straight_under_a_heading(
+    project: Path, tmp_path: Path, heading: str
+) -> None:
+    """End to end, the way review found it. `# Findings` with its paragraph on the next line
+    is one block starting with `#`, and every such block went unmarked. Pandoc reads a
+    heading and a paragraph, so the paragraph reached Word with no identifier, and a
+    co-author's edit to it was dropped while `import --apply` said nothing came back."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, f"{heading}\nPatients were enrolled early.")
+    edit = {"enrolled early.": "enrolled late."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"{heading}\nPatients were enrolled late.\n" in text

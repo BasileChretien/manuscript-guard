@@ -2315,15 +2315,17 @@ Closed since, and why each mattered:
   before that change it carried none. Returned after the change, even untouched, that
   paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
   to the paragraph on either side of it is refused as a possible split. A move is worse. A
-  paragraph with no place in the returned document travels with the paragraph it followed,
-  so moving that one elsewhere in the section takes the value paragraph along. `--apply`
-  then writes it where the co-author's document does not have it, and still reports it as
-  left in place. No binding is harmed, but the order is not the co-author's. Rebuild and
-  send the document again rather than import one built before the change. Every other
-  identifier stays as it was, because an index counts every block in its file. Any later
-  change to what `tag` skips will do the same, once, to documents already sent. The fix is
-  to recognise a paragraph that lost its bookmark but kept its text, which Word can do to
-  any paragraph, and it is not done.
+  paragraph with no place in the returned document stays after the paragraph it followed
+  in the source, or first in its section if it was first, so any move that changes what the
+  value paragraph follows goes wrong. Moving the paragraph before it takes it along:
+  `--apply` writes it where the co-author's document does not have it, and still reports it
+  as left in place. Moving another paragraph in front of it is not reported at all, and the
+  co-author's move is dropped. No binding is harmed, but the order is not the co-author's.
+  Rebuild and send the document again rather than import one built before the change.
+  Every other identifier stays as it was, because an index counts every block in its file.
+  Any later change to what `tag` skips will do the same, once, to documents already sent.
+  The fix is to recognise a paragraph that lost its bookmark but kept its text, which Word
+  can do to any paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

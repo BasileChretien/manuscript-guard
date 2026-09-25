@@ -159,11 +159,11 @@ Read the whole diff. What to look for:
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed. A `>` in an edited stretch comes back
-  as `\>` when a `<` before a letter (`<LLOQ`, `<µg`) stands earlier in the paragraph.
-  Leave that too: pandoc can read a bare `<` and `>` with words between them as an HTML
-  tag and drop everything from one to the other, and `check` reads `ROR \> 2` as the
-  threshold it prints. A `<` before a number or a space, as in `p < 0.05`, opens nothing,
-  and the `>` after it comes back as typed.
+  as `\>` when a `<` before a letter (`<LLOQ`, `<µg`) stands earlier in the paragraph, or
+  as `&gt;` straight after an `=` (`=>`, `HR=2.1>1`). Leave both: pandoc can read a bare
+  `<` and `>` with words between them as an HTML tag and drop everything from one to the
+  other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
+  a space, as in `p < 0.05`, opens nothing, and the `>` after it comes back as typed.
 - Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
   abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
   itself. Each prints as it did, but a diff can show a line as changed where nothing

@@ -2059,15 +2059,18 @@ Closed since, and why each mattered:
   can pass; any other number still fails:
   - *In text that is not Markdown.* A string in a listing or a figure script,
     `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
+    Escapes should be read only where the source is Markdown.
   - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
-    read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word.
+    read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word. Atoms
+    should be found in the printed text and mapped back, as the rules already are.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
     backslash there counts as an escape. An escaped backtick, which `import` writes for every
-    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails.
+    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
+    paired across the front matter's edge, too, which pandoc never does. This needs a reader
+    that knows code spans as pandoc does, the one the comment scanner needs.
 
-  A project convention written to match a literal `\>` no longer matches. Closing these
-  needs a reader that knows code spans as pandoc does, the one the comment scanner needs.
+  A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
   in the body, but each of these can still hide a number pandoc prints, all on contrived
   input:
@@ -2240,15 +2243,17 @@ Closed since, and why each mattered:
     before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
     once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
     of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
-    G2 reads `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `<` and a `>`
-    both kept from the source are not Word's to escape. Pandoc read them as text only
-    because something between them was not an attribute name, and an edit that deletes or
-    changes it can make a tag: with values that are words, `Samples <LLOQ in
-    {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were redone.`, with "(see
-    Table 2)" deleted in Word, or turned into `="(see Table 2)"`, merges, and pandoc prints
-    "Samples ULOQ were redone." A `>` in a binding's value
-    is the same case. The read-back does not see it: a digit is not an attribute name, and
-    pandoc's tags are looser than its own reading, which does not take `mg/L` for one.
+    At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
+    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. G2 reads
+    `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
+    source is not Word's to escape, after a `<` kept from the source or brought by a value.
+    Pandoc read the two as text only because something between them was not an attribute
+    name, and an edit that deletes or changes it can make a tag: with values that are words,
+    `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were
+    redone.`, with "(see Table 2)" deleted in Word, or turned into `="(see Table 2)"`,
+    merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value is the
+    same case. The read-back does not see it: a digit is not an attribute name, and pandoc's
+    tags are looser than its own reading, which does not take `mg/L` for one.
   - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
     in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
     `import` reads none of them. An edit inside a footnote or an equation, a changed link

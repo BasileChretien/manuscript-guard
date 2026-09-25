@@ -821,6 +821,32 @@ _OPENER = re.compile(
 _TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
 _TAG_OPENS = re.compile(_TAG_OPEN)
 
+#: An unquoted attribute value running up to a `>`: an `=`, any spaces, then no space. Inside
+#: a tag pandoc takes a backslash there for part of the value, so `=\>` and `HR=2.1\>1`
+#: closed the tag the backslash was meant to keep shut.
+_UNQUOTED = re.compile(r"=\s*\S*\Z")
+
+
+def _closers(shown_before: str, text: str) -> list[str]:
+    """How to write each `>` of Word's `text`, which Word shows after `shown_before`.
+
+    Bare where no `<` that can open a tag stands before it; else `\\>`, or `&gt;` at the end
+    of an unquoted attribute value, where a backslash would be read as part of the value. An
+    entity closes no tag anywhere, but G2 reads `\\>` as a threshold's `>` and not `&gt;`.
+    """
+    shown = shown_before + text
+    opens = _TAG_OPENS.search(shown)
+    out = []
+    for found in re.finditer(">", text):
+        at = len(shown_before) + found.start()
+        if opens is None or opens.start() >= at:
+            out.append(">")
+        elif _UNQUOTED.search(shown, 0, at):
+            out.append("&gt;")
+        else:
+            out.append("\\>")
+    return out
+
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
@@ -843,7 +869,7 @@ def _escaped(
     opening: bool,
     after_token: bool = False,
     before_token: bool = False,
-    after_angle: bool = False,
+    shown_before: str = "",
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -865,21 +891,22 @@ def _escaped(
     into the prose, and `check` refuses that as a number bound to no source.
 
     A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
-    this text, or before it, as `after_angle` says. That `<` need not be Word's: one the
-    source kept bare, or one a binding's value brings, opens a tag that a `>` later in Word's
-    text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples ULOQ".
-    Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits, so the
-    read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and ROR > 2`
-    stays as typed. A `<` in Word's text is escaped itself, above or at a token's edge, so
-    counting one only adds a backslash pandoc does not need; it is counted all the same, in
-    case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it prints.
+    this text, or in `shown_before`, what Word shows ahead of it. That `<` need not be Word's:
+    one the source kept bare, or one a binding's value brings, opens a tag that a `>` later in
+    Word's text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples
+    ULOQ". Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits,
+    so the read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and
+    ROR > 2` stays as typed. A `<` in Word's text is escaped itself, above or at a token's
+    edge, so counting one only adds a backslash pandoc does not need; it is counted all the
+    same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
+    prints. After an `=` the `>` is written `&gt;`; see `_closers`.
     """
     brace = before_token and text.endswith("{")
+    closers = _closers(shown_before, text)
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
-    opens = _TAG_OPENS.search(text)
-    cut = 0 if after_angle else opens.start() if opens else None
-    if cut is not None:
-        text = text[:cut] + text[cut:].replace(">", "\\>")
+    # `_MARKDOWN` neither adds nor removes a `>`, so they are still the ones `closers` read.
+    head, *rest = text.split(">")
+    text = head + "".join(closer + part for closer, part in zip(closers, rest, strict=True))
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -1107,13 +1134,10 @@ def align(
     # is compared with, rendered text against rendered text.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
-    # Whether Word's paragraph shows a `<` that can open a tag before each stretch. One kept
-    # from the source or brought by a binding's value is bare, and a `>` in the stretch would
-    # close it; one Word typed is escaped, and counting it costs only a backslash. Looked for
-    # in the whole text, so a `<` at an edge is read with the character after it.
-    first = _TAG_OPENS.search(returned)
-    starts = [len("".join(after[:at])) for at in [0] + [end for _start, end in placed]]
-    angled = [first is not None and first.start() < start for start in starts]
+    # What Word shows ahead of each stretch. A `<` there that can open a tag, kept from the
+    # source or brought by a binding's value, is bare, and a `>` in the stretch would close
+    # it; an `=` there can make the `>` end an attribute's value. See `_closers`.
+    shown_before = ["".join(after[:at]) for at in [0] + [end for _start, end in placed]]
     out: list[str] = []
     lost: list[str] = []
     unread = False
@@ -1145,7 +1169,7 @@ def align(
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
             out.append(
-                _escaped(piece, opening=index == 0, after_angle=angled[index], **beside)
+                _escaped(piece, opening=index == 0, shown_before=shown_before[index], **beside)
             )
         if index < len(protected):
             out.append(protected[index])

@@ -93,8 +93,12 @@ def _plan_sections(text: str) -> list[Section]:
     title when every heading after it is deeper, or when there is none: it encloses the plan
     rather than being a part of it. A plan that is one heading and some prose therefore has
     no sections, which is the truth about it.
+
+    The text before the first heading is left out by its level, not its title. A heading
+    that is only an attribute block, `### {#inclusion}`, has an empty title too, and was left
+    out with what it heads.
     """
-    sections = [s for s in split_sections(text) if s.title]
+    sections = [s for s in split_sections(text) if s.level > 0]
     if sections and all(s.level > sections[0].level for s in sections[1:]):
         return sections[1:]
     return sections

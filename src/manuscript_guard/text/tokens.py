@@ -102,6 +102,30 @@ class Atom:
         return self.start - self.window_start, self.end - self.window_start
 
 
+def _pieces(raw: str, start: int) -> list[tuple[str, int]]:
+    """A run cut after each `]` that closes a bracket opened before the run began.
+
+    That `]` ends a citation, and what follows it is not part of the locator: `[p. 3]/5 mg`
+    is the locator 3 and the value 5. Read as one run, `3]/` matched no locator rule and G2
+    failed an honest paragraph, and `3]/5` hid the value inside the locator. A bracket opened
+    within the run is the run's own, and keeps it whole: `x[2]y`.
+    """
+    pieces: list[tuple[str, int]] = []
+    depth = cut = 0
+    for index, char in enumerate(raw):
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            if depth:
+                depth -= 1
+            else:
+                pieces.append((raw[cut : index + 1], start + cut))
+                cut = index + 1
+    if cut < len(raw):
+        pieces.append((raw[cut:], start + cut))
+    return pieces
+
+
 def _trim(text: str, start: int) -> tuple[str, int]:
     lead = 0
     while lead < len(text) and text[lead] in _LEAD:
@@ -130,28 +154,34 @@ def find_atoms(original: str, masked: str) -> list[Atom]:
     seen_lines = 0
 
     for match in _ATOM.finditer(masked):
-        raw = match.group(0)
-        if not DIGIT.search(raw):
+        if not DIGIT.search(match.group(0)):
             continue
-        text, start = _trim(raw, match.start())
-        if not text or not DIGIT.search(text):
-            continue
-        end = start + len(text)
-        seen_lines += original.count("\n", seen_upto, start)
-        seen_upto = start
-        line_start = original.rfind("\n", 0, start) + 1
-        found_end = original.find("\n", start)
-        line_end = len(original) if found_end == -1 else found_end
-        atoms.append(
-            Atom(
-                text=text,
-                start=start,
-                end=end,
-                line=seen_lines + 1,
-                col=start - line_start + 1,
-                line_start=line_start,
-                line_end=line_end,
-                source=original,
-            )
-        )
+        for raw, at in _pieces(match.group(0), match.start()):
+            if atom := _atom(original, raw, at, seen_upto, seen_lines):
+                seen_lines += original.count("\n", seen_upto, atom.start)
+                seen_upto = atom.start
+                atoms.append(atom)
     return atoms
+
+
+def _atom(original: str, raw: str, at: int, seen_upto: int, seen_lines: int) -> Atom | None:
+    """One piece of a run as an atom, if a digit is left once its punctuation is trimmed.
+
+    `seen_lines` is the number of line breaks before `seen_upto`, so only the gap from there
+    is counted.
+    """
+    text, start = _trim(raw, at)
+    if not text or not DIGIT.search(text):
+        return None
+    line_start = original.rfind("\n", 0, start) + 1
+    found_end = original.find("\n", start)
+    return Atom(
+        text=text,
+        start=start,
+        end=start + len(text),
+        line=seen_lines + original.count("\n", seen_upto, start) + 1,
+        col=start - line_start + 1,
+        line_start=line_start,
+        line_end=len(original) if found_end == -1 else found_end,
+        source=original,
+    )

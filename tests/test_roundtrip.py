@@ -266,10 +266,15 @@ def _docx_part(document: Path, part: str) -> str:
     return zipfile.ZipFile(document).read(part).decode("utf-8")
 
 
+#: The plain build, and the marked one `import` compares with: both go through `_untagged`.
+BUILDS = pytest.mark.parametrize("mark", [False, True], ids=["plain", "marked"])
+
+
 @needs_pandoc
+@BUILDS
 @pytest.mark.parametrize(("paragraph", "definition", "shown"), REFERENCE_LINKS)
 def test_a_link_definition_is_left_for_pandoc_to_read(
-    paragraph: str, definition: str, shown: str, tmp_path: Path
+    paragraph: str, definition: str, shown: str, mark: bool, tmp_path: Path
 ) -> None:
     """`[reg]: https://...` standing as its own block defines a reference-style link. With an
     identifier in front of it, pandoc read it as a paragraph instead: every `[text][reg]` in
@@ -280,7 +285,8 @@ def test_a_link_definition_is_left_for_pandoc_to_read(
     from manuscript_guard.roundtrip import paragraph_text, tag
 
     source = tmp_path / "a.md"
-    source.write_text(tag(f"{paragraph}\n\n{definition}\n", "main.md"), encoding="utf-8")
+    text = f"{paragraph}\n\n{definition}\n"
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
     document = tmp_path / "a.docx"
     subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
 
@@ -292,7 +298,8 @@ def test_a_link_definition_is_left_for_pandoc_to_read(
 
 
 @needs_pandoc
-def test_a_footnote_definition_is_left_for_pandoc_to_read(tmp_path: Path) -> None:
+@BUILDS
+def test_a_footnote_definition_is_left_for_pandoc_to_read(mark: bool, tmp_path: Path) -> None:
     """The same syntax defines a footnote, and failed the same way: `[^cap]` printed in the
     paragraph, and the note's text printed as a paragraph of its own."""
     import subprocess
@@ -301,7 +308,7 @@ def test_a_footnote_definition_is_left_for_pandoc_to_read(tmp_path: Path) -> Non
 
     source = tmp_path / "a.md"
     text = "Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n"
-    source.write_text(tag(text, "main.md"), encoding="utf-8")
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
     document = tmp_path / "a.docx"
     subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
 
@@ -377,15 +384,16 @@ BLOCKS = [
 ]
 
 
+@BUILDS
 @pytest.mark.parametrize(("block", "reads"), BLOCKS)
 def test_only_a_block_of_definitions_is_left_without_an_identifier(
-    block: str, reads: str
+    block: str, reads: str, mark: bool
 ) -> None:
     """A paragraph keeps its identifier however it opens: with a bracket, with a citation and
     a colon, or with a line pandoc would swallow as a definition."""
     from manuscript_guard.roundtrip import tag
 
-    tagged = tag(block, "main.md")
+    tagged = tag(block, "main.md", mark=mark)
     assert (tagged == block) is (reads == DEFINITION), tagged
     assert tagged.lstrip().startswith("[]{#mg-p-") is (reads != DEFINITION), tagged
 

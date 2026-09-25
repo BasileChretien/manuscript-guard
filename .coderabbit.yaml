@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews only pull requests into the default branch unless told otherwise. A
+# pull request stacked on another one's branch gets "Review skipped", so a fix that waits
+# on an earlier fix went unreviewed by it. Review every base branch.
+reviews:
+  auto_review:
+    base_branches:
+      - ".*"

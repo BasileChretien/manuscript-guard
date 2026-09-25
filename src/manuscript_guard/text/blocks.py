@@ -29,35 +29,10 @@ import re
 from bisect import bisect_right
 from dataclasses import dataclass
 
+from manuscript_guard.text.comments import blank_comments, comment_spans
 from manuscript_guard.text.fences import blank_fences, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
-
-
-def _comments(text: str) -> list[tuple[int, int]]:
-    """Every `<!-- ... -->`, as offsets. `<!--.*?-->` read to the end of the text for each
-    opener that never closed, which is quadratic in them; once one never closes, none after
-    it can, so the scan stops there."""
-    found = []
-    position = 0
-    while (opening := text.find("<!--", position)) != -1:
-        closing = text.find("-->", opening + 4)
-        if closing == -1:
-            break
-        found.append((opening, closing + 3))
-        position = closing + 3
-    return found
-
-
-def _blank_out(text: str, spans: list[tuple[int, int]]) -> str:
-    pieces = []
-    position = 0
-    for start, end in spans:
-        pieces.append(text[position:start])
-        pieces.append("".join("\n" if ch == "\n" else " " for ch in text[start:end]))
-        position = end
-    pieces.append(text[position:])
-    return "".join(pieces)
 
 
 def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
@@ -71,9 +46,9 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     # headed a body the build printed without it.
     skip = front_matter_end(text)
     body = blank_fences(text[skip:])
-    comments = _comments(body)
-    head = _blank_out(text[:skip], [(0, skip)])
-    return head + _blank_out(body, comments), [(skip + a, skip + b) for a, b in comments]
+    comments = comment_spans(body)
+    head = blank_comments(text[:skip], [(0, skip)])
+    return head + blank_comments(body, comments), [(skip + a, skip + b) for a, b in comments]
 
 
 def scannable(text: str) -> str:

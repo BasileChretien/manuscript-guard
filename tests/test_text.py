@@ -599,3 +599,26 @@ def test_a_malformed_binding_in_a_comment_is_not_reported() -> None:
 
     _found, malformed = parse("<!-- {{results.}} -->\n")
     assert not malformed
+
+
+# ------------------------------------------------- one comment scanner, and a linear one
+
+
+def test_the_comment_scanner_finds_what_the_regex_found() -> None:
+    """`comment_spans` replaced `<!--.*?-->` (DOTALL) in the masking, the placeholder parser
+    and the heading scan, so that the three cannot disagree about what is a comment and none
+    of them is quadratic. It must find exactly the spans the regex found, bounds included."""
+    import random
+    import re
+
+    from manuscript_guard.text.comments import comment_spans
+
+    regex = re.compile(r"<!--.*?-->", re.DOTALL)
+    pieces = ["<!--", "-->", "<!-->", "<!--->", "-", ">", "<", "!", "a", "\n", " ", "--"]
+    generator = random.Random(20260925)
+    for _ in range(4000):
+        text = "".join(generator.choice(pieces) for _ in range(generator.randint(0, 14)))
+        begin = generator.randint(0, len(text))
+        end = generator.randint(begin, len(text))
+        expected = [m.span() for m in regex.finditer(text, begin, end)]
+        assert comment_spans(text, begin, end) == expected, repr((text, begin, end))

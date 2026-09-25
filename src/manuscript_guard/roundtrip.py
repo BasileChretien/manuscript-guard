@@ -266,9 +266,11 @@ _LINK_LINE = re.compile(
 # A footnote: its label and its text on one line. Pandoc parses a note's text by itself, so
 # nothing in it reaches the body - but a line under it is more of the note, even a link's
 # definition, and that link then resolves nowhere. So links come first. And a note runs on
-# through every line pandoc does not take for blank: under a line holding only a no-break
-# space, the next paragraph went into the footnote and left the body, and a co-author's
-# edit to it was dropped. So a note is left alone only with a blank line below it.
+# through every line pandoc does not take for blank, and past a blank line into an indented
+# one: under a line holding only a no-break space, the next paragraph went into the footnote
+# and left the body, and a co-author's edit to it was dropped. So a note is left alone only
+# when the line directly above the next block is blank. A block indented under a note, after
+# a blank line, is more of the note to pandoc, and its text is footnote text.
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 
 
@@ -286,9 +288,12 @@ def _only_definitions(block: str, below: str) -> bool:
 
 
 def _blank_below(below: str) -> bool:
-    """Whether a line pandoc takes for blank - empty, or spaces and tabs - stands between a
-    block and the next. `below` is what separates them, empty at the end of the text."""
-    return below == "" or any(line.strip(" \t") == "" for line in below.split("\n")[1:-1])
+    """Whether the next block starts afresh after a note: whether the line directly above it
+    is blank to pandoc - empty, or spaces and tabs. `below` is what separates them, empty at
+    the end of the text. A blank line further up is not enough: after one, a line indented
+    four spaces is more of the note to pandoc, even one holding only a no-break space, and
+    the paragraph under it runs on in it."""
+    return _blank_above(below)
 
 
 def _blank_above(above: str) -> bool:

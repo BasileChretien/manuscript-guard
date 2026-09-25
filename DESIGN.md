@@ -2251,9 +2251,12 @@ Closed since, and why each mattered:
     markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
     line a citation. No part holds a brace, because a binding is filled in after this
     reading and its value could change it. A footnote is its label and its text on one
-    line. Links come before notes, because a line under a note is more of the note, and a
-    note runs on through every line pandoc does not take for blank - so a note is left
-    alone only with such a line below it. Anything else - a definition wrapped over two
+    line. Links come before notes, because a line under a note is more of the note. A note
+    also runs on through every line pandoc does not take for blank, and past a blank line
+    into an indented one, so it is left alone only when the line directly above the next
+    block is empty or holds only spaces and tabs. A block indented under a note after a
+    blank line is more of the note, as pandoc reads it, and its text is footnote text,
+    which `import` does not compare. Anything else - a definition wrapped over two
     lines, with attributes or a title on the next line, a nested bracket in its label, a
     footnote whose text wraps, or one written straight above prose - is marked, and prints
     as text, as it did before this fix. That failure is visible. Three versions that
@@ -2262,9 +2265,11 @@ Closed since, and why each mattered:
     `import` said nothing came back, and one took minutes over a line of attributes. A
     fourth left a definition unmarked under a line that is blank here and not to pandoc -
     one holding only a no-break or full-width space, or a form feed - which pandoc reads
-    with the definition as a paragraph; and a fifth, a note over such a line, into which
-    the next paragraph ran and left the body. One definition per line, with an empty line
-    before the block and after it, is what works.
+    with the definition as a paragraph; a fifth, a note over such a line, into which the
+    next paragraph ran and left the body; and a sixth, a note over a blank line and then an
+    indented one holding only such a character, which carried the next paragraph off the
+    same way. One definition per line, with an empty line before the block and directly
+    after it, is what works.
   - *A document built before this change is best sent again.* It shows each definition as
     a paragraph, with an identifier the rebuild no longer has, so a co-author's edit to one
     is not compared, and is not named in the report.

@@ -3460,8 +3460,9 @@ def test_a_paragraph_moved_across_a_definition_is_moved(
 def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
     project: Path,
 ) -> None:
-    """Blank lines and definitions are no boundary; a table, a heading, or a definition
-    under a line pandoc does not take for blank (which is then a paragraph) is."""
+    """Blank lines and definitions are no boundary; a table or a heading is. A definition
+    under a line pandoc does not take for blank is a paragraph, with its own identifier,
+    so it is neither: it sits in the section of the paragraphs around it."""
     from manuscript_guard.contracts import load_project
     from manuscript_guard.merge import _sections
     from manuscript_guard.roundtrip import tagged_paragraphs
@@ -3476,6 +3477,8 @@ def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
         f"[other]: {REGISTRY}/other",
         "# Heading",
         "Delta.",
+        chr(0xA0) + f"\n[late]: {REGISTRY}/late",
+        "Epsilon.",
     ]
     (project / "manuscript" / "sections.md").write_text("\n\n".join(pieces) + "\n", "utf-8")
     loaded, _report = load_project(project)
@@ -3488,3 +3491,5 @@ def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
     assert section["Alpha."] == section["Beta."]
     assert section["Gamma."] == section["Beta."] + 1
     assert section["Delta."] == section["Gamma."] + 1
+    assert section[f"[late]: {REGISTRY}/late"] == section["Delta."]
+    assert section["Epsilon."] == section["Delta."]

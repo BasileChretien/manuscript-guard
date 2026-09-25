@@ -283,7 +283,7 @@ HOLD_CASES = {
     "brackets around code that holds a link end": "See [the `f](x)` here" + AFTER,
     "a footnote reference before parentheses": "As shown[^note](a`b) and `ror." + AFTER,
     "a reference link before parentheses": "[a][b](x`y) z `w <!-- q` end.",
-    "link text holding a dollar": "[a $](x)$ and <!-- b ($c$) end.",
+    "link text holding a dollar": "[a $](x)$b and <!-- c ($y$) end.",
     "an autolink with a scheme pandoc does not know": "See <zzz:a`b> and `ror." + AFTER,
     "an attribute name with a dot": 'Text <span data.x="a`b"> x `c <!-- d` end.',
     "an attribute name opening with an underscore": 'Text <span _x="a`b"> x `c <!-- d` end.',
@@ -357,20 +357,32 @@ def test_import_holds_the_paragraphs_pandoc_runs_on_or_shows_maths_in() -> None:
     assert not wrong, "\n".join(wrong)
 
 
-@pytest.mark.parametrize("value", ["0.50", "-0.50", "\N{MINUS SIGN}0.50"])
-def test_import_holds_a_paragraph_whatever_sign_a_binding_after_maths_prints(value: str) -> None:
+NEGATIVE_AFTER_MATHS = (
+    "The $\\text{" + TICKS + "crude''}$ ratio changed by $x${{results.delta}} units. "
+    "<!-- a draft ($y$, " + TICKS + "raw'') said:"
+)
+
+#: A binding straight after a closing `$`: the source as `_bare` reads it, and the number the
+#: build fills in, as pandoc reads it. Each is found by one reading alone. A negative number
+#: lets the maths close before it, which only the reading that takes a binding for a minus
+#: sign sees; a positive one does not, and only the reading that takes it for digits sees
+#: where the maths closes instead.
+BINDINGS_AFTER_MATHS = {
+    "a negative number": (NEGATIVE_AFTER_MATHS, "-0.50"),
+    "a negative number, with a minus sign": (NEGATIVE_AFTER_MATHS, chr(0x2212) + "0.50"),
+    "a positive number": ("The $x${{results.delta}} and `y$z <!-- a $w`$ q", "0.50"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BINDINGS_AFTER_MATHS))
+def test_import_holds_a_paragraph_whatever_sign_a_binding_after_maths_prints(name: str) -> None:
     """`_bare` reads the source, where a binding is `{{...}}`; pandoc reads the build, where it
     is a number. After a closing `$`, a number starting with a digit keeps pandoc from closing
-    the maths there, and a negative one does not, which ran the comment on. The maths before
-    it hides the comment from the first reading, so the second has to find it."""
+    the maths there, and a negative one does not. Read either way alone, one of these ran
+    the comment on and hid it."""
     from manuscript_guard.merge import _bare
 
-    source = (
-        "The $\\text{" + TICKS + "crude''}$ ratio changed by $x${{results.delta}} units. "
-        "<!-- a draft ($y$, " + TICKS + "raw'') said:"
-    )
-    [(runs_on, display)] = pandoc_holds([source.replace("{{results.delta}}", value)])
-    opens, maths = _bare(source)
-    assert (runs_on <= opens) and (display <= maths), (
-        f"filled with {value}: pandoc runs on {runs_on}; _bare finds a comment {opens}"
-    )
+    source, value = BINDINGS_AFTER_MATHS[name]
+    [(runs_on, _display)] = pandoc_holds([source.replace("{{results.delta}}", value)])
+    assert runs_on, f"{name}: pandoc runs no comment on, so the case tests nothing"
+    assert _bare(source)[0], f"{name}: pandoc runs the comment on, and _bare does not find it"

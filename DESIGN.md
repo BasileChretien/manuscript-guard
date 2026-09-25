@@ -2440,16 +2440,18 @@ Closed since, and why each mattered:
   equation and all, is refused like dragging its first part. A comment opened in a paragraph
   is found by reading the source two ways: once with code spans and closed comments set
   aside, and once with maths, raw TeX, a link's address, autolinks and HTML tags set aside
-  as well. Either finding it holds the paragraph, so it is missed only where both readings
-  miss it, each for its own reason: backticks inside inline maths, which the first takes for
-  code, followed by a brace group a TeX command does not take, which the second takes for
-  its argument, hide a comment from both. Raw TeX with braces nested more than three deep,
-  and a link whose text nests brackets more than one deep, are prose to both, so a backtick
-  inside them can still be taken for one that opens a code span. A comment is the only thing
-  looked for that runs past a paragraph, and pandoc runs two others past it too. Raw TeX
-  whose brace closes only in a later paragraph, and an HTML attribute whose quote does,
-  swallow everything up to that close. Such a paragraph is held only when it swallows a
-  tagged paragraph, which is then found hidden; otherwise it can be moved.
+  as well, that second reading made twice when a binding follows a closing `$`: once taking
+  the binding for digits and once for a minus sign. Any of them finding it holds the
+  paragraph, so it is missed only where every reading misses it, each for its own reason:
+  backticks inside inline maths, which the first takes for code, followed by a brace group a
+  TeX command does not take, which the second takes for its argument, hide a comment from
+  all of them. Raw TeX with braces nested more than three deep, and a link whose text nests
+  brackets more than one deep, are prose to every reading, so a backtick inside them can
+  still be taken for one that opens a code span. A comment is the only thing looked for that
+  runs past a paragraph, and pandoc runs two others past it too. Raw TeX whose brace closes
+  only in a later paragraph, and an HTML attribute whose quote does, swallow everything up
+  to that close. Such a paragraph is held only when it swallows a tagged paragraph, which is
+  then found hidden; otherwise it can be moved.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A

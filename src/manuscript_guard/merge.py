@@ -192,9 +192,10 @@ _BLOCK_LINE = re.compile(
 
 
 #: What `_bare` sets aside before it looks for an open comment or display maths, in two
-#: readings. A paragraph is held when either finds one, because each hides some that pandoc
-#: shows, and missing one lets a move write a paragraph into the comment; finding one that
-#: pandoc does not show only holds a paragraph that could have moved.
+#: readings, the second made twice when the paragraph holds a binding. A paragraph is held
+#: when any of them finds one, because each hides some that pandoc shows, and missing one
+#: lets a move write a paragraph into the comment; finding one that pandoc does not show
+#: only holds a paragraph that could have moved.
 #:
 #: The first sets aside a backslash escape, a code span and a comment that closes.
 _CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
@@ -280,7 +281,8 @@ def _blank(match: re.Match[str]) -> str:
 
 
 def _set_aside(match: re.Match[str]) -> str:
-    """What is left of one construct `_ASIDE` found: blanks, the same length."""
+    """What is left of one construct the second reading found: blanks, the same length. A
+    link's text is read again by the same pattern, since pandoc reads it as Markdown."""
     if match.group("display"):
         return "$$" + " " * (len(match.group(0)) - 4) + "$$"
     if match.group("link"):

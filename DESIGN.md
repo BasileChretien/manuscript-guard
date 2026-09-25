@@ -2236,12 +2236,20 @@ Closed since, and why each mattered:
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
-  - *Pandoc's own no-break spaces come back as characters.* Pandoc puts one after an
-    abbreviation it knows ("e.g.", "et al.", "p.", "vs."), where the source has a plain
-    space. A stretch the co-author left alone keeps the source's space, but an edited one is
-    Word's text, and puts pandoc's character into the `.md`. It prints the same and `check`
-    reads it the same, but it cannot be seen in an editor, and a diff shows the line as
-    changed there. Where the source is read against Word's text, U+00A0 therefore counts
+  - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
+    again.* Pandoc puts one after an abbreviation on its list ("e.g.", "et al.", "p.",
+    "vs."), where the source has a plain space, before anything but a citation or a line
+    break. An edited stretch is Word's text, and it used to put pandoc's character into the
+    `.md`: it printed the same, but nobody could see it, a diff showed the line as changed
+    there, and a search for "et al. 2020" missed it. It is now written back as a space,
+    using the list pandoc itself reads (`build.document.abbreviations`: the user's own file
+    in pandoc's data directory, else pandoc's default). It stays a character where pandoc
+    would not put it back: before a citation, after a word not on the list, after a word
+    glued to a binding's value, and after one whose full stop the opening's escape set apart
+    (`p\.`). A no-break space the co-author typed after an abbreviation is written back as a
+    space too, which prints the same. The build passes pandoc no `--data-dir`; if it ever
+    does, `abbreviations` must read that directory as well, or the two lists part. Where
+    the source is read against Word's text, U+00A0 therefore counts
     as a space; Word's text against Word's text compares it exactly, so one the co-author
     typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
     space taken out again in Word is no edit, and the next build puts it back. Only where

@@ -2326,13 +2326,16 @@ Closed since, and why each mattered:
   built before the change. Every other identifier stays as it was, because an index counts
   every block in its file; a change to how a file is split into blocks would renumber them.
   A later change that starts tagging a block does the same as this one, once, to documents
-  already sent. One that stops tagging a block is quieter: in a document already sent, an
-  edit to that block is dropped with "nothing came back", and `import` exits 0. A version
-  number for the tagging rules, stamped into the document and refused on a mismatch, would
-  catch either change in a document stamped with an earlier number, and neither in one
-  built before such a number existed, which records none. The fix here is to recognise a
-  paragraph that lost its bookmark but kept its text, which Word can do to any paragraph,
-  and it is not done.
+  already sent. One that stops tagging a block is quieter. In a document already sent, the
+  block's identifier names nothing the import knows, and is ignored: an edit to the block is
+  dropped without a report, with "nothing came back" if nothing else was edited, and a move
+  that changes what the block follows is dropped, applied with the block on the wrong side,
+  or refused as a move into another section - and only that last exits 1. A version number
+  for the tagging rules, stamped into the document and refused on a mismatch, would catch
+  either change in a document stamped with an earlier number, and neither in one built
+  before such a number existed, which records none. For this change, the fix is to
+  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
+  paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

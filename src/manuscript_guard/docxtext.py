@@ -267,10 +267,15 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
 
 
 def comment_anchors(document: Path) -> dict[str, str]:
-    """Which paragraph each comment is attached to, by the comment's id."""
+    """Which paragraph each comment is attached to, by the comment's id.
+
+    Not a table cell's bookmark, which `blocks` already refuses as an identity: every build
+    before identifiers moved off tables put one in each pipe table's first cell, and a cell
+    is never the source block the identifier names.
+    """
     found: dict[str, str] = {}
     for paragraph in paragraphs_of(document):
-        if paragraph.names:
+        if paragraph.names and not paragraph.table:
             for ident in paragraph.comments:
                 found[ident] = paragraph.names[0]
     return found

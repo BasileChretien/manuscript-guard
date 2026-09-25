@@ -468,6 +468,14 @@ produces confident failures about a rule that does not exist. A profile over a y
 warns. Switching journals after a rejection means writing a second profile and reading the
 resulting failure list, which is the reformatting job itemised.
 
+**A required statement counts where it prints as one.** A profile's statement patterns are
+searched in the main text with its HTML comments and fenced code blanked, as the heading
+scan sees it. A comment prints nothing, and a listing prints its lines as code, not as a
+declaration. `# Funding` is a heading in Markdown and a comment in R and Python, and inside
+either it met the funding statement of a paper that had none. So a statement written inside
+a code block does not count. That is the one false alarm this can raise, and no journal
+takes a statement written as code.
+
 **Checklists are transcribed from their official documents, never written from memory.**
 Item text that is approximately right produces confident coverage of the wrong things, and
 approximately-right official wording inside a toolkit whose whole argument is that
@@ -1828,12 +1836,6 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A required statement can be met by text that does not print.** G4 matches a journal's
-  statement patterns against the main text with its HTML comments and fenced code still in
-  it, so a `# Funding` line inside a multi-line `<!-- -->` satisfies the funding statement
-  of a paper whose .docx has none. On one line, `<!-- # Funding -->`, it does not satisfy
-  the example's pattern, which is anchored at the start of a line; an unanchored pattern
-  would match it there too.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written

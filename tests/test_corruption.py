@@ -999,6 +999,30 @@ def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path
     )
 
 
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        "<!--\n# Funding\nTBD\n-->\n",
+        "```r\n# Funding source, from the registry\nfunder <- NA\n```\n",
+        "~~~python\n# Funding\nfunder = None\n~~~\n",
+    ],
+)
+def test_a_statement_that_does_not_print_as_one_is_missing(project: Path, hidden: str) -> None:
+    """The statement patterns were searched in the main text with its HTML comments and
+    fenced code still in it. `# Funding` is a heading in Markdown and a comment in R and
+    Python: inside `<!-- -->` it satisfied the journal's funding statement and printed
+    nothing, and inside a listing it printed as a line of code. Either way the paper went
+    out with no funding statement."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    main.write_text(f"{text}\n{hidden}", encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
+    )
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never

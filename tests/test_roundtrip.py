@@ -38,8 +38,8 @@ def guessed(source: str, rendered: str) -> list[tuple[int, int]] | None:
     """
     from manuscript_guard.roundtrip import _read
 
-    rendered = rendered.replace(" ", " ")
-    flat = [shown.strip().replace(" ", " ") for shown in _read(source).shown]
+    rendered = rendered.replace("\u00a0", " ")
+    flat = [shown.strip().replace("\u00a0", " ") for shown in _read(source).shown]
     spans: list[tuple[int, int]] = []
     cursor = 0
     if flat[0]:
@@ -68,15 +68,24 @@ def guessed(source: str, rendered: str) -> list[tuple[int, int]] | None:
     return spans
 
 
-def align(source: str, rendered: str, returned: str, tokens=None):
+def align(source: str, rendered: str, returned: str, tokens=None, abbreviations=frozenset()):
     """`roundtrip.align`, with the token extents guessed when a test gives none."""
     from manuscript_guard.roundtrip import align as real
 
-    return real(source, rendered, returned, guessed(source, rendered) if tokens is None else tokens)
+    extents = guessed(source, rendered) if tokens is None else tokens
+    return real(source, rendered, returned, extents, abbreviations)
 
 
-def realign(source: str, rendered: str, returned: str, tokens=None) -> str | None:
-    return align(source, rendered, returned, tokens).rebuilt
+def realign(
+    source: str, rendered: str, returned: str, tokens=None, abbreviations=frozenset()
+) -> str | None:
+    return align(source, rendered, returned, tokens, abbreviations).rebuilt
+
+
+#: Abbreviations from pandoc 3.9's default list, which is what `import` passes when nobody
+#: has a list of their own: the no-break space pandoc puts after one is written back as the
+#: space it makes one of again.
+ABBREVIATIONS = frozenset({"e.g.", "i.e.", "al.", "p.", "pp.", "vs.", "No.", "cf.", "fig."})
 
 
 def edit_docx(source: Path, target: Path, replacements: dict[str, str]) -> Path:
@@ -766,8 +775,8 @@ def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
         pytest.param(
             "As @a reported, it was {{results.x}} overall.",
             "As ⟦A (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
-            "As A (2019) [pooled] overall.",
-            "As @a {{results.x}} overall.",
+            "As A (2019)\u00a0[pooled] overall.",
+            "As @a\u00a0{{results.x}} overall.",
             id="bracketed-value-after-a-no-break-space",
         ),
     ],
@@ -1475,7 +1484,7 @@ NO_BREAK = [
         "Smith et al. 2020 found it.",
         "Smith et al.\u00a02020 found it.",
         "Smith et al.\u00a02020 found this.",
-        "Smith et al.\u00a02020 found this.",
+        "Smith et al. 2020 found this.",
         id="pandoc-abbreviation-edited",
     ),
     pytest.param(
@@ -1500,8 +1509,207 @@ def test_a_no_break_space_merges_as_typed(
 
     Pandoc adds one of its own after an abbreviation it knows ("et al.", "e.g.", "p."), where
     the source has a plain space. That is typesetting, not an edit: a stretch left alone keeps
-    the source's space, and an edited one carries pandoc's character, which prints the same."""
-    assert realign(source, rendered, returned) == expected
+    the source's space, and an edited one writes pandoc's back as a space, which pandoc makes
+    one of again."""
+    assert realign(source, rendered, returned, abbreviations=ABBREVIATIONS) == expected
+
+
+ABBREVIATED = [
+    pytest.param(
+        "It was high, e.g. {{results.x}} in all.",
+        "It was high, e.g.\u00a03.84 in all.",
+        "It was very high, e.g.\u00a03.84 in all.",
+        "It was very high, e.g. {{results.x}} in all.",
+        id="before-a-binding",
+    ),
+    pytest.param(
+        "Some cohorts (e.g. adults) were small.",
+        "Some cohorts (e.g.\u00a0adults) were small.",
+        "Some cohorts (e.g.\u00a0older adults) were small.",
+        "Some cohorts (e.g. older adults) were small.",
+        id="after-a-parenthesis",
+    ),
+    pytest.param(
+        "The ratio was {{results.x}} vs. none in all cases.",
+        "The ratio was 3.84 vs.\u00a0none in all cases.",
+        "The ratio was 3.84 vs.\u00a0none in most cases.",
+        "The ratio was {{results.x}} vs. none in most cases.",
+        id="after-a-binding",
+    ),
+    pytest.param(
+        "As shown, e.g. [@smith2020] here.",
+        "As shown, e.g. (Smith 2020) here.",
+        "As seen, e.g.\u00a0(Smith 2020) here.",
+        "As seen, e.g.\u00a0[@smith2020] here.",
+        id="before-a-citation",
+    ),
+    pytest.param(
+        "See Fig. 1 for the rest.",
+        "See Fig. 1 for the rest.",
+        "See Fig.\u00a01 for the others.",
+        "See Fig.\u00a01 for the others.",
+        id="not-an-abbreviation",
+    ),
+    pytest.param(
+        "A xe.g. word here.",
+        "A xe.g. word here.",
+        "A xe.g.\u00a0word there.",
+        "A xe.g.\u00a0word there.",
+        id="inside-a-word",
+    ),
+    pytest.param(
+        "p. 4 shows it.",
+        "p.\u00a04 shows it.",
+        "p.\u00a04 shows this.",
+        "p\\.\u00a04 shows this.",
+        id="escaped-at-the-opening",
+    ),
+    pytest.param(
+        "Values {{results.x}}vs. none here.",
+        "Values 3.84vs. none here.",
+        "Values 3.84vs.\u00a0none there.",
+        "Values {{results.x}}vs.\u00a0none there.",
+        id="glued-to-a-binding",
+    ),
+    pytest.param(
+        "Some cohorts (e.g. adults) were small.",
+        "Some cohorts (e.g.\u00a0adults) were small.",
+        "Some cohorts (e.g.\u00a0 older adults) were small.",
+        "Some cohorts (e.g.\u00a0 older adults) were small.",
+        id="followed-by-a-space",
+    ),
+    pytest.param(
+        "Mail it to desk@p. 4 of the form.",
+        "Mail it to desk@p. 4 of the form.",
+        "Send it to desk@p.\u00a04 of the form.",
+        "Send it to desk@p.\u00a04 of the form.",
+        id="after-an-at-sign",
+    ),
+    pytest.param(
+        "See \\@p. 4 here.",
+        "See @p.\u00a04 here.",
+        "See @p.\u00a04 there.",
+        "See \\@p. 4 there.",
+        id="after-an-escaped-at-sign",
+    ),
+    pytest.param(
+        "Mail it to desk@lab-p. 4 of the form.",
+        "Mail it to desk@lab-p. 4 of the form.",
+        "Send it to desk@lab-p.\u00a04 of the form.",
+        "Send it to desk@lab-p.\u00a04 of the form.",
+        id="after-an-example-label",
+    ),
+    pytest.param(
+        "Write to {{results.c}}-p. 4 please.",
+        "Write to desk@lab-p. 4 please.",
+        "Write to desk@lab-p.\u00a04 thanks.",
+        "Write to {{results.c}}-p.\u00a04 thanks.",
+        id="run-on-from-a-binding",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), ABBREVIATED)
+def test_pandocs_own_no_break_space_is_written_back_as_a_space(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """An edited stretch is Word's text, and pandoc's no-break space after "e.g." went into the
+    .md as a character nobody can see: a diff showed the line changed there, and a search for
+    "et al. 2020" missed it. It is written back as a space where pandoc makes one of it again:
+    after a whole word on pandoc's list, with something other than a citation after it. It is
+    kept where pandoc would not: before a citation, after a word not on the list, or where
+    escaping the opening's full stop splits the word."""
+    assert realign(source, rendered, returned, abbreviations=ABBREVIATIONS) == expected
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "rendered", "returned", "expected"), ABBREVIATED)
+def test_pandocs_own_no_break_space_written_back_prints_the_same(
+    source: str, rendered: str, returned: str, expected: str, tmp_path: Path
+) -> None:
+    """The artefact: the source as it was prints as what the test says Word was sent, and the
+    merged source prints exactly what came back, no-break spaces included."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    def printed(markdown: str, name: str) -> str:
+        # The citation stays one for pandoc, which puts no no-break space before it; without
+        # citeproc it prints as its key, read here as the test's rendering of it.
+        path = tmp_path / f"{name}.md"
+        filled = markdown.replace("{{results.x}}", "3.84").replace("{{results.c}}", "desk@lab")
+        path.write_text(f"[]{{#mg-p-x-0}}{filled}\n", encoding="utf-8")
+        subprocess.run(["pandoc", str(path), "-o", str(tmp_path / f"{name}.docx")], check=True)
+        text = paragraph_text(tmp_path / f"{name}.docx")["mg-p-x-0"]
+        return text.replace("[@smith2020]", "(Smith 2020)")
+
+    assert printed(source, "sent") == rendered
+    assert printed(expected, "merged") == returned
+
+
+def test_writing_back_a_no_break_space_is_linear_in_a_long_word() -> None:
+    """Looking for a bare `@` in the word before the abbreviation searched the text before it
+    with `\\S*\\Z`, which rescans a long run from every place in it: with a URL of 8,000
+    characters ahead of a few "e.g.", `align` took 16 seconds. Doubling the input must not
+    much more than double the time."""
+    import time
+
+    from manuscript_guard.roundtrip import _respaced
+
+    def measure(length: int) -> float:
+        text = f"See https://example.org/{'a' * length} and e.g.\u00a0this."
+        started = time.perf_counter()
+        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
+        return time.perf_counter() - started
+
+    small = max(min(measure(4000) for _ in range(3)), 1e-4)
+    large = min(measure(16000) for _ in range(3))
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+@needs_pandoc
+def test_import_reads_the_abbreviations_pandoc_itself_uses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's own list when pandoc's data directory has one, which pandoc reads instead of
+    its default, and read as pandoc reads it. Taken from the default, or with each line
+    stripped, a no-break space the co-author typed after a word the user's pandoc does not
+    treat as an abbreviation - `e.g. ` with a stray space is not `e.g.` to pandoc - came back
+    as a plain space, and the next build printed it so. Read as text, a lone carriage return
+    ended a line, where pandoc drops it and joins `vs.` and `q.v.` into one."""
+    import subprocess
+
+    from manuscript_guard.build import document
+
+    (tmp_path / "pandoc").mkdir()
+    listed = "\ufeffcf.\r\ne.g. \r\nvs.\rq.v.\n\n"
+    (tmp_path / "pandoc" / "abbreviations").write_bytes(listed.encode("utf-8"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+    native = subprocess.run(
+        ["pandoc", "-t", "native"],
+        input="See cf. this, e.g. that, vs. them, q.v. it.",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    assert "cf.\\160this" in native, native
+    assert all(f'"{word}"' in native for word in ("e.g.", "vs.", "q.v.")), native
+    assert document.abbreviations() == {"cf.", "e.g. ", "vs.q.v."}
+
+
+@needs_pandoc
+def test_pandocs_default_abbreviations_are_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a list of the user's own, pandoc's default. Isolated from the machine's own
+    data directory, which may hold a list."""
+    from manuscript_guard.build import document
+
+    (tmp_path / "pandoc").mkdir()
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    assert document.abbreviations() >= ABBREVIATIONS
 
 
 @pytest.mark.parametrize(
@@ -1546,7 +1754,9 @@ def test_a_no_break_space_prints_as_it_came_back(
         return paragraph_text(tmp_path / f"{name}.docx")["mg-p-x-0"]
 
     assert printed(source, "sent") == rendered
-    assert printed(realign(source, rendered, returned), "merged") == returned
+    merged = realign(source, rendered, returned, abbreviations=ABBREVIATIONS)
+    assert merged == expected
+    assert printed(merged, "merged") == returned
 
 
 @pytest.mark.parametrize(
@@ -3286,6 +3496,40 @@ def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert "a footnote" in capsys.readouterr().out
     assert paragraph in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("paragraph", "was", "now", "expected"),
+    [
+        pytest.param(
+            "As Smith et al. reported, the signal was clear.",
+            "the signal was clear.",
+            "the signal was plain.",
+            "As Smith et al. reported, the signal was plain.",
+            id="plain",
+        ),
+        pytest.param(
+            "In such cohorts, e.g. {{results.ror.point}} was the ratio.",
+            "In such cohorts",
+            "In these cohorts",
+            "In these cohorts, e.g. {{results.ror.point}} was the ratio.",
+            id="before-a-binding",
+        ),
+    ],
+)
+def test_import_writes_pandocs_no_break_space_back_as_a_space(
+    project: Path, tmp_path: Path, paragraph: str, was: str, now: str, expected: str
+) -> None:
+    """End to end: a paragraph with "et al." or "e.g." reworded in Word put pandoc's no-break
+    space into the .md as an invisible character. `expected` has plain spaces only."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {was: now})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
 
 
 # ------------------------------------ end to end: a paragraph cut down to its number stays named

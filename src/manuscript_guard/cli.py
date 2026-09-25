@@ -19,6 +19,7 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
+from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import ContractError, load_namespace, load_project
 from manuscript_guard.findings import Report, merge_all
@@ -361,6 +362,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         try:
             build_document(project, assembled, mode=OFFLINE, output=reference)
             build_document(project, marked_assembly, mode=OFFLINE, output=tokens)
+            abbreviated = abbreviations()
         except BuildError as exc:
             print(
                 f"manuscript-guard: import compares {edited.name} with a fresh build of the "
@@ -378,7 +380,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     known = tagged_paragraphs(project)
-    plan = plan_import(known, sent, returned, marked)
+    plan = plan_import(known, sent, returned, marked, abbreviated)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, the reference list, and anything the co-author newly wrote
@@ -1586,7 +1588,7 @@ _FOLD = str.maketrans(
         "±": "+/-",
         "→": "->",
         "•": "*",
-        " ": " ",
+        "\u00a0": " ",
     }
 )
 

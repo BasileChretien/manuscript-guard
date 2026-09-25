@@ -970,7 +970,15 @@ missed:
   every number and no gate read any of them. This is ordinary pandoc usage, and it is the
   worst case in the whole design — a fabricated value carrying a citation. The mask now
   covers the citation *key*; a `citation-locator` rule handles the `p. 33` that legitimately
-  lives in a bracket.
+  lives in a bracket. An atom ends at the `]` that closes a bracket opened before it, so
+  punctuation written hard against a citation does not join its locator: `[p. 3]/` was the
+  unbound atom `3]/`, and `import` writes that when a co-author deletes the words between a
+  citation and a value. The bracket's contents are still read: masking a narrative
+  citation's bracket would hide a value in its suffix, `@key [reported 9.99]`, as masking a
+  bracketed citation whole once hid the one in `[@key, which reported 9.99]`. The audit's
+  own rule for a printed marker such as `[12]` no longer takes a `]` before it: with one,
+  `3.40][12]` was a single match, and a bound closed by a bracket and written hard against
+  the marker went unaudited. A value glued to the marker itself still does; see Known gaps.
 - **Table captions and column headers were checked by nothing** — not by the emitter, not by
   `verify`. Both render with the table.
 
@@ -2211,6 +2219,26 @@ Closed since, and why each mattered:
   numbers. The trade is that a rule may now match a span longer than 160 characters; every
   shipped pattern is bounded well below that, and where it matters the rule is written not
   to span at all.
+- **An atom cut at a bracket keeps what the trimming leaves.** `@key [p. 3]/9.99` is read as
+  the locator 3 and the atom `/9.99`, reported with its slash; a `-4.2` cut the same way
+  keeps its sign, which may have been a dash, while `+1.5` and `<0.05` lose theirs as any
+  atom does. The value is caught either way. A `]` closing a bracket opened earlier cuts the
+  run wherever it stands, so an identifier written across one, `x]y2`, would be read as
+  `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
+  its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
+- **The audit files a value glued to a Vancouver marker as part of the citation.** The
+  `numbered-citation` rule spans the word before a marker, since an atom runs to the next
+  space, and that prefix takes digits so that `2026.1)[15]` and `(2019)[4]` pass. So in
+  `(95% CI 1.20, 9.99)[12]`, `9.99[12]` or `45%[12]` the value is never compared with the
+  outputs, an ordinary way to print a result in a numbered-reference journal. Cutting atoms
+  at a `]` adds spellings such as `3.40]+9.99[12]`, where the whole run used to be reported
+  and `9.99` is now filed with the marker; with a space after the `]` it always was.
+  Narrowing the prefix would report the version and year forms instead. The rule also no
+  longer passes a marker after a one-word bracket, `[SmPC][4]` or `[sic][3]`: that run
+  opens with its own `[`, is not cut, and is reported, a false positive. And its brackets
+  take any run of whole numbers, so a median and interquartile range written with whole
+  bounds, `64 [55-72]` or `64 [55, 72]`, or a stay of `7 [4-12] days`, is read as a
+  citation and never audited, as on main; only a bracketed decimal is left alone.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period
@@ -2258,23 +2286,38 @@ Closed since, and why each mattered:
     as it was, because Word's text does not say which words were code. Only the code's own
     stretch is read: code cut and pasted past a binding or a citation merges as prose there,
     and `--offline` prints as "–offline", as it does on a move into another paragraph. And
-    an edit that deleted the code but left a literal `--` or straight quote in its stretch is
-    refused under the code's name.
+    an edit that deleted the code but left a literal `--`, `...` or straight quote in its
+    stretch is refused under the code's name.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
     the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
-  - *Pandoc's own no-break spaces come back as characters.* Pandoc puts one after an
-    abbreviation it knows ("e.g.", "et al.", "p.", "vs."), where the source has a plain
-    space. A stretch the co-author left alone keeps the source's space, but an edited one is
-    Word's text, and puts pandoc's character into the `.md`. It prints the same and `check`
-    reads it the same, but it cannot be seen in an editor, and a diff shows the line as
-    changed there. Where the source is read against Word's text, U+00A0 therefore counts
-    as a space; Word's text against Word's text compares it exactly, so one the co-author
-    typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
-    space taken out again in Word is no edit, and the next build puts it back. Only where
-    the source reads as what was sent, but for typesetting: the reading is wrong where
+  - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
+    again.* Pandoc puts one after an abbreviation on its list ("e.g.", "et al.", "p.",
+    "vs."), where the source has a plain space, before anything but a citation, a footnote
+    reference or a line break. An edited stretch is Word's text, and it used to put pandoc's
+    character into the `.md`: it printed the same, but nobody could see it, a diff showed the
+    line as changed there, and a search for "et al. 2020" missed it. It is now written back
+    as a space, using the list pandoc itself reads (`build.document.abbreviations`: the
+    user's own file in pandoc's data directory, else pandoc's default, each line read exactly
+    as pandoc reads it). It stays a character where pandoc would not put it back: before a
+    citation, after a word not on the list, after a word that runs back without a space into
+    a binding's value (`{{results.x}}vs.`, whose value pandoc reads as part of the word, or
+    may read as the start of a label), after one with a bare `@` earlier in it (`desk@p.` and
+    `desk@lab-p.` are an example reference to pandoc), and after one whose full stop the
+    opening's escape set apart (`p\.`). It also stays, needlessly but harmlessly, in a few
+    places pandoc would have made it again: after a word that runs back into a citation
+    before it (`[@smith2020]-e.g.`), after one with an `@` earlier in it that pandoc reads as
+    no label (a URL such as `a@b.org/e.g.`), after a word run into full stops (`...e.g.`),
+    and in a run of two. A no-break space the co-author typed after an abbreviation is
+    written back as a space too, which prints the same. The build passes pandoc no
+    `--data-dir`; if it ever does, `abbreviations` must read that directory as well, or the
+    two lists part. Because pandoc adds it, U+00A0 counts as a space where the source is read
+    against Word's text; Word's text against Word's text compares it exactly, so one the
+    co-author typed is an edit. A stretch that comes back as the source reads is kept too:
+    pandoc's space taken out again in Word is no edit, and the next build puts it back. Only
+    where the source reads as what was sent, but for typesetting: the reading is wrong where
     pandoc prints markup as text (`[^missing]` with no note, an image with no file), and a
     co-author deleting that text would otherwise have been dropped without a word.
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced

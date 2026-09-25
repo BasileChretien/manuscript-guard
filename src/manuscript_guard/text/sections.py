@@ -240,6 +240,40 @@ def headings(text: str) -> list[str]:
     return [found.title for found in _headings_in(text)]
 
 
+# A line of two or more dashes, in groups or not. One dash alone is an empty list item.
+_RULE_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*){2,}$")
+
+
+def rules_opening_blocks(text: str) -> list[int]:
+    """The lines, numbered from 1, of each line of dashes below the front matter with a line
+    directly under it that it does not underline as a setext heading.
+
+    Pandoc reads such a rule as the start of YAML metadata when the lines under it are a
+    mapping, and otherwise as a table, and prints no heading from either: a YAML block is
+    merged over the document's metadata, a table's lines are cells. The gates read them as
+    prose and took the closing rule for an underline, so `Methods` in a YAML comment or a
+    one-cell table headed the paragraph after it. Modelling both readers, and the build's
+    bookmarks, which change what pandoc makes of them, did not hold up in review, so the
+    shape is refused instead. A thematic break with a blank line under it is untouched, and
+    so is a rule in code, in a comment or in the front matter.
+    """
+    shown = scannable(text).split("\n")
+    source = text.split("\n")
+    underlines = {
+        text.count("\n", 0, found.start) + 1
+        for found in _headings_in(text)
+        if not text.startswith("#", found.start)
+    }
+    found = []
+    for number, line in enumerate(shown):
+        if number in underlines or not _RULE_LINE.match(line.rstrip("\r")):
+            continue
+        below = source[number + 1] if number + 1 < len(source) else ""
+        if below.strip(" \t\r"):
+            found.append(number + 1)
+    return found
+
+
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
     # Front matter goes whole, for the same reason: G2 now reads the title and abstract out

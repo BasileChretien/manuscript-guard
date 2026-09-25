@@ -22,6 +22,7 @@ from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.sections import rules_opening_blocks
 
 GATE = "BUILD"
 
@@ -99,6 +100,41 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     return text[found.end():].lstrip("\n"), declared
 
 
+def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
+    """A refusal for each line of dashes below the front matter with a line directly under
+    it, which pandoc reads as YAML metadata or as a table (`sections.rules_opening_blocks`).
+
+    YAML there is merged over the build's header, and the later value wins: a `title:` in
+    it replaced paper.yaml's on the title page. Neither prints a heading, and the gates read
+    one from the closing rule. Refused in the build as well as in `check`, so no document is
+    made from a source the gates misread.
+    """
+    lines = text.split("\n")
+    # `line` counts from 1, so `lines[line]` is the line under the rule: the one worth quoting.
+    return tuple(
+        Finding(
+            gate=GATE,
+            code="rule-opens-a-block",
+            message=f"{path.name}: a line of dashes with a line directly under it, which "
+            "pandoc reads as YAML metadata or as a table",
+            path=path,
+            line=line,
+            context=lines[line].strip()[:120] if line < len(lines) else "",
+            hint="put a blank line under it if it is a thematic break; move metadata into "
+            "paper.yaml; a table is emitted and placed with `{{table.key}}`",
+        )
+        for line in rules_opening_blocks(text)
+    )
+
+
+def check_rules(project: Project) -> Report:
+    """`rule_findings` for every source file, so `check` refuses what the build would."""
+    report = Report()
+    for path in source_files(project.path("manuscript")):
+        report = report.with_findings(*rule_findings(path, path.read_text(encoding="utf-8")))
+    return report
+
+
 def assemble(
     project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
 ) -> tuple[list[Assembled], Report]:
@@ -117,7 +153,9 @@ def assemble(
         from manuscript_guard.roundtrip import tag
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
-        raw, declared = strip_front_matter(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        report = report.with_findings(*rule_findings(path, source))
+        raw, declared = strip_front_matter(source)
         if declared and declared != str(project.paper.get("title", "")):
             report = report.with_findings(
                 Finding(

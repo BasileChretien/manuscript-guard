@@ -405,6 +405,20 @@ preferring raster or PDF over SVG because Word's SVG support is uneven and a jou
 production system is worse. The caption stays in the manuscript as ordinary prose, so it is
 checked like prose and can carry bindings.
 
+**A line of dashes opens no block.** Below the front matter, pandoc reads a line of dashes
+with a line directly under it as the start of YAML metadata when the lines under it are a
+mapping, and otherwise as a table, and prints no heading from either. YAML there is merged
+over the build's header with the later value winning, so a `title:` in it replaced
+paper.yaml's on the title page; and the gates, reading prose, took the closing rule for a
+setext underline, so `Methods` in a YAML comment or a one-cell table under `## Results`
+headed the paragraph after, and `p < 0.001` in it passed as the alpha chosen in advance.
+Both of pandoc's readers were modelled in the heading scan first, along with what the
+build's bookmarks do to them, and two rounds of review each found the model and the build
+printing different headings, the second round's worst caused by the first round's fix. So
+the shape is refused instead (`rule-opens-a-block`), by `check` and by the build: a thematic
+break takes a blank line under it, metadata goes in paper.yaml, and a table is emitted. A
+rule in code, in a comment, in the front matter or under a setext title is untouched.
+
 ## Zotero is never on the critical path
 
 Two budgets: a gate waits 20 seconds, an explicit `sync-bib` waits 300. Zotero indexing a
@@ -2069,11 +2083,16 @@ Closed since, and why each mattered:
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
   - front matter behind a UTF-8 byte-order mark, which G2 does not find;
-  - a YAML block in the middle of the body;
   - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
     though not for the masking.
 
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+- **A line of dashes in a block quote or a list item is not refused.** Pandoc reads YAML
+  metadata and tables inside either, and the refusal looks only at lines indented three
+  spaces or fewer and not quoted. The gates read such lines as quoted or listed text, so a
+  number there is read, the safe side, and no heading is made from them; what goes unchecked
+  is a `title:` in one, which pandoc merges over paper.yaml's. A line of one dash is an
+  empty list item and is not refused either.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

@@ -1145,6 +1145,59 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
 _CLAIM = "The excess was significant (p < 0.001).\n"
 _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
 
+_OPENING_RULES = [
+    # YAML metadata below the front matter: pandoc prints none of it, and a `title:` in it
+    # replaces paper.yaml's.
+    "---\nnote: |\n  Methods\n---\n",
+    "---\n# Methods\nnote: v\n...\n",
+    # Not YAML: pandoc reads a table, whose lines are cells, not headings.
+    "---\nMethods\n---\n",
+    "----\nMethods\n\n## Results\n----\n",
+    # Directly under a setext heading, the rule is not its underline.
+    "Results\n-------\n---\nMethods\n---\n",
+]
+
+
+@pytest.mark.parametrize("block", _OPENING_RULES)
+def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsys) -> None:
+    """Below the front matter, pandoc reads a line of dashes with a line directly under it
+    as YAML metadata or as a table, and neither prints a heading. The gates read prose and
+    took the closing rule for a setext underline: under `## Results`, `Methods` in a YAML
+    comment or a one-cell table headed the paragraph after, and `p < 0.001` in it passed as
+    the alpha chosen in advance. Modelling pandoc's readers here was tried and did not hold,
+    so the shape is refused, by `check` and by the build."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}\n{_CLAIM}", "utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "rule-opens-a-block" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "pandoc reads as YAML metadata or as a table" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "Text.\n\n---\n\nMore text.\n",
+        "Results\n-------\n\nText.\n",
+        "Results\n---\nText directly under a heading.\n",
+        "```\n---\nnote: v\n---\n```\n",
+        "<!--\n---\nnote: v\n---\n-->\n",
+        "-\n  an empty item's text\n",
+        "The end.\n\n---\n",
+    ],
+)
+def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
+    """A thematic break with a blank line under it, a setext underline, and a rule inside
+    code or a comment open no block pandoc could read as YAML or a table."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    text = f"---\ntitle: A study\n---\n\n# Introduction\n\n{block}"
+    assert rules_opening_blocks(text) == []
+
 
 @pytest.mark.parametrize(
     ("text", "printed"),

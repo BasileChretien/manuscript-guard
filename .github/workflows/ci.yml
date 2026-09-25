@@ -8,8 +8,10 @@ on:
 env:
   # The build, the import round trip and the checks on what pandoc prints all need pandoc,
   # and each skips without it, so a runner without pandoc passed having run none of them.
-  # Pinned, because those tests assert on pandoc's output and a release may print it
-  # differently: this is the version they were written against.
+  # Each pytest step sets MANUSCRIPT_GUARD_REQUIRE_PANDOC to this version, and conftest.py
+  # then refuses to start unless it is the pandoc on PATH. Pinned, because those tests
+  # assert on pandoc's output and a release may print it differently: this is the version
+  # they were written against.
   PANDOC_VERSION: "3.9.0.2"
 
 jobs:
@@ -34,7 +36,10 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
-      - run: pytest -q
+      # -rs names each test that still skips, and why.
+      - run: pytest -q -rs
+        env:
+          MANUSCRIPT_GUARD_REQUIRE_PANDOC: ${{ env.PANDOC_VERSION }}
 
   plugin-manifests:
     # Validation reads JSON only: no model and no credentials are involved. Two versions,
@@ -73,3 +78,5 @@ jobs:
           pandoc-version: ${{ env.PANDOC_VERSION }}
       - run: pip install -e ".[dev]"
       - run: pytest -q tests/test_r_emitter.py
+        env:
+          MANUSCRIPT_GUARD_REQUIRE_PANDOC: ${{ env.PANDOC_VERSION }}

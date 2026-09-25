@@ -7,6 +7,7 @@ copy has to be per test; only the expensive part is shared.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,27 @@ SCRIPTS = (
 )
 
 IGNORE = shutil.ignore_patterns("build", "__pycache__", ".pytest_cache")
+
+#: Set by CI to the pandoc version it installs. Every test that needs pandoc skips without
+#: it, which is right on a contributor's machine and was wrong on CI: no job installed
+#: pandoc, and each one passed having run none of them.
+REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Where pandoc is required, refuse to start without it rather than skip every test that
+    needs it. Unset, a missing pandoc still skips them."""
+    wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
+    if not wanted:
+        return
+    found = shutil.which("pandoc")
+    if found is None:
+        raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc is not on PATH")
+    # "pandoc 3.9.0.2" on its first line.
+    printed = subprocess.run([found, "--version"], capture_output=True, text=True).stdout.split()
+    version = printed[1] if len(printed) > 1 else "unreadable"
+    if version != wanted:
+        raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
 
 
 def run_analysis(root: Path) -> None:

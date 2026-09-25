@@ -51,8 +51,11 @@ structural:
     # the pattern alone filed a hand-typed count as list numbering. `[ \t]` rather than
     # `\s`, which crossed the line break and could start a match on the line above. `[0-9]`
     # rather than `\d`: pandoc numbers a list with ASCII digits, and prints "４１２." as text.
+    # A space, a tab or a line break must follow the marker, not the end of the text: a
+    # table cell or an emitted string is classified as a text of its own, and one reading
+    # "412." passed as numbering.
     list_only: true
-    pattern: '^[ \t]{0,3}[0-9]+[.)](?:[ \t]|$)'
+    pattern: '^[ \t]{0,3}[0-9]+[.)](?:[ \t]|(?=\r?\n))'
 
   - id: numbered-heading
     why: Markdown heading numbering.
@@ -60,13 +63,15 @@ structural:
     # of prose is printed as part of that paragraph, and the pattern alone filed its number
     # as heading numbering. `[ \t]` rather than `\s`, which crossed the line break: a lone
     # `#` is an empty heading, and the number starting the next line is not part of it.
-    # The hashes are optional because a setext title over its underline starts a heading
-    # with none, and there may be more than six: pandoc prints `####### 3 Notes` as one.
-    # Numbering is short, and a title word after it is capitalised. Taken as any number,
-    # "412 serious reports" or "3.84 times higher" over dashes passed G2 as numbering, and so
-    # did a count opening a table cell between two rules, which the walk reads as a title.
+    # Numbering is short, and a title word after it is capitalised. On a `#` heading of one to
+    # six hashes that is "2.1 Statistical analysis". A setext title over its underline takes
+    # list numbering's shape only, "2. Results": the walk reads the last row of a table
+    # written with dashes as a title over the rule under it, and taken as any short number,
+    # "12 Patients" or "3.84" in such a cell passed G2 as numbering, where pandoc prints a
+    # cell. A setext title's own "2.1", and seven hashes, are reported, as they were before
+    # setext titles were read at all.
     heading_only: true
-    pattern: '^(?:#+[ \t]+)?[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?(?:[ \t]+(?=[A-Z])|[ \t]*$)'
+    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?|[0-9]{1,2}[.)])(?:[ \t]+(?=[A-Z])|[ \t]*$)'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

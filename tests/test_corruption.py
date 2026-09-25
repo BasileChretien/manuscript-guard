@@ -592,6 +592,40 @@ def test_a_count_at_a_wrap_point_is_not_list_numbering(project: Path, tail: str)
     )
 
 
+@pytest.mark.parametrize("cell", ["412.", "412)"])
+def test_a_count_ending_a_table_cell_is_not_list_numbering(project: Path, cell: str) -> None:
+    """Each cell of a results table is classified as a text of its own. List numbering's
+    pattern ended in `$`, which holds at the end of a text, so a cell reading "412." passed
+    as list numbering where a trailing space had been needed before."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = cell
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes
+
+
+@pytest.mark.parametrize("value", ["412.", "412)"])
+def test_a_string_value_ending_in_a_count_is_refused(value: str) -> None:
+    """The same `$`: an emitted string holding only "412." passed as a list number."""
+    from manuscript_guard.contracts.values import DisplayError, check_string_value
+
+    with pytest.raises(DisplayError, match="no gate can trace"):
+        check_string_value("n", value, label=False)
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

@@ -199,12 +199,10 @@ structural:
     accepts:
       - {text: "## 2.1 Statistical analysis", atom: "2.1"}
       - {text: "# 2 Methods\n## 2.1 Statistical analysis", atom: "2.1"}
-      # A setext title is a heading too, and so is a line of seven hashes. Read as a list
-      # item, "2. Results" over its underline was list numbering, and once that took only
-      # real items its number was reported.
+      # A setext title takes list numbering's shape only, a number and a full stop or a
+      # bracket. Read as a list item, "2. Results" over its underline was list numbering, and
+      # once that took only real items its number was reported.
       - {text: "Intro.\n\n2. Results\n----------", atom: "2"}
-      - {text: "Intro.\n\n2.1 Sensitivity analyses\n========================", atom: "2.1"}
-      - {text: "####### 3 Notes", atom: "3"}
       - {text: "## 12 Months on", atom: "12"}
     rejects:
       # A count or a ratio opening a heading's text is the text, not its numbering. Taken
@@ -214,6 +212,16 @@ structural:
       - {text: "Intro.\n\n3.84 times higher in the exposed\n=====", atom: "3.84"}
       - {text: "Intro.\n\n---\n412 reports were serious.\n---", atom: "412"}
       - {text: "## 412 reports", atom: "412"}
+      # A short one before a capital too: the walk reads the last row of a table written
+      # with dashes as a title over the rule under it, and pandoc prints it as a cell.
+      - {text: "Intro.\n\n12 Patients had a serious reaction\n---", atom: "12"}
+      - {text: "Intro.\n\n3.84\n---", atom: "3.84"}
+      - {text: "Intro.\n\n------------------\nDrug      Reports\n\n3.84      Methotrexate\n------------------", atom: "3.84"}
+      - {text: "####### 12 Patients", atom: "12"}
+      # So a setext title's own dotted numbering, and seven hashes, are reported as they
+      # were before setext titles were read at all.
+      - {text: "Intro.\n\n2.1 Sensitivity analyses\n========================", atom: "2.1"}
+      - {text: "####### 3 Notes", atom: "3"}
       - {text: "The ratio was 2.1 overall.", atom: "2.1"}
       # Pandoc prints both as prose: a heading cannot interrupt a paragraph, and a lone `#`
       # is an empty heading, so the number on the next line is not part of it.

@@ -2353,8 +2353,9 @@ Closed since, and why each mattered:
   only where the walk in `text/blocks.py` starts an item. A .docx and a figure's text have
   no wrapped paragraphs, so the audit and G3 read them a paragraph or an element per line,
   as before: "2. The second criterion" typed in Word is numbering, and so is a Word
-  paragraph that opens with a count and a full stop, which is not compared. So is the last
-  line of such text reading "412." and nothing else. A `#` typed at the start of one is
+  paragraph that opens with a count and a full stop, which is not compared. A marker must be
+  followed by a space, a tab or a line break, so a table cell, a keyword or an emitted
+  string reading "412." is compared. A `#` typed at the start of a Word paragraph is
   text, since Word's headings carry a style, so its number is compared. A plain-text paper
   is read as Markdown, so one exported a paragraph per line with no blank lines between
   reads as a single paragraph, and typed numbering after its first line is reported. A
@@ -2364,14 +2365,18 @@ Closed since, and why each mattered:
   under a bare LaTeX command, `\newpage`, into the raw block, and the gates follow that at
   the start of a block. A numbered title over an underline there is still a heading: pandoc
   prints "2. Results" as ". Results", and the gates keep the number. `numbered-heading`
-  accepts a heading's number on a setext title as on a `#` one, but only numbering's shape:
-  components of one or two digits, then a capital or the end of the line. "412 serious
-  reports" or "3.84 times higher" opening a title is its text and is reported, as is a
-  title whose first word is lower case or starts with a capital outside A to Z. A short
-  count before a capital, "12 Patients", still passes as numbering, in a heading or in a
-  table cell between two rules that the walk reads as one. Inside a list item's lines
-  pandoc folds the digits in some positions and not others, and there an indented "1."
-  under `\newpage` is still taken for numbering.
+  takes numbering's shape only: on a `#` heading of one to six hashes, components of one or
+  two digits, "2.1 Statistical analysis"; on a setext title, list numbering's shape, "2.
+  Results"; then a capital or the end of the line. The walk reads the last row of a table
+  written with dashes as a setext title over the rule under it, so a looser shape passed
+  "12 Patients" or "3.84" in such a cell. "412 serious reports", "3.84 times higher", a
+  setext title's own "2.1" and a heading of seven hashes are reported, as is a title whose
+  first word is lower case or starts with a capital outside A to Z. A cell of such a table
+  reading "12. Patients" still passes as numbering, as it did before, and so does a
+  numbered line pandoc reads as a table's header row over a spaced rule, or as a second
+  term under a definition. Inside a list item's lines pandoc folds the digits in some
+  positions and not others, and there an indented "1." under `\newpage` is still taken for
+  numbering.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,

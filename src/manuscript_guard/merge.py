@@ -64,6 +64,13 @@ class Plan:
     #: Identifier -> (file, section): the stretch between headings, tables and figures that
     #: the paragraph belongs to, which is what a move is applied within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
+    #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
+    #: caption, a new paragraph - that the document did not have when it was sent.
+    unidentified: tuple[str, ...] = ()
+    #: Text of such paragraphs of the document as sent that did not come back as they were.
+    vanished: tuple[str, ...] = ()
+    #: Text of such paragraphs that all came back unchanged, but out of their order.
+    reordered: tuple[str, ...] = ()
 
     @property
     def empty(self) -> bool:
@@ -74,6 +81,9 @@ class Plan:
             or self.joined
             or self.moved
             or self.misplaced
+            or self.unidentified
+            or self.vanished
+            or self.reordered
         )
 
 
@@ -455,6 +465,34 @@ def plan_import(
     moved = moves([n for n in rendered if n in set(order)], order)
     misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
     moved = [entry for entry in moved if entry[0] not in set(misplaced)]
+
+    # A paragraph without an identifier is never compared, and it is also what bounds a
+    # section: once a quotation or a list item was reworded it no longer marked where its
+    # section began, a paragraph moved past it read as in order, and import said the
+    # document matched the manuscript. What changed is at least said.
+    # In order, not as a bag: list items swapped in Word were all still there, and the
+    # document was said to match.
+    sent_untagged = [b.text for b in reference if not b.names and not b.table and b.text]
+    back_untagged = [b.text for b in returned if not b.names and not b.table and b.text]
+    unchanged = Counter(sent_untagged)
+    unidentified: list[str] = []
+    for text in back_untagged:
+        if unchanged[text]:
+            unchanged[text] -= 1
+        else:
+            unidentified.append(text)
+    left = Counter(missing)
+    vanished: list[str] = []
+    for text in sent_untagged:
+        if left[text]:
+            left[text] -= 1
+            vanished.append(text)
+    reordered: list[str] = []
+    if not (unidentified or vanished) and sent_untagged != back_untagged:
+        matcher = difflib.SequenceMatcher(a=sent_untagged, b=back_untagged, autojunk=False)
+        for kind, _a1, _a2, b1, b2 in matcher.get_opcodes():
+            if kind != "equal":
+                reordered.extend(back_untagged[b1:b2])
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -465,13 +503,16 @@ def plan_import(
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         sections=sections,
+        unidentified=tuple(unidentified),
+        vanished=tuple(vanished),
+        reordered=tuple(reordered),
     )
 
 
 _SPLIT = (
-    "it came back with a new paragraph beside it: split in two in Word, or new text written "
-    "next to it. Merging it would replace the whole source paragraph with only part of it. "
-    "Make the split or the addition in the .md."
+    "it came back with a new paragraph beside it: split in two in Word, new text written "
+    "next to it, or a heading, list item or quotation beside it reworded. Merging a split "
+    "would replace the whole source paragraph with only part of it. Make the edit in the .md."
 )
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - an HTML comment, or markup that "

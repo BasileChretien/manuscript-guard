@@ -92,7 +92,11 @@ def abbreviations() -> frozenset[str]:
         text = own.read_text(encoding="utf-8")
     else:
         text = _pandoc_says("--print-default-data-file", "abbreviations")
-    return frozenset(line.strip() for line in text.splitlines() if line.strip())
+    # As pandoc reads it: the byte-order mark and carriage returns dropped, and each line an
+    # abbreviation exactly as written. Stripped, `e.g. ` with a stray space was on the list
+    # here and not to pandoc, and a no-break space typed after "e.g." was written back plain.
+    lines = text.removeprefix("\ufeff").replace("\r", "").split("\n")
+    return frozenset(line for line in lines if line)
 
 
 def _pandoc_says(*args: str) -> str:

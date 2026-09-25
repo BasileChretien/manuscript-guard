@@ -771,8 +771,8 @@ def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
         pytest.param(
             "As @a reported, it was {{results.x}} overall.",
             "As ⟦A (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
-            "As A (2019) [pooled] overall.",
-            "As @a {{results.x}} overall.",
+            "As A (2019)\u00a0[pooled] overall.",
+            "As @a\u00a0{{results.x}} overall.",
             id="bracketed-value-after-a-no-break-space",
         ),
     ],
@@ -1469,6 +1469,27 @@ ABBREVIATED = [
         "Values {{results.x}}vs.\u00a0none there.",
         id="glued-to-a-binding",
     ),
+    pytest.param(
+        "Some cohorts (e.g. adults) were small.",
+        "Some cohorts (e.g.\u00a0adults) were small.",
+        "Some cohorts (e.g.\u00a0 older adults) were small.",
+        "Some cohorts (e.g.\u00a0 older adults) were small.",
+        id="followed-by-a-space",
+    ),
+    pytest.param(
+        "Mail it to desk@p. 4 of the form.",
+        "Mail it to desk@p. 4 of the form.",
+        "Send it to desk@p.\u00a04 of the form.",
+        "Send it to desk@p.\u00a04 of the form.",
+        id="after-an-at-sign",
+    ),
+    pytest.param(
+        "See \\@p. 4 here.",
+        "See @p.\u00a04 here.",
+        "See @p.\u00a04 there.",
+        "See \\@p. 4 there.",
+        id="after-an-escaped-at-sign",
+    ),
 ]
 
 
@@ -1510,29 +1531,47 @@ def test_pandocs_own_no_break_space_written_back_prints_the_same(
     assert printed(expected, "merged") == returned
 
 
+@needs_pandoc
 def test_import_reads_the_abbreviations_pandoc_itself_uses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The user's own list when pandoc's data directory has one, which pandoc reads instead of
-    its default. Taken from the default alone, a no-break space the co-author typed after a
-    word the user's pandoc does not treat as an abbreviation would come back plain."""
+    its default, and read as pandoc reads it. Taken from the default, or with each line
+    stripped, a no-break space the co-author typed after a word the user's pandoc does not
+    treat as an abbreviation - `e.g. ` with a stray space is not `e.g.` to pandoc - came back
+    as a plain space, and the next build printed it so."""
+    import subprocess
+
     from manuscript_guard.build import document
 
-    said = {
-        ("--version",): f"pandoc 3.9\nUser data directory: {tmp_path}\nCopyright\n",
-        ("--print-default-data-file", "abbreviations"): "e.g.\ni.e.\n",
-    }
-    monkeypatch.setattr(document, "_pandoc_says", lambda *args: said[args])
-    (tmp_path / "abbreviations").write_text("Fig.\ne.g.\n\n", encoding="utf-8")
-    assert document.abbreviations() == {"Fig.", "e.g."}
-    (tmp_path / "abbreviations").unlink()
-    assert document.abbreviations() == {"e.g.", "i.e."}
+    (tmp_path / "pandoc").mkdir()
+    listed = "\ufeffcf.\r\ne.g. \r\nvs.\n\n"
+    (tmp_path / "pandoc" / "abbreviations").write_bytes(listed.encode("utf-8"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+
+    native = subprocess.run(
+        ["pandoc", "-t", "native"],
+        input="See cf. this, e.g. that, vs. them.",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    ).stdout
+    assert "cf.\\160this" in native and "vs.\\160them" in native, native
+    assert '"e.g."' in native, native
+    assert document.abbreviations() == {"cf.", "e.g. ", "vs."}
 
 
 @needs_pandoc
-def test_pandocs_default_abbreviations_are_read() -> None:
+def test_pandocs_default_abbreviations_are_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a list of the user's own, pandoc's default. Isolated from the machine's own
+    data directory, which may hold a list."""
     from manuscript_guard.build import document
 
+    (tmp_path / "pandoc").mkdir()
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     assert document.abbreviations() >= ABBREVIATIONS
 
 

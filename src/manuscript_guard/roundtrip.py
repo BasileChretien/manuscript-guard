@@ -874,16 +874,17 @@ def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_n
     as the plain space pandoc makes one of again.
 
     Pandoc's smart typesetting turns the space after a word on its list - "e.g.", "al.",
-    "p." - into a no-break space, before anything but a citation or a line break. Carried
-    back as the character, it went into the .md where nobody can see it: a diff showed the
-    line as changed there, and a search for "et al. 2020" missed it.
+    "p." - into a no-break space, before anything but a citation, a footnote reference or a
+    line break. Carried back as the character, it went into the .md where nobody can see
+    it: a diff showed the line as changed there, and a search for "et al. 2020" missed it.
 
     Only where pandoc will put it back, or the document would lose it. The word before it
     must be whole, as pandoc's reader takes words - letters, digits and single full stops -
     so `xe.g.` is no abbreviation, and neither is `p\\.`, whose full stop `_escaped` set
-    apart at the opening. What follows must not be a space, and at the end of the stretch it
-    must be a binding, never a citation. A word at the start of a stretch that follows a
-    token is left alone, because the token's value may run into it.
+    apart at the opening, nor `desk@p.` (see `_at_sign`). What follows must not be a space,
+    and at the end of the stretch it must be a binding, never a citation. A word at the
+    start of a stretch that follows a token is left alone, because the token's value may
+    run into it.
     """
     if not abbreviations or _NBSP not in text:
         return text
@@ -895,9 +896,17 @@ def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_n
         start = at
         while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "."):
             start -= 1
-        if (start > 0 or lead) and text[start:at] in abbreviations:
+        if (start > 0 or lead) and text[start:at] in abbreviations and not _at_sign(text, start):
             out[at] = " "
     return "".join(out)
+
+
+def _at_sign(text: str, start: int) -> bool:
+    """Whether a bare `@` stands just before `start`: `desk@p.` is one word to pandoc, which
+    puts no no-break space after it, and `_escaped` leaves an `@` bare after a letter or a
+    digit. An escaped one, `\\@`, is a character of its own, as every other character is."""
+    before = text[:start]
+    return before.endswith("@") and (len(before) - len(before[:-1].rstrip("\\")) - 1) % 2 == 0
 
 
 def _reads_as(

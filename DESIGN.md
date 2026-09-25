@@ -2396,23 +2396,24 @@ Closed since, and why each mattered:
   space, and its prefix once took digits, so a value glued to a marker, `(95% CI 1.20,
   9.99)[12]` or `45%[12]`, was filed with the citation and never audited. The prefix takes
   no decimal digit now, and the audit reads a number glued to a marker apart from it, but
-  only in a run the rule once took whole: that rule hid every number in it, so reading one
-  apart can only add to what is compared. A run it never took is listed whole, as it always
-  was, a correct value with it: `OR=3[1,20-9,99]`, `(N=2004)[4]`, `2,51[1,20-9,99]`,
-  `(Q1–Q3)[55–72]`. Splitting those handed the bracket to the marker rule, and an interval's
-  bounds were filed as a citation. A number read apart is not filed by either audit-only
-  citation rule, bar a year, as the author-year rule filed the `9.99` of `(2019; 95% CI
-  1.20, 9.99)[12]`; the other rules still apply, so `(Smith 2019, p. 12)[5]` is a page. The
-  cost, chosen: a number that is no result, the version in `(OEP 2026.1)[15]`, is listed. A
-  year is still a citation where the author-year rule reads one, `(2019)[4]`, and listed
-  where it does not, `in 2019[5]`. The brackets take any run of whole numbers, so a median [IQR] with whole bounds,
-  `64 [55-72]`, was a citation too. It is read as an interval when its bounds enclose the
-  value written just before it, as an interval does and a citation range, `12% [4-6]`,
-  does not. What that misses: an interval separated from its value, `64 years [55-72]`, or
-  after a value written with a comma or a spaced percent sign, `12,5 [10-15]`,
-  `1,204 [1,100-1,300]`, `45 % [40-50]`, is still a citation. And a citation that happens to
-  enclose a number before it, `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed
-  as unexplained.
+  only in a run the rule once took whole, its marker closed: that rule hid every number in
+  it, so reading one apart can only add to what is compared. A run it never took is listed
+  whole, as it always was, a correct value with it: `OR=3[1,20-9,99]`, `(N=2004)[4]`,
+  `2,51[1,20-9,99]`, `(Q1–Q3)[55–72]`. Splitting those handed the bracket to the marker
+  rule, and an interval's bounds were filed as a citation. A number read apart is not filed
+  by either audit-only citation rule, bar a year, as the author-year rule filed the `9.99`
+  of `(2019; 95% CI 1.20, 9.99)[12]`; the other rules still apply, so `(Smith 2019, p.
+  12)[5]` is a page. The cost, chosen: a number that is no result, the version in `(OEP
+  2026.1)[15]`, is listed. A year is still a citation where the author-year rule reads one,
+  `(2019)[4]`, and listed where it does not, `in 2019[5]`. The one-word bracket the rule now
+  allows before a marker, for `[SmPC][4]`, takes no number: `[½][12]` is compared. The
+  brackets take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`,
+  was a citation too. It is read as an interval when its bounds enclose the value written
+  just before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
+  misses: an interval separated from its value, `64 years [55-72]`, or after a value written
+  with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
+  [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
+  `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

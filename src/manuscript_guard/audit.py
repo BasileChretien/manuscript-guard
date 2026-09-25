@@ -557,6 +557,8 @@ _MARKER_AT_END = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d
 #: The runs the marker rule took whole before its prefix was narrowed: letters, digits and
 #: `.%)`, then the marker, as the atom has it.
 _ONCE_TAKEN = re.compile(r"[\w.%)]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?")
+#: The marker's closing bracket, which the atom's trimming took off and the rule required.
+_CLOSED = re.compile(r"\s*\]")
 
 
 def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
@@ -575,7 +577,8 @@ def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
     """
     marker = _MARKER_AT_END.search(atom.text)
     value = atom.text[: marker.start()] if marker else ""
-    if marker is None or not DIGIT.search(value) or not _ONCE_TAKEN.fullmatch(atom.text):
+    taken = _ONCE_TAKEN.fullmatch(atom.text) and _CLOSED.match(atom.source, atom.end)
+    if marker is None or not DIGIT.search(value) or not taken:
         return [(atom, False)]
     pieces: list[tuple[Atom, bool]] = []
     for raw, offset in ((value, 0), (marker.group(0), marker.start())):
@@ -684,7 +687,7 @@ def audit(
         for atom, read_apart in pieces:
             if not _within(intervals, starts, atom):
                 verdict = classifier.classify(atom)
-                # A number read apart from its marker may be a label, `COVID-19[3]`, but not
+                # A number read apart from its marker may be a label, `Table 2[3]`, but not
                 # part of a citation, bar a year: the author-year rule took the `9.99` of
                 # `(2019; 95% CI 1.20, 9.99)[12]` for one.
                 if read_apart and verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text):

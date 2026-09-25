@@ -469,6 +469,27 @@ def test_digits_after_a_comma_are_not_taken_for_the_value(tmp_path: Path, text: 
     assert not any(listed in ("4-6", "150-300") for listed in unmatched), unmatched
 
 
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [("About [½][12] of them.\n", "½"), ("Item [①][12] held.\n", "①")],
+)
+def test_a_number_in_the_bracket_before_a_marker_is_compared(
+    tmp_path: Path, text: str, number: str
+) -> None:
+    """The one-word bracket the marker rule allows, for `[SmPC][4]`, took any character but
+    a decimal digit, and `½` and `①` are numbers that are not: they were filed as part of the
+    citation, where the audit used to compare them."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(number in listed for listed in unmatched), unmatched
+
+
+def test_a_marker_that_never_closes_leaves_its_run_whole(tmp_path: Path) -> None:
+    """The marker rule takes a closed bracket, so a run whose bracket never closes was never
+    one it took, and is listed whole, not read apart into a table reference and a number."""
+    unmatched, _ = _audited(tmp_path, ["7"], "Shown in Table 2[3. then it held.\n")
+    assert "2[3" in unmatched, unmatched
+
+
 def test_emphasis_before_a_marker_is_a_citation(tmp_path: Path) -> None:
     unmatched, _ = _audited(tmp_path, ["7"], "Infection with _E. coli_[3] was common.\n")
     assert unmatched == [], unmatched

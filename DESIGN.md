@@ -1695,6 +1695,14 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **A token straight after inline code stopped `import` for the whole manuscript.** The
+  bookmark around a binding or citation is raw inline code, and against a code span's
+  closing backtick its own backtick joined that run. Pandoc read the code and the bookmark
+  as one raw span and wrote the code into the marked build as XML: `` `age<65`{{x}} `` made
+  that build unreadable, and `import` exited 2 over a file the author had never seen. An
+  empty comment now keeps the two apart, which the Word writer drops, so the paragraph
+  still takes a rewording. And a marked build that cannot be read no longer stops the run.
+
 - **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
   the same value with different displays, so a duplicate was caught while it still agreed
   and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
@@ -2321,9 +2329,14 @@ Closed since, and why each mattered:
 - **Token extents are trusted only where marking changed nothing.** The marked build must
   read exactly like the plain one, paragraph by paragraph. If a bookmark changes a
   rendering, that paragraph is refused rather than aligned on extents that describe
-  different text, and it can never take a rewording, even far from the token. Known cases:
-  a binding inside inline code, where the bookmark is printed rather than read; super- or
-  subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
+  different text, and it can never take a rewording, even far from the token. A binding
+  inside inline code is not marked at all, since pandoc reads no bookmark there, and neither
+  is a token after an odd run of backslashes, which would escape the bookmark's backtick:
+  with no extent, its paragraph is refused the same way. If the marked build cannot be read
+  at all, `import` carries on without it: for that run every reworded paragraph holding a
+  binding or a citation is refused, and the run says why. Nothing in a broken build says
+  which paragraph broke it, so none is singled out. Known cases of a changed rendering:
+  super- or subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
   an autolink, which the bookmark breaks the same way; `@key [b][c]`, whose `[b]` is read
   here as a locator and is none to pandoc, being followed by `[`; and quotes that pandoc
   pairs differently around a bookmark. The no-break space pandoc puts after "et al." or

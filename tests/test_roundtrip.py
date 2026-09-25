@@ -2246,6 +2246,13 @@ MARKUP = {
     "ellipsis": "Odds... were {{results.ror.point}} here.",
     "emphasis": "The *striking* and **strong** ratio was {{results.ror.point}}.",
     "code": "Run with `--offline_mode`, the ratio was {{results.ror.point}}.",
+    # A token against the code's closing backtick. The bookmark's own backtick joined it, and
+    # pandoc wrote the code into the document as raw XML: with `<` or `&` in it, the marked
+    # build was not a readable .docx, and import stopped for the whole manuscript.
+    "after-code": "Filtered on `age<limit`{{results.ror.point}} as planned.",
+    "citation-after-code": "As in `x&y`[@fictionalClassSignal2019] it was {{results.ror.point}}.",
+    "code-opening-the-paragraph": "`age<limit`{{results.ror.point}} was the cut-off ratio.",
+    "after-double-backtick-code": "Filtered on ``a`b<c``{{results.ror.point}} as planned.",
     "escape": "The ratio \\*was\\* {{results.ror.point}} here.",
     "super-and-subscript": "Per m^2^ of H~2~O, the ratio was {{results.ror.point}}.",
     "intraword-underscore": "The file_name ratio was {{results.ror.point}}.",
@@ -2347,6 +2354,105 @@ def test_a_value_ending_a_sentence_takes_a_rewording_end_to_end(
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     after = source.read_text(encoding="utf-8")
     assert "The odds ratio for major bleeding was {{results.ror.point}}." in after
+
+
+@needs_pandoc
+def test_a_token_straight_after_inline_code_leaves_import_working(
+    project: Path, tmp_path: Path
+) -> None:
+    """The bookmark's backtick joined the code's closing one, pandoc wrote `age<65` into the
+    marked build as raw XML, and that build was not a readable .docx: `import` exited 2 over
+    an internal file the author had never seen, for every paragraph of the manuscript."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    sentence = "Cases were filtered on `dose<limit`{{results.ror.point}} as the protocol planned."
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Filters\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    document = built(project)
+    assert main(["import", str(document), str(project)]) == 0
+    returned = rewrite(
+        document,
+        tmp_path / "filters.docx",
+        lambda xml: xml.replace("the protocol planned", "the protocol first planned", 1),
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    after = source.read_text(encoding="utf-8")
+    assert "`dose<limit`{{results.ror.point}} as the protocol first planned." in after
+
+
+@needs_pandoc
+def test_a_binding_inside_inline_code_is_left_unmarked(project: Path) -> None:
+    """Pandoc reads no bookmark inside code: marked there, the raw spans broke the code open
+    and printed their own syntax. The binding is left unmarked, so a rewording of its
+    paragraph is refused, as one whose extents cannot be read is."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.roundtrip import align, read_blocks, tag, tagged_paragraphs
+
+    sentence = "Coded as `n < {{results.ror.point}}` in the script."
+    assert "{=openxml}" not in tag(sentence + "\n", "main.md", mark=True)
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(
+        main_md.read_text(encoding="utf-8") + "\n\n# Code\n\n" + sentence + "\n",
+        encoding="utf-8",
+    )
+    projekt, _ = load_project(project)
+    namespace, results, _lit, _r = load_namespace(projekt)
+    plain = project / "build" / "plain.docx"
+    marked = project / "build" / "marked.docx"
+    build_document(projekt, assemble(projekt, namespace, results)[0], mode=OFFLINE, output=plain)
+    build_document(
+        projekt, assemble(projekt, namespace, results, mark=True)[0], mode=OFFLINE, output=marked
+    )
+    name = {entry[1]: n for n, entry in tagged_paragraphs(projekt).items()}[sentence]
+    sent = {b.names[0]: b for b in read_blocks(plain) if b.names}[name]
+    extents = {b.names[0]: b for b in read_blocks(marked) if b.names}[name]
+    assert extents.text == sent.text and extents.tokens == ()
+    assert align(sentence, sent.text, sent.text + " Indeed.", extents.tokens).rebuilt is None
+
+
+@needs_pandoc
+def test_an_unreadable_marked_build_refuses_rather_than_stopping(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """Whatever else can make pandoc write a marked build that will not open, it is the
+    build import reads token positions from, not the document the co-author returned. Now
+    the run carries on without the positions: a reworded paragraph holding a binding or a
+    citation is refused, one without is merged, and the report says why."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    reader = roundtrip.read_blocks
+
+    def unreadable(document: Path):
+        if document.name == "reference-tokens.docx":
+            raise roundtrip.RoundTripError(f"{document.name} is not a readable .docx: broken")
+        return reader(document)
+
+    source = project / "manuscript" / "main.md"
+    with_token = "The odds ratio for bleeding was {{results.ror.point}} in the end."
+    without = "Bleeding was the event that mattered most here."
+    source.write_text(
+        source.read_text(encoding="utf-8") + f"\n\n# Bleeding\n\n{with_token}\n\n{without}\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project),
+        tmp_path / "bleeding.docx",
+        lambda xml: xml.replace("in the end", "at the end", 1).replace(
+            "mattered most here", "mattered most of all here", 1
+        ),
+    )
+    monkeypatch.setattr(roundtrip, "read_blocks", unreadable)
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    report = capsys.readouterr()
+    assert "binding or citation" in report.err + report.out
+    after = source.read_text(encoding="utf-8")
+    assert with_token in after, "a paragraph with a token was merged without its extents"
+    assert "Bleeding was the event that mattered most of all here." in after
 
 
 @needs_pandoc

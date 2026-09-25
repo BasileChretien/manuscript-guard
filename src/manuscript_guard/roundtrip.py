@@ -275,12 +275,38 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
         marker = _TAG.format(slug=slug, index=index)
         body = stripped
         if mark:
-            spans = [token.span() for token in _tokens(body)]
-            marked = [_bookmarked(body[a:b], slug, counter) for a, b in spans]
+            code = [m.span() for m in _SCAN.finditer(body) if m.lastgroup in ("code", "coded")]
+            spans = [t.span() for t in _tokens(body) if _markable(body, t.start(), code)]
+            marked = [
+                (_APART if body[a - 1 : a] == "`" else "") + _bookmarked(body[a:b], slug, counter)
+                for a, b in spans
+            ]
             for (a, b), replacement in reversed(list(zip(spans, marked, strict=True))):
                 body = body[:a] + replacement + body[b:]
         out.append(para.replace(stripped, f"[]{{#{marker}}}{body}", 1))
     return "".join(out)
+
+
+# A bookmark is raw inline code, and its opening backtick has to open it. Straight after a
+# code span's closing backtick it joined that run instead: pandoc read the code and the
+# bookmark as one raw span and wrote `age<65` into the document as XML, so the marked build
+# was not a readable .docx and `import` stopped for the whole manuscript. An empty comment
+# keeps the two apart, and the Word writer drops it.
+_APART = "<!-- -->"
+
+
+def _markable(body: str, start: int, code: list[tuple[int, int]]) -> bool:
+    """Whether the token at `start` can carry bookmarks.
+
+    Not inside code, where pandoc reads no raw span, and not after an odd run of
+    backslashes, which would escape the bookmark's backtick. Unmarked, the token has no
+    extent, and a rewording of its paragraph is refused, as one whose extents cannot be read
+    is.
+    """
+    if any(a < start < b for a, b in code):
+        return False
+    before = body[:start]
+    return (len(before) - len(before.rstrip("\\"))) % 2 == 0
 
 
 def _bookmarked(token: str, slug: str, counter) -> str:

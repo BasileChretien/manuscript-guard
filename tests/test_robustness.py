@@ -53,6 +53,7 @@ def timed_check(project: Path) -> float:
         ("many citations", " ".join(f"[@key{i}]" for i in range(3000)) + "\n"),
         ("many headings", "".join(f"## Section {i}\n\nProse.\n\n" for i in range(1500))),
         ("setext underlines", "".join(f"Heading {i}\n---\n\nProse.\n\n" for i in range(1500))),
+        ("unclosed comments", "".join(f"<!-- never closed {i}\n" for i in range(4000))),
     ],
     # Explicit ids: pytest builds one from the parameters otherwise, and puts it in
     # PYTEST_CURRENT_TEST — which Windows refuses past 32767 characters, so a 60 KB body
@@ -83,6 +84,27 @@ def test_the_fence_scanner_is_linear() -> None:
 
     small = max(measure(4000), 1e-4)
     large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize("reader", ["mask", "parse"])
+def test_the_comment_scans_are_linear(reader: str) -> None:
+    """`<!--.*?-->` read to the end of the text for every comment that never closed: 2.5 s
+    for 2,000 such lines and 9.8 s for 4,000, in the masking and in the placeholder parser
+    alike, so `check` on one such file ran past its budget twice over."""
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.placeholders import parse
+
+    read = {"mask": mask, "parse": parse}[reader]
+
+    def measure(count: int) -> float:
+        text = "".join(f"<!-- never closed {i}\n" for i in range(count))
+        started = time.perf_counter()
+        read(text)
+        return time.perf_counter() - started
+
+    small = max(measure(1000), 1e-3)
+    large = measure(4000)
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 

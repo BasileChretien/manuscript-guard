@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.comments import blank_comments, comment_spans
+
 VALUE_NAMESPACES = ("results", "lit")
 BLOCK_NAMESPACES = ("table", "figure")
 NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES
@@ -54,9 +56,6 @@ class Placeholder:
         return self.namespace in VALUE_NAMESPACES
 
 
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def _without_comments(text: str) -> str:
     """The same text with HTML comments blanked, offsets and line breaks intact.
 
@@ -68,16 +67,13 @@ def _without_comments(text: str) -> str:
     the syntax, and the explanation failed the check it was explaining.
 
     Blanked rather than removed so every offset, line and column still refers to the file
-    the author is looking at.
+    the author is looking at. Found by the one scanner the masking and the heading scan use,
+    in a single pass: the regex this used read to the end of the text for every `<!--` that
+    never closed.
     """
     if "<!--" not in text:
         return text
-    out = list(text)
-    for match in _COMMENT.finditer(text):
-        for index in range(match.start(), match.end()):
-            if out[index] != "\n":
-                out[index] = " "
-    return "".join(out)
+    return blank_comments(text, comment_spans(text))
 
 
 def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:

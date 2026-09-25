@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from manuscript_guard.text.comments import comment_spans
 from manuscript_guard.text.fences import fenced_spans
 
 NUL = "\x00"
@@ -75,7 +76,9 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # `check_numbers` runs the *code* checker over them instead, the same one G3 uses on
     # figure scripts: a number inside a string literal in the listing is still a claim, a
     # loop bound is not.
-    ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
+    #
+    # HTML comments go next, before these, through `text.comments`: the regex read to the end
+    # of the text for every `<!--` that never closed.
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),
@@ -149,6 +152,11 @@ def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Matc
     return [*pattern.finditer(text, 0, head), *pattern.finditer(text, head)]
 
 
+def _comments_either_side(text: str, head: int) -> list[tuple[int, int]]:
+    """The same for HTML comments: one opened in the front matter ends with it."""
+    return [*comment_spans(text, 0, head), *comment_spans(text, head)]
+
+
 def mask(text: str) -> str:
     """Return `text` with non-claim regions replaced by NUL, preserving length."""
     chars = list(text)
@@ -160,6 +168,9 @@ def mask(text: str) -> str:
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
+        for index in range(start, end):
+            chars[index] = NUL
+    for start, end in _comments_either_side("".join(chars), head):
         for index in range(start, end):
             chars[index] = NUL
     for _name, pattern in _PATTERNS:
@@ -187,6 +198,14 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
         found["frontmatter"] = frontmatter
         chars = list(working)
         for start, end in frontmatter:
+            for index in range(start, end):
+                chars[index] = NUL
+        working = "".join(chars)
+    comments = _comments_either_side(working, head)
+    if comments:
+        found["html-comment"] = comments
+        chars = list(working)
+        for start, end in comments:
             for index in range(start, end):
                 chars[index] = NUL
         working = "".join(chars)

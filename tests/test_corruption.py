@@ -1991,6 +1991,11 @@ _UNCLEAR_FENCES = [
     f"{_TICKS}{{.r label='fit1}}\nThe cohort's data.\n{_TICKS}\n\n{_PRINTED}\n",
     # A backslash before a tab: pandoc expands the tab first, and escapes a space.
     f"{_TICKS}{{k=a\\\tb .r}}\nx\n{_TICKS}\n",
+    # Found by the third review: a raw block or a comment closes only on its own mark, and
+    # another mark inside it closed it to the gates.
+    f"<pre>\na --> b\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin{{center}}\na --> b\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<!-- see </pre>\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
 ]
 
 
@@ -2030,8 +2035,19 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
         # Inline code, and a listing in a list item, indented four columns.
         f"Use {_TICKS}x{_TICKS} here.\n",
         f"1. Run this:\n\n    {_TICKS}r\n    x <- 1\n    {_TICKS}\n",
-        # Markup in a listing is code, unless it closes a comment or a raw block.
-        f"{_TICKS}html\n<p>A <b>bold</b> claim.</p>\n{_TICKS}\n",
+        # Markup in a listing is code: a comment's marks in it open or close nothing.
+        f"{_TICKS}html\n<p>A <b>bold</b> claim.</p>\n<!-- left open\n{_TICKS}\n",
+        f"{_TICKS}mermaid\ngraph LR\n  A --> B\n{_TICKS}\n",
+        # Two identical listings.
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n\n{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        # Found by the third review: a mark in inline code, a `<pre>` in a line of text and a
+        # comment closed at once open nothing.
+        f"Use `<!--` to open a comment.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"The HTML `<pre>` element.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Wrap it in `\\begin{{table}}`.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Text with <pre> in it.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-- the <pre> tag -->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-->\n\n{_TICKS}r\nx\n{_TICKS}\n",
     ],
 )
 def test_a_plain_fence_is_not_refused(block: str) -> None:
@@ -2040,9 +2056,26 @@ def test_a_plain_fence_is_not_refused(block: str) -> None:
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
 
 
+def test_the_unclear_fence_hint_names_the_margin_and_list_items() -> None:
+    """A listing in a list item, indented as Markdown has it, was refused under a hint that
+    said to open it under a blank line, which it was."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Methods\n\n1. Install:\n\n   {_TICKS}r\n   install.packages('x')\n   {_TICKS}\n"
+    hint = fence_findings(Path("main.md"), text)[0].hint
+    assert "margin" in hint and "list item" in hint and "comment" in hint, hint
+
+
 @pytest.mark.parametrize(
     ("info", "language"),
-    [("r", "r"), (" python ", "python"), ("{.python}", "python"), ("r{.x}", "r"), ("", "")],
+    [
+        ("r", "r"),
+        (" python ", "python"),
+        ("{.python}", "python"),
+        ("r{.x}", "r"),
+        ("", ""),
+        ("{k='a .b' .r}", "r"),
+    ],
 )
 def test_a_listing_s_language_is_its_word_or_its_first_class(info: str, language: str) -> None:
     """`{.python}` and `r {.x}` came out as the languages `{.python}` and `r{.x}`, which no
@@ -2068,7 +2101,51 @@ def test_the_build_refuses_a_listing_pandoc_does_not_make(project: Path, capsys)
     capsys.readouterr()
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     err = capsys.readouterr().err
-    assert "pandoc reads as text" in err and "listing" in err, err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_finds_each_listing_where_the_gates_read_it(project: Path, capsys) -> None:
+    """Listings were matched to pandoc's code by their lines, so a copy did as well as the
+    listing: the gates read a listing inside a TeX group, masking the claim after it, and an
+    indented block holding the same lines passed for it. Each listing is now found by a line
+    of its own, put in the copy pandoc reads."""
+    from manuscript_guard.cli import main
+
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}r\n}}\n\n{_PRINTED}\n\n{_TICKS}\n\n"
+        f"    }}\n    {_PRINTED}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_placeholders_in_a_listing_are_matched_in_linear_time() -> None:
+    """A listing of placeholders was matched with a pattern joined by `.*?`, tried against
+    every block pandoc made: six placeholder lines after an 80-line comment ran past two
+    minutes."""
+    import shutil
+    import time
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    comment = "<!--\n" + "".join(f"draft line {i}\n" for i in range(80)) + "-->\n\n"
+    listing = f"{_TICKS}r\n" + "".join(f"{{{{results.v{i}}}}}\n" for i in range(8)) + "Total\n"
+    body = f"# Results\n\n{comment}{listing}{_TICKS}\n"
+    started = time.perf_counter()
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert time.perf_counter() - started < 20
 
 
 def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:

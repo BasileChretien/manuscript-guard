@@ -75,12 +75,17 @@ _MARKER = re.compile(
     r"[ ]{0,3}(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
 )
-# Where a comment or a raw block opens or shuts. Inside one, a fence is raw text to pandoc.
-_RAW_EDGE = re.compile(
-    r"(?P<open><!--|<(?:pre|script|style|textarea)\b|\\begin\{)"
-    r"|(?P<shut>-->|</(?:pre|script|style|textarea)\s*>|\\end\{)",
+# Where a comment or a raw block opens. Inside one, a fence is raw text to pandoc, and only
+# the mark that closes it counts: a comment closes on `-->`, `<pre>` on `</pre>`, and
+# `\begin{x}` on `\end{x}`. `<!-->` and `<!--->` are comments closed at once, and a raw
+# element opens a block only at the start of a line; in a line of text it is inline markup.
+_RAW_OPENING = re.compile(
+    r"(?P<comment><!--(?!-?>))"
+    r"|^[ ]{0,3}<(?P<tag>pre|script|style|textarea)\b"
+    r"|\\begin\{(?P<environment>[^{}\n]*)\}",
     re.IGNORECASE,
 )
+_INLINE_CODE = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
 
 
 @dataclass(frozen=True)
@@ -102,9 +107,12 @@ class Fence:
         word = _WORD.match(info)
         if word:
             return word.group().lower()
-        for part in info[info.find("{") + 1 :].rstrip("}").split():
-            if part.startswith(".") and len(part) > 1:
-                return part[1:].lower()
+        # Read an attribute at a time, so that `.b` inside `k='a .b'` is no class.
+        position = _BLANKS.match(info, info.find("{") + 1).end() if "{" in info else len(info)
+        while (after := _attribute_end(info, position)) is not None:
+            if info.startswith(".", position):
+                return info[position + 1 : after].lower()
+            position = _BLANKS.match(info, after).end()
         return ""
 
     @property
@@ -234,11 +242,29 @@ def _fence_like(bare: str) -> bool:
     return marker is not None or indent.strip(" ") != "" or len(indent) <= 3
 
 
-def _raw_depth(bare: str, depth: int) -> int:
-    """How many comments and raw blocks are open after `bare`, `depth` being open before."""
-    for edge in _RAW_EDGE.finditer(bare):
-        depth = depth + 1 if edge.group("open") else max(depth - 1, 0)
-    return depth
+def _raw_after(bare: str, closing: re.Pattern[str] | None) -> re.Pattern[str] | None:
+    """What closes the comment or raw block open after `bare`, None when none is:
+    `closing` is what closed the one open before it. Marks in inline code count for
+    nothing, pandoc printing them as code."""
+    line = _INLINE_CODE.sub(lambda found: " " * len(found.group()), bare)
+    at = 0
+    while True:
+        if closing is not None:
+            shut = closing.search(line, at)
+            if shut is None:
+                return closing
+            at, closing = shut.end(), None
+            continue
+        opening = _RAW_OPENING.search(line, at)
+        if opening is None:
+            return None
+        if opening.group("comment"):
+            closing = re.compile("-->")
+        elif opening.group("tag"):
+            closing = re.compile(rf"</{opening.group('tag')}\s*>", re.IGNORECASE)
+        else:
+            closing = re.compile(re.escape(f"\\end{{{opening.group('environment')}}}"))
+        at = opening.end()
 
 
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
@@ -280,20 +306,21 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     last_of = {first: last for first, last, _fence in listings}
     closers = set(last_of.values())
     inside: set[int] = set()
-    depth = index = 0
+    closing: re.Pattern[str] | None = None
+    index = 0
     while index < len(bares):
         last = last_of.get(index)
         above = bares[index - 1] if index else ""
         if (
             last is not None
-            and depth == 0
+            and closing is None
             and bares[index][:1] in ("`", "~")
             and (index == 0 or not above.strip(" ") or index - 1 in closers)
         ):
             inside.update(range(index, last + 1))
             index = last + 1
             continue
-        depth = _raw_depth(bares[index], depth)
+        closing = _raw_after(bares[index], closing)
         index += 1
     above_begin = text.count("\n", 0, begin)
     return [
@@ -308,7 +335,8 @@ def _listings(lines: list[str], bares: list[str], begin: int) -> list[tuple[int,
     # The widest closer of each fence character still to come after each line, read from
     # the end once. An opener wider than that has no closer and is passed over at once;
     # found by scanning forward, every opener in a run of narrowing ones read to the end of
-    # the text, and a run of a hundred over 85 KB took eight seconds.
+    # the text, and a run of a hundred over 85 KB took seconds a pass, of which `check`
+    # makes several.
     widest = {"`": 0, "~": 0}
     after: list[tuple[int, int]] = [(0, 0)] * len(bares)
     for index in range(len(bares) - 1, -1, -1):
@@ -341,11 +369,9 @@ def _listings(lines: list[str], bares: list[str], begin: int) -> list[tuple[int,
         index += 1
         body_start = offset
         # A closer wide enough is known to follow, so this stops at it.
-        while index < len(lines) and not _closes(bares[index], fence[0], len(fence)):
+        while not _closes(bares[index], fence[0], len(fence)):
             offset += len(lines[index])
             index += 1
-        if index >= len(lines):
-            break
         body_end = offset
         offset += len(lines[index])
         index += 1

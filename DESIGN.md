@@ -456,7 +456,7 @@ sides, and the lists are aligned, so a refusal names the heading and its file an
 
 It costs two more runs of pandoc's reader a document. It guards the document, not `check`:
 a source the build refuses can still pass `check`, and a number a misread hides from G2
-without touching metadata or headings is not compared. A refused build removes the
+without touching metadata, headings or listings is not compared. A refused build removes the
 document the last one left in build/, which is not this source's, so that it is not sent
 or packed; a refused supplement fails `build` and `submit` like the paper. `import` alone
 rebuilds without asking, since the document it rebuilds has already been sent, and refusing
@@ -1780,12 +1780,20 @@ asks pandoc about 128 fenced shapes: the old reader got 63 wrong; now 120 agree,
 do not are refused, and 65 are refused in all.
 
 Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
-attribute over blank lines), so the build compares too: every listing the gates mask in the
-sources must be a code block or raw block pandoc makes, with the same lines once the
-indentation is off (`build/reading.py`, beside the metadata and the headings). Code pandoc
-makes that the gates read as prose, an indented listing, is let be. The fence scan is
-linear: the widest closer still to come is read from the end once, so an opener with none
-is passed over at once, where a run of narrowing openers each used to read to the end.
+attribute over blank lines), so the build compares too (`build/reading.py`, beside the
+metadata and the headings): every listing the gates read in the sources must be, where it
+stands, a code block pandoc makes, or a raw block for `{=format}`. A numbered line is put
+first in each listing of the copy pandoc reads, and must come back first in its block, and
+each listing is paired in order with the one the gates read in the source files, lines and
+placeholders matching. The third review found why position and not lines: a listing the
+gates read inside a TeX group, masking the claim after it, passed for a copy of its lines
+in an indented block, and a comment holding them did as well, pandoc making every comment a
+raw block. Code pandoc makes that the gates read as prose, an indented listing, is let be.
+In `check`, a comment or raw block closes only on its own mark: a `-->` closed a `<pre>`,
+and `\end{center}` a comment. Marks in inline code, `<pre>` in a line of text, and `<!-->`
+open nothing. The fence scan is linear: the widest closer still to come is read from the
+end once, so an opener with none is passed over at once, where a run of narrowing openers
+each used to read to the end.
 
 The manuscript is read with `read_text`, which makes a lone carriage return a newline
 before the gates or the build see it; the reader agrees with pandoc either way. The front
@@ -2418,14 +2426,14 @@ Closed since, and why each mattered:
   the quotation first and reads no metadata.
 - **Some shapes only the build catches.** A comment the heading scan misreads, a `<!--` that
   pandoc prints (in inline or indented code, or written `\<!--`, `<!-->` or `<!--->`),
-  hides every rule up to the next `-->` from the refusal. So does a comment or a fence left
-  open at the end of one file and closed in the next, since the build joins the files and
-  pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
-  a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line
-  straight under a line of text, `We also saw it.` over `# Sensitivity`, a heading to the
-  gates and text to pandoc (#38's walk reads it as pandoc does). Where the result is
-  metadata in the text or a heading the gates read otherwise, the build refuses; `check`
-  passes it. A number such a shape hides from G2, with neither, is caught by nothing.
+  hides every rule up to the next `-->` from the refusal. So does a comment left open at
+  the end of one file and closed in the next, since the build joins the files and pandoc
+  reads across the join; a fence left open that way is refused, an opener with no closer in
+  its own file. So does a `#` line straight under a line of text, `We also saw it.` over
+  `# Sensitivity`, a heading to the gates and text to pandoc (#38's walk reads it as pandoc
+  does). Where the result is metadata in the text, a heading the gates read otherwise or a
+  listing pandoc does not make, the build refuses; `check` passes it. A number such a shape
+  hides from G2, with none of those, is caught by nothing.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
   starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
   14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an

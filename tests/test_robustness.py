@@ -86,6 +86,25 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_narrowing_openers_are_read_in_linear_time() -> None:
+    """A run of openers each one backtick narrower than the last, with no closer: skipping
+    only openers at least as wide as one known unclosed, each read to the end of the text,
+    and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
+    read from the end once."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def measure(lines: int) -> float:
+        text = "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+        started = time.perf_counter()
+        fenced_spans(text)
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(10000), 1e-4)
+    large = measure(40000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 def test_unclosed_attributes_are_read_in_linear_time() -> None:
     """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
     backslash before each newline read as an escape, took every opener to the end of the

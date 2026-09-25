@@ -2252,24 +2252,27 @@ Closed since, and why each mattered:
     line a citation. No part holds a brace, because a binding is filled in after this
     reading and its value could change it. A footnote is its label and its text on one
     line. Links come before notes, because a line under a note is more of the note. A note
-    also runs on through every line pandoc does not take for blank, and past a blank line
-    into an indented one, so it is left alone only when the line directly above the next
-    block is empty or holds only spaces and tabs. A block indented under a note after a
-    blank line is more of the note, as pandoc reads it, and its text is footnote text,
-    which `import` does not compare. Anything else - a definition wrapped over two
-    lines, with attributes or a title on the next line, a nested bracket in its label, a
-    footnote whose text wraps, or one written straight above prose - is marked, and prints
-    as text, as it did before this fix. That failure is visible. Three versions that
+    also runs on through every line pandoc does not take for blank; and after a blank line
+    (empty, or spaces and tabs), a line indented four columns - four spaces, or a tab,
+    which reaches the next four - is the note's next paragraph, and the unindented lines
+    under it are more of it. So a note is left alone only when a blank line ends it and the
+    line after the last blank one is indented less, and a note of several paragraphs is
+    marked. Anything else - a definition wrapped over two lines, with attributes or a title
+    on the next line, a nested bracket in its label, a footnote whose text wraps or runs to
+    a second paragraph, or one written straight above prose - is marked, and prints as
+    text, as it did before this fix. That failure is visible. Three versions that
     modelled more of pandoc's grammar were each caught in review failing the other way: they
     left a block unmarked that pandoc printed, so a co-author's edit to it was dropped while
     `import` said nothing came back, and one took minutes over a line of attributes. A
     fourth left a definition unmarked under a line that is blank here and not to pandoc -
     one holding only a no-break or full-width space, or a form feed - which pandoc reads
     with the definition as a paragraph; a fifth, a note over such a line, into which the
-    next paragraph ran and left the body; and a sixth, a note over a blank line and then an
+    next paragraph ran and left the body; a sixth, a note over a blank line and then an
     indented one holding only such a character, which carried the next paragraph off the
-    same way. One definition per line, with an empty line before the block and directly
-    after it, is what works.
+    same way; and a seventh, a note over an indented line holding only a zero-width space,
+    which is no whitespace to Python, so that line opened the next block unseen. One
+    definition per line, with an empty line before the block, is what works; after a note,
+    an empty line and then a line that is not indented.
   - *A document built before this change is best sent again.* It shows each definition as
     a paragraph, with an identifier the rebuild no longer has, so a co-author's edit to one
     is not compared, and is not named in the report.
@@ -2279,13 +2282,21 @@ Closed since, and why each mattered:
     it prints nothing of either. No real address has several words, so such a line is
     marked, and prints as it was written, as it always had. With one word after the colon,
     `[Note]: none.`, the line is a definition to both, and prints nothing.
+  - *A paragraph marked only for what surrounds it can become a definition.* A line in a
+    definition's shape is marked, and prints, where what surrounds it makes it prose to
+    pandoc: under a line holding only a no-break space, or for a note, over one. Moved in
+    Word to a place with blank lines around it, it is a definition to the next build and
+    prints nothing, while `import` reported the move as applied. The text stays in the
+    source. Nothing yet refuses a change after which a paragraph `import` wrote would carry
+    no identifier.
   - *A definition between two paragraphs is no section boundary.* It renders nothing in the
     body and pandoc reads it wherever it stands, so a move across it is applied: the
     paragraphs change places, and the definition stays where it was written. As untagged
     source text it first counted as a boundary, and such a move was refused as one past a
     heading, a table or a figure. `merge` asks `only_definitions_between`, by the test `tag`
     marks by, so a definition `tag` marks - under a line pandoc does not take for blank, or
-    in a shape it could read otherwise - is a paragraph, not something between two.
+    in a shape it could read otherwise - is a paragraph, not something between two. A move
+    across a definition can also carry such a paragraph to where it becomes one (above).
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

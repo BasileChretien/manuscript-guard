@@ -472,6 +472,12 @@ TAGGING = {
     "prose opening with a tag pandoc does not know": "<LOQ values> were imputed as half.\n",
     "prose with an escaped angle": "Concentrations \\<LLOQ and >ULOQ were excluded.\n",
     "prose with an escaped brace": "Alpha beta \\{ gamma delta.\n",
+    "prose with a DocBook tag": "Doses were adjusted <note>see it</note> as needed.\n",
+    "prose with an EPUB tag": "In the <case>x</case> group.\n",
+    "a DocBook tag line over a multiline table": (
+        "Some prose.\n\n<example>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
     "prose opening with a capital roman one": "I. first, in one sense.\n",
     "prose opening with i.e.": "i.e. this one.\n",
     "prose opening with a citation": "[@k] reported this.\n",
@@ -1065,7 +1071,8 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         )
 
 
-#: Every HTML5 element, some from before it that pandoc still knows, and names it does not.
+#: Every HTML5 element, some from before it that pandoc still knows, the DocBook and EPUB block
+#: tags pandoc's reader knows too (its `TagCategories.hs`), and names it does not know.
 HTML_NAMES = (
     "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi", "bdo",
     "blockquote", "body", "br", "button", "canvas", "caption", "cite", "code", "col", "colgroup",
@@ -1079,6 +1086,13 @@ HTML_NAMES = (
     "template", "textarea", "tfoot", "th", "thead", "time", "title", "tr", "track", "u", "ul",
     "var", "video", "wbr", "center", "font", "strike", "tt", "dir", "frame", "frameset",
     "noframes", "isindex", "marquee", "Div", "SECTION", "LLOQ", "LOQ", "foo", "custom-el",
+    "calloutlist", "bibliolist", "glosslist", "itemizedlist", "orderedlist", "segmentedlist",
+    "simplelist", "variablelist", "caution", "important", "note", "tip", "warning",
+    "literallayout", "programlisting", "programlistingco", "screen", "screenco", "screenshot",
+    "synopsis", "example", "informalexample", "informalfigure", "informaltable", "para",
+    "simpara", "formalpara", "equation", "informalequation", "mediaobject", "qandaset",
+    "procedure", "task", "cmdsynopsis", "funcsynopsis", "classsynopsis", "epigraph", "msgset",
+    "sidebar", "case", "switch", "default",
 )
 
 

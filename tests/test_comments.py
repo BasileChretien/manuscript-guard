@@ -146,6 +146,49 @@ def test_a_comment_marker_in_a_listing_does_not_hide_the_bindings_after_it() -> 
     assert [p.ref for p in parse(text)[0]] == ["results.n"]
 
 
+# ---------------------------------------------------------------- never more than before
+
+
+def _old_rule(text: str) -> set[int]:
+    """Every offset `<!--.*?-->` hid, with fenced blocks blanked, on each side of the front
+    matter: the rule the three regexes applied before the scanner replaced them."""
+    import re
+
+    from manuscript_guard.text.masking import fenced_blocks, front_matter_end
+
+    blanked = list(text)
+    for fence in fenced_blocks(text):
+        blanked[fence.start : fence.end] = " " * (fence.end - fence.start)
+    flat, head = "".join(blanked), front_matter_end(text)
+    comment = re.compile(r"<!--.*?-->", re.DOTALL)
+    hidden: set[int] = set()
+    for match in [*comment.finditer(flat, 0, head), *comment.finditer(flat, head)]:
+        hidden.update(range(match.start(), match.end()))
+    return hidden
+
+
+def test_the_scanner_hides_nothing_the_old_rule_did_not() -> None:
+    """Hiding less than the regex is the point: `` `<!--` `` and an escaped `\\<!--` print.
+    Hiding more is the dangerous direction, and the scanner's guesses about where pandoc
+    ends a code span or opens a comment are not always pandoc's, so a comment is hidden only
+    where the old rule hid it too."""
+    import random
+
+    from manuscript_guard.text.masking import html_comments
+
+    # Whole lines, so that listings, list items and indented code blocks actually form.
+    lines = [
+        FENCE, f"{FENCE}html", "````", "~~~", "<!-- a", "-->", "x -->", "    <!-- b", "",
+        "- item ```", "- `a", "> q `", "b`", "`c` d", "$a <!-- b$", "\\<!-- e", "9.99",
+        "Prose with 9.99.", "<!-- f -->", "`<!--`", "---", "title: <!-- g",
+    ]
+    rng = random.Random(20260925)
+    for _ in range(4000):
+        text = "\n".join(rng.choice(lines) for _ in range(rng.randint(1, 14))) + "\n"
+        hidden = {i for start, end in html_comments(text) for i in range(start, end)}
+        assert hidden <= _old_rule(text), repr(text)
+
+
 # ---------------------------------------------------------------- linear time
 
 

@@ -2074,13 +2074,14 @@ Closed since, and why each mattered:
   it pairs with the next fence line below. The prose between is read as a listing: G2 runs
   the listing checker over it, and the heading scan blanks any heading in it, so `<!--
   draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
-  such a fence for itself, but it does not look for the fences pandoc finds after it. One
-  case follows from that, the only one where this branch reads worse than the regex did: a
-  code span holding a line of four backticks, followed by a listing that holds `<!--`,
-  hides the prose after the listing up to the next `-->`. Separately, a `~~~` fence, or a
-  backtick fence indented one to three spaces, does not interrupt a paragraph in pandoc,
-  which prints it as prose. One pass that finds fences, code spans and comments together
-  would close all of these.
+  such a fence for itself, but it does not look for the fences pandoc finds after it, and it
+  does not know every place pandoc ends a code span. So a comment is hidden only where the
+  old rule hid it too, from `<!--` to the first `-->` with the fences blanked, and the
+  scanner can hide less than the regex did but never more. The price is noise: a comment
+  whose only `-->` pandoc finds inside what the toolkit takes for a listing is read.
+  Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
+  interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
+  code spans and comments together would close all of these.
 - **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
   typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
   mentions both markers hides everything between them.

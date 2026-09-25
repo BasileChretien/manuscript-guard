@@ -175,7 +175,52 @@ def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[in
     view = _filled(text, _frontmatter_spans(text), NUL)
     if fences is None:
         fences = fenced_blocks(text)
-    return comment_spans(view, fences)
+    return _within(comment_spans(view, fences), _fence_first_comments(text, fences))
+
+
+def _fence_first_comments(text: str, fences: list[Fence]) -> list[tuple[int, int]]:
+    """The comments the old rule found: from `<!--` to the first `-->`, fences blanked.
+
+    The scanner knows code spans and where pandoc ends a comment, but not every place pandoc
+    ends a code span or starts a block: an indented code block, a list item, maths. Where it
+    guessed one pandoc does not make, a `<!--` it should have ignored closed on a `-->`
+    inside a listing, or one it should have found in a listing opened a comment, and prose
+    pandoc prints was hidden that the old rule had read. So a comment is hidden only where
+    this rule hides it too: the scanner can hide less than the regexes it replaced, never
+    more. Found with `find`, on each side of the front matter, and linear: once a `<!--`
+    has no `-->` after it, none later can.
+    """
+    flat = list(text)
+    for fence in fences:
+        flat[fence.start : fence.end] = " " * (fence.end - fence.start)
+    blanked = "".join(flat)
+    head = front_matter_end(text)
+    found: list[tuple[int, int]] = []
+    for low, high in ((0, head), (head, len(blanked))):
+        position = low
+        while (opening := blanked.find("<!--", position, high)) != -1:
+            closing = blanked.find("-->", opening + 4, high)
+            if closing == -1:
+                break
+            found.append((opening, closing + 3))
+            position = closing + 3
+    return found
+
+
+def _within(spans: list[tuple[int, int]], allowed: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """The parts of `spans` that lie inside `allowed`. Both sorted, neither overlapping."""
+    kept: list[tuple[int, int]] = []
+    first = 0
+    for start, end in spans:
+        while first < len(allowed) and allowed[first][1] <= start:
+            first += 1
+        index = first
+        while index < len(allowed) and allowed[index][0] < end:
+            low, high = max(start, allowed[index][0]), min(end, allowed[index][1])
+            if low < high:
+                kept.append((low, high))
+            index += 1
+    return kept
 
 
 def blank(text: str, spans: list[tuple[int, int]]) -> str:

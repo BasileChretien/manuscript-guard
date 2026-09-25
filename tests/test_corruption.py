@@ -1503,6 +1503,37 @@ def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, pa
     assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
 
 
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "# Methods\n\nThe template begins:\n\n    <!-- header\n\n# Results\n\n"
+        "The ROR was 9.99.\n\n```html\n<!-- footer -->\n```\n",
+        "# Methods\n\n- Wrap the template in ```:\n```html\n<!-- template\n```\n\n"
+        "# Results\n\nThe ROR was 9.99.\n\n<!-- TODO -->\n",
+        "Set `x\n````\ny`\n```\n<!--\n````\n\nThe ROR was 9.99. -->\n",
+    ],
+    ids=[
+        "an opener pandoc prints as code, closed in a listing",
+        "a code span pandoc ends at a list item",
+        "a code span over a fence line",
+    ],
+)
+def test_the_comment_scanner_hides_nothing_the_old_rule_did_not(tmp_path: Path, paper: str) -> None:
+    """The scanner knows code spans and fences, but not every place pandoc ends one: an
+    indented code block, a list item, maths. Where it guessed a code span or a comment that
+    pandoc does not make, a `<!--` it should have ignored closed on a `-->` inside a listing,
+    or one it should have found in a listing opened a comment, and Results and 9.99 were
+    hidden: `audit --strict` exited 0. The old rule read all three."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+
+
 def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
     """The old binding parser got this right and the first version of the shared scanner
     did not: it read with the fences blanked, so the comment ran on over the binding."""

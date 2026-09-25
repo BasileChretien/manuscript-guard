@@ -105,10 +105,12 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
         fenced_spans(text)
         return time.perf_counter() - started
 
+    # Eight times the input, because at four the quadratic scanner's constant overhead kept
+    # its ratio near 12-16, too close to a linear one's for a threshold to tell them apart.
     measure(5)  # warm the caches
     small = max(measure(25), 1e-3)
-    large = measure(100)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    large = measure(200)
+    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
 
 
 # ---------------------------------------------------------------- hostile files

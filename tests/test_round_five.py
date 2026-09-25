@@ -212,6 +212,53 @@ def test_revising_the_anchored_paragraph_satisfies_it(project: Path) -> None:
     assert "claimed-change-missed-the-point" not in codes(project)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("closer", "scheme"),
+    [
+        # Recorded before the scheme was, on a source whose front matter now ends elsewhere.
+        ("...", None),
+        # Recorded under numbering this version does not use.
+        ("---", 99),
+    ],
+)
+def test_an_anchor_numbered_under_other_rules_is_reported_not_compared(
+    project: Path, closer: str, scheme: int | None
+) -> None:
+    """A round's anchors are paragraph identifiers, and an identifier is positional. Once the
+    rules that number paragraphs changed, the anchor named another paragraph, and comparing
+    it passed a revision that never happened or reported one that did as missing."""
+    from manuscript_guard.roundtrip import TAGGING_SCHEME
+
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    path.write_text(whole.replace("\n---\n", f"\n{closer}\n", 1), encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    extra = {"tagging_scheme": scheme} if scheme is not None else {}
+    assert scheme != TAGGING_SCHEME
+    round_with(
+        project,
+        {
+            "id": "1.6",
+            "comment": "This paragraph is unclear.",
+            "where": next(iter(known)),
+            "response": "We have revised the Methods.",
+            "changed": [{"kind": "manuscript", "name": "main.md"}],
+        },
+        submitted_paragraphs={
+            name: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for name, (_path, text, _at) in known.items()
+        },
+        **extra,
+    )
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nAn unrelated addition.\n", "utf-8")
+
+    found = codes(project)
+    assert "anchor-uncheckable" in found
+    assert "claimed-change-missed-the-point" not in found
+
+
 # ---------------------------------------------------------------- 6: reviewer slugs
 
 

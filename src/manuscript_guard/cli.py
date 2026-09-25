@@ -313,7 +313,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     from manuscript_guard.roundtrip import (
         RoundTripError,
         comments_in,
+        numbering_problem,
+        numbering_refusal,
         read_blocks,
+        scheme_of,
         stamp_of,
         tagged_paragraphs,
     )
@@ -336,6 +339,12 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"no way to tell which text these edits were made against. Only a document this "
             f"tool built can be imported."
         )
+        return 1
+    # Before the digest, and past --force: under other numbering an edit has no hunk to
+    # check by hand, only a paragraph that is not the one it was made in.
+    problem = numbering_problem(project, scheme_of(edited))
+    if problem:
+        print(numbering_refusal(edited.name, problem))
         return 1
     if carried != document_digest(project) and not args.force:
         print(
@@ -532,10 +541,17 @@ def cmd_respond(args: argparse.Namespace) -> int:
             # two different manuscripts - one command called that dangerous while the other
             # baked it into the revision record without a word.
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import RoundTripError, stamp_of
+            from manuscript_guard.roundtrip import (
+                RoundTripError,
+                numbering_problem,
+                numbering_refusal,
+                scheme_of,
+                stamp_of,
+            )
 
             try:
                 carried = stamp_of(args.source)
+                scheme = scheme_of(args.source)
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
@@ -549,6 +565,10 @@ def cmd_respond(args: argparse.Namespace) -> int:
                     f"that.\n  Run `manuscript-guard respond --open` without --from and type "
                     f"the points into the round file."
                 )
+                return 1
+            problem = numbering_problem(project, scheme)
+            if problem:
+                print(numbering_refusal(args.source.name, problem))
                 return 1
             if carried != document_digest(project) and not args.force:
                 print(
@@ -589,12 +609,15 @@ def cmd_respond(args: argparse.Namespace) -> int:
             # comparison could not fire and the check was dead code. Its test passed because
             # the test built the baseline the way the gate reads it, not the way this
             # command writes it.
-            from manuscript_guard.roundtrip import tagged_paragraphs
+            from manuscript_guard.roundtrip import TAGGING_SCHEME, tagged_paragraphs
 
             document["submitted_paragraphs"] = {
                 name: hashlib.sha256(entry[1].encode("utf-8")).hexdigest()
                 for name, entry in tagged_paragraphs(project).items()
             }
+            # The anchors are identifiers, and an identifier means something only under the
+            # rules that assigned it: G13 compares them only under the same rules.
+            document["tagging_scheme"] = TAGGING_SCHEME
         path.write_text(
             yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
             encoding="utf-8",

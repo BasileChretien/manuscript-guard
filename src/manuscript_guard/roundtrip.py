@@ -42,13 +42,34 @@ from manuscript_guard.docxtext import TOKEN, spaced
 PROPERTY = "manuscript-guard-source"
 _CUSTOM = "docProps/custom.xml"
 
+#: The rules that turn a source into paragraph identifiers: where the front matter ends,
+#: how the rest splits into blocks, and which blocks are tagged. An identifier is
+#: positional, so a document built under one set of rules and imported under another has
+#: its identifiers naming other paragraphs, and every edit in it lands in the wrong one.
+#: The number travels in the document beside the digest, and in a review round, and a
+#: mismatch is refused. Bump it with any change to `strip_front_matter`, `_untagged` or
+#: the split; `test_identifiers_are_pinned_to_the_tagging_scheme` fails until you do.
+#:
+#: 1. Up to plugin release 0.2.12, and never recorded: front matter closed only by `---`
+#:    (`_SCHEME_1_FRONT`).
+#: 2. From 0.2.13: front matter where pandoc ends it (`masking.FRONTMATTER`). Recorded from
+#:    the release after, so a document built by 0.2.13 itself records nothing.
+TAGGING_SCHEME = 2
+SCHEME_PROPERTY = "manuscript-guard-tagging"
+
+#: Where scheme 1 took the front matter to end. Kept for one question only: whether a
+#: document that records no scheme still names the right paragraphs.
+_SCHEME_1_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+
 _CUSTOM_XML = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
     '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/'
     'custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/'
-    'docPropsVTypes">'
+    'docPropsVTypes">{properties}</Properties>'
+)
+_CUSTOM_PROPERTY = (
     '<property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="2" name="{name}">'
-    "<vt:lpwstr>{value}</vt:lpwstr></property></Properties>"
+    "<vt:lpwstr>{value}</vt:lpwstr></property>"
 )
 _CUSTOM_RELS = (
     '<Override PartName="/docProps/custom.xml" ContentType="application/'
@@ -91,23 +112,25 @@ def _custom_properties(existing: str | None, digest: str) -> str:
     keeps a document's citation style there (ZOTERO_PREF_1, ...): the stamp erased the
     style, and Word asked for one again after every build. Kept, except pandoc's own inputs:
     `bibliography` carried the absolute path of references.bib to every co-author.
+
+    The tagging scheme goes in beside the digest: see `TAGGING_SCHEME`.
     """
-    ours = _CUSTOM_XML.format(name=PROPERTY, value=digest)
-    if not existing:
-        return ours
-    dropped = (PROPERTY, *_BUILD_INPUTS)
+    ours = [
+        _CUSTOM_PROPERTY.format(name=PROPERTY, value=digest),
+        _CUSTOM_PROPERTY.format(name=SCHEME_PROPERTY, value=TAGGING_SCHEME),
+    ]
+    dropped = (PROPERTY, SCHEME_PROPERTY, *_BUILD_INPUTS)
     kept = [
         element
-        for element in _PROPERTY_ELEMENT.findall(existing)
+        for element in _PROPERTY_ELEMENT.findall(existing or "")
         if not any(f'name="{name}"' in element for name in dropped)
     ]
-    elements = kept + _PROPERTY_ELEMENT.findall(ours)
     # Property ids must be unique, and custom properties number from 2.
     numbered = [
         re.sub(r'\bpid="\d+"', f'pid="{i}"', element, count=1)
-        for i, element in enumerate(elements, start=2)
+        for i, element in enumerate(kept + ours, start=2)
     ]
-    return ours[: ours.index("<property")] + "".join(numbered) + "</Properties>"
+    return _CUSTOM_XML.format(properties="".join(numbered))
 
 
 def stamp_into(document: Path, digest: str) -> None:
@@ -154,6 +177,19 @@ def stamp_of(document: Path) -> str | None:
     # need not be ours.
     found = re.search(rf'name="{PROPERTY}"[^>]*>\s*<vt:lpwstr>([0-9a-f]{{64}})</vt:lpwstr>', xml)
     return found.group(1) if found else None
+
+
+def scheme_of(document: Path) -> int | None:
+    """The tagging scheme a document's paragraphs were numbered under, if it records one."""
+    try:
+        with zipfile.ZipFile(document) as archive:
+            if _CUSTOM not in archive.namelist():
+                return None
+            xml = archive.read(_CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
+    found = re.search(rf'name="{SCHEME_PROPERTY}"[^>]*>\s*<vt:lpwstr>(\d+)</vt:lpwstr>', xml)
+    return int(found.group(1)) if found else None
 
 
 def comments_in(document: Path) -> list[Comment]:
@@ -303,32 +339,103 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
     reported, after the identifier had been established precisely so nothing had to be
     guessed. `bind` already learned this; the round trip had not.
     """
+    return {
+        name: (path, text, start)
+        for path, relative, raw in _sources(project)
+        for name, text, start in identified(raw, relative)
+    }
+
+
+def _sources(project) -> list[tuple[Path, str, str]]:
+    """Every source file: its path, its path within `manuscript/`, and its text."""
     from manuscript_guard.gates.numbers import source_files
 
-    found: dict[str, tuple[Path, str]] = {}
     root = project.path("manuscript")
-    for path in source_files(root):
-        relative = path.relative_to(root).as_posix()
-        slug = paragraph_slug(relative)
-        # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing
-        # the raw source here while the document was tagged from the stripped text put every
-        # identifier one block out of step - the two must read the same string or the
-        # identifier stops naming anything.
+    return [
+        (path, path.relative_to(root).as_posix(), path.read_text(encoding="utf-8"))
+        for path in source_files(root)
+    ]
+
+
+def identified(
+    raw: str, relative: str, scheme: int = TAGGING_SCHEME
+) -> list[tuple[str, str, int]]:
+    """Each tagged paragraph of one source file: its identifier, its text, and its offset.
+
+    Under `scheme`, which is the current one except when asking whether a document that
+    records none still names the right paragraphs.
+    """
+    # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
+    # raw source here while the document was tagged from the stripped text put every
+    # identifier one block out of step - the two must read the same string or the
+    # identifier stops naming anything.
+    if scheme == TAGGING_SCHEME:
         from manuscript_guard.build.assemble import strip_front_matter
 
-        raw = path.read_text(encoding="utf-8")
         text, _title = strip_front_matter(raw)
-        # Offsets are into the file on disk, not into the stripped copy: the merge splices
-        # into the real file, and a paragraph would land one front matter earlier.
-        cursor = len(raw) - len(text)
-        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
-            stripped = para.strip()
-            start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
-            cursor += len(para)
-            if _untagged(stripped):
-                continue
-            found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
-    return found
+    elif scheme == 1:
+        found = _SCHEME_1_FRONT.match(raw)
+        text = raw[found.end() :].lstrip("\n") if found else raw
+    else:
+        raise ValueError(f"no rules are kept for tagging scheme {scheme}")
+    slug = paragraph_slug(relative)
+    # Offsets are into the file on disk, not into the stripped copy: the merge splices into
+    # the real file, and a paragraph would land one front matter earlier.
+    cursor = len(raw) - len(text)
+    out: list[tuple[str, str, int]] = []
+    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        stripped = para.strip()
+        start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
+        cursor += len(para)
+        if not _untagged(stripped):
+            out.append((_TAG.format(slug=slug, index=index), stripped, start))
+    return out
+
+
+def renumbered(project) -> list[str]:
+    """The source files whose paragraphs scheme 1 numbered differently from this one.
+
+    A document or a review round that records no scheme was numbered either under scheme 1
+    or, if built by 0.2.13, under this one. Where the two agree it does not matter which,
+    and it is read as it always was; only these files are a question.
+    """
+    return [
+        relative
+        for _path, relative, raw in _sources(project)
+        if [entry[:2] for entry in identified(raw, relative, 1)]
+        != [entry[:2] for entry in identified(raw, relative)]
+    ]
+
+
+def numbering_problem(project, carried: int | None) -> str | None:
+    """Why paragraph identifiers recorded under scheme `carried` cannot be trusted here, or
+    None when they can. `carried` is None for a document or round that records no scheme."""
+    if carried == TAGGING_SCHEME:
+        return None
+    if carried is not None:
+        return (
+            f"numbers its paragraphs by other rules (tagging scheme {carried}; this version "
+            f"uses {TAGGING_SCHEME})"
+        )
+    changed = renumbered(project)
+    if not changed:
+        return None
+    return (
+        f"records no numbering scheme, and the front matter of {', '.join(changed)} is "
+        f"taken to end in a different place than it was before the scheme was recorded, so "
+        f"the version that built it may have numbered its paragraphs differently"
+    )
+
+
+def numbering_refusal(name: str, problem: str) -> str:
+    """The refusal `import` and `respond --open` print for `numbering_problem`."""
+    return (
+        f"{name} {problem}. Its paragraph identifiers name other paragraphs now, so every "
+        f"edit or comment in it would land in the wrong one.\n"
+        f"  Rebuild, send the new document, and carry over by hand anything already written "
+        f"in this one. --force does not change this: there is no hunk to check, only the "
+        f"wrong paragraph."
+    )
 
 
 def read_blocks(document: Path):

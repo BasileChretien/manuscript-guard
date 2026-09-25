@@ -18,7 +18,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -1233,6 +1235,56 @@ def test_a_comment_opened_in_the_front_matter_hides_no_binding(project: Path) ->
     text = text.replace("# Introduction", "<!-- checked -->\n\n# Introduction", 1)
     path.write_text(text, encoding="utf-8")
     assert "interval-reversed" in codes(gate_report(project))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_document_numbered_under_older_rules_is_not_merged(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Paragraph identifiers are positional, and 0.2.13 moved where front matter closed by
+    `...` ends. A document built before that and imported after it had every identifier a
+    block out of step: `import --apply` wrote three paragraphs' text over three others and
+    printed "merged 3 reworded paragraph(s), bindings intact"."""
+    import importlib
+
+    from manuscript_guard.cli import main
+
+    # The module, not the `assemble` function the package exports under the same name.
+    assembly = importlib.import_module("manuscript_guard.build.assemble")
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8").replace("\n---\n", "\n...\n", 1), "utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    # Built as 0.2.12 built it: front matter was only ever closed by `---`.
+    before = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+
+    def as_before(raw: str) -> tuple[str, str]:
+        found = before.match(raw)
+        return (raw[found.end() :].lstrip("\n"), "") if found else (raw, "")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(assembly, "strip_front_matter", as_before)
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    shutil.copy(project / "build" / "manuscript.docx", returned)
+    # A co-author's edit, in a document that records no numbering, as 0.2.12's did not.
+    scratch = tmp_path / "t.docx"
+    with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            elif item.filename == "docProps/custom.xml":
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-tagging".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
+            zout.writestr(item, data)
+
+    main(["import", str(scratch), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
 
 
 def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:

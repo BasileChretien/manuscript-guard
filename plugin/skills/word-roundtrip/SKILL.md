@@ -192,6 +192,15 @@ source as it now stands, so it offers to revert everything the first co-author c
 a paragraph, or changed what a compared paragraph displays, and even then every hunk has to
 be read.
 
+A document whose paragraphs were numbered by other rules is refused whatever you pass,
+`--force` included, and so is `respond --open --from` on it. It happens across an upgrade
+that changed how paragraphs are numbered: each identifier would name another paragraph, so
+every edit and every comment would land in the wrong one. A document built before the rules
+were recorded in it is refused only when its source's front matter is now read differently.
+Rebuild, send the new document, and carry over by hand anything already written in the old
+one. A revision round opened under other numbering has its anchored points reported as
+`anchor-uncheckable` rather than compared; check each by hand, then delete its `where`.
+
 ## If you are a model doing this
 
 Never run `--apply` without having read the dry run in full, and never report an import as

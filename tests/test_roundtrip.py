@@ -202,6 +202,162 @@ def test_an_unstamped_document_is_refused(project: Path, tmp_path: Path) -> None
     assert main(["import", str(plain), str(project)]) == 1
 
 
+# ---------------------------------------------------------------- the tagging scheme
+
+
+def with_scheme(document: Path, value: str | None) -> Path:
+    """The document with its recorded tagging scheme rewritten, or removed as a build from
+    before the scheme was recorded would have it."""
+    scratch = document.with_suffix(".s.docx")
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/custom.xml":
+                xml = data.decode("utf-8")
+                ours = r'<property\b[^>]*name="manuscript-guard-tagging"[^>]*>.*?</property>'
+                if value is None:
+                    xml = re.sub(ours, "", xml, flags=re.DOTALL)
+                else:
+                    xml = re.sub(
+                        r'(name="manuscript-guard-tagging"[^>]*>\s*<vt:lpwstr>)[^<]*',
+                        rf"\g<1>{value}",
+                        xml,
+                    )
+                data = xml.encode("utf-8")
+            zout.writestr(item, data)
+    scratch.replace(document)
+    return document
+
+
+#: A source touching every rule that decides which paragraph gets which identifier, and the
+#: identifiers the current scheme gives it. Changing how a source is split, which blocks are
+#: tagged or where the front matter ends changes this table - and points every document
+#: already sent out at other paragraphs. So a change here goes with a bump of
+#: `TAGGING_SCHEME`, and the table is re-pinned for the new scheme.
+#:
+#: Some entries are wrong: the half of a code block after its blank line is tagged, and so
+#: are raw HTML, a link definition, indented code and a YAML block, while a paragraph that is
+#: only a binding is not. They are pinned anyway. The table records what the documents
+#: already sent out carry, not what is right, and fixing any of them is exactly a change
+#: that has to bump the scheme.
+PINNED_SOURCE = (
+    "---\ntitle: T\n...\n\n# Methods\n\nFirst {{results.a}} paragraph.\n\n"
+    "```r\nx <- 1\n\ny <- 2\n```\n\n::: {#refs}\n:::\n\n{{table.t1}}\n\n{{results.b}}\n\n"
+    "Second paragraph\nruns on.\n\n- one\n\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n"
+    "<div>\nraw html\n</div>\n\n[site]: https://example.org\n\n    indented code\n\n"
+    "---\nmid: yaml\n---\n\n## Results\n\nLast paragraph.\n"
+)
+PINNED = {
+    2: {
+        "mg-p-maincbb16c-2": "First {{results.a}} paragraph.",
+        "mg-p-maincbb16c-6": "y <- 2\n```",
+        "mg-p-maincbb16c-14": "Second paragraph\nruns on.",
+        "mg-p-maincbb16c-16": "- one",
+        "mg-p-maincbb16c-18": "- two",
+        "mg-p-maincbb16c-20": "| a | b |\n|---|---|\n| 1 | 2 |",
+        "mg-p-maincbb16c-22": "<div>\nraw html\n</div>",
+        "mg-p-maincbb16c-24": "[site]: https://example.org",
+        "mg-p-maincbb16c-26": "indented code",
+        "mg-p-maincbb16c-28": "---\nmid: yaml\n---",
+        "mg-p-maincbb16c-32": "Last paragraph.",
+    }
+}
+
+
+def test_identifiers_are_pinned_to_the_tagging_scheme(tmp_path: Path) -> None:
+    """A document carries its paragraphs' identifiers for weeks, and the identifier is
+    positional. When the rules that assign it changed, a document built before and imported
+    after had edits written into other paragraphs. The scheme number is what lets import
+    refuse that, and it only works if every such change bumps it: this fails until it does."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.roundtrip import TAGGING_SCHEME, identified, tag
+
+    assert TAGGING_SCHEME in PINNED, (
+        f"no table for tagging scheme {TAGGING_SCHEME}: pin what it gives PINNED_SOURCE"
+    )
+    expected = PINNED[TAGGING_SCHEME]
+    found = {name: text for name, text, _at in identified(PINNED_SOURCE, "main.md")}
+    assert found == expected, (
+        "paragraph identifiers changed: bump TAGGING_SCHEME, and pin the new table"
+    )
+    # The document and the import must number alike, or an identifier names nothing. The
+    # build tags the source with its front matter stripped.
+    body, _title = strip_front_matter(PINNED_SOURCE)
+    assert re.findall(r"\{#(mg-p-[^}]+)\}", tag(body, "main.md")) == list(expected)
+
+
+@needs_pandoc
+def test_a_built_document_carries_its_tagging_scheme(project: Path) -> None:
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import TAGGING_SCHEME, scheme_of
+
+    assert main(["build", str(project), "--offline"]) == 0
+    assert scheme_of(project / "build" / "manuscript.docx") == TAGGING_SCHEME
+
+
+@needs_pandoc
+def test_a_document_numbered_under_other_rules_is_refused_even_with_force(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--force exists for a stale digest, where every hunk can be checked by hand. Under
+    other numbering there is no hunk to check: each edit lands in whichever paragraph now
+    holds its identifier."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"This work received no funding.": "This work received no external funding."},
+    )
+    with_scheme(returned, "1")
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    assert "rebuild" in capsys.readouterr().out.lower()
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
+    assert not (project / "revision").exists(), "no round opened on misnumbered anchors"
+
+
+@needs_pandoc
+def test_an_unmarked_document_whose_numbering_did_not_change_still_imports(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built before the scheme was recorded carries none. Its source reading the
+    same under the old rules as the new is the ordinary case, and it merges as it did."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"This work received no funding.": "This work received no external funding."},
+    )
+    with_scheme(returned, None)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+
+
+@needs_pandoc
+def test_a_round_records_the_scheme_its_anchors_were_numbered_under(
+    project: Path, tmp_path: Path
+) -> None:
+    import yaml
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import TAGGING_SCHEME
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = shutil.copy(project / "build" / "manuscript.docx", tmp_path / "back.docx")
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert document["tagging_scheme"] == TAGGING_SCHEME
+
+
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:
     from manuscript_guard.cli import main
 

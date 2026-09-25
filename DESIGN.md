@@ -1228,6 +1228,21 @@ a reordering of text already on disk rather than anything imported. That makes i
 precisely the paragraphs the content merge has to refuse: a paragraph solid with bindings
 can be moved without a binding going anywhere near Word.
 
+An identifier is positional, though: the file and the block's place in it once the front
+matter is stripped. So it means something only under the rules that assigned it, and those
+rules change. The front-matter reading changed in plugin release 0.2.13. After that, a
+document built before the change and imported after it had every identifier a block out of
+step: `import --apply` wrote three paragraphs' text over three others and printed "merged 3
+reworded paragraph(s), bindings intact". A review round's anchors went the same way, and G13
+compared the wrong paragraph and passed. The document now records its tagging scheme beside
+the source digest, and a round records it too (`roundtrip.TAGGING_SCHEME`). Under another
+scheme `import` and `respond --open` refuse, and `--force` does not help: there is no hunk to
+check, only the wrong paragraph. G13 reports such a round's anchors as `anchor-uncheckable`
+instead of comparing them. A document or round from before the scheme was recorded is
+refused only where it matters: when some source's paragraphs come out differently under the
+rules kept from scheme 1. A table of identifiers in `test_roundtrip.py` fails on any
+numbering change until the scheme is bumped.
+
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
 true and useless. And a move and a rewording are applied together. The identifier makes
@@ -2271,15 +2286,19 @@ Closed since, and why each mattered:
   "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
-- **Paragraph identifiers move when the rules that split a source change.** An identifier
-  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
-  the stamp records the sources' digest but not the rules that split them. A document sent
-  out before such a change and imported after it has its identifiers pointing at other
-  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
-  wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
-  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
-  none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
-  The guard is a scheme version in the stamp and the round file, refused on a mismatch.
+- **The tagging scheme is only as good as its bumps.** A change to how paragraphs are
+  numbered is caught by the pinned table in `test_roundtrip.py` only when it moves an
+  identifier of that one source. The source covers front matter, fenced code with a blank
+  line in it, divs, lone placeholders, lists, tables, raw HTML, a link definition, indented
+  code and a YAML block. A change to anything else needs its author to bump
+  `TAGGING_SCHEME` unprompted. Otherwise documents already sent out come back pointing at
+  other paragraphs, as before the scheme existed.
+- **A document built by plugin release 0.2.13 itself can be refused needlessly.** It
+  numbered paragraphs under the current rules but records no scheme, so it is judged like a
+  document built before the change. It is refused when its source's front matter has a blank
+  line after the opening `---`, a `...` closer or a trailing space on the opening `---`.
+  `init` writes none of these. The way through is the refusal's own advice: rebuild and
+  resend.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

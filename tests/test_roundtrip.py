@@ -1270,6 +1270,12 @@ def test_an_edited_stretch_the_build_printed_differently_is_refused(
             "As X (2019) [pooled] overall.",
             id="value-read-as-a-braced-key's-locator",
         ),
+        pytest.param(
+            "As @a reported, it was {{results.x}} overall.",
+            "As ⟦A (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
+            "As A (2019)\t[pooled] overall.",
+            id="value-read-as-a-locator-after-a-tab",
+        ),
     ],
 )
 def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
@@ -1279,6 +1285,42 @@ def test_an_edit_that_makes_pandoc_read_a_token_differently_is_refused(
     citation and `@a:3.84` as the key `a:3.84`. Each edit merged, because the read-back found
     as many tokens as before, and the next build printed a raw key or a garbled citation."""
     assert merged(source, rendered, returned) is None
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "As @a [p. 3] reported, it was {{results.x}} overall.",
+            "As ⟦A (2019, 3)⟧ reported, it was ⟦moderate⟧ overall.",
+            "As A (2019, 3):moderate overall.",
+            "As @a [p. 3]:{{results.x}} overall.",
+            id="colon-after-a-key-with-its-locator",
+        ),
+        pytest.param(
+            "As @a [p. 3] reported, it was {{results.x}} overall.",
+            "As ⟦A (2019, 3)⟧ reported, it was ⟦[pooled]⟧ overall.",
+            "As A (2019, 3) [pooled] overall.",
+            "As @a [p. 3] {{results.x}} overall.",
+            id="bracketed-value-after-a-key-with-its-locator",
+        ),
+        pytest.param(
+            "As @a reported, it was {{results.x}} overall.",
+            "As ⟦A (2019)⟧ reported, it was ⟦[pooled]⟧ overall.",
+            "As A (2019) [pooled] overall.",
+            "As @a {{results.x}} overall.",
+            id="bracketed-value-after-a-no-break-space",
+        ),
+    ],
+)
+def test_an_edit_pandoc_reads_as_word_shows_it_merges(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """The checks above were broader than pandoc, and refused these. A key that has its
+    locator ends at the `]`, so nothing after it reads on into the key, and a second bracket
+    is no locator: pandoc takes one. Nor is a bracket after a no-break space: pandoc reads a
+    locator only after spaces, a tab or one line break."""
+    assert merged(source, rendered, returned) == expected
 
 
 def test_part_of_a_citation_ending_a_paragraph_deleted_is_a_changed_citation() -> None:

@@ -1487,12 +1487,19 @@ def _reads_as(
         between = rebuilt[first.end() : second.start()]
         if not between:
             return False
-        if not first.text.lstrip("-").startswith("@") or not _BINDING.fullmatch(second.text):
+        # A narrative key without its locator. One with it ends at the `]`, so nothing after it
+        # reads on into the key, and pandoc takes no second locator.
+        bare = first.text.lstrip("-").startswith("@") and not first.text.endswith("]")
+        if not bare or not _BINDING.fullmatch(second.text):
             continue
         value = renderings[index + 1]
-        # A key then one mark of punctuation reads on into a value put straight after it.
+        # One mark of punctuation reads a key on into a value put straight after it; a key in
+        # braces ends at its `}`.
         glued = not first.text.endswith("}") and re.fullmatch(r"[:.#$%&+?<>~/-]", between)
-        if (glued and re.match(r"\w", value)) or (not between.strip() and value.startswith("[")):
+        # Spaces, a tab or one line break make a value that opens with `[` the key's locator,
+        # as they make a bracket in the source one; a no-break space does not.
+        located = _LOCATOR.fullmatch(between + "[") and value.startswith("[")
+        if (glued and re.match(r"\w", value)) or located:
             return False
     return _untypeset(reading.whole) == _untypeset(returned)
 

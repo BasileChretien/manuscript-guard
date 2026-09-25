@@ -1600,6 +1600,13 @@ ABBREVIATED = [
         "Send it to desk@lab-p.\u00a04 of the form.",
         id="after-an-example-label",
     ),
+    pytest.param(
+        "Write to {{results.c}}-p. 4 please.",
+        "Write to desk@lab-p. 4 please.",
+        "Write to desk@lab-p.\u00a04 thanks.",
+        "Write to {{results.c}}-p.\u00a04 thanks.",
+        id="run-on-from-a-binding",
+    ),
 ]
 
 
@@ -1631,7 +1638,7 @@ def test_pandocs_own_no_break_space_written_back_prints_the_same(
         # The citation stays one for pandoc, which puts no no-break space before it; without
         # citeproc it prints as its key, read here as the test's rendering of it.
         path = tmp_path / f"{name}.md"
-        filled = markdown.replace("{{results.x}}", "3.84")
+        filled = markdown.replace("{{results.x}}", "3.84").replace("{{results.c}}", "desk@lab")
         path.write_text(f"[]{{#mg-p-x-0}}{filled}\n", encoding="utf-8")
         subprocess.run(["pandoc", str(path), "-o", str(tmp_path / f"{name}.docx")], check=True)
         text = paragraph_text(tmp_path / f"{name}.docx")["mg-p-x-0"]
@@ -1639,6 +1646,26 @@ def test_pandocs_own_no_break_space_written_back_prints_the_same(
 
     assert printed(source, "sent") == rendered
     assert printed(expected, "merged") == returned
+
+
+def test_writing_back_a_no_break_space_is_linear_in_a_long_word() -> None:
+    """Looking for a bare `@` in the word before the abbreviation searched the text before it
+    with `\\S*\\Z`, which rescans a long run from every place in it: with a URL of 8,000
+    characters ahead of a few "e.g.", `align` took 16 seconds. Doubling the input must not
+    much more than double the time."""
+    import time
+
+    from manuscript_guard.roundtrip import _respaced
+
+    def measure(length: int) -> float:
+        text = f"See https://example.org/{'a' * length} and e.g.\u00a0this."
+        started = time.perf_counter()
+        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
+        return time.perf_counter() - started
+
+    small = max(min(measure(4000) for _ in range(3)), 1e-4)
+    large = min(measure(16000) for _ in range(3))
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
 @needs_pandoc

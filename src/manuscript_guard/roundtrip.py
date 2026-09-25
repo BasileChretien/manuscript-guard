@@ -902,7 +902,7 @@ def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_n
     Only where pandoc will put it back, or the document would lose it. The word before it
     must be whole, as pandoc's reader takes words - letters, digits and single full stops -
     so `xe.g.` is no abbreviation, and neither is `p\\.`, whose full stop `_escaped` set
-    apart at the opening, nor `desk@p.` (see `_at_sign`). What follows must not be a space,
+    apart at the opening, nor `desk@p.` (see `_run_on`). What follows must not be a space,
     and at the end of the stretch it must be a binding, never a citation. A word at the
     start of a stretch that follows a token is left alone, because the token's value may
     run into it.
@@ -917,26 +917,35 @@ def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_n
         start = at
         while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "."):
             start -= 1
-        if (start > 0 or lead) and text[start:at] in abbreviations and not _at_sign(text, start):
+        if text[start:at] in abbreviations and not _run_on(text, start, lead):
             out[at] = " "
     return "".join(out)
 
 
-def _at_sign(text: str, start: int) -> bool:
-    """Whether a bare `@` stands earlier in the word that ends at `start`.
+def _run_on(text: str, start: int, lead: bool) -> bool:
+    """Whether the word that ends at `start` runs on from something pandoc reads with it.
 
     Pandoc reads a bare `@` and the label after it - letters and digits, joined by `-` or
     `_` - as an example reference, so the abbreviation in `desk@p.` or `desk@lab-p.` is part
     of the label, and no no-break space follows it. `_escaped` leaves an `@` bare after a
-    letter or a digit. Looking only at the character before the word missed `desk@lab-p.`,
-    so the whole word is searched: a no-break space kept where pandoc would have made one
-    anyway costs nothing that shows. An escaped `\\@` is a character of its own.
+    letter or a digit; an escaped `\\@` is a character of its own. Looking only at the
+    character before the word missed `desk@lab-p.`, so the whole word is searched, once:
+    a regular expression over the text before it rescanned a long URL from every place in
+    it. A word reaching back to a token before the stretch runs on from the token's value,
+    which may hold a label of its own. Either way the no-break space is kept, and where
+    pandoc would have made one anyway, that costs nothing that shows.
     """
-    word = re.search(r"\S*\Z", text[:start]).group()
-    return any(
-        char == "@" and (at - len(word[:at].rstrip("\\"))) % 2 == 0
-        for at, char in enumerate(word)
-    )
+    word = start
+    while word > 0 and not text[word - 1].isspace():
+        word -= 1
+    if word == 0 and not lead:
+        return True
+    backslashes = 0
+    for char in text[word:start]:
+        if char == "@" and backslashes % 2 == 0:
+            return True
+        backslashes = backslashes + 1 if char == "\\" else 0
+    return False
 
 
 def _reads_as(

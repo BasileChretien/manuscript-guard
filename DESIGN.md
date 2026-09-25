@@ -1212,6 +1212,15 @@ a reordering of text already on disk rather than anything imported. That makes i
 precisely the paragraphs the content merge has to refuse: a paragraph solid with bindings
 can be moved without a binding going anywhere near Word.
 
+A paragraph, to the tagger, is what lies between blank lines, and a code block can hold
+blank lines. Split without knowing where the code was, each stretch of a code block after a
+blank line got an identifier, and inside code a marker is not a bookmark but text: the
+document printed `[]{#mg-p-maincbb16c-4}3.84` in a listing a reader was meant to copy from.
+A block that starts inside a code block now goes without one, and the build and the import
+read the file through the same function, so they skip the same blocks. Where the code is
+comes from the fence scanner `check` uses, so an unclosed fence stays prose, as it is to
+pandoc. A div is not skipped: pandoc makes a paragraph of each block in it.
+
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
 true and useless. And a move and a rewording are applied together. The identifier makes
@@ -2212,6 +2221,15 @@ Closed since, and why each mattered:
   "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
+- **Only fenced code is known to the tagger.** An indented code block with a blank line in
+  it still has a marker printed in it, because a block indented four spaces is as often a
+  list item's second paragraph, which is prose and needs its identifier. Prose written
+  directly under a closing fence, with no blank line between, starts in the same block as
+  the end of the code, so it has no identifier and an edit to it in Word is not compared.
+  And a document built before code blocks were skipped shows the markers as text in its
+  code, which reads as new text when it comes back: nothing is reported for an untouched
+  one, but an edit to the paragraph just before or after the code block is refused as a
+  possible split. Rebuilding the document clears it.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

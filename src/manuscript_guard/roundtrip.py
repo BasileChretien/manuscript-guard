@@ -250,12 +250,40 @@ def _untagged(stripped: str) -> bool:
     )
 
 
+def _source_blocks(text: str) -> list[tuple[int, str, bool]]:
+    """One source file's blocks as the identifiers number them: (index, block, tagged).
+
+    `tag` and `tagged_paragraphs` both read a file through this, because the index is what
+    an identifier means: the build and the import skipping different blocks would make one
+    identifier name two paragraphs.
+
+    A block is what lies between blank lines, and a code block can hold blank lines. Split
+    without knowing where the code was, each stretch of it after a blank line was given a
+    marker, which inside code is not a bookmark but text: the document printed
+    `[]{#mg-p-maincbb16c-4}3.84` in a listing. A block that starts inside a code block goes
+    without one, found by the fence scanner `check` reads code blocks with, so an unclosed
+    fence stays prose here as it does to pandoc. A div is not skipped: it holds paragraphs.
+    """
+    from manuscript_guard.text.fences import fenced_spans
+
+    code = [(fence.start, fence.end) for fence in fenced_spans(text)]
+    out = []
+    offset = 0
+    for index, block in enumerate(re.split(r"(\n\s*\n)", text)):
+        begins = offset + len(block) - len(block.lstrip())
+        offset += len(block)
+        inside = any(start < begins < end for start, end in code)
+        out.append((index, block, not inside and not _untagged(block.strip())))
+    return out
+
+
 def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
-    Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
-    blocks, and paragraphs that are nothing but a placeholder, because those become a table
-    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+    Headings are skipped: `[]{#id}# Methods` is not a heading. So are the fences of divs and
+    code blocks, everything inside a code block, and paragraphs that are nothing but a
+    placeholder, because those become a table or a figure rather than a paragraph, and a
+    bookmark would attach to the wrong thing. See `_source_blocks`.
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -267,9 +295,9 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     out = []
     counter = iter(range(1_000_000))
     slug = paragraph_slug(relative)
-    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+    for index, para, tagged in _source_blocks(text):
         stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(stripped):
+        if not tagged:
             out.append(para)
             continue
         marker = _TAG.format(slug=slug, index=index)
@@ -321,11 +349,11 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
         # Offsets are into the file on disk, not into the stripped copy: the merge splices
         # into the real file, and a paragraph would land one front matter earlier.
         cursor = len(raw) - len(text)
-        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        for index, para, tagged in _source_blocks(text):
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(stripped):
+            if not tagged:
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

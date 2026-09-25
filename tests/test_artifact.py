@@ -155,3 +155,22 @@ def test_a_built_document_carries_no_path_from_the_machine_that_built_it(
                 text = archive.read(member).decode("utf-8", errors="replace")
                 leaked = sorted(path for path in local if path in text)
                 assert not leaked, f"{name}:{member} carries {leaked}"
+
+
+@needs_pandoc
+def test_a_code_block_with_blank_lines_prints_no_marker(project: Path) -> None:
+    """`tag` split the source on blank lines without knowing where the code was, and gave
+    each stretch of a code block after a blank line an identifier. Inside code a marker is
+    not a bookmark but text, and the document printed `[]{#mg-p-maincbb16c-4}3.84` in the
+    listing a reader was meant to copy from."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    code = "```\nsetting: on\n\n{{results.ror.point}}\n\nprint(done)\n```\n\n"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("# Data availability", code + "# Data availability", 1), "utf-8")
+
+    assert main(["build", str(project), "--offline"]) == 0
+    seen = visible(project / "build" / "manuscript.docx")
+    assert "print(done)" in seen, "the code block reached the document"
+    assert "mg-p-" not in seen, "a paragraph marker was printed as text"

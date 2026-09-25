@@ -239,6 +239,67 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
     assert "}{{table.baseline}}" not in tagged
 
 
+#: A code block with blank lines in it, each way pandoc fences one.
+CODE_BLOCKS = [
+    pytest.param("```\nsetting: on\n\n{{results.x}}\n\nprint(done)\n```", id="backticks"),
+    pytest.param("~~~\nsetting: on\n\n{{results.x}}\n\nprint(done)\n~~~", id="tildes"),
+    pytest.param("```python\nsetting: on\n\n{{results.x}}\n\nprint(done)\n```", id="info"),
+    pytest.param("```\nsetting: on\n\n{{results.x}}\n\nprint(done)\n`````", id="longer-closer"),
+    pytest.param("```{=html}\n<p>setting</p>\n\n<p>print(done)</p>\n```", id="raw-block"),
+]
+
+
+@pytest.mark.parametrize("code", CODE_BLOCKS)
+def test_nothing_inside_a_code_block_is_tagged(code: str) -> None:
+    """`tag` split the file on blank lines without knowing it was inside a code block, so
+    each stretch of code after a blank line got a marker, and pandoc printed
+    `[]{#mg-p-maincbb16c-4}3.84` as code in the built document."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(f"Intro.\n\n{code}\n\nOutro.\n", "main.md")
+    assert tagged.count("[]{#mg-p-") == 2, tagged
+    assert code in tagged, "the code block is left exactly as written"
+
+
+def test_an_unclosed_fence_is_prose_and_stays_tagged() -> None:
+    """Pandoc reads an opening fence that never closes as text, and the paragraphs after it
+    as paragraphs, so they keep their identifiers - the reading `check` uses too."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("Intro.\n\n```\n\nNot code at all.\n\nOutro.\n", "main.md")
+    assert "}Not code at all." in tagged and "}Outro." in tagged
+
+
+def test_paragraphs_inside_a_div_keep_their_identifiers() -> None:
+    """A div holds prose, unlike a code block: pandoc makes a paragraph of each block in it,
+    and a marker there is a bookmark like any other. Only the fences go without one."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("::: note\n\nInside the div.\n\nAnd more of it.\n\n:::\n", "main.md")
+    assert "}Inside the div." in tagged and "}And more of it." in tagged
+    assert tagged.startswith("::: note") and tagged.endswith("\n\n:::\n")
+
+
+def test_tag_and_tagged_paragraphs_agree_around_a_code_block(project: Path) -> None:
+    """The index is how an identifier names a paragraph, so the build and the import must
+    skip the same blocks: around a code block, each has to know where the code is."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    with_paragraphs(project, "Before the code.", CODE_BLOCKS[0].values[0], "After the code.")
+    path = project / "manuscript" / "main.md"
+    text, _title = strip_front_matter(path.read_text(encoding="utf-8"))
+    built = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "main.md")))
+    known = {
+        name: words
+        for name, (where, words, _start) in tagged_paragraphs(load_project(project)[0]).items()
+        if where == path
+    }
+    assert built == set(known)
+    assert not [words for words in known.values() if "print(done)" in words]
+
+
 @needs_pandoc
 def test_a_moved_paragraph_is_reordered_in_the_source(project: Path, tmp_path: Path) -> None:
     """A move needs no content from Word - the text is already on disk - so it is safe for

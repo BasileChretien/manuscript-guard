@@ -245,7 +245,11 @@ def build_document(
             (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
         )
 
-    body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
+    # A comment between two files, which pandoc drops, so each file starts afresh. Joined by
+    # blank lines alone, a footnote ending one file took in the next file's first paragraph
+    # when that opened indented, identifier and all: `tag` judges a note by the end of its
+    # own file, where nothing follows.
+    body = prologue + "\n\n<!-- -->\n\n".join(a.text for a in ordered) + epilogue
     source.write_text(
         _front_matter(project, supplementary=supplementary, live=mode == LIVE) + body,
         encoding="utf-8",

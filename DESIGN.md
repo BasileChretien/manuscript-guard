@@ -2262,7 +2262,8 @@ Closed since, and why each mattered:
     line a citation. No part holds a brace, because a binding is filled in after this
     reading and its value could change it. A footnote is its label and its text on one
     line. Links come before notes, because a line under a note is more of the note. A note
-    also runs on through every line pandoc does not take for blank; and after a blank line
+    also runs on through every line pandoc does not take for blank, unless it opens another
+    note; and after a blank line
     (empty, or spaces and tabs), a line indented four columns - four spaces, or a tab,
     which reaches the next four - is the note's next paragraph, and the unindented lines
     under it are more of it. So a note is left alone only when a blank line ends it and the
@@ -2292,13 +2293,26 @@ Closed since, and why each mattered:
     it prints nothing of either. No real address has several words, so such a line is
     marked, and prints as it was written, as it always had. With one word after the colon,
     `[Note]: none.`, the line is a definition to both, and prints nothing.
+  - *Each source file ends its notes.* `tag` judges a note at the end of a file by what
+    follows it there, which is nothing. The build joined the files with blank lines alone, so
+    a note ending one file took in the next file's first paragraph when that opened indented,
+    and a co-author's edit to it was dropped. A comment between the files, which pandoc
+    drops, now ends the note.
+  - *A note straight under a heading or a fence is not checked.* A block that opens with a
+    heading or a code fence is left unmarked whole, as on `main`, so a note written on the
+    line under it, with no empty line between, is never asked whether it runs on. Under a
+    line holding only a no-break space, the paragraph below it goes into the footnote,
+    identifier and all, and an edit to it is dropped. This is so on `main` too. An empty
+    line before the note avoids it.
   - *A paragraph marked only for what surrounds it would become a definition if moved.* A
-    line in a definition's shape is marked, and prints, where what surrounds it makes it
-    prose to pandoc: under a line holding only a no-break space, or for a note, over one.
-    Moved in Word to a place with blank lines around it, it would be a definition to the
-    next build and print nothing; `import` applied such a move and exited 0. It now refuses
-    it, and keeps the paragraph where it was (next entry). Typed into that shape in Word, a
-    paragraph was never at risk: the merge escapes the bracket, `\[x]: …`, and it prints.
+    line in a definition's shape is marked, and prints, where what surrounds it keeps pandoc
+    from reading it as one: under a line holding only a no-break space; or, for a note, where
+    what is below would run into it - such a line, or a blank line and then a line indented
+    four columns. Moved in Word to a place with blank lines around it, it would be a
+    definition to the next build and print nothing; `import` applied such a move and exited
+    0. It now refuses it, and keeps the paragraph where it was (next entry). Typed into that
+    shape in Word, a paragraph was never at risk: the merge escapes the bracket, `\[x]: …`,
+    and it prints.
   - *A definition between two paragraphs is a section boundary.* It is untagged text in the
     source, so a move across it is refused as a move past a heading, a table or a figure.
     Safe, and the reason given is wrong.

@@ -2193,24 +2193,20 @@ def test_pandocs_own_no_break_space_written_back_prints_the_same(
     assert printed(expected, "merged") == returned
 
 
-def test_writing_back_a_no_break_space_is_linear_in_a_long_word() -> None:
+def test_writing_back_a_no_break_space_is_linear_in_a_long_word(assert_linear) -> None:
     """Looking for a bare `@` in the word before the abbreviation searched the text before it
     with `\\S*\\Z`, which rescans a long run from every place in it: with a URL of 8,000
-    characters ahead of a few "e.g.", `align` took 16 seconds. Doubling the input must not
-    much more than double the time."""
-    import time
-
+    characters ahead of a few "e.g.", `align` took 16 seconds. Timed as the URL grows, from
+    a short one, so that the rescan fails in seconds if it comes back."""
     from manuscript_guard.roundtrip import _respaced
 
-    def measure(length: int) -> float:
-        text = f"See https://example.org/{'a' * length} and e.g.\u00a0this."
-        started = time.perf_counter()
-        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
-        return time.perf_counter() - started
+    def with_url(length: int) -> str:
+        return f"See https://example.org/{'a' * length} and e.g.\u00a0this."
 
-    small = max(min(measure(4000) for _ in range(3)), 1e-4)
-    large = min(measure(16000) for _ in range(3))
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    def respace(text: str) -> None:
+        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
+
+    assert_linear(with_url, respace, 50, "writing back a no-break space, by URL length")
 
 
 @needs_pandoc

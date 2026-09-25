@@ -1449,6 +1449,17 @@ are counted as unexamined; the refusal still guards a document built before that
 empty line - has nowhere to put text typed there: merged, it replaced the comment's first
 half, and the second half built into the Methods. Text typed on such a line is refused.
 
+A paragraph cut down to its number is still a paragraph. `tag` gave no identifier to
+anything that was only a placeholder, because that is how a table or a figure is written,
+and it did not ask which kind. A co-author who deleted everything but `3.84` merged as
+`{{results.ror.point}}` alone, `check` passed, and the next build left that paragraph
+without a bookmark: its next edit in Word was skipped with "nothing came back". Now only a
+table, a figure, or a misspelt placeholder that `check` refuses goes without one when it
+stands alone. A rewording that would leave nothing but one of those is refused and named,
+because merged it would build with no identifier, and no later edit could come back to it.
+A table cannot get that far in practice, since pandoc makes a table of the whole paragraph
+it stands in; a misspelt placeholder in a document built with `--skip-checks` can.
+
 **The identifier marks where a paragraph starts, not where it ends.** Word keeps a
 paragraph's bookmark at its start, so a split leaves the first half carrying it and the
 second half anonymous, and merging "the paragraph" replaced the whole source paragraph with
@@ -2613,6 +2624,33 @@ Closed since, and why each mattered:
   first line, holds a tab, or is closed on the file's last line. `init` writes none of
   these either. The guard is a scheme version in the stamp and the round file, refused on
   a mismatch.
+- **Which paragraphs carry an identifier is decided by the code that imports, not the code
+  that built.** The document as sent is rebuilt from the source by what is installed now. A
+  paragraph that is only a value binding carries an identifier now, and in a document built
+  before that change it carried none. Returned after the change, even untouched, that
+  paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
+  to the paragraph on either side of it is refused as a possible split. A move is worse. A
+  paragraph with no place in the returned document stays after the paragraph it followed
+  in the source, or first in its section if it was first, so any move that changes what the
+  value paragraph follows goes wrong. Moving the paragraph before it takes it along:
+  `--apply` writes it where the co-author's document does not have it, and still reports it
+  as left in place. Moving another paragraph in front of it is reported and applied, with
+  the value paragraph left on the wrong side of it; a move that passes the value paragraph
+  and nothing else is not reported at all, and is dropped. No binding is harmed, but the
+  order is not the co-author's. Rebuild and send the document again rather than import one
+  built before the change. Every other identifier stays as it was, because an index counts
+  every block in its file; a change to how a file is split into blocks would renumber them.
+  A later change that starts tagging a block does the same as this one, once, to documents
+  already sent. One that stops tagging a block is quieter. In a document already sent, the
+  block's identifier names nothing the import knows, and is ignored: an edit to the block is
+  dropped without a report, with "nothing came back" if nothing else was edited, and a move
+  that changes what the block follows is dropped, applied with the block on the wrong side,
+  or refused as a move into another section - and only that last exits 1. A version number
+  for the tagging rules, stamped into the document and refused on a mismatch, would catch
+  either change in a document stamped with an earlier number, and neither in one built
+  before such a number existed, which records none. For this change, the fix is to
+  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
+  paragraph, and it is not done.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

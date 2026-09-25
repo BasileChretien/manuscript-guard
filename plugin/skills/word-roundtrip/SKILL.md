@@ -161,10 +161,10 @@ Read the whole diff. What to look for:
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
   and `check` reports `{{{results.x}}` as malformed.
-- Invisible no-break spaces. An edited stretch brings back the one pandoc puts after an
-  abbreviation ("e.g.", "et al.", "p."), and a `\ ` or `&nbsp;` of yours, as the character
-  itself. Each prints as it did, but a diff can show a line as changed where nothing
-  visible changed.
+- Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
+  the character itself. It prints as it did, but a diff can show a line as changed where
+  nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a
+  plain space, because pandoc puts it back at the next build.
 - A number or citation the co-author typed. These merge as literals, and `check` then
   reports them as unbound. Bind the number, and turn the citation into `[@citekey]`.
 - A binding cut short, a `{{` without its `}}`. `check` now reports it as a malformed

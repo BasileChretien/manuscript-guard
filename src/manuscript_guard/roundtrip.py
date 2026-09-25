@@ -1093,6 +1093,67 @@ def _escaped(
     return text
 
 
+_NBSP = "\u00a0"
+
+
+def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_next: bool) -> str:
+    """Word's text as Markdown, the no-break space pandoc puts after an abbreviation written
+    as the plain space pandoc makes one of again.
+
+    Pandoc's smart typesetting turns the space after a word on its list - "e.g.", "al.",
+    "p." - into a no-break space, before anything but a citation, a footnote reference or a
+    line break. Carried back as the character, it went into the .md where nobody can see
+    it: a diff showed the line as changed there, and a search for "et al. 2020" missed it.
+
+    Only where pandoc will put it back, or the document would lose it. The word before it
+    must be whole, as pandoc's reader takes words - letters, digits and single full stops -
+    so `xe.g.` is no abbreviation, and neither is `p\\.`, whose full stop `_escaped` set
+    apart at the opening, nor `desk@p.` (see `_run_on`). What follows must not be a space,
+    and at the end of the stretch it must be a binding, never a citation. A word at the
+    start of a stretch that follows a token is left alone, because the token's value may
+    run into it.
+    """
+    if not abbreviations or _NBSP not in text:
+        return text
+    out = list(text)
+    for at, char in enumerate(text):
+        following = text[at + 1 : at + 2]
+        if char != _NBSP or following.isspace() or not (following or binding_next):
+            continue
+        start = at
+        while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "."):
+            start -= 1
+        if text[start:at] in abbreviations and not _run_on(text, start, lead):
+            out[at] = " "
+    return "".join(out)
+
+
+def _run_on(text: str, start: int, lead: bool) -> bool:
+    """Whether the word that ends at `start` runs on from something pandoc reads with it.
+
+    Pandoc reads a bare `@` and the label after it - letters and digits, joined by `-` or
+    `_` - as an example reference, so the abbreviation in `desk@p.` or `desk@lab-p.` is part
+    of the label, and no no-break space follows it. `_escaped` leaves an `@` bare after a
+    letter or a digit; an escaped `\\@` is a character of its own. Looking only at the
+    character before the word missed `desk@lab-p.`, so the whole word is searched, once:
+    a regular expression over the text before it rescanned a long URL from every place in
+    it. A word reaching back to a token before the stretch runs on from the token's value,
+    which may hold a label of its own. Either way the no-break space is kept, and where
+    pandoc would have made one anyway, that costs nothing that shows.
+    """
+    word = start
+    while word > 0 and not text[word - 1].isspace():
+        word -= 1
+    if word == 0 and not lead:
+        return True
+    backslashes = 0
+    for char in text[word:start]:
+        if char == "@" and backslashes % 2 == 0:
+            return True
+        backslashes = backslashes + 1 if char == "\\" else 0
+    return False
+
+
 def _reads_as(
     rebuilt: str, protected: Sequence[str], renderings: Sequence[str], returned: str
 ) -> bool:
@@ -1257,6 +1318,7 @@ def align(
     rendered: str,
     returned: str,
     tokens: Sequence[tuple[int, int]] | None,
+    abbreviations: frozenset[str] = frozenset(),
 ) -> Alignment:
     """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
 
@@ -1293,11 +1355,13 @@ def align(
     read as what the co-author wrote. That catches what the reading can see - a delimiter
     left without its partner, a span stretched over new words - and not where it and
     pandoc disagree, which is why `_escaped` does not consult it.
+
+    `abbreviations` are the words pandoc puts a no-break space after; see `_respaced`.
     """
     reading = _read(source)
     prose, protected = reading.prose, reading.protected
     if not protected:
-        return _align_plain(source, reading, rendered, returned)
+        return _align_plain(source, reading, rendered, returned, abbreviations)
 
     spans = _checked(tokens, len(protected), len(rendered))
     if spans is None:
@@ -1345,7 +1409,15 @@ def align(
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            out.append(_escaped(piece, opening=index == 0, **beside))
+            binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
+            out.append(
+                _respaced(
+                    _escaped(piece, opening=index == 0, **beside),
+                    abbreviations,
+                    lead=index == 0,
+                    binding_next=bool(binding_next),
+                )
+            )
         if index < len(protected):
             out.append(protected[index])
     if lost:
@@ -1364,7 +1436,13 @@ def align(
     return Alignment(rebuilt or None)
 
 
-def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -> Alignment:
+def _align_plain(
+    source: str,
+    reading: _Reading,
+    rendered: str,
+    returned: str,
+    abbreviations: frozenset[str] = frozenset(),
+) -> Alignment:
     """A paragraph with no binding or citation, which Word's text replaces whole.
 
     Unless that would lose something. What `_INLINE` names is refused by name. Anything it
@@ -1381,7 +1459,9 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
         return Alignment(None, markup=lost)
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
-    rebuilt = _escaped(returned.strip(), opening=True)
+    rebuilt = _respaced(
+        _escaped(returned.strip(), opening=True), abbreviations, lead=True, binding_next=False
+    )
     if not _reads_as(rebuilt, (), (), returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

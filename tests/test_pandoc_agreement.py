@@ -193,6 +193,10 @@ FRONT_MATTER_CASES = {
     "a list between the delimiters": "---\n- a\n- b\n---\n\nProse 9.99.\n",
     "a sentence closed by dots": "---\nJust a sentence.\n...\n\nProse 9.99.\n",
     "never closed": "---\ntitle: T\n\nProse 9.99.\n",
+    "behind a byte-order mark": "\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a blank first line": "\n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a line of spaces": "   \n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "a blank first line, then a rule": "\n---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
 }
 # Pandoc keeps a header holding only a comment as empty metadata: nothing in `meta`, and
 # nothing printed either.

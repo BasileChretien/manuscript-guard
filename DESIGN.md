@@ -1710,7 +1710,9 @@ Closed since, and why each mattered:
   metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
   it is no longer stripped or masked. A header never closed before a later rule, with prose
   in it, is not YAML: pandoc refuses the file, and the build no longer strips it into one
-  that builds without the Introduction.
+  that builds without the Introduction. A header behind a byte-order mark or a blank first
+  line is found too, as pandoc finds it: left in the body, its title never met the
+  two-titles warning, and G2 read its keys as prose.
 - **G8 went quiet exactly when two keys had diverged.** It fires when two quoted keys hold
   the same value with different displays, so a duplicate was caught while it still agreed
   and missed once it did not — a paper could carry `ror.point` at 0.95 and `ror.abstract`
@@ -2080,7 +2082,6 @@ Closed since, and why each mattered:
   - a `<!--` or a fence opened in one YAML value and closed in another;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - front matter behind a UTF-8 byte-order mark, which G2 does not find;
   - a YAML block in the middle of the body;
   - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
     though not for the masking.

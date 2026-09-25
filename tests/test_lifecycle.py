@@ -106,6 +106,10 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         # Closed on the file's last line, which has no newline after it.
         ('---\ntitle: "A paper"\n...', "", "A paper"),
         ('---\ntitle: "A paper"\n---', "", "A paper"),
+        # Pandoc skips a byte-order mark and blank lines before the header.
+        (f'\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        (f'\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        (f'  \n\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
         # No front matter: a rule at the top, and a block that never closes.
         (f"---\n\n{_BODY}", f"---\n\n{_BODY}", ""),
         ('---\ntitle: "A paper"\n\nText.\n', '---\ntitle: "A paper"\n\nText.\n', ""),
@@ -118,6 +122,9 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         "crlf, closed by dots",
         "closed by dots on the last line",
         "closed by dashes on the last line",
+        "behind a byte-order mark",
+        "after a blank first line",
+        "after a line of spaces and a blank line",
         "a rule at the top",
         "never closed",
         "no front matter",

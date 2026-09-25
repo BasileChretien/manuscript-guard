@@ -22,12 +22,15 @@ NUL = "\x00"
 # Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
 # opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
 # and the prose after it prints. Either delimiter may carry trailing spaces, `...` closes
-# the block as well as `---`, and the closing line may be the file's last. The build had a
-# copy of its own that differed on each of these, and where the two disagreed a heading
-# could be read by G2 and stripped by the build: `p < 0.001` under it passed as the alpha
-# chosen in advance and printed without it.
+# the block as well as `---`, and the closing line may be the file's last. A byte-order
+# mark and blank lines before the opening `---` are skipped, as pandoc skips them: taken
+# for the start of the body, they left the header in it, its title unchecked against
+# paper.yaml. The build had a copy of its own that differed on each of these, and where the
+# two disagreed a heading could be read by G2 and stripped by the build: `p < 0.001` under
+# it passed as the alpha chosen in advance and printed without it.
 _FRONT_MATTER_BLOCK = re.compile(
-    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
+    r"\A\N{ZERO WIDTH NO-BREAK SPACE}?(?:[ \t]*\r?\n)*---[ \t]*\r?\n(?![ \t]*\r?\n)"
+    r"(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
     re.DOTALL,
 )
 # Nesting deeper than this is nobody's metadata. Composing thousands of levels took seconds

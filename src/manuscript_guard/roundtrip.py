@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
+from manuscript_guard.text.fences import fenced_spans
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -289,67 +290,114 @@ def _blank_above(above: str) -> bool:
     return len(lines) < 2 or lines[-2].strip(" \t") == ""
 
 
-# The headings a block opens with. Pandoc reads one only where a block starts, under a line
-# it takes for blank, and wants no blank line after it: `# Methods` with its paragraph on the
-# next line is a heading and a paragraph. Every block starting with `#` used to go unmarked,
-# so that paragraph reached Word without an identifier, and a co-author's edit to it was
-# dropped while `import` said nothing came back.
+# What a block opens with that carries no identifier. Pandoc reads a heading only where a
+# block starts, under a line it takes for blank, and wants no blank line after one, nor after
+# a link's definition: `# Methods` with its paragraph on the next line is a heading and a
+# paragraph. Every block starting with `#` used to go unmarked, so that paragraph reached
+# Word without an identifier, and a co-author's edit to it was dropped while `import` said
+# nothing came back. A heading straight under a definition printed as text: the marker in
+# front of the definition made one paragraph of both.
 #
 # Pandoc tries a setext heading first: any line, at any indent, over an underline of `=` or
 # `-` in the first column - unless the line is a bullet or a fence, which it reads before
 # headings. An ATX heading is hashes in the first column, then a space, a tab or the end of
-# the line: `#Methods` and ` # Methods` are text to it.
+# the line: `#Methods` and ` # Methods` are text to it. A link's definition is a
+# `_LINK_LINE`; a note's is never passed over, because the line under a note is more of it.
 _SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
+_BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
+# A block whose first line is an ATX heading or a `#.` list item, which a marker would unmake.
+_HASH_OPENS = re.compile(r"(?:[ \t]*\n)*(?:#+(?:[ \t\n]|\Z)|#[.)])")
 
-# A line pandoc can only read as more of a paragraph: it opens with a letter or a digit, or
-# with punctuation that opens nothing but inline markup. What follows a block's headings is
-# marked only when every line of it is one, and its first is not a list marker. Anything
-# else stays unmarked, as the whole block always was: a list, code, a table, a definition
-# list, a fence or HTML straight under a heading would be broken by a marker in it.
+# A line opening a plain paragraph: a letter or a digit, or punctuation that opens nothing
+# but inline markup. What follows a block's headings and definitions is marked only when it
+# opens so, with no list marker or rule, and nothing below interrupts it. Anything else stays
+# unmarked, as the whole block always was: a list, code, a table, a definition list, a fence
+# or HTML straight under a heading would be broken by a marker in it.
 _PROSE_START = re.compile(r"[^\W_]|[(\"'“‘«]|[*_](?=\S)|\$(?!\$)|@|\{\{|\[(?!\^)")
-# `1.`, `a)`, `(ii)`, `#.`, `(@)`: where a paragraph would begin, pandoc begins a list. Roman
-# numerals and a single capital are counted even where pandoc wants two spaces after them,
-# so `I. Aims` goes unmarked rather than a list getting a marker.
-_LIST_MARKER = re.compile(r"\(?(?:\d+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+|#|@[\w-]*)[.)](?:[ \t]|$)")
+# Where a paragraph would begin, pandoc begins a list: `1.`, `a)`, `iv.`, `II.`, `(ii)`, `#.`,
+# `(@)`, `A)`; but `A.` only with two spaces or a tab after it, so `E. coli` and `I. Aims`
+# are prose. Numerals of several letters are over-counted: `mix.` is 1009 to pandoc, `dim.`
+# is a word.
+_LIST_MARKER = re.compile(
+    r"(?:\((?:\d+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+|#|@[\w-]*)\)"
+    r"|(?:\d+|[a-z]|[ivxlcdm]+|[IVXLCDM]{2,}|#|@[\w-]*)[.)]|[A-Z]\))(?:[ \t]|$)"
+    r"|[A-Z]\.(?:[ ]{2}|\t)"
+)
+_RULE_LINE = re.compile(r"[ ]{0,3}([*_])(?:[ \t]*\1){2,}[ \t]*$")
+# What ends a paragraph without a blank line, from its second line on: a fence, a fenced div,
+# an HTML tag, a LaTeX environment; and on the second line, a definition's `:` or `~`, or the
+# rule under a table's header. A wrapped line opening with a dash, `<`, `≥` or `±` does not.
+_INTERRUPT = re.compile(r"[ ]{0,3}(?:```|~~~|:::|<[A-Za-z/]|\\begin\b)")
+_SECOND_LINE = re.compile(r"[ ]{0,3}[:~](?:[ \t]|$)|(?=[^\n]*[-=])[ \t]*[-=:|+][-=:|+ \t]*$")
 
 
-def _headings_end(block: str, above: str) -> int:
-    """How far into `block` the headings it opens with run: 0 when it opens with none."""
-    if above.strip(" \t\n"):
+def _lead_end(block: str, above: str) -> int:
+    """How far into `block` the headings and link definitions it opens with run: 0 when it
+    opens with neither."""
+    if not _blank_above(above):
         return 0
-    at = start = len(block) - len(block.lstrip("\n"))
-    while heading := _SETEXT.match(block, at) or _ATX.match(block, at):
-        at = heading.end()
+    at = start = _BLANK_LINES.match(block).end()
+    while at < len(block):
+        if heading := _SETEXT.match(block, at) or _ATX.match(block, at):
+            at = heading.end()
+            continue
+        end = block.find("\n", at)
+        end = len(block) if end < 0 else end
+        if not _LINK_LINE.fullmatch(block, at, end):
+            break
+        at = min(end + 1, len(block))
     return at if at > start else 0
 
 
-def _plain(rest: str) -> bool:
-    """Whether `rest`, what follows a block's headings, is one plain paragraph to pandoc."""
+def _plain_paragraph(rest: str) -> bool:
+    """Whether `rest`, what follows the headings and definitions a block opens with, is one
+    plain paragraph to pandoc: opened as one, and not interrupted."""
     lines = rest.rstrip().split("\n")
     return (
         _PROSE_START.match(lines[0]) is not None
         and _LIST_MARKER.match(lines[0]) is None
-        and all(_PROSE_START.match(line.lstrip(" \t")) for line in lines[1:])
+        and _RULE_LINE.match(lines[0]) is None
+        and not (len(lines) > 1 and _SECOND_LINE.match(lines[1]))
+        and not any(_INTERRUPT.match(line) for line in lines[1:])
     )
 
 
 def _marker_at(block: str, above: str) -> int | None:
     """Where in `block` its identifier goes, or None when it gets none: in front of its
-    first character, or in front of the paragraph under the headings it opens with.
-
-    `tag` and `tagged_paragraphs` both ask this, so the identifier the document carries and
-    the text and offset `import` splices at cannot drift apart.
-    """
-    head = _headings_end(block, above)
+    first character, or in front of the paragraph under the headings and definitions it
+    opens with."""
+    head = _lead_end(block, above)
     if head:
         rest = block[head:]
-        if not rest.strip() or _untagged(rest, "") or not _plain(rest):
+        if not rest.strip() or _untagged(rest, "") or not _plain_paragraph(rest):
             return None
         return head
     if _untagged(block, above):
         return None
     return len(block) - len(block.lstrip())
+
+
+def _markers(text: str) -> tuple[list[str], list[int | None]]:
+    """How `text` splits into blocks, and where each one's identifier goes (None: none).
+
+    `tag` and `tagged_paragraphs` both read this, so the identifier the document carries and
+    the text and offset `import` splices at cannot drift apart. A block that starts inside a
+    fenced code block gets none: code may hold blank lines, and the piece after one - a
+    `# comment` and a line of code - read as a heading and a paragraph, and was marked.
+    """
+    pieces = re.split(r"(\n\s*\n)", text)
+    fences = fenced_spans(text)
+    found: list[int | None] = []
+    at = next_fence = 0
+    for index, piece in enumerate(pieces):
+        while next_fence < len(fences) and fences[next_fence].end <= at:
+            next_fence += 1
+        inside = next_fence < len(fences) and fences[next_fence].start < at
+        above = pieces[index - 1] if index else ""
+        found.append(None if inside else _marker_at(piece, above))
+        at += len(piece)
+    return pieces, found
 
 
 def _untagged(block: str, above: str) -> bool:
@@ -360,9 +408,10 @@ def _untagged(block: str, above: str) -> bool:
     stripped = block.strip()
     return (
         not stripped
-        # Under a line that is blank here and not to pandoc, `#` is not a heading but more
+        # Only a heading or a `#.` list: `#Methods` is a paragraph to pandoc. Nor under a
+        # line that is blank here and not to pandoc, where `#` opens no heading but is more
         # of the paragraph above, and needs the marker like any other.
-        or (stripped.startswith("#") and not above.strip(" \t\n"))
+        or (_blank_above(above) and _HASH_OPENS.match(block) is not None)
         or _FENCE.match(stripped) is not None
         # Not `stripped`: a no-break space is text to pandoc, and a line that ends in one
         # is not a definition; nor is one indented four spaces. And only under a line that
@@ -392,9 +441,8 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     out = []
     counter = iter(range(1_000_000))
     slug = paragraph_slug(relative)
-    pieces = re.split(r"(\n\s*\n)", text)
-    for index, para in enumerate(pieces):
-        at = _marker_at(para, pieces[index - 1] if index else "")
+    pieces, markers = _markers(text)
+    for index, (para, at) in enumerate(zip(pieces, markers, strict=True)):
         if at is None:
             out.append(para)
             continue
@@ -449,9 +497,8 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
         # Offsets are into the file on disk, not into the stripped copy: the merge splices
         # into the real file, and a paragraph would land one front matter earlier.
         cursor = len(raw) - len(text)
-        pieces = re.split(r"(\n\s*\n)", text)
-        for index, para in enumerate(pieces):
-            at = _marker_at(para, pieces[index - 1] if index else "")
+        pieces, markers = _markers(text)
+        for index, (para, at) in enumerate(zip(pieces, markers, strict=True)):
             if at is not None:
                 name = _TAG.format(slug=slug, index=index)
                 found[name] = (path, para[at:].rstrip(), cursor + at)

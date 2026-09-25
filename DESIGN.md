@@ -1792,18 +1792,25 @@ do not are refused, and 65 are refused in all.
 Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
 attribute over blank lines), so the build compares too (`build/reading.py`, beside the
 metadata and the headings): every listing the gates read in the sources must be, where it
-stands, a code block pandoc makes, or a raw block for `{=format}`. A numbered line is put
-first in each listing of the copy pandoc reads, and must come back first in its block, and
-each listing is paired in order with the one the gates read in the source files, lines and
-placeholders matching. The third review found why position and not lines: a listing the
-gates read inside a TeX group, masking the claim after it, passed for a copy of its lines
-in an indented block, and a comment holding them did as well, pandoc making every comment a
-raw block. Code pandoc makes that the gates read as prose, an indented listing, is let be.
+stands, a code block pandoc makes, or a raw block for `{=format}`. A line of its own is put
+first in each listing of the copy pandoc reads, and must come back once, first in its
+block, and each listing is paired in order with the one the gates read in the source files,
+lines and placeholders matching. The third review found why position and not lines: a
+listing the gates read inside a TeX group, masking the claim after it, passed for a copy of
+its lines in an indented block, and a comment holding them did as well, pandoc making every
+comment a raw block. The fourth found why that line is made new each build: fixed, it could
+be typed, and a copy of it in a listing pandoc did make passed for the one it did not. Code
+pandoc makes that the gates read as prose, an indented listing, is let be.
+
 In `check`, a comment or raw block closes only on its own mark: a `-->` closed a `<pre>`,
-and `\end{center}` a comment. Marks in inline code, `<pre>` in a line of text, and `<!-->`
-open nothing. The fence scan is linear: the widest closer still to come is read from the
-end once, so an opener with none is passed over at once, where a run of narrowing openers
-each used to read to the end.
+and `\end{center}` a comment. One of the same name opened inside it is counted, as pandoc
+counts it, and `<?` opens raw text to `?>`. Marks in a code span, `<pre>` in a line of
+text, `<pre-x>`, and `<!-->` open nothing; a backtick behind a backslash opens no span, and
+a line whose backticks do not pair blanks none, its span perhaps closing on the next. The
+scans are linear: the widest closer still to come is read from the end once, so an opener
+with none is passed over at once, where a run of narrowing openers each used to read to the
+end; and code spans are paired run by run in one pass, where a pattern retried from every
+backtick of a run, and a line of 20,000 took seven seconds.
 
 The manuscript is read with `read_text`, which makes a lone carriage return a newline
 before the gates or the build see it; the reader agrees with pandoc either way. The front
@@ -1994,12 +2001,12 @@ Added by the adversarial review, verified and **not** fixed:
   span, goes unfollowed: a paragraph inside it is marked, and the identifier names nothing
   in the document.
 - **Code fences are paired by `text/fences.py`, not by pandoc.** Where the two pair them
-  differently, a paragraph can be marked inside code, and the marker prints there. Known
-  cases: an opener whose info string pandoc rejects (`python title="x"`,
-  `{code-cell} ipython3`), a `~~~` straight under a paragraph line, since pandoc lets only a
-  backtick fence interrupt a paragraph, and a fence line with no partner inside an HTML
-  comment. The same pairing decides which blocks start inside code, so a table under such a
-  fence can go unfollowed as well.
+  differently, a paragraph can be marked inside code, and the marker prints there, and a
+  table under such a fence can go unfollowed. Every case found so far, an opener whose info
+  string pandoc rejects (`python title="x"`, `{code-cell} ipython3`), a `~~~` straight under
+  a paragraph line, a fence line inside an HTML comment, is refused by `check`
+  (`unclear-fence`) or by the build's comparison of listings, so no document is built from
+  one; the entry stands because `tag` still pairs fences itself.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.

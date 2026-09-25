@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 # Up to three spaces of indent; four would be an indented code block, not a fence. A tab
 # in the indent reaches column four, since pandoc expands tabs to four columns first.
@@ -76,16 +77,47 @@ _MARKER = re.compile(
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
 )
 # Where a comment or a raw block opens. Inside one, a fence is raw text to pandoc, and only
-# the mark that closes it counts: a comment closes on `-->`, `<pre>` on `</pre>`, and
-# `\begin{x}` on `\end{x}`. `<!-->` and `<!--->` are comments closed at once, and a raw
-# element opens a block only at the start of a line; in a line of text it is inline markup.
+# the mark that closes it counts: a comment closes on `-->`, `<pre>` on `</pre>`, `<?` on
+# `?>`, and `\begin{x}` on `\end{x}`, one of the same name opened inside counted, as pandoc
+# counts them. `<!-->` and `<!--->` are comments closed at once, and a raw element or `<?`
+# opens a block only at the start of a line; in a line of text it is inline markup.
 _RAW_OPENING = re.compile(
     r"(?P<comment><!--(?!-?>))"
-    r"|^[ ]{0,3}<(?P<tag>pre|script|style|textarea)\b"
-    r"|\\begin\{(?P<environment>[^{}\n]*)\}",
+    r"|^[ ]{0,3}<(?P<tag>pre|script|style|textarea)(?=[\s>/]|$)"
+    r"|^[ ]{0,3}(?P<instruction><\?)"
+    r"|\\begin[ \t]*\{(?P<environment>[^{}\n]*)\}",
     re.IGNORECASE,
 )
-_INLINE_CODE = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
+_BACKTICKS = re.compile(r"`+")
+
+
+@dataclass(frozen=True)
+class _Raw:
+    """A comment or raw block open: what closes it, what opens another of its name inside
+    it, and how many are open."""
+
+    closing: re.Pattern[str]
+    nesting: re.Pattern[str] | None
+    depth: int = 1
+
+
+_COMMENT = _Raw(re.compile("-->"), None)
+_INSTRUCTION = _Raw(re.compile(r"\?>"), None)
+_TAGS = {
+    tag: _Raw(
+        re.compile(rf"</{tag}\s*>", re.IGNORECASE),
+        re.compile(rf"<{tag}(?=[\s>/]|$)", re.IGNORECASE),
+    )
+    for tag in ("pre", "script", "style", "textarea")
+}
+
+
+@lru_cache(maxsize=256)
+def _environment(name: str) -> _Raw:
+    escaped = re.escape(name)
+    return _Raw(
+        re.compile(rf"\\end[ \t]*\{{{escaped}\}}"), re.compile(rf"\\begin[ \t]*\{{{escaped}\}}")
+    )
 
 
 @dataclass(frozen=True)
@@ -242,28 +274,74 @@ def _fence_like(bare: str) -> bool:
     return marker is not None or indent.strip(" ") != "" or len(indent) <= 3
 
 
-def _raw_after(bare: str, closing: re.Pattern[str] | None) -> re.Pattern[str] | None:
-    """What closes the comment or raw block open after `bare`, None when none is:
-    `closing` is what closed the one open before it. Marks in inline code count for
-    nothing, pandoc printing them as code."""
-    line = _INLINE_CODE.sub(lambda found: " " * len(found.group()), bare)
+def _without_code_spans(line: str) -> str:
+    """`line` with its code spans blanked, paired as pandoc pairs them in one pass: a run of
+    backticks opens a span that the next run of the same length closes, and a run behind a
+    backslash opens none. A run left unpaired may open a span that closes on a later line,
+    so then nothing is blanked. The pattern this replaced retried from every backtick of a
+    run, and one line of 20,000 took seven seconds."""
+    runs: list[tuple[int, int, bool]] = []
+    for found in _BACKTICKS.finditer(line):
+        slash = found.start()
+        while slash > 0 and line[slash - 1] == "\\":
+            slash -= 1
+        runs.append((found.start(), found.end(), (found.start() - slash) % 2 == 1))
+    following: list[int | None] = [None] * len(runs)
+    last: dict[int, int] = {}
+    for index in range(len(runs) - 1, -1, -1):
+        size = runs[index][1] - runs[index][0]
+        following[index] = last.get(size)
+        last[size] = index
+    spans: list[tuple[int, int]] = []
+    index = 0
+    while index < len(runs):
+        if runs[index][2]:
+            index += 1
+            continue
+        close = following[index]
+        if close is None:
+            return line
+        spans.append((runs[index][0], runs[close][1]))
+        index = close + 1
+    pieces: list[str] = []
+    at = 0
+    for start, end in spans:
+        pieces += [line[at:start], " " * (end - start)]
+        at = end
+    pieces.append(line[at:])
+    return "".join(pieces)
+
+
+def _raw_after(bare: str, raw: _Raw | None) -> _Raw | None:
+    """The comment or raw block open after `bare`, None when none is: `raw` is the one open
+    before it. Outside one, marks in inline code count for nothing, pandoc printing them as
+    code; inside one, everything is raw, and only its own marks count."""
+    outside = _without_code_spans(bare)
     at = 0
     while True:
-        if closing is not None:
-            shut = closing.search(line, at)
-            if shut is None:
-                return closing
-            at, closing = shut.end(), None
+        if raw is not None:
+            shut = raw.closing.search(bare, at)
+            again = raw.nesting.search(bare, at) if raw.nesting is not None else None
+            if shut is None and again is None:
+                return raw
+            if again is not None and (shut is None or again.start() < shut.start()):
+                at, raw = again.end(), _Raw(raw.closing, raw.nesting, raw.depth + 1)
+            elif raw.depth > 1:
+                at, raw = shut.end(), _Raw(raw.closing, raw.nesting, raw.depth - 1)
+            else:
+                at, raw = shut.end(), None
             continue
-        opening = _RAW_OPENING.search(line, at)
+        opening = _RAW_OPENING.search(outside, at)
         if opening is None:
             return None
         if opening.group("comment"):
-            closing = re.compile("-->")
+            raw = _COMMENT
         elif opening.group("tag"):
-            closing = re.compile(rf"</{opening.group('tag')}\s*>", re.IGNORECASE)
+            raw = _TAGS[opening.group("tag").lower()]
+        elif opening.group("instruction"):
+            raw = _INSTRUCTION
         else:
-            closing = re.compile(re.escape(f"\\end{{{opening.group('environment')}}}"))
+            raw = _environment(opening.group("environment"))
         at = opening.end()
 
 
@@ -306,21 +384,21 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     last_of = {first: last for first, last, _fence in listings}
     closers = set(last_of.values())
     inside: set[int] = set()
-    closing: re.Pattern[str] | None = None
+    raw: _Raw | None = None
     index = 0
     while index < len(bares):
         last = last_of.get(index)
         above = bares[index - 1] if index else ""
         if (
             last is not None
-            and closing is None
+            and raw is None
             and bares[index][:1] in ("`", "~")
             and (index == 0 or not above.strip(" ") or index - 1 in closers)
         ):
             inside.update(range(index, last + 1))
             index = last + 1
             continue
-        closing = _raw_after(bares[index], closing)
+        raw = _raw_after(bares[index], raw)
         index += 1
     above_begin = text.count("\n", 0, begin)
     return [

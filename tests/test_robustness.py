@@ -86,6 +86,22 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
+    """Code spans were found with a pattern that retried from every position inside a run
+    of backticks: one line of 20,000 took seven seconds to read for comments."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = "# Results\n\nSee " + "`" * count + " there.\n"
+        started = time.perf_counter()
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(5000), 1e-4)
+    large = measure(20000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 def test_narrowing_openers_are_read_in_linear_time() -> None:
     """A run of openers each one backtick narrower than the last, with no closer: skipping
     only openers at least as wide as one known unclosed, each read to the end of the text,

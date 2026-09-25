@@ -2125,6 +2125,18 @@ _UNCLEAR_FENCES = [
     f"<pre>\na --> b\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
     f"\\begin{{center}}\na --> b\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
     f"<!-- see </pre>\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    # Found by the fourth: pandoc counts a raw block of the same name opened inside one,
+    # reads a backslash before a backtick as a backtick, and closes a code span on a later
+    # line; a space may stand before an environment's brace, and `<?php` opens raw text.
+    f"<pre>\n<pre>\n</pre>\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    (
+        f"\\begin{{center}}\n\\begin{{center}}\n\\end{{center}}\n\n{_TICKS}r\nx\n"
+        f"\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n"
+    ),
+    f"Text \\`<!-- and `x`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"See `x\ny` and <!-- z `w`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin {{center}}\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<?php\n\n{_TICKS}r\nx\n?>\n\n{_PRINTED}\n\n{_TICKS}\n",
 ]
 
 
@@ -2167,6 +2179,8 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
         # Markup in a listing is code: a comment's marks in it open or close nothing.
         f"{_TICKS}html\n<p>A <b>bold</b> claim.</p>\n<!-- left open\n{_TICKS}\n",
         f"{_TICKS}mermaid\ngraph LR\n  A --> B\n{_TICKS}\n",
+        # A custom element whose name starts with a raw one's.
+        f"<pre-x>\n\n{_TICKS}r\nx\n{_TICKS}\n",
         # Two identical listings.
         f"{_TICKS}r\nx <- 1\n{_TICKS}\n\n{_TICKS}r\nx <- 1\n{_TICKS}\n",
         # Found by the third review: a mark in inline code, a `<pre>` in a line of text and a
@@ -2275,6 +2289,44 @@ def test_placeholders_in_a_listing_are_matched_in_linear_time() -> None:
     started = time.perf_counter()
     misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
     assert time.perf_counter() - started < 20
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_copy_of_a_listing_s_mark_does_not_pass_for_it(project: Path, capsys) -> None:
+    """The line put first in each listing was `mglisting0`, which anyone can type: a
+    listing opening with it, after a listing pandoc does not make, passed for that one. The
+    line is made new each build, and must come back once."""
+    from manuscript_guard.cli import main
+
+    # One listing to the gates, from the first fence to the last; to pandoc, a TeX group,
+    # the claim printed, and a listing opening with a typed copy of the mark.
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}\n}}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}r\nmglisting0\n{_TICKS}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "listing" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_listings_deep_in_quotations_do_not_overflow() -> None:
+    """Pandoc's reading was walked by recursion, and quotations six hundred deep raised
+    RecursionError in the build."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = "# Results\n\n" + "> " * 600 + "Deep.\n"
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
 
 
 def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:

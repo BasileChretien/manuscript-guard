@@ -328,6 +328,80 @@ def test_a_bound_written_hard_against_a_citation_marker_is_still_audited(
     assert "3.40" in unmatched and "9.99" in unmatched, unmatched
 
 
+def _audited(tmp_path: Path, outputs: list[str], text: str):
+    csv = tmp_path / "out.csv"
+    csv.write_text("v\n" + "\n".join(outputs) + "\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], [csv])
+    return [c.text for c in report.unmatched], [c.text for c in report.matched]
+
+
+def test_a_value_glued_to_a_citation_marker_is_audited_apart_from_it(tmp_path: Path) -> None:
+    """The marker rule spanned the word before a marker, digits included, so in
+    `(95% CI 1.20, 9.99)[12]` the bound was filed as part of the citation and never compared
+    with the outputs: a fabricated bound in a numbered-reference paper passed."""
+    unmatched, matched = _audited(
+        tmp_path,
+        ["2.51", "1.20", "3.40"],
+        "It was 2.51 (95% CI 1.20, 9.99)[12]. Rates reached 45%[14] overall.\n"
+        "The upper bound was 3.40[12], and later work[13-15] agreed.\n",
+    )
+    assert "9.99" in unmatched and "45%" in unmatched, unmatched
+    # A value that is in the outputs still matches: reading it apart adds no noise.
+    assert "3.40" in matched, matched
+    # The markers themselves are still citations.
+    assert not any("[" in text or text in ("12", "14", "13-15") for text in unmatched), unmatched
+
+
+def test_a_number_glued_to_a_marker_that_is_no_result_is_listed(tmp_path: Path) -> None:
+    """The cost of reading them apart, chosen knowingly: a version is a number, and one the
+    outputs do not hold is listed. A year in brackets is still a citation."""
+    unmatched, _ = _audited(
+        tmp_path, ["412"], "The pipeline (OEP 2026.1)[15] ran, as described (2019)[4].\n"
+    )
+    assert unmatched == ["2026.1"], unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "bounds"),
+    [
+        ("Age, median [IQR]: 64 [55-72] years.\n", "55-72"),
+        ("Age was 64 [55, 72] years.\n", "55"),
+        ("Length of stay was 7 [4-12] days.\n", "4-12"),
+        ("| Age | 64 [55–72] | 61 [50–70] |\n", "55–72"),
+    ],
+)
+def test_a_whole_number_interval_after_its_value_is_audited(
+    tmp_path: Path, text: str, bounds: str
+) -> None:
+    """A bracketed run of whole numbers was always a citation marker, so the bounds of a
+    median [IQR] went unaudited. An interval encloses the value before it; a citation range
+    does not, so `[13-15]` after a word, and `12% [4-6]`, are still citations."""
+    unmatched, _ = _audited(tmp_path, ["64", "61", "7"], text)
+    assert bounds in unmatched, unmatched
+
+
+def test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation(
+    tmp_path: Path,
+) -> None:
+    unmatched, _ = _audited(
+        tmp_path,
+        ["12", "412"],
+        "Rates of 12% [4-6] were reported, in 412 records [3], as earlier work [13-15] had.\n",
+    )
+    assert unmatched == [], unmatched
+
+
+def test_a_marker_after_a_one_word_bracket_is_a_citation(tmp_path: Path) -> None:
+    """Its run opens with its own `[`, so it is not cut, and the rule took no bracket before
+    the marker: `[SmPC][4]` was listed as an unexplained number."""
+    unmatched, _ = _audited(
+        tmp_path, ["5"], "See the Summary of Product Characteristics [SmPC][4] and [sic][3].\n"
+    )
+    assert unmatched == [], unmatched
+
+
 def test_an_orcid_is_not_an_unexplained_number(tmp_path: Path) -> None:
     outputs = tmp_path / "out.csv"
     outputs.write_text("n\n412\n", encoding="utf-8")

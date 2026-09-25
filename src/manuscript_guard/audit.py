@@ -29,14 +29,14 @@ import io
 import json
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import heading_index, scannable
-from manuscript_guard.text.tokens import find_atoms
+from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
@@ -519,6 +519,54 @@ def read_figure(path: Path) -> str | None:
     return _extract_text(path)
 
 
+#: A numbered citation marker ending an atom, as the atom has it: its closing `]` trimmed.
+_MARKER_AT_END = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?$")
+
+
+def _apart(atom: Atom) -> list[Atom]:
+    """An atom with a citation marker glued to a number, as the number and the marker.
+
+    An atom runs to the next space, so `(95% CI 1.20, 9.99)[12]` arrives as `9.99)[12`, and
+    the marker rule, spanning the word before a marker, filed the bound with the citation: it
+    was never compared with the outputs. Read apart, the value is audited like any other and
+    the marker is still a citation. A word before a marker has no digit, and stays whole.
+    """
+    marker = _MARKER_AT_END.search(atom.text)
+    if marker is None or not DIGIT.search(atom.text[: marker.start()]):
+        return [atom]
+    pieces: list[Atom] = []
+    for raw, offset in ((atom.text[: marker.start()], 0), (marker.group(0), marker.start())):
+        text, start = trim(raw, atom.start + offset)
+        if text and DIGIT.search(text):
+            shift = start - atom.start
+            pieces.append(
+                replace(atom, text=text, start=start, end=start + len(text), col=atom.col + shift)
+            )
+    return pieces
+
+
+#: A bracketed range or pair of whole numbers after a value, `64 [55-72]` or `7 [4, 12]`.
+_AFTER_A_VALUE = re.compile(
+    r"(?<![\w.\[])(?P<value>\d+(?:\.\d+)?)%?\s*"
+    r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\]"
+)
+
+
+def _intervals(text: str) -> list[tuple[int, int]]:
+    """Where a bracketed run of whole numbers is an interval rather than a citation marker.
+
+    Both are written `[55-72]`, and the marker rule took every one for a citation, so the
+    bounds of a median [IQR] or a range were never audited. An interval encloses the value
+    written before it, `64 [55-72]`; a citation range does not, `12% [4-6]`. A citation that
+    happens to enclose a number before it, `found 2 [1,3]`, is read as an interval and listed.
+    """
+    return [
+        (match.end("value"), match.end())
+        for match in _AFTER_A_VALUE.finditer(text)
+        if int(match["low"]) <= float(match["value"]) <= int(match["high"])
+    ]
+
+
 def audit(
     papers: list[Path],
     backing: list[Path],
@@ -568,8 +616,11 @@ def audit(
     report.papers = tuple(path for path, _text, _shape in sources)
 
     for path, text, by_shape in sources:
-        for atom in find_atoms(text, mask(text)):
-            if classifier.classify(atom).kind != UNCLASSIFIED:
+        intervals = _intervals(text)
+        atoms = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
+        for atom in atoms:
+            interval = any(start <= atom.start and atom.end <= end for start, end in intervals)
+            if not interval and classifier.classify(atom).kind != UNCLASSIFIED:
                 report.classified += 1
                 continue
             candidate = Candidate(

@@ -899,7 +899,8 @@ source — where citations are `[@key]` and masked — it bought nothing and cos
   on to the next `-->` in the body, and a fence opener in an abstract paired with a fence
   below, hiding everything between from G2 and the audit, and the bindings between from
   G2's binding checks. The masking, `explain`, G2's fence and binding readers and the
-  heading scan all stop at `front_matter_end`, and look for fences on each side of it.)
+  heading scan all stop at `front_matter_end`; all but the binding reader also look for
+  fences on each side of it. What is still open is under Known gaps.)
 
 **Two were the same value compared the wrong way.**
 
@@ -1256,10 +1257,38 @@ before that reported the single paragraph of a one-paragraph file as moved into 
 file when nothing had moved at all.
 
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
-and protected tokens in alternation, and its prose reaches Word unchanged except for its
-markdown — so locating the prose segments in the rendered form reveals what each token
-rendered to *without knowing how anything renders*. That last part is what makes citations
-work: their rendering depends on a CSL style this code never sees, and it does not need to.
+and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
+`[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and `@key
+[p. 33]`, with any key pandoc reads: `@2019who`, `@_key`, `@Élodie2020` and `@{10.1000/xyz}`
+as well as `@smith2020`, and none straight after a full stop, where pandoc reads none. A
+narrative key takes the bracket group after it, with or without a space and across a line
+break, because pandoc reads `@key[p. 3]` as a key and its locator and `@a [see @b]` as one
+citation; a group followed by `(` or `{` is a link or a span instead. A binding inside a
+citation is part of it, and nothing in code, an autolink or a link's address is a citation.
+Each of these was once split or found where pandoc finds none, and marking then broke the
+paragraph for good. A key left in the prose all the same refuses the paragraph, since Word's
+text holds the citation's rendering and not the key. Where each token's rendering begins and
+ends is not worked out. It is read from a second build of the same source in which every
+token has a Word bookmark around it, written as raw OpenXML that pandoc passes through. So
+nothing about how a number or a citation renders has to be known, which is what makes
+citations work: their rendering depends on a CSL style this code never sees. The first
+marking was a `[token]{#id}` span, and a span adds brackets: beside an unbalanced one, as in
+"Scores in [low, high) … [@key]", pandoc paired them differently, the text still read the
+same, the extent lost its first character, and a rewording wrote the `[` twice. A bracketed
+citation is found by bracket balance - a group with a key at its own level - and not by a
+pattern: one that started at the first `[` made the prose "[low, high) were rescaled as in"
+part of a citation, and one that could not contain `[` protected nothing in `[@key, p. 3
+[emphasis added]]`.
+
+It used to be worked out, and the working was wrong in both directions. The source's prose
+was flattened and searched for in the rendered text, and the tokens were whatever lay
+between. Pandoc typesets prose (`drug's` reaches Word as `drug’s`, `--` as a dash), so every
+paragraph with a binding and an apostrophe was refused. And a short piece of prose could be
+found inside a token: in "(Smith et al. 2020)." ending a paragraph the final "." was found
+after "al", and a rewording merged as `[@smith2020]. 2020).`; in "(Smith and Jones 2020)
+and (Lee 2021)" the " and " was found inside the first citation, so a co-author's edit to
+the citation merged as prose. A narrative `@key` was not protected at all, and came back as
+the plain text "Smith (2020)". The marked build costs a second run of pandoc per import.
 
 Those rendered forms are then found in the returned text by aligning the two word by word,
 with a number counting as one word. The first version searched for each as a substring,
@@ -1276,11 +1305,20 @@ monotonic, so a paragraph quoting two values that render the same string pairs t
 order rather than matching both to the first occurrence — the same collision that `bind`
 refuses to guess at.
 
-Two details are load-bearing. Prose is compared flattened, because `**striking**` reaches
-Word as `striking` and matching verbatim failed on any paragraph with emphasis in it, which
-is most of them. And an unchanged segment is rebuilt from the source rather than from Word,
-so only a segment the co-author actually edited loses its inline formatting — Word text is
-read as plain `<w:t>` runs, and that is the price of using the bookmark as identity.
+Two details are load-bearing. Prose is only ever compared with rendered prose: a returned
+segment with the same segment of the build, character for character but for layout
+whitespace, since both are Word's text and Word changes no character nobody typed. Quotes
+were once compared as quotes, and a co-author turning ‘em the right way round left a segment
+that read as untouched: the correction was dropped with nothing reported. And an unchanged
+segment is rebuilt from the source rather than from Word, so only a segment the co-author
+actually edited loses its inline formatting — Word text is read as plain `<w:t>` runs, and
+that is the price of using the bookmark as identity. An edited segment keeps Word's quotes
+as they are: straightening them all for pandoc to curl again turned „ein Signal“ into
+“ein Signal” and the ’90s into ‘90s. One is straightened. A straight `'` kept from the
+source can open a quotation that closes in the edited segment, and pandoc, finding nothing
+straight to close it, prints it as an apostrophe: "’a ratio of 3.84’". The read-back check
+below compares quotes as quotes and cannot see that, so the segment's first closing `’` is
+written straight, as the source had it.
 
 Losing bold is a cost; losing a footnote is a corruption. Word's text holds nothing of an
 HTML comment, a footnote, an equation or raw TeX; it holds a link's words without the
@@ -1321,10 +1359,22 @@ typesetting; those are escaped only where they open a paragraph as a list would 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it catches
 what this module can see - a delimiter left unpaired, a span stretched over new words - and
-not where the reading and pandoc disagree. A paragraph without bindings has one more
-backstop, for what renders nothing and the list does not name: if its source, read as Word
-should show it, is not what Word does show, something in it never reached Word as text, and
-the rewording is refused rather than rebuilt from what did.
+not where the reading and pandoc disagree. Its tokens must be the source's, each read as
+before and none touching the next. Counting them was not enough. An edit deleting a space
+made `[@a][@b]` a link and `cohort.@key` no citation at all. One deleting "and " made
+`@a [@b]` one citation, and one leaving `@a:{{results.x}}` gave pandoc the key `a:3.84`.
+Each still had as many tokens, and the build printed a raw key or a garbled citation. The
+reading takes a binding for digits, so what a value does beside a key is checked apart: a
+value that opens with `[`, left with only a space after a narrative key, is the key's
+locator to pandoc, and "(2019) [pooled]" printed as "(2019, pooled)". Every edited stretch
+has one more backstop, for
+what the list does not name: if its source, read as Word should show it, is not what the
+build printed of that stretch, something in it never reached Word as text, and the
+rewording is refused rather than rebuilt from what did. `[Methods]`, a link to the heading,
+was rebuilt as the word "Methods", and `<LLOQ in mg/L and >`, a tag to pandoc, was deleted.
+At first only a paragraph without bindings had this check. With bindings, looking for the
+source's prose in the build did that work, and when marked extents replaced that search the
+check went with it.
 
 Two shapes of paragraph have no single Word paragraph to merge from. Display maths splits
 one: pandoc renders "Before $$y = z$$ after." as three Word paragraphs, only the first
@@ -2002,6 +2052,18 @@ Closed since, and why each mattered:
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
   enough, since any later real comment supplies the `-->`, and a draft often has one. The
   comment scanner would have to know code spans.
+- **The front-matter boundary still has edges.** Nothing opened in the front matter closes
+  in the body, but each of these can still hide a number pandoc prints, all on contrived
+  input:
+  - a `<!--` or a fence opened in one YAML value and closed in another;
+  - a URL at the end of a value swallowing the next value's first word;
+  - a code block in an abstract indented four spaces, which is not found;
+  - front matter behind a UTF-8 byte-order mark, which G2 does not find;
+  - a YAML block in the middle of the body;
+  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
+    though not for the masking.
+
+  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2189,21 +2251,34 @@ Closed since, and why each mattered:
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced
     without its own, so a no-break space the co-author added there is dropped: silently,
     when it is the only change to the paragraph.
-- **Two protected tokens with nothing between them cannot be aligned.**
-  `{{results.a}}{{results.b}}` gives no prose to anchor on, so there is no way to say where
-  one rendering ends and the next begins. The paragraph is refused. A rewording that deletes
+- **Two protected tokens with nothing between them cannot be aligned.** The marked build
+  knows where each rendering of `{{results.a}}{{results.b}}` ends, but Word's text does not:
+  '1' and '2' come back as '12'. The paragraph is refused. A rewording that deletes
   everything between two tokens is refused for the same reason, and because nothing is left
-  to escape: `[@jones2019]{{results.ci}}` with a value of `(1.2-3.4)` printed as a link. One
-  that leaves only a space between them merges, prints as typed, and cannot be aligned
-  after that, so the paragraph's next rewording is refused.
+  to escape: `[@jones2019]{{results.ci}}` with a value of `(1.2-3.4)` printed as a link.
+- **Where a straight quote opens is read by a rule, not by pandoc.** A `'` after a space or
+  punctuation and before a non-space opens a quotation, if the build printed a ‘ in that
+  stretch (it prints the `'` of `'Tis` as ’); the first `’` of the edited stretch that
+  closes it is written straight. Where that rule and pandoc disagree, one quote prints
+  the wrong way round, and no word changes. A space typed just before that closing quote is
+  lost: pandoc trims it from inside the quotation, so "3.84 ’" prints as "3.84’".
+- **A straight quote from Word is typeset like one in the source.** Word's text is written
+  back with its quotes as they are, and pandoc curls a straight one. So a co-author who
+  types straight quotes, with AutoFormat off or by turning “a signal” into "a signal", sees
+  them curled at the next build; the second change is lost with nothing reported, since the
+  rebuilt paragraph equals the source. A straight quote typed in an edited stretch can also
+  pair with a straight one kept from the source across a token: `'high' at "{{x}} and
+  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
+  Carrying Word's straight quotes would mean escaping every one, which a co-author who
+  types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier
   is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
   the stamp records the sources' digest but not the rules that split them. A document sent
   out before such a change and imported after it has its identifiers pointing at other
   paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
-  wrong one. 0.2.9 is such a change for a source whose front matter has a blank line after
+  wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
   the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
-  none of these; a document built from one before 0.2.9 has to be rebuilt and sent again.
+  none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
   The guard is a scheme version in the stamp and the round file, refused on a mismatch.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
@@ -2243,16 +2318,24 @@ Closed since, and why each mattered:
   moved into another file, absorbed by a join, or present twice, it has no position of its
   own in the returned document, so a reorder keeps it after the paragraph it followed in
   the source. That is a choice, not something the document says.
-- **Where a token's rendering begins and ends is guessed, and the guess fails both ways.**
-  The source's prose is flattened and searched for in the rendered text, and each binding or
-  citation is whatever lies between. Pandoc typesets prose (`drug's` reaches Word as
-  `drug’s`), so a paragraph with a binding and an apostrophe is refused. Worse, a short piece
-  of prose can be found inside a citation: "(Smith et al. 2020)." ending a paragraph is cut
-  at "al.", and a rewording merges as `[@smith2020]. 2020).`. The rewording can be one
-  nobody sees: now that Word's text keeps a no-break space, a typography corrector turning
-  the space in "et al. 2020" into a narrow no-break one is enough. A narrative `@key`, and a
-  bracketed citation with a prefix (`[see @key]`), is not protected: the source does not read
-  as what Word shows, so a paragraph quoting one is refused whatever the edit.
+- **Token extents are trusted only where marking changed nothing.** The marked build must
+  read exactly like the plain one, paragraph by paragraph. If a bookmark changes a
+  rendering, that paragraph is refused rather than aligned on extents that describe
+  different text, and it can never take a rewording, even far from the token. Known cases:
+  a binding inside inline code, where the bookmark is printed rather than read; super- or
+  subscript around a token, `m^{{x}}^`, which the bookmark's markup breaks; a binding inside
+  an autolink, which the bookmark breaks the same way; `@key [b][c]`, whose `[b]` is read
+  here as a locator and is none to pandoc, being followed by `[`; and quotes that pandoc
+  pairs differently around a bookmark. The no-break space pandoc puts after "et al." or
+  "e.g." before a bookmark, where it puts a plain one before a citation, is not a change:
+  one character for one, the extents still fit. A binding in an HTML comment is never
+  marked, and `@a [-@b]`, `@key[p. 3]`, `@key [text](url)` and an `@` in a link's address,
+  each once a token that marking broke, are read as pandoc reads them now. `[@key](url)` and
+  `[@key]{.smallcaps}` no longer break marking, but a paragraph holding one still refuses
+  every edit: the reading shows the link's text as `@key`, where Word shows the citation.
+- **Only a sign glued to a value is a change to it.** "– 3.84", with a space, reads as
+  punctuation and merges; so does a unit or a percent sign added after a value. Both change
+  what the sentence claims, and neither is caught here; `check` sees the binding intact.
 - **The annotated copy shows classification, not correctness.** Green means a number came
   from an artefact, not that the analysis behind it was right; the tiers describe provenance
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact

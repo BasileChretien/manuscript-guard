@@ -358,11 +358,16 @@ def cmd_import(args: argparse.Namespace) -> int:
     assembled, _ar = assemble(project, namespace, results)
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
-    # compared with - so import needs everything a build needs, pandoc first.
+    # compared with - so import needs everything a build needs, pandoc first. A second copy
+    # has every binding and citation bookmarked, which is how a reworded paragraph learns
+    # where each of them begins and ends without guessing at how they render.
+    marked_assembly, _mr = assemble(project, namespace, results, mark=True)
     with tempfile.TemporaryDirectory() as scratch:
         reference = Path(scratch) / "reference.docx"
+        tokens = Path(scratch) / "reference-tokens.docx"
         try:
             build_document(project, assembled, mode=OFFLINE, output=reference)
+            build_document(project, marked_assembly, mode=OFFLINE, output=tokens)
         except BuildError as exc:
             print(
                 f"manuscript-guard: import compares {edited.name} with a fresh build of the "
@@ -371,6 +376,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             return 2
         sent = read_blocks(reference)
+        marked = read_blocks(tokens)
 
     try:
         returned = read_blocks(edited)
@@ -379,7 +385,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     known = tagged_paragraphs(project)
-    plan = plan_import(known, sent, returned)
+    plan = plan_import(known, sent, returned, marked)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything

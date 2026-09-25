@@ -358,9 +358,33 @@ def _joined_without_bookmark(
     return found
 
 
-def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> Plan:
-    """Compare the document as sent with the document as returned, paragraph by paragraph."""
+def plan_import(
+    known: dict,
+    reference: list[Block],
+    returned: list[Block],
+    marked: list[Block] | None = None,
+) -> Plan:
+    """Compare the document as sent with the document as returned, paragraph by paragraph.
+
+    `marked` is the same document built with each binding and citation bookmarked, which is
+    where `align` learns each token's extent. It is trusted only for a paragraph that reads
+    exactly as it does in `reference`: if marking changed a rendering, that paragraph is
+    refused rather than aligned on extents that describe different text. Exactly but for
+    pandoc's no-break space, which it puts after "et al." before a bookmark and not before a
+    citation: one character for one, so the extents still fit, and every edit to "Smith et
+    al. [@key]" was refused without it.
+    """
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+
+    def fits(text: str, name: str) -> bool:
+        sent = rendered.get(name)
+        return sent is not None and sent.replace(" ", " ") == text.replace(" ", " ")
+
+    extents = {
+        b.names[0]: b.tokens
+        for b in marked or ()
+        if b.names and not b.table and fits(b.text, b.names[0])
+    }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
     joined += _joined_without_bookmark(rendered, texts, in_join)
@@ -403,7 +427,7 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
-            aligned = align(source, was, now)
+            aligned = align(source, was, now, extents.get(name))
             if aligned.rebuilt == source:
                 # Only pandoc's typesetting was undone in Word - a no-break space it put after
                 # "e.g." taken out again - and the next build puts it back. Nothing to merge.
@@ -529,8 +553,8 @@ def why(aligned: Alignment) -> tuple[str, ...]:
                 )
         return tuple(lines)
     return (
-        "it could not be lined up with its own source, so its numbers, citations and markup "
-        "cannot be told apart from its prose. Make the edit in the .md.",
+        "its numbers, citations and markup could not be told apart from its prose, or its "
+        "numbers and citations from each other where two touch. Make the edit in the .md.",
     )
 
 

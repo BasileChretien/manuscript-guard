@@ -2527,9 +2527,10 @@ Closed since, and why each mattered:
   quote is now escaped, and an `=` ending an edited stretch still does the same; see "The
   read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
   it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
-  the source opened itself, `coded="HR {{x}} or LOD"`, stays open if its stretch is edited,
-  since Word's closing `”` is written back curly and closes nothing: with `"d was >0.5"` in
-  the next paragraph, the two print as "Values 0.5” in all.".
+  the source opened itself after a `<` of its own, `Values <LOD in {{unit}} were
+  coded="HR {{x}} or LOD" in all.`, stays open if its stretch is edited, since Word's closing
+  `”` is written back curly and closes nothing: with `"d was >0.5"` in the next paragraph,
+  the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier

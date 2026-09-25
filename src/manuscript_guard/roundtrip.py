@@ -1470,9 +1470,10 @@ _OPENER = re.compile(
 _TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
 _TAG_OPENS = re.compile(_TAG_OPEN)
 
-#: Inside a tag, pandoc's whitespace is ASCII's. A no-break space, or pandoc's own after
-#: "e.g.", is part of an attribute's value: `dose=5 mg\>1`, with a no-break space in "5 mg",
-#: closed the tag when Python's `\s` was taken for pandoc's.
+#: Inside a tag, pandoc's whitespace is ASCII's. A no-break space Word's text holds is part of
+#: an attribute's value: `dose=5 mg\>1`, with one in "5 mg", closed the tag when Python's `\s`
+#: was taken for pandoc's. Pandoc's own after "e.g." is written back as a plain space, which
+#: ends the value; it is read here as it came back, which only errs safe.
 _TAG_SPACE = "[ \t\n\r\f]"
 #: An attribute's value about to begin: an `=` and nothing after it but spaces.
 _VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
@@ -1491,7 +1492,8 @@ def _opens_value(shown_before: str, bare_before: str | None, text: str, at: int)
     value: straight after an `=`, once a `<` of the source's or a value's stands before it.
 
     `bare_before` is `shown_before` with each `<` Word typed set aside, or None to count
-    them all. Word's own is escaped and opens nothing, and a quote escaped for it printed
+    every `<` in `shown_before`; those in `text` are Word's and set aside either way. Word's
+    own is escaped and opens nothing, and a quote escaped for it printed
     straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`. A
     kept stretch is read as Word shows it, so a `<` the source escaped counts too: that
     costs a straight quote, never a word.
@@ -1929,7 +1931,8 @@ def align(
             if quote_open and _WORD_CLOSES.search(piece):
                 # Straight even where `_closers` will escape it, after an `=`: left curly, it
                 # closed nothing, and a value the source's own `='` had opened ran on into the
-                # next paragraph. Escaped, both quotes print straight, and every word prints.
+                # next paragraph. Escaped, it prints straight, the source's opener prints as
+                # an apostrophe, and every word prints.
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}

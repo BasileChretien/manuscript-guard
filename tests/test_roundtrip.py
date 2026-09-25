@@ -2517,8 +2517,8 @@ BESIDE_A_TOKEN = [
     pytest.param(
         "Values <LOD in {{results.unit}} were imputed.",
         "Values <LOD in mg/L were imputed.",
-        "Values <LOD in mg/L were imputed at dose=5 mg>1 only.",
-        "Values <LOD in {{results.unit}} were imputed at dose=5 mg&gt;1 only.",
+        "Values <LOD in mg/L were imputed at dose=5\u00a0mg>1 only.",
+        "Values <LOD in {{results.unit}} were imputed at dose=5\u00a0mg&gt;1 only.",
         id="equals-then-a-no-break-space",
     ),
     pytest.param(
@@ -2731,6 +2731,30 @@ def test_a_closing_quote_after_an_equals_keeps_every_word(
     straight = str.maketrans({"‘": "'", "’": "'"})
     assert printed["mg-p-x-0"].translate(straight) == returned.translate(straight)
     assert printed["mg-p-x-2"] == "Cohen’s d was >0.5 in all."
+
+
+@needs_pandoc
+def test_pandocs_space_after_an_abbreviation_keeps_the_tag_shut(tmp_path: Path) -> None:
+    """The `>` is decided on Word's text, where pandoc's space after "e.g." is a no-break one
+    and part of the value; it is then written back as a plain space, which ends the value
+    sooner. So the decision can only have been more careful than it needed to be."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    returned = "Values <LOD in mg/L were imputed at dose=e.g.\N{NO-BREAK SPACE}5>1 only."
+    merged = realign(
+        "Values <LOD in {{results.unit}} were imputed.",
+        "Values <LOD in mg/L were imputed.",
+        returned,
+        abbreviations=frozenset({"e.g."}),
+    )
+    assert merged == "Values <LOD in {{results.unit}} were imputed at dose=e.g. 5&gt;1 only."
+    path = tmp_path / "a.md"
+    body = merged.replace("{{results.unit}}", "mg/L")
+    path.write_text(f"[]{{#mg-p-x-0}}{body}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    assert paragraph_text(tmp_path / "a.docx")["mg-p-x-0"] == returned
 
 
 @pytest.mark.parametrize(

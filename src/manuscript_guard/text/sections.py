@@ -18,16 +18,25 @@ count is reported with the rule, so a disagreement is visible rather than myster
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 
-from manuscript_guard.text.blocks import Heading, find_headings, scannable, section_breaks
+from manuscript_guard.text.blocks import (
+    Heading,
+    Unprinted,
+    find_headings,
+    scannable,
+    section_breaks,
+)
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import FRONTMATTER, mask
 
 # `scannable` moved to `text.blocks` with the heading walk; re-exported for the callers that
 # learned it here.
 __all__ = [
+    "Chain",
     "Counts",
+    "HeadingIndex",
     "Section",
     "chain_at",
     "count_words",
@@ -209,19 +218,56 @@ def heading_index(text: str) -> list[Heading]:
     titled `Unprinted`: see `section_breaks`. For the headings a reader sees, as a word
     count or a required-section check wants them, use `split_sections` or `headings`.
     """
-    return section_breaks(text)
+    return HeadingIndex(section_breaks(text))
 
 
-def chain_at(index: list[Heading], offset: int) -> tuple[str, ...]:
+class Chain(tuple):
+    """The headings enclosing a place, outermost first, and `printed`: the same chain as a
+    reader of the built document has it, from the headings pandoc prints alone.
+
+    `is_methods` asks both. A line pandoc prints as text can end a section for the gates;
+    counted alone, "# of reports" wrapped to the start of a line closed the Results, and a
+    "Sensitivity analyses" under it read as Methods, where the reader sees it in the
+    Results.
+    """
+
+    printed: tuple[str, ...]
+
+    def __new__(cls, titles: tuple[str, ...], printed: tuple[str, ...]) -> Chain:
+        chain = super().__new__(cls, titles)
+        chain.printed = printed
+        return chain
+
+
+class HeadingIndex(list):
+    """Section breaks in document order, with the chain after each worked out once.
+
+    `chain_at` walked every heading before a number, for every number: 4,000 headings and
+    12,000 numbers took 50 s in G2. Found by bisection, it is a lookup.
+    """
+
+    def __init__(self, headings: list[Heading]) -> None:
+        super().__init__(headings)
+        self.starts = [found.start for found in self]
+        self.chains: list[Chain] = []
+        every: list[tuple[int, str]] = []
+        printed: list[tuple[int, str]] = []
+        for found in self:
+            for stack in (every, printed) if type(found.title) is not Unprinted else (every,):
+                while stack and stack[-1][0] >= found.level:
+                    stack.pop()
+                stack.append((found.level, found.title))
+            self.chains.append(
+                Chain(tuple(t for _l, t in every), tuple(t for _l, t in printed))
+            )
+
+
+def chain_at(index: list[Heading], offset: int) -> Chain:
     """The enclosing heading chain at `offset`, from a precomputed index."""
-    stack: list[tuple[int, str]] = []
-    for found in index:
-        if found.start > offset:
-            break
-        while stack and stack[-1][0] >= found.level:
-            stack.pop()
-        stack.append((found.level, found.title))
-    return tuple(title for _level, title in stack)
+    if not isinstance(index, HeadingIndex):
+        index = HeadingIndex(index)
+    before = bisect_right(index.starts, offset)
+    return index.chains[before - 1] if before else Chain((), ())
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:

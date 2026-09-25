@@ -171,8 +171,8 @@ def test_the_heading_scan_is_linear(line: str) -> None:
 
 @pytest.mark.parametrize(
     "line",
-    ["# a" + " " * 3000 + "x\n", ":" * 3000 + " x y\n"],
-    ids=["heading line of spaces", "line of colons"],
+    ["# a" + " " * 3000 + "x\n", ":" * 3000 + " x y\n", "::: a" + ":" * 10000 + " y\n"],
+    ids=["heading line of spaces", "line of colons", "colons after a div's class"],
 )
 def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
     """Two patterns backtracked on one line: the ATX heading's title and closing hashes, and
@@ -184,6 +184,25 @@ def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
     find_headings(line)
     heading_shaped([line])
     assert time.perf_counter() - started < 2.0
+
+
+def test_the_section_chain_is_looked_up_not_rebuilt() -> None:
+    """`chain_at` walked every heading before a number, for every number: 4,000 headings and
+    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry."""
+    from manuscript_guard.text.sections import chain_at, heading_index
+
+    def measure(count: int) -> float:
+        text = "".join(f"## Part {i}\n\nValues 1, 2 and 3.\n\n" for i in range(count))
+        index = heading_index(text)
+        step = max(1, len(text) // (3 * count))
+        started = time.perf_counter()
+        for offset in range(0, len(text), step):
+            chain_at(index, offset)
+        return time.perf_counter() - started
+
+    small = max(measure(250), 1e-3)
+    large = measure(2000)
+    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
 
 
 # ---------------------------------------------------------------- hostile files

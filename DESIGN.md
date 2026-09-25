@@ -969,8 +969,11 @@ fix, not of the original code.**
   shaped like a heading. The walk reads a construct it does not model as a paragraph, which
   swallowed a real `# Results` under a table of dashes and ran the Methods on over it, so
   for G2 a line shaped like a heading ends the section it stands in whether or not the walk
-  places it. One the walk does not place can say Results and never Methods: a missed
-  heading costs a reported number, not a passed one.)
+  places it. One the walk does not place can say Results and never Methods, and a number is
+  in the Methods only if the printed headings alone say so too, so such a line can take
+  Methods away and never grant them. A title is read as Results through the marks it may
+  keep: pandoc prints `# Results` over a rule as a heading reading "# Results", and taken
+  literally it matched no Results pattern and re-admitted the Methods rules under it.)
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
   every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
@@ -2338,8 +2341,8 @@ Closed since, and why each mattered:
   paragraph typed as `References {-}` starts a list, although Word prints the braces.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
-  gates keep the marker in the title, so it ends the section above and "- Methods" never
-  opens Methods. They do not see a heading pandoc finds further into an item: an indented
+  gates keep the marker in the title, so it ends the section above; "- Results" is read as
+  Results, and "- Methods" never opens Methods. They do not see a heading pandoc finds further into an item: an indented
   one, or one under a later item's own underline. The same goes for a definition list. The
   old scan saw none of these either.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
@@ -2358,16 +2361,19 @@ Closed since, and why each mattered:
 - **A table written with lines of dashes is read as a paragraph.** A multiline table, or a
   simple table with no header or under a `Table:` caption, is not modelled. A row reading
   `# Top`, or a title over its dashes, is taken for a heading, and one pandoc prints under
-  the table is taken for text. For G2 either line ends the section it is in and neither
-  opens Methods, so the cost is a threshold reported under a heading the gates did not
-  place. Word counts and the required-section check go by printed headings, and miss the
-  one under the table.
+  the table is taken for text. A heading the gates miss under such a table still ends the
+  section for G2 and cannot open Methods. A row they take for a heading can: `# Methods`
+  between two lines of spaced dashes is a table cell to pandoc and a Methods heading to the
+  gates. Word counts and the required-section check go by the headings the gates place, and
+  miss the one under the table.
 - **A line shaped like a heading always ends a section for G2.** A `#` line or an underlined
   title that pandoc prints as text, because it continues a paragraph, a list item or a
   quotation, or sits in a `<pre>` or a LaTeX environment, still closes the section above it
   for G2, titled as the line reads, and never opens Methods. A Methods paragraph hard-wrapped
   so that a line starts "# of reports" therefore reports the thresholds after it. The line
-  prints as text in the paper as well, so it is worth rewrapping anyway.
+  prints as text in the paper as well, so it is worth rewrapping, or escaping as `\#`.
+  Rows of a table the walk reads, and `{{table.x}}`, are not such lines: the rule under the
+  last row is a rule.
 - **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
   build writes the caption as a paragraph after the table, and a heading cannot interrupt a
   paragraph, so the document loses the heading while G2 reads the one the source means. With
@@ -2383,10 +2389,15 @@ Closed since, and why each mattered:
   entry was checked against pandoc 3.9, and a name on no list is read as pandoc reads most
   unknown ones: a LaTeX command as a block, a tag as inline. A block quote's lazy lines stop
   at the closing tag of an HTML block counted open around them. Only a tag that starts a
-  block, or ends a line, is counted, so one opened in the middle of a line, inside a
-  paragraph, or inside a table or a LaTeX environment, is not. Pandoc also drops the
-  indentation of the line after a raw block, and reads a setext title that is only an HTML
-  comment as an empty heading, where the gates see none. A heading's title keeps its raw
+  block is counted open, so one opened in the middle of a line, inside a paragraph, or
+  inside a table or a LaTeX environment, is not; a closing tag anywhere on a line closes it,
+  one quoted in inline code included, which can end the block early. A stray `</script>`
+  inside a paragraph ends the paragraph, where pandoc reads it inline. A comment at the
+  margin is a block and the rest of its line starts the next one; indented one to three
+  spaces it is inline, except directly under an "either" tag alone on its line, which takes
+  it into its raw block. Pandoc also drops the indentation of the line after a raw block,
+  and reads a setext title that is only an HTML comment as an empty heading, where the
+  gates see none. A heading's title keeps its raw
   HTML and LaTeX, which pandoc's printed title does not show, so `## Methods <span>` is not
   read as Methods.
 - **A headingless reference list is recognised by the signature of its year alone.**

@@ -426,6 +426,23 @@ def test_a_heading_pandoc_prints_as_text_ends_a_section_and_never_opens_methods(
 
 
 @pytest.mark.parametrize(
+    "above", ["| Parameter | Value |\n|---|---|\n| Alpha | set |", "{{table.alpha}}"]
+)
+def test_a_table_over_a_rule_does_not_end_methods(above: str) -> None:
+    """The walk reads the last row of a table as a row, and the `---` under it as a rule, as
+    pandoc does. Shaped like a title over an underline, the row still ended the Methods for
+    G2, and the threshold stated after it was reported."""
+    from manuscript_guard.classify import CONVENTION
+    from manuscript_guard.text.sections import section_chain
+
+    text = f"## Methods\n\n{above}\n---\n\nSignificance was set at p < 0.05.\n"
+    atom = next(a for a in find_atoms(text, mask(text)) if a.text == "0.05")
+    chain = section_chain(text, atom.start)
+    assert chain == ("Methods",)
+    assert Classifier.load().classify(atom, chain).kind == CONVENTION
+
+
+@pytest.mark.parametrize(
     "heading", ["Protocol deviations", "Design of the sub-study", "Methods used by others"]
 )
 def test_a_heading_that_merely_starts_like_methods_is_not_methods(heading: str) -> None:

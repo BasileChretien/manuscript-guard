@@ -431,6 +431,60 @@ def test_a_heading_line_the_walk_does_not_place_still_ends_methods(
     )
 
 
+RESULTS_READ_AS_METHODS = {
+    # Pandoc prints a level-2 heading reading "# Results". Its literal title matched no
+    # Results pattern, so it nested under Methods and kept the Methods rules. `main` read the
+    # line as an ATX "Results", and reported the number.
+    "a hashed title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hashed title over a rule under prose": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a bulleted title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n- Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A wrapped "# of reports" ended the Results for the gates, and the subsection under it
+    # read as Methods. Pandoc prints the line as text, inside the Results.
+    "a wrapped hash over a methods-like subsection": (
+        "# Results\n\nReporting rose over the period, and the\n# of reports naming the drug "
+        "doubled.\n\n## Sensitivity analyses\n\nThe estimate was unchanged (p < 0.001).\n"
+    ),
+    # A `<del>` closed mid-line was counted open for the rest of the file, so a later line
+    # ending in `</del>` ended its paragraph and the `# Methods` under it became a heading.
+    "a deletion closed mid-line": (
+        "# Results\n\n<del>The excess was not\nsignificant.</del> It was.\n\n"
+        "The reporting odds ratio was <del>not</del>\n# Methods\n(p < 0.001).\n"
+    ),
+    # Indented, a comment is inline: it starts a paragraph, which the `#` line continues.
+    "an indented comment": (
+        "# Results\n\n <!-- TODO: check -->\n# Methods\n\nThe excess was significant "
+        "(p < 0.001).\n"
+    ),
+    # A no-break space after the hash: pandoc prints the line as text. `main`'s `\s` ended
+    # the Methods there; the fallback did not.
+    "a hash and a no-break space": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n#" + chr(0xA0) + "Results\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(RESULTS_READ_AS_METHODS))
+def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
+    """Found by the fourth review of #38. Each let a Results p-value pass as the alpha."""
+    path = main_md(project)
+    tail = RESULTS_READ_AS_METHODS[name]
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

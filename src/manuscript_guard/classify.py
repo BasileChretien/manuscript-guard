@@ -241,14 +241,33 @@ def is_methods(section: Sequence[str] | None) -> bool:
 
     A title pandoc prints as text (`Unprinted`) can say Results, and never Methods: the line
     ends the section above it either way, but a reader of the document sees no heading there.
+    A chain that knows its printed headings (`sections.Chain`) must say Methods both ways, so
+    such a line can take Methods away and never grant them.
+
+    Results is recognised through the marks a printed title can keep: `# Results` over a rule
+    is a heading pandoc prints as "# Results", `- Results` over one is a list item holding a
+    heading, and `{#sec-results}` is an identifier. Methods is not, so a mark never opens it.
     """
     if not section:
         return False
-    if any(NOT_METHODS_SECTIONS.match(title) for title in section):
+    printed = getattr(section, "printed", None)
+    if printed is not None and not is_methods(printed):
+        return False
+    if any(NOT_METHODS_SECTIONS.match(_unmarked(title)) for title in section):
         return False
     return any(
         METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
     )
+
+
+_MARKS = re.compile(r"^[\s#>*+-]+")
+_ATTRIBUTES = re.compile(r"\s*\{[^{}]*\}\s*$")
+
+
+def _unmarked(title: str) -> str:
+    """A heading's title without the marks it may keep: leading hashes, quote and list
+    marks, and trailing attributes."""
+    return _MARKS.sub("", _ATTRIBUTES.sub("", title))
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:

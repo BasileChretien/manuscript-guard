@@ -313,6 +313,33 @@ CONSTRUCTS = {
     "atx under a footnote's three-space line": (
         "T.[^1]\n\n[^1]: A note.\n\n   Three.\n## Methods\n"
     ),
+    # Found by the fourth review. A note with nothing on its marker line takes the next
+    # stretch of lines after the blank as its first paragraph, indented or not.
+    "atx in an empty footnote's first paragraph": "T.[^1]\n\n[^1]:\n\n## Methods\n",
+    "atx after an empty footnote's first paragraph": (
+        "T.[^1]\n\n[^1]:\n\nNote text.\n\n## Methods\n"
+    ),
+    # Indented one to three spaces, a comment is inline and starts a paragraph.
+    "atx under an indented comment": "## Results\n\n <!-- TODO -->\n## Methods\n",
+    "atx under an indented comment and text": "## Results\n\n  <!-- x --> Text\n## Methods\n",
+    "setext from an indented comment and text": "## Results\n\n  <!-- x --> Text\n=====\n",
+    "atx under an indented comment under an either tag": "<ins>\n <!-- c -->\n## Methods\n",
+    "atx under an indented comment under a div": "<div>\n <!-- c -->\n## Methods\n",
+    # A `<del>` closed in the middle of a line is closed: a later line ending in `</del>`
+    # is inline text, and the paragraph goes on.
+    "atx under a deletion closed mid-line earlier": (
+        "## Results\n\n<del>Not\nsignificant.</del> It was.\n\nIt was <del>not</del>\n"
+        "## Methods\n"
+    ),
+    "atx under inline latex qty": "\\qty{1}{m}\n## Methods\n",
+    "atx under inline latex ac": "\\ac{ROR}\n## Methods\n",
+    "atx under inline latex acrshort": "\\acrshort{x}\n## Methods\n",
+    "atx under inline latex bfseries": "\\bfseries\n## Methods\n",
+    "atx under inline latex colorbox": "\\colorbox{red}{x}\n## Methods\n",
+    "atx under inline latex vref": "\\vref{x}\n## Methods\n",
+    "atx under inline latex pilcrow": "\\P\n## Methods\n",
+    "atx under latex texttrademark": "\\texttrademark\n## Methods\n",
+    "atx under latex hypertarget": "\\hypertarget{a}{b}\n## Methods\n",
     "atx under an inline latex index": "\\index{x}\n## Methods\n",
     "atx under an inline latex si unit": "\\SI{1}{m}\n## Methods\n",
 }

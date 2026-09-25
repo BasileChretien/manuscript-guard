@@ -151,13 +151,33 @@ _LIST_ITEM = re.compile(
     r"(?P<gap>[ \t]+|$)"
 )
 _QUOTE = re.compile(r"^[ ]{0,3}>")
-# A class or attributes and nothing else: "::: note text here" is a paragraph.
-#
-# The class cannot open with a colon, or a bare `::::` read as a fence with the class `:`, and
-# the colons could be split between the run and the class so many ways that 1,000 of them
-# took 20 s to reject.
-_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}:][^\s{}]*)[ \t]*:*[ \t]*$")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
+_DIV_RUN = re.compile(r":{3,}[ \t]*")
+
+
+def _div_open(line: str) -> bool:
+    """A fence opening a div: three colons or more, then a class or attributes and nothing
+    else but closing colons. "::: note text here" is a paragraph.
+
+    Parsed rather than matched. The class cannot open with a colon, or a bare `::::` read as a
+    fence with the class `:`; and as a pattern, colons could be split between the run, the
+    class and the closing colons so many ways that 10,000 of them took 29 s to reject.
+    """
+    run = _DIV_RUN.match(line)
+    if run is None:
+        return False
+    rest = line[run.end() :].rstrip(" \t")
+    if rest.startswith("{"):
+        closing = rest.find("}")
+        if closing == -1 or "\n" in rest[:closing]:
+            return False
+        tail = rest[closing + 1 :]
+    else:
+        if not rest or rest[0] in ":{}" or rest[0].isspace():
+            return False
+        end = next((i for i, ch in enumerate(rest) if ch.isspace() or ch in "{}"), len(rest))
+        tail = rest[end:]
+    return not tail.lstrip(" \t").strip(":")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
 # A grid table opens on a border, `+---+---+`, and a line block on a pipe and a space:
 # "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose.
@@ -232,14 +252,17 @@ def _ends_on_block_tag(line: str, html: dict[str, int]) -> bool:
     return closes is not None and html.get(closes.group(1).lower(), 0) > 0
 
 
-def _html_balance(line: str) -> tuple[str | None, str | None]:
-    """The HTML block this line opens at its start, and the one it closes at its end."""
+def _html_opens(line: str) -> str | None:
+    """The HTML block this line opens at its start, if the line does not close it too."""
     opens = _OPENS.match(line)
     opened = opens.group(1).lower() if opens else None
     if opened in _VOID_TAGS or (opened and f"</{opened}" in line[opens.end() :].lower()):
-        opened = None
-    closes = _CLOSES.search(line.rstrip(" \t"))
-    return opened, closes.group(1).lower() if closes else None
+        return None
+    return opened
+
+
+# A comment indented one to three spaces is inline, where one at the margin is a block.
+_INDENTED_COMMENT = re.compile(r"^[ ]{1,3}<!--")
 
 # Raw LaTeX. A line of nothing but commands is a block unless a command is one pandoc reads
 # inline, so `\newpage` over `# References` leaves the heading a heading, and `\textbf{Note}`
@@ -254,10 +277,14 @@ _TEX_INLINE = frozenset(
         "emph", "underline", "uline", "sout", "noindent", "newline", "url", "href", "label",
         "ref", "eqref", "autoref", "cref", "Cref", "footnote", "footnotemark",
         "includegraphics", "mbox", "hbox", "ensuremath", "LaTeX", "TeX", "ldots", "dots",
-        "today", "hyperref", "hyperlink", "hypertarget", "index", "em", "bf", "it", "rm",
-        "tt", "S", "enquote", "gls", "SI", "si", "num", "ul", "hl",
+        "today", "hyperref", "hyperlink", "index", "em", "bf", "it", "rm", "tt", "S",
+        "enquote", "gls", "SI", "si", "num", "ul", "hl", "qty", "unit", "ang", "ac", "acs",
+        "acl", "acrshort", "acrlong", "acrfull", "bfseries", "itshape", "colorbox", "vref",
+        "P", "copyright",
     }
 )
+# `\text...` commands are inline, apart from these, which pandoc makes a block of.
+_TEX_BLOCK_TEXT = frozenset({"texttrademark"})
 
 
 def _tex_block(line: str) -> bool:
@@ -270,7 +297,9 @@ def _tex_block(line: str) -> bool:
         name = command.group("name")
         if name in ("begin", "end") or name in _TEX_INLINE:
             return False
-        if name.startswith(("text", "cite")) or name.endswith("cite"):
+        if name in _TEX_BLOCK_TEXT:
+            pass
+        elif name.startswith(("text", "cite")) or name.endswith("cite"):
             return False
         position = command.end()
     return position > 0 and position == len(stripped)
@@ -369,6 +398,12 @@ class _Walk:
         #: Whether the line just walked went on a paragraph or a list item. A tag starting
         #: it is inline there, and opens no HTML block.
         self.inline = False
+        #: The lines read as rows of a table, or as a table placeholder. Shaped like a title
+        #: over a rule, the last row of one is still a row.
+        self.rows: set[int] = set()
+        #: The last line holding only an "either" tag, `<ins>` say, which takes an indented
+        #: comment under it into its raw block.
+        self._raw_tag_line = -2
         self._ends: dict[str, list[int]] | None = None
         self._closers: dict[str, list[int]] = {}
 
@@ -398,17 +433,43 @@ class _Walk:
         if fence is not None:
             return self._fence(*fence)
         line = self.lines[index]
+        if (
+            self.open is None
+            and self.list_indent is None
+            and self._raw_tag_line != index - 1
+            and _INDENTED_COMMENT.match(line.raw)
+        ):
+            # Indented, a comment is inline text: it starts a paragraph, and a `#` line under
+            # it goes on that paragraph. With text after it over an underline, it is the
+            # title of a heading. Directly under an "either" tag alone on its line, it is
+            # part of that tag's raw block.
+            heading = self._heading(index)
+            if heading is not None:
+                return heading
+            self.open = _PARAGRAPH
+            return self._paragraph_line(index)
         if _blank(line.shown):
             if line.blank and not line.commented:
                 self.open = None
             return index + 1
         after = self._line(index)
-        opened, closed = _html_balance(line.shown)
+        opened = _html_opens(line.shown)
         if opened and not self.inline:
             self.html[opened] = self.html.get(opened, 0) + 1
-        if closed and self.html.get(closed):
-            self.html[closed] -= 1
+        self._close_tags(line.shown)
         return after
+
+    def _close_tags(self, shown: str) -> None:
+        """Close the HTML blocks this line closes, wherever on it the closing tag stands:
+        pandoc ends the block there. Counted only at the end of a line, a `<del>` closed in
+        the middle of one stayed open for the rest of the file, and a later line ending in
+        `</del>` ended a paragraph pandoc goes on with."""
+        if not any(self.html.values()):
+            return
+        lowered = shown.lower()
+        for name, count in self.html.items():
+            if count:
+                self.html[name] = max(0, count - lowered.count(f"</{name}"))
 
     def _line(self, index: int) -> int:
         self.inline = False
@@ -495,7 +556,7 @@ class _Walk:
         """Divs, fenced or HTML, which pandoc reads before it looks for a heading. Other HTML
         blocks come after: `<noscript>` over an underline is a heading."""
         shown = self.lines[index].shown
-        if _DIV_OPEN.match(shown):
+        if _div_open(shown):
             self.divs += 1
         elif self.divs and _DIV_CLOSE.match(shown):
             self.divs -= 1
@@ -520,6 +581,8 @@ class _Walk:
         closing = shown.find(">", tag.end()) if tag else -1
         rest = shown[closing + 1 :] if closing != -1 else ""
         if _blank(rest):
+            if tag is not None and not _BLOCK_TAG.match(shown):
+                self._raw_tag_line = index
             return index + 1
         atx = _atx(rest)
         if atx is not None:
@@ -536,8 +599,15 @@ class _Walk:
     def _footnote(self, index: int) -> int:
         """A footnote takes every line up to a blank one, whatever it holds, and then each run
         of lines whose first is indented four spaces or a tab. All of it is the note's own,
-        headings included, and the line after it starts a block."""
+        headings included, and the line after it starts a block. With nothing on the marker's
+        line, the note's first run is the one after the blank lines under it, indented or
+        not."""
         end = index
+        marker = _FOOTNOTE.match(self.lines[index].shown)
+        if marker is not None and _blank(self.lines[index].shown[marker.end() :]):
+            end = index + 1
+            while end < len(self.lines) and self._chunk_ends(end):
+                end += 1
         while True:
             while end < len(self.lines) and not self._chunk_ends(end):
                 end += 1
@@ -556,10 +626,13 @@ class _Walk:
         line = self.lines[index]
         below = self.lines[index + 1] if index + 1 < len(self.lines) else None
         # A block-level tag in the title ends its inline text short, and the underline with it.
+        # A table placeholder is no title: the build puts a table there, and a rule under its
+        # last row is a rule.
         if (
             below is not None
             and _UNDERLINE.match(below.shown)
             and not _A_BLOCK_TAG.search(line.shown)
+            and not _lone_table(line.shown)
         ):
             level = 1 if below.shown.startswith("=") else 2
             self.found.append(Heading(line.start, level, line.shown.strip(), setext=True))
@@ -589,7 +662,10 @@ class _Walk:
             return index + 1
         if _FOOTNOTE.match(shown):
             return self._footnote(index)
-        if _REFERENCE.match(shown) or _tex_block(shown) or _lone_table(shown):
+        if _lone_table(shown):
+            self.rows.add(index)
+            return index + 1
+        if _REFERENCE.match(shown) or _tex_block(shown):
             return index + 1
         return self._environment(index) or self._table(index)
 
@@ -603,6 +679,7 @@ class _Walk:
             end = index + 2
             while end < len(self.lines) and "|" in self.lines[end].shown:
                 end += 1
+            self.rows.update(range(index, end))
             return self._caption(end)
         if _GRID_TOP.match(shown):
             end = index + 1
@@ -614,7 +691,10 @@ class _Walk:
                 (n for n in range(end - 1, index, -1) if _GRID_TOP.match(self.lines[n].shown)),
                 None,
             )
-            return None if last is None else self._caption(last + 1)
+            if last is None:
+                return None
+            self.rows.update(range(index, last + 1))
+            return self._caption(last + 1)
         if not _LINE_BLOCK.match(shown):
             return None
         end = index + 1
@@ -652,13 +732,20 @@ def find_headings(text: str) -> list[Heading]:
     return _Walk(text).run()
 
 
+# Looser than `ATX_LINE`: any whitespace after the hashes, a no-break space included. Pandoc
+# prints "#" and a no-break space as text, and a reader takes it for a heading all the same.
+_SHAPED_ATX = re.compile(r"^#+(?=\s|$)")
+
+
 def heading_shaped(lines: list[str]) -> set[int]:
     """The lines that look like headings wherever they stand: `#` lines, and titles over an
     underline. For a caller that must stop at a heading whether or not pandoc prints it."""
     shaped = set()
     for number, line in enumerate(lines):
         below = lines[number + 1].rstrip("\r") if number + 1 < len(lines) else ""
-        if ATX_LINE.match(line.rstrip("\r")) or (not _blank(line) and _UNDERLINE.match(below)):
+        if _SHAPED_ATX.match(line.rstrip("\r")) or (
+            not _blank(line) and _UNDERLINE.match(below)
+        ):
             shaped.add(number)
     return shaped
 
@@ -680,13 +767,14 @@ def section_breaks(text: str) -> list[Heading]:
     and a p-value under it passed as the alpha. So a line shaped like a heading ends the
     section it is in, whether or not the walk places it. One the walk does not place comes
     back titled `Unprinted`, which `is_methods` never takes for Methods: it can close the
-    Methods, and never open them.
+    Methods, and never open them. A table row is not such a line: the walk reads the table,
+    and the rule under its last row is a rule.
     """
     walk = _Walk(text)
     found = walk.run()
     by_start = {heading.start: heading for heading in found}
     shown = [line.shown for line in walk.lines]
-    placed = set()
+    placed = set(walk.rows)
     for number, line in enumerate(walk.lines):
         heading = by_start.get(line.start)
         if heading is not None:
@@ -697,7 +785,8 @@ def section_breaks(text: str) -> list[Heading]:
         if not _blank(line) and _UNDERLINE.match(below):
             level, title, setext = (1 if below.startswith("=") else 2), line.strip(), True
         else:
-            (level, title), setext = _atx(line) or (1, line.strip()), False
+            level = len(line) - len(line.lstrip("#"))
+            title, setext = line[level:].strip().rstrip("#").strip(), False
         found.append(Heading(walk.lines[number].start, level, Unprinted(title), setext))
     return sorted(found, key=lambda heading: heading.start)
 

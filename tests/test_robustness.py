@@ -118,18 +118,22 @@ def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
     Padded, because with short blocks the per-block work hides the search: at four times
     the input and without the fix the ratio was 13 to 17, and with it about 4.
 
-    From 1,000 blocks rather than a handful, because the search runs at C speed and only
-    outweighs the per-block work at that size. With a search to the end of the text for
-    each comment's closer put back, a start of 10 read 15 to 20, on the bound, and a start
-    of 1,000 read 32 to 37 and failed in about 28 s. It was timed once per size at 4,000 and
-    16,000 blocks, which took 37 s for the six cases on a loaded machine.
+    Checked twice, because no one start sees both kinds of quadratic. One running in Python,
+    like the walk from every table opener that a3d0453 had, fails in seconds from 10 blocks
+    and takes minutes from 1,000. One running at C speed, like a `find` to the end of the
+    text for each comment's closer, hides under the per-block work from 10 blocks (15 to 20,
+    on the bound) and fails from 1,000. A failure in the first pass ends the test. It was
+    timed once per size at 4,000 and 16,000 blocks.
     """
     from manuscript_guard.roundtrip import tag
 
     def blocks(count: int) -> str:
         return "".join(opener.replace("#", str(i)) + "x" * 200 + "\n\n" for i in range(count))
 
-    assert_linear(blocks, lambda text: tag(text, "main.md"), 1000, "paragraph tagging")
+    for start in (10, 1000):
+        assert_linear(
+            blocks, lambda text: tag(text, "main.md"), start, f"paragraph tagging from {start}"
+        )
 
 
 # The check itself, on a clock that only the job below moves: that it fails a quadratic,

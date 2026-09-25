@@ -2589,8 +2589,10 @@ Closed since, and why each mattered:
   per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
   Each of these tests used to rest on one timing per size (one on a best of three, one size
   after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
-  speed shows only at a size where it outweighs the per-item work, so the size a test starts
-  from is its sensitivity as well as its cost: paragraph tagging starts at 1,000 blocks. They are tripwires for the scans that went quadratic before, not a
+  speed shows only at a size where it outweighs the per-item work, and one in Python fails
+  quickly from a small size but takes minutes from a large one, so the size a test starts
+  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
+  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
   proof that nothing else does.
 
 ## Still open

@@ -154,11 +154,11 @@ def check_linear(
 
     Each of these tests once rested on a single timing per size (one on a best of three, one
     size after the other), or on a budget, and a busy runner decided the fence scanner's few
-    milliseconds: at four times the input, a macOS job read
-    13.5 for a scan that is linear, against a bound of 12. So inputs are built off the clock;
-    `n` starts at `size` and doubles until the smaller case's best of three takes 20 ms; the
-    sizes are measured in alternation, and each keeps its best; and a ratio just over the
-    bound is measured again before it fails. `clock` is for testing this function.
+    milliseconds: at four times the input, a macOS job read 13.5 for a scan that is linear,
+    against a bound of 12. So inputs are built off the clock; `n` starts at `size` and
+    doubles until the smaller case's best of three takes 20 ms; the sizes are measured in
+    alternation, and each keeps its best; and a ratio just over the bound is measured again
+    before it fails. `clock` is for testing this function.
     """
     for growth in (2**step for step in range(LINEAR_MAX_GROWTH.bit_length())):
         count = size * growth

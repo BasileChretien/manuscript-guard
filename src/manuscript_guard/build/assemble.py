@@ -101,35 +101,36 @@ def strip_front_matter(text: str) -> tuple[str, str]:
 
 
 def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
-    """A refusal for each line of dashes below the front matter that pandoc may read other
-    than the heading scan does (`sections.rules_opening_blocks`).
+    """A refusal for each line of dashes below the front matter with a line directly above
+    or under it (`sections.rules_opening_blocks`).
 
     With a line under it, pandoc may read YAML metadata there, merged over the build's
     header with the later value winning: a `title:` in it replaced paper.yaml's on the
-    title page. Pandoc prints no heading from that, nor from a table, nor from a rule under a
-    line that is not a title it reads, and the gates read one. Refused in the build as well
-    as in `check`, so no document is made from a source the gates misread.
+    title page. Pandoc prints no heading from that, nor from a table, and under a line it
+    reads a heading the gates may not. Refused in the build as well as in `check`, so no
+    document is made from a source the gates misread.
     """
     lines = text.split("\n")
 
     def beside(line: int) -> str:
-        # `line` counts from 1: `lines[line]` is the line under the rule, and the one above
-        # is quoted when that is blank.
+        # `line` counts from 1: `lines[line - 2]` is the line above the rule, quoted unless
+        # it is blank, and `lines[line]` the one under it.
+        above = lines[line - 2].strip() if line >= 2 else ""
         under = lines[line].strip() if line < len(lines) else ""
-        return (under or lines[line - 2].strip())[:120]
+        return (above or under)[:120]
 
     return tuple(
         Finding(
             gate=GATE,
             code="rule-opens-a-block",
-            message=f"{path.name}: a line of dashes that pandoc may read as YAML metadata, a "
-            "table or text, where the heading scan reads a rule or an underline",
+            message=f"{path.name}: a line of dashes with a line directly above or under it, "
+            "which pandoc may read as a heading's underline, YAML metadata or a table",
             path=path,
             line=line,
             context=beside(line),
-            hint="put a blank line above and under a thematic break, and above a heading's "
-            "title; move metadata into paper.yaml; a table is emitted and placed with "
-            "`{{table.key}}`",
+            hint="write a heading with `#`, as `## Methods`; put a blank line above and "
+            "under a thematic break; move metadata into paper.yaml; a table is emitted and "
+            "placed with `{{table.key}}`",
         )
         for line in rules_opening_blocks(text)
     )

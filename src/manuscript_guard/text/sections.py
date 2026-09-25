@@ -21,8 +21,7 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, fenced_blocks, mask
-from manuscript_guard.text.placeholders import PLACEHOLDER
+from manuscript_guard.text.masking import FRONTMATTER, mask
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -241,97 +240,44 @@ def headings(text: str) -> list[str]:
     return [found.title for found in _headings_in(text)]
 
 
-# A line of dashes, in groups or not. With two or more, pandoc may open a table on it, and
-# with exactly three at the margin, YAML; one alone over text is an empty list item.
+# A line of dashes, in groups or not. Under a line pandoc reads a setext underline in it;
+# over one, YAML with three at the margin, a table's rule with two or more, and an empty
+# list item with one.
 _DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
-_RULE_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*){2,}$")
-# What a setext title must not start with to be one pandoc reads: a div's fence, HTML, LaTeX,
-# a grid table's border, a quotation, a bullet, which pandoc reads before a heading. A
-# numbered line is a title: pandoc tries a heading before an ordered list. A line holding a
-# pipe may be a row.
-_NOT_A_TITLE = re.compile(r"(?::::|<|\\|\+[-=:]|>|[-*+](?:[ \t]|$))")
-# Where the build puts a table or an image, whose caption takes the lines under it.
-_EMITTED = ("table", "figure")
 
 
-def _listing_ends(text: str) -> set[int]:
-    """The line numbers, from 0, of the last line of each fenced listing, found in the front
-    matter and the body apart: a fence opened in an abstract's value closes none in the body."""
-    ends: set[int] = set()
-    line = at = 0
-    for fence in fenced_blocks(text):
-        line += text.count("\n", at, fence.end - 1)
-        at = fence.end - 1
-        ends.add(line)
-    return ends
-
-
-def _setext_title(
-    source: list[str], listings: set[int], body: int, title: int, underlines: set[int]
-) -> bool:
-    """Whether line `title` is one pandoc reads as a setext title: plain text, indented less
-    than four columns, starting a block. A block starts under a blank line, the last line of
-    a fenced listing or of the front matter, a heading or a setext underline. Under anything
-    else, a lone `-` or a comment on a line of its own included, the line continues what is
-    above it: a paragraph, a quotation or a list item. A comment is no break to pandoc, and
-    at a block start the build's bookmark goes in front of it, so the title continues it."""
-    line = source[title].rstrip("\r")
-    expanded = line.expandtabs(4)
-    if "|" in line or len(expanded) - len(expanded.lstrip(" ")) >= 4:
-        return False
-    if _NOT_A_TITLE.match(expanded.lstrip(" ")):
-        return False
-    if any(found["ns"] in _EMITTED for found in PLACEHOLDER.finditer(line)):
-        return False
-    if title <= body:
-        return True
-    above = source[title - 1].rstrip("\r")
-    if not above.strip(" \t") or title - 1 in listings:
-        return True
-    return bool(_ATX.match(above)) or title - 1 in underlines
+def _blank(line: str) -> bool:
+    return not line.strip(" \t\r")
 
 
 def rules_opening_blocks(text: str) -> list[int]:
-    """The lines, numbered from 1, of each line of dashes below the front matter that pandoc
-    may read other than the heading scan does.
+    """The lines, numbered from 1, of each line of dashes below the front matter with a line
+    directly above or under it.
 
-    Pandoc may read a rule with a line directly under it as the start of YAML metadata,
-    when the lines under it are a mapping, or of a table, and prints no heading from either:
-    a YAML block is merged over the document's metadata, a table's lines are cells. The
-    gates read prose, and took a closing rule for a setext underline. So a rule is refused
-    when a line follows it, and when the heading scan reads it as an underline of a title
-    pandoc would not: a line that continues a paragraph, a quotation or a list item, or one
-    that is a div's fence, HTML, LaTeX, a table's row or a placeholder. Modelling pandoc's
-    readers, and the build's bookmarks, which change what pandoc makes of them, did not hold
-    up in review; refusing costs a false alarm where the modelling cost a false pass.
-
-    Only a setext underline under a plain title that starts a block is let through with a
-    line under it; a thematic break with a blank line under it is untouched, and so is a rule
-    in code, in a comment or in the front matter.
+    Pandoc reads a line of dashes under a line as that line's setext underline, and over one
+    as the start of YAML metadata, when the lines under it are a mapping, or of a table. A
+    YAML block is merged over the document's metadata, and a table's lines are cells; the
+    gates read prose, and took a closing rule for an underline. Modelling pandoc's readers
+    did not hold up in review, and neither did an exemption for the underline of a plain
+    title: four reviews each found titles pandoc reads otherwise, under a comment, a listing
+    or a quotation, or holding a placeholder. So a line of dashes passes only between blank
+    lines, where pandoc reads nothing but a thematic break, and a heading is written with
+    `#`. A line in code, in a comment or in the front matter is not read.
     """
     shown = scannable(text).split("\n")
     source = text.split("\n")
-    listings = _listing_ends(text)
-    opening = FRONTMATTER.match(text)
-    body = text.count("\n", 0, opening.end()) if opening else 0
-    underlines = {
-        text.count("\n", 0, found.start) + 1
-        for found in _headings_in(text)
-        if not text.startswith("#", found.start)
-    }
     found = []
     for number, line in enumerate(shown):
         # A comment that closes on this line is blanked in front of the rule, and pandoc
         # reads on from its `-->` as from the margin.
-        rule = line.lstrip(" ") if line[:1] == " " and source[number][:1] != " " else line
-        rule = rule.rstrip("\r")
-        if not _DASH_LINE.match(rule):
+        closes = source[number].rfind("-->")
+        if closes >= 0 and not line[: closes + 3].strip():
+            line = line[closes + 3 :]
+        if not _DASH_LINE.match(line.rstrip("\r")):
             continue
-        underline = number in underlines
-        if underline and _setext_title(source, listings, body, number - 1, underlines):
-            continue
+        above = source[number - 1] if number else ""
         below = source[number + 1] if number + 1 < len(source) else ""
-        if underline or (below.strip(" \t\r") and _RULE_LINE.match(rule)):
+        if not (_blank(above) and _blank(below)):
             found.append(number + 1)
     return found
 

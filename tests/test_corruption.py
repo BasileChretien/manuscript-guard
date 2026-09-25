@@ -1216,12 +1216,30 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         # in front of the comment, and the title then continues that paragraph.
         "We also saw it.\n<!-- check with reviewer 2 -->\nMethods\n-------\n",
         "<!-- reviewer 2 asked for this -->\nMethods\n-------\n",
+        # Found by the third: a table placeholder spelled with spaces, or after other text,
+        # is still where the build puts a table, which takes the lines under it for caption.
+        "{{ table.two_by_two }}\n---\nMethods\n---\n",
+        "See {{table.two_by_two}}\n---\nMethods\n---\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
     from manuscript_guard.text.sections import rules_opening_blocks
 
     text = f"---\ntitle: A study\n---\n\n# Introduction\n\nProse.\n\n{block}\nThe end.\n"
+    assert rules_opening_blocks(text) != []
+
+
+def test_a_fence_opened_in_the_front_matter_does_not_make_a_title_start_a_block() -> None:
+    """The fence opened in an abstract's value paired with one closing a listing in the
+    body, so the body between read as code, and a title under a line of prose passed for one
+    directly under a listing."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    fence = "`" * 3
+    text = (
+        f"---\ntitle: A study\nabstract: |\n  {fence}\n---\n\n# Results\n\n"
+        f"We also saw it.\nMethods\n-------\n\nThe excess.\n\n{fence}r\nx <- 1\n{fence}\n"
+    )
     assert rules_opening_blocks(text) != []
 
 

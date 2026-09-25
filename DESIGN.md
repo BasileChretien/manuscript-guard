@@ -425,9 +425,14 @@ the end of a fenced listing or of the front matter, a heading or an underline. A
 a line of its own is not such a break. Pandoc reads a title under it as more of the
 paragraph above, and at a block start the build's bookmark goes in front of the comment,
 which makes the title part of that paragraph; the second review found both passing `check`
-with the heading printed as text. A rule the heading scan reads as the underline of
-anything else is refused even with a blank line under it. A thematic break with blank lines
-around it, and a rule in code, a comment or the front matter, is untouched.
+with the heading printed as text. A title holding a table or figure placeholder anywhere on
+its line, spaces inside the braces or not, is no plain title (the third review). The build
+puts a pipe table in place of a table's, and pandoc reads a table there, not a heading; in
+place of a figure's it puts an image, and pandoc makes the image the heading. A listing's
+end is found in the front matter and the body apart, so a fence opened in an abstract's
+value makes no prose in the body look like code. A rule the heading scan reads as the
+underline of anything else is refused even with a blank line under it. A thematic break
+with blank lines around it, and a rule in code, a comment or the front matter, is untouched.
 
 ## Zotero is never on the critical path
 
@@ -2112,6 +2117,13 @@ Closed since, and why each mattered:
   indented code, hides every rule up to the next `-->`, a YAML block's included, and a
   `title:` in that block replaces paper.yaml's. It is the inline-code comment gap above, one
   consequence further on.
+- **A fence after a form feed on the same line is code to the gates and prose to pandoc.**
+  The fence reader splits lines where Python does, at a form feed, a vertical tab, U+0085
+  and a few other separators as well as at a newline; pandoc splits at the newline alone. So
+  `We found it.` followed by a form feed and three backticks opens a listing to the gates
+  that pandoc never makes, and every gate stops reading what pandoc prints until a second
+  one closes it. A rule in there escapes the refusal, and a `title:` under it replaces
+  paper.yaml's. No editor types either separator in prose; a pasted one would do it.
 - **A title continuing a paragraph over `===` is still read as a heading.** Pandoc reads
   `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1 Methods
   heading; the refusal covers the same misread only for underlines of dashes. The heading

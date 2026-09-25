@@ -69,9 +69,10 @@ structural:
     # written with dashes as a title over the rule under it, and taken as any short number,
     # "12 Patients" or "3.84" in such a cell passed G2 as numbering, where pandoc prints a
     # cell. A setext title's own "2.1", and seven hashes, are reported, as they were before
-    # setext titles were read at all.
+    # setext titles were read at all. A heading that is only its number ends at a line
+    # break, not at the end of the text: a table cell or a keyword is a text of its own.
     heading_only: true
-    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?|[0-9]{1,2}[.)])(?:[ \t]+(?=[A-Z])|[ \t]*$)'
+    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?|[0-9]{1,2}[.)])(?:[ \t]+(?=[A-Z])|[ \t]*(?=\r?\n))'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

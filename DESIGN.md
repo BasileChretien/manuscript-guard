@@ -2287,10 +2287,14 @@ Closed since, and why each mattered:
     ends only at ASCII whitespace, so a no-break space does not end it, and each citation
     ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
     quote straight after the `=` opens a quoted value that runs past the paragraph's end and
-    closed at a `>` in the next one; once a `<` the merge leaves bare (the source's, or a
-    value's) stands before it, it is written `\'` or `\"`, which prints straight. Word's own
-    `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl, and a
-    `’` Word typed there to close a quote of the source's stays curly. An `=` that ends an
+    closed at a `>` in the next one; once a `<` shown in a stretch kept from the source, or
+    in a value, stands before it, it is written `\'` or `\"`, which prints straight. Word's
+    own `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl. A
+    `<` the source had escaped still counts, since a kept stretch is read as Word shows it:
+    `\<LOD`, which the merge itself writes for a `<` typed in Word, makes a later
+    `family='binomial'` print `'binomial’`. A `’` Word typed after an `=` to close a quote of
+    the source's is written straight and escaped like any other; left curly, it closed
+    nothing, and a value the source's own `='` had opened ran on. An `=` that ends an
     edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
     of a paragraph with a `>` of its own merges, and the two print as the words after that
     `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
@@ -2359,9 +2363,11 @@ Closed since, and why each mattered:
   can open a tag stood before it, opened a quoted value that ran on into the next
   paragraph, whose `>` closed the tag, and both printed as the words after that `>`. That
   quote is now escaped, and an `=` ending an edited stretch still does the same; see "The
-  read-back reads a binding as digits" above. Escaped, the quote prints straight, and a
-  `’` that closes a straight `'` of the source's, left curly there, leaves that `'` to
-  print as an apostrophe.
+  read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
+  it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
+  the source opened itself, `coded="HR {{x}} or LOD"`, stays open if its stretch is edited,
+  since Word's closing `”` is written back curly and closes nothing: with `"d was >0.5"` in
+  the next paragraph, the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier

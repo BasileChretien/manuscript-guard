@@ -1926,23 +1926,56 @@ def test_a_quote_after_an_equals_is_left_alone_after_words_own_angle(
     assert realign(source, rendered, returned) == expected
 
 
-def test_a_closing_quote_after_an_equals_is_left_curly() -> None:
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "Values <LOD in {{results.unit}} were coded='HR {{results.x}} or LOD' in all.",
+            r"Values <LOD in {{results.unit}} were coded='HR {{results.x}} or LOD=\' in all.",
+            id="the-sources-quote-opens-a-value",
+        ),
+        pytest.param(
+            "Values 'HR <LOD in {{results.unit}} or {{results.x}} LOD' in all.",
+            r"Values 'HR <LOD in {{results.unit}} or {{results.x}} LOD=\' in all.",
+            id="the-sources-quote-stands-before-the-angle",
+        ),
+    ],
+)
+def test_a_closing_quote_after_an_equals_keeps_every_word(
+    source: str, expected: str, tmp_path: Path
+) -> None:
     """A `’` that closes a quotation opened by a straight `'` kept from the source is written
-    straight, so that pandoc pairs the two. Straight after an `=`, once a `<` of the source's
-    stands before it, it would then open an attribute's value and be escaped, and neither
-    quote printed as Word's; left curly, it opens nothing."""
-    rendered = "Values <LOD in mg/L were coded ‘HR 3.84 or LOD’ in all."
+    straight, so that pandoc pairs the two. Straight after an `=`, after a `<` of the source's,
+    it could open an attribute's value; left curly, it closed nothing, and a value the
+    source's own `='` had opened ran on into the next paragraph: "Values 0.5 in all." was all
+    that printed of the two. Written straight and escaped, it does neither."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    values = {"results.unit": "mg/L", "results.x": "3.84"}
+    rendered = source.replace("'", "‘", 1).replace("'", "’")
+    for key, value in values.items():
+        rendered = rendered.replace("{{" + key + "}}", value)
+    returned = rendered.replace("LOD’", "LOD=’")
     # Where each token's rendering sits, as the bookmarked build gives it to `import`.
     extents = [(rendered.index(shown), rendered.index(shown) + 4) for shown in ("mg/L", "3.84")]
-    merged = realign(
-        "Values <LOD in {{results.unit}} were coded 'HR {{results.x}} or LOD' in all.",
-        rendered,
-        "Values <LOD in mg/L were coded ‘HR 3.84 or LOD=’ in all.",
-        extents,
+    merged = realign(source, rendered, returned, extents)
+    assert merged == expected
+    body = merged
+    for key, value in values.items():
+        body = body.replace("{{" + key + "}}", value)
+    path = tmp_path / "a.md"
+    path.write_text(
+        f"[]{{#mg-p-x-0}}{body}\n\n[]{{#mg-p-x-2}}Cohen's d was >0.5 in all.\n", encoding="utf-8"
     )
-    assert merged == (
-        "Values <LOD in {{results.unit}} were coded 'HR {{results.x}} or LOD=’ in all."
-    )
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")
+    # Every word, whichever way its quotes turned.
+    straight = str.maketrans({"‘": "'", "’": "'"})
+    assert printed["mg-p-x-0"].translate(straight) == returned.translate(straight)
+    assert printed["mg-p-x-2"] == "Cohen’s d was >0.5 in all."
 
 
 @pytest.mark.parametrize(

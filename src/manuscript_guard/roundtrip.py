@@ -858,22 +858,25 @@ _TAG_PUNCTUATION = re.compile("[>'\"]")
 _SET_ASIDE = "\x00"
 
 
-def _opens_value(shown_before: str, bare_before: str, text: str, at: int) -> bool:
+def _opens_value(shown_before: str, bare_before: str | None, text: str, at: int) -> bool:
     """Whether a straight quote at `at` in Word's `text` would open a quoted attribute
-    value: straight after an `=`, once a `<` the merge leaves bare stands before it.
+    value: straight after an `=`, once a `<` of the source's or a value's stands before it.
 
-    `bare_before` is `shown_before` with each `<` Word typed set aside. Only a bare `<`
-    counts: Word's own is escaped and opens nothing, and a quote escaped for it printed
-    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`.
+    `bare_before` is `shown_before` with each `<` Word typed set aside, or None to count
+    them all. Word's own is escaped and opens nothing, and a quote escaped for it printed
+    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`. A
+    kept stretch is read as Word shows it, so a `<` the source escaped counts too: that
+    costs a straight quote, never a word.
     """
     where = len(shown_before) + at
-    bare = _TAG_OPENS.search(bare_before + text.replace("<", _SET_ASIDE))
+    before = shown_before if bare_before is None else bare_before
+    bare = _TAG_OPENS.search(before + text.replace("<", _SET_ASIDE))
     if bare is None or bare.start() >= where:
         return False
     return _VALUE.search(shown_before + text, 0, where) is not None
 
 
-def _closers(shown_before: str, text: str, bare_before: str = "") -> list[str]:
+def _closers(shown_before: str, text: str, bare_before: str | None = None) -> list[str]:
     """How to write each `>`, `'` and `"` of Word's `text`, read after `shown_before`.
 
     A `>` is bare where no `<` that can open a tag stands before it. After one it is `\\>`,
@@ -922,7 +925,7 @@ def _escaped(
     after_token: bool = False,
     before_token: bool = False,
     shown_before: str = "",
-    bare_before: str = "",
+    bare_before: str | None = None,
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -955,7 +958,7 @@ def _escaped(
     edge, so counting one only adds a backslash pandoc does not need; it is counted all the
     same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
     prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash
-    after a `<` the merge leaves bare, and only then; see `_closers`.
+    after a `<` of the source's or a value's, not after one Word typed; see `_closers`.
     """
     brace = before_token and text.endswith("{")
     closers = _closers(shown_before, text, bare_before)
@@ -1231,12 +1234,11 @@ def align(
             # part of it is something Word's text does not hold: `[Methods]` is a link to
             # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
             unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
-            if quote_open and (closing := _WORD_CLOSES.search(piece)):
-                straight = piece[: closing.start()] + "'" + piece[closing.end() :]
-                # Left curly where, straight, it would open an attribute's value and be
-                # escaped: `LOD=’` came back `LOD=\'`, and neither quote printed as Word's.
-                if not _opens_value(ahead, bare, straight, closing.start()):
-                    piece = straight
+            if quote_open and _WORD_CLOSES.search(piece):
+                # Straight even where `_closers` will escape it, after an `=`: left curly, it
+                # closed nothing, and a value the source's own `='` had opened ran on into the
+                # next paragraph. Escaped, both quotes print straight, and every word prints.
+                piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
             tag = {"shown_before": ahead, "bare_before": bare}

@@ -86,6 +86,29 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_attributes_over_many_lines_are_read_in_linear_time() -> None:
+    """A fence's `{attributes}` may run on over lines, and a quoted value with them. What
+    reads far: a run of attributes with no `}`, and openers inside another opener's quotes.
+    Each opener is read once, so doubling the input must not much more than double the
+    time."""
+    from manuscript_guard.text.fences import fenced_spans
+
+    def measure(count: int) -> float:
+        text = (
+            "```{.r\n"
+            + ".x k=v\n" * count
+            + '```{k="\n'
+            + "".join(f"```{{k='{i}\n" for i in range(count))
+        )
+        started = time.perf_counter()
+        fenced_spans(text)
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 # ---------------------------------------------------------------- hostile files
 
 

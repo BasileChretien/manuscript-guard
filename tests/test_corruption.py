@@ -1376,6 +1376,81 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     assert "code-block-text-number" not in {f.code for f in report.findings}
 
 
+_TICKS = "`" * 3
+_PRINTED = "The excess was 9.99."
+# Each makes a fenced listing of prose to the gates that pandoc prints: a fence pandoc does
+# not open, or one it does not close, so that the gates' closer paired with the next fence.
+_NOT_A_FENCE = {
+    # Python splits a line at these; pandoc splits at a newline alone, and deletes a lone
+    # carriage return.
+    **{
+        f"a fence after {name} on one line": (
+            f"We found it.{chr(code)}{_TICKS}\n\n{_PRINTED}\n\nThe end.{chr(code)}{_TICKS}\n"
+        )
+        for name, code in {
+            "a form feed": 0x0C,
+            "a vertical tab": 0x0B,
+            "a file separator": 0x1C,
+            "a next-line control": 0x85,
+            "a line separator": 0x2028,
+            "a paragraph separator": 0x2029,
+            "a lone carriage return": 0x0D,
+        }.items()
+    },
+    # After the fence pandoc takes one word, then `{attributes}`, and nothing else.
+    "an opener with two words": f"{_TICKS}r foo\n{_PRINTED}\n{_TICKS}\n",
+    "an R Markdown chunk header": f"{_TICKS}{{r, echo=FALSE}}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener with a word after its attributes": f"{_TICKS}{{.r}} x\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a no-break space": f"{_TICKS}r{chr(0xA0)}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a form feed": f"{_TICKS}r{chr(0x0C)}\n{_PRINTED}\n{_TICKS}\n",
+    "a tilde opener with a backtick": f"~~~r`x\n{_PRINTED}\n~~~\n",
+    # Attributes may run on to the next line, but not past a blank one.
+    "attributes broken by a blank line": f"{_TICKS}{{.r\n\n.x}}\n{_PRINTED}\n{_TICKS}\n",
+    # Pandoc closes on spaces and tabs after the fence, and no indentation past three.
+    **{
+        f"a closer {where}": (
+            f"{_TICKS}r\nx\n{closer}\n\nMore code.\n\n{_TICKS}\n{_PRINTED}\n\n"
+            f"{_TICKS}r\ny\n{_TICKS}\n"
+        )
+        for where, closer in {
+            "ending in a no-break space": _TICKS + chr(0xA0),
+            "ending in a form feed": _TICKS + chr(0x0C),
+            "ending in an ideographic space": _TICKS + chr(0x3000),
+            "after a no-break space": chr(0xA0) + _TICKS,
+            "after a tab": "\t" + _TICKS,
+            "after a space and a tab": " \t" + _TICKS,
+            "after a lone carriage return": "x\r" + _TICKS,
+        }.items()
+    },
+}
+
+
+@pytest.mark.parametrize("name", sorted(_NOT_A_FENCE))
+def test_the_gates_read_prose_that_no_fence_of_pandocs_holds(name: str) -> None:
+    """The fence reader split lines where Python does, at a form feed and six other
+    characters as well as a newline, and stripped every Unicode space off a closer. Pandoc
+    does neither, so prose it printed was a listing to every gate, and G2 read no number in
+    it."""
+    from manuscript_guard.text.masking import mask
+
+    text = f"# Results\n\nWe found it.\n\n{_NOT_A_FENCE[name]}\nThe end.\n"
+    assert "9.99" in mask(text)
+
+
+def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:
+    """A YAML block between two fences only the gates saw escaped the refusal, and its
+    `title:` replaced paper.yaml's."""
+    from manuscript_guard.text.sections import rules_opening_blocks, scannable
+
+    feed = chr(0x0C)
+    text = (
+        f"---\ntitle: A study\n---\n\n# Results\n\nWe found it.{feed}{_TICKS}\n\n"
+        f"---\ntitle: Evil\n---\n\nThe end.{feed}{_TICKS}\n"
+    )
+    assert "Evil" in scannable(text)
+    assert rules_opening_blocks(text) != []
+
+
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
     """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
     plain paragraphs, with `# References` among its comments, cut everything after it."""

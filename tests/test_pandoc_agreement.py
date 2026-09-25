@@ -151,9 +151,90 @@ FENCE_CASES = {
     "unterminated fence": f"{FENCE}python\nx = 1\n\nProse 9.99.\n",
 }
 
+# Characters that end a line for Python, or are space to it, and what pandoc makes of each.
+_ODD = {
+    "a vertical tab": 0x0B,
+    "a form feed": 0x0C,
+    "a lone carriage return": 0x0D,
+    "a file separator": 0x1C,
+    "a group separator": 0x1D,
+    "a record separator": 0x1E,
+    "a next-line control": 0x85,
+    "a no-break space": 0xA0,
+    "an en quad": 0x2000,
+    "a line separator": 0x2028,
+    "a paragraph separator": 0x2029,
+    "an ideographic space": 0x3000,
+}
+# What may follow an opening fence. Pandoc takes a raw `{=format}`, or a word and
+# `{attributes}`, either or both; anything more and the lines are a paragraph.
+_INFOS = [
+    "", "r", " r", "r ", "\tr\t", "r foo", "r`x", "r{x}", "r{.x}", "r {.x}", "r {r}",
+    "{}", "{-}", "{.r}", "{ .r }", "{.r}\t", "{#id .r}", '{.r .numberLines startFrom="5"}',
+    "{.r key='a b'}", '{.r k=""}', "{.r k=}", '{.r k="a"b}', '{.r k=" a"}', "{.r k=a`b}",
+    "{.r k=a\\}b}", "{.r k=a\\ b}", "{.r k=a\\bc}", '{.r k="a\\"b"}', '{.r k="a\\\\"}',
+    "{.r k=a\\é}", "{.é}", "{.x²}", "{.²x}", "{.2x}", "{r}", "{r, echo=FALSE}",
+    "{r echo=FALSE}", "{.r} x", "{.r}x", "{.r}}", "{.r", "{=html}", " {=html} ", "{= html}",
+    "{=openxml} x",
+]
+FENCE_CASES.update(
+    {
+        **{
+            f"opener {FENCE}{info!r}": f"Prose.\n\n{FENCE}{info}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            for info in _INFOS
+        },
+        "tilde opener with a backtick": "Prose.\n\n~~~r`x\nProse 9.99.\n~~~\n\nEnd.\n",
+        # Pandoc lets attributes, and a quoted value, run on while no line between is blank.
+        **{
+            f"attributes over lines {opener!r}": (
+                f"Prose.\n\n{FENCE}{opener}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for opener in (
+                "{.r\n.x}",
+                "{.r\n  .x\n  k=v}",
+                "{\n.r}",
+                "r {.x\n}",
+                '{.r k="a\nb"}',
+                "{.r\n\n.x}",
+                '{.r k="a\n\nb"}',
+                "{.r\nThe excess}",
+                "{.r\n.x} y",
+            )
+        },
+        "tilde opener with a backtick in a value": (
+            "Prose.\n\n~~~{.r k=a`b}\nProse 9.99.\n~~~\n\nEnd.\n"
+        ),
+        **{
+            f"opener {FENCE}r then {name}": (
+                f"Prose.\n\n{FENCE}r{chr(code)}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for name, code in _ODD.items()
+        },
+        **{
+            f"closer {where}": f"{FENCE}r\nx\n{closer}\n\nProse 9.99.\n\n{FENCE}\ny\n{FENCE}\n"
+            for where, closer in {
+                "after three spaces": "   " + FENCE,
+                "after a tab": "\t" + FENCE,
+                "after a space and a tab": " \t" + FENCE,
+                "then spaces and a tab": FENCE + "  \t",
+                "then a word": FENCE + " x",
+                **{f"then {name}": FENCE + chr(code) for name, code in _ODD.items()},
+                **{f"after {name}": chr(code) + FENCE for name, code in _ODD.items()},
+            }.items()
+        },
+        **{
+            f"a fence after {name} on one line": (
+                f"We found it.{chr(code)}{FENCE}\n\nProse 9.99.\n\nThe end.{chr(code)}{FENCE}\n"
+            )
+            for name, code in _ODD.items()
+        },
+    }
+)
+
 
 def pandoc_code_text(markdown: str) -> str:
-    """Everything pandoc puts inside a CodeBlock, concatenated."""
+    """Everything pandoc puts inside a CodeBlock, or a RawBlock, which a fence opens as well
+    and the gates treat the same, concatenated."""
     finished = subprocess.run(
         [PANDOC, "-f", "markdown", "-t", "json"],
         input=markdown,
@@ -166,7 +247,7 @@ def pandoc_code_text(markdown: str) -> str:
 
     def walk(node) -> None:
         if isinstance(node, dict):
-            if node.get("t") == "CodeBlock":
+            if node.get("t") in ("CodeBlock", "RawBlock"):
                 blocks.append(node["c"][1])
             for value in node.values():
                 walk(value)

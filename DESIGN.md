@@ -1841,17 +1841,17 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
   in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
-  decides which comments reach across files: an unclosed `<!--` at the end of a file G4
-  reads first hides the next file's headings and statements up to the next `-->`, where the
-  build, reading `main.md` first, may print them. A project with one main-text file, which is
-  what `init` writes, is unaffected.
+  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
+  end of a file G4 reads first hides the next file's headings and statements up to the next
+  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
+  one main-text file, which is what `init` writes, is unaffected.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
-  `<!--` inside inline code, a stray fence line inside a comment, or a tilde fence directly
-  under prose hides what follows from the statement search while pandoc prints it, so a
-  statement there is reported missing: a false alarm. A raw block, ```` ```{=openxml} ````,
-  is blanked although pandoc passes its text into the document. An indented code block is
-  not blanked, so a pattern written for a phrase can be met by a line of code; one anchored
-  on a heading cannot.
+  `<!--` inside inline code, a stray fence line inside a comment, or a fence directly under
+  prose that is tilde or indented a space or more hides what follows from the statement and
+  abstract-heading searches while pandoc prints it, so a statement there is reported
+  missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
+  passes its text into the document. An indented code block is not blanked, so a pattern
+  written for a phrase can be met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 

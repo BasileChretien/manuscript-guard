@@ -199,6 +199,12 @@ structural:
     accepts:
       - {text: "## 2.1 Statistical analysis", atom: "2.1"}
       - {text: "# 2 Methods\n## 2.1 Statistical analysis", atom: "2.1"}
+      # A setext title is a heading too, and so is a line of seven hashes. Read as a list
+      # item, "2. Results" over its underline was list numbering, and once that took only
+      # real items its number was reported.
+      - {text: "Intro.\n\n2. Results\n----------", atom: "2"}
+      - {text: "Intro.\n\n2.1 Sensitivity analyses\n========================", atom: "2.1"}
+      - {text: "####### 3 Notes", atom: "3"}
     rejects:
       - {text: "The ratio was 2.1 overall.", atom: "2.1"}
       # Pandoc prints both as prose: a heading cannot interrupt a paragraph, and a lone `#`

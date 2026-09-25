@@ -92,7 +92,7 @@ Each unmatched number is one of these, and only the first is what you are lookin
 | Rounded, a percentage written as a fraction, or `×10⁻ⁿ` | Check by hand against the output |
 | A magnitude quoted without its sign, "fell by 0.51" for -0.51 | Check by hand. The sign is compared, so this is reported |
 | A range written `2010--2019` in Markdown | Check by hand; `--` is read as a separator and a minus |
-| `412.` opening a line of a Markdown or text paper, directly under a line of prose | Check it: a list cannot start there, so it is a count a hard wrap moved, not numbering. A text file saved a paragraph per line with no blank lines reads as one paragraph, so its typed numbering lands here too |
+| `412.` opening a line of a Markdown or text paper, directly under a line of prose | Check it: a list cannot start under a paragraph, so it is a count a hard wrap moved, not numbering. (Under a list item's text it does start the next item, and is not reported.) A text file saved a paragraph per line with no blank lines reads as one paragraph, so its typed numbering lands here too |
 | A label longer than three letters, `beta=0.4` | Check by hand |
 | Vocabulary: `3-core`, an ISSN, a dose schedule | Check by hand |
 | An axis tick | Nothing, if the axis is what it claims |

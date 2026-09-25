@@ -1810,6 +1810,24 @@ def test_audit_still_reads_typed_numbering_in_word_as_numbering(tmp_path: Path) 
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
+def test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering(
+    tmp_path: Path,
+) -> None:
+    """Taking each Word paragraph for a block switched off the heading check as well, so a
+    paragraph typed "# 3 sites were excluded" counted its 3 as heading numbering. Word's
+    headings carry a style, not a `#`, and the paragraph is text."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Sites were screened in turn.")
+        + _p("# 3 sites were excluded after the audit.")
+        + _p("The pooled ROR was 9.99."),
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["3", "9.99"]
+
+
 def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:
     """`# References` directly under a line of prose is printed as part of that paragraph,
     not as a heading. It cut everything after it, so the number below was never compared."""

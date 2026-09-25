@@ -355,6 +355,16 @@ CONSTRUCTS = {
     "atx under inline latex pilcrow": "\\P\n## Methods\n",
     "atx under latex texttrademark": "\\texttrademark\n## Methods\n",
     "atx under latex hypertarget": "\\hypertarget{a}{b}\n## Methods\n",
+    # A definition indented to a list item's text is a definition list inside the item, so
+    # the fence after it ends the item and the heading under the fence is printed.
+    "atx under a fence after an indented definition in a list item": (
+        "## Methods\n\n- Disproportionality\n  : a reporting odds ratio above one\n~~~\n"
+        "x <- 1\n~~~\n## Results\n"
+    ),
+    "atx under a fence after a definition in a list item": (
+        "## Methods\n\n- Disproportionality\n: a reporting odds ratio above one\n~~~\n"
+        "x <- 1\n~~~\n## Results\n"
+    ),
     "atx under an inline latex index": "\\index{x}\n## Methods\n",
     "atx under an inline latex si unit": "\\SI{1}{m}\n## Methods\n",
 }
@@ -448,6 +458,22 @@ def test_a_quoted_heading_is_deliberately_not_a_section() -> None:
     assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
 
 
+@pytest.mark.parametrize("command", ["\\newpage", "\\clearpage", "\\pagebreak"])
+def test_a_numbered_title_under_a_page_break_is_still_a_heading(command: str) -> None:
+    """Pandoc folds the digits opening the line under a bare LaTeX command into the raw
+    block, so "412. Of these" there is no list item. A title over an underline is still a
+    heading: pandoc prints it as ". Results", and the gates keep its number. Read as a
+    paragraph, it lost the Results heading and left a p-value under it in the Methods."""
+    from manuscript_guard.text.blocks import find_headings
+
+    markdown = f"## 1. Methods\n\nText.\n\n{command}\n2. Results\n----------\n\nText.\n"
+    assert pandoc_headings(markdown) == ["1. Methods", ". Results"]
+    assert [(h.level, h.title) for h in find_headings(markdown)] == [
+        (2, "1. Methods"),
+        (2, "2. Results"),
+    ]
+
+
 def test_a_heading_in_a_list_item_ends_a_section_and_opens_none() -> None:
     """A second divergence, for the same reason as the quoted one.
 
@@ -512,6 +538,9 @@ def pandoc_list_items(markdown: str) -> list[str]:
 
     def first_line(item: list) -> str:
         inlines = item[0]["c"] if item and item[0].get("t") in {"Plain", "Para"} else []
+        if item and item[0].get("t") == "DefinitionList":
+            # An item whose first line is a term: `- Term` over `  : its definition`.
+            inlines = item[0]["c"][0][0]
         cut = next(
             (i for i, n in enumerate(inlines) if n.get("t") in {"SoftBreak", "LineBreak"}),
             len(inlines),
@@ -583,6 +612,33 @@ LIST_CONSTRUCTS = {
     "a count under a paragraph indented short of its item": "1. First\n\n  More\n2. Second\n",
     "a count under a paragraph indented to its item": "1. First\n\n   More\n2. Second\n",
     "a count under a paragraph short of a wide marker": "10. First\n\n   More\n2. Second\n",
+    # Found by the review of the pushed head. A tab after the marker reaches the next tab
+    # stop, so the item's text starts at column 4, and a paragraph indented three is not in
+    # it. A Word list pasted as plain text is written `1.<tab>`.
+    "a count under a paragraph short of a tabbed item": (
+        "1.\tFirst\n\n   Of the rest, the count was\n412. Of these\n"
+    ),
+    "a count under a paragraph short of a tabbed bullet": (
+        "-\tFirst\n\n  Of the rest, the count was\n412. Of these\n"
+    ),
+    "a count under a paragraph short of a tabbed letter": (
+        "a.\tFirst\n\n   Of the rest, the count was\n412. Of these\n"
+    ),
+    "a count under a paragraph indented to a tabbed item": (
+        "1.\tFirst\n\n    Of the rest, the count was\n412. Of these\n"
+    ),
+    # A thematic break under an item is a rule, not an item, and ends the list.
+    "a count under a thematic break after an item": (
+        "1. First\n* * *\n\n  The count was\n412. Of these\n"
+    ),
+    # A definition indented to the item's text is a definition list inside the item.
+    "a numbered line past a fence under an indented definition": (
+        "- An item\n  : a definition\n~~~\nx\n~~~\n2. Second\n"
+    ),
+    # Pandoc numbers a list with ASCII digits only. Full-width ones are prose.
+    "a full-width count at a block start": (
+        "Intro.\n\n" + "".join(map(chr, (0xFF14, 0xFF11, 0xFF12))) + ". reports\n"
+    ),
 }
 
 

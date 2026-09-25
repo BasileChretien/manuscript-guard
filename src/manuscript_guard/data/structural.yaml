@@ -49,9 +49,10 @@ structural:
     # Only on a line pandoc starts a list item on. A list cannot interrupt a paragraph, so
     # "412. Of these" where a hard wrap put the count at the start of a line is prose, and
     # the pattern alone filed a hand-typed count as list numbering. `[ \t]` rather than
-    # `\s`, which crossed the line break and could start a match on the line above.
+    # `\s`, which crossed the line break and could start a match on the line above. `[0-9]`
+    # rather than `\d`: pandoc numbers a list with ASCII digits, and prints "４１２." as text.
     list_only: true
-    pattern: '^[ \t]{0,3}\d+[.)](?:[ \t]|$)'
+    pattern: '^[ \t]{0,3}[0-9]+[.)](?:[ \t]|$)'
 
   - id: numbered-heading
     why: Markdown heading numbering.
@@ -59,10 +60,10 @@ structural:
     # of prose is printed as part of that paragraph, and the pattern alone filed its number
     # as heading numbering. `[ \t]` rather than `\s`, which crossed the line break: a lone
     # `#` is an empty heading, and the number starting the next line is not part of it.
-    # A space, a tab or a line break must follow the number, not the end of the text: a
-    # table cell or a keyword is classified as a text of its own.
+    # The hashes are optional because a setext title over its underline starts a heading
+    # with none, and there may be more than six: pandoc prints `####### 3 Notes` as one.
     heading_only: true
-    pattern: '^#{1,6}[ \t]+\d+(?:\.\d+)*[.)]?(?:[ \t]|(?=\r?\n))'
+    pattern: '^(?:#+[ \t]+)?\d+(?:\.\d+)*[.)]?(?:[ \t]|$)'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

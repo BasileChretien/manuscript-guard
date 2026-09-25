@@ -166,6 +166,7 @@ class Classifier:
         paragraphs spanning lines: a .docx read one Word paragraph per line, or a figure's
         text one element per line. Read as Markdown, every line after the first would be a
         wrapped line of one long paragraph, and typed numbering there would stop counting.
+        Every line then starts a list item where one is typed, and none is a heading.
         """
         rules = (*self.structural, *self.conventions)
         return _scan(rules, text, lines_are_blocks=lines_are_blocks)
@@ -341,6 +342,10 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
         at: list[int] = []
         upto: list[int] = []
         furthest = -1
+        # Text whose lines are blocks (a .docx, a figure) has no Markdown headings: Word's
+        # carry a style, not a `#`, so a heading rule holds nowhere in it.
+        if rule.heading_only and lines_are_blocks:
+            continue
         for match in rule.pattern.finditer(text):
             if (rule.heading_only or rule.list_only) and not lines_are_blocks:
                 if blocks is None:

@@ -149,15 +149,16 @@ def _setext_title(line: str) -> str:
 _UNDERLINE = re.compile(r"^(?:=+|-+)[ \t]*$")
 
 _THEMATIC_BREAK = re.compile(r"^[ ]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
-# Pandoc's markers: bullets, numbers, letters, roman numerals, `#` and example `@`, closed by
-# a full stop or a bracket. A capital and a full stop need two spaces after them, so
-# "A. Smith agreed" and "I. Introduction" are prose, and so is a page reference, "p. 12".
+# Pandoc's markers: bullets, numbers (ASCII digits only), letters, roman numerals, `#` and
+# example `@`, closed by a full stop or a bracket. A capital and a full stop need two spaces
+# after them, so "A. Smith agreed" and "I. Introduction" are prose, and so is a page
+# reference, "p. 12".
 _ROMAN = r"m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})"
 _ROMAN_UPPER = _ROMAN.upper()
 _LIST_ITEM = re.compile(
     r"^(?P<marker>[ ]{0,3}(?!p\.[ \t]+\d)(?:[-*+]"
-    rf"|\((?:\d{{1,9}}|#|[A-Za-z]|(?=[ivxlcdm]){_ROMAN}|(?=[IVXLCDM]){_ROMAN_UPPER}|@[\w-]*)\)"
-    rf"|(?:\d{{1,9}}|#|[a-z]|(?=[ivxlcdm]{{2}}){_ROMAN}|(?=[IVXLCDM]{{2}}){_ROMAN_UPPER}"
+    rf"|\((?:[0-9]{{1,9}}|#|[A-Za-z]|(?=[ivxlcdm]){_ROMAN}|(?=[IVXLCDM]){_ROMAN_UPPER}|@[\w-]*)\)"
+    rf"|(?:[0-9]{{1,9}}|#|[a-z]|(?=[ivxlcdm]{{2}}){_ROMAN}|(?=[IVXLCDM]{{2}}){_ROMAN_UPPER}"
     r"|@[\w-]*)[.)]"
     r"|[A-Z]\)|[A-Z]\.(?=[ \t]{2}|\t)))"
     r"(?P<gap>[ \t]+|$)"
@@ -252,6 +253,12 @@ _QUOTE_STOP = re.compile(rf"^</({_BLOCK_TAGS}|{_EITHER_TAGS})\s*>", re.IGNORECAS
 def _blank(line: str) -> bool:
     """Blank as pandoc means it: spaces and tabs. A no-break space is a character."""
     return not line.strip(" \t\r")
+
+
+def _indent(line: str) -> int:
+    """How far in a line's text starts, in columns, with tab stops every four."""
+    expanded = line.expandtabs(4)
+    return len(expanded) - len(expanded.lstrip(" "))
 
 
 def _ends_on_block_tag(line: str, html: dict[str, int]) -> bool:
@@ -535,8 +542,12 @@ class _Walk:
                 # Inside a list, a marker ends the lazy lines and starts the next item. A
                 # paragraph gets no such line: a list cannot interrupt one, and nor can it
                 # interrupt a definition that the item's lazy lines have turned into one.
-                if _DEFINITION.match(self.lines[index].shown):
-                    self._defined = True
+                shown = self.lines[index].shown
+                if _DEFINITION.match(shown):
+                    # Indented to the item's text, a definition starts a definition list
+                    # inside the item, and the item's lazy lines go on as before.
+                    if _indent(shown) < (self.list_indent or 0):
+                        self._defined = True
                 elif not self._defined:
                     self._item(index)
             return self._paragraph_line(index)
@@ -545,12 +556,18 @@ class _Walk:
         return self._block(index)
 
     def _item(self, index: int) -> bool:
-        """Record a list item if this line starts one, and where its content starts."""
-        item = _LIST_ITEM.match(self.lines[index].shown)
-        if item is None:
+        """Record a list item if this line starts one, and where its content starts.
+
+        The gap after the marker is counted in columns: a tab reaches the next tab stop, so
+        the text of `1.<tab>First` starts at column 4, where pandoc puts it. `* * *` is not an
+        item: at a block's start it is a rule, and under an item it is text of the item."""
+        shown = self.lines[index].shown
+        item = _LIST_ITEM.match(shown)
+        if item is None or _THEMATIC_BREAK.match(shown):
             return False
-        gap = len(item.group("gap"))
-        self.list_indent = len(item.group("marker")) + (gap if 0 < gap <= 4 else 1)
+        marker = item.group("marker")
+        gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
+        self.list_indent = len(marker) + (gap if 0 < gap <= 4 else 1)
         self.items.append(self.lines[index].start)
         return True
 
@@ -609,6 +626,11 @@ class _Walk:
 
     def _block(self, index: int) -> int:
         if self._bare_tex_line == index - 1 and _DIGIT_FIRST.match(self.lines[index].shown):
+            # The digits go to the raw block, so the line starts no list item. Over an
+            # underline it is still a heading: pandoc prints "2. Results" there as ". Results".
+            heading = self._heading(index)
+            if heading is not None:
+                return heading
             self.open = _PARAGRAPH
             return self._paragraph_line(index)
         if self.list_indent is not None and self._in_list(index):
@@ -625,7 +647,7 @@ class _Walk:
         paragraph, a nested item, or code if it is indented four more. Anything indented
         less closes the list, and a marker under it is prose: "  More" under "1. First"."""
         shown = self.lines[index].shown
-        indent = len(shown.expandtabs(4)) - len(shown.expandtabs(4).lstrip(" "))
+        indent = _indent(shown)
         if indent < (self.list_indent or 0):
             if not _LIST_ITEM.match(shown):
                 self.list_indent = None

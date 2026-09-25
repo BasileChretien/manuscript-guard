@@ -1296,13 +1296,22 @@ holds a paragraph that could have moved: `$$` inside a footnote does. A backtick
 a backslash opens no code span; taken for one, it swallowed the `$$` or `<!--` up to the next
 real code span. Escapes are read as pairs, so the backtick after an escaped backslash still
 opens one: refused after any backslash, the closing backtick of `\\` then `` `data` ``
-opened a false span of its own. Display maths is also read from the document as sent, which
+opened a false span of its own. Nor does a backtick just before an opener stop it. That
+backtick is an escaped one, as in `` \``onset` ``, or one of a run that never closes, and
+pandoc opens a span on a run's last backtick, as in ``` ``crude'' ratio came from `ror ```.
+Stopped, the real span's closer was taken for an opener, and the false span it began hid
+the `<!--` after it: a paragraph swapped in the Introduction was written inside the
+comment, exit 0. Display maths is also read from the document as sent, which
 says it outright: an equation directly after a paragraph is part of that paragraph, however
 its source is written. And a held paragraph whose only change is a no-break space pandoc put
 in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
 refused instead. That is decided only for a source with no no-break space of its own and no
 binding or citation: asked of every paragraph, the check dropped a co-author's change to one
-the author had written, with "nothing came back".
+the author had written, with "nothing came back". An author can write one as `\ `, as the
+character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
+also decided only when no new text stands beside the paragraph. Only the part carrying the
+identifier is compared, so when the part after an equation had been reworded, skipping the
+paragraph dropped that rewording.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -2425,6 +2434,10 @@ Closed since, and why each mattered:
   source, or a line under it that opens a block, marks it. One that pandoc splits for
   another reason and that ends its section is not recognised: a rewording of its first part
   would replace the rest, and a move of its first part would carry the rest along.
+- **The part of a paragraph after its equation is not compared.** Only the part carrying
+  the identifier is. A rewording after the equation, with the first part untouched, gives
+  "nothing came back", as on main; only the count of paragraphs without an identifier
+  hints at it. With the first part edited too, the paragraph is refused.
 - **A duplicated heading is matched with the one it copies only when that is unambiguous.**
   Headings and captions are paired as a sequence, and then any text of which one copy is
   left over on each side. A pasted copy of a heading that is still in place is paired with
@@ -2441,7 +2454,14 @@ Closed since, and why each mattered:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
-  That is the price of never truncating a split paragraph. A table, figure or equation the
+  That is the price of refusing a split, and it does not refuse every one. The search for
+  new text stops at the first untagged text the document already had. A table moved with
+  its caption between the halves of a split, or a heading dragged there, puts that text
+  first, so the paragraph is merged as its first half and the rest is gone from the source,
+  as on main. Exit 1, because the caption or heading is reported out of place, but the
+  merge is written. A tagged paragraph moved between the halves does the same, but only
+  when Word keeps its bookmark; real Word drops it on a cut and paste, and the split is
+  refused. A table, figure or equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the
   first block that was not prose. One the document did have is looked past, as an empty line

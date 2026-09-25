@@ -100,8 +100,9 @@ def _same(a: str, b: str) -> bool:
 _NBSP = chr(0xA0)
 
 
-#: A no-break space an author can write: the character itself, `\ `, or an entity.
-_WRITTEN_NBSP = re.compile(r"\\ |&nbsp;|&#160;|&#[xX]0*[aA]0;|" + _NBSP)
+#: A no-break space an author can write: the character itself, `\ `, or an entity, named or
+#: numbered, which pandoc reads with any number of leading zeros.
+_WRITTEN_NBSP = re.compile(r"\\ |&nbsp;|&NonBreakingSpace;|&#0*160;|&#[xX]0*[aA]0;|" + _NBSP)
 
 
 def _typeset_only(was: str, now: str, source: str) -> bool:
@@ -195,8 +196,11 @@ _BLOCK_LINE = re.compile(
 #: Each escape is taken as a pair, so `\`` opens nothing and `\\` before a backtick leaves it
 #: free to open a span. Taken for an opener, an escaped backtick began a "code span" that ran
 #: to the next real one and swallowed the `$$` or the `<!--` between them; refused after any
-#: backslash, the backtick after `\\` did the same from the other end.
-_CODE_OR_COMMENT = re.compile(r"\\.|(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+#: backslash, the backtick after `\\` did the same from the other end. Nor may the raw text
+#: before an opener stop it: a backtick there was either an escaped one, as in \``x`, or one
+#: of a run that never closes, whose last backtick pandoc opens a span on, as in ``a'' `b.
+#: Refused, the span's closer was taken for an opener and swallowed what followed.
+_CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
 _DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
 
 
@@ -692,7 +696,11 @@ def plan_import(
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
-        elif _same(was, now) or (name in held and _typeset_only(was, now, source)):
+        elif _same(was, now) or (
+            # Only the part that carries the identifier is compared here. With new text
+            # beside it - the part after an equation reworded - skipping it lost that edit.
+            name in held and name not in beside_new and _typeset_only(was, now, source)
+        ):
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))

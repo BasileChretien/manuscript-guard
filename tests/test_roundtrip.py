@@ -3086,6 +3086,9 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "Commands are quoted in backticks (\\`); the estimate is $$x = u / w$$ as in `metafor`.",
         "Commands are quoted in backticks (\\`). <!-- an earlier draft, which quoted `grep`:",
         "Files were written under C:\\\\`data` here. <!-- an earlier draft, which quoted `grep`:",
+        "Each field had a backtick before it, as in \\``onset`.\n"
+        "<!-- an earlier draft, which quoted `grep`:",
+        "A so-called ``crude'' ratio came from `ror.\n<!-- an earlier draft, which quoted `grep`:",
     ],
     ids=[
         "maths-after-a-code-span",
@@ -3094,6 +3097,8 @@ def test_dollars_or_a_comment_opener_inside_code_hold_nothing(tmp_path: Path) ->
         "maths-after-an-escaped-backtick",
         "comment-after-an-escaped-backtick",
         "comment-after-an-escaped-backslash",
+        "comment-after-a-code-span-behind-an-escaped-backtick",
+        "comment-after-a-double-backtick-that-never-closes",
     ],
 )
 def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
@@ -3172,6 +3177,57 @@ def test_a_no_break_space_the_author_wrote_is_an_edit_when_taken_out(
     plan = plan_import(known, sent, [Block(("z",), was.replace(nbsp, " ")), sent[1]])
     assert not plan.empty
     assert ("z" in plan.merged) != held
+
+
+@pytest.mark.parametrize("written", ["&NonBreakingSpace;", "&#0160;"], ids=["named", "padded"])
+def test_every_spelling_of_a_no_break_space_the_author_wrote_is_theirs(
+    tmp_path: Path, written: str
+) -> None:
+    """Pandoc reads `&NonBreakingSpace;` and `&#0160;` as no-break spaces too, and neither was
+    on the list of ones an author can write: replaced with a plain space in a held paragraph,
+    the change was taken for pandoc's own and dropped, exit 0 and "nothing came back"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    nbsp = chr(0xA0)
+    text = f"Zeta cites Hy's{written}law for the liver, last inside the div."
+    _path, known = source_of(tmp_path, {"z": text + "\n:::", "o": "Omega."})
+    was = "Zeta cites Hy's" + nbsp + "law for the liver, last inside the div."
+    sent = [Block(("z",), was), Block(("o",), "Omega.")]
+    plan = plan_import(known, sent, [Block(("z",), was.replace(nbsp, " ")), sent[1]])
+    assert not plan.empty
+    assert "z" not in plan.merged
+
+
+def test_an_edit_after_the_equation_is_not_dropped_with_an_undone_no_break_space(
+    tmp_path: Path,
+) -> None:
+    """A paragraph with display maths reaches Word in parts and is held. The co-author took out
+    the no-break space pandoc put after "e.g." in the first part, and reworded the part after
+    the equation. The first part was judged pandoc's typesetting undone and skipped, and
+    the rewording after the equation was dropped: exit 0, "nothing came back"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    nbsp = chr(0xA0)
+    source = (
+        "The ratio, e.g. for the class, is\n$$\\mathrm{ROR} = \\frac{a d}{b c}$$\n"
+        "where the cells are counts of reports."
+    )
+    _path, known = source_of(tmp_path, {"p": source, "o": "Omega."})
+    first = f"The ratio, e.g.{nbsp}for the class, is"
+    equation = Block(kind="equation", key="ROR=ad/bc")
+    tail = "where the cells are counts of reports."
+    sent = [Block(("p",), first), equation, Block((), tail), Block(("o",), "Omega.")]
+    returned = [
+        Block(("p",), first.replace(nbsp, " ")),
+        equation,
+        Block((), tail.replace("counts of", "counts of case")),
+        Block(("o",), "Omega."),
+    ]
+    plan = plan_import(known, sent, returned)
+    assert not plan.empty
+    assert "p" in [r.name for r in plan.refused]
 
 
 def test_a_split_around_an_equation_moved_between_its_halves_is_refused(

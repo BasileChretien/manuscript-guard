@@ -362,14 +362,29 @@ def headings(text: str) -> list[str]:
 # over one, YAML with three at the margin, a table's rule with two or more, and an empty
 # list item with one.
 _DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
-# Dashes ending a line after something pandoc starts a block behind: an HTML tag or
-# comment, a TeX command or its closing brace (a placeholder's `}}` is text), or a list,
-# definition or footnote marker. Pandoc reads the dashes there as YAML or a table's rule.
-_AFTER_MARKUP = re.compile(r"(?:>|(?<!\})\}(?!\})|\\[A-Za-z@]+)[ \t]*(?:-[ \t]*){2,}$")
-_AFTER_MARKER = re.compile(
-    r"^[ ]{0,3}(?:[*+:~]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
-    r"|\[\^[^\]\n]*\]:)[ \t]+(?:-[ \t]*){2,}$"
+# Dashes ending a line that opens with something pandoc starts a block behind: block-level
+# HTML tags or comments, a TeX command with its groups, or list, definition or footnote
+# markers, nested or not. Pandoc reads the dashes there as YAML or a table's rule. Inline
+# markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block, and is prose.
+_BLOCK_TAGS = (
+    "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|"
+    "dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hgroup|"
+    "hr|html|iframe|legend|li|link|main|menu|meta|nav|noframes|noscript|ol|optgroup|option|"
+    "p|param|pre|script|section|source|style|summary|table|tbody|td|template|textarea|"
+    "tfoot|th|thead|title|tr|track|ul|video"
 )
+_DASH_TAIL = r"[ \t]*(?:-[ \t]*){2,}$"
+_AFTER_MARKUP = re.compile(
+    r"^[ ]{0,3}(?:(?:<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--.*?--)>[ \t]*)+"
+    r"|\\[A-Za-z@]+(?:[ \t]*(?:\{(?:[^{}\n]|\{[^{}\n]*\})*\}|\[[^\]\n]*\]))*)" + _DASH_TAIL,
+    re.IGNORECASE,
+)
+_AFTER_MARKER = re.compile(
+    r"^[ ]{0,3}(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+)+(?:-[ \t]*){2,}$"
+)
+# A line inside a quotation: its dashes are the quotation's (see Known gaps).
+_QUOTED = re.compile(r"^[ ]{0,3}>")
 
 
 def _blank(line: str) -> bool:
@@ -398,7 +413,12 @@ def rules_opening_blocks(text: str) -> list[int]:
     for number, line in enumerate(shown):
         bare = source[number].rstrip("\r")
         visible = line.rstrip(" \t\r").endswith("-")
-        if visible and (_AFTER_MARKUP.search(bare) or _AFTER_MARKER.match(line.rstrip("\r"))):
+        if (
+            visible
+            and not _QUOTED.match(bare)
+            and not _DASH_LINE.match(line.rstrip("\r"))
+            and (_AFTER_MARKUP.match(bare) or _AFTER_MARKER.match(line.rstrip("\r")))
+        ):
             found.append(number + 1)
             continue
         # A comment that closes on this line is blanked in front of the rule, and pandoc

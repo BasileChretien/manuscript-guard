@@ -256,7 +256,12 @@ def build_document(
     prologue: str = "",
     epilogue: str = "",
     supplementary: bool = False,
+    verify_reading: bool = True,
 ) -> BuildResult:
+    """Make the document. `verify_reading` asks pandoc first whether it reads the sources
+    as the gates do (`reading.misreading`); only `import`, rebuilding a document already
+    sent in order to compare the returned one with it, goes without, since refusing there
+    stranded a document a co-author was holding."""
     from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
 
     build_dir = project.path("build")
@@ -302,9 +307,18 @@ def build_document(
 
     from manuscript_guard.build.reading import misreading
 
-    read = [prologue, *(a.path.read_text(encoding="utf-8") for a in ordered), epilogue]
-    differs = misreading(header + body, header, read, pandoc(), root)
+    read = [
+        ("the build's prologue", prologue),
+        *((a.path.name, a.path.read_text(encoding="utf-8")) for a in ordered),
+        ("the build's epilogue", epilogue),
+    ]
+    differs = misreading(header + body, header, read, pandoc(), root) if verify_reading else None
     if differs is not None:
+        # The document from the last build is not this source's, and left in build/ it is
+        # the one a co-author would be sent, or `submit` would pack.
+        if output.resolve().is_relative_to(build_dir.resolve()):
+            for stale in (output, output.with_name(output.name + SOURCE_STAMP)):
+                stale.unlink(missing_ok=True)
         raise MisreadError(
             f"pandoc reads {differs}. The gates judged the sources as they read them, so "
             "the document is not built; `check` cannot see this, and the build asks pandoc."

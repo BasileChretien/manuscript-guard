@@ -379,8 +379,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         reference = Path(scratch) / "reference.docx"
         tokens = Path(scratch) / "reference-tokens.docx"
         try:
-            build_document(project, assembled, mode=OFFLINE, output=reference)
-            build_document(project, marked_assembly, mode=OFFLINE, output=tokens)
+            build_document(
+                project, assembled, mode=OFFLINE, output=reference, verify_reading=False
+            )
+            build_document(
+                project, marked_assembly, mode=OFFLINE, output=tokens, verify_reading=False
+            )
             abbreviated = abbreviations()
         except BuildError as exc:
             print(
@@ -1070,7 +1074,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     if fields:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
 
-    supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    try:
+        supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    except MisreadError as exc:
+        print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+        return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
     return 0
@@ -1082,7 +1090,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
     Built alongside the paper rather than on request, because a supplement that has to be
     asked for is one that arrives at the journal a version behind the manuscript it belongs
     to. A failure here is reported and does not fail the build: the paper is what the author
-    was making.
+    was making. A refusal does (`MisreadError`, raised): pandoc reads the supplement
+    otherwise than the gates did, and the one from the last build is removed with it.
     """
     from manuscript_guard.gates.numbers import is_supplementary
 
@@ -1091,6 +1100,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
         return None
     try:
         built = build_document(project, assembled, mode=mode, csl=csl, supplementary=True)
+    except MisreadError:
+        raise
     except BuildError as exc:
         print(f"manuscript-guard: the supplement did not build: {exc}", file=sys.stderr)
         return None
@@ -1145,7 +1156,12 @@ def cmd_submit(args: argparse.Namespace) -> int:
         # belongs to this manuscript. Taking whatever `supplementary.docx` happened to be
         # lying in build/ is how a supplement arrives at a journal a version behind the
         # paper it is supplementing.
-        _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        try:
+            _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+            print("\nThe pack is not assembled.")
+            return 1
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

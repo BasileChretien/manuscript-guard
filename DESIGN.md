@@ -435,7 +435,10 @@ code, a comment or the front matter is not read, and a comment that closes on th
 taken off in front of it, as pandoc reads on from its `-->`. The fifth review found pandoc
 starting a block partway along a line, behind an HTML tag or comment, a TeX command, or a
 list, definition or footnote marker, and reading the dashes after it as YAML; dashes ending
-such a line are refused wherever they stand.
+a line that opens with block-level HTML tags or comments, a TeX command and its groups, or
+such markers, nested or not, are refused wherever they stand, outside a quotation. Inline
+markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block and is prose (the
+sixth review).
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -444,10 +447,20 @@ a fence carried from one file into the next. So before it writes the document, t
 reads it with pandoc (`build/reading.py`) and refuses (`MisreadError`, exit 1) when the
 metadata of the whole text differs from that of the build's header alone, or when the
 headings pandoc makes differ from those the gates read in the sources, a placeholder in a
-title matching whatever its value prints as. Nothing there lists shapes, so a shape nobody
-has found yet is caught too. It costs two more runs of pandoc's reader per build, and it
-guards the document, not `check`: a source the build refuses can still pass `check`, and a
-number a misread hides from G2 without touching metadata or headings is not compared.
+title matching whatever its value prints as. Nothing there lists shapes, so most shapes
+nobody has found yet are caught too. The gates' titles are read by pandoc as well, in the
+same run as the header: compared as written, `$\beta_{1}$`, `HbA~1c~`, `&amp;`, a comment or
+a footnote in a title split into other words than pandoc's, and the sixth review found each
+refused. Raw markup and footnotes print no words in a heading and are left out on both
+sides, and the lists are aligned, so a refusal names the heading and its file and line.
+
+It costs two more runs of pandoc's reader a document. It guards the document, not `check`:
+a source the build refuses can still pass `check`, and a number a misread hides from G2
+without touching metadata or headings is not compared. A refused build removes the
+document the last one left in build/, which is not this source's, so that it is not sent
+or packed; a refused supplement fails `build` and `submit` like the paper. `import` alone
+rebuilds without asking, since the document it rebuilds has already been sent, and refusing
+there stranded it with the co-author holding it.
 
 ## Zotero is never on the critical path
 
@@ -2339,9 +2352,17 @@ Closed since, and why each mattered:
   hides every rule up to the next `-->` from the refusal. So does a comment or a fence left
   open at the end of one file and closed in the next, since the build joins the files and
   pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
-  a listing to the gates and text to pandoc (#71 refuses that one). Where the result is
+  a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line
+  straight under a line of text, `We also saw it.` over `# Sensitivity`, a heading to the
+  gates and text to pandoc (#38's walk reads it as pandoc does). Where the result is
   metadata in the text or a heading the gates read otherwise, the build refuses; `check`
   passes it. A number such a shape hides from G2, with neither, is caught by nothing.
+- **Two misreads that cancel pass the build's comparison.** Headings are compared in order,
+  not by where they stand, since pandoc's reading says nothing of where. A heading the gates
+  read in one place and not in another, `# Methods` straight under a line of text early on
+  and a real `# Methods` hidden by a misread comment later, lines up with pandoc's list, and
+  a claim between the two passes G2 under the wrong heading. It takes two misreads, each of
+  a shape above, of headings with the same title.
 - **A fence after a form feed on the same line is code to the gates and prose to pandoc.**
   The fence reader splits lines where Python does, at a form feed, a vertical tab, U+0085
   and a few other separators as well as at a newline; pandoc splits at the newline alone. So
@@ -2354,10 +2375,6 @@ Closed since, and why each mattered:
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
   its headings with pandoc's and refuses the document. The heading walk of #38, which knows
   what continues a paragraph, reads it as pandoc does.
-- **A thematic break prints as a dash.** The build's paragraph bookmark (`roundtrip.tag`)
-  goes in front of a line of dashes between blank lines as in front of any paragraph, and
-  pandoc prints `[]{#mg-p-…}---` as a paragraph holding an em dash rather than a rule. It
-  sets no metadata and makes no heading, but it is not what was written.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

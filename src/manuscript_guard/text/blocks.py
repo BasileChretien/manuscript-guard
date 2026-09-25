@@ -193,8 +193,9 @@ def _div_open(line: str) -> bool:
     return not tail.lstrip(" \t").strip(":")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
 # A grid table opens on a border, `+---+---+`, and a line block on a pipe and a space:
-# "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose.
-_GRID_TOP = re.compile(r"^[ ]{0,3}\+(?:[-=:]+\+)+[ \t]*$")
+# "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose. Both at the margin: indented,
+# pandoc reads either as a paragraph, and a `#` line under it as its text.
+_GRID_TOP = re.compile(r"^\+(?:[-=:]+\+)+[ \t]*$")
 # A pipe table's row has a pipe that is a cell's edge: not escaped, and not in code or math.
 # Taken on any pipe, "Results \| x" over `===` under a table was a row, and the heading
 # pandoc prints there was lost to the gates.
@@ -206,8 +207,8 @@ def _cell_pipe(line: str) -> bool:
     return "|" in _CODE_OR_MATH.sub("", _ESCAPED_PIPE.sub("", line))
 
 
-_GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
-_LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
+_GRID_ROW = re.compile(r"^[+|]")
+_LINE_BLOCK = re.compile(r"^\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
 _CAPTION = re.compile(r"^[ ]{0,3}(?:[Tt]able:|:(?![^\w\s]))")
 # A link definition: a destination, then at most a title and attributes.
@@ -441,6 +442,9 @@ class _Walk:
         self.open: str | None = None
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
+        #: Pandoc has ended the list, and its lines start no item, but they are still the
+        #: list's for headings. See `_in_list`.
+        self.items_off = False
         self.divs = 0
         #: HTML blocks open around this line, by tag, which a block quote's lazy lines stop
         #: to close. Counted from tags that start or end a line, not from ones in the middle
@@ -541,13 +545,14 @@ class _Walk:
                 shown = self.lines[index].shown
                 if _DEFINITION.match(shown):
                     # A definition under the item's text ends the list, and the rest is the
-                    # definition's paragraph: a marker starts no item there, a tilde fence
-                    # does not end it, and a line indented after a blank is not in the list.
+                    # definition's paragraph: a marker starts no item there, and a tilde
+                    # fence does not end it. A line indented after a blank stays the list's
+                    # for headings, as after any line pandoc ends a list at: see `_in_list`.
                     # Indented to the item's text, it is a definition list inside the item,
                     # and the item goes on.
                     if _indent(shown) < (self.list_indent or 0):
                         self.open = _PARAGRAPH
-                        self.list_indent = None
+                        self.items_off = True
                 else:
                     self._item(index)
             return self._paragraph_line(index)
@@ -567,7 +572,8 @@ class _Walk:
         marker = item.group("marker")
         gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
         self.list_indent = len(marker) + (gap if 0 < gap <= 4 else 1)
-        self.items.append(self.lines[index].start)
+        if not self.items_off:
+            self.items.append(self.lines[index].start)
         return True
 
     def _paragraph_line(self, index: int) -> int:
@@ -606,8 +612,12 @@ class _Walk:
             return last + 1
         self.open = None
         if not indented:
-            self.list_indent = None
+            self._end_list()
         return last + 1
+
+    def _end_list(self) -> None:
+        self.list_indent = None
+        self.items_off = False
 
     def _continues(self, index: int) -> bool:
         """Whether a line carries on what the line above left open. See `_PARAGRAPH`."""
@@ -639,15 +649,31 @@ class _Walk:
 
     def _in_list(self, index: int) -> bool:
         """A line indented to a list item's text, after a blank line, belongs to it: a
-        paragraph, a nested item, or code if it is indented four more. Anything indented
-        less closes the list, and a marker under it is prose: "  More" under "1. First"."""
+        paragraph, a nested item, or code if it is indented four more. A line at the margin
+        closes the list, unless it starts an item; a rule does, though `* * *` has the shape
+        of a marker.
+
+        Pandoc also ends the list at a line indented less than the item's text, and a marker
+        under that is prose: "  More" under "1. First". Items end there. For headings the
+        line stays the list's, as does everything indented up to the next line at the margin:
+        read as blocks of their own, lines indented one to three spaces were misread, and a
+        `#` line under a line block, a comment or raw HTML over an indented line, text to
+        pandoc, opened Methods. So does a line of the outer item of a nested list, which is
+        indented less than the inner item's text and still in the list."""
         shown = self.lines[index].shown
         indent = _indent(shown)
-        if indent < (self.list_indent or 0):
-            # A rule closes the list, though `* * *` has the shape of a marker.
-            if not _LIST_ITEM.match(shown) or _THEMATIC_BREAK.match(shown):
-                self.list_indent = None
+        marker = _LIST_ITEM.match(shown) is not None and not _THEMATIC_BREAK.match(shown)
+        if indent == 0:
+            if not marker:
+                self._end_list()
+            self.items_off = False
             return False
+        if indent < (self.list_indent or 0):
+            if marker and not self.items_off:
+                return False
+            self.items_off = True
+            self.open = _ITEM
+            return True
         if indent >= (self.list_indent or 0) + 4:
             self.open = None
             return True

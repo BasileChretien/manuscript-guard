@@ -71,8 +71,10 @@ structural:
     # cell. A setext title's own "2.1", and seven hashes, are reported, as they were before
     # setext titles were read at all. A heading that is only its number ends at a line
     # break, not at the end of the text: a table cell or a keyword is a text of its own.
+    # On a `#` heading, emphasis or a link may open the title, "2.1 *Sensitivity analyses*",
+    # and closing hashes may end one that is only its number, "## 12 ##".
     heading_only: true
-    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?|[0-9]{1,2}[.)])(?:[ \t]+(?=[A-Z])|[ \t]*(?=\r?\n))'
+    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?(?:[ \t]+(?=[*_\[]*[A-Z])|(?:[ \t]+#+)?[ \t]*(?=\r?\n))|[0-9]{1,2}[.)](?:[ \t]+(?=[A-Z])|[ \t]*(?=\r?\n)))'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

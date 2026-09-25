@@ -626,6 +626,50 @@ def test_a_string_value_ending_in_a_count_is_refused(value: str) -> None:
         check_string_value("n", value, label=False)
 
 
+# Found by the fourth review of #47. Each is text to pandoc, under a line the walk ended the
+# list at, where pandoc does or not, and then read as a block of its own.
+UNDER_A_LIST = {
+    "a line in the outer item of a nested list": "1. Next\n   - next\n\n    More\n",
+    "an indented comment over a rule": "1. Item\n\n <!-- c -->\n  ***\n",
+    "an indented line block": "1. Item\n\n | line\n",
+    "raw HTML over an indented line": "1. Item\n\n <hr>\n\tMore\n",
+    "raw HTML over an indented line, no blank": "1. Item\n <hr>\n\tMore\n",
+    "a definition over an indented line block": "1. Item\n : def\n\n | line\n",
+    "a rule at the margin over an indented line block": "  - Item\n\n- - -\n | a |\n",
+}
+
+
+@pytest.mark.parametrize(
+    ("heading", "number"),
+    [("## 12 Patients\n\n", "'12'"), ("# Methods\n\nThe threshold was p < 0.05.\n\n", "'0.05'")],
+    ids=["numbered", "methods"],
+)
+@pytest.mark.parametrize("name", sorted(UNDER_A_LIST))
+def test_a_heading_line_under_a_list_is_text(
+    project: Path, name: str, heading: str, number: str
+) -> None:
+    """#38 kept every indented line under a list as the list's, and pandoc prints each `#`
+    line here as text. Ending the list where pandoc does, the walk read the lines after it
+    as blocks, and misread several indented one to three spaces."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = UNDER_A_LIST[name] + heading
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+
+
+def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(project: Path) -> None:
+    """Pandoc reads a rule, a title and a line of dashes after a list as a table with no
+    header. The walk read a rule and a setext Methods."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = "# Safety\n\n1. Item\n\n ---\nMethods\n-------\n\nThe threshold was p < 0.05.\n\n"
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

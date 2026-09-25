@@ -2367,7 +2367,9 @@ Closed since, and why each mattered:
   prints "2. Results" as ". Results", and the gates keep the number. `numbered-heading`
   takes numbering's shape only: on a `#` heading of one to six hashes, components of one or
   two digits, "2.1 Statistical analysis"; on a setext title, list numbering's shape, "2.
-  Results"; then a capital or the end of the line. The walk reads the last row of a table
+  Results"; then a capital or the end of the line. On a `#` heading, emphasis or a link may
+  come before the capital, "2.1 *Sensitivity analyses*", and closing hashes before the end
+  of the line, "## 12 ##". The walk reads the last row of a table
   written with dashes as a setext title over the rule under it, so a looser shape passed
   "12 Patients" or "3.84" in such a cell. "412 serious reports", "3.84 times higher", a
   setext title's own "2.1" and a heading of seven hashes are reported, as is a title whose
@@ -2377,6 +2379,18 @@ Closed since, and why each mattered:
   term under a definition. Inside a list item's lines pandoc folds the digits in some
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
+- **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
+  line indented less than the item's text that starts no item, or at a definition under
+  it. The walk ends the items there, so a count opening a later line is not list numbering,
+  but reads each line up to the next one at the margin as the list's text, as it did
+  before it read list items. Read as blocks of their own, lines indented one to three
+  spaces were misread (a comment, a line block, raw HTML over an indented line), and a `#`
+  line under them, which pandoc prints as text, opened Methods. The cost is a heading
+  pandoc prints directly under such a line: under `1. Item`, a blank line and `  ***`,
+  "## 12 Patients" is a heading, and the gates read it as text, so its number is reported
+  and it opens no Methods. A line of the outer item of a nested list, which pandoc keeps
+  in the list, is indented less than the inner item's text, and after it the walk records
+  no item until a line at the margin: a numbered item nested there is reported.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,

@@ -204,7 +204,15 @@ structural:
       # once that took only real items its number was reported.
       - {text: "Intro.\n\n2. Results\n----------", atom: "2"}
       - {text: "## 12 Months on", atom: "12"}
+      # Emphasis or a link may open the title, and closing hashes end the line: pandoc prints
+      # each as a numbered heading, and `main` read them so.
+      - {text: "## 2.1 *Sensitivity analyses*", atom: "2.1"}
+      - {text: "## 2 **Methods**", atom: "2"}
+      - {text: "## 2.1 [Methods](#m)", atom: "2.1"}
+      - {text: "## 12 ##\n\nText.", atom: "12"}
     rejects:
+      # Emphasis opens no count: a lower-case word after it is still the heading's text.
+      - {text: "## 12 *patients* had a reaction", atom: "12"}
       # A count or a ratio opening a heading's text is the text, not its numbering. Taken
       # for numbering on every setext title, a count at the start of a line the gates read as
       # a title passed G2: a heading, or a cell of a table between rules.

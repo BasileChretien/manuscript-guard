@@ -358,6 +358,11 @@ def _lead_end(block: str, above: str) -> int:
         end = len(block) if end < 0 else end
         if not _LINK_LINE.fullmatch(block, at, end):
             break
+        # Pandoc looks on the next line for the definition's title or attributes: under
+        # `[reg]: url`, a line opening `(which is public) and more` makes one paragraph of
+        # both, and a marker between them would make a definition and a paragraph instead.
+        if block[end + 1 :].lstrip(" \t")[:1] in ("\"", "'", "(", "{"):
+            break
         at = min(end + 1, len(block))
     return at if at > start else 0
 

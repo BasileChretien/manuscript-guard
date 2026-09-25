@@ -391,7 +391,6 @@ BLOCKS = [
         PROSE,
         id="wrapped-prose",
     ),
-    pytest.param(f"[reg]: {REGISTRY}\nIt is public.", PROSE, id="definition-then-prose"),
     pytest.param("See [Methods] here.", PROSE, id="bracket-inside"),
     pytest.param("[Methods] describes the cohort.", PROSE, id="no-colon"),
     pytest.param(f"[reg] : {REGISTRY}", PROSE, id="space-before-colon"),
@@ -594,6 +593,31 @@ HEADED = [
     pytest.param("# Methods\n<div>x</div>", None, id="html"),
     pytest.param("# Methods\n{{table.baseline}}", None, id="placeholder"),
     pytest.param(f"# References\n[reg]: {REGISTRY}", None, id="link-definition"),
+    pytest.param("# Methods\n***", None, id="rule"),
+    pytest.param("# Methods\nII. Aims", None, id="numeral-list"),
+    pytest.param("#. First\nSecond", None, id="hash-list"),
+    # A link's definition is passed over like a heading, when nothing on the next line could
+    # be its title or attributes.
+    pytest.param(f"[reg]: {REGISTRY}\nIt is public.", "It is public.", id="definition-first"),
+    pytest.param(
+        f"[reg]: {REGISTRY} \"The registry\"\n## Results\nPatients.",
+        "Patients.",
+        id="definition-then-heading",
+    ),
+    pytest.param(f"# Methods\n[reg]: {REGISTRY}\nPatients.", "Patients.", id="heading-then-link"),
+    pytest.param(f"[reg]: {REGISTRY}\n## Results", None, id="definition-over-heading"),
+    # Prose that the first version left unmarked.
+    pytest.param("# Methods\nE. coli was isolated.", "E. coli was isolated.", id="initial"),
+    pytest.param("# Methods\nI. Aims were set.", "I. Aims were set.", id="single-capital"),
+    pytest.param(
+        "# Methods\nThe threshold was\n< 0.05 in all.",
+        "The threshold was\n< 0.05 in all.",
+        id="wrapped-comparison",
+    ),
+    pytest.param("  \n# Methods\nPatients.", "Patients.", id="blank-first-line"),
+    # `#` that opens no heading: a paragraph to pandoc, marked like one.
+    pytest.param("#Methods\nPatients.", "#Methods\nPatients.", id="hash-no-space"),
+    pytest.param(" # Methods\nPatients.", "# Methods\nPatients.", id="hash-indented"),
 ]
 
 
@@ -622,8 +646,8 @@ def test_the_paragraph_under_a_heading_carries_the_identifier(
 def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
     block: str, paragraph: str | None
 ) -> None:
-    """The artefact: the headings stay headings without an identifier in them, and the one
-    paragraph after them carries it."""
+    """The artefact: the headings stay headings without an identifier in them, a definition
+    renders nothing, and the one paragraph after them carries it."""
     import json
     import subprocess
 
@@ -638,12 +662,27 @@ def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
         check=True,
     )
     blocks = json.loads(read.stdout)["blocks"]
-    assert blocks[0]["t"] == "Header"
     assert all("mg-p-" not in json.dumps(b) for b in blocks if b["t"] == "Header")
     if paragraph is not None:
         assert blocks[-1]["t"] == "Para"
         assert "mg-p-" in json.dumps(blocks[-1])
         assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+@BUILDS
+def test_a_comment_in_fenced_code_is_not_read_as_a_heading(mark: bool) -> None:
+    """Fenced code may hold blank lines, and the piece after one - `# Fit the model` and a
+    line of code - read as a heading and a paragraph, so a marker was printed inside the
+    listing. No piece that starts inside a fence is marked."""
+    from manuscript_guard.roundtrip import tag
+
+    code = (
+        "```r\nlibrary(stats)\n\n# Load the data\nd <- read.csv('x.csv')\n\n"
+        "# Fit the model\nm <- lm(y ~ x, data = d)\n```"
+    )
+    tagged = tag(f"Before.\n\n{code}\n\nAfter.\n", "main.md", mark=mark)
+    assert f"\n\n{code}\n\n" in tagged
+    assert tagged.count("[]{#mg-p-") == 2
 
 
 def test_tagged_paragraphs_splices_only_the_paragraph_under_a_heading(project: Path) -> None:

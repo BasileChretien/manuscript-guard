@@ -19,8 +19,8 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.text.masking import FRONTMATTER
+from manuscript_guard.gates.numbers import source_files, unreadable_header
+from manuscript_guard.text.masking import FRONTMATTER, front_matter_problem
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import rules_opening_blocks
 
@@ -164,6 +164,11 @@ def assemble(
         relative = path.relative_to(project.path("manuscript")).as_posix()
         source = path.read_text(encoding="utf-8")
         report = report.with_findings(*rule_findings(path, source))
+        # Built anyway, the header printed as text: the identifier in front of it hid it
+        # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
+        problem = front_matter_problem(source)
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
         raw, declared = strip_front_matter(source)
         if declared and declared != str(project.paper.get("title", "")):
             report = report.with_findings(

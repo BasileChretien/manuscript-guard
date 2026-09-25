@@ -29,11 +29,12 @@ IGNORE = shutil.ignore_patterns("build", "__pycache__", ".pytest_cache")
 
 #: Set by CI to the pandoc version it installs. Every test that needs pandoc skips without
 #: it, which is right on a contributor's machine and was wrong on CI: no test job had
-#: pandoc, and each one passed having run none of them.
+#: pandoc, and none failed for want of it.
 REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 
 #: The version on the line that names the program, wherever that line falls in the output.
-PANDOC_VERSION_LINE = re.compile(r"^pandoc(?:\.exe)?\s+(\S+)", re.MULTILINE)
+#: pandoc prints its own name, whatever its file is called.
+PANDOC_VERSION_LINE = re.compile(r"^pandoc\s+(\S+)", re.MULTILINE)
 
 
 def pytest_configure(config: pytest.Config) -> None:

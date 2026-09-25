@@ -2,7 +2,7 @@
 
 Every test that needs pandoc skips without it. On a contributor's machine that is right; on
 CI it hid the build, the import round trip and every check on what pandoc prints, because
-no test job had pandoc and each one passed. CI now installs it and sets
+no test job had pandoc and none failed for want of it. CI now installs it and sets
 `MANUSCRIPT_GUARD_REQUIRE_PANDOC` to the version, and `conftest.py` refuses to start a
 session where that version is not the pandoc on PATH.
 """
@@ -10,6 +10,7 @@ session where that version is not the pandoc on PATH.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,7 +51,23 @@ def collect(required: str | None, *, path: Path | None = None) -> tuple[int, str
 def installed_version() -> str:
     assert PANDOC is not None
     printed = subprocess.run([PANDOC, "--version"], capture_output=True, text=True).stdout
-    return printed.split()[1]
+    line = re.search(r"^pandoc\s+(\S+)", printed, re.MULTILINE)
+    assert line is not None, printed
+    return line.group(1)
+
+
+def fake_pandoc(folder: Path, *lines: str) -> Path:
+    """A pandoc that prints `lines` for --version, or, given none, one that cannot run: an
+    empty executable, which Windows refuses as not a program and POSIX as no format."""
+    if os.name == "nt":
+        target = folder / ("pandoc.cmd" if lines else "pandoc.exe")
+        body = "".join(f"@echo {line}\r\n" for line in lines)
+    else:
+        target = folder / "pandoc"
+        body = "#!/bin/sh\n" + "".join(f"echo '{line}'\n" for line in lines) if lines else ""
+    target.write_bytes(body.encode("utf-8"))
+    target.chmod(0o755)
+    return folder
 
 
 def test_a_required_pandoc_that_is_missing_stops_the_run(tmp_path: Path) -> None:
@@ -72,8 +89,8 @@ def test_a_required_pandoc_of_another_version_stops_the_run() -> None:
 
 @needs_pandoc
 def test_a_required_version_is_matched_whole() -> None:
-    """"3.9" is not 3.9.0.2, and neither is a version that merely appears somewhere in what
-    pandoc prints."""
+    """"3.9.0" is not 3.9.0.2, and neither is a version that merely appears somewhere in
+    what pandoc prints."""
     version = installed_version()
     code, output = collect(version.rsplit(".", 1)[0])
     assert code == pytest.ExitCode.USAGE_ERROR, output
@@ -89,6 +106,20 @@ def test_the_required_pandoc_lets_the_run_start() -> None:
 def test_space_around_the_required_version_is_not_part_of_it() -> None:
     code, output = collect(f"  {installed_version()} \t")
     assert code == pytest.ExitCode.OK, output
+
+
+def test_the_version_is_read_from_the_line_that_names_pandoc(tmp_path: Path) -> None:
+    """A warning printed first made the second word of the output "the version"."""
+    folder = fake_pandoc(tmp_path, "Deprecated: this pandoc is old", "pandoc 3.9.0.2")
+    code, output = collect("3.9.0.2", path=folder)
+    assert code == pytest.ExitCode.OK, output
+
+
+def test_a_pandoc_that_will_not_run_is_a_usage_error(tmp_path: Path) -> None:
+    """Not an INTERNALERROR, which reads as a fault in pytest rather than in the runner."""
+    code, output = collect("3.9.0.2", path=fake_pandoc(tmp_path))
+    assert code == pytest.ExitCode.USAGE_ERROR, output
+    assert "did not run" in output
 
 
 def test_without_the_requirement_a_missing_pandoc_only_skips(tmp_path: Path) -> None:

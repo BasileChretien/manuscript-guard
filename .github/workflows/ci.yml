@@ -7,9 +7,9 @@ on:
 
 env:
   # The build, the import round trip and the checks on what pandoc prints all need pandoc,
-  # and each skips without it: before this was set, no test job had pandoc, and each passed
-  # having run none of them. Every job installs this version, and with the variable set,
-  # tests/conftest.py refuses to start unless it is the pandoc on PATH. Set here rather
+  # and each skips without it: before this was set, no test job had pandoc, and none failed
+  # for want of it. Every job that runs pytest installs this version, and with the variable
+  # set, tests/conftest.py refuses to start unless it is the pandoc on PATH. Set here rather
   # than per step, so a pytest step added later cannot forget it. Pinned, because those
   # tests assert on pandoc's output and a release may print it differently: this is the
   # version they were written against.

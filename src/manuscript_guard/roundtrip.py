@@ -417,15 +417,15 @@ def _slug_of(identifier: str) -> str:
     return identifier.removeprefix("mg-p-").rpartition("-")[0]
 
 
-def numbering_problem(
-    project, carried: str | None, names: Sequence[str], *, stale: bool
-) -> str | None:
+def numbering_problem(project, document: Path, *, stale: bool) -> str | None:
     """Why a document's paragraph identifiers cannot be trusted to name the paragraphs they
-    were made in, or None when they can.
+    were made in, or None when they can. `stale` says it was built from other text than is
+    on disk.
 
-    `carried` is the scheme the document records, None if it records none; `names` are the
-    identifiers it carries; `stale` says it was built from other text than is on disk.
+    The document's paragraphs are read only when the answer depends on which files it
+    carries, so a document that records this version's scheme is not opened here at all.
     """
+    carried = scheme_of(document)
     if carried == str(TAGGING_SCHEME):
         return None
     if carried is not None:
@@ -443,6 +443,9 @@ def numbering_problem(
     # Only the files it carries: an identifier names its file, so a supplement read
     # differently now says nothing about the main text's document.
     changed = renumbered(project)
+    if not changed:
+        return None
+    names = paragraph_order(document)
     carried_files = sorted({changed[slug] for slug in map(_slug_of, names) if slug in changed})
     if not carried_files:
         return None

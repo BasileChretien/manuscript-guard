@@ -315,9 +315,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         comments_in,
         numbering_problem,
         numbering_refusal,
-        paragraph_order,
         read_blocks,
-        scheme_of,
         stamp_of,
         tagged_paragraphs,
     )
@@ -345,10 +343,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     # check by hand, only a paragraph that is not the one it was made in.
     try:
         problem = numbering_problem(
-            project,
-            scheme_of(edited),
-            paragraph_order(edited),
-            stale=carried != document_digest(project),
+            project, edited, stale=carried != document_digest(project)
         )
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
@@ -555,15 +550,11 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 RoundTripError,
                 numbering_problem,
                 numbering_refusal,
-                paragraph_order,
-                scheme_of,
                 stamp_of,
             )
 
             try:
                 carried = stamp_of(args.source)
-                scheme = scheme_of(args.source)
-                names = paragraph_order(args.source)
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
@@ -578,9 +569,13 @@ def cmd_respond(args: argparse.Namespace) -> int:
                     f"the points into the round file."
                 )
                 return 1
-            problem = numbering_problem(
-                project, scheme, names, stale=carried != document_digest(project)
-            )
+            try:
+                problem = numbering_problem(
+                    project, args.source, stale=carried != document_digest(project)
+                )
+            except RoundTripError as exc:
+                print(f"manuscript-guard: {exc}", file=sys.stderr)
+                return 2
             if problem:
                 print(numbering_refusal(args.source.name, problem))
                 return 1

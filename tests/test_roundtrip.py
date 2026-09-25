@@ -797,7 +797,7 @@ INSIDE_A_TOKEN = [
     ),
 ]
 
-#: Edits to a token inside which the guess found prose, each named whole.
+#: Edits to a token whose guessed edges were wrong, each named whole.
 INSIDE_CHANGED = [
     pytest.param(
         "Risk rose in two cohorts [@lee2021] and {{results.x}} overall.",

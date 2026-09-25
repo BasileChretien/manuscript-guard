@@ -2326,16 +2326,31 @@ Closed since, and why each mattered:
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped
     straight quote, `\"`, comes back bare and pandoc curls it: a pandoc conversion from
     Word writes those.
-  - *Pandoc's own no-break spaces come back as characters.* Pandoc puts one after an
-    abbreviation it knows ("e.g.", "et al.", "p.", "vs."), where the source has a plain
-    space. A stretch the co-author left alone keeps the source's space, but an edited one is
-    Word's text, and puts pandoc's character into the `.md`. It prints the same and `check`
-    reads it the same, but it cannot be seen in an editor, and a diff shows the line as
-    changed there. Where the source is read against Word's text, U+00A0 therefore counts
-    as a space; Word's text against Word's text compares it exactly, so one the co-author
-    typed is an edit. A stretch that comes back as the source reads is kept too: pandoc's
-    space taken out again in Word is no edit, and the next build puts it back. Only where
-    the source reads as what was sent, but for typesetting: the reading is wrong where
+  - *Pandoc's own no-break spaces are written back as spaces, only where pandoc makes them
+    again.* Pandoc puts one after an abbreviation on its list ("e.g.", "et al.", "p.",
+    "vs."), where the source has a plain space, before anything but a citation, a footnote
+    reference or a line break. An edited stretch is Word's text, and it used to put pandoc's
+    character into the `.md`: it printed the same, but nobody could see it, a diff showed the
+    line as changed there, and a search for "et al. 2020" missed it. It is now written back
+    as a space, using the list pandoc itself reads (`build.document.abbreviations`: the
+    user's own file in pandoc's data directory, else pandoc's default, each line read exactly
+    as pandoc reads it). It stays a character where pandoc would not put it back: before a
+    citation, after a word not on the list, after a word that runs back without a space into
+    a binding's value (`{{results.x}}vs.`, whose value pandoc reads as part of the word, or
+    may read as the start of a label), after one with a bare `@` earlier in it (`desk@p.` and
+    `desk@lab-p.` are an example reference to pandoc), and after one whose full stop the
+    opening's escape set apart (`p\.`). It also stays, needlessly but harmlessly, in a few
+    places pandoc would have made it again: after a word that runs back into a citation
+    before it (`[@smith2020]-e.g.`), after one with an `@` earlier in it that pandoc reads as
+    no label (a URL such as `a@b.org/e.g.`), after a word run into full stops (`...e.g.`),
+    and in a run of two. A no-break space the co-author typed after an abbreviation is
+    written back as a space too, which prints the same. The build passes pandoc no
+    `--data-dir`; if it ever does, `abbreviations` must read that directory as well, or the
+    two lists part. Because pandoc adds it, U+00A0 counts as a space where the source is read
+    against Word's text; Word's text against Word's text compares it exactly, so one the
+    co-author typed is an edit. A stretch that comes back as the source reads is kept too:
+    pandoc's space taken out again in Word is no edit, and the next build puts it back. Only
+    where the source reads as what was sent, but for typesetting: the reading is wrong where
     pandoc prints markup as text (`[^missing]` with no note, an image with no file), and a
     co-author deleting that text would otherwise have been dropped without a word.
   - *A space at either end of a paragraph is not its text.* The source paragraph is spliced

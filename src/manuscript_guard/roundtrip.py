@@ -309,6 +309,33 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
     return above, below
 
 
+def _definitions(block: str, above: str, below: str) -> bool:
+    """Whether a block is link and footnote definitions that `tag` leaves unmarked: in a
+    shape pandoc can read no other way, and where nothing around it makes it something else.
+
+    Not `stripped`: a no-break space is text to pandoc, and a line that ends in one is not a
+    definition; nor is one indented four spaces. And only under a line that pandoc too takes
+    for blank: one holding a no-break or full-width space, or a form feed, separates blocks
+    here, while pandoc read it and the definition under it as a paragraph.
+    """
+    return _blank_above(above) and _only_definitions(block, below)
+
+
+def only_definitions_between(text: str) -> bool:
+    """Whether `text`, the source between two paragraphs, holds nothing but blank lines and
+    the definitions `tag` leaves unmarked - nothing that renders in the body.
+
+    `merge` asks it where a section ends, by the same test `tag` marks by: a definition is
+    no boundary, because pandoc reads it wherever it stands.
+    """
+    pieces = re.split(r"(\n\s*\n)", text)
+    return all(
+        not piece.strip() or _definitions(piece, *_around(pieces, index))
+        for index, piece in enumerate(pieces)
+        if index % 2 == 0
+    )
+
+
 def _untagged(block: str, above: str, below: str) -> bool:
     """Headings, fences, link and footnote definitions, and a lone placeholder (which
     becomes a table or a figure). `above` and `below` are what separate the block from the
@@ -318,12 +345,7 @@ def _untagged(block: str, above: str, below: str) -> bool:
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
-        # Not `stripped`: a no-break space is text to pandoc, and a line that ends in one
-        # is not a definition; nor is one indented four spaces. And only under a line that
-        # pandoc too takes for blank: one holding a no-break or full-width space, or a form
-        # feed, separates blocks here, while pandoc read it and the definition under it as
-        # a paragraph.
-        or (_blank_above(above) and _only_definitions(block, below))
+        or _definitions(block, above, below)
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 

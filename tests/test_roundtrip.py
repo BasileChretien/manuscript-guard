@@ -3382,3 +3382,81 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert now in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("definition", "second", "part", "resolved"),
+    [
+        pytest.param(
+            f"[reg]: {REGISTRY}",
+            "Omega sees [the registry][reg].",
+            "word/_rels/document.xml.rels",
+            f'Target="{REGISTRY}"',
+            id="link",
+        ),
+        pytest.param(
+            "[^cap]: Capped at forty milligrams.",
+            "Omega was capped.[^cap]",
+            "word/footnotes.xml",
+            "Capped at forty milligrams.",
+            id="footnote",
+        ),
+    ],
+)
+def test_a_paragraph_moved_across_a_definition_is_moved(
+    project: Path, tmp_path: Path, definition: str, second: str, part: str, resolved: str
+) -> None:
+    """A definition renders nothing in the body, and pandoc reads it wherever it stands.
+    As untagged source text between two paragraphs it counted as a section boundary, so a
+    co-author's move across it was refused as a move past a heading, a table or a figure.
+    The paragraphs now change places around it, and it still resolves."""
+    from manuscript_guard.cli import main
+
+    first = "Alpha comes first."
+    with_paragraphs(project, first, definition, second)
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        alpha = next(p for p in paragraphs if "Alpha comes first" in p)
+        omega = next(p for p in paragraphs if "Omega" in p)
+        return xml.replace(omega, "", 1).replace(alpha, omega + alpha, 1)
+
+    returned = rewrite(built(project), tmp_path / "moved.docx", swap)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"{second}\n\n{definition}\n\n{first}\n\n" in text
+    assert resolved in _docx_part(built(project), part)
+
+
+def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
+    project: Path,
+) -> None:
+    """Blank lines and definitions are no boundary; a table, a heading, or a definition
+    under a line pandoc does not take for blank (which is then a paragraph) is."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.merge import _sections
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    pieces = [
+        "Alpha.",
+        f"[reg]: {REGISTRY}",
+        "[^cap]: A note.",
+        "Beta.",
+        "{{table.baseline}}",
+        "Gamma.",
+        f"[other]: {REGISTRY}/other",
+        "# Heading",
+        "Delta.",
+    ]
+    (project / "manuscript" / "sections.md").write_text("\n\n".join(pieces) + "\n", "utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name: entry
+        for name, entry in tagged_paragraphs(loaded).items()
+        if entry[0].name == "sections.md"
+    }
+    section = {known[name][1]: number for name, (_path, number) in _sections(known).items()}
+    assert section["Alpha."] == section["Beta."]
+    assert section["Gamma."] == section["Beta."] + 1
+    assert section["Delta."] == section["Gamma."] + 1

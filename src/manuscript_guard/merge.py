@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import Alignment, align, moves
+from manuscript_guard.roundtrip import Alignment, align, moves, only_definitions_between
 
 
 @dataclass(frozen=True)
@@ -133,6 +133,11 @@ def _sections(known: dict) -> dict[str, tuple[Path, int]]:
     paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
     Discussion to the Introduction pushed one paragraph out of every section in between. A
     section is therefore the unit a move is applied within.
+
+    A link or footnote definition between two paragraphs is no boundary. It renders nothing
+    in the body, and pandoc reads it wherever it stands; counted as untagged text, it made a
+    move across it a move into another section, refused as one past a heading, a table or a
+    figure. The paragraphs change places around it, and it stays where it was written.
     """
     out: dict[str, tuple[Path, int]] = {}
     texts: dict[Path, str] = {}
@@ -144,7 +149,7 @@ def _sections(known: dict) -> dict[str, tuple[Path, int]]:
         if path not in texts:
             texts[path] = path.read_text(encoding="utf-8")
             section[path] = 0
-        elif texts[path][end[path] : start].strip():
+        elif not only_definitions_between(texts[path][end[path] : start]):
             section[path] += 1
         out[name] = (path, section[path])
         end[path] = start + len(para)

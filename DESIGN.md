@@ -2274,9 +2274,13 @@ Closed since, and why each mattered:
     it prints nothing of either. No real address has several words, so such a line is
     marked, and prints as it was written, as it always had. With one word after the colon,
     `[Note]: none.`, the line is a definition to both, and prints nothing.
-  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
-    source, so a move across it is refused as a move past a heading, a table or a figure.
-    Safe, and the reason given is wrong.
+  - *A definition between two paragraphs is no section boundary.* It renders nothing in the
+    body and pandoc reads it wherever it stands, so a move across it is applied: the
+    paragraphs change places, and the definition stays where it was written. As untagged
+    source text it first counted as a boundary, and such a move was refused as one past a
+    heading, a table or a figure. `merge` asks `only_definitions_between`, by the test `tag`
+    marks by, so a definition `tag` marks - under a line pandoc does not take for blank, or
+    in a shape it could read otherwise - is a paragraph, not something between two.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

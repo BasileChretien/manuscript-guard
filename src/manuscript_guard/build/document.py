@@ -89,7 +89,8 @@ def abbreviations() -> frozenset[str]:
     found = re.search(r"^User data directory:\s*(.+?)\s*$", _pandoc_says("--version"), re.M)
     own = Path(found.group(1)) / "abbreviations" if found else None
     if own is not None and own.is_file():
-        text = own.read_text(encoding="utf-8")
+        # Bytes, not text: read as text, a lone carriage return already ended a line.
+        text = own.read_bytes().decode("utf-8")
     else:
         text = _pandoc_says("--print-default-data-file", "abbreviations")
     # As pandoc reads it: the byte-order mark and carriage returns dropped, and each line an

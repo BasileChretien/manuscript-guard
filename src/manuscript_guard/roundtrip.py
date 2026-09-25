@@ -923,11 +923,20 @@ def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_n
 
 
 def _at_sign(text: str, start: int) -> bool:
-    """Whether a bare `@` stands just before `start`: `desk@p.` is one word to pandoc, which
-    puts no no-break space after it, and `_escaped` leaves an `@` bare after a letter or a
-    digit. An escaped one, `\\@`, is a character of its own, as every other character is."""
-    before = text[:start]
-    return before.endswith("@") and (len(before) - len(before[:-1].rstrip("\\")) - 1) % 2 == 0
+    """Whether a bare `@` stands earlier in the word that ends at `start`.
+
+    Pandoc reads a bare `@` and the label after it - letters and digits, joined by `-` or
+    `_` - as an example reference, so the abbreviation in `desk@p.` or `desk@lab-p.` is part
+    of the label, and no no-break space follows it. `_escaped` leaves an `@` bare after a
+    letter or a digit. Looking only at the character before the word missed `desk@lab-p.`,
+    so the whole word is searched: a no-break space kept where pandoc would have made one
+    anyway costs nothing that shows. An escaped `\\@` is a character of its own.
+    """
+    word = re.search(r"\S*\Z", text[:start]).group()
+    return any(
+        char == "@" and (at - len(word[:at].rstrip("\\"))) % 2 == 0
+        for at, char in enumerate(word)
+    )
 
 
 def _reads_as(

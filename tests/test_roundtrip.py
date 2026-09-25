@@ -1593,6 +1593,13 @@ ABBREVIATED = [
         "See \\@p. 4 there.",
         id="after-an-escaped-at-sign",
     ),
+    pytest.param(
+        "Mail it to desk@lab-p. 4 of the form.",
+        "Mail it to desk@lab-p. 4 of the form.",
+        "Send it to desk@lab-p.\u00a04 of the form.",
+        "Send it to desk@lab-p.\u00a04 of the form.",
+        id="after-an-example-label",
+    ),
 ]
 
 
@@ -1642,27 +1649,28 @@ def test_import_reads_the_abbreviations_pandoc_itself_uses(
     its default, and read as pandoc reads it. Taken from the default, or with each line
     stripped, a no-break space the co-author typed after a word the user's pandoc does not
     treat as an abbreviation - `e.g. ` with a stray space is not `e.g.` to pandoc - came back
-    as a plain space, and the next build printed it so."""
+    as a plain space, and the next build printed it so. Read as text, a lone carriage return
+    ended a line, where pandoc drops it and joins `vs.` and `q.v.` into one."""
     import subprocess
 
     from manuscript_guard.build import document
 
     (tmp_path / "pandoc").mkdir()
-    listed = "\ufeffcf.\r\ne.g. \r\nvs.\n\n"
+    listed = "\ufeffcf.\r\ne.g. \r\nvs.\rq.v.\n\n"
     (tmp_path / "pandoc" / "abbreviations").write_bytes(listed.encode("utf-8"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
 
     native = subprocess.run(
         ["pandoc", "-t", "native"],
-        input="See cf. this, e.g. that, vs. them.",
+        input="See cf. this, e.g. that, vs. them, q.v. it.",
         capture_output=True,
         text=True,
         encoding="utf-8",
         check=True,
     ).stdout
-    assert "cf.\\160this" in native and "vs.\\160them" in native, native
-    assert '"e.g."' in native, native
-    assert document.abbreviations() == {"cf.", "e.g. ", "vs."}
+    assert "cf.\\160this" in native, native
+    assert all(f'"{word}"' in native for word in ("e.g.", "vs.", "q.v.")), native
+    assert document.abbreviations() == {"cf.", "e.g. ", "vs.q.v."}
 
 
 @needs_pandoc

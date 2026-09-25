@@ -269,7 +269,9 @@ _LINK_LINE = re.compile(
 # through every line pandoc does not take for blank, and past a blank line into an indented
 # one: under a line holding only a no-break space, the next paragraph went into the footnote
 # and left the body, and a co-author's edit to it was dropped. So a note is left alone only
-# when a blank line ends it and the block after that is not indented (`_blank_below`).
+# when a blank line ends it and the block after that is not indented (`_blank_below`). At the
+# end of a file nothing follows; the build puts a comment between files, so the next file's
+# first paragraph cannot run into it either.
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 _INDENT = re.compile(r"[ \t]*")
 

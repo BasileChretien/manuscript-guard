@@ -581,6 +581,14 @@ _EMPHASIS = (
 #: the document, where the author had bold.
 _HALF_SPAN = "one end of an emphasis or code span"
 
+#: Code keeps literal what pandoc typesets in prose: dashes, an ellipsis, quotes. Rebuilt
+#: from Word's text, code is prose, and `--offline` printed as "–offline", `<!--` as "<!–"
+#: and `"exact"` with curly quotes. Escaping them would print Word's text as it is, and
+#: would print a `--` a co-author typed as `--` too, where pandoc makes it the dash they
+#: meant; so an edited stretch holding such code is refused instead.
+_TYPESET_IN_CODE = "code with `--`, `...` or a quote in it"
+_TYPESETS = re.compile(r"--|\.\.\.|['\"]")
+
 #: Every space but layout, as a character that is neither a space nor a letter, for pairing
 #: emphasis. Pandoc reads a no-break space as text, so a `*` with one just inside it still
 #: opens or closes italics; `_EMPHASIS` reads `\s`, took it for a space, and the paragraph
@@ -772,6 +780,8 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             ticks = len(m.group(f"{kind}_ticks"))
             closing = m.end(f"{kind}_text")
             marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
+        elif kind == "code" and _TYPESETS.search(m.group("code_text")):
+            marks.append((start, end, _TYPESET_IN_CODE))
 
     # A key the token patterns missed: Word's text holds its rendering, not the key.
     marks += [

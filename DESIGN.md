@@ -1313,7 +1313,12 @@ and names it: "the edited text carries an HTML comment and a footnote". A stretc
 co-author left alone is rebuilt from the source, so a footnote before a binding survives an
 edit after it. Emphasis or code wrapped around a binding is refused the same way, because
 each side holds a delimiter whose partner is on the other, and rebuilding one side left the
-other unpaired, printed as literal asterisks.
+other unpaired, printed as literal asterisks. So is code holding what pandoc typesets in
+prose, a `--`, a `...` or a quote: rebuilt from Word's text it was prose, and `--offline`
+printed as "–offline" and `<!--` as "<!–". Escaping those characters would print Word's
+text as it is, but a `--` a co-author typed with AutoCorrect off would then print as `--`
+and not as the dash pandoc makes of it, which is what they meant. Other code merges as
+text, and prints the same without its formatting.
 
 The paragraph is read whole, with each binding filled in as digits, because what a stretch
 is depends on its neighbours: `*{{results.x}}*` is italics around a number, and
@@ -2145,8 +2150,8 @@ Closed since, and why each mattered:
   edited stretch holding what Word's text cannot carry is refused by name: a comment, a
   footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
   HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
-  struck-through text, a hard line break, or one end of emphasis or code wrapped around a
-  binding. What comes back is escaped, and a merge that this module reads differently from
+  struck-through text, a hard line break, one end of emphasis or code wrapped around a
+  binding, or code holding a `--`, a `...` or a quote. What comes back is escaped, and a merge that this module reads differently from
   what came back is refused. A no-break space is no longer on that list: Word's text keeps
   it (U+00A0, U+202F and every other space except layout whitespace), so it merges back as
   typed, whether the source had it or the co-author's French AutoCorrect put it before a
@@ -2172,6 +2177,10 @@ Closed since, and why each mattered:
     `import` reads none of them. An edit inside a footnote or an equation, a changed link
     address, or a footnote deleted in Word leaves the paragraph's text as it was, and
     nothing is merged or reported.
+  - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
+    outside code, with AutoCorrect off, is typeset like one in the source; and code holding
+    such a character refuses an edit anywhere in its stretch, even one that leaves the code
+    as it was, because Word's text does not say which words were code.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
     the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped

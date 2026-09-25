@@ -311,8 +311,13 @@ def unmark(marked: str) -> tuple[str, list[tuple[int, int]]]:
 
 
 def merged(source: str, marked: str, returned: str) -> str | None:
+    return merged_alignment(source, marked, returned).rebuilt
+
+
+def merged_alignment(source: str, marked: str, returned: str):
+    """`align`, given a rendering with each token ⟦marked⟧."""
     plain, spans = unmark(marked)
-    return realign(source, plain, returned, spans)
+    return align(source, plain, returned, spans)
 
 
 def test_a_rewording_keeps_every_binding() -> None:
@@ -922,6 +927,77 @@ def test_markup_word_text_cannot_carry_refuses_a_rewording(
     aligned = align(source, rendered, rendered.replace("here", "there"))
     assert aligned.rebuilt is None
     assert aligned.markup == (named,)
+
+
+TYPESET_IN_CODE = "code with `--`, `...` or a quote in it"
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned"),
+    [
+        pytest.param(
+            "Run it with `--offline` and the ratio was {{results.x}} overall.",
+            "Run it with --offline and the ratio was ⟦3.84⟧ overall.",
+            "Start it with --offline and the ratio was 3.84 overall.",
+            id="dashes-beside-a-binding",
+        ),
+        pytest.param(
+            "A comment is opened with `<!--` in the source files.",
+            "A comment is opened with <!-- in the source files.",
+            "A comment is started with <!-- in the source files.",
+            id="comment-marker",
+        ),
+        pytest.param(
+            'Quote it as `"exact"` in the query.',
+            'Quote it as "exact" in the query.',
+            'Write it as "exact" in the query.',
+            id="quotes",
+        ),
+        pytest.param(
+            "Then `wait...` returns {{results.x}} values.",
+            "Then wait... returns ⟦3.84⟧ values.",
+            "Then wait... gives 3.84 values.",
+            id="dots",
+        ),
+        pytest.param(
+            "The flag ``it's`` is {{results.x}} long.",
+            "The flag it's is ⟦3.84⟧ long.",
+            "A flag it's is 3.84 long.",
+            id="apostrophe-in-double-ticks",
+        ),
+    ],
+)
+def test_code_pandoc_would_typeset_as_prose_refuses_a_rewording(
+    source: str, rendered: str, returned: str
+) -> None:
+    """Rebuilt from Word's text, code comes back as prose, and pandoc typesets what code
+    kept literal: `--offline` printed as "–offline", `<!--` as "<!–", `"exact"` with curly
+    quotes. The rewording is refused and the code named, as other markup Word's text cannot
+    carry is."""
+    aligned = merged_alignment(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.markup == (TYPESET_IN_CODE,)
+
+
+def test_code_nothing_would_typeset_still_merges_as_text() -> None:
+    """Only its formatting is lost, the known cost of an edited stretch; it prints the same."""
+    source = "Fitted with `lme4` in R, the ratio was {{results.x}} overall."
+    out = merged(
+        source,
+        "Fitted with lme4 in R, the ratio was ⟦3.84⟧ overall.",
+        "Fitted using lme4 in R, the ratio was 3.84 overall.",
+    )
+    assert out == "Fitted using lme4 in R, the ratio was {{results.x}} overall."
+
+
+def test_code_in_a_stretch_left_alone_is_kept() -> None:
+    source = "Run it with `--offline`: the ratio was {{results.x}} overall."
+    out = merged(
+        source,
+        "Run it with --offline: the ratio was ⟦3.84⟧ overall.",
+        "Run it with --offline: the ratio was 3.84 in all.",
+    )
+    assert out == "Run it with `--offline`: the ratio was {{results.x}} in all."
 
 
 @pytest.mark.parametrize(("source", "rendered", "named"), UNCARRIED)
@@ -2427,6 +2503,56 @@ def test_a_citation_after_et_al_takes_a_rewording_end_to_end(
     )
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert sentence.replace("found", "reported") in source.read_text(encoding="utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("paragraph", "was", "now", "code"),
+    [
+        pytest.param(
+            "Run the tool with `--offline` and the ratio was {{results.ror.point}} overall.",
+            "Run the tool",
+            "Start the tool",
+            "--offline",
+            id="dashes-beside-a-binding",
+        ),
+        pytest.param(
+            "A comment is opened with `<!--` in the source files.",
+            "is opened",
+            "is started",
+            "<!--",
+            id="comment-marker",
+        ),
+        pytest.param(
+            'Quote it as `"exact"` or `...` in the query string.',
+            "Quote it",
+            "Write it",
+            '"exact"',
+            id="quotes-and-dots",
+        ),
+    ],
+)
+def test_code_beside_an_edit_is_never_typeset(
+    project: Path, tmp_path: Path, paragraph: str, was: str, now: str, code: str
+) -> None:
+    """Rebuilt from Word's text, the code span came back as prose, and pandoc typeset it:
+    `--offline` printed as "–offline" and `<!--` as "<!–", and import exited 0. Whatever
+    import does with the edit, the next build prints the code as it was written."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import paragraph_text
+
+    source = project / "manuscript" / "main.md"
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n\n# Tools\n\n" + paragraph + "\n",
+        encoding="utf-8",
+    )
+    returned = rewrite(
+        built(project), tmp_path / "tools.docx", lambda xml: xml.replace(was, now, 1)
+    )
+    assert now in "".join(paragraph_text(returned).values()), "the edit reached the document"
+    main(["import", str(returned), str(project), "--apply"])
+    printed = "".join(paragraph_text(built(project)).values())
+    assert code in printed, printed[-300:]
 
 
 @needs_pandoc

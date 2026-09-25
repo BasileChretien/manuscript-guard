@@ -144,6 +144,10 @@ def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
         if child.tag == W + "p":
             out.append(_paragraph(child, table=table))
         elif child.tag == W + "tbl":
+            # Rows deleted as tracked changes too. A table is one block that is never
+            # compared, and import leaves a table deleted in Word standing in the source,
+            # where it still holds its place: read as gone, the tables no longer lined up with
+            # those sent, and a paragraph dragged below the next table was applied above it.
             out.extend(_walk_body(child, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.

@@ -848,7 +848,17 @@ predecessor:
   in Word can be a `w16se:symEx` there (pandoc issue 11113; set as text through Word's COM
   interface, one was saved as plain text), and without it "12", the emoji and "34" read as
   1234. The paragraphs of a text box deleted or moved away start no lines: left empty, one
-  styled as a heading used to end the reference list it sat in.
+  styled as a heading used to end the reference list it sat in. Nor does a table row
+  deleted or moved away, although neither kind of row is wrapped in a deletion. A deleted
+  row is marked in its own properties (`w:trPr/w:del`), and a row moved away is not marked
+  as a row at all: Word 16 moves the mark of every paragraph in it, a nested table's
+  included, and writes no row-level change, since the format has none for a move. A text
+  box's paragraphs are left unmarked, the box going with the moved text it is anchored in,
+  so they are not counted (verified 2026-09-25: each tracked copy Word wrote reads the same
+  as Word's accepted copy). The row's text was dropped but its row and cells still broke
+  lines, and a cell styled as a heading ended the reference list there. An inserted row
+  (`w:trPr/w:ins`) is read. A table whose every row is gone parts nothing: a paragraph whose
+  mark was deleted before it runs on into the one after it, as Word 16 shows it.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -1988,13 +1998,36 @@ Closed since, and why each mattered:
   mark was deleted into the first cell of a table after it. The audit joins a paragraph only
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
   number split across the two is read in two pieces. Joining into the cell would mean
-  moving the row and cell separators the reader writes before the cell's text.
+  moving the row and cell separators the reader writes before the cell's text. A table
+  whose every row was deleted or moved away is the exception, since nothing of it is left
+  to join into: the paragraph runs on past it into the next, as Word 16 shows it.
 - **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
   Word does the same for everything it writes, since it writes a choice only where it
   understands it. Text that sits only in a fallback, behind a choice the reader does not
   know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
   does know, and would for any other such element it adds. A second choice, which the
   format allows and Word does not write, would be read as well as the first.
+- **A table cell styled as a heading ends a reference list.** A cell never starts one,
+  since "References" there is a column header, but a heading-styled cell after the list's
+  heading ends it, as it would anywhere: Word lists such a cell as a heading in its
+  navigation pane. A reference list laid out as a table, with a heading-styled cell among
+  its rows, is cut there, and the entries after it are reported as numbers not found.
+  Letting cells run the list on would instead leave a table placed after the references,
+  under no heading of its own, silently unaudited as part of them.
+- **A table row is read as gone only when it is marked the way Word 16 marks one.** That
+  is its properties marking it deleted, or every paragraph in it, a nested table's
+  included, having its mark moved away. A text box anchored in the moved text is not
+  counted, since Word marks none of its paragraphs; one anchored in text that stays, or
+  that was inserted, is counted, and keeps the row. Word treats some rows marked
+  otherwise, which Word 16 does not write, differently from the reader, which reads them
+  as they stand, a heading-styled cell in one still ending a reference list: a row inside
+  a move range with only some of its marks moved, which Word drops with its unmoved cells,
+  and a row whose every paragraph mark is deleted with no mark on the row, which Word
+  drops, running any text left in it on into the next row (verified 2026-09-25). A row
+  with any mark left in place is otherwise read, as Word keeps it. Word 16 records neither a deleted cell nor a
+  deleted column as a tracked change, so a cell marked deleted in its properties
+  (`w:tcPr/w:cellDel`), which the format allows and another program may write, is read
+  as present, and an empty one leaves an empty line.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
@@ -2223,7 +2256,19 @@ Closed since, and why each mattered:
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
   is a join. Rejecting a co-author's change means rejecting it in Word before sending it
   back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
-  the new one, so it is reported rather than applied.
+  the new one, so it is reported rather than applied. A table is the exception: one
+  deleted as a tracked change is still read as a table. Import never deletes a table from
+  the source, so there it still stands between the paragraphs either side of it, and it
+  is held fixed with the others when judging where a paragraph moved. Read as gone, the
+  tables returned no longer lined up with those sent, none was held fixed, and a paragraph
+  dragged below the next table was applied above it (2026-09-25).
+- **A join into or past a table is neither applied nor reported.** A paragraph whose mark
+  was deleted just before a table runs on in Word, into the table's first cell, or past a
+  table deleted whole into the paragraph after it. Import folds a paragraph into the next
+  only when no table stands between them, so it reads the paragraph as it was, unchanged,
+  and the co-author's join is lost without a word. The table is still there to be read,
+  since a deleted table is kept (above); refusing such a paragraph as a join would be the
+  way to report it.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined

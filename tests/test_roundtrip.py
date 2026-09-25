@@ -1368,6 +1368,39 @@ def test_a_figure_reads_as_a_block_of_its_own(tmp_path: Path) -> None:
     assert [(b.names, b.table) for b in found] == [(("mg-p-main-1",), False), ((), True)]
 
 
+def test_a_table_deleted_in_word_still_reads_as_a_table(tmp_path: Path) -> None:
+    """Import never deletes a table from the source, so a table deleted with Track Changes
+    on still stands there, and is still a place a paragraph cannot be moved past. Read as
+    gone, the tables in the returned document no longer lined up with those sent, none of
+    them was held fixed, and a paragraph dragged below the next table was applied above it."""
+    from manuscript_guard.docxtext import blocks as read
+
+    def para(name: str, text: str) -> str:
+        return (
+            f'<w:p><w:bookmarkStart w:id="1" w:name="mg-p-main-{name}"/>'
+            f'<w:bookmarkEnd w:id="1"/><w:r><w:t>{text}</w:t></w:r></w:p>'
+        )
+
+    cell = (
+        '<w:tc><w:p><w:pPr><w:rPr><w:del w:id="3" w:author="a"/></w:rPr></w:pPr>'
+        '<w:del w:id="4" w:author="a"><w:r><w:delText>7</w:delText></w:r></w:del></w:p></w:tc>'
+    )
+    row = f'<w:tr><w:trPr><w:del w:id="2" w:author="a"/></w:trPr>{cell}</w:tr>'
+    body = para("1", "Alpha.") + f"<w:tbl>{row}{row}</w:tbl>" + para("2", "Beta.")
+    document = tmp_path / "deleted-table.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/'
+            f'main"><w:body>{body}</w:body></w:document>',
+        )
+    assert [(b.names, b.table) for b in read(document)] == [
+        (("mg-p-main-1",), False),
+        ((), True),
+        (("mg-p-main-2",), False),
+    ]
+
+
 @pytest.mark.parametrize("dragged", ["beta", "alpha"])
 def test_a_move_past_a_figure_is_reported_not_applied(tmp_path: Path, dragged: str) -> None:
     """Dragged below the figure, Beta was dropped with "nothing came back"; Alpha was

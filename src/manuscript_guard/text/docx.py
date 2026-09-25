@@ -62,7 +62,7 @@ class DocxText:
     body: str
     notes: str
     #: 0-based indexes of the lines of `body` styled as a heading: a line's paragraph, or for
-    #: paragraphs joined by a deleted mark, the last of them.
+    #: paragraphs joined by a mark deleted or moved away, the last of them.
     headings: frozenset[int]
     #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
     #: column header rather than the start of a bibliography.

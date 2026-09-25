@@ -977,8 +977,8 @@ missed:
   citation's bracket would hide a value in its suffix, `@key [reported 9.99]`, as masking a
   bracketed citation whole once hid the one in `[@key, which reported 9.99]`. The audit's
   own rule for a printed marker such as `[12]` no longer takes a `]` before it: with one,
-  `3.40][12]` was a single match, and a bound written hard against the marker went
-  unaudited.
+  `3.40][12]` was a single match, and a bound closed by a bracket and written hard against
+  the marker went unaudited. A value glued to the marker itself still does; see Known gaps.
 - **Table captions and column headers were checked by nothing** — not by the emitter, not by
   `verify`. Both render with the table.
 
@@ -2215,6 +2215,16 @@ Closed since, and why each mattered:
   run wherever it stands, so an identifier written across one, `x]y2`, would be read as
   `y2`; none has been met. A locator with no space inside its bracket, `@key [p.3]/…`, opens
   its own run, so it is not cut and still fails G2 as `p.3]/`; `[p. 3]` passes.
+- **The audit files a value glued to a Vancouver marker as part of the citation.** The
+  `numbered-citation` rule spans the word before a marker, since an atom runs to the next
+  space, and that prefix takes digits so that `2026.1)[15]` and `(2019)[4]` pass. So in
+  `(95% CI 1.20, 9.99)[12]`, `9.99[12]` or `45%[12]` the value is never compared with the
+  outputs, an ordinary way to print a result in a numbered-reference journal. Cutting atoms
+  at a `]` adds spellings such as `3.40]+9.99[12]`, where the whole run used to be reported
+  and `9.99` is now filed with the marker; with a space after the `]` it always was.
+  Narrowing the prefix would report the version and year forms instead. The rule also no
+  longer passes a marker after a one-word bracket, `[SmPC][4]` or `[sic][3]`: that run
+  opens with its own `[`, is not cut, and is reported, a false positive.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

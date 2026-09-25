@@ -19,7 +19,7 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
-from manuscript_guard.build.assemble import check_rules
+from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import ContractError, load_namespace, load_project
 from manuscript_guard.findings import Report, merge_all
@@ -111,7 +111,7 @@ def _run_gates(
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
-        ("BUILD", lambda: check_rules(project)),
+        ("BUILD", lambda: check_shapes(project)),
     ):
         reports.append(_guarded(name, gate))
 

@@ -86,22 +86,24 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
-def test_attributes_over_many_lines_are_read_in_linear_time() -> None:
-    """A fence's `{attributes}` may run on over lines, and a quoted value with them. What
-    reads far: a run of attributes with no `}`, and openers inside another opener's quotes.
-    Each opener is read once, so doubling the input must not much more than double the
-    time."""
-    from manuscript_guard.text.fences import fenced_spans
+def test_unclosed_attributes_are_read_in_linear_time() -> None:
+    """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
+    backslash before each newline read as an escape, took every opener to the end of the
+    text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
+    attributes on its own line and refuse the rest, so doubling the input must not much
+    more than double the time, and the refusal is read in the same pass."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 
     def measure(count: int) -> float:
         text = (
-            "```{.r\n"
+            "```{k=a\\\n" * count
+            + "```{.r\n"
             + ".x k=v\n" * count
-            + '```{k="\n'
             + "".join(f"```{{k='{i}\n" for i in range(count))
         )
         started = time.perf_counter()
         fenced_spans(text)
+        unclear_fence_lines(text)
         return time.perf_counter() - started
 
     small = max(measure(4000), 1e-4)

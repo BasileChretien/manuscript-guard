@@ -1647,32 +1647,41 @@ so a cut in the wrong place shows.
 The fence reader split lines with Python's `splitlines`, which also breaks at a vertical
 tab, a form feed, U+001C to U+001E, U+0085, U+2028 and U+2029, and it took a closing
 fence's surroundings off with `str.strip`, which removes every Unicode space. Pandoc breaks
-a line at a newline alone and deletes a carriage return wherever it stands, so `found\rit.` prints as
-`foundit.`. So `We found it.`, a form feed and three backticks opened a listing to the gates
-that pandoc never made, and every gate stopped reading at it. A YAML block in there escaped
-the `rule-opens-a-block` refusal, and its `title:` replaced paper.yaml's.
+a line at a newline alone and deletes a carriage return wherever it stands, so `found\rit.`
+prints as `foundit.`. So `We found it.`, a form feed and three backticks opened a listing to
+the gates that pandoc never made, and every gate stopped reading at it. A YAML block in
+there escaped the `rule-opens-a-block` refusal, and its `title:` replaced paper.yaml's.
 
 Asking pandoc about every fence line turned up more of the same. Pandoc closes a fence on up
-to three spaces, the run, and nothing after it but spaces and tabs. A tab before it is
-indented code, since pandoc expands tabs to four columns, and a no-break space after it
-leaves the block open; the gates closed on both, and their next fence paired with the one
-after it, taking the prose between. Pandoc opens one on an optional language word and an
-optional `{attributes}`, then spaces and tabs, or a raw `{=format}`. `r foo`, `{.r} x`, and
-R Markdown's `{r, echo=FALSE}` open nothing: pandoc prints the lines, code and all. A word
-ends at Haskell's idea of a space, which takes in the no-break space and U+3000 but not
-U+0085 or U+2028, and holds no backtick or brace. The attributes are `#id`, `.class`,
-`key=value` and `-`, read in that order, the first that fits kept. They may run on over
-lines, and a quoted value with them, while no line between is blank. A name starts with a
-letter as `str.isalpha` has it, the Unicode categories of Haskell's `isAlpha`; a regex's
-`\w` would have taken a superscript digit for a letter, and `{.²x}` opens nothing.
+to three spaces, the run, and nothing after it but spaces and tabs; a tab or a no-break
+space in front, or a no-break space after, makes a line inside the listing, where the gates
+closed on it and paired their next fence with the one after it, taking the prose between.
+Pandoc opens one on an optional language word and an optional `{attributes}`, then spaces
+and tabs, or a raw `{=format}`. A word ends at Haskell's idea of a space, which takes in
+the no-break space and U+3000 but not U+0085 or U+2028, and holds no backtick or brace. The
+attributes are `#id`, `.class`, `key=value` and `-`, read in that order, the first that
+fits kept; a class and a key start with a letter as `str.isalpha` has it, the Unicode
+categories of Haskell's `isAlpha`, where `\w` would have taken a superscript digit for one.
 
-`fenced_spans` now reads lines that way, and `tests/test_pandoc_agreement.py` asks pandoc
-about 116 fenced shapes, 60 of which the old reader got wrong. The manuscript is read with
-`read_text`, which makes a lone carriage return a newline before the gates or the build see
-it; the reader agrees with pandoc either way. The front matter is split with `splitlines`
-still, in the masking and in the build's title check, and that is right: pandoc's YAML
-breaks a line at U+0085, U+2028 and U+2029 as well, and refuses the document outright over
-a vertical tab, a form feed or U+001C.
+That much is read. The rest was modelled once and review found it wrong eight ways, the
+worst new: `{r setup}`, an R Markdown chunk header, opens nothing in pandoc, which prints
+the chunk as inline code running to its closer; the gates, rejecting the opener as pandoc
+does, took the closer for an opener and read to the next chunk, hiding the prose between.
+Pandoc also opens a backtick fence under a line of text but not a tilde one or an indented
+one, and reads attributes on over lines while none is blank. So a fence is read only in its
+plain form, a listing opened under a blank line, the first line or another listing's
+closer, with its word and attributes on the opening line, and closed; any other line
+starting with three backticks or tildes, behind up to three spaces or behind anything but
+spaces and tabs, is refused (`unclear-fence`), by `check` and by the build. Past three
+spaces or a tab, pandoc reads indented code or a list item's listing, and the gates read
+the lines as text, which is the safe side. `tests/test_pandoc_agreement.py` asks pandoc
+about 128 fenced shapes: the old reader got 63 wrong, and now 120 agree and 8 are refused.
+
+The manuscript is read with `read_text`, which makes a lone carriage return a newline
+before the gates or the build see it; the reader agrees with pandoc either way. The front
+matter is split with `splitlines` still, in the masking and in the build's title check, and
+that is right: pandoc's YAML breaks a line at U+0085, U+2028 and U+2029 as well, and
+refuses the document outright over a vertical tab, a form feed or U+001C.
 
 ## Known gaps
 
@@ -2150,6 +2159,12 @@ Closed since, and why each mattered:
   indented code, hides every rule up to the next `-->`, a YAML block's included, and a
   `title:` in that block replaces paper.yaml's. It is the inline-code comment gap above, one
   consequence further on.
+- **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
+  starts with a letter, and Python 3.12 knows Unicode 15.0 where pandoc 3.9 knows 15.1: a
+  class starting with one of the 622 letters added between, CJK Extension I, opens a fence
+  to pandoc alone, and the line is refused. The other way, a Python newer than pandoc would
+  take a letter pandoc does not, and open a fence pandoc prints as text. Nobody names a
+  class in those letters by accident.
 - **A title continuing a paragraph over `===` is still read as a heading.** Pandoc reads
   `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1 Methods
   heading; the refusal covers the same misread only for underlines of dashes. The heading

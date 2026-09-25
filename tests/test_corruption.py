@@ -1477,11 +1477,97 @@ def test_the_gates_read_prose_that_no_fence_of_pandocs_holds(name: str) -> None:
     """The fence reader split lines where Python does, at a form feed and six other
     characters as well as a newline, and stripped every Unicode space off a closer. Pandoc
     does neither, so prose it printed was a listing to every gate, and G2 read no number in
-    it."""
+    it. Now the gates read it, or the shape is refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
     from manuscript_guard.text.masking import mask
 
     text = f"# Results\n\nWe found it.\n\n{_NOT_A_FENCE[name]}\nThe end.\n"
-    assert "9.99" in mask(text)
+    assert "9.99" in mask(text) or unclear_fence_lines(text)
+
+
+_CHUNK = (
+    f"{_TICKS}{{r setup}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n\n"
+    f"{_TICKS}{{r plot}}\ny <- 2\n{_TICKS}\n"
+)
+# Fences pandoc may not open, or may pair otherwise than the gates.
+_UNCLEAR_FENCES = [
+    # Found by review: pandoc opens no fence on an R Markdown chunk header, and its closer
+    # then opened one to the gates that ran to the next chunk, over the prose between.
+    _CHUNK,
+    _CHUNK.replace(_TICKS, "~~~"),
+    _CHUNK.replace("{r setup}", "{r, echo=FALSE}"),
+    _CHUNK.replace("{r setup}", "r see below"),
+    _CHUNK.replace("{r setup}", "{.r} x"),
+    _CHUNK.replace("{r setup}", 'python title="x"'),
+    # Attributes over two lines pandoc may or may not close.
+    f"{_TICKS}{{.r\n{_TICKS}\n}}\nBody.\n{_TICKS}\n\n{_PRINTED}\n",
+    f"{_TICKS}{{.r\n.x}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n",
+    # A tilde fence, or an indented one, cannot interrupt a paragraph; a backtick one can.
+    f"We used a line:\n~~~\n\n{_PRINTED}\n\n~~~r\ny\n~~~\n",
+    f"We used a line:\n  {_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"We used a line:\n{_TICKS}r\nx\n{_TICKS}\n",
+    # Something other than a space in front of the fence: pandoc reads text.
+    f"{chr(0xFEFF)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"{chr(0xA0)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    # An opener with no closer, and a closer with no opener.
+    f"{_TICKS}r\nx <- 1\n\n{_PRINTED}\n",
+    f"{_PRINTED}\n\n{_TICKS}\n",
+]
+
+
+@pytest.mark.parametrize("block", _UNCLEAR_FENCES)
+def test_a_fence_pandoc_may_not_open_is_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
+
+
+def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, capsys) -> None:
+    """Two chunks and prose between: the gates hid the prose, and pandoc printed it."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{_CHUNK}", encoding="utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-fence" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "not a plain fenced listing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        f"{_TICKS}\nx <- 1\n{_TICKS}\n",
+        "~~~ {.r .numberLines}\nx <- 1\n~~~~\n",
+        f"{_TICKS}{{=openxml}}\n<w:p/>\n{_TICKS}\n",
+        f"{_TICKS}{{#1 .r}}\nx <- 1\n{_TICKS}\n",
+        # Back to back, the second under the first's closer.
+        f"{_TICKS}r\nx\n{_TICKS}\n{_TICKS}python\ny\n{_TICKS}\n",
+        # A listing of Markdown, fences and all.
+        f"````md\n{_TICKS}r\nx\n{_TICKS}\n````\n",
+        # Inline code, and a listing in a list item, indented four columns.
+        f"Use {_TICKS}x{_TICKS} here.\n",
+        f"1. Run this:\n\n    {_TICKS}r\n    x <- 1\n    {_TICKS}\n",
+    ],
+)
+def test_a_plain_fence_is_not_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
+def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:
+    """Pandoc reads `{ =openxml}` as a raw block, whose text reaches the reader as formatted
+    prose; the gate took it for a listing in no known language and only warned."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = f"# Results\n\n{_TICKS}{{ =openxml}}\n<w:p/>\n{_TICKS}\n"
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "raw-block" in {f.code for f in report.findings}
 
 
 def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:

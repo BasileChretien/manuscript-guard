@@ -25,7 +25,7 @@ import subprocess
 
 import pytest
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.sections import headings
 
@@ -175,7 +175,7 @@ _INFOS = [
     "{.r k=a\\}b}", "{.r k=a\\ b}", "{.r k=a\\bc}", '{.r k="a\\"b"}', '{.r k="a\\\\"}',
     "{.r k=a\\é}", "{.é}", "{.x²}", "{.²x}", "{.2x}", "{r}", "{r, echo=FALSE}",
     "{r echo=FALSE}", "{.r} x", "{.r}x", "{.r}}", "{.r", "{=html}", " {=html} ", "{= html}",
-    "{=openxml} x",
+    "{=openxml} x", "{ =openxml}", "{#1 .r}", "{#1}", "{#_x}", "{#-x}", "{#.x}", "{#}",
 ]
 FENCE_CASES.update(
     {
@@ -184,6 +184,20 @@ FENCE_CASES.update(
             for info in _INFOS
         },
         "tilde opener with a backtick": "Prose.\n\n~~~r`x\nProse 9.99.\n~~~\n\nEnd.\n",
+        # A chunk header pandoc rejects, and its closer, which then paired with the next.
+        "two R Markdown chunks": (
+            f"{FENCE}{{r setup}}\nx <- 1\n{FENCE}\n\nProse 9.99.\n\n{FENCE}{{r plot}}\ny\n{FENCE}\n"
+        ),
+        # Straight under a line of text: pandoc opens a backtick fence there, not a tilde one
+        # or an indented one.
+        "backtick fence under a line": f"We used:\n{FENCE}r\nProse 9.99.\n{FENCE}\n",
+        "tilde fence under a line": "We used:\n~~~\n\nProse 9.99.\n\n~~~r\ny\n~~~\n",
+        "indented fence under a line": (
+            f"We used:\n  {FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
+        "fence behind a byte-order mark": (
+            f"{chr(0xFEFF)}{FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
         # Pandoc lets attributes, and a quoted value, run on while no line between is blank.
         **{
             f"attributes over lines {opener!r}": (
@@ -302,6 +316,8 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
 
     Asked as "is the prose after the block inside code, according to each of us?" rather
     than by comparing spans, because pandoc reports content and the toolkit reports offsets.
+    A fence the toolkit does not claim to read as pandoc does is refused instead
+    (`unclear_fence_lines`), so either the two agree or `check` and the build stop.
     """
     markdown = FENCE_CASES[name]
     in_code_for_pandoc = "9.99" in pandoc_code_text(markdown)
@@ -312,7 +328,7 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
             masked[index] = " "
     in_code_for_toolkit = "9.99" not in "".join(masked)
 
-    assert in_code_for_toolkit == in_code_for_pandoc, (
+    assert in_code_for_toolkit == in_code_for_pandoc or unclear_fence_lines(markdown), (
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
-        f"code block; the toolkit thinks the opposite"
+        f"code block; the toolkit thinks the opposite, and does not refuse the fence"
     )

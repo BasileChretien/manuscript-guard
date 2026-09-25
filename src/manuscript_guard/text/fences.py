@@ -42,9 +42,7 @@ after it. Either way prose that printed was code to every gate.
 from __future__ import annotations
 
 import re
-from bisect import bisect_right
 from dataclasses import dataclass
-from itertools import accumulate
 
 # Up to three spaces of indent; four would be an indented code block, not a fence. A tab
 # in the indent reaches column four, since pandoc expands tabs to four columns first.
@@ -61,10 +59,16 @@ _SPACES = frozenset(
 _WORD = re.compile("[^`{}" + re.escape("".join(sorted(_SPACES))) + "]+")
 # A raw block's `{=format}`.
 _RAW = re.compile(r"\{[ \t]*=[\w-]+[ \t]*\}")
-# An unquoted attribute value. A backslash escapes whatever is not a letter or a digit, a
-# space included, as pandoc's `all_symbols_escapable` has it; before one it is a backslash.
-_BARE_VALUE = re.compile(r"(?:\\[\W_]|[^ \t\n}])*")
+# An unquoted attribute value. A backslash escapes whatever is not a letter or a digit, as
+# pandoc's `all_symbols_escapable` has it; before anything else it is a backslash.
+_BARE_VALUE = re.compile(r"(?:\\[\W_]|[^ \t}])*")
 _BLANKS = re.compile(r"[ \t]*")
+# What may stand in front of a line of backticks or tildes. Past three spaces, or a tab, it
+# is indented code or a list item's listing, which the gates read as text; anything else
+# there, a no-break space or a byte-order mark, makes a line pandoc may not read as a fence.
+_LEAD = re.compile(
+    "[\\s" + "".join(chr(code) for code in (0xFEFF, 0x200B, 0x200C, 0x200D, 0x2060)) + "]*"
+)
 
 
 @dataclass(frozen=True)
@@ -72,7 +76,7 @@ class Fence:
     """One fenced block, as offsets into the original text."""
 
     start: int  # first character of the opening line
-    body_start: int  # first character after the opener, whose attributes may take lines
+    body_start: int  # first character after the opening line's newline
     body_end: int  # first character of the closing line, or end of text
     end: int  # first character after the block
     info: str  # the info string, e.g. "python" or "{=openxml}"
@@ -90,9 +94,10 @@ class Fence:
         Not a listing at all — pandoc splices its contents into the output format verbatim,
         so the text inside reaches the reader as formatted prose. Reporting it as "a
         language with no lexer" was actively misleading: the advice was to tag the fence,
-        which would have made it quieter still.
+        which would have made it quieter still. Pandoc allows spaces inside the braces, so
+        `{ =openxml}` is one too.
         """
-        return self.info.strip().startswith("{=")
+        return _RAW.fullmatch(self.info.strip(" \t")) is not None
 
 
 def _bare(line: str) -> str:
@@ -114,110 +119,96 @@ def _closes(line: str, char: str, width: int) -> bool:
     return run >= width and not bare[run:].strip(" \t")
 
 
-# The attributes are read over the whole text, with carriage returns deleted: pandoc lets
-# them run on to the next line, and a value's quotes too, while no line between is blank.
+# Pandoc lets an opener's attributes run on to the next lines. The gates read them on the
+# opening line alone and refuse the rest (`unclear_fence_lines`).
 
 
-def _blank_from(clean: str, at: int) -> bool:
-    """Is the line that starts at `at` blank, or the text over?"""
-    at = _BLANKS.match(clean, at).end()
-    return at == len(clean) or clean[at] == "\n"
-
-
-def _spaces_and_a_newline(clean: str, at: int) -> int | None:
-    """Past spaces and tabs and at most one newline, or None at a blank line."""
-    at = _BLANKS.match(clean, at).end()
-    if clean.startswith("\n", at):
-        if _blank_from(clean, at + 1):
-            return None
-        at = _BLANKS.match(clean, at + 1).end()
-    return at
-
-
-def _quote_end(clean: str, at: int) -> int | None:
+def _quote_end(info: str, at: int) -> int | None:
     """Where a value quoted from `at` ends, as pandoc's `enclosed` reads it: no space just
-    inside the opening quote, a backslash escaping what is not a letter or a digit, no
-    blank line."""
-    quote = clean[at]
-    if clean[at + 1 : at + 2] in _SPACES:
+    inside the opening quote, a backslash escaping what is not a letter or a digit."""
+    quote = info[at]
+    if info[at + 1 : at + 2] in _SPACES:
         return None
     position = at + 1
-    while position < len(clean):
-        char = clean[position]
-        escaped = clean[position + 1 : position + 2]
-        if char == "\\" and escaped and not escaped.isalnum():
+    while position < len(info):
+        escaped = info[position + 1 : position + 2]
+        if info[position] == "\\" and escaped and not escaped.isalnum():
             position += 2
-        elif char == quote:
+        elif info[position] == quote:
             return position + 1
-        elif char == "\n" and _blank_from(clean, position + 1):
-            return None
         else:
             position += 1
     return None
 
 
-def _identifier_end(clean: str, at: int) -> int | None:
-    """Where an attribute's name from `at` ends: a letter, then letters, digits and `-_:.`.
-    Python's `isalpha` and `isalnum` take the Unicode categories Haskell's do; its `\\w`
-    would take a superscript digit for a letter."""
-    if not clean[at : at + 1].isalpha():
+def _name_end(info: str, at: int, *, letter_first: bool) -> int | None:
+    """Where an attribute's name from `at` ends: letters, digits and `-_:.`, a class's and a
+    key's starting with a letter. Python's `isalpha` and `isalnum` take the Unicode
+    categories Haskell's do; `\\w` would take a superscript digit for a letter."""
+    start = at
+    if letter_first and not info[at : at + 1].isalpha():
         return None
-    at += 1
-    while at < len(clean) and (clean[at].isalnum() or clean[at] in "-_:."):
+    while at < len(info) and (info[at].isalnum() or info[at] in "-_:."):
         at += 1
-    return at
+    return at if at > start else None
 
 
-def _attribute_end(clean: str, at: int) -> int | None:
+def _attribute_end(info: str, at: int) -> int | None:
     """Where one attribute from `at` ends: `#id`, `.class`, `key=value` or `-`. Each is
     tried in turn and the first that reads is kept, as pandoc's parser does."""
-    if clean[at : at + 1] in ("#", "."):
-        return _identifier_end(clean, at + 1)
-    name = _identifier_end(clean, at)
-    if name is not None and clean.startswith("=", name):
+    if info.startswith("#", at):
+        return _name_end(info, at + 1, letter_first=False)
+    if info.startswith(".", at):
+        return _name_end(info, at + 1, letter_first=True)
+    name = _name_end(info, at, letter_first=True)
+    if name is not None and info.startswith("=", name):
         value = name + 1
-        if clean[value : value + 1] in ('"', "'"):
-            quoted = _quote_end(clean, value)
+        if info[value : value + 1] in ('"', "'"):
+            quoted = _quote_end(info, value)
             if quoted is not None:
                 return quoted
-        return _BARE_VALUE.match(clean, value).end()
-    return at + 1 if clean.startswith("-", at) else None
+        return _BARE_VALUE.match(info, value).end()
+    return at + 1 if info.startswith("-", at) else None
 
 
-def _attributes_end(clean: str, at: int) -> int | None:
+def _attributes_end(info: str, at: int) -> int | None:
     """Where `{attributes}` from `at` end, or None where pandoc reads none. An attribute
     that does not read ends the list, and then only `}` may follow."""
-    position = _spaces_and_a_newline(clean, at + 1)
-    while position is not None:
-        after = _attribute_end(clean, position)
-        if after is None:
-            break
-        position = _spaces_and_a_newline(clean, after)
-    if position is None or not clean.startswith("}", position):
-        return None
-    return position + 1
+    position = _BLANKS.match(info, at + 1).end()
+    while (after := _attribute_end(info, position)) is not None:
+        position = _BLANKS.match(info, after).end()
+    return position + 1 if info.startswith("}", position) else None
 
 
-def _opener_end(clean: str, at: int) -> int | None:
-    """Where the opening fence whose info starts at `at` ends, or None where pandoc 3.9
-    opens no fence. Spaces and tabs, then a raw `{=format}`, or a language word and
-    `{attributes}`, either or both, then spaces and tabs to the end of the line. So
-    `r foo`, `{r, echo=FALSE}` and `{.r} x` open none: pandoc prints the lines as text."""
-    at = _BLANKS.match(clean, at).end()
-    raw = _RAW.match(clean, at)
+def _info_opens(info: str) -> bool:
+    """Does pandoc 3.9 open a fence with `info` after it, on the line? Spaces and tabs,
+    then a raw `{=format}`, or a language word and `{attributes}`, either or both, then
+    spaces and tabs. `r foo`, `{r, echo=FALSE}` and `{.r} x` open none: pandoc prints the
+    lines as text, or as inline code running to the closer."""
+    at = _BLANKS.match(info).end()
+    raw = _RAW.match(info, at)
     if raw:
         at = raw.end()
     else:
-        word = _WORD.match(clean, at)
+        word = _WORD.match(info, at)
         if word:
-            at = _BLANKS.match(clean, word.end()).end()
-        if clean.startswith("{", at):
-            end = _attributes_end(clean, at)
+            at = _BLANKS.match(info, word.end()).end()
+        if info.startswith("{", at):
+            end = _attributes_end(info, at)
             if end is None:
-                return None
+                return False
             at = end
-    at = _BLANKS.match(clean, at).end()
-    return at if at == len(clean) or clean[at] == "\n" else None
+    return not info[at:].strip(" \t")
+
+
+def _fence_like(bare: str) -> bool:
+    """Does the line start with three backticks or tildes, behind nothing pandoc takes for
+    indentation past a fence's? Up to three spaces, or anything but spaces and tabs."""
+    lead = _LEAD.match(bare).end()
+    if not bare.startswith(("```", "~~~"), lead):
+        return False
+    indent = bare[:lead]
+    return indent.strip(" \t") != "" or ("\t" not in indent and len(indent) <= 3)
 
 
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
@@ -232,14 +223,44 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
     `begin`, the start of a line, is where the body starts: no fence opens in the front
     matter before it (see `masking.front_matter_end`). Offsets are still into `text`.
     """
-    found: list[Fence] = []
-    offset = begin
+    lines = _LINE.findall(text, begin)
+    return [fence for _first, _last, fence in _listings(lines, [_bare(x) for x in lines], begin)]
+
+
+def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
+    """The lines, numbered from 1, of each line from `begin` that starts with three
+    backticks or tildes and is not a plain fenced listing's, nor inside one.
+
+    A plain listing opens under a blank line, the first line or another listing's closer,
+    with at most a language word and one-line `{attributes}` after its fence, and closes.
+    Pandoc opens no fence on an R Markdown chunk header, `{r, echo=FALSE}`, and prints the
+    lines as inline code running to the closer, which then opened a listing to the gates
+    that ran on to the next chunk, over the prose between. Nor does it open a tilde fence,
+    or an indented one, under a line of text, where it does open a backtick one, and it
+    reads attributes on over lines while no line is blank. Modelling each of those grew a
+    reader review kept finding wrong, so the gates read the plain listing and refuse the
+    rest: a line pandoc may read otherwise is never left for them to guess at.
+    """
     lines = _LINE.findall(text, begin)
     bares = [_bare(line) for line in lines]
-    # The lines as pandoc reads them, one to one with `lines`: a deleted carriage return
-    # never takes a newline with it.
-    clean = "\n".join(bares)
-    starts = list(accumulate((len(bare) + 1 for bare in bares), initial=0))
+    listings = _listings(lines, bares, begin)
+    closers = {last for _first, last, _fence in listings}
+    inside: set[int] = set()
+    for first, last, _fence in listings:
+        if first == 0 or not bares[first - 1].strip(" \t") or first - 1 in closers:
+            inside.update(range(first, last + 1))
+    above = text.count("\n", 0, begin)
+    return [
+        above + index + 1
+        for index, bare in enumerate(bares)
+        if index not in inside and _fence_like(bare)
+    ]
+
+
+def _listings(lines: list[str], bares: list[str], begin: int) -> list[tuple[int, int, Fence]]:
+    """Each fenced block with the indexes, in `lines`, of its opening and closing lines."""
+    found: list[tuple[int, int, Fence]] = []
+    offset = begin
     index = 0
 
     # Openers proven to have no closer, by fence character. Without this the scan is
@@ -264,19 +285,17 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
         fence = opener.group("fence")
         # A backtick in the language word makes the line inline code or text, not a fence,
         # but one in an attribute's value does not: pandoc reads ```{.r k=a`b} as a fence.
-        info_start = starts[index] + opener.start("info")
-        info_end = _opener_end(clean, info_start)
-        if info_end is None or len(fence) >= dead.get(fence[0], 1 << 30):
+        if not _info_opens(opener.group("info")) or len(fence) >= dead.get(
+            fence[0], 1 << 30
+        ):
             offset += len(line)
             index += 1
             continue
 
         start = offset
         closed_from = index
-        # Attributes run on over newlines take the lines they are on into the opener.
-        last = bisect_right(starts, info_end) - 1
-        offset += sum(len(taken) for taken in lines[index : last + 1])
-        index = last + 1
+        offset += len(line)
+        index += 1
         body_start = offset
 
         while index < len(lines) and not _closes(bares[index], fence[0], len(fence)):
@@ -296,12 +315,16 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
         index += 1
 
         found.append(
-            Fence(
-                start=start,
-                body_start=body_start,
-                body_end=body_end,
-                end=offset,
-                info=opener.group("info"),
+            (
+                closed_from,
+                index - 1,
+                Fence(
+                    start=start,
+                    body_start=body_start,
+                    body_end=body_end,
+                    end=offset,
+                    info=opener.group("info"),
+                ),
             )
         )
 
@@ -318,4 +341,4 @@ def blank_fences(text: str) -> str:
     return "".join(chars)
 
 
-__all__ = ["Fence", "blank_fences", "fenced_spans"]
+__all__ = ["Fence", "blank_fences", "fenced_spans", "unclear_fence_lines"]

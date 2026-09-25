@@ -281,13 +281,14 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
-def _unexamined(document: Path, identified: int) -> str:
+def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     """How much of the returned document this command could not look at.
 
-    Import compares paragraphs that carry an identifier. Table cells, headings, captions and
-    any paragraph the co-author newly wrote carry none, so an edit to one is not merged, not
-    refused, and not reported - it simply does not exist as far as the tool is concerned.
-    A co-author who corrects a number in a table has every reason to believe it landed.
+    Import compares paragraphs that carry an identifier. Table cells, headings, captions,
+    list items, block quotes and any paragraph the co-author newly wrote carry none, so an
+    edit to one is not merged and not refused. Outside tables such an edit is at least
+    listed; inside one it is only counted here. A co-author who corrects a number in a table
+    has every reason to believe it landed.
     """
     import re as _re
     import zipfile as _zip
@@ -303,8 +304,14 @@ def _unexamined(document: Path, identified: int) -> str:
         return ""
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
-        f"not compared: table cells, headings, captions, and anything newly written. An "
-        f"edit to one of those is not reported here."
+        f"not compared: table cells, headings, captions, list items, block quotes, and "
+        f"anything newly written. "
+        + (
+            "Those outside tables that changed are listed above; "
+            if listed
+            else "None outside a table changed; "
+        )
+        + "an edit inside a table is not reported at all."
     )
 
 
@@ -383,7 +390,20 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             return 2
         sent = read_blocks(reference)
-        marked = read_blocks(tokens)
+        # The marked build is this command's own, not a document anyone sent, and a failure
+        # to read it once stopped the import of every paragraph over a file the author had
+        # never seen. Without it no token has a position: a reworded paragraph holding a
+        # binding or citation is refused, and every other change is still examined.
+        try:
+            marked: list | None = read_blocks(tokens)
+        except RoundTripError as exc:
+            print(
+                f"manuscript-guard: {exc}. That is the build import reads where each binding "
+                f"and citation sits from, so no reworded paragraph holding a binding or "
+                f"citation can be merged this time; each is refused below. Please report it.",
+                file=sys.stderr,
+            )
+            marked = None
 
     try:
         returned = read_blocks(edited)
@@ -395,10 +415,15 @@ def cmd_import(args: argparse.Namespace) -> int:
     plan = plan_import(known, sent, returned, marked, abbreviated)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
-    # cells, headings, captions, the reference list, and anything the co-author newly wrote
-    # - is invisible to this command, and saying nothing about that let a co-author believe
-    # they had corrected a table when the correction went nowhere.
-    unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
+    # cells, headings, captions, list items, block quotes, the reference list, and anything
+    # the co-author newly wrote - is invisible to this command, and saying nothing about
+    # that let a co-author believe they had corrected a table when the correction went
+    # nowhere.
+    unexamined = _unexamined(
+        edited,
+        sum(1 for b in returned if b.names and not b.table),
+        listed=bool(plan.unidentified or plan.vanished or plan.reordered),
+    )
 
     if plan.empty and not comments:
         print("nothing came back: the document matches the manuscript on disk.")
@@ -433,9 +458,15 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
-        not args.apply and bool(plan.moved or plan.merged)
-    )
+    outstanding = bool(
+        plan.refused
+        or plan.gone
+        or plan.joined
+        or plan.misplaced
+        or plan.unidentified
+        or plan.vanished
+        or plan.reordered
+    ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
 
 
@@ -453,9 +484,34 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table or a figure, or into another "
-            "file, changes how many paragraphs a section holds, and import only reorders "
-            "within one; move it in the .md yourself."
+            "    Not applied. A move past a heading, a table, a figure, a list, a quotation "
+            "or anything else without an identifier, or into another file, changes how many "
+            "paragraphs a section holds, and import only reorders within one; move it in the "
+            ".md yourself."
+        )
+
+    if plan.unidentified or plan.vanished or plan.reordered:
+        if plan.reordered:
+            print(
+                "\nParagraphs without an identifier - headings, list items, quotations, "
+                "captions - came back in a different order, and were not compared:"
+            )
+        else:
+            print(
+                f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
+                f"an identifier - a heading, a list item, a quotation, a caption or new "
+                f"text - came back different and were not compared:"
+            )
+        for text in plan.vanished[:12]:
+            print(f"    - {text[:120]}")
+        for text in plan.unidentified[:12]:
+            print(f"    + {text[:120]}")
+        for text in plan.reordered[:12]:
+            print(f"    ~ {text[:120]}")
+        print(
+            "    Not applied; make these edits in the .md. They also mark where sections "
+            "begin, so a paragraph moved past one of them may not be reported as moved: "
+            "compare the two documents as text before trusting the rest."
         )
 
     if plan.moved:

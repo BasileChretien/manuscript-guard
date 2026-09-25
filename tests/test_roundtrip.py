@@ -458,6 +458,30 @@ def test_a_definition_under_a_line_pandoc_does_not_take_for_blank_is_marked(
     assert all("mg-p-" in json.dumps(paragraph) for paragraph in paragraphs)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "space", [chr(0xA0), chr(0x3000), chr(12)], ids=["no-break", "full-width", "form-feed"]
+)
+def test_a_definition_under_an_empty_line_below_a_line_of_spaces_is_left_alone(
+    space: str, tmp_path: Path
+) -> None:
+    """Only the line directly above counts. With such a line and then an empty one, the
+    definition starts a block to pandoc; judged by the whole run, it was marked, printed as
+    text, and its link resolved nowhere."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"See [reg] for details.\n\n{space}\n\n[reg]: {REGISTRY}\n"
+    tagged = tag(text, "main.md")
+    assert tagged.endswith(f"\n\n[reg]: {REGISTRY}\n"), tagged
+    source = tmp_path / "a.md"
+    source.write_text(tagged, encoding="utf-8")
+    subprocess.run(["pandoc", str(source), "-o", str(tmp_path / "a.docx")], check=True)
+    rels = _docx_part(tmp_path / "a.docx", "word/_rels/document.xml.rels")
+    assert f'Target="{REGISTRY}"' in rels
+
+
 def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
     from the stripped block in one and the raw block in the other, a definition ending in a
@@ -467,6 +491,7 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     from manuscript_guard.roundtrip import tag, tagged_paragraphs
 
     text = "\n\n".join(param.values[0] for param in BLOCKS)
+    text += f"\n\n{chr(0x3000)}\n\n[later]: {REGISTRY}"
     text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}\n"
     (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
     loaded, _report = load_project(project)
@@ -477,7 +502,8 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     }
     marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "definitions.md")))
     assert marked == known
-    # Every block that is not a definition, and the definition under the full-width space.
+    # Every block that is not a definition, and the definition directly under the full-width
+    # space; not the one with an empty line between.
     expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 1
     assert len(marked) == expected
 

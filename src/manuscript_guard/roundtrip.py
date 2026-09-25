@@ -279,6 +279,16 @@ def _only_definitions(block: str) -> bool:
     return all(_NOTE_LINE.fullmatch(line) for line in lines[links:])
 
 
+def _blank_above(above: str) -> bool:
+    """Whether the line directly above a block is blank to pandoc too: empty, or spaces and
+    tabs. `above` is the whole run the split took for blank, and a line in it holding a
+    no-break or full-width space, or a form feed, is text to pandoc. Only the last line of
+    the run matters: under a full-width space and then an empty line, a block starts
+    afresh."""
+    lines = above.split("\n")
+    return len(lines) < 2 or lines[-2].strip(" \t") == ""
+
+
 def _untagged(block: str, above: str) -> bool:
     """Headings, fences, link and footnote definitions, and a lone placeholder (which
     becomes a table or a figure). `above` is what separates the block from the one before
@@ -293,7 +303,7 @@ def _untagged(block: str, above: str) -> bool:
         # pandoc too takes for blank: one holding a no-break or full-width space, or a form
         # feed, separates blocks here, while pandoc read it and the definition under it as
         # a paragraph.
-        or (above.strip(" \t\n") == "" and _only_definitions(block))
+        or (_blank_above(above) and _only_definitions(block))
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 

@@ -747,10 +747,11 @@ def test_part_of_a_citation_ending_a_paragraph_deleted_is_a_changed_citation() -
 
 
 #: Prose that is also inside a token beside it. The extents were once guessed by looking for
-#: each stretch of the source's prose in the rendered text, where it was first found: " - "
-#: as the first date's own hyphen, "." as the one after "al", " and " as the one inside the
-#: citation. Every edit here was refused on that guess, and each one merges. Where pandoc
-#: reads "et al." as Markdown it puts U+00A0 after it, and Word's text keeps the character.
+#: each stretch of the source's prose, stripped, in the rendered text, where it was first
+#: found: the "-" of " - " as the first date's own hyphen, "." as the one after "al", "and"
+#: as the one inside the citation. Every edit here was refused on that guess, and each one
+#: merges. Pandoc's citeproc prints a plain space after "al."; the U+00A0 case stands for a
+#: citation style that prints a no-break space there, which Word's text keeps.
 INSIDE_A_TOKEN = [
     pytest.param(
         "The study ran {{results.start}} - {{results.end}} in total.",
@@ -814,18 +815,13 @@ INSIDE_CHANGED = [
     ),
 ]
 
-#: What the build fills each binding in with, and each citation as Word showed it.
+#: What the build fills each binding in with.
 INSIDE_VALUES = {
     "results.start": "2015-01-01",
     "results.end": "2024-12-31",
     "results.ci": "(1.2-3.4)",
     "results.n": "3.84",
     "results.x": "3.84",
-}
-INSIDE_CITED = {
-    "(Smith et al. 2020)": "[@smith2020]",
-    "(Smith et al.\u00a02020)": "[@smith2020]",
-    "(Lee, Park, and Kim 2021)": "[@lee2021]",
 }
 
 
@@ -853,32 +849,9 @@ def test_a_changed_token_is_named_whole(
     assert aligned.changed == changed
 
 
-@needs_pandoc
-@pytest.mark.parametrize(("source", "marked", "returned", "expected"), INSIDE_A_TOKEN)
-def test_prose_found_inside_a_token_prints_as_typed(
-    source: str, marked: str, returned: str, expected: str, tmp_path: Path
-) -> None:
-    import subprocess
-
-    from manuscript_guard.roundtrip import paragraph_text
-    from manuscript_guard.text.placeholders import substitute
-
-    # Each binding filled in as the build fills it; the citation left for pandoc to read,
-    # which without a bibliography prints it as it is written.
-    out = merged(source, marked, returned)
-    assert out is not None, "refused"
-    path = tmp_path / "a.md"
-    path.write_text(f"[]{{#mg-p-x-0}}{substitute(out, INSIDE_VALUES)}\n", encoding="utf-8")
-    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
-    printed = paragraph_text(tmp_path / "a.docx")["mg-p-x-0"]
-    typed = returned
-    for shown, cited in INSIDE_CITED.items():
-        typed = typed.replace(shown, cited)
-    assert printed == typed
-
-
-#: Just enough of a citation style to print the citations above as they are shown. Pandoc's
-#: own Chicago style puts "et al." after the first of three authors, so "and" is not in it.
+#: Just enough of a citation style to print the citations above as they are shown. The
+#: Chicago style pandoc 3.9 ships puts "et al." after the first of three authors, so "and"
+#: is not in it.
 INSIDE_CSL = """<?xml version="1.0" encoding="utf-8"?>
 <style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
   <info><title>Test</title><id>test</id><updated>2026-01-01T00:00:00+00:00</updated></info>
@@ -934,7 +907,8 @@ def cited_build(markdown: str, folder: Path) -> list:
 @pytest.fixture(scope="module")
 def inside_built(tmp_path_factory: pytest.TempPathFactory) -> dict:
     """Each source above built as import builds it, once plain and once with every token
-    bookmarked: the paragraph's text as sent, and the paragraph as the marked build reads."""
+    bookmarked, and the paragraph as the marked build reads it. Marking must change nothing
+    a co-author sees, or the extents describe text that was never sent."""
     from manuscript_guard.roundtrip import tag
     from manuscript_guard.text.placeholders import substitute
 
@@ -947,10 +921,10 @@ def inside_built(tmp_path_factory: pytest.TempPathFactory) -> dict:
         substitute(tag(text, "main.md", mark=True), INSIDE_VALUES), folder / "marked"
     )
     assert len(plain) == len(marked) == len(sources)
-    return {
-        source: (sent.text, block)
-        for source, sent, block in zip(sources, plain, marked, strict=True)
-    }
+    for sent, block in zip(plain, marked, strict=True):
+        assert sent.names == block.names
+        assert sent.text == block.text, "marking changed the text"
+    return dict(zip(sources, marked, strict=True))
 
 
 @needs_pandoc
@@ -971,8 +945,7 @@ def test_prose_found_inside_a_token_merges_from_a_marked_build(
     here: citeproc prints a plain space after "al." in a citation."""
     from manuscript_guard.text.placeholders import substitute
 
-    sent, block = inside_built[source]
-    assert block.text == sent, "marking changed the text"
+    block = inside_built[source]
     assert (block.text, list(block.tokens)) == unmark(marked)
     out = realign(source, block.text, returned, block.tokens)
     assert out == expected
@@ -985,7 +958,7 @@ def test_prose_found_inside_a_token_merges_from_a_marked_build(
 def test_a_changed_token_is_named_whole_from_a_marked_build(
     source: str, marked: str, returned: str, changed: tuple, inside_built: dict
 ) -> None:
-    _, block = inside_built[source]
+    block = inside_built[source]
     assert (block.text, list(block.tokens)) == unmark(marked)
     aligned = align(source, block.text, returned, block.tokens)
     assert aligned.rebuilt is None

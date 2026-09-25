@@ -450,6 +450,50 @@ def test_other_bibliography_headings_are_recognised(heading: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}",
+        "# References {.unnumbered}",
+        "# References {#refs .unnumbered}",
+        '## Bibliography {#refs .unnumbered title="Works cited"}',
+        "References {-}",
+        "**References** {-}",
+        "# References # {-}",
+        "# References ##",
+    ],
+)
+def test_a_marked_heading_may_end_in_what_pandoc_does_not_print(heading: str) -> None:
+    """Pandoc prints `# References {-}` as "References", unnumbered. Only the heading word and
+    `[\\s*_:.|]` were allowed after it, so the attribute block, or the closing `#`s it may
+    follow, made the line no heading at all."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert is_bibliography_heading(heading, marked=True)
+
+
+@pytest.mark.parametrize(
+    "line", ["References {-}", "References {.unnumbered}", "**References** {#refs}"]
+)
+def test_an_unmarked_line_with_an_attribute_block_is_not_a_heading(line: str) -> None:
+    """Braces are markup only where pandoc reads a heading. A line judged by its shape is
+    printed as it stands, so "References {-}" there is text."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(line)
+
+
+@pytest.mark.parametrize(
+    "heading", ["# References {and further reading}", "# References \\{-}", "# References {-} ##"]
+)
+def test_braces_pandoc_prints_are_part_of_the_heading(heading: str) -> None:
+    """Pandoc takes off an attribute block and nothing else in braces: these print as they
+    stand, so none of them is a heading that says only "References"."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    assert not is_bibliography_heading(heading, marked=True)
+
+
+@pytest.mark.parametrize(
     "entry",
     [
         "Smith J, Jones K. Hepatic injury in reports. Lancet. 2019;393:100-10.",
@@ -567,6 +611,30 @@ def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
     started = time.perf_counter()
     for line in (" " * 200 + "references" + " " * 200 + "x", "References" + " " * 300 + "12"):
         assert not is_bibliography_heading(line)
+    assert time.perf_counter() - started < 0.5
+
+
+def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
+    """A marked heading's attribute block is read item by item, each character once. None
+    of these is a heading, and most fail only at their last character, where a pattern with
+    a quantifier inside a quantifier would try every way of dividing the run between items."""
+    import time
+
+    from manuscript_guard.audit import is_bibliography_heading
+
+    started = time.perf_counter()
+    for line in (
+        "# References {" + "#a" * 30000 + " !}",
+        "# References {" + ".a" * 30000 + "!}",
+        "# References {" + "a" * 60000 + "}",
+        '# References {k="' + "a" * 60000 + " !}",
+        "# References {" + " " * 60000 + "!}",
+        "# References {" + "-" * 60000 + "!}",
+        "# References " + "{" * 60000 + "}",
+        "# References " + "{}" * 30000,
+        "# References " + "{-} " * 15000,
+    ):
+        assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 0.5
 
 

@@ -98,6 +98,16 @@ CONSTRUCTS = {
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
     "no headings at all": "Just a paragraph with 42 in it.\n",
+    # An attribute block is not printed, so it is not part of the title.
+    "atx unnumbered": "# References {-}\n\nProse.\n",
+    "atx identifier and class": "# References {#refs .unnumbered}\n\nProse.\n",
+    "atx key and quoted value": '## Results {#sec-results lang="en-GB"}\n\nProse.\n',
+    "atx attributes after closing hashes": "## Results ## {#sec-results}\n\nProse.\n",
+    "setext with attributes": "Methods {#sec-methods}\n-------\n\nProse.\n",
+    # Braces pandoc prints: not an attribute block, or not the last thing on the line.
+    "atx braces that are not attributes": "# Results {and more}\n\nProse.\n",
+    "atx closing hashes after braces": "# Results {-} ##\n\nProse.\n",
+    "atx two blocks": "# Results {.a} {-}\n\nProse.\n",
 }
 
 

@@ -101,11 +101,16 @@ Each unmatched number is one of these, and only the first is what you are lookin
 A reference list starts at a line that is only a heading such as `References`,
 `Reference list`, `Bibliography`, `Works cited` or `Literature cited`, perhaps with a number
 (`5`, `5.`, `5)`), bold, or a trailing colon. A line the document marks as a heading (a
-Markdown `#` or underline, a heading style in a `.docx`) needs nothing more. Any other line
-also has to be capitalised, not end in a full stop, and not start with `#`: a wrapped
-"…duplicate / references." is not a heading, and neither is `# References` as a comment in
-a fenced R listing or typed into a Word paragraph with no heading style. In Markdown,
-nothing in a fenced block, an HTML comment or the front matter starts a list. A table cell
+Markdown `#` or underline, a heading style in a `.docx`) needs nothing more, and is read as
+pandoc prints it: a pandoc attribute block at its end, as in `# References {-}`,
+`{.unnumbered}` or `{#refs .unnumbered}`, is dropped, and so are closing `#`s. Braces that
+pandoc does not read as attributes, as in `# References {and further reading}`, are
+printed, so that heading does not start a list. Any other line also has to be capitalised,
+not end in a full stop or in braces, and not start with `#`: a wrapped
+"…duplicate / references." is not a heading, nor is `References {-}` on a line of prose,
+and neither is `# References` as a comment in a fenced R listing or typed into a Word
+paragraph with no heading style. In Markdown, nothing in a fenced block, an HTML comment or
+the front matter starts a list. A table cell
 reading `References` is a column header, not a heading. The
 list ends at the next heading: a Markdown heading, or in a `.docx` a paragraph styled as one.
 Every such list is cut, and the report names the lines under `Not audited`. Check each

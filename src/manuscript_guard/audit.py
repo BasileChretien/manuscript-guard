@@ -35,7 +35,7 @@ from pathlib import Path
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import heading_index, scannable
+from manuscript_guard.text.sections import heading_index, scannable, strip_attributes
 from manuscript_guard.text.tokens import find_atoms
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -317,6 +317,10 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
 # the line is stripped first, and a number takes the spaces after it. With `^\s*` beside
 # `[\s*_]*` a failing line was still quadratic in its indentation, and `pdftotext -layout`
 # indents a right-hand column by a hundred spaces: 20 s for 3,000 such lines.
+#
+# A pandoc attribute block after the word, `{-}` or `{#refs .unnumbered}`, is not matched
+# here. It is taken off a marked heading before the match, by `strip_attributes`, which reads
+# it item by item, so this pattern keeps one quantifier after the word.
 _BIBLIOGRAPHY = re.compile(
     r"^(?P<hashes>#+)?[\s*_]*"
     r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
@@ -336,11 +340,20 @@ def is_bibliography_heading(line: str, *, marked: bool = False) -> bool:
     a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
     the section.
 
+    A marked line is read as pandoc prints it, without the attribute block at its end and
+    the closing `#`s before one. Pandoc users write an unnumbered reference heading as
+    `# References {-}`, and the audit found no heading there: it cut nothing, and every
+    number in a book or a web page in the list was reported among the findings. On an
+    unmarked line the braces are printed, so "References {-}" there is text.
+
     An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
     and YAML, and `# References` in a code listing cut everything after it; where `#` does
     make a heading, the document has marked it.
     """
-    found = _BIBLIOGRAPHY.match(line.strip())
+    text = line.strip()
+    if marked:
+        text = strip_attributes(text).rstrip("#").rstrip()
+    found = _BIBLIOGRAPHY.match(text)
     if not found:
         return False
     if marked:

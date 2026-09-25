@@ -45,6 +45,64 @@ _SETEXT = re.compile(
 # Kept as the ATX pattern for callers that only ever meant `#` headings.
 HEADING = _ATX
 
+# One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
+# with the value quoted or running to a space or the closing brace, or `-`, which pandoc
+# reads as `.unnumbered`. Items need no space between them: `{#a.b}` is one identifier and
+# `{#a#b}` two, because pandoc takes the longest item it can at each point and never goes
+# back. `strip_attributes` does the same, one item at a time, so each character is read
+# once. With the items under one quantifier in a single pattern, a run such as `#a.b.c`
+# could be divided between items in more ways than it has characters, and a block that
+# failed at its last character would try every one of them.
+_ATTRIBUTE_ITEM = re.compile(
+    r"#[\w:.-]+"
+    r"|\.[^\W\d_][\w:.-]*"
+    r"|[^\W\d_][\w:.-]*=(?:\"[^\"]*\"|'[^']*'|[^\s}]*)"
+    r"|-"
+)
+
+
+def strip_attributes(text: str) -> str:
+    """`text` without the pandoc attribute block it ends with, as pandoc prints a heading.
+
+    `# References {-}` prints as "References", unnumbered, and `## Results {#sec-results}`
+    as "Results". Kept in the title, the block made it another word: `is_methods` matches a
+    title whole, so `Results {#sec-results}` was not Results, and a subsection under it named
+    like a Methods one made a reported `p < 0.001` the alpha chosen in advance.
+
+    Only what pandoc reads as attributes goes. "Results {and more}" and "Results \\{-}"
+    print as they stand, and so does every block but the last. `text` comes back unchanged
+    when nothing goes, so a caller can tell.
+    """
+    body = text.rstrip()
+    opening = body.rfind("{")
+    if not body.endswith("}") or opening < 0 or body[opening - 1 : opening] == "\\":
+        return text
+    inner, position = body[opening + 1 : -1], 0
+    while True:
+        while position < len(inner) and inner[position] in " \t":
+            position += 1
+        if position == len(inner):
+            return body[:opening].rstrip()
+        item = _ATTRIBUTE_ITEM.match(inner, position)
+        if item is None:
+            return text
+        position = item.end()
+
+
+def _atx_title(found: re.Match[str]) -> str:
+    """An ATX heading's title as pandoc prints it.
+
+    Pandoc reads the closing `#`s, then spaces, then the attribute block, so
+    `## Results ## {#sec-results}` is "Results". A block before the closing `#`s is text:
+    `# Results {-} ##` is "Results {-}".
+    """
+    line = found.group(0)[len(found.group("hashes")) :].strip()
+    printed = strip_attributes(line)
+    if printed == line:
+        return found.group("title").strip()
+    return printed.rstrip("#").rstrip()
+
+
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
 
@@ -131,14 +189,18 @@ class _Found:
 
 
 def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order."""
+    """Every heading, ATX and setext, in document order, titled as pandoc prints it."""
     rendered = scannable(text)
     found = [
-        _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
+        _Found(m.start(), len(m.group("hashes")), _atx_title(m))
         for m in _ATX.finditer(rendered)
     ]
     found += [
-        _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
+        _Found(
+            m.start(),
+            1 if m.group("under").startswith("=") else 2,
+            strip_attributes(m.group("title").strip()),
+        )
         for m in _SETEXT.finditer(rendered)
     ]
     return sorted(found, key=lambda f: f.start)

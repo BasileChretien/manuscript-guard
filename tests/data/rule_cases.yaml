@@ -221,6 +221,10 @@ structural:
       # absorbing one would file a paper's headline result as a citation marker.
       - {text: "The interval was [0.72-0.82] overall.", atom: "0.72-0.82"}
       - {text: "A total of 412 records[3] were kept, of which 77 were serious.", atom: "77"}
+      # A bound written hard against the marker, its bracket closed: the prefix took a `]`,
+      # so `3.40][12]` was one match and the bound was filed as part of a citation.
+      - {text: "It was 2.51 [95% CI 1.20, 3.40][12]—consistent with it.", atom: "3.40"}
+      - {text: "It was 2.51 [95% CI 1.20, 3.40][12]. Then more.", atom: "3.40"}
 
   orcid:
     accepts:

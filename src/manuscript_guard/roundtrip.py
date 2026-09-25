@@ -615,7 +615,9 @@ _OPENER = re.compile(
 
 #: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
 #: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
-#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for.
+#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for. `[^\W\d_]`
+#: also takes a numeral that is not a digit, `²` or `½`, on which pandoc opens nothing; that
+#: costs a backslash, not a word.
 _TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
 _TAG_OPENS = re.compile(_TAG_OPEN)
 
@@ -668,7 +670,9 @@ def _escaped(
     text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples ULOQ".
     Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits, so the
     read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and ROR > 2`
-    stays as typed.
+    stays as typed. A `<` in Word's text is escaped itself, above or at a token's edge, so
+    counting one only adds a backslash pandoc does not need; it is counted all the same, in
+    case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it prints.
     """
     brace = before_token and text.endswith("{")
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
@@ -911,8 +915,9 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
 
     sent, new_prose = _between(before, ranges), _between(after, placed)
-    # Whether Word's paragraph shows a `<` that can open a tag before each stretch: kept from
-    # the source, typed, or a binding's value, a `>` in the stretch would close it. Looked for
+    # Whether Word's paragraph shows a `<` that can open a tag before each stretch. One kept
+    # from the source or brought by a binding's value is bare, and a `>` in the stretch would
+    # close it; one Word typed is escaped, and counting it costs only a backslash. Looked for
     # in the whole text, so a `<` at an edge is read with the character after it.
     first = _TAG_OPENS.search(returned)
     starts = [len("".join(after[:at])) for at in [0] + [end for _start, end in placed]]

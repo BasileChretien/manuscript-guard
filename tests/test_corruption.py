@@ -373,10 +373,26 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     assert report.ok, report.render(project)
 
 
-@pytest.mark.parametrize("claim", [r"ROR \> 7", r"p \< 0.37", r"\>9 cases"])
-def test_an_escaped_comparison_does_not_launder_a_number(project: Path, claim: str) -> None:
-    """Read as the bare character, and no further: a value no convention names is a claim."""
-    _in_methods(project, f"A signal needed {claim} in this sentence.")
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(r"A signal needed ROR \> 7 here.", id="no-conventional-value"),
+        pytest.param(r"A signal needed p \< 0.37 here.", id="no-conventional-p"),
+        pytest.param(r"A signal needed \>9 cases here.", id="no-conventional-count"),
+        pytest.param(
+            "Of the reports,\n412)\\>ULOQ were excluded.", id="list-marker-at-a-line-start"
+        ),
+        pytest.param("## 1204\\<ULOQ reports", id="numbered-heading"),
+        pytest.param(r"A signal needed `ROR \> 2` here.", id="backslash-printed-in-code"),
+        pytest.param(r"A signal needed \\>3 cases here.", id="backslash-printed-before-it"),
+    ],
+)
+def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written: str) -> None:
+    """Read as the character it prints, and no further. Read as a space, the backslash met a
+    rule that wanted one: `412)\\>ULOQ` at a line start was a list marker, and 412 passed. And
+    a backslash that prints is no escape: in code, or after another backslash, `\\>` prints
+    both characters, and `ROR \\> 2` there is not the threshold."""
+    _in_methods(project, written)
     assert "unclassified-number" in codes(gate_report(project))
 
 

@@ -62,6 +62,11 @@ class BuildError(Exception):
     """The document could not be produced."""
 
 
+class MisreadError(BuildError):
+    """Pandoc reads the document otherwise than the gates read its sources, so it is not
+    made: see `reading.misreading`."""
+
+
 @dataclass(frozen=True)
 class BuildResult:
     output: Path
@@ -281,11 +286,8 @@ def build_document(
         )
 
     body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
-    source.write_text(
-        _front_matter(project, supplementary=supplementary, live=mode == LIVE) + body,
-        encoding="utf-8",
-        newline="\n",
-    )
+    header = _front_matter(project, supplementary=supplementary, live=mode == LIVE)
+    source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
 
     cites = bool(find_citations(body, source))
@@ -297,6 +299,16 @@ def build_document(
     # picture's description. Everything else it is handed is made absolute, so the change of
     # directory cannot make a relative argument mean a different file.
     root = project.root.resolve()
+
+    from manuscript_guard.build.reading import misreading
+
+    read = [prologue, *(a.path.read_text(encoding="utf-8") for a in ordered), epilogue]
+    differs = misreading(header + body, header, read, pandoc(), root)
+    if differs is not None:
+        raise MisreadError(
+            f"pandoc reads {differs}. The gates judged the sources as they read them, so "
+            "the document is not built; `check` cannot see this, and the build asks pandoc."
+        )
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
     if reference_doc is not None:
         command += [f"--reference-doc={reference_doc.resolve()}"]

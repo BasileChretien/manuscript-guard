@@ -105,8 +105,8 @@ def check_numbers(
         # Read as prose until it is fixed, a `# Methods` in it heads a section here while
         # pandoc refuses the whole file; see `front_matter_problem`.
         problem = front_matter_problem(text)
-        if problem:
-            report = report.with_findings(unreadable_header(path, problem, GATE))
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -339,7 +339,7 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 
 
-def unreadable_header(path: Path, problem: str, gate: str) -> Finding:
+def unreadable_header(path: Path, reason: str, line: int, gate: str) -> Finding:
     """A file that opens with a `---` block pandoc cannot read as YAML, and so refuses."""
     return Finding(
         gate=gate,
@@ -347,8 +347,8 @@ def unreadable_header(path: Path, problem: str, gate: str) -> Finding:
         message="the block at the top of this file opens like YAML front matter, and "
         "pandoc cannot read it as YAML, so it refuses to build the paper",
         path=path,
-        line=1,
-        context=problem,
+        line=line,
+        context=reason,
         hint="fix the YAML, or close the header with `---` or `...` before the text "
         "starts; a line of dashes meant as a rule needs a blank line under it",
     )

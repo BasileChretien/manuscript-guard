@@ -121,8 +121,8 @@ def assemble(
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
         problem = front_matter_problem(source)
-        if problem:
-            report = report.with_findings(unreadable_header(path, problem, GATE))
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
         raw, declared = strip_front_matter(source)
         if declared and declared != str(project.paper.get("title", "")):
             report = report.with_findings(

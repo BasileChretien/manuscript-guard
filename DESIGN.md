@@ -1713,7 +1713,8 @@ Closed since, and why each mattered:
   next `---` line in the file, a horizontal rule, and the Introduction above the rule
   vanished from the document, from `import` and from G13, with no warning. The build now
   uses the pattern the gates use, which closes on the first `---` or `...` line, the file's
-  last line included. And it counts a block as front matter only where pandoc keeps it as
+  last line included, and the line straight after the opening, where an empty header had
+  run on to the next rule the same way. And it counts a block as front matter only where pandoc keeps it as
   metadata: a mapping, or nothing. A list or a sentence between two delimiters prints, so
   it is no longer stripped or masked. A header never closed before a later rule, with prose
   in it, is not YAML, and pandoc refuses the file. The build had stripped it into one that
@@ -2085,12 +2086,15 @@ Closed since, and why each mattered:
   heading goes into the metadata for pandoc and the build alike, and nothing says so. Lines
   indented four spaces under it, a code block to Markdown, go into the value above as well.
   Any other prose under the heading makes the YAML invalid, and G2 and the build stop.
-- **YAML is read by PyYAML, and pandoc reads it with a library of its own.** The two agree
-  on every construct tried but one: a key that is not a string, `? [a, b]`, which PyYAML
-  accepts and pandoc refuses. Such a header is stripped and the file builds, so no text
-  is lost. Nesting over 100 levels is refused unread by a rough count that does not know
-  quotes or block scalars, so a block scalar holding a hundred `- ` in a row is left in the
-  body, where pandoc hides it.
+- **YAML is read by PyYAML, and pandoc reads it with a library of its own.** An anchor
+  defined twice, which PyYAML refuses, is allowed as pandoc allows it, and the first of
+  several documents is the one that counts, as in pandoc. Two constructs still divide them,
+  both accepted by PyYAML and refused by pandoc: a key that is not a string, `? [a, b]`,
+  and a flow sequence holding `a:`, `k: [a:, b]`. Such a header is stripped and the file
+  builds, so no text is lost. Nesting over 100 levels is refused unread by a rough count
+  that does not know quotes or block scalars: a block scalar holding a hundred `- ` in a row
+  is left in the body, where pandoc hides it, and a header that deep is not reported even
+  when it is not YAML.
 - **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
   `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is

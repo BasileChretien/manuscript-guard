@@ -112,6 +112,9 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         (f'  \n\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
         # Pandoc expands tabs before it reads the YAML, which PyYAML refuses after a colon.
         (f"---\ntitle:\tA paper\n---\n\n{_BODY}", _BODY, "A paper"),
+        # An empty header closes on its own closer, not on the rule further down.
+        (f"---\n---\n\n{_BODY}", _BODY, ""),
+        (f"---\n...\n\n{_BODY}", _BODY, ""),
         # No front matter: a rule at the top, and a block that never closes.
         (f"---\n\n{_BODY}", f"---\n\n{_BODY}", ""),
         ('---\ntitle: "A paper"\n\nText.\n', '---\ntitle: "A paper"\n\nText.\n', ""),
@@ -128,6 +131,8 @@ _BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
         "after a blank first line",
         "after a line of spaces and a blank line",
         "a tab after a key",
+        "empty, closed by dashes",
+        "empty, closed by dots",
         "a rule at the top",
         "never closed",
         "no front matter",
@@ -137,6 +142,20 @@ def test_front_matter_ends_where_pandoc_ends_it(text: str, body: str, declared: 
     from manuscript_guard.build.assemble import strip_front_matter
 
     assert strip_front_matter(text) == (body, declared)
+
+
+def test_a_header_pandoc_cannot_read_is_reported_at_the_line_it_fails_on() -> None:
+    """Counted from the file's first line, not from inside the YAML, and without PyYAML's
+    `in "<unicode string>"`: a blank first line and a comment put the error on line 4."""
+    from manuscript_guard.text.masking import front_matter_problem
+
+    problem = front_matter_problem("\n---\n<!-- a note -->\ntitle: A study\n---\n\nText.\n")
+    assert problem is not None
+    message, line = problem
+    assert line == 4
+    assert "unicode string" not in message and "mapping values" in message
+    assert front_matter_problem('---\ntitle: "A study"\n---\n\nText.\n') is None
+    assert front_matter_problem("Text only.\n") is None
 
 
 # ---------------------------------------------------------------- the baseline

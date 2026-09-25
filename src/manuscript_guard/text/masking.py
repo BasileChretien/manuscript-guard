@@ -22,15 +22,16 @@ NUL = "\x00"
 # Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
 # opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
 # and the prose after it prints. Either delimiter may carry trailing spaces, `...` closes
-# the block as well as `---`, and the closing line may be the file's last. A byte-order
-# mark and blank lines before the opening `---` are skipped, as pandoc skips them: taken
-# for the start of the body, they left the header in it, its title unchecked against
-# paper.yaml. The build had a copy of its own that differed on each of these, and where the
-# two disagreed a heading could be read by G2 and stripped by the build: `p < 0.001` under
-# it passed as the alpha chosen in advance and printed without it.
+# the block as well as `---`, and the closing line may be the file's last or the opening's
+# next: an empty header closes there, where it ran on to the next rule and took the text
+# between with it. A byte-order mark and blank lines before the opening `---` are skipped,
+# as pandoc skips them: taken for the start of the body, they left the header in it, its
+# title unchecked against paper.yaml. The build had a copy of its own that differed on each
+# of these, and where the two disagreed a heading could be read by G2 and stripped by the
+# build: `p < 0.001` under it passed as the alpha chosen in advance and printed without it.
 _FRONT_MATTER_BLOCK = re.compile(
     r"\A\N{ZERO WIDTH NO-BREAK SPACE}?(?:[ \t]*\r?\n)*---[ \t]*\r?\n(?![ \t]*\r?\n)"
-    r"(?P<yaml>.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
+    r"(?P<yaml>.*?)(?<=\n)(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
     re.DOTALL,
 )
 # Nesting deeper than this is nobody's metadata. Composing thousands of levels of brackets
@@ -56,34 +57,60 @@ def _nesting(yaml_text: str) -> int:
     return deepest
 
 
-@lru_cache(maxsize=256)
-def _read_yaml(yaml_text: str) -> tuple[bool, str]:
-    """Whether pandoc keeps this YAML as metadata, and why it cannot read it at all.
+@lru_cache(maxsize=1)
+def _loader():
+    """PyYAML's safe loader, with an anchor allowed to be defined again, as pandoc allows.
+    PyYAML refuses `a: &x 1` and `b: &x 2` in one document; pandoc reads them."""
+    import yaml
 
-    Metadata is a mapping, or nothing: a comment alone, or a null. The second item is empty
-    unless the text is not YAML, which pandoc refuses to build. Composed, not loaded:
-    constructing values raises on YAML pandoc accepts, such as `date: 2026-02-30`, and
-    nothing here needs the values. With the pure-Python loader, as the C one overflowed its
-    stack on deep nesting. Tabs are expanded first, every four columns, as pandoc expands
-    them before it reads the YAML: PyYAML refuses `title:<tab>A study`, which pandoc reads.
+    class PandocLoader(yaml.SafeLoader):
+        def compose_node(self, parent, index):
+            event = self.peek_event()
+            if not isinstance(event, yaml.AliasEvent) and event.anchor is not None:
+                self.anchors.pop(event.anchor, None)
+            return super().compose_node(parent, index)
+
+    return PandocLoader
+
+
+@lru_cache(maxsize=256)
+def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
+    """Whether pandoc keeps this YAML as metadata, and why and where it cannot read it.
+
+    Metadata is a mapping, or nothing: a comment alone, or a null. The reason is empty
+    unless the text is not YAML, which pandoc refuses to build, and the line is where the
+    reading failed, counted from 0 inside the YAML. Pandoc keeps the first of several
+    documents, so the first is what counts, but a later one must still read as YAML.
+    Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
+    `date: 2026-02-30`, and nothing here needs the values. With the pure-Python loader, as
+    the C one overflowed its stack on deep nesting. Tabs are expanded first, every four
+    columns, as pandoc expands them before it reads the YAML: PyYAML refuses
+    `title:<tab>A study`, which pandoc reads.
     """
     import yaml
 
     if _nesting(yaml_text) > _YAML_DEPTH:
-        return False, ""
+        return False, "", 0
     try:
-        node = yaml.compose(yaml_text.expandtabs(4), Loader=yaml.SafeLoader)
+        documents = yaml.compose_all(yaml_text.expandtabs(4), Loader=_loader())
+        node = next(documents, None)
+        for _later in documents:
+            pass
+    except yaml.MarkedYAMLError as exc:
+        mark = exc.problem_mark or exc.context_mark
+        reason = exc.problem or exc.context or type(exc).__name__
+        return False, reason, mark.line if mark else 0
     except Exception as exc:  # noqa: BLE001 - any failure to parse is "not metadata"
-        return False, " ".join(str(exc).split())[:200] or type(exc).__name__
+        return False, type(exc).__name__, 0
     empty = node is None or (
         isinstance(node, yaml.ScalarNode) and node.tag == "tag:yaml.org,2002:null"
     )
-    return empty or isinstance(node, yaml.MappingNode), ""
+    return empty or isinstance(node, yaml.MappingNode), "", 0
 
 
-def front_matter_problem(text: str) -> str:
-    """Why pandoc cannot read the YAML block that opens `text`; empty when it can, or when
-    nothing there looks like one.
+def front_matter_problem(text: str) -> tuple[str, int] | None:
+    """Why pandoc cannot read the YAML block that opens `text`, and the line of the file
+    where the reading failed; None when it can, or when nothing there looks like one.
 
     Such a block is not front matter, and pandoc refuses to build the file. Left in the body
     for pandoc to refuse, it never was: the identifier in front of its first paragraph made
@@ -91,7 +118,12 @@ def front_matter_problem(text: str) -> str:
     heading. So the gates and the build report it instead, and stop.
     """
     found = _FRONT_MATTER_BLOCK.match(text)
-    return _read_yaml(found.group("yaml"))[1] if found else ""
+    if found is None:
+        return None
+    _metadata, reason, line = _read_yaml(found.group("yaml"))
+    if not reason:
+        return None
+    return reason, text.count("\n", 0, found.start("yaml")) + 1 + line
 
 
 class _FrontMatter:

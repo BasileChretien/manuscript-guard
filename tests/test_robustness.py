@@ -112,6 +112,47 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
+@pytest.mark.parametrize(
+    "opener",
+    [
+        "Para <!-- open ",
+        "\\begin{figure}\n",
+        "\\begin{e#}\n",
+        "<pre>\n",
+        "---\nkey#: ",
+        "--\nT\n--\n--\nT\n",
+    ],
+    ids=[
+        "comment",
+        "latex environment",
+        "latex environments, all different",
+        "pre",
+        "yaml that never closes",
+        "tables that each open straight under the last",
+    ],
+)
+def test_paragraph_tagging_is_linear(opener: str) -> None:
+    """A block that opens raw content with no closer used to search to the end of the text,
+    once per block: 80,000 of them took 26 seconds, and `check` reaches this through G13.
+    Distinct environment names are measured separately because a cache keyed by closing
+    string fixed the repeated case and left each new name searching to the end of the text.
+
+    Padded, because with short blocks the per-block work hides the search: without the fix
+    the ratio below was 13 to 17, and with it about 4.
+    """
+    from manuscript_guard.roundtrip import tag
+
+    def measure(count: int) -> float:
+        text = "".join(opener.replace("#", str(i)) + "x" * 200 + "\n\n" for i in range(count))
+        started = time.perf_counter()
+        tag(text, "main.md")
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 # ---------------------------------------------------------------- hostile files
 
 

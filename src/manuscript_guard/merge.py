@@ -557,6 +557,12 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "lined up with its source again. Make the edit in the .md, keeping at least a "
             "space between them.",
         )
+    if aligned.alone:
+        return (
+            f"everything but {aligned.alone} was deleted, and a paragraph that is nothing but "
+            "a table, a figure or a misspelt placeholder gets no identifier at the next "
+            "build: a later edit to it in Word could not come back. Make the edit in the .md.",
+        )
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:

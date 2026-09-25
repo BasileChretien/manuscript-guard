@@ -40,6 +40,7 @@ from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
 from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -450,6 +451,7 @@ def _untagged(block: str) -> bool:
     if not lines:
         return True
     stripped = block.strip()
+    value = PLACEHOLDER.fullmatch(stripped)
     if (
         stripped.startswith("#")
         # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
@@ -465,7 +467,13 @@ def _untagged(block: str) -> bool:
         # is the paragraph the bookmark lands in.
         or stripped.count("{") != stripped.count("}")
         or _FENCE.match(stripped) is not None
-        or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
+        # paragraph printing a number: skipped, a paragraph cut down to its number in Word
+        # lost its identifier, and its next edit was dropped with "nothing came back".
+        or (
+            re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+            and not (value and value.group("ns") in VALUE_NAMESPACES)
+        )
         or _FIGURE.fullmatch(stripped) is not None
         or _opens_block(lines[0])
     ):
@@ -947,8 +955,10 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are lists, quotes, tables,
-    fenced divs, code, and paragraphs that are nothing but a placeholder, because those
-    become a table or a figure rather than a paragraph. `_untagged` says why each one.
+    fenced divs, code, and paragraphs that are nothing but a table or figure placeholder,
+    because those become a table or a figure rather than a paragraph. A misspelt
+    placeholder standing alone is skipped with them; `check` refuses it. `_untagged` says
+    why each one.
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -1859,6 +1869,10 @@ class Alignment:
     misread: bool = False
     #: Everything between two tokens was deleted, so rebuilt they would touch.
     touching: bool = False
+    #: Rebuilt, it would be only this, which `tag` gives no identifier: a table, a figure,
+    #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
+    #: not come back, and would be skipped with "nothing came back".
+    alone: str = ""
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -2037,10 +2051,14 @@ def align(
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
+            # The paragraph is stripped once rebuilt, so the first stretch is escaped as it
+            # will open it: behind a space, a `#` or `:::` was not seen by `_OPENER`, and
+            # the paragraph merged as a heading.
+            opening = piece.lstrip() if index == 0 else piece
             binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
             out.append(
                 _respaced(
-                    _escaped(piece, opening=index == 0, **beside),
+                    _escaped(opening, opening=index == 0, **beside),
                     abbreviations,
                     lead=index == 0,
                     binding_next=bool(binding_next),
@@ -2059,6 +2077,13 @@ def align(
     if unread:
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
+    # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
+    # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
+    # Merged, that would build without one. Only that shape is refused here, because it is
+    # the one the reason names: `_untagged` skips more than a lone token, and asked of any
+    # rewording it refused `B) the ratio was...` as "everything but it was deleted".
+    if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
+        return Alignment(None, alone=rebuilt)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

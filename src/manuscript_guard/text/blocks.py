@@ -328,6 +328,18 @@ def _tex_block(line: str) -> bool:
     return position > 0 and position == len(stripped)
 
 
+def _bare_tex(line: str) -> bool:
+    """A LaTeX block line ending on a command with no argument, `\\newpage` say. Pandoc folds
+    the digits that open the next line into the raw block, so "412. Of these" under one is
+    no list item: the raw "\\newpage\\n412" and a paragraph ". Of these"."""
+    commands = list(_TEX_COMMAND.finditer(line.rstrip()))
+    return bool(commands) and not re.search(r"[{\[]", commands[-1].group(0))
+
+
+_DIGIT_FIRST = re.compile(r"^[ \t]*\d")
+_DEFINITION = re.compile(r"^[ ]{0,3}[:~][ \t]+\S")
+
+
 def _lone_table(line: str) -> bool:
     """A line that is only a `{{table.x}}` placeholder. The build puts a pipe table there, and
     a table ends at its last row, so what follows starts a block. Read as prose, the line
@@ -416,6 +428,8 @@ class _Walk:
         self.lines = _lines(text)
         self.fences = _fences(text, self.lines)
         self.found: list[Heading] = []
+        #: Where each list item's first line starts.
+        self.items: list[int] = []
         self.open: str | None = None
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
@@ -438,12 +452,17 @@ class _Walk:
         self.tagged: set[int] = set()
         self._ends: dict[str, list[int]] | None = None
         self._closers: dict[str, list[int]] = {}
+        #: The last line holding a LaTeX block that ends on a bare command. See `_bare_tex`.
+        self._bare_tex_line = -2
+        #: A definition line has turned the open list item's lazy lines into its paragraph,
+        #: where a marker starts no item.
+        self._defined = False
 
-    def run(self) -> list[Heading]:
+    def run(self) -> _Walk:
         index = self._title_block()
         while index < len(self.lines):
             index = self._step(index)
-        return self.found
+        return self
 
     def _title_block(self) -> int:
         """Where the text starts after a pandoc title block: up to three `%` lines at the very
@@ -483,6 +502,7 @@ class _Walk:
         if _blank(line.shown):
             if line.blank and not line.commented:
                 self.open = None
+                self._defined = False
             return index + 1
         after = self._line(index)
         opened = _html_opens(line.shown)
@@ -511,9 +531,28 @@ class _Walk:
             if self.open == _QUOTE_LINES:
                 return index + 1
             self.inline = True
+            if self.open == _ITEM:
+                # Inside a list, a marker ends the lazy lines and starts the next item. A
+                # paragraph gets no such line: a list cannot interrupt one, and nor can it
+                # interrupt a definition that the item's lazy lines have turned into one.
+                if _DEFINITION.match(self.lines[index].shown):
+                    self._defined = True
+                elif not self._defined:
+                    self._item(index)
             return self._paragraph_line(index)
         self.open = None
+        self._defined = False
         return self._block(index)
+
+    def _item(self, index: int) -> bool:
+        """Record a list item if this line starts one, and where its content starts."""
+        item = _LIST_ITEM.match(self.lines[index].shown)
+        if item is None:
+            return False
+        gap = len(item.group("gap"))
+        self.list_indent = len(item.group("marker")) + (gap if 0 < gap <= 4 else 1)
+        self.items.append(self.lines[index].start)
+        return True
 
     def _paragraph_line(self, index: int) -> int:
         """After a line of a paragraph or a list item: a block-level tag closing the line ends
@@ -546,8 +585,12 @@ class _Walk:
     def _fence(self, last: int, char: str, indented: bool) -> int:
         # A backtick fence at the margin interrupts a paragraph. A tilde one, or an indented
         # one, does not: pandoc prints it as text inside the paragraph, which goes on past it.
-        # Any fence ends a list item's lazy lines.
-        if self.open in (_PARAGRAPH, _QUOTE_LINES) and (char == "~" or indented):
+        # Any fence ends a list item's lazy lines, unless a definition has made them its
+        # paragraph.
+        paragraph = self.open in (_PARAGRAPH, _QUOTE_LINES) or (
+            self.open == _ITEM and self._defined
+        )
+        if paragraph and (char == "~" or indented):
             return last + 1
         self.open = None
         if not indented:
@@ -565,8 +608,10 @@ class _Walk:
         return not _BLOCK_TAG.match(shown) and self._environment(index) is None
 
     def _block(self, index: int) -> int:
-        shown = self.lines[index].shown
-        if self.list_indent is not None and self._in_list(shown):
+        if self._bare_tex_line == index - 1 and _DIGIT_FIRST.match(self.lines[index].shown):
+            self.open = _PARAGRAPH
+            return self._paragraph_line(index)
+        if self.list_indent is not None and self._in_list(index):
             return index + 1
         for opens in (self._container, self._heading, self._leaf):
             after = opens(index)
@@ -575,15 +620,21 @@ class _Walk:
         self.open = _PARAGRAPH
         return self._paragraph_line(index)
 
-    def _in_list(self, shown: str) -> bool:
-        """An indented line under a list item belongs to it: a paragraph, or code if it is
-        indented four more. Anything else at the margin closes the list."""
+    def _in_list(self, index: int) -> bool:
+        """A line indented to a list item's text, after a blank line, belongs to it: a
+        paragraph, a nested item, or code if it is indented four more. Anything indented
+        less closes the list, and a marker under it is prose: "  More" under "1. First"."""
+        shown = self.lines[index].shown
         indent = len(shown.expandtabs(4)) - len(shown.expandtabs(4).lstrip(" "))
-        if indent == 0:
+        if indent < (self.list_indent or 0):
             if not _LIST_ITEM.match(shown):
                 self.list_indent = None
             return False
-        self.open = _ITEM if indent < (self.list_indent or 0) + 4 else None
+        if indent >= (self.list_indent or 0) + 4:
+            self.open = None
+            return True
+        self._item(index)
+        self.open = _ITEM
         return True
 
     def _container(self, index: int) -> int | None:
@@ -699,10 +750,7 @@ class _Walk:
             _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw)
         ):
             return index + 1
-        item = _LIST_ITEM.match(shown)
-        if item is not None:
-            gap = len(item.group("gap"))
-            self.list_indent = len(item.group("marker")) + (gap if 0 < gap <= 4 else 1)
+        if self._item(index):
             self.open = _ITEM
             return self._paragraph_line(index)
         if _QUOTE.match(shown):
@@ -713,7 +761,11 @@ class _Walk:
         if _lone_table(shown):
             self.rows.add(index)
             return index + 1
-        if _REFERENCE.match(shown) or _tex_block(shown):
+        if _tex_block(shown):
+            if _bare_tex(shown):
+                self._bare_tex_line = index
+            return index + 1
+        if _REFERENCE.match(shown):
             return index + 1
         return self._environment(index) or self._table(index)
 
@@ -775,9 +827,29 @@ class _Walk:
         return ends[later] + 1 if later < len(ends) else None
 
 
+@dataclass(frozen=True)
+class Blocks:
+    """What one walk of a document found."""
+
+    headings: tuple[Heading, ...]
+    #: Where the first line of each list item starts, in document order.
+    items: tuple[int, ...]
+
+
+def read_blocks(text: str) -> Blocks:
+    walk = _Walk(text).run()
+    return Blocks(tuple(walk.found), tuple(walk.items))
+
+
 def find_headings(text: str) -> list[Heading]:
     """Every heading pandoc prints, ATX and setext, in document order."""
-    return _Walk(text).run()
+    return list(read_blocks(text).headings)
+
+
+def list_items(text: str) -> list[int]:
+    """Where each list item pandoc makes starts. A marker a hard wrap put at the start of a
+    line in a paragraph starts none: a list cannot interrupt a paragraph."""
+    return list(read_blocks(text).items)
 
 
 # Looser than `ATX_LINE`: any whitespace after the hashes, a no-break space included. Pandoc
@@ -826,8 +898,7 @@ def section_breaks(text: str) -> list[Heading]:
     titled with that line: pandoc prints the line as a paragraph, and the page shows
     "Results" over the numbers under it.
     """
-    walk = _Walk(text)
-    placed_headings = walk.run()
+    walk = _Walk(text).run()
     raw_at = {line.start: line.raw for line in walk.lines}
     found = [
         replace(heading, title=Unprinted(heading.title))
@@ -835,7 +906,7 @@ def section_breaks(text: str) -> list[Heading]:
         or (not heading.setext and not raw_at[heading.start].startswith("#"))
         or (heading.setext and _START_TAG.match(raw_at[heading.start]))
         else heading
-        for heading in placed_headings
+        for heading in walk.found
     ]
     by_start = {heading.start: heading for heading in found}
     shown = [line.shown for line in walk.lines]
@@ -869,10 +940,13 @@ def section_breaks(text: str) -> list[Heading]:
 
 __all__ = [
     "ATX_LINE",
+    "Blocks",
     "Heading",
     "Unprinted",
     "find_headings",
     "heading_shaped",
+    "list_items",
+    "read_blocks",
     "scannable",
     "section_breaks",
 ]

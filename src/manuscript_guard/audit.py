@@ -572,18 +572,20 @@ def audit(
     values, used, skipped = load_backing(backing)
     report = AuditReport(backing_values=values, backing_files=tuple(used), skipped=skipped)
 
-    # Each source, and whether a line may be taken for a reference entry by its shape. Only
-    # where no heading said where the reference list is: once one has, the shape can only
-    # ever be wrong, and in Markdown a line is a physical line, so a wrapped paragraph can
-    # open on anything.
-    sources: list[tuple[Path, str, bool]] = []
+    # Each source, whether a line may be taken for a reference entry by its shape, and
+    # whether each of its lines is a block of its own. The shape only counts where no
+    # heading said where the reference list is: once one has, the shape can only ever be
+    # wrong, and in Markdown a line is a physical line, so a wrapped paragraph can open on
+    # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
+    # and plain text are read as pandoc reads them.
+    sources: list[tuple[Path, str, bool, bool]] = []
     for path in papers:
         try:
             text, spans = read_paper(path)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
-        sources.append((path, text, not spans))
+        sources.append((path, text, not spans, is_docx(path)))
         report.not_audited += [
             f"{path.name}: lines {start + 1}-{end}, read as the reference list"
             for start, end in spans
@@ -603,13 +605,14 @@ def audit(
                 f"as outlines look like this (matplotlib: rcParams['svg.fonttype'] = 'none')"
             )
             continue
-        sources.append((path, text, False))
+        sources.append((path, text, False, True))
 
-    report.papers = tuple(path for path, _text, _shape in sources)
+    report.papers = tuple(path for path, _text, _shape, _lines in sources)
 
-    for path, text, by_shape in sources:
+    for path, text, by_shape, lines_are_blocks in sources:
+        scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
         for atom in find_atoms(text, mask(text)):
-            if classifier.classify(atom).kind != UNCLASSIFIED:
+            if classifier.classify(atom, None, scan).kind != UNCLASSIFIED:
                 report.classified += 1
                 continue
             candidate = Candidate(

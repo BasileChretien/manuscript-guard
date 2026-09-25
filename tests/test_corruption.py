@@ -559,6 +559,26 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "# Results\n\nThe number of reports was\n412. Of these, most were hepatic.\n",
+        "# Results\n\nThe number of reports was\n412) of them hepatic.\n",
+    ],
+    ids=["full stop", "bracket"],
+)
+def test_a_count_at_a_wrap_point_is_not_list_numbering(project: Path, tail: str) -> None:
+    """`ordered-list-marker` took any number starting a line and followed by ". " for list
+    numbering. A list cannot interrupt a paragraph, so where a hard wrap put a count at the
+    start of a line pandoc prints it as prose, and a hand-typed count passed G2."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -1758,6 +1778,36 @@ def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Pa
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+def test_audit_compares_a_count_at_a_wrap_point(tmp_path: Path) -> None:
+    """A Markdown paper is read as pandoc reads it: a count a hard wrap put at the start of
+    a line is prose, not list numbering, and was never compared with the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The number of reports was\n412. Of these, most were hepatic.\n", encoding="utf-8"
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["412"]
+
+
+def test_audit_still_reads_typed_numbering_in_word_as_numbering(tmp_path: Path) -> None:
+    """A .docx is one Word paragraph per line, with no blank line between, so read as
+    Markdown every line after the first would be a wrapped line of one long paragraph.
+    Each paragraph starts a block, and "2. The second criterion." typed in Word is list
+    numbering, as it was before the Markdown rule changed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Criteria were applied in turn.")
+        + _p("2. The second criterion.")
+        + _p("3. The third, on 9.99 of them."),
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
 def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:

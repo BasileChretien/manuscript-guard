@@ -46,7 +46,12 @@ structural:
 
   - id: ordered-list-marker
     why: Markdown list numbering.
-    pattern: '^\s{0,3}\d+[.)]\s'
+    # Only on a line pandoc starts a list item on. A list cannot interrupt a paragraph, so
+    # "412. Of these" where a hard wrap put the count at the start of a line is prose, and
+    # the pattern alone filed a hand-typed count as list numbering. `[ \t]` rather than
+    # `\s`, which crossed the line break and could start a match on the line above.
+    list_only: true
+    pattern: '^[ \t]{0,3}\d+[.)](?:[ \t]|$)'
 
   - id: numbered-heading
     why: Markdown heading numbering.

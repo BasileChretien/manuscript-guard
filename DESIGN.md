@@ -2347,6 +2347,21 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **List numbering is read where pandoc starts a list item, and only in Markdown.**
+  `ordered-list-marker` took any line opening with "412. " for numbering, so a count a hard
+  wrap put there passed G2; a list cannot interrupt a paragraph, and the rule now holds
+  only where the walk in `text/blocks.py` starts an item. A .docx and a figure's text have
+  no wrapped paragraphs, so the audit and G3 read them a paragraph or an element per line,
+  as before: "2. The second criterion" typed in Word is numbering, and so is a Word
+  paragraph that opens with a count and a full stop, which is not compared. A plain-text
+  paper is read as Markdown, so one exported a paragraph per line with no blank lines
+  between reads as a single paragraph, and typed numbering after its first line is
+  reported. A numbered item indented four spaces or more is never taken for numbering, and
+  nor is one in the lines of a definition list (`Term`, then `:   Definition`), where pandoc
+  does start lists; both are reported rather than excused. Pandoc folds the digits opening
+  the line under a bare LaTeX command, `\newpage`, into the raw block, and the gates follow
+  that at the start of a block; inside a list item's lines pandoc does it in some positions
+  and not others, and there an indented "1." under `\newpage` is still taken for numbering.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,

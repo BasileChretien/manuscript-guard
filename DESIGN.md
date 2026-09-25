@@ -970,7 +970,11 @@ missed:
   every number and no gate read any of them. This is ordinary pandoc usage, and it is the
   worst case in the whole design — a fabricated value carrying a citation. The mask now
   covers the citation *key*; a `citation-locator` rule handles the `p. 33` that legitimately
-  lives in a bracket.
+  lives in a bracket. An atom ends at the `]` that closes a bracket opened before it, so
+  punctuation written hard against a citation does not join its locator: `[p. 3]/` was the
+  unbound atom `3]/`, and `import` writes that when a co-author deletes the words between a
+  citation and a value. The bracket's contents are still read; masking the whole narrative
+  citation would have hidden a value in its suffix, `@key [reported 9.99]`, as it once did.
 - **Table captions and column headers were checked by nothing** — not by the emitter, not by
   `verify`. Both render with the table.
 
@@ -2193,6 +2197,11 @@ Closed since, and why each mattered:
   numbers. The trade is that a rule may now match a span longer than 160 characters; every
   shipped pattern is bounded well below that, and where it matters the rule is written not
   to span at all.
+- **An atom cut at a bracket keeps the punctuation after it.** `@key [p. 3]/9.99` is read
+  as the locator 3 and the atom `/9.99`, reported with its slash; a `-4.2` cut the same way
+  keeps its sign, which may have been a dash. The value is caught either way. A `]` closing
+  a bracket opened earlier cuts the run wherever it stands, so an identifier written across
+  one, `x]y2`, would be read as `y2`; none has been met.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

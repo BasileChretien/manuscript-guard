@@ -990,6 +990,33 @@ def test_code_nothing_would_typeset_still_merges_as_text() -> None:
     assert out == "Fitted using lme4 in R, the ratio was {{results.x}} overall."
 
 
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Run it with `--offline` and the ratio was {{results.x}} overall.",
+            "Run it with --offline and the ratio was ⟦3.84⟧ overall.",
+            "Run it and the ratio was 3.84 overall.",
+            "Run it and the ratio was {{results.x}} overall.",
+            id="beside-a-binding",
+        ),
+        pytest.param(
+            "A comment is opened with `<!--` in the source files.",
+            "A comment is opened with <!-- in the source files.",
+            "A comment is opened in the source files.",
+            "A comment is opened in the source files.",
+            id="plain-paragraph",
+        ),
+    ],
+)
+def test_code_the_edit_deleted_does_not_refuse_it(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """With the code gone from Word's text, nothing is left for pandoc to typeset, and the
+    refusal named code that Word no longer showed."""
+    assert merged(source, rendered, returned) == expected
+
+
 def test_code_in_a_stretch_left_alone_is_kept() -> None:
     source = "Run it with `--offline`: the ratio was {{results.x}} overall."
     out = merged(

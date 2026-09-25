@@ -1334,7 +1334,9 @@ prose, a `--`, a `...` or a quote: rebuilt from Word's text it was prose, and `-
 printed as "–offline" and `<!--` as "<!–". Escaping those characters would print Word's
 text as it is, but a `--` a co-author typed with AutoCorrect off would then print as `--`
 and not as the dash pandoc makes of it, which is what they meant. Other code merges as
-text, and prints the same without its formatting.
+text, and prints the same without its formatting, but for the no-break space pandoc puts
+after an abbreviation it knows: `e.g. x` in code comes back with one after "e.g.". An edit
+that deleted the code leaves nothing to typeset, and merges.
 
 The paragraph is read whole, with each binding filled in as digits, because what a stretch
 is depends on its neighbours: `*{{results.x}}*` is italics around a number, and
@@ -2210,11 +2212,11 @@ Closed since, and why each mattered:
   footnote or a reference to one, a link or its address, an image, an equation, raw TeX, raw
   HTML or a raw inline, a span or code with attributes, a superscript, a subscript,
   struck-through text, a hard line break, one end of emphasis or code wrapped around a
-  binding, or code holding a `--`, a `...` or a quote. What comes back is escaped, and a merge that this module reads differently from
-  what came back is refused. A no-break space is no longer on that list: Word's text keeps
-  it (U+00A0, U+202F and every other space except layout whitespace), so it merges back as
-  typed, whether the source had it or the co-author's French AutoCorrect put it before a
-  colon. What remains:
+  binding, or code holding a `--`, a `...` or a quote. What comes back is escaped, and a
+  merge that this module reads differently from what came back is refused. A no-break space
+  is no longer on that list: Word's text keeps it (U+00A0, U+202F and every other space
+  except layout whitespace), so it merges back as typed, whether the source had it or the
+  co-author's French AutoCorrect put it before a colon. What remains:
   - *The refusal costs the edit.* The markup is never carried over into the new wording, even
     where the words either side of a footnote came back unchanged and its place is certain.
     In a paragraph without bindings the whole paragraph is one stretch, so one `kg/m^2^` or

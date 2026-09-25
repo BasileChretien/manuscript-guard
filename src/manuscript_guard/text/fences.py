@@ -63,11 +63,23 @@ _RAW = re.compile(r"\{[ \t]*=[\w-]+[ \t]*\}")
 # pandoc's `all_symbols_escapable` has it; before anything else it is a backslash.
 _BARE_VALUE = re.compile(r"(?:\\[\W_]|[^ \t}])*")
 _BLANKS = re.compile(r"[ \t]*")
-# What may stand in front of a line of backticks or tildes. Past three spaces, or a tab, it
-# is indented code or a list item's listing, which the gates read as text; anything else
-# there, a no-break space or a byte-order mark, makes a line pandoc may not read as a fence.
+# What may stand in front of a line of backticks or tildes. Past three spaces it is
+# indented code or a list item's listing, which the gates read as text; a no-break space, a
+# byte-order mark or another zero-width mark makes a line pandoc may not read as a fence.
 _LEAD = re.compile(
     "[\\s" + "".join(chr(code) for code in (0xFEFF, 0x200B, 0x200C, 0x200D, 0x2060)) + "]*"
+)
+# A list, definition or footnote marker, a task's box after it: pandoc opens a listing in
+# the item, and takes the item's indentation off the lines before it looks for the closer.
+_MARKER = re.compile(
+    r"[ ]{0,3}(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
+)
+# Where a comment or a raw block opens or shuts. Inside one, a fence is raw text to pandoc.
+_RAW_EDGE = re.compile(
+    r"(?P<open><!--|<(?:pre|script|style|textarea)\b|\\begin\{)"
+    r"|(?P<shut>-->|</(?:pre|script|style|textarea)\s*>|\\end\{)",
+    re.IGNORECASE,
 )
 
 
@@ -83,9 +95,17 @@ class Fence:
 
     @property
     def language(self) -> str:
-        """The first word of the info string, lowercased. Empty when untagged."""
-        stripped = self.info.strip()
-        return stripped.split()[0].lower() if stripped else ""
+        """The language word after the fence, or else the first class in its attributes,
+        lowercased, as pandoc takes it. Empty when untagged. Split on spaces, `{.python}`
+        and `r{.x}` were languages no lexer knew, and the listing went unread."""
+        info = self.info.strip(" \t")
+        word = _WORD.match(info)
+        if word:
+            return word.group().lower()
+        for part in info[info.find("{") + 1 :].rstrip("}").split():
+            if part.startswith(".") and len(part) > 1:
+                return part[1:].lower()
+        return ""
 
     @property
     def is_raw(self) -> bool:
@@ -101,26 +121,28 @@ class Fence:
 
 
 def _bare(line: str) -> str:
-    """A line as pandoc reads it: without its newline, and with no carriage return."""
-    return line.rstrip("\n").replace("\r", "")
+    """A line as pandoc reads it: without its newline, with no carriage return, and with
+    tabs expanded to four columns, which pandoc does before it parses anything."""
+    return line.rstrip("\n").replace("\r", "").expandtabs(4)
+
+
+def _closer(line: str) -> tuple[str, int] | None:
+    """The fence character and width of a line that could close a listing: up to three
+    spaces, a run of three or more, and nothing but spaces after. "At least as long", per
+    CommonMark: requiring equality let a longer closer slip past and swallow the prose after
+    it. A no-break space or a form feed after the run leaves pandoc's block open."""
+    run_start = len(line) - len(line.lstrip(" "))
+    char = line[run_start : run_start + 1]
+    if run_start > 3 or char not in ("`", "~"):
+        return None
+    run = len(line) - run_start - len(line[run_start:].lstrip(char))
+    return (char, run) if run >= 3 and not line[run_start + run :].strip(" ") else None
 
 
 def _closes(line: str, char: str, width: int) -> bool:
-    """Is this line a closing fence for a run of `width` of `char`?
-
-    "At least as long", per CommonMark. Requiring equality is what let a longer closer
-    slip past and swallow the prose after it. Up to three spaces before it, and nothing but
-    spaces and tabs after: a no-break space or a form feed there leaves pandoc's block open.
-    """
-    bare = line.lstrip(" ")
-    if len(line) - len(bare) > 3:
-        return False
-    run = len(bare) - len(bare.lstrip(char))
-    return run >= width and not bare[run:].strip(" \t")
-
-
-# Pandoc lets an opener's attributes run on to the next lines. The gates read them on the
-# opening line alone and refuse the rest (`unclear_fence_lines`).
+    """Does this line close a listing opened with a run of `width` of `char`?"""
+    closer = _closer(line)
+    return closer is not None and closer[0] == char and closer[1] >= width
 
 
 def _quote_end(info: str, at: int) -> int | None:
@@ -164,9 +186,9 @@ def _attribute_end(info: str, at: int) -> int | None:
     if name is not None and info.startswith("=", name):
         value = name + 1
         if info[value : value + 1] in ('"', "'"):
-            quoted = _quote_end(info, value)
-            if quoted is not None:
-                return quoted
+            # Not closed on the line, pandoc reads the value on over the lines after, and
+            # what it then makes of them the gates do not guess: the opener is refused.
+            return _quote_end(info, value)
         return _BARE_VALUE.match(info, value).end()
     return at + 1 if info.startswith("-", at) else None
 
@@ -202,17 +224,25 @@ def _info_opens(info: str) -> bool:
 
 
 def _fence_like(bare: str) -> bool:
-    """Does the line start with three backticks or tildes, behind nothing pandoc takes for
-    indentation past a fence's? Up to three spaces, or anything but spaces and tabs."""
-    lead = _LEAD.match(bare).end()
+    """Does the line start with three backticks or tildes, behind at most three spaces,
+    behind whitespace other than spaces or a zero-width mark, or behind a list marker?"""
+    marker = _MARKER.match(bare)
+    lead = _LEAD.match(bare, marker.end() if marker else 0).end()
     if not bare.startswith(("```", "~~~"), lead):
         return False
     indent = bare[:lead]
-    return indent.strip(" \t") != "" or ("\t" not in indent and len(indent) <= 3)
+    return marker is not None or indent.strip(" ") != "" or len(indent) <= 3
+
+
+def _raw_depth(bare: str, depth: int) -> int:
+    """How many comments and raw blocks are open after `bare`, `depth` being open before."""
+    for edge in _RAW_EDGE.finditer(bare):
+        depth = depth + 1 if edge.group("open") else max(depth - 1, 0)
+    return depth
 
 
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
-    """Every fenced block, in document order. Linear in the length of the text.
+    """Every fenced block, in document order, in time linear in the length of the text.
 
     An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
     ``` as literal text and the rest of the document as ordinary paragraphs — verified
@@ -231,27 +261,43 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     """The lines, numbered from 1, of each line from `begin` that starts with three
     backticks or tildes and is not a plain fenced listing's, nor inside one.
 
-    A plain listing opens under a blank line, the first line or another listing's closer,
-    with at most a language word and one-line `{attributes}` after its fence, and closes.
-    Pandoc opens no fence on an R Markdown chunk header, `{r, echo=FALSE}`, and prints the
-    lines as inline code running to the closer, which then opened a listing to the gates
-    that ran on to the next chunk, over the prose between. Nor does it open a tilde fence,
-    or an indented one, under a line of text, where it does open a backtick one, and it
-    reads attributes on over lines while no line is blank. Modelling each of those grew a
-    reader review kept finding wrong, so the gates read the plain listing and refuse the
-    rest: a line pandoc may read otherwise is never left for them to guess at.
+    A plain listing opens at the margin, under a blank line, the first line or another
+    listing's closer, with at most a language word and one-line `{attributes}` after its
+    fence, outside any comment or raw block, and closes. Pandoc opens no fence on an R
+    Markdown chunk header, `{r, echo=FALSE}`, and prints the lines as inline code running to
+    the closer, which then opened a listing to the gates that ran on to the next chunk, over
+    the prose between. Nor does it open a tilde fence, or an indented one, under a line of
+    text, where it does open a backtick one; it reads attributes on over lines while no line
+    is blank; in a list item it takes the item's indentation off before it looks for the
+    closer; and inside a comment, a `<pre>` or a TeX environment a fence is raw text.
+    Modelling each of those grew a reader review kept finding wrong, so the gates read the
+    plain listing and refuse the rest, and the build compares what they read with the code
+    pandoc makes (`build.reading`).
     """
     lines = _LINE.findall(text, begin)
     bares = [_bare(line) for line in lines]
     listings = _listings(lines, bares, begin)
-    closers = {last for _first, last, _fence in listings}
+    last_of = {first: last for first, last, _fence in listings}
+    closers = set(last_of.values())
     inside: set[int] = set()
-    for first, last, _fence in listings:
-        if first == 0 or not bares[first - 1].strip(" \t") or first - 1 in closers:
-            inside.update(range(first, last + 1))
-    above = text.count("\n", 0, begin)
+    depth = index = 0
+    while index < len(bares):
+        last = last_of.get(index)
+        above = bares[index - 1] if index else ""
+        if (
+            last is not None
+            and depth == 0
+            and bares[index][:1] in ("`", "~")
+            and (index == 0 or not above.strip(" ") or index - 1 in closers)
+        ):
+            inside.update(range(index, last + 1))
+            index = last + 1
+            continue
+        depth = _raw_depth(bares[index], depth)
+        index += 1
+    above_begin = text.count("\n", 0, begin)
     return [
-        above + index + 1
+        above_begin + index + 1
         for index, bare in enumerate(bares)
         if index not in inside and _fence_like(bare)
     ]
@@ -259,64 +305,54 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
 
 def _listings(lines: list[str], bares: list[str], begin: int) -> list[tuple[int, int, Fence]]:
     """Each fenced block with the indexes, in `lines`, of its opening and closing lines."""
+    # The widest closer of each fence character still to come after each line, read from
+    # the end once. An opener wider than that has no closer and is passed over at once;
+    # found by scanning forward, every opener in a run of narrowing ones read to the end of
+    # the text, and a run of a hundred over 85 KB took eight seconds.
+    widest = {"`": 0, "~": 0}
+    after: list[tuple[int, int]] = [(0, 0)] * len(bares)
+    for index in range(len(bares) - 1, -1, -1):
+        after[index] = (widest["`"], widest["~"])
+        closer = _closer(bares[index])
+        if closer is not None:
+            widest[closer[0]] = max(widest[closer[0]], closer[1])
+
     found: list[tuple[int, int, Fence]] = []
     offset = begin
     index = 0
-
-    # Openers proven to have no closer, by fence character. Without this the scan is
-    # quadratic again: every unterminated opener reads to the end of the file, and a
-    # document of 8,000 of them took 55 seconds — the very cost the regex was replaced to
-    # avoid, reintroduced by the fix for unterminated fences.
-    #
-    # The shortcut is sound because a closing line of width w closes every opener of width
-    # <= w. So once a width is known to have no closer in the remainder of the document, no
-    # *wider* opener of the same character can have one either, and it can be rejected
-    # without looking.
-    dead: dict[str, int] = {}
-
     while index < len(lines):
         line = lines[index]
         opener = _OPENER.match(bares[index])
-        if opener is None:
-            offset += len(line)
-            index += 1
-            continue
-
-        fence = opener.group("fence")
+        fence = opener.group("fence") if opener else ""
         # A backtick in the language word makes the line inline code or text, not a fence,
         # but one in an attribute's value does not: pandoc reads ```{.r k=a`b} as a fence.
-        if not _info_opens(opener.group("info")) or len(fence) >= dead.get(
-            fence[0], 1 << 30
+        if (
+            opener is None
+            or not _info_opens(opener.group("info"))
+            or after[index][fence[0] == "~"] < len(fence)
         ):
             offset += len(line)
             index += 1
             continue
 
         start = offset
-        closed_from = index
+        opened = index
         offset += len(line)
         index += 1
         body_start = offset
-
+        # A closer wide enough is known to follow, so this stops at it.
         while index < len(lines) and not _closes(bares[index], fence[0], len(fence)):
             offset += len(lines[index])
             index += 1
-
-        body_end = offset
         if index >= len(lines):
-            # Ran off the end: no closer, so pandoc does not read this as a code block and
-            # neither do we. Resume from the line *after* the opener so the rest stays prose
-            # — and so this loop terminates, which rewinding to the opener itself did not.
-            dead[fence[0]] = min(dead.get(fence[0], 1 << 30), len(fence))
-            index = closed_from + 1
-            offset = start + len(lines[closed_from])
-            continue
+            break
+        body_end = offset
         offset += len(lines[index])
         index += 1
 
         found.append(
             (
-                closed_from,
+                opened,
                 index - 1,
                 Fence(
                     start=start,

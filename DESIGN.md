@@ -1692,13 +1692,30 @@ the chunk as inline code running to its closer; the gates, rejecting the opener 
 does, took the closer for an opener and read to the next chunk, hiding the prose between.
 Pandoc also opens a backtick fence under a line of text but not a tilde one or an indented
 one, and reads attributes on over lines while none is blank. So a fence is read only in its
-plain form, a listing opened under a blank line, the first line or another listing's
-closer, with its word and attributes on the opening line, and closed; any other line
-starting with three backticks or tildes, behind up to three spaces or behind anything but
-spaces and tabs, is refused (`unclear-fence`), by `check` and by the build. Past three
-spaces or a tab, pandoc reads indented code or a list item's listing, and the gates read
-the lines as text, which is the safe side. `tests/test_pandoc_agreement.py` asks pandoc
-about 128 fenced shapes: the old reader got 63 wrong, and now 120 agree and 8 are refused.
+plain form, a listing opened at the margin under a blank line, the first line or another
+listing's closer, outside any comment or raw block, with its word and attributes on the
+opening line, and closed; any other line starting with three backticks or tildes, behind
+up to three spaces, behind a list marker, or behind whitespace other than spaces or a
+zero-width mark, is refused (`unclear-fence`), by `check` and by the build. The second
+review found why the margin: in a list item pandoc takes the item's indentation off before
+it looks for the closer, and closed a listing the gates read on through the prose after it;
+and why raw blocks: inside a comment, a `<pre>` or a TeX environment a fence is raw text to
+pandoc, which the gates paired with a later one. A comment or raw block is taken as open
+from its opening to its closing mark, outside listings, so an arrow `-->` in a Mermaid
+listing refuses nothing. Past three spaces pandoc reads indented code or a list item's
+listing, and the gates read the lines as text, the safe side. Refused on purpose, though
+pandoc opens them: a fence straight under a heading, a list item's text, a `:::` line or a
+comment, and a line of text that opens with backticks. `tests/test_pandoc_agreement.py`
+asks pandoc about 128 fenced shapes: the old reader got 63 wrong; now 120 agree, the 8 that
+do not are refused, and 65 are refused in all.
+
+Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
+attribute over blank lines), so the build compares too: every listing the gates mask in the
+sources must be a code block or raw block pandoc makes, with the same lines once the
+indentation is off (`build/reading.py`, beside the metadata and the headings). Code pandoc
+makes that the gates read as prose, an indented listing, is let be. The fence scan is
+linear: the widest closer still to come is read from the end once, so an opener with none
+is passed over at once, where a run of narrowing openers each used to read to the end.
 
 The manuscript is read with `read_text`, which makes a lone carriage return a newline
 before the gates or the build see it; the reader agrees with pandoc either way. The front
@@ -2188,11 +2205,17 @@ Closed since, and why each mattered:
   metadata in the text or a heading the gates read otherwise, the build refuses; `check`
   passes it. A number such a shape hides from G2, with neither, is caught by nothing.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
-  starts with a letter, and Python 3.12 knows Unicode 15.0 where pandoc 3.9 knows 15.1: a
-  class starting with one of the 622 letters added between, CJK Extension I, opens a fence
-  to pandoc alone, and the line is refused. The other way, a Python newer than pandoc would
-  take a letter pandoc does not, and open a fence pandoc prints as text. Nobody names a
+  starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
+  14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an
+  older Python a class starting with a letter it does not know opens a fence to pandoc
+  alone, and the line is refused; on 3.14 a letter pandoc does not know opens a fence pandoc
+  prints as text, which the build's comparison of listings then refuses. Nobody names a
   class in those letters by accident.
+- **A fence in the front matter is read and not refused.** `masking.fenced_blocks` reads
+  fences inside YAML values, and nothing refuses an unclear one there: an R Markdown chunk
+  pair or a tilde fence in `abstract: |` hides the prose between from the gates. The build
+  prints no front-matter value today, so nothing is printed wrongly, but a gate reading the
+  abstract reads less of it than pandoc does.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares

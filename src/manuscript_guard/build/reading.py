@@ -6,12 +6,15 @@ a list marker or a TeX command put another title on the title page, and a title
 continuing a paragraph over `===` was a Methods heading to the gates and text to pandoc.
 Five rounds of refusals each found more. So the build asks pandoc itself, once, before it
 writes the document: the metadata of the whole text must be the metadata of the build's
-header alone, and the headings pandoc makes must be the headings the gates read. A shape
-nobody has listed is caught here too, because nothing here lists shapes.
+header alone, the headings pandoc makes must be the headings the gates read, and every
+listing the gates mask must be code pandoc makes. A shape nobody has listed is caught here
+too, because nothing here lists shapes.
 
 The gates read each source as it is on disk, placeholders and all, so a placeholder in a
-title matches whatever its value prints as. Quoted headings are left out on both sides:
-the gates read none, by design (see `test_a_quoted_heading_is_deliberately_not_a_section`).
+title or a listing matches whatever its value prints as. Quoted headings are left out on
+both sides: the gates read none, by design (see
+`test_a_quoted_heading_is_deliberately_not_a_section`). Code pandoc makes that the gates
+read as prose, an indented listing say, is the safe side, and is let be.
 """
 
 from __future__ import annotations
@@ -19,8 +22,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from collections import Counter
 from pathlib import Path
 
+from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index
 
@@ -87,6 +93,50 @@ def _headers(blocks: list) -> list[tuple[int, str]]:
     return found
 
 
+def _lines(code: str) -> str:
+    """A listing's lines without their indentation, which pandoc takes off in a list item,
+    and without blank lines, spaces run together."""
+    return "\n".join(" ".join(line.split()) for line in code.split("\n") if line.strip())
+
+
+def _code(blocks: list) -> Counter[str]:
+    """The lines of every code block and raw block pandoc makes, anywhere in the document."""
+    found: Counter[str] = Counter()
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            if node.get("t") in ("CodeBlock", "RawBlock"):
+                found[_lines(node["c"][1])] += 1
+                return
+            walk(node.get("c"))
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(blocks)
+    return found
+
+
+def _listing_misread(blocks: list, sources: list[str]) -> str | None:
+    """The first listing the gates mask in `sources` that is no code pandoc makes."""
+    made = _code(blocks)
+    for text in sources:
+        for fence in fenced_spans(text, front_matter_end(text)):
+            body = _lines(text[fence.body_start : fence.body_end])
+            if PLACEHOLDER.search(body):
+                pattern = re.compile(
+                    ".*?".join(re.escape(part) for part in PLACEHOLDER.split(body)[::3]),
+                    re.DOTALL,
+                )
+                body = next((code for code in made if made[code] and pattern.fullmatch(code)), body)
+            if made[body]:
+                made[body] -= 1
+                continue
+            opener = text[fence.start : fence.body_start].strip()
+            return f"as text the listing the gates read as code, opened by {opener!r}"
+    return None
+
+
 def _template(title: str) -> list[str | None]:
     """A title's words as the gates read it, None for each placeholder."""
     holed = PLACEHOLDER.sub(_HOLE, title)
@@ -147,4 +197,4 @@ def misreading(
     if len(read) > len(printed):
         level, title = read[len(printed)]
         return f"as text the level-{level} heading {title!r} the gates read"
-    return None
+    return _listing_misread(whole["blocks"], sources)

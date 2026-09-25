@@ -2244,7 +2244,11 @@ Closed since, and why each mattered:
   - *Code is refused only for the characters pandoc typesets.* A `--` or `...` typed in Word
     outside code, with AutoCorrect off, is typeset like one in the source; and code holding
     such a character refuses an edit anywhere in its stretch, even one that leaves the code
-    as it was, because Word's text does not say which words were code.
+    as it was, because Word's text does not say which words were code. Only the code's own
+    stretch is read: code cut and pasted past a binding or a citation merges as prose there,
+    and `--offline` prints as "–offline", as it does on a move into another paragraph. And
+    an edit that deleted the code but left a literal `--` or straight quote in its stretch is
+    refused under the code's name.
   - *Formatting inside an edited stretch is still lost*, as the entry above says, and so is
     the source's own way of writing a character: `&lt;` comes back as `\<`, and `\ ` or
     `&nbsp;` as the no-break space itself, each of which prints the same. An escaped

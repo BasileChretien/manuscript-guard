@@ -253,22 +253,33 @@ def is_methods(section: Sequence[str] | None) -> bool:
     printed = getattr(section, "printed", None)
     if printed is not None and not is_methods(printed):
         return False
-    if any(NOT_METHODS_SECTIONS.match(_unmarked(title)) for title in section):
+    if any(rules_out_methods(title) for title in section):
         return False
     return any(
         METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
     )
 
 
+def rules_out_methods(title: str) -> bool:
+    """True when a heading's title names a section that is not Methods, Results say, read
+    through the marks and raw markup it may keep."""
+    return bool(NOT_METHODS_SECTIONS.match(_unmarked(title)))
+
+
 _MARKS = re.compile(r"^[\s#>*+_-]+")
 _ATTRIBUTES = re.compile(r"\s*\{[^{}]*\}\s*$")
 _EMPHASIS_END = re.compile(r"[\s*_]+$")
+#: What a title can hold that the page does not show: an HTML tag or comment, and raw TeX
+#: such as `\label{sec:results}`. No alternative can start again inside what another failed
+#: on, so a long title is read in one pass.
+_RAW = re.compile(r"<!--.*?(?:-->|$)|</?[A-Za-z][^<>\n]*>|\\[A-Za-z]+\*?(?:\{[^{}]*\})*")
 
 
 def _unmarked(title: str) -> str:
     """A heading's title without the marks it may keep: leading hashes, quote and list
-    marks, emphasis around it (`**Results**`), and trailing attributes."""
-    return _EMPHASIS_END.sub("", _MARKS.sub("", _ATTRIBUTES.sub("", title)))
+    marks, emphasis around it (`**Results**`), trailing attributes, and raw HTML or TeX,
+    which a reader of the built document does not see (`# <del>Results</del>`)."""
+    return _EMPHASIS_END.sub("", _MARKS.sub("", _ATTRIBUTES.sub("", _RAW.sub("", title))))
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:

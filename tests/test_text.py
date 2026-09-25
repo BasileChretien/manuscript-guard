@@ -466,6 +466,41 @@ def test_a_real_methods_heading_still_is_one(heading: str) -> None:
     assert is_methods((heading,))
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "<del>Results</del>",
+        'Results <a id="r"></a>',
+        "Results <!-- final -->",
+        "Results \\label{sec:results}",
+        "**Results** <br> {#sec-results}",
+    ],
+)
+def test_a_results_title_is_read_through_raw_markup(title: str) -> None:
+    """Found by the sixth review of #38. Pandoc prints raw HTML and TeX in a title as nothing,
+    so the page reads "Results". Read as typed, the title was nothing the gates knew, and a
+    Methods heading under it kept the Methods rules."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods((title, "Methods"))
+
+
+def test_a_results_line_printed_as_text_stays_on_the_printed_chain() -> None:
+    """Found by the sixth review of #38. A Results heading after a comment is marked as text,
+    and was left off the printed chain; a `#` line pandoc prints as text then took it off the
+    other one, and both chains said Methods."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.sections import section_chain
+
+    text = (
+        "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n"
+        "Statistical analysis\n-\n\nIt was 0.05.\n"
+    )
+    chain = section_chain(text, text.index("0.05"))
+    assert chain.printed == ("Results", "Statistical analysis")
+    assert not is_methods(chain)
+
+
 def test_a_caller_with_no_sections_keeps_every_rule() -> None:
     """Figure text and the audit have no headings, and a `p < 0.05` in a legend is a
     legend convention. Passing no section must not silently tighten those callers."""

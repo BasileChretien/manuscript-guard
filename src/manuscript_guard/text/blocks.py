@@ -433,6 +433,9 @@ class _Walk:
         #: The last line holding only an "either" tag, `<ins>` say, which takes an indented
         #: comment under it into its raw block.
         self._raw_tag_line = -2
+        #: Where a heading was read from the rest of a tag's line. The walk ends a tag at its
+        #: first `>`, and pandoc does not always: `<div class="a>Methods` has no tag.
+        self.tagged: set[int] = set()
         self._ends: dict[str, list[int]] | None = None
         self._closers: dict[str, list[int]] = {}
 
@@ -620,12 +623,14 @@ class _Walk:
         if index + 1 < len(self.lines) and _underline(self.lines[index + 1]):
             below = self.lines[index + 1]
             level = 1 if below.shown.startswith("=") else 2
+            self.tagged.add(self.lines[index].start)
             self.found.append(
                 Heading(self.lines[index].start, level, _setext_title(rest), setext=True)
             )
             return index + 2
         atx = _atx(rest)
         if atx is not None:
+            self.tagged.add(self.lines[index].start)
             self.found.append(Heading(self.lines[index].start, *atx))
             return index + 1
         # The paragraph ends where its text closes what the tag opened: `<ins>Text</ins>`.
@@ -814,20 +819,23 @@ def section_breaks(text: str) -> list[Heading]:
     and the rule under its last row is a rule.
 
     Two kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
-    after a tag or a comment on its line, and a setext title starting with a tag. The scan
-    before the walk never read either, and wherever the walk wrongly starts a block, under a
-    stray `</script>` say, one could open Methods. And an empty `##` over a line of text
-    breaks there too, titled with that line: pandoc prints the line as a paragraph, and the
-    page shows "Results" over the numbers under it.
+    after a tag or a comment on its line, and a setext title after a tag, at the start of its
+    line or after a comment. The scan before the walk never read either, and wherever the
+    walk wrongly starts a block, under a stray `</script>` say, or ends a tag pandoc does not
+    see, one could open Methods. And an empty `##` over a line of text breaks there too,
+    titled with that line: pandoc prints the line as a paragraph, and the page shows
+    "Results" over the numbers under it.
     """
     walk = _Walk(text)
+    placed_headings = walk.run()
     raw_at = {line.start: line.raw for line in walk.lines}
     found = [
         replace(heading, title=Unprinted(heading.title))
-        if (not heading.setext and not raw_at[heading.start].startswith("#"))
+        if heading.start in walk.tagged
+        or (not heading.setext and not raw_at[heading.start].startswith("#"))
         or (heading.setext and _START_TAG.match(raw_at[heading.start]))
         else heading
-        for heading in walk.run()
+        for heading in placed_headings
     ]
     by_start = {heading.start: heading for heading in found}
     shown = [line.shown for line in walk.lines]

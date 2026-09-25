@@ -510,6 +510,40 @@ RESULTS_READ_AS_METHODS = {
         "# Methods\n\nAlpha was set in advance.\n\n##\nResults\n\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    # Found by the sixth review. The walk ends a tag at its first `>`, and pandoc does not:
+    # with a quote left open there is no tag, and the heading reads `<div class="a>Methods`.
+    # Only a line starting with the tag was marked as text, not one after a comment.
+    "a tag after a comment over an underline": (
+        '# Results\n\n<!-- c --><div class="a>Methods\n===\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment inside a code span": (
+        "# Results\n\nUse the `x\n<!-- c --><div>Methods\n===\n`\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment under a table": (
+        '# Results\n\n| a | b |\n|---|---|\n| 1 | 2 |\n<!-- c --><div>Methods {k="$ | $"}\n'
+        "===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A Results title with raw HTML or TeX in it, which the page does not show, did not read
+    # as Results; a seven-hash Methods under it, which `main` never read, opened Methods.
+    "a seven-hash methods under a struck-through results": (
+        "# <del>Results</del>\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods with attributes under a results anchor": (
+        '# Results <a id="r"></a>\n\n####### Methods {-}\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods under a results label": (
+        "# Results \\label{sec:results}\n\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A Results heading after a comment is marked as text, so it was never on the printed
+    # chain; a `#` line pandoc prints as text then took it off the other one.
+    "a results after a comment ended by a line printed as text": (
+        "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n# Results\n-\n\n"
+        "Statistical analysis\n-\n\nThe excess was significant (p < 0.001).\n"
+    ),
 }
 
 

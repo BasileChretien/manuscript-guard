@@ -112,7 +112,8 @@ def heading_index(text: str) -> list[Heading]:
 
 class Chain(tuple):
     """The headings enclosing a place, outermost first, and `printed`: the same chain as a
-    reader of the built document has it, from the headings pandoc prints alone.
+    reader of the built document has it, from the headings pandoc prints alone and the lines
+    printed as text that say Results.
 
     `is_methods` asks both. A line pandoc prints as text can end a section for the gates;
     counted alone, "# of reports" wrapped to the start of a line closed the Results, and a
@@ -136,13 +137,19 @@ class HeadingIndex(list):
     """
 
     def __init__(self, headings: list[Heading]) -> None:
+        from manuscript_guard.classify import rules_out_methods
+
         super().__init__(headings)
         self.starts = [found.start for found in self]
         self.chains: list[Chain] = []
         every: list[tuple[int, str]] = []
         printed: list[tuple[int, str]] = []
         for found in self:
-            for stack in (every, printed) if type(found.title) is not Unprinted else (every,):
+            # A line printed as text stays off the printed chain, unless it says Results:
+            # there it can only keep the Results in place. Off it, a later line printed as
+            # text took it off the other chain as well, and left both saying Methods.
+            both = type(found.title) is not Unprinted or rules_out_methods(found.title)
+            for stack in (every, printed) if both else (every,):
                 while stack and stack[-1][0] >= found.level:
                     stack.pop()
                 stack.append((found.level, found.title))

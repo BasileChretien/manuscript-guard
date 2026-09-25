@@ -2376,11 +2376,22 @@ Closed since, and why each mattered:
   prints as text in the paper as well, so it is worth rewrapping, or escaping as `\#`.
   Rows of a table the walk reads, and `{{table.x}}`, are not such lines: the rule under the
   last row is a rule. Two kinds of heading pandoc does print are read the same way: a `#`
-  heading after a tag or a comment on its line, and a setext title starting with a tag. The
-  scan before the walk never read either, and where the walk wrongly starts a block, under
-  a stray `</script>` say, one would open Methods; so a Methods section headed that way
-  reports its thresholds. A lone `##` over a line of text, an empty heading and a
-  paragraph to pandoc, ends the section there, titled with that line.
+  heading after a tag or a comment on its line, and a setext title after a tag, at the start
+  of its line or after a comment. The scan before the walk never read either, and where the
+  walk wrongly starts a block, under a stray `</script>` say, or ends a tag at a `>` pandoc
+  reads inside a quote, one would open Methods; so a Methods section headed that way
+  reports its thresholds. Such a line that says Results holds the Results in place like a
+  printed heading. A lone `##` over a line of text, an empty heading and a paragraph to
+  pandoc, ends the section there, titled with that line. Seven hashes or more make a
+  heading to pandoc and to the walk, which the scan before it never read.
+- **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
+  line under a table for a row when it holds a pipe outside code, math and a backslash
+  escape, and reads each of those naively: two dollars are math, a backslash escapes the
+  pipe after it, and two backticks are code. Pandoc does not: `$ | $` is not math, `\\|` is
+  an escaped backslash and a cell edge, an escaped backtick opens no code, and a code span
+  closes only on a run of as many backticks as opened it. The walk ends the table above such a row, and reads the row as
+  whatever it is shaped like, a title over the rule under it say. The scan before the walk
+  read that heading too.
 - **A section is Results only by its title.** `## **Results**`, `- Results` and
   `# Results` over a rule are read as Results, but a combined title such as "Results and
   discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
@@ -2414,7 +2425,9 @@ Closed since, and why each mattered:
   text to pandoc, is a heading to them and opens Methods, as it did for the scan before the
   walk. Pandoc reads a setext title that is only an HTML comment as an empty heading,
   where the gates see none. A heading's title keeps its raw HTML and LaTeX, which pandoc's
-  printed title does not show, so `## Methods <span>` is not read as Methods. In a file
+  printed title does not show, so `## Methods <span>` is not read as Methods. It is read
+  as Results through them: `# <del>Results</del>` and `# Results \label{sec:results}` end
+  the Methods as the printed "Results" does. In a file
   with CRLF line endings the gates now see setext headings, which the scan before the walk
   did not, and with them the list-heading gaps above.
 - **A headingless reference list is recognised by the signature of its year alone.**

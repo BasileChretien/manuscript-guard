@@ -566,9 +566,10 @@ Two smaller decisions fell out of this:
 A limit is only checkable if both sides agree what is counted, and journals rarely say. The
 rule used is written down and the count reported beside the limit: whitespace-separated
 tokens after citations, tables, images, code and markup are removed; abstract and
-references counted separately; headings counted, because they are printed. Counting is done
-on the source rather than the built document, so a binding counts as one word whatever it
-resolves to and the count does not move when the analysis is re-run.
+references counted separately; headings counted, because they are printed, and their
+attribute blocks (`{#sec-methods}`, `{-}`) not, because pandoc does not print them. Counting
+is done on the source rather than the built document, so a binding counts as one word
+whatever it resolves to and the count does not move when the analysis is re-run.
 
 ## The AI-writing lint measures rate, not presence
 
@@ -839,7 +840,10 @@ predecessor:
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
   appendix or a footnote after it is still read. Otherwise every volume number and page
-  range is reported.
+  range is reported. A heading is read without the attribute block pandoc takes off it:
+  `# References {-}`, the usual way to leave the list unnumbered, was no heading at all, so
+  nothing was cut and a book or a web page in the list had every number reported. On a line
+  nothing marks as a heading the braces are printed, and it is not one.
 - **Rendered citations classified.** In source a citation is `[@key]` and gets masked; in a
   built document it has already become "(Smith and Jones 2019)", and without a rule for that
   every citation in the paper is an unexplained number.
@@ -951,7 +955,11 @@ fix, not of the original code.**
   detection now runs over text with fences and comments blanked.
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
-  every threshold rule beneath it. Anchored at both ends now.
+  every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
+  kept its pandoc attribute block was another word. `# Results {#sec-results}` was not
+  Results, so a "Sensitivity analyses" subsection under it made a reported `p < 0.001` the
+  alpha chosen in advance. A title is now read without its attribute block, backslash
+  escapes in its values included. Other markup stays: `# **Results**` is not Results.)
 - Table cells were classified with no section at all, which meant every `methods_only` rule
   applied — in the one place a *reported* p-value is most likely to be typed.
 - `display=` was checked against its value, so the same fabrication moved one line across
@@ -2240,6 +2248,26 @@ Closed since, and why each mattered:
   reference heading is read as having none. Its lines are then taken for reference entries
   by their shape, as in any headingless paper, and a sentence with an entry's shape has its
   unmatched numbers listed apart, where `--strict` does not count them.
+- **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
+  differences remain.
+  - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
+    is taken for the block's opening brace, and the block stays in the title.
+  - A block continued on the next line, `# Results {#sec-results` above `.unnumbered}`,
+    or a quoted value broken across two lines, is looked for on the heading's own line
+    alone, where pandoc reads on. The block stays in the title.
+  - An unpaired `*` or `_` before the block or the closing `#`s, as in
+    `# *References {-}`, `# References _{-}` or `# References *##`, opens an emphasis
+    pandoc cannot close, and pandoc then prints the rest of the line, braces and `#`s
+    included. The toolkit takes them off, and the audit cuts a reference list there that
+    pandoc does not head, so the numbers under it go unread.
+
+  A block kept in the title is the strict way to be wrong: G2 does not read that heading
+  as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
+  is the loose way, and is recorded here rather than fixed because reading it right means
+  reading emphasis as pandoc does. Other markup stays in the title, so `# **Results**` is
+  not Results to G2 either, and a subsection under it named like a Methods one admits the
+  Methods-only rules. In a .docx a heading style is what makes a heading, so a styled
+  paragraph typed as `References {-}` starts a list, although Word prints the braces.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no

@@ -100,6 +100,70 @@ CONSTRUCTS = {
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
     "no headings at all": "Just a paragraph with 42 in it.\n",
+    # An attribute block is not printed, so it is not part of the title.
+    "atx unnumbered": "# References {-}\n\nProse.\n",
+    "atx identifier and class": "# References {#refs .unnumbered}\n\nProse.\n",
+    "atx key and quoted value": '## Results {#sec-results lang="en-GB"}\n\nProse.\n',
+    "atx attributes after closing hashes": "## Results ## {#sec-results}\n\nProse.\n",
+    "setext with attributes": "Methods {#sec-methods}\n-------\n\nProse.\n",
+    # Braces pandoc prints: not an attribute block, or not the last thing on the line.
+    "atx braces that are not attributes": "# Results {and more}\n\nProse.\n",
+    "atx closing hashes after braces": "# Results {-} ##\n\nProse.\n",
+    "atx two blocks": "# Results {.a} {-}\n\nProse.\n",
+    # A value may hold backslash escapes, as pandoc reads them.
+    "atx escaped quote in a quoted value": (
+        '# Results {#sec-results title="the \\"main\\" results"}\n\nProse.\n'
+    ),
+    "atx escaped quote in a single-quoted value": "# Results {k='a\\'b'}\n\nProse.\n",
+    "atx escaped space in a value": "# Results {k=a\\ b}\n\nProse.\n",
+    "atx escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n\nProse.\n",
+    "atx escaped opening brace in a value": "# Results {k=a\\{b}\n\nProse.\n",
+    # An unquoted value ends at a space, a tab, a line break or `}`, and at no other space.
+    "atx no-break space in a value": "# Results {#sec-results lang=fr\u00a0FR}\n\nProse.\n",
+    "atx thin space in a value": "# Results {#sec-results lang=fr\u2009FR}\n\nProse.\n",
+    "atx form feed in a value": "# Results {#sec-results lang=fr\fFR}\n\nProse.\n",
+    "atx empty quoted value": '# References {title=""}\n\nProse.\n',
+    "atx empty single-quoted value": "# References {title=''}\n\nProse.\n",
+    "atx quoted value ending in a space": '# References {title="Works "}\n\nProse.\n',
+    # Only spaces and tabs may follow a block or closing `#`s; any other space is printed.
+    "atx no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx ideographic space after the block": "# References {-}\N{IDEOGRAPHIC SPACE}\n\nProse.\n",
+    "atx form feed after the block": "# References {-}\f\n\nProse.\n",
+    "atx no-break space after a closing hash": "# References #\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx no-break space between a hash and the block": (
+        "# References #\N{NO-BREAK SPACE}{-}\n\nProse.\n"
+    ),
+    # A class or a key opens with a letter, and a number that is not a digit is not one.
+    "atx class opening with a superscript": "# References {.\N{SUPERSCRIPT TWO}}\n\nProse.\n",
+    "atx key opening with a roman numeral": (
+        "# References {\N{ROMAN NUMERAL EIGHT}=1}\n\nProse.\n"
+    ),
+    "atx class opening with a titlecase letter": (
+        "# References {.\N{LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON}}\n\nProse.\n"
+    ),
+    "atx class opening with a modifier letter": (
+        "# References {.\N{MODIFIER LETTER SMALL H}}\n\nProse.\n"
+    ),
+    "atx identifier opening with a superscript": (
+        "# References {#\N{SUPERSCRIPT TWO}}\n\nProse.\n"
+    ),
+    # A quoted value may open with any character pandoc's `isSpace` refuses, which is not
+    # every character Python's `\s` takes.
+    "atx quoted value opening with a next line": (
+        '# Results {title="\N{NEXT LINE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a line separator": (
+        '# Results {title="\N{LINE SEPARATOR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a file separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR FOUR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a unit separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR ONE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a zero-width space": (
+        '# Results {title="\N{ZERO WIDTH SPACE}x y"}\n\nProse.\n'
+    ),
 }
 
 
@@ -110,6 +174,50 @@ def test_the_toolkit_sees_the_headings_pandoc_renders(name: str) -> None:
     assert headings(markdown) == pandoc_headings(markdown), (
         f"{name}: toolkit saw {headings(markdown)}, pandoc renders "
         f"{pandoc_headings(markdown)}"
+    )
+
+
+# Where pandoc prints the braces, it also typesets what is between them, `\}` as `}` and a
+# straight quote as a curly one, and the toolkit does neither to a title. So these are
+# compared on the one thing in question: whether the heading still ends in its braces.
+BRACES = {
+    "escaped closing brace ends no block": "# References {k=\\}\n\nProse.\n",
+    "escaped closing brace after a value": "# Results {k=a\\}\n\nProse.\n",
+    "escaped quote in a quoted value": '# Results {title="the \\"main\\" results"}\n',
+    "escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n",
+    "escaped backslash before a closing brace": "# Results {k=a\\\\}\n",
+    "escaped quote that leaves a quote open": '# Results {k="a\\"}\n',
+    "escaped opening brace before the block": "# Results \\{-}\n",
+    # A quoted value may not open with a space or a tab.
+    "space after an opening quote": '# References {title=" Works cited"}\n',
+    "space after an opening single quote": "# References {k=' a'}\n",
+    "tab after an opening quote": '# References {title="\tWorks"}\n',
+    "no-break space after an opening quote": '# References {title="\u00a0Works"}\n',
+    # Every space pandoc's `isSpace` takes, after an opening quote.
+    "ideographic space after an opening quote": '# Results {title="\N{IDEOGRAPHIC SPACE}x y"}\n',
+    "ogham space mark after an opening quote": '# Results {title="\N{OGHAM SPACE MARK}x y"}\n',
+    "en quad after an opening quote": '# Results {title="\N{EN QUAD}x y"}\n',
+    "hair space after an opening quote": '# Results {title="\N{HAIR SPACE}x y"}\n',
+    "narrow no-break space after an opening quote": (
+        '# Results {title="\N{NARROW NO-BREAK SPACE}x y"}\n'
+    ),
+    "medium mathematical space after an opening quote": (
+        '# Results {title="\N{MEDIUM MATHEMATICAL SPACE}x y"}\n'
+    ),
+    "vertical tab after an opening quote": '# Results {title="\vx y"}\n',
+    "no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n",
+    "thin space after the block": "# References {-}\N{THIN SPACE}\n",
+    "class opening with a roman numeral": "# References {.\N{ROMAN NUMERAL EIGHT}}\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(BRACES))
+def test_the_toolkit_takes_off_the_attribute_blocks_pandoc_takes_off(name: str) -> None:
+    markdown = BRACES[name]
+    (toolkit,) = headings(markdown)
+    (printed,) = pandoc_headings(markdown)
+    assert toolkit.endswith("}") == printed.endswith("}"), (
+        f"{name}: toolkit saw {toolkit!r}, pandoc renders {printed!r}"
     )
 
 

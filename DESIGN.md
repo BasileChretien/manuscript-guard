@@ -1804,13 +1804,19 @@ pandoc makes that the gates read as prose, an indented listing, is let be.
 
 In `check`, a comment or raw block closes only on its own mark: a `-->` closed a `<pre>`,
 and `\end{center}` a comment. One of the same name opened inside it is counted, as pandoc
-counts it, and `<?` opens raw text to `?>`. Marks in a code span, `<pre>` in a line of
-text, `<pre-x>`, and `<!-->` open nothing; a backtick behind a backslash opens no span, and
-a line whose backticks do not pair blanks none, its span perhaps closing on the next. The
-scans are linear: the widest closer still to come is read from the end once, so an opener
-with none is passed over at once, where a run of narrowing openers each used to read to the
-end; and code spans are paired run by run in one pass, where a pattern retried from every
-backtick of a run, and a line of 20,000 took seven seconds.
+counts it, except a `<script>`, which pandoc does not count; and `<?` followed by a letter,
+`<?php` or `<?xml`, opens raw text to `?>`, where `<? marks a query` is text (the fifth
+review found both refusing listings pandoc makes). Marks in a code span, `<pre-x>`, and
+`<!-->` open nothing, and neither does a `<pre>` or `<?php` behind text on its line, though
+pandoc does open one there when its closer follows (see Known gaps); a backtick behind a
+backslash opens no span, and a line whose backticks do not pair blanks none, its span
+perhaps closing on the next. The scans are linear: the widest closer still to come is read
+from the end once, so an opener with none is passed over at once, where a run of narrowing
+openers each used to read to the end; code spans are paired run by run in one pass, where a
+pattern retried from every backtick of a run, and a line of 20,000 took seven seconds; and
+every mark on a line is found in one pass, where a raw block's closer and another of its
+name were searched for from each mark to the end of the line, and a line of 300,000
+characters inside a `<pre>` took eighteen seconds (the fifth).
 
 The manuscript is read with `read_text`, which makes a lone carriage return a newline
 before the gates or the build see it; the reader agrees with pandoc either way. The front
@@ -2451,6 +2457,25 @@ Closed since, and why each mattered:
   does). Where the result is metadata in the text, a heading the gates read otherwise or a
   listing pandoc does not make, the build refuses; `check` passes it. A number such a shape
   hides from G2, with none of those, is caught by nothing.
+
+  The comments and raw blocks `check` tracks for the fence refusal are a model too, and the
+  fifth review of #71 found ten ways past it, each a listing the gates read that pandoc
+  prints as raw text or prose, the build refusing every one:
+  - a `<pre>` or `<?php` behind text on its line, whose closer comes later;
+  - a `<pre>` straight after a comment closed on the same line;
+  - a `</pre>` inside a comment inside a `<pre>`;
+  - a `?>` in quotes in a processing instruction;
+  - an escaped `\\end{center}`;
+  - code spans the tracker pairs otherwise than pandoc: backticks straddling a comment's
+    close, a backslash escaping one backtick of a run, a span from the line above closing
+    early, and an unpaired backtick opening a false comment that takes in a real `<pre>`.
+- **Some listings pandoc makes are refused.** The same tracker opens a context pandoc does
+  not in two shapes, and every later listing in the file is refused, the finding on the
+  listing's own lines: a `<pre>` or `\begin{center}` opened inside one of its name and left
+  unclosed, which pandoc takes for a lone tag and pairs the inner one with the closer; and a
+  line whose backticks do not pair, `` `<!--` `` beside a stray `` ` ``, where a comment's
+  mark is read. The hint names an open comment or raw block as a cause, and nothing is read
+  wrongly.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
   starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
   14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an

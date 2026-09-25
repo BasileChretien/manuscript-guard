@@ -2191,6 +2191,12 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
         f"Text with <pre> in it.\n\n{_TICKS}r\nx\n{_TICKS}\n",
         f"<!-- the <pre> tag -->\n\n{_TICKS}r\nx\n{_TICKS}\n",
         f"<!-->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found by the fifth: pandoc counts no `<script>` opened inside one, and `<?` opens
+        # nothing before anything but a letter.
+        f"<script>\na <script> b\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<script>\n<script>\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<? marks a query in our notation.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<?= x\n\n{_TICKS}r\nx\n{_TICKS}\n",
     ],
 )
 def test_a_plain_fence_is_not_refused(block: str) -> None:

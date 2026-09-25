@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import lru_cache
 
 # Up to three spaces of indent; four would be an indented code block, not a fence. A tab
 # in the indent reaches column four, since pandoc expands tabs to four columns first.
@@ -76,48 +75,58 @@ _MARKER = re.compile(
     r"[ ]{0,3}(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
 )
-# Where a comment or a raw block opens. Inside one, a fence is raw text to pandoc, and only
-# the mark that closes it counts: a comment closes on `-->`, `<pre>` on `</pre>`, `<?` on
-# `?>`, and `\begin{x}` on `\end{x}`, one of the same name opened inside counted, as pandoc
-# counts them. `<!-->` and `<!--->` are comments closed at once, and a raw element or `<?`
-# opens a block only at the start of a line; in a line of text it is inline markup.
-_RAW_OPENING = re.compile(
-    r"(?P<comment><!--(?!-?>))"
-    r"|^[ ]{0,3}<(?P<tag>pre|script|style|textarea)(?=[\s>/]|$)"
-    r"|^[ ]{0,3}(?P<instruction><\?)"
-    r"|\\begin[ \t]*\{(?P<environment>[^{}\n]*)\}",
-    re.IGNORECASE,
+# The marks that open or close a comment or a raw block. Inside one, a fence is raw text to
+# pandoc, and only the mark that closes it counts: a comment closes on `-->`, `<pre>` on
+# `</pre>`, `<?php` on `?>`, and `\begin{x}` on `\end{x}`, one of the same name opened inside
+# counted, as pandoc counts them, save a `<script>`. `<!-->` and `<!--->` are comments closed
+# at once, and `<?` opens nothing before anything but a letter. Every mark is found, at every
+# position of a line, in one pass: `<?>` holds a `?>`. Searched for mark by mark from each
+# one's end, a line of 300,000 characters inside a `<pre>` took eighteen seconds.
+_MARKS = re.compile(
+    r"(?=(?P<comment><!--(?!-?>))"
+    r"|(?P<uncomment>-->)"
+    r"|(?P<tag><(?i:(?P<tagname>pre|script|style|textarea))(?=[\s>/]|$))"
+    r"|(?P<untag></(?i:(?P<untagname>pre|script|style|textarea))\s*>)"
+    r"|(?P<instruction><\?(?=[A-Za-z]))"
+    r"|(?P<uninstruction>\?>)"
+    r"|(?P<environment>\\begin[ \t]*\{(?P<envname>[^{}\n]*)\})"
+    r"|(?P<unenvironment>\\end[ \t]*\{(?P<unenvname>[^{}\n]*)\}))"
 )
+# Each opening mark, and the mark that closes what it opens.
+_CLOSING = {
+    "comment": "uncomment",
+    "tag": "untag",
+    "instruction": "uninstruction",
+    "environment": "unenvironment",
+}
+# Opened inside one of their name, these are counted; a `<script>` is not.
+_NESTING = frozenset({"pre", "style", "textarea"})
 _BACKTICKS = re.compile(r"`+")
 
 
 @dataclass(frozen=True)
 class _Raw:
-    """A comment or raw block open: what closes it, what opens another of its name inside
-    it, and how many are open."""
+    """A comment or raw block open: which kind, its name, and how many are open."""
 
-    closing: re.Pattern[str]
-    nesting: re.Pattern[str] | None
+    kind: str
+    name: str
     depth: int = 1
 
-
-_COMMENT = _Raw(re.compile("-->"), None)
-_INSTRUCTION = _Raw(re.compile(r"\?>"), None)
-_TAGS = {
-    tag: _Raw(
-        re.compile(rf"</{tag}\s*>", re.IGNORECASE),
-        re.compile(rf"<{tag}(?=[\s>/]|$)", re.IGNORECASE),
-    )
-    for tag in ("pre", "script", "style", "textarea")
-}
+    def nests(self) -> bool:
+        return self.kind == "environment" or self.name in _NESTING
 
 
-@lru_cache(maxsize=256)
-def _environment(name: str) -> _Raw:
-    escaped = re.escape(name)
-    return _Raw(
-        re.compile(rf"\\end[ \t]*\{{{escaped}\}}"), re.compile(rf"\\begin[ \t]*\{{{escaped}\}}")
-    )
+def _mark(found: re.Match[str]) -> tuple[str, str, int]:
+    """A mark `_MARKS` found: its kind, the name it carries, and where it ends."""
+    kind = found.lastgroup or ""
+    name = {
+        "tag": found.group("tagname"),
+        "untag": found.group("untagname"),
+        "environment": found.group("envname"),
+        "unenvironment": found.group("unenvname"),
+    }.get(kind) or ""
+    lowered = name.lower() if kind in ("tag", "untag") else name
+    return kind, lowered, found.start() + len(found.group(kind))
 
 
 @dataclass(frozen=True)
@@ -316,33 +325,34 @@ def _raw_after(bare: str, raw: _Raw | None) -> _Raw | None:
     """The comment or raw block open after `bare`, None when none is: `raw` is the one open
     before it. Outside one, marks in inline code count for nothing, pandoc printing them as
     code; inside one, everything is raw, and only its own marks count."""
-    outside = _without_code_spans(bare)
+    outside: str | None = None
     at = 0
-    while True:
-        if raw is not None:
-            shut = raw.closing.search(bare, at)
-            again = raw.nesting.search(bare, at) if raw.nesting is not None else None
-            if shut is None and again is None:
-                return raw
-            if again is not None and (shut is None or again.start() < shut.start()):
-                at, raw = again.end(), _Raw(raw.closing, raw.nesting, raw.depth + 1)
-            elif raw.depth > 1:
-                at, raw = shut.end(), _Raw(raw.closing, raw.nesting, raw.depth - 1)
-            else:
-                at, raw = shut.end(), None
+    for found in _MARKS.finditer(bare):
+        if found.start() < at:
             continue
-        opening = _RAW_OPENING.search(outside, at)
-        if opening is None:
-            return None
-        if opening.group("comment"):
-            raw = _COMMENT
-        elif opening.group("tag"):
-            raw = _TAGS[opening.group("tag").lower()]
-        elif opening.group("instruction"):
-            raw = _INSTRUCTION
-        else:
-            raw = _environment(opening.group("environment"))
-        at = opening.end()
+        kind, name, end = _mark(found)
+        if raw is not None:
+            if kind == _CLOSING[raw.kind] and name == raw.name:
+                raw = _Raw(raw.kind, name, raw.depth - 1) if raw.depth > 1 else None
+            elif kind == raw.kind and name == raw.name and raw.nests():
+                raw = _Raw(raw.kind, name, raw.depth + 1)
+            else:
+                continue
+            at = end
+            continue
+        if kind not in _CLOSING:
+            continue
+        if outside is None:
+            outside = _without_code_spans(bare)
+        start = found.start()
+        # In inline code a mark is printed; a raw element or `<?` opens a block only at the
+        # start of a line, and in a line of text it is inline markup.
+        if outside[start] != bare[start]:
+            continue
+        if kind in ("tag", "instruction") and (at or start > 3 or outside[:start].strip(" ")):
+            continue
+        raw, at = _Raw(kind, name), end
+    return raw
 
 
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:

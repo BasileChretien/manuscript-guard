@@ -21,6 +21,7 @@ subject matter.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -66,24 +67,44 @@ def test_check_finishes_on_pathological_prose(project: Path, name: str, body: st
     assert elapsed < BUDGET_SECONDS, f"{name}: check took {elapsed:.1f}s"
 
 
-def test_the_fence_scanner_is_linear() -> None:
+def opener_lines(count: int) -> str:
+    return "".join(f"```lang{i}\n" for i in range(count))
+
+
+def test_the_fence_scanner_is_linear(assert_linear) -> None:
     """Measured directly, because the gate budget is too coarse to see a slide.
 
     The regex this replaced took 0.24s at 1,000 opener-shaped lines and 6.09s at 4,000 —
     quadratic. The first attempt at handling unterminated fences reintroduced it at 55s for
-    8,000. Doubling the input must not much more than double the time.
+    8,000.
     """
     from manuscript_guard.text.fences import fenced_spans
 
-    def measure(count: int) -> float:
-        text = "".join(f"```lang{i}\n" for i in range(count))
-        started = time.perf_counter()
-        fenced_spans(text)
-        return time.perf_counter() - started
+    assert_linear(opener_lines, fenced_spans, 500, "the fence scanner")
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+def quadratic_fence_scan(text: str) -> list[tuple[int, int]]:
+    """Each opener searches the rest of the text for its closer, as the first attempt at
+    unterminated fences did. The search runs at C speed, so on small inputs the linear
+    part weighs as much as the quadratic one: 4x the input read 8 to 11 at 2,000 lines."""
+    spans = []
+    for opener in re.finditer(r"^(`{3,}|~{3,})", text, re.MULTILINE):
+        closer = text.find(f"\n{opener.group(1)}\n", opener.end())
+        spans.append((opener.start(), len(text) if closer < 0 else closer))
+    return spans
+
+
+def test_the_linear_check_fails_a_quadratic_scan(assert_linear) -> None:
+    """The check has to fail the regression it exists for, not just pass what is linear."""
+    with pytest.raises(AssertionError, match="the time; linear is 8, quadratic 64"):
+        assert_linear(opener_lines, quadratic_fence_scan, 500, "a quadratic fence scan")
+
+
+def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
+    """A ratio of microseconds is noise, so a size that never reaches the floor is an error
+    in the test, not a pass."""
+    with pytest.raises(ValueError, match="too little to time"):
+        assert_linear(opener_lines, len, 10, "len")
 
 
 @pytest.mark.parametrize(

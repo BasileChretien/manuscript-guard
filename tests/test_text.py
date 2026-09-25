@@ -553,34 +553,31 @@ def test_the_scanned_and_unscanned_paths_agree() -> None:
         assert with_scan == without, f"{atom.text!r} judged differently by the two paths"
 
 
-def test_classifying_is_linear_in_the_number_of_atoms() -> None:
+def test_classifying_is_linear_in_the_number_of_atoms(assert_linear) -> None:
     """The regression this replaces: one regex scan per atom per rule.
 
     A paragraph written as a single line with 8,000 numbers meant 168,000 scans of 320
-    overlapping characters, and `check` spent 30 seconds inside the classifier. Doubling the
-    atom count must not much more than double the time.
+    overlapping characters, and `check` spent 30 seconds inside the classifier. This asserted
+    `large < small * 4 + 0.5` at twice the atoms, which a quadratic classifier passes: twice
+    the atoms is four times the time.
     """
-    import time
-
     from manuscript_guard.classify import Classifier
     from manuscript_guard.text.masking import mask
     from manuscript_guard.text.tokens import find_atoms
 
     classifier = Classifier.load()
 
-    def measure(count: int) -> float:
+    def paragraph(count: int) -> tuple[str, list]:
         text = "The ratio was " + "1.0 " * count + "overall.\n"
-        atoms = find_atoms(text, mask(text))
-        started = time.perf_counter()
+        return text, find_atoms(text, mask(text))
+
+    def classify(given: tuple[str, list]) -> None:
+        text, atoms = given
         scan = classifier.scan(text)
         for atom in atoms:
             classifier.classify(atom, None, scan)
-        return time.perf_counter() - started
 
-    measure(500)  # warm the caches
-    small = measure(2000)
-    large = measure(4000)
-    assert large < small * 4 + 0.5, f"2000 atoms {small:.2f}s, 4000 atoms {large:.2f}s"
+    assert_linear(paragraph, classify, 50, "classifying atoms")
 
 
 # ------------------------------------------------------ bindings inside an HTML comment

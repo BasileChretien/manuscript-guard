@@ -1,4 +1,4 @@
-"""Shared fixtures: a working copy of the example project.
+"""Shared fixtures: a working copy of the example project, and a check that a scan is linear.
 
 The example is built once per test session and then copied, rather than re-running the
 analysis and a matplotlib render for every test. Tests mutate their copy freely, so the
@@ -10,7 +10,10 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -78,3 +81,82 @@ def project(built_example: Path, tmp_path: Path) -> Path:
     root = tmp_path / "paper"
     shutil.copytree(built_example, root, ignore=IGNORE)
     return root
+
+
+# ---------------------------------------------------------------------------- linear time
+
+#: A linear scan takes 8 times as long on 8 times the input, and a quadratic one 64 times.
+#: The bound is twice linear and a quarter of quadratic: a scan whose quadratic part is a
+#: seventh of its time on the smaller input reads 8 + 56/7 = 16, and fails. It is a check
+#: for scans, not for n log n, which comes close: sorting shuffled integers read 10.5 to 13.6.
+LINEAR_FACTOR = 8
+LINEAR_BOUND = 16.0
+#: Below this, one preemption decides the ratio. The input is doubled until the smaller
+#: case takes at least this long, so a fast machine measures what a slow one does.
+LINEAR_FLOOR_SECONDS = 0.02
+LINEAR_MAX_GROWTH = 64
+#: Each size keeps its best of three. A ratio between the bound and twice it is measured five
+#: times more before it fails; a linear scan does not read twice the bound on its best runs.
+LINEAR_REPEATS = 3
+LINEAR_CONFIRM = 5
+
+
+def _seconds(work: Callable[[Any], object], given: Any) -> float:
+    started = time.perf_counter()
+    work(given)
+    return time.perf_counter() - started
+
+
+def _best_ratio(
+    work: Callable[[Any], object],
+    small: Any,
+    large: Any,
+    times: tuple[list, list],
+    repeats: int,
+) -> float:
+    """Measure the two sizes in alternation, so a slow spell falls on both, and keep each
+    size's best: interference only ever adds time."""
+    for _ in range(repeats):
+        times[0].append(_seconds(work, small))
+        times[1].append(_seconds(work, large))
+    return min(times[1]) / min(times[0])
+
+
+def check_linear(
+    build: Callable[[int], Any], work: Callable[[Any], object], size: int, what: str
+) -> None:
+    """Fail unless `work(build(8 * n))` takes under 16 times as long as `work(build(n))`.
+
+    Each of these tests was once one measurement of a few milliseconds per size, which a busy
+    runner decides: at four times the input, a macOS job read 13.5 for the fence scanner,
+    which is linear, against a bound of 12. So inputs are built off the clock; `n` starts at
+    `size` and doubles until the smaller case takes 20 ms, so `size` should be small; the
+    sizes are measured in alternation, and each keeps its best; and a ratio just over the
+    bound is measured again before it fails.
+    """
+    for growth in (2**step for step in range(LINEAR_MAX_GROWTH.bit_length())):
+        count = size * growth
+        small = build(count)
+        work(small)  # imports, caches and compiled patterns, off the clock
+        if _seconds(work, small) >= LINEAR_FLOOR_SECONDS:
+            break
+    else:
+        raise ValueError(
+            f"{what}: {count} items took under {LINEAR_FLOOR_SECONDS}s, too little to time;"
+            " start from a larger size"
+        )
+    large = build(count * LINEAR_FACTOR)
+    times: tuple[list, list] = ([], [])
+    ratio = _best_ratio(work, small, large, times, LINEAR_REPEATS)
+    if LINEAR_BOUND <= ratio < 2 * LINEAR_BOUND:
+        ratio = _best_ratio(work, small, large, times, LINEAR_CONFIRM)
+    assert ratio < LINEAR_BOUND, (
+        f"{what}: {LINEAR_FACTOR}x the input ({count} to {count * LINEAR_FACTOR}) took"
+        f" {ratio:.1f}x the time; linear is {LINEAR_FACTOR}, quadratic {LINEAR_FACTOR ** 2}"
+    )
+
+
+@pytest.fixture
+def assert_linear() -> Callable[..., None]:
+    """`check_linear`, for a test to call."""
+    return check_linear

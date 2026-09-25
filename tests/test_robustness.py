@@ -80,7 +80,7 @@ def test_the_fence_scanner_is_linear(assert_linear) -> None:
     """
     from manuscript_guard.text.fences import fenced_spans
 
-    assert_linear(opener_lines, fenced_spans, 500, "the fence scanner")
+    assert_linear(opener_lines, fenced_spans, 50, "the fence scanner")
 
 
 def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
@@ -132,8 +132,8 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
 
 
 # The check itself, on a clock that only the job below moves: that it fails a quadratic,
-# and how it handles noise. Each test is a change to the check that the real scans above
-# cannot see, because a real machine is neither quadratic nor noisy on cue. A real quadratic
+# and how it handles noise. Each test catches a change to the check that the real scans
+# above cannot see, because a real machine is neither quadratic nor noisy on cue. A real quadratic
 # scan was timed here too, and cost more CI time than it told: the one below is exact.
 
 
@@ -198,23 +198,57 @@ def test_the_two_sizes_are_timed_in_alternation(assert_linear) -> None:
     assert calls[first_large - 1:] == [1000, 8000] * 3
 
 
-@pytest.mark.parametrize(("share", "fails"), [(0.2, True), (0.1, False)])
+@pytest.mark.parametrize(
+    ("share", "fails"), [(0.2, True), (0.15, True), (0.13, False), (0.1, False)]
+)
 def test_the_bound_fails_a_quadratic_part_of_a_seventh(
     assert_linear, share: float, fails: bool
 ) -> None:
     """The check has to fail the regression it exists for, not just pass what is linear. A
     job whose quadratic part is `share` of its time on the smaller input reads 8 + 56 *
-    share: 19.2 at a fifth, which fails, and 13.6 at a tenth, which passes."""
+    share, and a seventh reads 16: a fifth (19.2) and 0.15 (16.4) fail, 0.13 (15.28) and a
+    tenth (13.6) pass, which puts the bound between 15.28 and 16.4."""
 
     def seconds(n: int) -> float:
         return 0.024 * ((1 - share) * n / 1000 + share * (n / 1000) ** 2)
 
     clock, work, _ = virtual_job(seconds)
     if fails:
-        with pytest.raises(AssertionError, match="took 19.2x the time"):
+        with pytest.raises(AssertionError, match=f"took {8 + 56 * share:.1f}x the time"):
             assert_linear(same, work, 1000, "a job", clock=clock)
     else:
         assert_linear(same, work, 1000, "a job", clock=clock)
+
+
+def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -> None:
+    """Off for every timed sample, and on again afterwards, even when the work raises in the
+    middle of one: left off, it would stay off for the rest of the session."""
+    import gc
+
+    clock, work, _ = virtual_job(lambda n: n * 3e-5)
+    collecting: list[bool] = []
+
+    def watched(n: int) -> None:
+        collecting.append(gc.isenabled())
+        work(n)
+
+    def fails_once_timed(n: int) -> None:
+        collecting.append(gc.isenabled())
+        if len(collecting) > 1:
+            raise RuntimeError("the job failed")
+
+    try:
+        assert_linear(same, watched, 1000, "a linear job", clock=clock)
+        # The first call is the warm-up, off the clock.
+        assert collecting[0] and not any(collecting[1:])
+        assert gc.isenabled()
+        collecting.clear()
+        with pytest.raises(RuntimeError, match="the job failed"):
+            assert_linear(same, fails_once_timed, 1000, "a job that fails", clock=clock)
+        assert collecting == [True, False]
+        assert gc.isenabled()
+    finally:
+        gc.enable()
 
 
 # ---------------------------------------------------------------- hostile files

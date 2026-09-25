@@ -2234,13 +2234,6 @@ Closed since, and why each mattered:
     though not for the masking.
 
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
-- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
-  times a scan on eight times its input, taking each size's best in alternation, and fails
-  at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose quadratic
-  part is under a seventh of its time on the smaller input passes, and so does n log n, which
-  reads 10 to 14. A single measurement of a few milliseconds used to decide these on a busy
-  runner. They are tripwires for the scans that went quadratic before, not a proof that
-  nothing else does.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2588,6 +2581,15 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
+  times a scan on eight times its input, taking each size's best of three in alternation,
+  and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
+  quadratic part is under a seventh of its time on the smaller input passes, and so does
+  n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
+  per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
+  Each of these tests used to rest on one timing per size, or on a budget, and a busy runner
+  decided one of them. They are tripwires for the scans that went quadratic before, not a
+  proof that nothing else does.
 
 ## Still open
 

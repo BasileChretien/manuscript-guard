@@ -554,12 +554,15 @@ def test_the_scanned_and_unscanned_paths_agree() -> None:
 
 
 def test_classifying_is_linear_in_the_number_of_atoms(assert_linear) -> None:
-    """The regression this replaces: one regex scan per atom per rule.
+    """One scan of the text, not one per atom.
 
-    A paragraph written as a single line with 8,000 numbers meant 168,000 scans of 320
-    overlapping characters, and `check` spent 30 seconds inside the classifier. This asserted
-    `large < small * 4 + 0.5` at twice the atoms, which a quadratic classifier passes: twice
-    the atoms is four times the time.
+    Running every rule over an atom's whole line once per atom (until 469d7e8) is quadratic
+    in the numbers on a paragraph written as one line, and scanning the whole text for each
+    atom fails this at 67. What made `check` spend 30 seconds on 8,000 numbers after that,
+    168,000 scans of a 320-character window (until 553f64f), was linear, and no ratio sees
+    it: that is the budget's job, in `test_check_finishes_on_pathological_prose`. This used
+    to assert `large < small * 4 + 0.5` at twice the atoms, which a quadratic classifier
+    passes: twice the atoms is four times the time.
     """
     from manuscript_guard.classify import Classifier
     from manuscript_guard.text.masking import mask

@@ -92,19 +92,35 @@ def project(built_example: Path, tmp_path: Path) -> Path:
 LINEAR_FACTOR = 8
 LINEAR_BOUND = 16.0
 #: Below this, one preemption decides the ratio. The input is doubled until the smaller
-#: case takes at least this long, so a fast machine measures what a slow one does.
+#: case's best time reaches this, so a fast machine measures what a slow one does. The size
+#: a test starts from should be small: a quadratic that has come back is slow at once, and a
+#: large start times eight times a slow case, for minutes.
 LINEAR_FLOOR_SECONDS = 0.02
-LINEAR_MAX_GROWTH = 64
-#: Each size keeps its best of three. A ratio between the bound and twice it is measured five
-#: times more before it fails; a linear scan does not read twice the bound on its best runs.
+LINEAR_MAX_GROWTH = 1024
+#: Every time is a best of three: interference only ever adds time, so one slow sample says
+#: nothing. A ratio between the bound and twice it is measured five times more before it
+#: fails; a linear scan does not read twice the bound on its best runs.
 LINEAR_REPEATS = 3
 LINEAR_CONFIRM = 5
 
+Clock = Callable[[], float]
 
-def _seconds(work: Callable[[Any], object], given: Any) -> float:
-    started = time.perf_counter()
-    work(given)
-    return time.perf_counter() - started
+
+def _seconds(work: Callable[[Any], object], given: Any, clock: Clock) -> float:
+    """One timing, with the garbage collector off while it runs, as `timeit` does: a full
+    collection falls on whichever sample happens to trigger it."""
+    # Imported here, not at the top, to keep clear of the import block other branches edit.
+    import gc
+
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        started = clock()
+        work(given)
+        return clock() - started
+    finally:
+        if collecting:
+            gc.enable()
 
 
 def _best_ratio(
@@ -113,32 +129,39 @@ def _best_ratio(
     large: Any,
     times: tuple[list, list],
     repeats: int,
+    clock: Clock,
 ) -> float:
     """Measure the two sizes in alternation, so a slow spell falls on both, and keep each
-    size's best: interference only ever adds time."""
+    size's best."""
     for _ in range(repeats):
-        times[0].append(_seconds(work, small))
-        times[1].append(_seconds(work, large))
+        times[0].append(_seconds(work, small, clock))
+        times[1].append(_seconds(work, large, clock))
     return min(times[1]) / min(times[0])
 
 
 def check_linear(
-    build: Callable[[int], Any], work: Callable[[Any], object], size: int, what: str
+    build: Callable[[int], Any],
+    work: Callable[[Any], object],
+    size: int,
+    what: str,
+    *,
+    clock: Clock = time.perf_counter,
 ) -> None:
     """Fail unless `work(build(8 * n))` takes under 16 times as long as `work(build(n))`.
 
-    Each of these tests was once one measurement of a few milliseconds per size, which a busy
-    runner decides: at four times the input, a macOS job read 13.5 for the fence scanner,
-    which is linear, against a bound of 12. So inputs are built off the clock; `n` starts at
-    `size` and doubles until the smaller case takes 20 ms, so `size` should be small; the
+    Each of these tests was once a single timing per size, or a budget, and a busy runner
+    decided the fence scanner's few milliseconds: at four times the input, a macOS job read
+    13.5 for a scan that is linear, against a bound of 12. So inputs are built off the clock;
+    `n` starts at `size` and doubles until the smaller case's best of three takes 20 ms; the
     sizes are measured in alternation, and each keeps its best; and a ratio just over the
-    bound is measured again before it fails.
+    bound is measured again before it fails. `clock` is for testing this function.
     """
     for growth in (2**step for step in range(LINEAR_MAX_GROWTH.bit_length())):
         count = size * growth
         small = build(count)
         work(small)  # imports, caches and compiled patterns, off the clock
-        if _seconds(work, small) >= LINEAR_FLOOR_SECONDS:
+        best = min(_seconds(work, small, clock) for _ in range(LINEAR_REPEATS))
+        if best >= LINEAR_FLOOR_SECONDS:
             break
     else:
         raise ValueError(
@@ -147,9 +170,9 @@ def check_linear(
         )
     large = build(count * LINEAR_FACTOR)
     times: tuple[list, list] = ([], [])
-    ratio = _best_ratio(work, small, large, times, LINEAR_REPEATS)
+    ratio = _best_ratio(work, small, large, times, LINEAR_REPEATS, clock)
     if LINEAR_BOUND <= ratio < 2 * LINEAR_BOUND:
-        ratio = _best_ratio(work, small, large, times, LINEAR_CONFIRM)
+        ratio = _best_ratio(work, small, large, times, LINEAR_CONFIRM, clock)
     assert ratio < LINEAR_BOUND, (
         f"{what}: {LINEAR_FACTOR}x the input ({count} to {count * LINEAR_FACTOR}) took"
         f" {ratio:.1f}x the time; linear is {LINEAR_FACTOR}, quadratic {LINEAR_FACTOR ** 2}"

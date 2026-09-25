@@ -621,19 +621,23 @@ def test_an_entry_with_accented_or_particled_names_is_recognised(entry: str) -> 
 def test_indented_lines_do_not_stall_the_reference_list_search(assert_linear) -> None:
     """`pdftotext -layout` indents a right-hand column by a hundred spaces or more, and the
     heading check was quadratic in leading whitespace: 20 s for 3,000 such lines. Timed as
-    the indent grows, since that is what it was quadratic in; a budget of 1 s for 3,000
-    lines left 2x headroom on a loaded machine."""
+    the indent grows, since that is what it was quadratic in, and as the lines do; a budget
+    of 1 s for 3,000 lines left 2x headroom on a loaded machine. Both start small, so that
+    a quadratic that has come back fails in seconds rather than being timed at length."""
     from manuscript_guard.audit import bibliography_spans, strip_bibliography
 
-    def indented(width: int) -> str:
-        return "\n".join([" " * width + "Some text 12"] * 300)
+    def indented(width: int, lines: int = 300) -> str:
+        return "\n".join([" " * width + "Some text 12"] * lines)
 
     def search(text: str) -> None:
         bibliography_spans(text)
         strip_bibliography(text)
 
     assert bibliography_spans(indented(150)) == []
-    assert_linear(indented, search, 150, "the reference-list search, by indent")
+    assert_linear(indented, search, 20, "the reference-list search, by indent")
+    assert_linear(
+        lambda lines: indented(150, lines), search, 20, "the reference-list search, by lines"
+    )
 
 
 def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
@@ -643,7 +647,8 @@ def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
 def test_indented_prose_does_not_stall_the_entry_shape(assert_linear) -> None:
     """Two whitespace runs side by side at the start of the numbered-style shape made every
     unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines.
-    Timed as the indent grows, as the search above is."""
+    Timed as the indent grows, from a small indent, as the search above is. The shape reads
+    one line, so the number of lines is the caller's loop, not the shape's."""
 
     def indented(width: int) -> str:
         return " " * width + "accounted for 12 of 8,393 cases"
@@ -653,7 +658,7 @@ def test_indented_prose_does_not_stall_the_entry_shape(assert_linear) -> None:
             looks_like_reference(line)
 
     assert not looks_like_reference(indented(150))
-    assert_linear(indented, recognise, 150, "the entry shape, by indent")
+    assert_linear(indented, recognise, 20, "the entry shape, by indent")
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -146,6 +147,90 @@ def test_paragraph_tagging_is_linear(opener: str) -> None:
     small = max(measure(4000), 1e-4)
     large = measure(16000)
     assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+# The check's handling of noise, on a clock that only the job below moves. Each test is a
+# change to the check that the real scans above cannot see: they pass it whichever way it
+# goes, because a real machine is not noisy on cue.
+
+
+def virtual_job(
+    seconds: Callable[[int], float], slow: Callable[[int, int], float] | None = None
+) -> tuple[Callable[[], float], Callable[[int], None], list[int]]:
+    """A job whose `n` items take `seconds(n)` virtual seconds, times `slow(n, k)` on its
+    `k`th call with `n`, counting from 0. Returns the clock, the work, and the sizes it was
+    called with."""
+    now = [0.0]
+    seen: dict[int, int] = {}
+    calls: list[int] = []
+
+    def work(n: int) -> None:
+        k = seen.get(n, 0)
+        seen[n] = k + 1
+        calls.append(n)
+        now[0] += seconds(n) * (slow(n, k) if slow else 1.0)
+
+    return (lambda: now[0]), work, calls
+
+
+def same(n: int) -> int:
+    return n
+
+
+def test_one_slow_sample_does_not_fail_a_linear_job(assert_linear) -> None:
+    """The first time the larger input runs, it runs ten times slow. Its best of three is
+    linear; its mean, its worst, or a single sample reads 32 or more."""
+    clock, work, _ = virtual_job(
+        lambda n: n * 3e-5, lambda n, k: 10.0 if n == 8000 and k == 0 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+
+
+def test_a_slow_first_round_is_measured_again_before_it_fails(assert_linear) -> None:
+    """All three samples of the larger input run 2.5 times slow, and read 20: a verdict the
+    next five samples overturn."""
+    clock, work, _ = virtual_job(
+        lambda n: n * 3e-5, lambda n, k: 2.5 if n == 8000 and k < 3 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+
+
+def test_one_slow_sample_at_the_floor_does_not_choose_the_size(assert_linear) -> None:
+    """1,000 items take 6 ms, and the first timed run of them 30 ms. The size is chosen on
+    the best of three, so the check goes on to 4,000 items (24 ms) rather than stopping at a
+    size whose real time is under the floor. The first call, `k` 0, is the untimed warm-up."""
+    clock, work, calls = virtual_job(
+        lambda n: n * 6e-6, lambda n, k: 5.0 if n == 1000 and k == 1 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+    assert max(calls) == 8 * 4000
+
+
+def test_the_two_sizes_are_timed_in_alternation(assert_linear) -> None:
+    """So that a slow spell falls on both; timed one size after the other, a spell that
+    covers the larger size's samples reads as a quadratic."""
+    clock, work, calls = virtual_job(lambda n: n * 3e-5)
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+    first_large = calls.index(8000)
+    assert calls[first_large - 1:] == [1000, 8000] * 3
+
+
+@pytest.mark.parametrize(("share", "fails"), [(0.2, True), (0.1, False)])
+def test_the_bound_fails_a_quadratic_part_of_a_seventh(
+    assert_linear, share: float, fails: bool
+) -> None:
+    """A job whose quadratic part is `share` of its time on the smaller input reads
+    8 + 56 * share: 19.2 at a fifth, which fails, and 13.6 at a tenth, which passes."""
+
+    def seconds(n: int) -> float:
+        return 0.024 * ((1 - share) * n / 1000 + share * (n / 1000) ** 2)
+
+    clock, work, _ = virtual_job(seconds)
+    if fails:
+        with pytest.raises(AssertionError, match="took 19.2x the time"):
+            assert_linear(same, work, 1000, "a job", clock=clock)
+    else:
+        assert_linear(same, work, 1000, "a job", clock=clock)
 
 
 # ---------------------------------------------------------------- hostile files

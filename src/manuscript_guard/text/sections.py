@@ -366,22 +366,28 @@ _DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
 # HTML tags or comments, a TeX command with its groups, or list, definition or footnote
 # markers, nested or not. Pandoc reads the dashes there as YAML or a table's rule. Inline
 # markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block, and is prose.
+# Pandoc's block-level tags, and those it takes for a block or inline as it finds them.
 _BLOCK_TAGS = (
-    "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|"
-    "dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hgroup|"
-    "hr|html|iframe|legend|li|link|main|menu|meta|nav|noframes|noscript|ol|optgroup|option|"
-    "p|param|pre|script|section|source|style|summary|table|tbody|td|template|textarea|"
-    "tfoot|th|thead|title|tr|track|ul|video"
+    "address|article|aside|audio|blockquote|body|button|canvas|caption|center|col|colgroup|"
+    "dd|del|details|dialog|dir|div|dl|dt|embed|fieldset|figcaption|figure|footer|form|"
+    "h[1-6]|head|header|hgroup|hr|html|iframe|ins|legend|li|link|main|map|math|menu|meta|"
+    "nav|noframes|noscript|object|ol|optgroup|option|output|p|param|pre|progress|script|"
+    "section|source|style|summary|svg|table|tbody|td|template|textarea|tfoot|th|thead|"
+    "title|tr|track|ul|video"
 )
-_DASH_TAIL = r"[ \t]*(?:-[ \t]*){2,}$"
-_AFTER_MARKUP = re.compile(
-    r"^[ ]{0,3}(?:(?:<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--.*?--)>[ \t]*)+"
-    r"|\\[A-Za-z@]+(?:[ \t]*(?:\{(?:[^{}\n]|\{[^{}\n]*\})*\}|\[[^\]\n]*\]))*)" + _DASH_TAIL,
-    re.IGNORECASE,
+# One thing a line may open with that pandoc starts a block behind: a list, definition or
+# footnote marker, a task's box after it; a block-level tag, a comment or a processing
+# instruction; a TeX command, starred or not, with its groups three deep.
+_GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
+_OPENER_ITEM = (
+    r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
+    r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--.*?--|\?[^>\n]*\?)>[ \t]*"
+    r"|\\[A-Za-z@]+\*?(?:[ \t]*(?:" + _GROUP + r"|\[[^\]\n]*\]))*[ \t]*)"
 )
-_AFTER_MARKER = re.compile(
-    r"^[ ]{0,3}(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
-    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+)+(?:-[ \t]*){2,}$"
+# Three dashes or more: two are an en dash, and no YAML opens on them.
+_OPENS_BLOCK = re.compile(
+    r"^[ ]{0,3}" + _OPENER_ITEM + r"+(?:-[ \t]*){3,}$", re.IGNORECASE
 )
 # A line inside a quotation: its dashes are the quotation's (see Known gaps).
 _QUOTED = re.compile(r"^[ ]{0,3}>")
@@ -411,21 +417,21 @@ def rules_opening_blocks(text: str) -> list[int]:
     source = text.split("\n")
     found = []
     for number, line in enumerate(shown):
+        # A comment that closes on this line is blanked in front of what follows, and pandoc
+        # reads on from its `-->`, spaces and tabs skipped, as from the margin.
         bare = source[number].rstrip("\r")
+        closes = bare.rfind("-->")
+        if closes >= 0 and not line[: closes + 3].strip():
+            line, bare = line[closes + 3 :].lstrip(" \t"), bare[closes + 3 :].lstrip(" \t")
         visible = line.rstrip(" \t\r").endswith("-")
         if (
             visible
             and not _QUOTED.match(bare)
             and not _DASH_LINE.match(line.rstrip("\r"))
-            and (_AFTER_MARKUP.match(bare) or _AFTER_MARKER.match(line.rstrip("\r")))
+            and _OPENS_BLOCK.match(bare)
         ):
             found.append(number + 1)
             continue
-        # A comment that closes on this line is blanked in front of the rule, and pandoc
-        # reads on from its `-->` as from the margin.
-        closes = source[number].rfind("-->")
-        if closes >= 0 and not line[: closes + 3].strip():
-            line = line[closes + 3 :]
         if not _DASH_LINE.match(line.rstrip("\r")):
             continue
         above = source[number - 1] if number else ""

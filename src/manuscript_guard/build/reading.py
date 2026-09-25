@@ -10,11 +10,14 @@ alone, and the headings pandoc makes must be the headings the gates read. Most s
 nobody has listed are caught here too, because nothing here lists shapes.
 
 The gates read each source as it is on disk, placeholders and all. Their titles are read by
-pandoc as well, in the same run as the header, so both sides are compared in pandoc's
-words: `HbA~1c~`, `$\\beta_{1}$` or `&amp;` in a title split into words as pandoc splits
-them. A placeholder stands for whatever its value prints as. Raw markup and footnotes print
-no words in a heading, and quoted headings are left out on both sides: the gates read none,
-by design (see `test_a_quoted_heading_is_deliberately_not_a_section`). Two runs of pandoc's
+pandoc as well, in the same run as the header, each a numbered paragraph of its own, so
+both sides are compared in pandoc's words: `HbA~1c~`, `$\\beta_{1}$` or `&amp;` in a title
+split into words as pandoc splits them. A placeholder stands for whatever its value prints
+as, inside a word too (`{{results.dose}}mg`). A title pandoc makes no paragraph of, block
+HTML in it, is compared in its own words: giving up on it gave up on every heading. Raw
+markup and footnotes print no words in a heading, and a heading in a quotation, a note, a
+figure, a list or a table is left out on both sides: the gates read none there, by design
+(see `test_a_quoted_heading_is_deliberately_not_a_section`). It takes two runs of pandoc's
 reader a document.
 """
 
@@ -30,27 +33,34 @@ from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index
 
 # Containers whose headings are quoted or set apart, not the document's own.
-_NESTED = frozenset({"BlockQuote", "Note", "Figure"})
+_NESTED = frozenset(
+    {"BlockQuote", "Note", "Figure", "BulletList", "OrderedList", "DefinitionList", "Table"}
+)
 # Inlines that print no words: raw markup, an HTML comment among them, and a footnote.
 _SILENT = frozenset({"RawInline", "Note"})
 _WORDS = re.compile(r"[^\W_]+")
 # Written for a placeholder in a title, and matching whatever its value prints as.
 _VALUE = "mgvalue"
-# In front of each title read on its own, so that it is a paragraph whatever it starts with.
+# In front of each title read on its own, numbered, so that it is a paragraph whatever it
+# starts with, and so that each comes back to its own heading.
 _LEAD = "mgtitle"
-# Link reference and footnote definitions, which a title may refer to.
-_DEFINITION = re.compile(r"^[ ]{0,3}\[[^\]\n]+\]:[ \t].*$", re.MULTILINE)
+_LEAD_NUMBER = re.compile(rf"{_LEAD}(\d+)")
+# Link reference and footnote definitions, their text on the lines after included, and
+# example list items, which a title may refer to.
+_DEFINITION = re.compile(
+    r"^[ ]{0,3}\[[^\]\n]+\]:.*(?:\n[ \t]+\S.*)*|^\(@[\w-]+\)[ \t].*", re.MULTILINE
+)
 
 
 @dataclass(frozen=True)
 class _Read:
-    """A heading the gates read: where, its level, its title as written, and its words
-    as pandoc reads them, None for a placeholder's."""
+    """A heading the gates read: where, its level, its title as written, and its words as
+    pandoc reads them, joined by spaces, `_VALUE` where a placeholder is."""
 
     where: str
     level: int
     title: str
-    words: tuple[str | None, ...]
+    words: str
 
 
 def _json(markdown: str, pandoc: str, cwd: Path) -> dict | None:
@@ -86,14 +96,14 @@ def _plain(node) -> str:
     return _plain(content)
 
 
-def _words(inlines) -> list[str]:
-    return _WORDS.findall(_plain(inlines).lower())
+def _words(text: str) -> str:
+    return " ".join(_WORDS.findall(text.lower()))
 
 
-def _headers(blocks: list) -> list[tuple[int, list[str], str]]:
-    """Each heading pandoc makes, outside quotations, notes and figures: its level, its
-    words, and its text for a message."""
-    found: list[tuple[int, list[str], str]] = []
+def _headers(blocks: list) -> list[tuple[int, str, str]]:
+    """Each heading pandoc makes, outside quotations, notes, figures, lists and tables: its
+    level, its words, and its text for a message."""
+    found: list[tuple[int, str, str]] = []
 
     def walk(node) -> None:
         if isinstance(node, dict):
@@ -101,7 +111,8 @@ def _headers(blocks: list) -> list[tuple[int, list[str], str]]:
                 return
             if node.get("t") == "Header":
                 level, _attributes, inlines = node["c"]
-                found.append((level, _words(inlines), " ".join(_plain(inlines).split())))
+                text = _plain(inlines)
+                found.append((level, _words(text), " ".join(text.split())))
                 return
             walk(node.get("c"))
         elif isinstance(node, list):
@@ -114,32 +125,62 @@ def _headers(blocks: list) -> list[tuple[int, list[str], str]]:
 
 def _titles(sources: list[tuple[str, str]]) -> tuple[list[tuple[str, int, str]], str]:
     """Every heading the gates read, where and at what level, and a document reading each
-    title as a paragraph of its own, a placeholder written as `_VALUE`, with the sources'
-    link and footnote definitions after them."""
+    title as a numbered paragraph of its own, a placeholder written as `_VALUE`, with the
+    sources' definitions after them."""
     found: list[tuple[str, int, str]] = []
     paragraphs: list[str] = []
     definitions: list[str] = []
     for name, text in sources:
-        definitions += _DEFINITION.findall(text)
+        definitions += (match.group() for match in _DEFINITION.finditer(text))
         for heading in heading_index(text):
             where = f"{name}:{text.count(chr(10), 0, heading.start) + 1}"
+            paragraphs.append(f"{_LEAD}{len(found)} {PLACEHOLDER.sub(_VALUE, heading.title)}")
             found.append((where, heading.level, heading.title))
-            paragraphs.append(f"{_LEAD} {PLACEHOLDER.sub(f' {_VALUE} ', heading.title)}")
     return found, "\n\n".join([*paragraphs, *definitions])
 
 
-def _fits(template: tuple[str | None, ...], words: list[str]) -> bool:
-    """Do `words` read as `template`, a placeholder standing for any run of words?"""
-    reached = {0}
-    for item in template:
-        if item is None:
-            reached = set(range(min(reached), len(words) + 1)) if reached else set()
-        else:
-            reached = {at + 1 for at in reached if at < len(words) and words[at] == item}
-    return len(words) in reached
+def _numbered(blocks: list) -> dict[int, str]:
+    """The text of each paragraph that opens with a numbered lead, by its number."""
+    found: dict[int, str] = {}
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            content = node.get("c")
+            if node.get("t") in ("Para", "Plain") and content and content[0].get("t") == "Str":
+                lead = _LEAD_NUMBER.fullmatch(content[0]["c"])
+                if lead is not None:
+                    found.setdefault(int(lead.group(1)), _plain(content[1:]))
+                    return
+            walk(content)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(blocks)
+    return found
 
 
-def _first_difference(read: list[_Read], printed: list[tuple[int, list[str], str]]) -> str | None:
+def _fits(template: str, words: str) -> bool:
+    """Do `words` read as `template`, each `_VALUE` in it standing for any text, inside a
+    word or across several? The parts between are found in order, left to right."""
+    parts = template.split(_VALUE)
+    if len(parts) == 1:
+        return template == words
+    first, last = parts[0], parts[-1]
+    if len(words) < len(first) + len(last) or not (
+        words.startswith(first) and words.endswith(last)
+    ):
+        return False
+    at, end = len(first), len(words) - len(last)
+    for part in parts[1:-1]:
+        found = words.find(part, at, end)
+        if found < 0:
+            return False
+        at = found + len(part)
+    return True
+
+
+def _first_difference(read: list[_Read], printed: list[tuple[int, str, str]]) -> str | None:
     """The first heading, in document order, that one side reads and the other does not,
     the two lists aligned so that one extra heading names itself and not the next pair."""
     rows, columns = len(read), len(printed)
@@ -168,7 +209,7 @@ def _first_difference(read: list[_Read], printed: list[tuple[int, list[str], str
 
     i = j = 0
     while i < rows and j < columns:
-        if same(i, j) and common[i][j] == common[i + 1][j + 1] + 1:
+        if same(i, j):
             i, j = i + 1, j + 1
             continue
         if common[i + 1][j + 1] == common[i][j]:
@@ -189,7 +230,7 @@ def misreading(
     """What pandoc reads in `source`, the text the build hands it, otherwise than the gates
     read `sources`, each file's name and text as it is on disk, and anything the build adds,
     in order: a phrase to follow "pandoc reads". None when they agree, and when pandoc
-    cannot read `source`."""
+    cannot read `source` at all, which the build's own run of pandoc then reports."""
     found, titles = _titles(sources)
     whole = _json(source, pandoc, cwd)
     alone = _json(f"{header}\n{titles}\n", pandoc, cwd)
@@ -206,16 +247,16 @@ def misreading(
             "read and only the build's header, from paper.yaml, may set. A YAML block below "
             "the front matter does this; move what it holds into paper.yaml"
         )
-    paragraphs = [block for block in alone["blocks"] if block.get("t") == "Para"]
-    if len(paragraphs) < len(found):
-        return None  # a title pandoc could not read on its own; the build reads on
+    numbered = _numbered(alone["blocks"])
     read = [
         _Read(
             where,
             level,
             title,
-            tuple(None if word == _VALUE else word for word in _words(para["c"])[1:]),
+            _words(numbered[number])
+            if number in numbered
+            else _words(PLACEHOLDER.sub(_VALUE, title)),
         )
-        for (where, level, title), para in zip(found, paragraphs, strict=False)
+        for number, (where, level, title) in enumerate(found)
     ]
     return _first_difference(read, _headers(whole["blocks"]))

@@ -279,17 +279,21 @@ def _only_definitions(block: str) -> bool:
     return all(_NOTE_LINE.fullmatch(line) for line in lines[links:])
 
 
-def _untagged(block: str) -> bool:
+def _untagged(block: str, above: str) -> bool:
     """Headings, fences, link and footnote definitions, and a lone placeholder (which
-    becomes a table or a figure)."""
+    becomes a table or a figure). `above` is what separates the block from the one before
+    it, empty at the start of the text."""
     stripped = block.strip()
     return (
         not stripped
         or stripped.startswith("#")
         or _FENCE.match(stripped) is not None
         # Not `stripped`: a no-break space is text to pandoc, and a line that ends in one
-        # is not a definition; nor is one indented four spaces.
-        or _only_definitions(block)
+        # is not a definition; nor is one indented four spaces. And only under a line that
+        # pandoc too takes for blank: one holding a no-break or full-width space, or a form
+        # feed, separates blocks here, while pandoc read it and the definition under it as
+        # a paragraph.
+        or (above.strip(" \t\n") == "" and _only_definitions(block))
         or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
     )
 
@@ -300,12 +304,13 @@ def tag(text: str, relative: str) -> str:
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
     blocks, and paragraphs that are nothing but a placeholder, because those become a table
     or a figure rather than a paragraph, and a bookmark would attach to the wrong thing. So
-    are link and footnote definitions, which become nothing at all in the document.
+    are link and footnote definitions, which put nothing in the body of the document.
     """
     out = []
-    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+    pieces = re.split(r"(\n\s*\n)", text)
+    for index, para in enumerate(pieces):
         stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(para):
+        if para.strip("\n") == "" or _untagged(para, pieces[index - 1] if index else ""):
             out.append(para)
             continue
         marker = _TAG.format(slug=paragraph_slug(relative), index=index)
@@ -341,11 +346,12 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
         # Offsets are into the file on disk, not into the stripped copy: the merge splices
         # into the real file, and a paragraph would land one front matter earlier.
         cursor = len(raw) - len(text)
-        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        pieces = re.split(r"(\n\s*\n)", text)
+        for index, para in enumerate(pieces):
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(para):
+            if _untagged(para, pieces[index - 1] if index else ""):
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found

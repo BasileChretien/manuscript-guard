@@ -2174,13 +2174,15 @@ Closed since, and why each mattered:
   heading, and it is taken for part of that heading's boundary. A move inside the section
   past that text is then refused as a move into another section. Safe, and a refusal.
 - **A link or footnote definition carries no identifier.** Pandoc reads `[reg]: https://...`
-  and `[^1]: ...` only at the start of a block, and they render nothing, so there is no
-  paragraph in Word for an identifier to name and nowhere in the definition to put one. In
-  front of it, the identifier made the definition a paragraph, and every link or footnote
-  using it printed as bracketed text on every build. A block is now left untagged only
-  when every line of it is a definition in a shape pandoc can read no other way; anything
-  else is marked, as it always was. Untagged, a definition is never a splice target and
-  stays where it was written. What that leaves:
+  and `[^1]: ...` only at the start of a block, and neither puts anything in the body: a
+  link's definition renders nothing, and a note's text reaches Word as a footnote, which
+  `import` does not read (see above). So there is no body paragraph for an identifier to
+  name, and nowhere in the definition to put one. In front of it, the identifier made the
+  definition a paragraph, and every link or footnote using it printed as bracketed text
+  on every build. A block is now left untagged only when every line of it is a definition
+  in a shape pandoc can read no other way; anything else is marked, as it always was.
+  Untagged, a definition is never a splice target and stays where it was written. What
+  that leaves:
   - *Only the plainest shapes count.* A link is a label, one token for its address and
     perhaps a quoted or parenthesised title, on one line. The label holds no bracket,
     backslash, backtick, `$`, `<`, `@`, `^` or `|`, because pandoc reads it as inline
@@ -2194,8 +2196,11 @@ Closed since, and why each mattered:
     failure is visible. Three versions that modelled more of pandoc's grammar were each
     caught in review failing the other way: they left a block unmarked that pandoc printed,
     so a co-author's edit to it was dropped while `import` said nothing came back, and one
-    took minutes over a line of attributes. One definition per line, with a blank line
-    before and after the block, is what works.
+    took minutes over a line of attributes, and a fourth left a definition unmarked under a
+    line that is blank here and not to pandoc: one holding only a no-break or full-width
+    space, or a form feed, which pandoc reads with the definition as a paragraph. One
+    definition per line, with a line before the block that is empty or holds only spaces
+    and tabs, is what works.
   - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
     `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
     definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and

@@ -367,14 +367,47 @@ def test_what_is_left_unmarked_renders_nothing(block: str, reads: str) -> None:
     assert _renders_nothing(tagged) is (reads == DEFINITION)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "space",
+    [chr(0xA0), chr(0x3000), chr(12), chr(0x2028)],
+    ids=["no-break", "full-width", "form-feed", "line-separator"],
+)
+def test_a_definition_under_a_line_pandoc_does_not_take_for_blank_is_marked(
+    space: str,
+) -> None:
+    """A line holding only a no-break or full-width space, or a form feed, separates blocks
+    in `tag` and not to pandoc, which reads it and the definition under it as a paragraph.
+    Left unmarked, that paragraph had no identifier, and an edit to it was dropped."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"See [reg] for details.\n\n{space}\n[reg]: {REGISTRY}\n\nIt is public.\n"
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [b for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 3
+    assert all("mg-p-" in json.dumps(paragraph) for paragraph in paragraphs)
+
+
 def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
     from the stripped block in one and the raw block in the other, a definition ending in a
-    no-break space was marked in the document and unknown on disk."""
+    no-break space was marked in the document and unknown on disk; so it would be if one
+    of them stopped asking what stands above a definition."""
     from manuscript_guard.contracts import load_project
     from manuscript_guard.roundtrip import tag, tagged_paragraphs
 
-    text = "\n\n".join(param.values[0] for param in BLOCKS) + "\n"
+    text = "\n\n".join(param.values[0] for param in BLOCKS)
+    text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}\n"
     (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
     loaded, _report = load_project(project)
     known = {
@@ -384,7 +417,9 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     }
     marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "definitions.md")))
     assert marked == known
-    assert len(marked) == sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS))
+    # Every block that is not a definition, and the definition under the full-width space.
+    expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 1
+    assert len(marked) == expected
 
 
 @needs_pandoc
@@ -2318,9 +2353,9 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
     project: Path, tmp_path: Path, paragraph: str, was: str, now: str
 ) -> None:
     """End to end, the way two rounds of review found it. Each of these was taken for a
-    definition and left without an identifier - where pandoc prints it, or would print the
-    lines under the first - and a co-author's edit to it was dropped while `import` said
-    nothing came back."""
+    definition and left without an identifier. Where pandoc printed it, or the lines under
+    its first, a co-author's edit to it was dropped while `import` said nothing came back;
+    where pandoc did not, the paragraph was missing from the document."""
     from manuscript_guard.cli import main
 
     with_paragraphs(project, paragraph)

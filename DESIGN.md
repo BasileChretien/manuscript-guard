@@ -2335,10 +2335,11 @@ Closed since, and why each mattered:
   A block kept in the title is the strict way to be wrong: G2 does not read that heading
   as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
   is the loose way, and is recorded here rather than fixed because reading it right means
-  reading emphasis as pandoc does. Other markup stays in the title, so `# **Results**` is
-  not Results to G2 either, and a subsection under it named like a Methods one admits the
-  Methods-only rules. In a .docx a heading style is what makes a heading, so a styled
-  paragraph typed as `References {-}` starts a list, although Word prints the braces.
+  reading emphasis as pandoc does. Other markup stays in the title, and G2 reads a title
+  as Results through the marks around it, so `# **Results**` is Results; it reads Methods
+  strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
+  heading, so a styled paragraph typed as `References {-}` starts a list, although Word
+  prints the braces.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as

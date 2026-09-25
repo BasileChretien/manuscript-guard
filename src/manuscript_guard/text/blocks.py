@@ -29,6 +29,7 @@ import re
 from bisect import bisect_right
 from dataclasses import dataclass, replace
 
+from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.fences import blank_fences, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
@@ -123,12 +124,23 @@ ATX_LINE = re.compile(r"^(?P<hashes>#+)(?=[ \t]|$)")
 
 def _atx(line: str) -> tuple[int, str] | None:
     """The level and title of an ATX heading line, or None. "# Methods #" and "# C#" are
-    titled "Methods" and "C", as pandoc titles them; a lone `#` is an empty heading."""
+    titled "Methods" and "C", as pandoc titles them; a lone `#` is an empty heading.
+
+    Titled as pandoc prints them, without an attribute block: pandoc reads the closing `#`s,
+    then spaces, then the block, so `## Results ## {#sec-results}` is "Results", and a block
+    before the closing `#`s is text, `# Results {-} ##` "Results {-}"."""
     opening = ATX_LINE.match(line)
     if opening is None:
         return None
-    title = line[opening.end() :].strip(" \t").rstrip("#").rstrip(" \t")
+    rest = line[opening.end() :].strip(" \t")
+    printed = strip_attributes(rest)
+    title = (rest if printed == rest else printed).rstrip("#").strip()
     return len(opening.group("hashes")), title
+
+
+def _setext_title(line: str) -> str:
+    """A setext title as pandoc prints it: `Methods {#sec-methods}` is "Methods"."""
+    return strip_attributes(line.strip(" \t")).strip()
 
 # Setext: a title underlined with `=` (level 1) or `-` (level 2). One dash is enough for
 # pandoc, and requiring three left a "Results" heading under `--` invisible, so its content
@@ -609,7 +621,7 @@ class _Walk:
             below = self.lines[index + 1]
             level = 1 if below.shown.startswith("=") else 2
             self.found.append(
-                Heading(self.lines[index].start, level, rest.strip(), setext=True)
+                Heading(self.lines[index].start, level, _setext_title(rest), setext=True)
             )
             return index + 2
         atx = _atx(rest)
@@ -663,7 +675,7 @@ class _Walk:
             and not _lone_table(line.shown)
         ):
             level = 1 if below.shown.startswith("=") else 2
-            self.found.append(Heading(line.start, level, line.shown.strip(), setext=True))
+            self.found.append(Heading(line.start, level, _setext_title(line.shown), setext=True))
             return index + 2
         atx = _atx(line.shown)
         if atx is None:
@@ -829,7 +841,7 @@ def section_breaks(text: str) -> list[Heading]:
         line = shown[number]
         below = shown[number + 1] if number + 1 < len(shown) else ""
         if not _blank(line) and _UNDERLINE.match(below):
-            level, title, setext = (1 if below.startswith("=") else 2), line.strip(), True
+            level, title, setext = (1 if below.startswith("=") else 2), _setext_title(line), True
         else:
             level = len(line) - len(line.lstrip("#"))
             title, setext = line[level:].strip().rstrip("#").strip(), False

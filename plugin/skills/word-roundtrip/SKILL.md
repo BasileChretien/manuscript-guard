@@ -115,12 +115,13 @@ handled, and each has a test:
   and dashes no longer stop a paragraph with a binding from taking a rewording.
 - A rewording is refused, not merged, when the edited text carries something Word's text
   cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break, or
-  emphasis or code wrapped around a binding. The reason names it. In a paragraph with a
-  binding, markup of those kinds on one side of the binding does not stop an edit on the
-  other side. Markup the import does not recognise does: `[Methods]`, a link to the heading,
-  refuses every edit to its paragraph. A paragraph without a binding is all one piece, so
-  one `kg/m^2^` in it refuses every edit to it.
+  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break,
+  emphasis or code wrapped around a binding, or code holding a `--`, a `...` or a quote
+  (written back as text, `--offline` printed as "–offline"). The reason names it. In a
+  paragraph with a binding, markup of those kinds on one side of the binding does not stop
+  an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
+  to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
+  one piece, so one `kg/m^2^` in it refuses every edit to it.
 - A no-break space comes back as the character it is, so a rewording around it merges and
   keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
   put before a colon or inside « ».

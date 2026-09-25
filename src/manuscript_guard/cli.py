@@ -391,7 +391,20 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             return 2
         sent = read_blocks(reference)
-        marked = read_blocks(tokens)
+        # The marked build is this command's own, not a document anyone sent, and a failure
+        # to read it once stopped the import of every paragraph over a file the author had
+        # never seen. Without it no token has a position: a reworded paragraph holding a
+        # binding or citation is refused, and every other change is still examined.
+        try:
+            marked: list | None = read_blocks(tokens)
+        except RoundTripError as exc:
+            print(
+                f"manuscript-guard: {exc}. That is the build import reads where each binding "
+                f"and citation sits from, so no reworded paragraph holding a binding or "
+                f"citation can be merged this time; each is refused below. Please report it.",
+                file=sys.stderr,
+            )
+            marked = None
 
     try:
         returned = read_blocks(edited)

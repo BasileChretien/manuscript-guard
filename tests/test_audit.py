@@ -311,6 +311,23 @@ def test_vancouver_citations_are_not_unexplained_numbers(tmp_path: Path) -> None
     assert report.classified >= 3
 
 
+def test_a_bound_written_hard_against_a_citation_marker_is_still_audited(
+    tmp_path: Path,
+) -> None:
+    """The marker rule's prefix took a `]`, so in `3.40][12]` the bound was matched as part
+    of a citation and never compared with the outputs: a fabricated interval passed."""
+    outputs = tmp_path / "out.csv"
+    outputs.write_text("v\n2.51\n1.20\n1.87\n1.10\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The reporting odds ratio was 2.51 [95% CI 1.20, 3.40][12]—consistent with it.\n"
+        "The second estimate was 1.87 [95% CI 1.10, 9.99][14]. Across cohorts.\n",
+        encoding="utf-8",
+    )
+    unmatched = [c.text for c in audit([paper], [outputs]).unmatched]
+    assert "3.40" in unmatched and "9.99" in unmatched, unmatched
+
+
 def test_an_orcid_is_not_an_unexplained_number(tmp_path: Path) -> None:
     outputs = tmp_path / "out.csv"
     outputs.write_text("n\n412\n", encoding="utf-8")

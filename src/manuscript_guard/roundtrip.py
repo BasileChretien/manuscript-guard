@@ -270,9 +270,9 @@ _LINK_LINE = re.compile(
 # through every line pandoc does not take for blank, and past a blank line into an indented
 # one: under a line holding only a no-break space, the next paragraph went into the footnote
 # and left the body, and a co-author's edit to it was dropped. So a note is left alone only
-# when the line directly above the next block is blank. A block indented under a note, after
-# a blank line, is more of the note to pandoc, and its text is footnote text.
+# when a blank line ends it and the block after that is not indented (`_blank_below`).
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
+_INDENT = re.compile(r"[ \t]*")
 
 
 def _only_definitions(block: str, below: str) -> bool:
@@ -289,12 +289,21 @@ def _only_definitions(block: str, below: str) -> bool:
 
 
 def _blank_below(below: str) -> bool:
-    """Whether the next block starts afresh after a note: whether the line directly above it
-    is blank to pandoc - empty, or spaces and tabs. `below` is what separates them, empty at
-    the end of the text. A blank line further up is not enough: after one, a line indented
-    four spaces is more of the note to pandoc, even one holding only a no-break space, and
-    the paragraph under it runs on in it."""
-    return _blank_above(below)
+    """Whether the next block starts afresh after a note. `below` is what separates them
+    and the next block's first line, empty at the end of the text.
+
+    Pandoc ends a note at a line blank to it - empty, or spaces and tabs - unless the line
+    after that is indented four columns, a tab reaching the next four: that line opens the
+    note's next paragraph, and the unindented lines under it are more of it. So the note is
+    left alone only when some line between it and the next block is blank, and the line
+    after the last such line is indented less. Indented, a line holding only a no-break
+    space, or a zero-width space in the next block itself, showed nothing and took the
+    paragraph under it into the footnote. A note of several paragraphs is marked with it."""
+    lines = below.split("\n")[1:]
+    if not lines:
+        return True
+    blank = [at for at, line in enumerate(lines[:-1]) if line.strip(" \t") == ""]
+    return bool(blank) and len(_INDENT.match(lines[blank[-1] + 1]).group().expandtabs(4)) < 4
 
 
 def _blank_above(above: str) -> bool:
@@ -450,9 +459,12 @@ def _markers(text: str) -> tuple[list[str], list[int | None]]:
 
 def _around(pieces: list[str], index: int) -> tuple[str, str]:
     """What separates `pieces[index]` from the blocks before and after it: `_untagged`'s
-    `above` and `below`."""
+    `above` and `below`. `below` also holds the next block's first line, whose indent
+    decides whether a note runs on into it."""
     above = pieces[index - 1] if index else ""
-    below = pieces[index + 1] if index + 1 < len(pieces) else ""
+    below = ""
+    if index + 2 < len(pieces):
+        below = pieces[index + 1] + pieces[index + 2].partition("\n")[0]
     return above, below
 
 

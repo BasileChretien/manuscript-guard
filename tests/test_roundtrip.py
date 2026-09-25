@@ -551,6 +551,48 @@ def test_a_note_over_a_line_pandoc_does_not_take_for_blank_is_marked(between: st
     assert all("mg-p-" in json.dumps(paragraph) for paragraph in paragraphs)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "indented",
+    [
+        pytest.param(f"    {chr(0x200B)}", id="zero-width-space"),
+        pytest.param(f"\t{chr(0x2060)}", id="tab-word-joiner"),
+        pytest.param(f"  \t{chr(0xFEFF)}", id="spaces-tab-byte-order-mark"),
+        pytest.param(f"    {chr(0xAD)}", id="soft-hyphen"),
+        pytest.param("    More about it.\n", id="second-paragraph"),
+    ],
+)
+def test_a_note_over_an_indented_block_prints_as_text(indented: str) -> None:
+    """After a blank line, a line indented four columns is the note's next paragraph, and
+    the unindented lines under it are more of it. A zero-width character is no whitespace
+    to Python, so a line holding only one, indented, opened the next block; the note went
+    unmarked, and the paragraph under that line left the body for the footnote with nothing
+    to show. The note is now marked, and prints as text. Visible, not mended: pandoc sets
+    the indented line apart as code, and a paragraph straight under it has no identifier.
+    A note of several paragraphs is marked the same way."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n\n{indented}\nIt was rare.\n"
+    tagged = tag(text, "main.md")
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[\^cap\]:", tagged)
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tagged,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    shown = read.stdout
+    assert '"t":"Note"' not in shown.replace(" ", "")
+    paragraphs = [json.dumps(b) for b in json.loads(shown)["blocks"] if b["t"] == "Para"]
+    assert any("Capped" in paragraph and "mg-p-" in paragraph for paragraph in paragraphs)
+    assert any("rare" in paragraph for paragraph in paragraphs)
+
+
 def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
     from the stripped block in one and the raw block in the other, a definition ending in a
@@ -563,6 +605,9 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     text += f"\n\n{chr(0x3000)}\n\n[later]: {REGISTRY}"
     text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}"
     text += f"\n\n[^runs]: A note.\n{chr(0xA0)}\nIt runs on.\n"
+    text += f"\n\n[^deep]: A note.\n\n    {chr(0xA0)}\nIt runs on."
+    text += f"\n\n[^zero]: A note.\n\n    {chr(0x200B)}\nIt runs on."
+    text += f"\n\n[^ends]: A note.\n\n{chr(0xA0)}\nIt starts afresh.\n"
     (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
     loaded, _report = load_project(project)
     known = {
@@ -574,13 +619,16 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged))
     assert marked == known
     # Every block that is not a definition, the definition directly under the full-width
-    # space (not the one with an empty line between), and the note over the no-break space
-    # and the paragraph after it.
-    expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 3
+    # space (not the one with an empty line between), the three notes that run on into
+    # what is below them, and the four paragraphs after the notes.
+    expected = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS)) + 8
     assert len(marked) == expected
     assert f"\n\n[later]: {REGISTRY}" in tagged
     assert re.search(r"\[\]\{#mg-p-[^}]+\}\[late\]", tagged)
-    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[\^runs\]", tagged)
+    for runs in ("runs", "deep", "zero"):
+        assert re.search(rf"\[\]\{{#mg-p-[^}}]+\}}\[\^{runs}\]", tagged)
+    # A blank line ends a note, and the line under it that is not indented opens a paragraph.
+    assert "\n\n[^ends]: A note." in tagged
 
 
 #: (block, the paragraph under its headings that carries the identifier, or None) - read off

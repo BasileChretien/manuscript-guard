@@ -169,6 +169,23 @@ def test_the_heading_scan_is_linear(line: str) -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize(
+    "line",
+    ["# a" + " " * 3000 + "x\n", ":" * 3000 + " x y\n"],
+    ids=["heading line of spaces", "line of colons"],
+)
+def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
+    """Two patterns backtracked on one line: the ATX heading's title and closing hashes, and
+    a div fence's colons and class. A heading line holding 2,000 spaces took 67 s, and 1,000
+    colons 20 s, in a command that reads every line of a file someone sent."""
+    from manuscript_guard.text.blocks import find_headings, heading_shaped
+
+    started = time.perf_counter()
+    find_headings(line)
+    heading_shaped([line])
+    assert time.perf_counter() - started < 2.0
+
+
 # ---------------------------------------------------------------- hostile files
 
 

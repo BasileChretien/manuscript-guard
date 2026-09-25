@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from manuscript_guard.text.fences import blank_fences, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
@@ -113,7 +113,22 @@ class Heading:
 # The shape of an ATX heading line. Whether one is a heading depends on the line above. `[ \t]`
 # where `\s` used to be: `\s+` crossed the line break, so a lone `#`, which pandoc prints as an
 # empty heading, took the line below it for its title.
-ATX_LINE = re.compile(r"^(?P<hashes>#{1,6})(?:[ \t]+(?P<title>.*?))?[ \t]*#*[ \t]*$")
+#
+# Hashes and a space, and nothing more: the title is worked out in Python. A pattern that
+# also matched the title and its closing hashes backtracked, cubically, on one heading line of
+# spaces: 2,000 of them took 67 s. Any number of hashes: pandoc prints `####### Note` as a
+# heading of level 7, and read as a paragraph it swallowed the `## Results` under it.
+ATX_LINE = re.compile(r"^(?P<hashes>#+)(?=[ \t]|$)")
+
+
+def _atx(line: str) -> tuple[int, str] | None:
+    """The level and title of an ATX heading line, or None. "# Methods #" and "# C#" are
+    titled "Methods" and "C", as pandoc titles them; a lone `#` is an empty heading."""
+    opening = ATX_LINE.match(line)
+    if opening is None:
+        return None
+    title = line[opening.end() :].strip(" \t").rstrip("#").rstrip(" \t")
+    return len(opening.group("hashes")), title
 
 # Setext: a title underlined with `=` (level 1) or `-` (level 2). One dash is enough for
 # pandoc, and requiring three left a "Results" heading under `--` invisible, so its content
@@ -137,12 +152,16 @@ _LIST_ITEM = re.compile(
 )
 _QUOTE = re.compile(r"^[ ]{0,3}>")
 # A class or attributes and nothing else: "::: note text here" is a paragraph.
-_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}]+)[ \t]*:*[ \t]*$")
+#
+# The class cannot open with a colon, or a bare `::::` read as a fence with the class `:`, and
+# the colons could be split between the run and the class so many ways that 1,000 of them
+# took 20 s to reject.
+_DIV_OPEN = re.compile(r"^:{3,}[ \t]*(?:\{[^}\n]*\}|[^\s{}:][^\s{}]*)[ \t]*:*[ \t]*$")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
-# A grid table opens on `+-` or `+=`, a line block on a pipe and a space: "+12% more reports"
-# and "|d| exceeded" are prose.
-_GRID_TOP = re.compile(r"^[ ]{0,3}\+[-=:]")
+# A grid table opens on a border, `+---+---+`, and a line block on a pipe and a space:
+# "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose.
+_GRID_TOP = re.compile(r"^[ ]{0,3}\+(?:[-=:]+\+)+[ \t]*$")
 _GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
 _LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
@@ -153,6 +172,10 @@ _REFERENCE = re.compile(
     r"""^[ ]{0,3}\[(?!\^)[^\]]+\]:[ \t]*(?:<[^>\n]*>|\S+)"""
     r"""(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?(?:[ \t]*\{[^}\n]*\})?[ \t]*$"""
 )
+# A footnote holds what is indented under it, as a list item holds its own. Read as a
+# paragraph, it let a `#` line under the note's second paragraph be a heading, which pandoc
+# prints inside the note.
+_FOOTNOTE = re.compile(r"^[ ]{0,3}\[\^[^\]\n]+\]:")
 
 # HTML, with every tag checked against pandoc 3.9. Block-level tags are never read inline: a
 # line starting with one is a block, and a paragraph ends at one. Pandoc's "either" tags are
@@ -188,19 +211,25 @@ def _blank(line: str) -> bool:
     return not line.strip(" \t\r")
 
 
-def _ends_on_block_tag(line: str) -> bool:
-    """A line whose last tag, closing the line, is block-level.
+def _ends_on_block_tag(line: str, html: dict[str, int]) -> bool:
+    """A line whose last tag, closing the line, is block-level, or closes an HTML block
+    open around it.
 
     Pandoc will not read a block-level tag inline, so the paragraph ends where one starts,
     and when it closes the line the next line starts a block: "Last sentence.<hr>" over
     `## Results` leaves the heading a heading. An inline tag after it, "<hr><br>", opens a
-    new paragraph, which the `#` line then continues.
+    new paragraph, which the `#` line then continues. An "either" tag such as `</ins>` is
+    inline in a paragraph, but the one closing the `<ins>` block the paragraph sits in ends
+    the paragraph all the same.
     """
     rest = line.rstrip(" \t")
     opening = rest.rfind("<")
-    return (
-        rest.endswith(">") and opening != -1 and _A_BLOCK_TAG.match(rest, opening) is not None
-    )
+    if not rest.endswith(">") or opening == -1:
+        return False
+    if _A_BLOCK_TAG.match(rest, opening) is not None:
+        return True
+    closes = _CLOSES.match(rest, opening)
+    return closes is not None and html.get(closes.group(1).lower(), 0) > 0
 
 
 def _html_balance(line: str) -> tuple[str | None, str | None]:
@@ -225,7 +254,8 @@ _TEX_INLINE = frozenset(
         "emph", "underline", "uline", "sout", "noindent", "newline", "url", "href", "label",
         "ref", "eqref", "autoref", "cref", "Cref", "footnote", "footnotemark",
         "includegraphics", "mbox", "hbox", "ensuremath", "LaTeX", "TeX", "ldots", "dots",
-        "today", "hyperref", "hyperlink", "hypertarget",
+        "today", "hyperref", "hyperlink", "hypertarget", "index", "em", "bf", "it", "rm",
+        "tt", "S", "enquote", "gls", "SI", "si", "num", "ul", "hl",
     }
 )
 
@@ -263,6 +293,9 @@ class _Line:
     #: Blank in the source, not merely blanked. A comment inside a paragraph is blanked and
     #: the paragraph goes on; a blank line ends it.
     blank: bool
+    #: The line as written, without its `\r`. Its indentation is what makes an indented code
+    #: block, not the space a blanked comment leaves.
+    raw: str = ""
     #: Inside a comment that opened on an earlier line. Pandoc reads a comment in a paragraph
     #: inline, blank lines and all, so nothing in one ends the paragraph.
     commented: bool = False
@@ -273,14 +306,20 @@ def _lines(text: str) -> list[_Line]:
     out = []
     offset = 0
     for source, shown in zip(text.split("\n"), shown_text.split("\n"), strict=True):
-        out.append(_Line(offset, shown.rstrip("\r"), _blank(source)))
+        out.append(_Line(offset, shown.rstrip("\r"), _blank(source), source.rstrip("\r")))
         offset += len(source) + 1
     starts = [line.start for line in out]
     for opening, closing in comments:
         first = bisect_right(starts, opening)
         last = bisect_right(starts, closing - 1)
         for number in range(first, last):
-            out[number] = _Line(out[number].start, out[number].shown, out[number].blank, True)
+            out[number] = replace(out[number], commented=True)
+    # Where a line starts in a comment and goes on after it, what follows the comment is where
+    # the line's text starts: `<!-- x -->## Results` is a heading, and "<!-- note --> The
+    # excess" is prose, not a line indented as code.
+    for number, line in enumerate(out):
+        if (line.commented or line.raw.startswith("<!--")) and not _blank(line.shown):
+            out[number] = replace(line, shown=line.shown.lstrip(" "))
     return out
 
 
@@ -327,14 +366,32 @@ class _Walk:
         #: to close. Counted from tags that start or end a line, not from ones in the middle
         #: of one, which is where inline code mentions them.
         self.html: dict[str, int] = {}
+        #: Whether the line just walked went on a paragraph or a list item. A tag starting
+        #: it is inline there, and opens no HTML block.
+        self.inline = False
         self._ends: dict[str, list[int]] | None = None
         self._closers: dict[str, list[int]] = {}
 
     def run(self) -> list[Heading]:
-        index = 0
+        index = self._title_block()
         while index < len(self.lines):
             index = self._step(index)
         return self.found
+
+    def _title_block(self) -> int:
+        """Where the text starts after a pandoc title block: up to three `%` lines at the very
+        top (title, authors, date), each with the indented lines that continue it. They are
+        metadata, so a heading directly under them is a heading."""
+        index = 0
+        for _ in range(3):
+            if index >= len(self.lines) or not self.lines[index].raw.startswith("%"):
+                break
+            index += 1
+            while index < len(self.lines) and self.lines[index].raw[:1] in (" ", "\t"):
+                if _blank(self.lines[index].raw):
+                    break
+                index += 1
+        return index
 
     def _step(self, index: int) -> int:
         fence = self.fences.get(index)
@@ -347,15 +404,19 @@ class _Walk:
             return index + 1
         after = self._line(index)
         opened, closed = _html_balance(line.shown)
-        if opened:
+        if opened and not self.inline:
             self.html[opened] = self.html.get(opened, 0) + 1
         if closed and self.html.get(closed):
             self.html[closed] -= 1
         return after
 
     def _line(self, index: int) -> int:
+        self.inline = False
         if self.open is not None and self._continues(index):
-            return index + 1 if self.open == _QUOTE_LINES else self._paragraph_line(index)
+            if self.open == _QUOTE_LINES:
+                return index + 1
+            self.inline = True
+            return self._paragraph_line(index)
         self.open = None
         return self._block(index)
 
@@ -364,7 +425,7 @@ class _Walk:
         it, and a `<pre>`, `<script>` or `<textarea>` it leaves open holds everything up to
         its closing tag."""
         after = self._verbatim(index, ("pre", "script", "textarea"))
-        if after is not None or _ends_on_block_tag(self.lines[index].shown):
+        if after is not None or _ends_on_block_tag(self.lines[index].shown, self.html):
             self.open = None
         return after if after is not None else index + 1
 
@@ -438,7 +499,9 @@ class _Walk:
             self.divs += 1
         elif self.divs and _DIV_CLOSE.match(shown):
             self.divs -= 1
-        elif not _HTML_DIV.match(shown):
+        elif _HTML_DIV.match(shown):
+            return self._tag_line(index)
+        else:
             return None
         return index + 1
 
@@ -446,7 +509,48 @@ class _Walk:
         if not _START_TAG.match(self.lines[index].shown):
             return None
         after = self._verbatim(index, ("pre", "script", "style", "textarea"))
-        return after if after is not None else index + 1
+        return after if after is not None else self._tag_line(index)
+
+    def _tag_line(self, index: int) -> int:
+        """A tag at the margin is a block of its own, and the rest of its line starts the
+        next one, as after a comment. `<div>Text` over `## Results` is a raw tag and a
+        paragraph, which the `#` line continues; `<div>## Results` is a heading."""
+        shown = self.lines[index].shown
+        tag = _OPENS.match(shown) or _START_TAG.match(shown)
+        closing = shown.find(">", tag.end()) if tag else -1
+        rest = shown[closing + 1 :] if closing != -1 else ""
+        if _blank(rest):
+            return index + 1
+        atx = _atx(rest)
+        if atx is not None:
+            self.found.append(Heading(self.lines[index].start, *atx))
+            return index + 1
+        # The paragraph ends where its text closes what the tag opened: `<ins>Text</ins>`.
+        opened = dict(self.html)
+        if _OPENS.match(shown):
+            name = _OPENS.match(shown).group(1).lower()
+            opened[name] = opened.get(name, 0) + 1
+        self.open = None if _ends_on_block_tag(shown, opened) else _PARAGRAPH
+        return index + 1
+
+    def _footnote(self, index: int) -> int:
+        """A footnote takes every line up to a blank one, whatever it holds, and then each run
+        of lines whose first is indented four spaces or a tab. All of it is the note's own,
+        headings included, and the line after it starts a block."""
+        end = index
+        while True:
+            while end < len(self.lines) and not self._chunk_ends(end):
+                end += 1
+            after = end
+            while after < len(self.lines) and self._chunk_ends(after):
+                after += 1
+            if after == len(self.lines) or not self.lines[after].raw.startswith(("    ", "\t")):
+                return end
+            end = after
+
+    def _chunk_ends(self, index: int) -> bool:
+        line = self.lines[index]
+        return line.blank and not line.commented
 
     def _heading(self, index: int) -> int | None:
         line = self.lines[index]
@@ -460,11 +564,10 @@ class _Walk:
             level = 1 if below.shown.startswith("=") else 2
             self.found.append(Heading(line.start, level, line.shown.strip(), setext=True))
             return index + 2
-        atx = ATX_LINE.match(line.shown)
+        atx = _atx(line.shown)
         if atx is None:
             return None
-        title = (atx.group("title") or "").strip()
-        self.found.append(Heading(line.start, len(atx.group("hashes")), title))
+        self.found.append(Heading(line.start, *atx))
         return index + 1
 
     def _leaf(self, index: int) -> int | None:
@@ -484,6 +587,8 @@ class _Walk:
         if _QUOTE.match(shown):
             self.open = _QUOTE_LINES
             return index + 1
+        if _FOOTNOTE.match(shown):
+            return self._footnote(index)
         if _REFERENCE.match(shown) or _tex_block(shown) or _lone_table(shown):
             return index + 1
         return self._environment(index) or self._table(index)
@@ -503,7 +608,13 @@ class _Walk:
             end = index + 1
             while end < len(self.lines) and _GRID_ROW.match(self.lines[end].shown):
                 end += 1
-            return self._caption(end)
+            # A grid table ends on a border. A border with nothing closing it is text, and a
+            # `#` line under it goes on that text.
+            last = next(
+                (n for n in range(end - 1, index, -1) if _GRID_TOP.match(self.lines[n].shown)),
+                None,
+            )
+            return None if last is None else self._caption(last + 1)
         if not _LINE_BLOCK.match(shown):
             return None
         end = index + 1
@@ -552,4 +663,51 @@ def heading_shaped(lines: list[str]) -> set[int]:
     return shaped
 
 
-__all__ = ["ATX_LINE", "Heading", "find_headings", "heading_shaped", "scannable"]
+class Unprinted(str):
+    """The title of a line shaped like a heading that pandoc prints as text. It ends the
+    section it stands in, and opens none: see `section_breaks`."""
+
+    __slots__ = ()
+
+
+def section_breaks(text: str) -> list[Heading]:
+    """Every heading pandoc prints, and every line shaped like one that it prints as text.
+
+    The walk reads a construct it does not model as a paragraph, and a paragraph takes the
+    `#` line under it for text. For a heading that would open Methods, that is the safe
+    answer. For one that ends them it is not: pandoc prints `# Results` under a table between
+    lines of dashes, which the walk does not model, so the Methods ran on past the heading
+    and a p-value under it passed as the alpha. So a line shaped like a heading ends the
+    section it is in, whether or not the walk places it. One the walk does not place comes
+    back titled `Unprinted`, which `is_methods` never takes for Methods: it can close the
+    Methods, and never open them.
+    """
+    walk = _Walk(text)
+    found = walk.run()
+    by_start = {heading.start: heading for heading in found}
+    shown = [line.shown for line in walk.lines]
+    placed = set()
+    for number, line in enumerate(walk.lines):
+        heading = by_start.get(line.start)
+        if heading is not None:
+            placed.update((number, number + 1) if heading.setext else (number,))
+    for number in sorted(heading_shaped(shown) - placed):
+        line = shown[number]
+        below = shown[number + 1] if number + 1 < len(shown) else ""
+        if not _blank(line) and _UNDERLINE.match(below):
+            level, title, setext = (1 if below.startswith("=") else 2), line.strip(), True
+        else:
+            (level, title), setext = _atx(line) or (1, line.strip()), False
+        found.append(Heading(walk.lines[number].start, level, Unprinted(title), setext))
+    return sorted(found, key=lambda heading: heading.start)
+
+
+__all__ = [
+    "ATX_LINE",
+    "Heading",
+    "Unprinted",
+    "find_headings",
+    "heading_shaped",
+    "scannable",
+    "section_breaks",
+]

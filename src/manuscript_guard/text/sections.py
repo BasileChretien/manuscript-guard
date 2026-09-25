@@ -20,9 +20,25 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.blocks import Heading, find_headings
+from manuscript_guard.text.blocks import Heading, find_headings, scannable, section_breaks
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import FRONTMATTER, mask
+
+# `scannable` moved to `text.blocks` with the heading walk; re-exported for the callers that
+# learned it here.
+__all__ = [
+    "Counts",
+    "Section",
+    "chain_at",
+    "count_words",
+    "heading_index",
+    "headings",
+    "measure",
+    "scannable",
+    "section_chain",
+    "split_sections",
+    "subsections",
+]
 
 # Headings are found by `text.blocks`, which reads them as pandoc does: ATX and setext, and
 # only where a block starts. Setext mattered because a manuscript written in that style had
@@ -181,15 +197,19 @@ class Section:
 
 
 def heading_index(text: str) -> list[Heading]:
-    """Every heading, computed once so a caller can ask about many offsets cheaply.
+    """Every section break, computed once so a caller can ask about many offsets cheaply.
 
     `section_chain` rescans the whole document — blanking fences, HTML comments and front
     matter, then walking it line by line. G2 called it once per atom, which is quadratic: a
     paragraph written on one long line with 20,000 numbers spent three minutes re-deriving
     the same heading list 20,000 times. The scan is unavoidable; doing it per file rather
     than per number is not.
+
+    The printed headings, and the lines shaped like headings that pandoc prints as text,
+    titled `Unprinted`: see `section_breaks`. For the headings a reader sees, as a word
+    count or a required-section check wants them, use `split_sections` or `headings`.
     """
-    return find_headings(text)
+    return section_breaks(text)
 
 
 def chain_at(index: list[Heading], offset: int) -> tuple[str, ...]:
@@ -216,7 +236,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     different places: `p < 0.05` in Methods is the alpha the author chose, and in Results
     it is a finding.
     """
-    return chain_at(find_headings(text), offset)
+    return chain_at(heading_index(text), offset)
 
 
 def split_sections(text: str) -> list[Section]:

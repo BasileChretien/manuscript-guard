@@ -33,10 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.text.blocks import heading_shaped, scannable
+from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import heading_index, strip_attributes
+from manuscript_guard.text.sections import strip_attributes
 from manuscript_guard.text.tokens import find_atoms
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -454,7 +454,8 @@ def looks_like_reference(line: str) -> bool:
 
 
 def _markdown_heading_lines(text: str) -> frozenset[int]:
-    return frozenset(text.count("\n", 0, found.start) for found in heading_index(text))
+    # The headings pandoc prints: a line it prints as text starts no reference list.
+    return frozenset(text.count("\n", 0, found.start) for found in find_headings(text))
 
 
 def bibliography_spans(

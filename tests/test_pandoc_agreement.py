@@ -274,6 +274,47 @@ CONSTRUCTS = {
     "atx under a fence opened in the front matter": (
         f"---\ntitle: T\nabstract: |\n  {FENCE}\n---\n\n## Results\n\n{FENCE}\n"
     ),
+    # Found by the review of the pushed head.
+    "atx under an either-tag block": "## Methods\n\n<ins>\nThe new text\n</ins>\n## Results\n",
+    "atx under prose closing an either-tag block": "<ins>\nThe new text</ins>\n## Results\n",
+    "atx under seven hashes": "####### Note\n## Results\n",
+    "atx under prose after a comment at a line's start": (
+        "## Results\n\n<!-- check this --> The excess was significant\n## Methods\n"
+    ),
+    "atx after a comment on the same line": "<!-- x -->## Results\n",
+    "atx under a plus-minus at a line's start": (
+        "## Results\n\n+-0.3 SD was the spread\n## Methods\n"
+    ),
+    "atx under a grid table": "+---+---+\n| a | b |\n+---+---+\n## Results\n",
+    "atx under a footnote's second paragraph": (
+        "## Results\n\nText.[^1]\n\n[^1]: A note.\n\n    More of the note.\n## Methods\n"
+    ),
+    "atx under a stray colon fence after a four-colon div": (
+        "## Results\n\n:::: {.box}\nText.\n::::\n\nThe excess was significant\n:::\n## Methods\n"
+    ),
+    "atx under a pandoc title block": "% Title\n% Author\n# Abstract\n",
+    "atx under a title block's continuation": "% Title\n  continued\n% Author\n# Abstract\n",
+    "atx under a fourth percent line": "% a\n% b\n% c\n% d\n# Abstract\n",
+    "atx under a title block after front matter": "---\ntitle: x\n---\n% Title\n# Abstract\n",
+    # A tag at the margin is a block, and the rest of its line starts the next one.
+    "atx under text after a block tag": "<div>Text\n## Results\n",
+    "atx under text after an either tag": "<ins>Text\n## Results\n",
+    "atx under text closing the either tag it follows": "<ins>Text</ins>\n## Results\n",
+    "atx after a block tag on the same line": "<div>## Results\n",
+    "atx under a grid border nothing closes": "+---+---+\n| a | b |\n## Results\n",
+    "atx under a closed grid table": "+---+---+\n| a | b |\n+---+---+\n## Results\n",
+    # A footnote takes every line up to a blank one.
+    "atx under a block tag in a footnote": "T.[^1]\n\n[^1]: A note.\n<div>\n## Methods\n",
+    "atx under a fence in a footnote": (
+        f"T.[^1]\n\n[^1]: A note.\n{FENCE}\nx\n{FENCE}\n## Methods\n"
+    ),
+    "atx under code in a footnote": "T.[^1]\n\n[^1]: A note.\n\n        code\n## Methods\n",
+    "atx after a footnote and a blank line": "T.[^1]\n\n[^1]: A note.\n\n## Methods\n",
+    "atx under a footnote's three-space line": (
+        "T.[^1]\n\n[^1]: A note.\n\n   Three.\n## Methods\n"
+    ),
+    "atx under an inline latex index": "\\index{x}\n## Methods\n",
+    "atx under an inline latex si unit": "\\SI{1}{m}\n## Methods\n",
 }
 
 

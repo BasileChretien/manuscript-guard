@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.text.blocks import find_headings
+from manuscript_guard.text.blocks import Unprinted, find_headings
 from manuscript_guard.text.tokens import Atom
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -238,12 +238,17 @@ def is_methods(section: Sequence[str] | None) -> bool:
     A Methods-like heading counts only while no ancestor is a section that reports what
     happened. "Methods > Sensitivity analyses" is Methods; "Results > Sensitivity analyses"
     is not, and the difference is the whole point of the rule.
+
+    A title pandoc prints as text (`Unprinted`) can say Results, and never Methods: the line
+    ends the section above it either way, but a reader of the document sees no heading there.
     """
     if not section:
         return False
     if any(NOT_METHODS_SECTIONS.match(title) for title in section):
         return False
-    return any(METHODS_SECTIONS.match(title) for title in section)
+    return any(
+        METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
+    )
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:

@@ -401,6 +401,36 @@ def test_a_heading_pandoc_prints_as_prose_does_not_excuse_a_number(
     )
 
 
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # Pandoc reads a table between lines of dashes, and prints the heading under it. The
+        # walk does not model such a table, so it read the rows as a paragraph and the
+        # heading as part of it.
+        "# Methods\n\nAlpha was set in advance.\n\n-----------  -----------\n"
+        "Age          Years\n-----------  -----------\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+        # Pandoc prints a level-7 heading; the walk stopped at six hashes.
+        "# Methods\n\nAlpha was set in advance.\n\n####### Note\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+    ],
+    ids=["dash table", "seven hashes"],
+)
+def test_a_heading_line_the_walk_does_not_place_still_ends_methods(
+    project: Path, tail: str
+) -> None:
+    """Whatever the walk misses, it reads as paragraph text, and a paragraph swallowed the
+    real `# Results` below it: the Methods section ran on, and the p-value passed as the
+    alpha. A line shaped like a heading now ends the section it is in whether or not the walk
+    places it; only a heading the walk does place can open Methods."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

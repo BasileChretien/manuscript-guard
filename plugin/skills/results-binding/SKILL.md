@@ -143,6 +143,11 @@ There are four ways out, and usually it is the first:
 
    A name that contains digits, such as a gene or a product code, goes under `terms:`.
 
+   If `p < 0.05` is reported although it is in the Methods, look above it for a line that
+   starts with `#`, or sits over a line of `-` or `=`, inside a paragraph, a list item or a
+   quotation. Pandoc prints that line as text, not as a heading, and the gate ends the
+   Methods there. Rewrap the line or put a blank line before it; do not add a convention.
+
    Every run reports how many numbers the project's own rules accounted for. A pattern
    wide enough to cover results is allowed, and it is visible, and it switches the check
    off.

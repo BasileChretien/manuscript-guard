@@ -966,7 +966,11 @@ fix, not of the original code.**
   line above left open, and `test_pandoc_agreement.py` holds it to pandoc construct by
   construct. The round trip no longer tags a setext heading. The audit no longer starts a
   reference list at a heading line pandoc prints as prose, and still ends one at any line
-  shaped like a heading.)
+  shaped like a heading. The walk reads a construct it does not model as a paragraph, which
+  swallowed a real `# Results` under a table of dashes and ran the Methods on over it, so
+  for G2 a line shaped like a heading ends the section it stands in whether or not the walk
+  places it. One the walk does not place can say Results and never Methods: a missed
+  heading costs a reported number, not a passed one.)
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
   every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
@@ -2351,10 +2355,19 @@ Closed since, and why each mattered:
   `---`, `# Methods`, `note: x`, `---` under a Results heading re-admits the `methods_only`
   rules below it. Telling one from a rule, a sentence and a rule, which pandoc prints as a
   table, needs a YAML parse. A bare `---` over `---` is read as a heading titled "---".
-- **A table written with lines of dashes can hide a heading-shaped row.** A multiline table,
-  or a simple table under a `Table:` caption, is not modelled, so a row reading `# Top` or a
-  title over its dashes is taken for a heading pandoc prints as a cell. The old scan did the
-  same.
+- **A table written with lines of dashes is read as a paragraph.** A multiline table, or a
+  simple table with no header or under a `Table:` caption, is not modelled. A row reading
+  `# Top`, or a title over its dashes, is taken for a heading, and one pandoc prints under
+  the table is taken for text. For G2 either line ends the section it is in and neither
+  opens Methods, so the cost is a threshold reported under a heading the gates did not
+  place. Word counts and the required-section check go by printed headings, and miss the
+  one under the table.
+- **A line shaped like a heading always ends a section for G2.** A `#` line or an underlined
+  title that pandoc prints as text, because it continues a paragraph, a list item or a
+  quotation, or sits in a `<pre>` or a LaTeX environment, still closes the section above it
+  for G2, titled as the line reads, and never opens Methods. A Methods paragraph hard-wrapped
+  so that a line starts "# of reports" therefore reports the thresholds after it. The line
+  prints as text in the paper as well, so it is worth rewrapping anyway.
 - **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
   build writes the caption as a paragraph after the table, and a heading cannot interrupt a
   paragraph, so the document loses the heading while G2 reads the one the source means. With
@@ -2366,11 +2379,12 @@ Closed since, and why each mattered:
   commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
   verbatim (`pre`, `script`, `style`, `textarea`, holding everything to their closing tag)
   or inline, by list. A paragraph ends at a line starting with a block-level tag, and after
-  one whose last tag is block-level. Every entry was checked against pandoc 3.9, and a name
-  on no list is read as pandoc reads most unknown ones: a LaTeX command as a block, a tag as
-  inline. A block quote's lazy lines stop at the closing tag of an HTML block counted open
-  around them, and only tags that start or end a line are counted, so one opened in the
-  middle of a line, or inside a table or a LaTeX environment, is not. Pandoc also drops the
+  one whose last tag is block-level or closes an HTML block counted open around it. Every
+  entry was checked against pandoc 3.9, and a name on no list is read as pandoc reads most
+  unknown ones: a LaTeX command as a block, a tag as inline. A block quote's lazy lines stop
+  at the closing tag of an HTML block counted open around them. Only a tag that starts a
+  block, or ends a line, is counted, so one opened in the middle of a line, inside a
+  paragraph, or inside a table or a LaTeX environment, is not. Pandoc also drops the
   indentation of the line after a raw block, and reads a setext title that is only an HTML
   comment as an empty heading, where the gates see none. A heading's title keeps its raw
   HTML and LaTeX, which pandoc's printed title does not show, so `## Methods <span>` is not

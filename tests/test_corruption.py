@@ -1728,9 +1728,15 @@ def test_import_takes_back_a_document_built_before_its_source_was_refused(
 @pytest.mark.parametrize(
     ("block", "said"),
     [
-        # A `<!--` pandoc prints as text opens a comment for the heading scan, which then
-        # read no rule, while pandoc merged the YAML block's title over paper.yaml's.
-        ("Text \\<!-- aside\n\n::: note\n---\ntitle: Evil\n...\n:::\n\nlater -->\n", "title"),
+        # A `<!--` pandoc prints as code opens a comment for the heading scan, which then
+        # read no rule, while pandoc merged the YAML block's title over paper.yaml's. Written
+        # `\<!--` here first, which #39 taught the gates to read as pandoc does; indented
+        # code is one place the gates' comment reading still does not know.
+        (
+            "Run it as:\n\n    make all <!-- aside\n\n::: note\n---\ntitle: Evil\n...\n:::\n\n"
+            "later -->\n",
+            "title",
+        ),
         # A title continuing a paragraph over `===`: the gates read a Methods heading pandoc
         # prints as text, and put the claim under it. Named with its file and line.
         (f"We also saw\nMethods\n=======\n\n{_CLAIM}", "'Methods' at main.md:"),

@@ -2615,8 +2615,8 @@ Closed since, and why each mattered:
   from `> ---`, `> title: Evil` and `---`. With a blank line before the rule, pandoc closes
   the quotation first and reads no metadata.
 - **Some shapes only the build catches.** A comment the heading scan misreads, a `<!--` that
-  pandoc prints (in inline or indented code, or written `\<!--`, `<!-->` or `<!--->`),
-  hides every rule up to the next `-->` from the refusal. So does a comment or a fence left
+  pandoc prints in indented code (#39 taught it inline code, `\<!--` and `<!-->`), hides
+  every rule up to the next `-->` from the refusal. So does a comment or a fence left
   open at the end of one file and closed in the next, since the build joins the files and
   pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
   a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line

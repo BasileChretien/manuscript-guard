@@ -3126,18 +3126,18 @@ Closed since, and why each mattered:
     rule does not take, under a strict one, is the paragraph there, and is marked, and
     prints as on #54 - unless a heading was passed over too, when it is left alone as under
     a heading.
-  - *A heading whose line leaves something open is not passed over.* A code span, a
-    comment or a TeX environment opened in it may close on the next line: pandoc then reads
-    both lines into an ATX heading, or reads a setext title and all under it as one
-    paragraph, and a marker between would print inside it. So may a citation, whose
-    locator pandoc reads from the next line - `[p. 33]` under `@key` - or a citation group
-    wrapped after `;`, or maths. Passed over, the locator was the paragraph's to `import`,
-    and an edit in Word wrote it into the source cut off from its citation. A heading whose
-    line holds an `@`, a `$`, an unclosed `[` or a code span left open, an escaped backtick
-    not counting, stays unmarked with its paragraph, as it was; so does one with a lone
-    backtick that closes nothing, whose paragraph pandoc would have read apart. A `<div>`
-    line over an underline is taken for a setext title; pandoc reads a div around what
-    follows, and the paragraph there keeps its identifier inside it.
+  - *Only a heading of plain text is passed over.* Markup opened in a heading's line can
+    close on the next: pandoc then reads that line into an ATX heading, or a setext title
+    and all under it as one paragraph, and a marker between printed inside it. Review found
+    one form after another - a code span, a comment, a TeX environment, a citation's
+    locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
+    off from its citation), a citation group, maths, a link's destination, a tag's
+    attributes, emphasis, a backslash inside code. So a heading is passed over only when
+    its lines hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute
+    block ending the line (`{#sec-methods}`, which cross-references need). Any other
+    heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
+    compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
+    over an underline.
   - *A reworded paragraph can take the link above it along.* One that comes back from Word
     opening with `(`, `"` or `'` could be the title of a link's definition written straight
     above it, so the next build marks the whole block, as #54 does, and the definition

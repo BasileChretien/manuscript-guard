@@ -334,9 +334,14 @@ _INDENT = re.compile(r"[ \t]*")
 _SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
 _ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
-# A code span opened in a heading's line and closed on a later one: pandoc reads the lines
-# into one heading, or one paragraph, and a marker between them would print in its code.
-_CODE_RUN = re.compile(r"`+")
+# A heading that can be passed over: plain text, with no character that can open markup.
+# Pandoc reads the next line into an ATX heading, or a setext title and all under it into
+# one paragraph, whenever something opened in the heading's line closes on a later one - a
+# code span, a comment, a TeX environment, a citation's locator, maths, a link's
+# destination, a tag's attributes, emphasis. Each list of those that review was given, it
+# found one more; so anything but plain text keeps the block as it was, unmarked. A closed
+# attribute block may end the line, `{#sec-methods}`, since cross-references need one.
+_PLAIN_LINE = re.compile(r"[^`@$\[\]<>\\*_~^{}&]*(?:\{[#.\w\- =:]*\}[ \t]*)?")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # The line under a link's definition that may hold its title or attributes: pandoc reads
 # `[reg]: url` over `(which is public) and more` as one paragraph, and a marker between them
@@ -972,40 +977,20 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
     return above, below
 
 
-def _runs_on(line: str) -> bool:
-    """Whether something opened in `line` may close only on a later one: a code span, raw
-    content - a comment, a TeX environment, a verbatim HTML element - maths, a citation, or
-    a bracket. Pandoc reads a citation's locator on the next line into the citation, `[p.
-    33]` under `@key`, and a group wrapped after `;`; passed over, the line was the
-    paragraph's to `import`, and an edit in Word wrote it into the source cut off from its
-    citation. Only a whole paragraph under a heading is worth marking, so any `@`, `$` or
-    unclosed `[` keeps the block as it was."""
-    if _RAW_OPEN.search(line) or "@" in line or "$" in line or line.count("[") > line.count("]"):
-        return True
-    opened = None
-    for found in _CODE_RUN.finditer(line):
-        run = found.group()
-        # An escaped backtick is text, and the run goes on from the one after it.
-        escapes = found.start() - len(line[: found.start()].rstrip("\\"))
-        run = run[escapes % 2 :]
-        if run:
-            opened = None if run == opened else opened or run
-    return opened is not None
-
-
 def _lead_end(block: str, above: str) -> tuple[int, bool]:
     """How far into `block` the headings and link definitions it opens with run - 0 when it
     opens with neither, or under a line pandoc does not take for blank - and whether a
-    heading is among them. A heading whose line leaves something open is not passed over:
-    pandoc reads the next line into an ATX heading, and a setext title's code span running
-    past its underline makes the whole block a paragraph."""
+    heading is among them. Only a heading of plain text is passed over (`_PLAIN_LINE`):
+    markup opened in its line can close on the next, and pandoc then reads that line into
+    the heading. Passed over, a citation's locator there was the paragraph's to `import`,
+    and an edit in Word wrote it into the source cut off from its citation."""
     if not _blank_above(above):
         return 0, False
     at = start = _BLANK_LINES.match(block).end()
     headed = False
     while at < len(block):
         heading = _SETEXT.match(block, at) or _ATX.match(block, at)
-        if heading and not _runs_on(heading.group()):
+        if heading and all(map(_PLAIN_LINE.fullmatch, heading.group().split("\n"))):
             at, headed = heading.end(), True
             continue
         if heading:

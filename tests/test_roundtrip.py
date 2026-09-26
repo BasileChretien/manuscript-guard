@@ -1571,7 +1571,9 @@ HEADED = [
     pytest.param("The `lm\n===\nWe used `glm()` here.", None, id="setext-open-code"),
     pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
     pytest.param("# Notes \\begin{x}\ny \\end{x} Patients.", None, id="heading-open-tex"),
-    pytest.param("# The `lm` function\nWe used it.", "We used it.", id="heading-closed-code"),
+    # Only a heading of plain text is passed over (round six): code, even closed, keeps the
+    # block as it was.
+    pytest.param("# The `lm` function\nWe used it.", None, id="heading-closed-code"),
     # Round five: a citation's locator, a citation group, maths, and a code span opened
     # after an escaped backtick all run onto the next line too. The locator was the
     # paragraph's to `import`, and an edit in Word wrote it into the source cut off from
@@ -1586,6 +1588,16 @@ HEADED = [
         "## Costs ($US)\nCosts were converted to US$ at 2020 rates.", None, id="heading-maths"
     ),
     pytest.param("# Quote \\` and `x\nMore` text.", None, id="heading-escaped-backtick"),
+    # Round six: a link's destination or title, an HTML tag's attributes, emphasis, and a
+    # code span whose backslash is only text all run onto the next line as well. A heading
+    # is passed over only when its line is plain text now.
+    pytest.param('# See [x](http://x.org\n"Title") here.\nAlpha.', None, id="heading-link"),
+    pytest.param('# Zeta <a\nhref="x">link</a> more\nAlpha.', None, id="heading-html-tag"),
+    pytest.param(
+        "# Paths `C:\\` and `D:\nmore` text.\nAlpha.", None, id="heading-code-backslash"
+    ),
+    pytest.param("# A *wrapped\nemphasis* here\nAlpha.", None, id="heading-emphasis"),
+    pytest.param("# Results: the 2020 cohort (n = 12)\nAlpha.", "Alpha.", id="heading-plain"),
     # Under a link and a heading, a definition the strict rule does not take is left alone,
     # as under a heading alone: #54 left the block alone for its underline (round four).
     pytest.param(
@@ -1694,11 +1706,10 @@ def test_a_comment_in_fenced_code_is_not_read_as_a_heading(mark: bool) -> None:
 @pytest.mark.parametrize(
     "block", ["<div>\n---\n`glm()` was used.", "<div>\n---\nPlain text."], ids=["code", "plain"]
 )
-def test_what_follows_a_div_over_an_underline_keeps_an_identifier(block: str) -> None:
-    """A `<div>` line over `---` is taken for a setext heading, and pandoc reads a div
-    around what follows instead. The paragraph there is judged by `_untagged` like any, and
-    keeps its identifier inside the div; a first version left one not opening plainly
-    unmarked there."""
+def test_what_follows_a_div_over_an_underline_is_left_alone(block: str) -> None:
+    """A `<div>` line over `---` looks like a setext heading, and pandoc reads a div around
+    what follows instead. Only a heading of plain text is passed over, so the block is left
+    alone, as on main: no marker lands inside the div."""
     import subprocess
 
     from manuscript_guard.roundtrip import tag
@@ -1711,7 +1722,7 @@ def test_what_follows_a_div_over_an_underline_keeps_an_identifier(block: str) ->
         encoding="utf-8",
         check=True,
     )
-    assert "mg-p-" in read.stdout
+    assert "mg-p-" not in read.stdout
 
 
 def test_a_run_of_spaces_is_read_in_linear_time() -> None:

@@ -173,6 +173,20 @@ It builds as `supplementary.docx` and reaches the pack as its own file. A direct
 than a declaration, matching how figures and results already work, and because a heading can
 be renamed without anyone noticing what left the submission.
 
+A document of its own also comes back from a co-author on its own. `import` compared every
+returned document with a fresh build of the paper, so an edited `supplementary.docx` reported
+every paragraph of the paper as deleted in Word and applied none of its own edits. The source
+stamp cannot tell the two documents apart: both are built from the same sources and carry
+the same one. The paragraph identifiers can, because each names its source file. A document
+whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
+the supplement, and one whose identifiers all come from the paper with a build of the paper.
+One carrying both is refused: neither build accounts for it. Word drops the identifier of a
+single paragraph it pastes, so only two or more paragraphs pasted across bring one along. A
+document carrying none is refused too when the project has a supplement, since it could be
+either. Whether there is a supplement is read from the source files: a supplement of
+headings and tables carries no identifier, and read from the identifiers it was taken for no
+supplement, so its document was compared with the paper.
+
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
 contribution groups, ORCID, funding and competing interests. One validated file fills the
@@ -495,6 +509,15 @@ journal's page actually says; an absent limit is not checked, because a guessed 
 produces confident failures about a rule that does not exist. A profile over a year old
 warns. Switching journals after a rejection means writing a second profile and reading the
 resulting failure list, which is the reformatting job itemised.
+
+**A required statement counts where it prints as one.** A profile's statement patterns, and
+a structured abstract's required headings, are searched with HTML comments and fenced code
+blanked (`scannable`). A comment prints nothing, and a listing prints its lines as code, not
+as a declaration. `# Funding` is a heading in Markdown and a comment in R and Python, and
+inside either it met the funding statement of a paper that had none. A statement written in
+a fenced block therefore does not count, and no journal takes one written as code. The
+blanking is close to what pandoc prints but not the same; where they differ is under Known
+gaps.
 
 **Checklists are transcribed from their official documents, never written from memory.**
 Item text that is approximately right produces confident coverage of the wrong things, and
@@ -1865,17 +1888,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A required statement can be met by text that does not print.** G4 matches a journal's
-  statement patterns against the main text with its HTML comments and fenced code still in
-  it, so a `# Funding` line inside a multi-line `<!-- -->` satisfies the funding statement
-  of a paper whose .docx has none. On one line, `<!-- # Funding -->`, it does not satisfy
-  the example's pattern, which is anchored at the start of a line; an unanchored pattern
-  would match it there too.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
-  in `##` headings makes the whole paper abstract as far as G4 can tell. A project with one
-  main-text file, which is what `init` writes, is unaffected.
+  in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
+  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
+  end of a file G4 reads first hides the next file's headings and statements up to the next
+  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
+  one main-text file, which is what `init` writes, is unaffected.
+- **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
+  `<!--` inside inline code, a stray fence line inside a comment, or a fence directly under
+  prose that is tilde or indented a space or more hides what follows from the statement and
+  abstract-heading searches while pandoc prints it, so a statement there is reported
+  missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
+  passes its text into the document. An indented code block is not blanked, so a pattern
+  written for a phrase can be met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -2580,6 +2607,15 @@ Closed since, and why each mattered:
   is not the answer either: hashing the text means editing the paragraph a reviewer asked
   about invalidates the anchor to it, which is the opposite failure. The real fix is to
   persist the identifier in the source rather than derive it, and it is not done.
+- **Text moved between the paper and its supplement is not applied.** The two are built and
+  imported as separate documents. Word drops the identifier of a single pasted paragraph, so
+  one paragraph pasted from one into the other comes back as new text without an
+  identifier, which import lists but does not apply. Two or more bring the later ones'
+  identifiers, and the whole document is refused. Either way, the author makes the move
+  in the .md.
+- **A supplement of headings, tables and figures cannot be imported.** It carries no
+  paragraph identifier, so its document is refused as one that could be either, even when
+  it comes back untouched. It holds nothing import compares.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
@@ -2972,6 +3008,19 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
+  times a scan on eight times its input, taking each size's best of three in alternation,
+  and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
+  quadratic part is under a seventh of its time on the smaller input passes, and so does
+  n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
+  per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
+  Each of these tests used to rest on one timing per size (one on a best of three, one size
+  after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
+  speed shows only at a size where it outweighs the per-item work, and one in Python fails
+  quickly from a small size but takes minutes from a large one, so the size a test starts
+  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
+  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
+  proof that nothing else does.
 
 ## Still open
 

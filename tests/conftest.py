@@ -1,4 +1,4 @@
-"""Shared fixtures: a working copy of the example project.
+"""Shared fixtures: a working copy of the example project, and a check that a scan is linear.
 
 The example is built once per test session and then copied, rather than re-running the
 analysis and a matplotlib render for every test. Tests mutate their copy freely, so the
@@ -10,7 +10,10 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -78,3 +81,111 @@ def project(built_example: Path, tmp_path: Path) -> Path:
     root = tmp_path / "paper"
     shutil.copytree(built_example, root, ignore=IGNORE)
     return root
+
+
+# ---------------------------------------------------------------------------- linear time
+
+#: A linear scan takes 8 times as long on 8 times the input, and a quadratic one 64 times.
+#: The bound is twice linear and a quarter of quadratic: a scan whose quadratic part is a
+#: seventh of its time on the smaller input reads 8 + 56/7 = 16, and fails. It is a check
+#: for scans, not for n log n, which comes close: sorting shuffled integers read 10.5 to 13.6.
+LINEAR_FACTOR = 8
+LINEAR_BOUND = 16.0
+#: Below this, one preemption decides the ratio. The input is doubled until the smaller
+#: case's best time reaches this, so a fast machine measures what a slow one does. The size
+#: a test starts from is the smallest it times. Too large, and a quadratic that has come back
+#: is timed at eight times a slow case, for minutes; too small, and a quadratic that runs at
+#: C speed can hide under the per-item work. Where no one start sees both, a scan is checked
+#: from two, as paragraph tagging is: small first, where one in Python fails in seconds, then
+#: from where one at C speed shows.
+LINEAR_FLOOR_SECONDS = 0.02
+#: Growth costs nothing unless a test never reaches the floor, so the cap only has to be far
+#: past where the fastest runner gets there: CI's were up to about four times this machine.
+LINEAR_MAX_GROWTH = 4096
+#: Every time is a best of three: interference only ever adds time, so one slow sample says
+#: nothing. A ratio between the bound and twice it is measured five times more before it
+#: fails; a linear scan does not read twice the bound on its best runs.
+LINEAR_REPEATS = 3
+LINEAR_CONFIRM = 5
+
+Clock = Callable[[], float]
+
+
+def _seconds(work: Callable[[Any], object], given: Any, clock: Clock) -> float:
+    """One timing, with the garbage collector off while it runs, as `timeit` does: a full
+    collection falls on whichever sample happens to trigger it."""
+    # Imported here, not at the top, to keep clear of the import block other branches edit.
+    import gc
+
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        started = clock()
+        work(given)
+        return clock() - started
+    finally:
+        if collecting:
+            gc.enable()
+
+
+def _best_ratio(
+    work: Callable[[Any], object],
+    small: Any,
+    large: Any,
+    times: tuple[list, list],
+    repeats: int,
+    clock: Clock,
+) -> float:
+    """Measure the two sizes in alternation, so a slow spell falls on both, and keep each
+    size's best."""
+    for _ in range(repeats):
+        times[0].append(_seconds(work, small, clock))
+        times[1].append(_seconds(work, large, clock))
+    return min(times[1]) / min(times[0])
+
+
+def check_linear(
+    build: Callable[[int], Any],
+    work: Callable[[Any], object],
+    size: int,
+    what: str,
+    *,
+    clock: Clock = time.perf_counter,
+) -> None:
+    """Fail unless `work(build(8 * n))` takes under 16 times as long as `work(build(n))`.
+
+    Each of these tests once rested on a single timing per size (one on a best of three, one
+    size after the other), or on a budget, and a busy runner decided the fence scanner's few
+    milliseconds: at four times the input, a macOS job read 13.5 for a scan that is linear,
+    against a bound of 12. So inputs are built off the clock; `n` starts at `size` and
+    doubles until the smaller case's best of three takes 20 ms; the sizes are measured in
+    alternation, and each keeps its best; and a ratio just over the bound is measured again
+    before it fails. `clock` is for testing this function.
+    """
+    for growth in (2**step for step in range(LINEAR_MAX_GROWTH.bit_length())):
+        count = size * growth
+        small = build(count)
+        work(small)  # imports, caches and compiled patterns, off the clock
+        best = min(_seconds(work, small, clock) for _ in range(LINEAR_REPEATS))
+        if best >= LINEAR_FLOOR_SECONDS:
+            break
+    else:
+        raise ValueError(
+            f"{what}: {count} items took under {LINEAR_FLOOR_SECONDS}s, too little to time;"
+            " start from a larger size"
+        )
+    large = build(count * LINEAR_FACTOR)
+    times: tuple[list, list] = ([], [])
+    ratio = _best_ratio(work, small, large, times, LINEAR_REPEATS, clock)
+    if LINEAR_BOUND <= ratio < 2 * LINEAR_BOUND:
+        ratio = _best_ratio(work, small, large, times, LINEAR_CONFIRM, clock)
+    assert ratio < LINEAR_BOUND, (
+        f"{what}: {LINEAR_FACTOR}x the input ({count} to {count * LINEAR_FACTOR}) took"
+        f" {ratio:.1f}x the time; linear is {LINEAR_FACTOR}, quadratic {LINEAR_FACTOR ** 2}"
+    )
+
+
+@pytest.fixture
+def assert_linear() -> Callable[..., None]:
+    """`check_linear`, for a test to call."""
+    return check_linear

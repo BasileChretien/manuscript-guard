@@ -999,6 +999,46 @@ def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path
     )
 
 
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        "<!--\n# Funding\nTBD\n-->\n",
+        "```r\n# Funding source, from the registry\nfunder <- NA\n```\n",
+        "~~~python\n# Funding\nfunder = None\n~~~\n",
+    ],
+)
+def test_a_statement_that_does_not_print_as_one_is_missing(project: Path, hidden: str) -> None:
+    """The statement patterns were searched in the main text with its HTML comments and
+    fenced code still in it. `# Funding` is a heading in Markdown and a comment in R and
+    Python: inside `<!-- -->` it satisfied the journal's funding statement and printed
+    nothing, and inside a listing it printed as a line of code. Either way the paper went
+    out with no funding statement."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    main.write_text(f"{text}\n{hidden}", encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
+    )
+
+
+def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) -> None:
+    """The abstract's required headings were looked for in its text with its comments still
+    in it, so `<!-- Conclusions: to write -->` met a Conclusions heading the abstract did
+    not print."""
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["structure"]["abstract_headings"] = ["Background", "Methods", "Conclusions"]
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace(
+        "**Conclusions.** Reporting", "<!-- Conclusions: to write -->\nReporting"
+    )
+    main.write_text(text, encoding="utf-8")
+    assert "abstract-headings-missing" in codes(_journal(project))
+
+
 # ------------------------------------------------------------- what the build prints
 # The build strips every file's front matter and writes the header from paper.yaml. Text
 # the gates read there and the build drops is checked, then left out of the document.

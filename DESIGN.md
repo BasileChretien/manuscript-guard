@@ -1871,9 +1871,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
   stray fence line inside a comment, or a fence directly under prose that is tilde or
   indented a space or more, hides what follows from the statement and abstract-heading
-  searches while pandoc prints it, so a statement there is reported missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
-  passes its text into the document. An indented code block is not blanked, so a pattern
-  written for a phrase can be met by a line of code; one anchored on a heading cannot.
+  searches while pandoc prints it, so a statement there is reported missing: a false alarm.
+  A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
+  document. An indented code block is not blanked, so a pattern written for a phrase can be
+  met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -2460,7 +2461,7 @@ Closed since, and why each mattered:
     one in the prose after it, which pandoc never does. This needs a reader that knows code
     spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
     knows escapes, fences and the front matter's edge, but it still ends a code span only at
-    a blank line and misreads backticks in maths and links.
+    a blank line and misreads backticks in maths, links and indented code.
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes

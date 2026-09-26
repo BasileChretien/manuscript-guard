@@ -344,6 +344,64 @@ def test_a_footnote_definition_is_left_for_pandoc_to_read(mark: bool, tmp_path: 
     assert list(paragraph_text(document).values()) == ["Doses were capped."]
 
 
+@needs_pandoc
+@BUILDS
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param("\nevery participant.", id="plain"),
+        pytest.param("\n    every participant.", id="indented"),
+        pytest.param("\nin the first cohort,\nand in every participant.", id="three-lines"),
+    ],
+)
+def test_a_wrapped_footnote_is_left_for_pandoc_to_read(
+    mark: bool, wrap: str, tmp_path: Path
+) -> None:
+    """Round ten: a footnote hard-wrapped over its lines works on main, where #25 leaves any
+    block opening `[label]:` alone, and this rule marked it for its second line, so it
+    printed as text, and `[^cap]` with it, on every build. Pandoc takes the lines under a
+    footnote's label into the note, and so does the rule now."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg in{wrap}\n\nAfter.\n"
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "every participant." in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped.", "After."]
+
+
+@needs_pandoc
+def test_a_comment_opened_in_a_note_hides_nothing_after_it() -> None:
+    """Round ten, on main too: `_blocks` followed a `<!--` in a footnote's text to the next
+    `-->`, and left every paragraph in between unmarked, while pandoc reads a note's text by
+    itself and printed them all. A strict definition is not read for raw content now."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        "Doses were capped.[^cap]\n\n[^cap]: Capped per protocol <!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one, with a comment <!-- ok --> in it.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 3
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
 #: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc
 #: can read no other way is left alone; prose is marked; and a definition written any other
 #: way is marked on purpose, so it prints as text - visibly, where leaving a block unmarked
@@ -363,8 +421,11 @@ BLOCKS = [
     # An address of several words, run together: pandoc prints nothing of these.
     pytest.param("[Methods]: patients were enrolled.", MARKED, id="prose-shaped"),
     pytest.param("[1]: Smith J, Doe A. A cohort study. Lancet. 2020;395:1.", MARKED, id="refs"),
+    # A footnote's label decides it: pandoc takes the lines under it into the note.
+    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", DEFINITION, id="note-lines"),
+    pytest.param("[^cap]: Capped at 40 mg,\n    or 20 mg.", DEFINITION, id="note-indented-lines"),
+    pytest.param("[^cap]: Capped at 40 mg:\n- or 20 mg.", DEFINITION, id="note-with-a-dash-line"),
     # Definitions in a shape pandoc could read another way.
-    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", MARKED, id="note-lines"),
     pytest.param(f"[^1]: A note.\n[a]: {REGISTRY}", MARKED, id="link-under-a-note"),
     pytest.param(f"[a [b] c]: {REGISTRY}", MARKED, id="nested-label"),
     pytest.param(f"[mail@example.org]: {REGISTRY}", MARKED, id="at-in-label"),
@@ -550,6 +611,8 @@ def test_no_identifier_goes_into_a_note_over_a_line_pandoc_does_not_take_for_bla
 
     gather(blocks)
     assert not any("mg-p-" in json.dumps(note) for note in notes), "an identifier went in"
+    # Where the rule says the note ends, pandoc must agree: the paragraph stays in the body.
+    assert runs_on or not any("rare" in json.dumps(note) for note in notes)
 
 
 @needs_pandoc
@@ -709,6 +772,12 @@ def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
     tagged = tag(text, "definitions.md")
     marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged))
     assert marked == known
+    # Every block of `BLOCKS` is marked as it is on its own - a `<!--` in one note's text hid
+    # sixteen blocks after it - but the last, beside the full-width space that follows it;
+    # and of the notes after, only the one over an indented zero-width space.
+    alone = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS))
+    last = BLOCKS[-1].values[0]
+    assert len(marked) == alone - (tag(last, "definitions.md") != last) + 1
     # Beside a line pandoc does not take for blank nothing is marked, the definitions and
     # notes there included; the note over a blank line and an indented zero-width space runs
     # on into it, and is marked.

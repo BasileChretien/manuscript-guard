@@ -2535,8 +2535,11 @@ Closed since, and why each mattered:
     backslash, backtick, `$`, `<`, `@`, `^` or `|`, because pandoc reads it as inline
     markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
     line a citation. No part holds a brace, because a binding is filled in after this
-    reading and its value could change it. A footnote is its label and its text on one
-    line. Links come before notes, because a line under a note is more of the note. A note
+    reading and its value could change it. A footnote is its label and its text, which may
+    wrap onto the lines under it: pandoc takes almost any line under a note's label into the
+    note, all but one opening `[^` without a colon, an underline, and a definition list's
+    `:` or `~`, which end it or make it something else. Links come before notes, because a
+    line under a note is more of the note, and a link's definition there resolves nowhere. A note
     also runs on through every line pandoc does not take for blank, unless it opens another
     note; and after a blank line
     (empty, or spaces and tabs), a line indented four columns - four spaces, or a tab,
@@ -2544,12 +2547,13 @@ Closed since, and why each mattered:
     under it are more of it. So a note is left alone only when a blank line ends it and the
     line after the last blank one is indented less, and a note of several paragraphs is
     marked. A link written straight above a paragraph or a heading is passed over, and the
-    paragraph after it carries the identifier (see the next entry). Anything else - a
-    definition wrapped over two lines, with attributes or a title on the next line, a
-    nested bracket in its label, a footnote whose text wraps, runs to a second paragraph or
-    is written straight above prose, or a link over a line opening with a quote, a
-    parenthesis or a brace, which pandoc could take for its title - is marked, and prints
-    as text, as it did before this fix. That failure is visible. Three versions that
+    paragraph after it carries the identifier (see the next entry). Anything else - a link
+    wrapped over two lines, with attributes or a title on the
+    next line, a nested bracket in its label, a link under a note, a footnote running to a
+    second paragraph - is marked, and prints as text. That failure is visible, and it is a
+    choice: on `main` after #25, which left every block opening `[label]:` alone, these
+    worked, and so did prose opening `[label]:`, uncompared. The strict rule gives them up
+    so that such prose is compared; a hard-wrapped footnote, the common one, it keeps. Three versions that
     modelled more of pandoc's grammar were each caught in review failing the other way: they
     left a block unmarked that pandoc printed, so a co-author's edit to it was dropped while
     `import` said nothing came back, and one took minutes over a line of attributes. A
@@ -2562,9 +2566,13 @@ Closed since, and why each mattered:
     which is no whitespace to Python, so that line opened the next block unseen. One
     definition per line, with an empty line before the block, is what works; after a note,
     an empty line and then a line that is not indented.
-  - *A document built before this change is best sent again.* It shows each definition as
-    a paragraph, with an identifier the rebuild no longer has, so a co-author's edit to one
-    is not compared, and is not named in the report.
+  - *A document built before this change is best sent again.* Built before #25, it shows
+    each definition as a paragraph, with an identifier the rebuild no longer has, so a
+    co-author's edit to one is not compared, and is not named in the report. Built after #25,
+    it gives prose opening `[label]:` no identifier and prints a non-strict link as nothing;
+    compared with a rebuild that marks both, an edit to that prose is reported as made
+    where nothing is identified, and the link's paragraph as deleted in Word. Loud, and
+    wrong; sent again, the document compares.
   - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
     `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
     definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and

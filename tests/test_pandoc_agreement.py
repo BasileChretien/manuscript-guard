@@ -826,7 +826,9 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)
         if marker is None:
             continue
-        source = piece.replace(marker.group(0), "", 1) + "\n\n" + definitions
+        # From the marker on: under a heading or a link's definition it marks the paragraph
+        # after them, and that paragraph is what must be whole.
+        source = piece[marker.end() :] + "\n\n" + definitions
         read = pandoc_ast(source)
         assert [block["t"] for block in read] in (["Para"], ["Plain"]), (
             f"{name}: {piece!r} is marked and pandoc reads it as {[b['t'] for b in read]}"

@@ -3174,7 +3174,9 @@ Closed since, and why each mattered:
     which reaches the next four - is the note's next paragraph, and the unindented lines
     under it are more of it. So a note is left alone only when a blank line ends it and the
     line after the last blank one is indented less, and a note of several paragraphs is
-    marked. Anything else - a link wrapped over two lines, with attributes or a title on the
+    marked. A link written straight above a paragraph or a heading is passed over, and the
+    paragraph after it carries the identifier (see the next entry). Anything else - a link
+    wrapped over two lines, with attributes or a title on the
     next line, a nested bracket in its label, a link under a note, a footnote running to a
     second paragraph - is marked, and prints as text. That failure is visible, and it is a
     choice: on `main` after #25, which left every block opening `[label]:` alone, these
@@ -3282,6 +3284,54 @@ Closed since, and why each mattered:
     leaves it unmarked, so the check refuses that rewording, which was safe to make.
   - *A paragraph that never reached the document is not checked.* One inside an HTML
     comment has an identifier in the source and none in Word, and nothing writes it.
+- **A paragraph under a heading or a link's definition carries the identifier.** Pandoc
+  needs no blank line after a heading, nor after a link's definition, so `# Methods` with
+  its paragraph on the next line is a heading and a paragraph. Every block starting with
+  `#` went unmarked, and a co-author's edit to that paragraph was dropped while `import`
+  said nothing came back; and a paragraph straight under a definition was marked with it,
+  which printed the definition. Now the headings and definitions a block opens with - ATX
+  or setext headings, and links in the strict one-line shape, under a line pandoc takes for
+  blank - are passed over (`_lead_end`), and what follows them is judged as any block is:
+  marked, at its own offset, when `_untagged` finds it one paragraph. What that leaves:
+  - *Anything else under a heading stays unmarked with it.* A list, code, a table, or a
+    paragraph with a fence or block-level HTML after it in the same block goes unmarked, as
+    the whole block always did, and an edit to it is not compared. A blank line after the
+    heading avoids it.
+  - *Under a heading, a line that may open a definition stays unmarked.* A line opening
+    `[label]:` in a shape the strict rule does not take - its title on the next line,
+    `{attributes}`, words for an address - is a definition to pandoc, and a marker in front
+    of it would print it and break every link to it. So it is left as the whole block
+    always was, and prose that opens with `[label]:` under a heading is not compared.
+  - *Under a link's definition, what is not one paragraph goes unmarked with it*, as it
+    would on its own: a list, code, a table. The definition works. A definition the strict
+    rule does not take, under a strict one, is the paragraph there, and is marked, and
+    prints as on #54 - unless a heading was passed over too, when it is left alone as under
+    a heading.
+  - *Only a heading of plain text is passed over.* Markup opened in a heading's line can
+    close on the next: pandoc then reads that line into an ATX heading, or a setext title
+    and all under it as one paragraph, and a marker between printed inside it. Review found
+    one form after another - a code span, a comment, a TeX environment, a citation's
+    locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
+    off from its citation), a citation group, maths, a link's destination, a tag's
+    attributes, emphasis, a backslash inside code. So a heading is passed over only when
+    its lines hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute
+    block ending the line (`{#sec-methods}`, which cross-references need). Any other
+    heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
+    compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
+    over an underline.
+  - *A reworded paragraph can take the link above it along.* One that comes back from Word
+    opening with `(`, `"` or `'` could be the title of a link's definition written straight
+    above it, so the next build marks the whole block, as #54 does, and the definition
+    prints as text.
+  - *Setext headings are not compared, as before.* On `main` since #25 a block holding an
+    underline is left unmarked whole, so the paragraph under a setext heading had no
+    identifier either; it has one now, and the heading still none. A revision round opened
+    on #54 and before this change, with a point anchored to a paragraph under a link's
+    definition, reads that paragraph as revised: its identifier covered the definition too.
+  - *`#` opens no heading unless pandoc says so.* `#Methods` and `#1 priority` are
+    paragraphs to pandoc, and are marked like any other. Indented one to three spaces,
+    ` # Methods` is a paragraph at the top level and a heading inside a list item, where a
+    marker would print it; it is left alone, as on `main`, and the paragraph is not compared.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

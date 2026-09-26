@@ -429,6 +429,43 @@ _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 # space, tab, caret or bracket, then `]`, colon or not.
 _NOTE_ENDS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]")
 _INDENT = re.compile(r"[ \t]*")
+
+# What a block opens with that carries no identifier, above a paragraph that does. Pandoc
+# reads a heading only where a block starts, under a line it takes for blank, and wants no
+# blank line after one, nor after a link's definition: `# Methods` with its paragraph on the
+# next line is a heading and a paragraph. Every block starting with `#` went unmarked, so
+# that paragraph reached Word without an identifier, and a co-author's edit to it was
+# dropped while `import` said nothing came back; and a paragraph straight under a
+# definition was marked with it, which printed the definition.
+#
+# Pandoc tries a setext heading first: any line, at any indent, over an underline of `=` or
+# `-` in the first column - unless the line is a bullet or a fence, which it reads before
+# headings. An ATX heading is hashes in the first column, then a space, a tab or the end of
+# the line: `#Methods` is text to it. Indented, ` # Methods` is text at the top level and a
+# heading inside a list item, so it is left alone (`_ATX_OPENS`) and never passed over. A
+# link's definition is a `_LINK_LINE`; a note's is never passed over, because the line under
+# a note is more of it.
+_SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
+_ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
+_ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
+# A heading that can be passed over: plain text, with no character that can open markup.
+# Pandoc reads the next line into an ATX heading, or a setext title and all under it into
+# one paragraph, whenever something opened in the heading's line closes on a later one - a
+# code span, a comment, a TeX environment, a citation's locator, maths, a link's
+# destination, a tag's attributes, emphasis. Each list of those that review was given, it
+# found one more; so anything but plain text keeps the block as it was, unmarked. A closed
+# attribute block may end the line, `{#sec-methods}`, since cross-references need one.
+_PLAIN_LINE = re.compile(r"[^`@$\[\]<>\\*_~^{}&]*(?:\{[#.\w\- =:]*\}[ \t]*)?")
+_BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
+# The line under a link's definition that may hold its title or attributes: pandoc reads
+# `[reg]: url` over `(which is public) and more` as one paragraph, and a marker between them
+# would make a definition and a paragraph instead.
+_TITLE_NEXT = re.compile(r"[ \t]*[\"'({]")
+# Under a heading, a line that opens with what may be a definition's label in a shape
+# `_LINK_LINE` does not take: its title on the next line, `{attributes}`, several words. The
+# block is left unmarked, as it always was; a marker in front of it would print the
+# definition and break every link to it. A label may hold one level of brackets.
+_DEFINITION_OPENS = re.compile(r"[ ]{0,3}\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]:")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
 # `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
 # paragraph that opens with an image and ends on a bracket losing its identifier is the
@@ -515,7 +552,9 @@ def _untagged(block: str) -> bool:
     stripped = block.strip()
     value = PLACEHOLDER.fullmatch(stripped)
     if (
-        stripped.startswith("#")
+        # A heading, which a marker would unmake. Only as pandoc reads one: `#Methods` and
+        # ` # Methods` are paragraphs, and went unmarked when any `#` did.
+        _ATX_OPENS.match(block) is not None
         # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
         # it opens, mid-line too, and carries on with a raw block.
         or _TEX_ENVIRONMENT.search(stripped) is not None
@@ -1052,8 +1091,57 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
     return above, below
 
 
-def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
-    """Every piece of `text` in order, with its index and whether it gets an identifier.
+def _lead_end(block: str, above: str) -> tuple[int, bool]:
+    """How far into `block` the headings and link definitions it opens with run - 0 when it
+    opens with neither, or under a line pandoc does not take for blank - and whether a
+    heading is among them. Only a heading of plain text is passed over (`_PLAIN_LINE`):
+    markup opened in its line can close on the next, and pandoc then reads that line into
+    the heading. Passed over, a citation's locator there was the paragraph's to `import`,
+    and an edit in Word wrote it into the source cut off from its citation."""
+    if not _blank_above(above):
+        return 0, False
+    at = start = _BLANK_LINES.match(block).end()
+    headed = False
+    while at < len(block):
+        heading = _SETEXT.match(block, at) or _ATX.match(block, at)
+        if heading and all(map(_PLAIN_LINE.fullmatch, heading.group().split("\n"))):
+            at, headed = heading.end(), True
+            continue
+        if heading:
+            break
+        end = block.find("\n", at)
+        end = len(block) if end < 0 else end
+        if not _LINK_LINE.fullmatch(block, at, end) or _TITLE_NEXT.match(block, end + 1):
+            break
+        at = min(end + 1, len(block))
+    return (at, headed) if at > start else (0, False)
+
+
+def _marker_at(block: str, above: str, below: str) -> int | None:
+    """Where in `block` its identifier goes, or None when it gets none: in front of its
+    first character, or in front of the paragraph under the headings and link definitions
+    it opens with, when what follows them is one paragraph by `_untagged`'s reading.
+
+    Under a heading - at the top of the block or after a link - a line that may open a
+    definition gets none, nor does anything that is not one paragraph, as a block holding a
+    heading never did. Under a link's definition alone, what is not one paragraph goes
+    unmarked with it, as it would on its own."""
+    head, headed = _lead_end(block, above)
+    if head:
+        rest = block[head:]
+        if not rest.strip() or _definitions(rest, "", below):
+            return None
+        if (headed and _DEFINITION_OPENS.match(rest)) or _untagged(rest):
+            return None
+        return head + len(rest) - len(rest.lstrip(" \t"))
+    if _untagged(block) or _definitions(block, above, below):
+        return None
+    return len(block) - len(block.lstrip())
+
+
+def _blocks(text: str) -> Iterator[tuple[int, str, int | None]]:
+    """Every piece of `text` in order, with its index and where in it the identifier goes:
+    None for none, or an offset into the piece (`_marker_at`).
 
     `tag` and `tagged_paragraphs` both iterate this rather than splitting for themselves, so
     the identifier a document carries and the one `import` looks up are computed by the same
@@ -1114,7 +1202,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
                 table = ruled.inner_end(index) if inside else ruled.end(index)
                 if table is not None:
                     hidden = max(hidden, ends[table])
-            yield index, piece, False
+            yield index, piece, None
             continue
         # A definition's text is read by itself: a `<!--` or a `<pre>` in a note, or in a
         # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
@@ -1127,7 +1215,10 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         if closer is not None:
             runs_on = max(runs_on, ends[closer])
         hidden = max(hidden, runs_on)
-        yield index, piece, apart and not (runs_on or _untagged(piece) or definitions)
+        at = None if runs_on or not apart or definitions else _marker_at(
+            piece, *_around(pieces, index)
+        )
+        yield index, piece, at
 
 
 def tag(text: str, relative: str, *, mark: bool = False) -> str:
@@ -1150,13 +1241,13 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     slug = paragraph_slug(relative)
     out = []
     counter = iter(range(1_000_000))
-    for index, piece, marked in _blocks(text):
-        if not marked:
+    for index, piece, at in _blocks(text):
+        if at is None:
             out.append(piece)
             continue
-        stripped = piece.strip()
         marker = _TAG.format(slug=slug, index=index)
-        body = stripped
+        body = piece[at:].rstrip()
+        end = at + len(body)
         if mark:
             code = [m.span() for m in _SCAN.finditer(body) if m.lastgroup in ("code", "coded")]
             spans = [t.span() for t in _tokens(body) if _markable(body, t.start(), code)]
@@ -1166,7 +1257,8 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
             ]
             for (a, b), replacement in reversed(list(zip(spans, bookmarked, strict=True))):
                 body = body[:a] + replacement + body[b:]
-        out.append(piece.replace(stripped, f"[]{{#{marker}}}{body}", 1))
+        # By position: under a heading, the paragraph's words can be the heading's too.
+        out.append(f"{piece[:at]}[]{{#{marker}}}{body}{piece[end:]}")
     return "".join(out)
 
 
@@ -1263,14 +1355,14 @@ def _walk(
     cursor = len(raw) - len(text)
     out: list[tuple[str, str, int, str]] = []
     before = ""
-    for index, para, marked in _blocks(text):
-        stripped = para.strip()
-        start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
+    for index, para, at in _blocks(text):
+        if at is not None:
+            # The paragraph alone, under any headings: `import` splices exactly this.
+            name = _TAG.format(slug=slug, index=index)
+            out.append((name, para[at:].rstrip(), cursor + at, before))
         cursor += len(para)
-        if marked:
-            out.append((_TAG.format(slug=slug, index=index), stripped, start, before))
-        if stripped:
-            before = stripped
+        if para.strip():
+            before = para.strip()
     return out
 
 

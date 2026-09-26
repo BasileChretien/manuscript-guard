@@ -402,6 +402,136 @@ def test_a_comment_opened_in_a_note_hides_nothing_after_it() -> None:
     assert all("mg-p-" in paragraph for paragraph in paragraphs)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("[^cap]: Capped at 40 mg.\n[^b c] was a draft label.", id="spaced-label"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^ b]: was a draft label.", id="spaced-caret"),
+        pytest.param("[^cap]: Capped at 40 mg.\n\t[^b]: after a tab.", id="tab"),
+        pytest.param("[^cap]: Capped at 40 mg.\n    [^b]: indented four.", id="indented"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^] with no label.", id="empty-label"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^b[c] with a bracket.", id="bracket"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^^] with a caret.", id="caret"),
+        pytest.param("[^cap]: Capped at 40 mg in\nrenal impairment,\n~ 0.3 mg/kg.", id="tilde"),
+        pytest.param("[^cap]: Capped at 40 mg in\nrenal impairment,\n: 0.3 mg/kg.", id="colon"),
+    ],
+)
+def test_a_note_takes_in_every_line_pandoc_takes_in(note: str, tmp_path: Path) -> None:
+    """Round eleven: pandoc ends a note only at a line opening a note's marker - `[^`, then
+    no space, tab, caret or bracket, then `]` - and a definition list's `:` or `~` changes a
+    note only directly under its label. The rule refused more, so each of these notes was
+    marked, and printed as text with `[^cap]`, where it works on main."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = f"Doses were capped.[^cap]\n\n{note}\n\nAfter.\n"
+    source.write_text(tag(text, "main.md"), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "Capped at 40 mg" in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped.", "After."]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("[^b] was typed after it.", id="marker"),
+        pytest.param("   [^b] was typed after it.", id="indented-three"),
+        pytest.param("[^b`c] was typed after it.", id="backtick"),
+        pytest.param("[^b]\twas typed after it.", id="tab-after"),
+        pytest.param(f"[^b{chr(0xA0)}c] was typed after it.", id="no-break-space"),
+    ],
+)
+def test_a_line_that_ends_a_note_is_not_taken_into_it(line: str) -> None:
+    """Pandoc ends a note at a line opening a note's marker, with a colon or without, and
+    prints that line in the body. It must reach the document with an identifier."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n{line}\n\nAfter.\n"
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert any('"typed"' in paragraph for paragraph in paragraphs)
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n:::", id="div-fence-last"),
+        pytest.param("[^cap]: Capped per protocol\n:::\n<!-- check the dose", id="div-fence"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n:", id="bare-colon"),
+        pytest.param("[^cap]: Capped per protocol\n~\n<pre>", id="bare-tilde"),
+    ],
+)
+def test_a_note_over_a_line_it_may_end_at_hides_nothing_after_it(note: str) -> None:
+    """Round eleven, found refusing these lines: a `:::` line is more of a note outside a
+    fenced div, and a bare `:` or `~` under the label makes it a term. Either way pandoc
+    reads a `<!--` or a `<pre>` there by itself. Refused, the block was read for raw content,
+    and the opener hid the paragraphs below, which pandoc prints."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"Doses were capped.[^cap]\n\n{note}\n\n"
+        "The first result paragraph.\n\nA later one, closing --> it.\n\nThe last.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 4
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+def test_a_comment_opened_in_a_link_title_hides_nothing_after_it() -> None:
+    """Round eleven's gap: a strict link's title is read by itself too. A `<!--` in it opens
+    nothing beyond the definition."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"See [the registry][reg].\n\n[reg]: {REGISTRY} \"Registry <!-- draft\"\n\n"
+        "The first result paragraph.\n\nA later one, with a comment <!-- ok --> in it.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 3
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
 #: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc
 #: can read no other way is left alone; prose is marked; and a definition written any other
 #: way is marked on purpose, so it prints as text - visibly, where leaving a block unmarked

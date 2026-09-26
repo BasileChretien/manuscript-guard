@@ -310,6 +310,9 @@ _LINK_LINE = re.compile(
 # both blocks unmarked anyway. At the end of a file nothing follows; the build puts an
 # empty div between files, so the next file's first paragraph cannot run into it either.
 _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
+# Where pandoc 3.9 ends a note (`rawLine`): a line opening a note's marker - `[^`, then no
+# space, tab, caret or bracket, then `]`, colon or not.
+_NOTE_ENDS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]")
 _INDENT = re.compile(r"[ \t]*")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
 # `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
@@ -852,25 +855,39 @@ def _only_definitions(block: str, below: str) -> bool:
         return True
     return (
         _NOTE_LINE.fullmatch(notes[0]) is not None
-        and all(_NOTE_LINE.fullmatch(line) or _continues_a_note(line) for line in notes[1:])
+        and all(
+            _NOTE_LINE.fullmatch(line)
+            or _continues_a_note(line, _NOTE_LINE.fullmatch(above) is not None)
+            for above, line in itertools.pairwise(notes)
+        )
         and _blank_below(below)
     )
 
 
-def _continues_a_note(line: str) -> bool:
-    """Whether pandoc reads `line`, under a footnote's first line, as more of that footnote.
+def _continues_a_note(line: str, under_label: bool) -> bool:
+    """Whether pandoc reads `line`, under a footnote's first line, as more of that footnote;
+    `under_label` when the line above it is a note's label.
 
     A note's label decides it, and pandoc takes almost any line under it into the note: a
     hard-wrapped footnote is one. Marked for its second line, it printed as text on every
-    build, though #25 had let it work. Not a line opening `[^` without a colon, which pandoc
-    ends the note at and prints; not a link's definition, which would resolve nowhere
-    inside the note; and not an underline or a definition list's `:` or `~`, which make the
-    note's first line a heading or a term."""
+    build, though #25 had let it work. Not a line pandoc ends the note at (`_NOTE_ENDS`),
+    which opens another note or prints; not a link's definition, which would resolve
+    nowhere inside the note; not an underline or a table's rule, which directly under the
+    label make it a heading, and further down leave the block to `_untagged`, which marks
+    none; and not, directly under the label, a definition list's `:` or `~` with a space
+    after it, which make it a term. Further down pandoc takes those into the note too.
+
+    Refusing a line is not the safe side by itself: a block not left alone is read for raw
+    content, where pandoc keeps a `<!--` inside the note or the term, and it then hid the
+    paragraphs below. So a bare `:` under the label, which also makes a term, and a `:::`
+    line, which ends the note inside a fenced div, are taken in. The term prints visibly;
+    what follows the `:::` in the block, `_untagged` leaves unmarked either way, as it does
+    any block with a div fence inside it."""
     return not (
-        re.match(r"[ \t]*\[\^", line)
+        _NOTE_ENDS.match(line)
         or _LINK_LINE.fullmatch(line)
         or _RULE.fullmatch(line)
-        or _DEFINITION.match(line)
+        or (under_label and _DEFINITION.match(line))
     )
 
 

@@ -365,6 +365,108 @@ def headings(text: str) -> list[str]:
     return [found.title for found in _headings_in(text)]
 
 
+# A line of dashes, in groups or not. Under a line pandoc reads a setext underline in it;
+# over one, YAML with three at the margin, a table's rule with two or more, and an empty
+# list item with one.
+_DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
+# Dashes ending a line that opens with something pandoc starts a block behind: block-level
+# HTML tags or comments, a TeX command with its groups, or list, definition or footnote
+# markers, nested or not. Pandoc reads the dashes there as YAML or a table's rule. Inline
+# markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block, and is prose.
+# Pandoc's block-level tags, and those it takes for a block or inline as it finds them.
+_BLOCK_TAGS = (
+    "address|applet|area|article|aside|audio|blockquote|body|button|canvas|caption|center|"
+    "col|colgroup|dd|del|details|dialog|dir|div|dl|dt|embed|fieldset|figcaption|figure|"
+    "footer|form|frameset|h[1-6]|head|header|hgroup|hr|html|iframe|ins|isindex|legend|li|"
+    "link|main|map|math|menu|meta|nav|noframes|noscript|object|ol|optgroup|option|output|p|"
+    "param|pre|progress|script|section|source|style|summary|svg|table|tbody|td|template|"
+    "textarea|tfoot|th|thead|title|tr|track|ul|video"
+)
+# One thing a line may open with that pandoc starts a block behind: a list, definition or
+# footnote marker, a task's box after it; a block-level tag, a comment or a processing
+# instruction; a TeX command, starred or not, with its groups three deep. The alternatives
+# read any text one way only: a roman numeral has two letters or more, since one is a
+# letter's; a comment ends at its first `-->`; a command's name takes every letter, as TeX
+# reads it; and `[^1]:` after a command is a footnote's marker, where `[^1]` with no colon
+# after it is the command's optional argument, as pandoc reads it, and `[x]:` an argument
+# before a definition's colon. Where one line could be read two ways, a line of a few
+# hundred items took minutes.
+_GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
+_ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
+_OPENER_ITEM = (
+    r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
+    r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
+    r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
+    r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*)"
+)
+_OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)
+
+
+def _opens_block(line: str) -> bool:
+    """Whether `line` is things pandoc starts a block behind, then three dashes or more.
+
+    Two are an en dash, and no YAML opens on them. The dashes are split off by reading back
+    from the end, so only the front is left to the pattern: matched whole, a line of dash
+    markers could be divided between the markers and the dashes as many ways as it had."""
+    tail = line.find("-", len(line.rstrip("- \t")))
+    return (
+        tail > 0
+        and line.count("-", tail) >= 3
+        and _OPENERS.fullmatch(line, 0, tail) is not None
+    )
+# A line inside a quotation: its dashes are the quotation's (see Known gaps).
+_QUOTED = re.compile(r"^[ ]{0,3}>")
+
+
+def _blank(line: str) -> bool:
+    return not line.strip(" \t\r")
+
+
+def rules_opening_blocks(text: str) -> list[int]:
+    """The lines, numbered from 1, of each line of dashes below the front matter with a line
+    directly above or under it.
+
+    Pandoc reads a line of dashes under a line as that line's setext underline, and over one
+    as the start of YAML metadata, when the lines under it are a mapping, or of a table. A
+    YAML block is merged over the document's metadata, and a table's lines are cells; the
+    gates read prose, and took a closing rule for an underline. Modelling pandoc's readers
+    did not hold up in review, and neither did an exemption for the underline of a plain
+    title: four reviews each found titles pandoc reads otherwise, under a comment, a listing
+    or a quotation, or holding a placeholder. So a line of dashes passes only between blank
+    lines, where pandoc reads nothing but a thematic break, and a heading is written with
+    `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
+    pandoc starts a block behind either. A line in code, a comment or the front matter is
+    not read.
+    """
+    shown = scannable(text).split("\n")
+    source = text.split("\n")
+    found = []
+    for number, line in enumerate(shown):
+        # A comment that closes on this line is blanked in front of what follows, and pandoc
+        # reads on from its `-->`, spaces and tabs skipped, as from the margin.
+        bare = source[number].rstrip("\r")
+        closes = bare.rfind("-->")
+        if closes >= 0 and not line[: closes + 3].strip():
+            line, bare = line[closes + 3 :].lstrip(" \t"), bare[closes + 3 :].lstrip(" \t")
+        visible = line.rstrip(" \t\r").endswith("-")
+        if (
+            visible
+            and not _QUOTED.match(bare)
+            and not _DASH_LINE.match(line.rstrip("\r"))
+            and _opens_block(bare)
+        ):
+            found.append(number + 1)
+            continue
+        if not _DASH_LINE.match(line.rstrip("\r")):
+            continue
+        above = source[number - 1] if number else ""
+        below = source[number + 1] if number + 1 < len(source) else ""
+        if not (_blank(above) and _blank(below)):
+            found.append(number + 1)
+    return found
+
+
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
     # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of

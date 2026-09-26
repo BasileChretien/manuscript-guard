@@ -18,7 +18,15 @@ from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
-from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
+from manuscript_guard.build import (
+    LIVE,
+    OFFLINE,
+    BuildError,
+    MisreadError,
+    assemble,
+    build_document,
+)
+from manuscript_guard.build.assemble import check_rules
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import ContractError, load_namespace, load_project
@@ -111,6 +119,7 @@ def _run_gates(
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
+        ("BUILD", lambda: check_rules(project)),
     ):
         reports.append(_guarded(name, gate))
 
@@ -427,6 +436,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
+    # What the assembly reports is not import's to enforce: a source the build refuses is
+    # still refused by `check` and the build after the import, and refusing here blocked
+    # the return of a document built before a refusal existed.
     assembled, _ar = assemble(project, namespace, results)
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
@@ -440,7 +452,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         try:
             for assembly, output in ((assembled, reference), (marked_assembly, tokens)):
                 build_document(
-                    project, assembly, mode=OFFLINE, output=output, supplementary=supplementary
+                    project,
+                    assembly,
+                    mode=OFFLINE,
+                    output=output,
+                    supplementary=supplementary,
+                    verify_reading=False,
                 )
             abbreviated = abbreviations()
         except BuildError as exc:
@@ -1217,6 +1234,9 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         reference_doc=reference,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
+        # Marked up for the author to read, not the document sent, and the marks change how
+        # a subscript or a code span reads: checked, it was refused as a misread.
+        verify_reading=False,
     )
     added = finish(result.output, marks)
     print(result.report.render(project.root))
@@ -1279,6 +1299,10 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     try:
         result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
+    except MisreadError as exc:
+        # A refusal, like a failing gate, not a build that could not run.
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 1
     except BuildError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         if not args.offline:
@@ -1301,7 +1325,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     if fields:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
 
-    supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    try:
+        supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    except MisreadError as exc:
+        print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+        return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
     return 0
@@ -1313,7 +1341,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
     Built alongside the paper rather than on request, because a supplement that has to be
     asked for is one that arrives at the journal a version behind the manuscript it belongs
     to. A failure here is reported and does not fail the build: the paper is what the author
-    was making.
+    was making. A refusal does (`MisreadError`, raised): pandoc reads the supplement
+    otherwise than the gates did, and the one from the last build is removed with it.
     """
     from manuscript_guard.gates.numbers import is_supplementary
 
@@ -1322,6 +1351,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
         return None
     try:
         built = build_document(project, assembled, mode=mode, csl=csl, supplementary=True)
+    except MisreadError:
+        raise
     except BuildError as exc:
         print(f"manuscript-guard: the supplement did not build: {exc}", file=sys.stderr)
         return None
@@ -1355,6 +1386,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
         mode = OFFLINE if args.offline else LIVE
         try:
             built = build_document(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 1
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
@@ -1373,7 +1407,27 @@ def cmd_submit(args: argparse.Namespace) -> int:
         # belongs to this manuscript. Taking whatever `supplementary.docx` happened to be
         # lying in build/ is how a supplement arrives at a journal a version behind the
         # paper it is supplementing.
-        _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        try:
+            _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+            print("\nThe pack is not assembled.")
+            return 1
+
+    # A build refused as a misread removes its document and its supplement, and a pack was
+    # then assembled without either, and reported as made.
+    from manuscript_guard.build.submission import supplement_for
+    from manuscript_guard.gates.numbers import is_supplementary
+
+    supplement = supplement_for(project, document)
+    wants_supplement = any(
+        is_supplementary(project.path("manuscript"), p)
+        for p in source_files(project.path("manuscript"))
+    )
+    for needed in [document, *([supplement] if wants_supplement else [])]:
+        if not needed.is_file():
+            print(f"manuscript-guard: {needed} does not exist; build it first", file=sys.stderr)
+            return 2
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

@@ -30,6 +30,7 @@ from manuscript_guard.text.masking import (
     front_matter_problem,
 )
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.sections import rules_opening_blocks
 
 GATE = "BUILD"
 
@@ -107,6 +108,50 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     return text[found.end():].lstrip("\n"), declared
 
 
+def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
+    """A refusal for each line of dashes below the front matter with a line directly above
+    or under it (`sections.rules_opening_blocks`).
+
+    With a line under it, pandoc may read YAML metadata there, merged over the build's
+    header with the later value winning: a `title:` in it replaced paper.yaml's on the
+    title page. Pandoc prints no heading from that, nor from a table, and under a line it
+    reads a heading the gates may not. Refused in the build as well as in `check`, so no
+    document is made from a source the gates misread.
+    """
+    lines = text.split("\n")
+
+    def beside(line: int) -> str:
+        # `line` counts from 1: `lines[line - 2]` is the line above the rule, quoted unless
+        # it is blank, and `lines[line]` the one under it.
+        above = lines[line - 2].strip() if line >= 2 else ""
+        under = lines[line].strip() if line < len(lines) else ""
+        return (above or under)[:120]
+
+    return tuple(
+        Finding(
+            gate=GATE,
+            code="rule-opens-a-block",
+            message=f"{path.name}: a line of dashes with a line directly above or under it, "
+            "which pandoc may read as a heading's underline, YAML metadata or a table",
+            path=path,
+            line=line,
+            context=beside(line),
+            hint="write a heading with `#`, as `## Methods`; put a blank line above and "
+            "under a thematic break; move metadata into paper.yaml; a table is emitted and "
+            "placed with `{{table.key}}`",
+        )
+        for line in rules_opening_blocks(text)
+    )
+
+
+def check_rules(project: Project) -> Report:
+    """`rule_findings` for every source file, so `check` refuses what the build would."""
+    report = Report()
+    for path in source_files(project.path("manuscript")):
+        report = report.with_findings(*rule_findings(path, path.read_text(encoding="utf-8")))
+    return report
+
+
 def assemble(
     project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
 ) -> tuple[list[Assembled], Report]:
@@ -126,6 +171,7 @@ def assemble(
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
         source = path.read_text(encoding="utf-8")
+        report = report.with_findings(*rule_findings(path, source))
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
         problem = front_matter_problem(source)

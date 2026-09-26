@@ -2537,8 +2537,17 @@ Closed since, and why each mattered:
     line a citation. No part holds a brace, because a binding is filled in after this
     reading and its value could change it. A footnote is its label and its text, which may
     wrap onto the lines under it: pandoc takes almost any line under a note's label into the
-    note, all but one opening `[^` without a colon, an underline, and a definition list's
-    `:` or `~`, which end it or make it something else. Links come before notes, because a
+    note. It ends the note at a line opening a note's marker - `[^`, then no space, tab,
+    caret or bracket, then `]`, with a colon or without. Directly under the label, a
+    definition list's `:` or `~` makes the label a term, and an underline makes it a
+    heading. Those lines are refused - the `:` and `~` with a space after them - and so is
+    an underline or a table's rule further down, which pandoc takes into the note: the
+    block then opens nothing `_untagged` marks, and the note works. A bare `:` or `~` under
+    the label, and a line closing a fenced div, which ends the note inside one, are taken
+    in, because refusing is not the safe side it looks: a block not left alone is read for
+    raw content (below), and a `<!--` that pandoc keeps inside the note or the term then
+    hid the paragraphs after it. What those two lines make prints visibly, or `_untagged`
+    leaves it unmarked either way. Links come before notes, because a
     line under a note is more of the note, and a link's definition there resolves nowhere. A note
     also runs on through every line pandoc does not take for blank, unless it opens another
     note; and after a blank line
@@ -2569,10 +2578,11 @@ Closed since, and why each mattered:
   - *A document built before this change is best sent again.* Built before #25, it shows
     each definition as a paragraph, with an identifier the rebuild no longer has, so a
     co-author's edit to one is not compared, and is not named in the report. Built after #25,
-    it gives prose opening `[label]:` no identifier and prints a non-strict link as nothing;
-    compared with a rebuild that marks both, an edit to that prose is reported as made
-    where nothing is identified, and the link's paragraph as deleted in Word. Loud, and
-    wrong; sent again, the document compares.
+    it gives prose opening `[label]:` no identifier and prints a non-strict link as nothing,
+    where the rebuild marks both. With no edit made at all, `import` then reports such prose
+    as deleted in Word and as come back without an identifier, reports the link's paragraph
+    as deleted, and holds back the paragraph beside either for the new paragraph it seems to
+    have gained. Loud, and wrong, and nothing is written; sent again, the document compares.
   - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
     `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
     definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and
@@ -2598,6 +2608,13 @@ Closed since, and why each mattered:
     written on the line under it, with no empty line between, is never asked whether it
     runs on. Under a line holding only a no-break space, the paragraph below goes into the
     footnote, and is not compared. An empty line before the note avoids it.
+  - *Only a note left alone is read by itself.* Pandoc reads a note's text apart from the
+    body. A note that runs on into the block below, or is marked for a line the rule
+    refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
+    `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
+    them. And a code fence wrapped onto a note's second line, left alone or not, is still
+    paired with the next fence below, so what lies between goes unmarked, or a marker lands
+    inside a real code block. Both are so on `main`.
   - *A note marked only for what is below it can become a definition.* A note over a blank
     line and then a line indented four columns would take that line in, so it is marked,
     and prints as text. Moved in Word to a place with a plain paragraph below it, it is a

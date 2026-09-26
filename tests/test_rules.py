@@ -129,3 +129,21 @@ def test_a_rule_leaves_a_real_measurement_alone(rule_id: str, text: str, atom: s
         f"{atom!r} in {text!r} was absorbed by {verdict.rule!r} as {verdict.kind}. "
         f"It is a measurement and must be bound to a source."
     )
+
+
+@pytest.mark.parametrize(
+    ("text", "escapes"),
+    [
+        pytest.param(r"p \< 0.05 and ROR \> 2", [2, 18], id="escaped"),
+        pytest.param(r"a \\> 3", [], id="a-backslash-printed-before-it"),
+        pytest.param(r"a \\\> 3", [4], id="a-backslash-printed-then-an-escape"),
+        pytest.param(r"`a \> 3` and \> 3", [13], id="printed-in-code"),
+        pytest.param("```\na \\> 3\n```", [], id="printed-in-a-listing"),
+    ],
+)
+def test_only_a_backslash_that_prints_nothing_escapes_a_comparison(
+    text: str, escapes: list[int]
+) -> None:
+    from manuscript_guard.text.masking import comparison_escapes
+
+    assert comparison_escapes(text) == escapes

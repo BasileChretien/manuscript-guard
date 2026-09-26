@@ -39,6 +39,7 @@ from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
 from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -398,6 +399,7 @@ def _untagged(block: str) -> bool:
     if not lines:
         return True
     stripped = block.strip()
+    value = PLACEHOLDER.fullmatch(stripped)
     if (
         stripped.startswith("#")
         # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
@@ -413,7 +415,13 @@ def _untagged(block: str) -> bool:
         # is the paragraph the bookmark lands in.
         or stripped.count("{") != stripped.count("}")
         or _FENCE.match(stripped) is not None
-        or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
+        # paragraph printing a number: skipped, a paragraph cut down to its number in Word
+        # lost its identifier, and its next edit was dropped with "nothing came back".
+        or (
+            re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+            and not (value and value.group("ns") in VALUE_NAMESPACES)
+        )
         or _FIGURE.fullmatch(stripped) is not None
         or _opens_block(lines[0])
     ):
@@ -1012,9 +1020,11 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
     Headings are skipped: `[]{#id}# Methods` is not a heading. So are lists, quotes, tables,
-    fenced divs, code, and paragraphs that are nothing but a placeholder, because those
-    become a table or a figure rather than a paragraph. `_untagged` says why each one. So are
-    link and footnote definitions, which put nothing in the body (`_definitions`).
+    fenced divs, code, and paragraphs that are nothing but a table or figure placeholder,
+    because those become a table or a figure rather than a paragraph. A misspelt
+    placeholder standing alone is skipped with them; `check` refuses it. `_untagged` says
+    why each one. So are link and footnote definitions, which put nothing in the body
+    (`_definitions`).
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -1619,6 +1629,76 @@ _OPENER = re.compile(
     r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
 )
 
+#: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
+#: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
+#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for. `[^\W\d_]`
+#: also takes a numeral that is not a digit, `²` or `½`, on which pandoc opens nothing; that
+#: costs a backslash, not a word.
+_TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
+_TAG_OPENS = re.compile(_TAG_OPEN)
+
+#: Inside a tag, pandoc's whitespace is ASCII's. A no-break space Word's text holds is part of
+#: an attribute's value: `dose=5 mg\>1`, with one in "5 mg", closed the tag when Python's `\s`
+#: was taken for pandoc's. Pandoc's own after "e.g." is written back as a plain space, which
+#: ends the value; it is read here as it came back, which only errs safe.
+_TAG_SPACE = "[ \t\n\r\f]"
+#: An attribute's value about to begin: an `=` and nothing after it but spaces.
+_VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
+#: An unquoted attribute value running up to a `>`: an `=`, any spaces, then no space. Inside
+#: a tag pandoc takes a backslash there for part of the value, so `=\>` and `HR=2.1\>1`
+#: closed the tag the backslash was meant to keep shut.
+_UNQUOTED = re.compile(rf"={_TAG_SPACE}*[^ \t\n\r\f]*\Z")
+#: What a would-be tag can be closed or carried on by.
+_TAG_PUNCTUATION = re.compile("[>'\"]")
+#: A `<` Word typed, set aside where it is escaped and so opens nothing; see `_opens_value`.
+_SET_ASIDE = "\x00"
+
+
+def _opens_value(shown_before: str, bare_before: str | None, text: str, at: int) -> bool:
+    """Whether a straight quote at `at` in Word's `text` would open a quoted attribute
+    value: straight after an `=`, once a `<` of the source's or a value's stands before it.
+
+    `bare_before` is `shown_before` with each `<` Word typed set aside, or None to count
+    every `<` in `shown_before`; those in `text` are Word's and set aside either way. Word's
+    own is escaped and opens nothing, and a quote escaped for it printed
+    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`. A
+    kept stretch is read as Word shows it, so a `<` the source escaped counts too: that
+    costs a straight quote, never a word.
+    """
+    where = len(shown_before) + at
+    before = shown_before if bare_before is None else bare_before
+    bare = _TAG_OPENS.search(before + text.replace("<", _SET_ASIDE))
+    if bare is None or bare.start() >= where:
+        return False
+    return _VALUE.search(shown_before + text, 0, where) is not None
+
+
+def _closers(shown_before: str, text: str, bare_before: str | None = None) -> list[str]:
+    """How to write each `>`, `'` and `"` of Word's `text`, read after `shown_before`.
+
+    A `>` is bare where no `<` that can open a tag stands before it. After one it is `\\>`,
+    or `&gt;` at the end of an unquoted attribute value, where a backslash would be read as
+    part of the value: an entity closes no tag anywhere, but G2 reads `\\>` as a threshold's
+    `>` and not `&gt;`. A straight quote straight after an `=` opened a quoted value, which
+    ran on past the paragraph's end, and the tag closed at a `>` in the next one. Escaped
+    where `_opens_value` says it would, it opens nothing, and prints straight.
+    """
+    shown = shown_before + text
+    opens = _TAG_OPENS.search(shown)
+    out = []
+    for found in _TAG_PUNCTUATION.finditer(text):
+        char, at = found.group(), len(shown_before) + found.start()
+        if char != ">":
+            quoted = _opens_value(shown_before, bare_before, text, found.start())
+            out.append("\\" + char if quoted else char)
+        elif opens is None or opens.start() >= at:
+            out.append(">")
+        elif _UNQUOTED.search(shown, 0, at):
+            out.append("&gt;")
+        else:
+            out.append("\\>")
+    return out
+
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
@@ -1628,7 +1708,7 @@ _OPENER = re.compile(
 #: only `_OPENER` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
-    r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
+    rf"|{_TAG_OPEN}"  # a tag, a comment or an autolink; "p < 0.05" is not one
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
@@ -1637,7 +1717,12 @@ _MARKDOWN = re.compile(
 
 
 def _escaped(
-    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+    text: str,
+    opening: bool,
+    after_token: bool = False,
+    before_token: bool = False,
+    shown_before: str = "",
+    bare_before: str | None = None,
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -1657,9 +1742,27 @@ def _escaped(
     own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
     refuses as malformed. The entity is a named one because `&#123;` puts the number 123
     into the prose, and `check` refuses that as a number bound to no source.
+
+    A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
+    this text, or in `shown_before`, the text ahead of it (Word's, with each citation as its
+    key, as pandoc reads it; `bare_before` is the same with Word's own `<` set aside, since
+    this escapes it). That `<` need not be Word's:
+    one the source kept bare, or one a binding's value brings, opens a tag that a `>` later in
+    Word's text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples
+    ULOQ". Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits,
+    so the read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and
+    ROR > 2` stays as typed. A `<` in Word's text is escaped itself, above or at a token's
+    edge, so counting one only adds a backslash pandoc does not need; it is counted all the
+    same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
+    prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash
+    after a `<` of the source's or a value's, not after one Word typed; see `_closers`.
     """
     brace = before_token and text.endswith("{")
+    closers = _closers(shown_before, text, bare_before)
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    # `_MARKDOWN` neither adds nor removes a `>` or a quote, so they are the ones `closers` read.
+    head, *rest = _TAG_PUNCTUATION.split(text)
+    text = head + "".join(closer + part for closer, part in zip(closers, rest, strict=True))
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -1810,6 +1913,10 @@ class Alignment:
     misread: bool = False
     #: Everything between two tokens was deleted, so rebuilt they would touch.
     touching: bool = False
+    #: Rebuilt, it would be only this, which `tag` gives no identifier: a table, a figure,
+    #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
+    #: not come back, and would be skipped with "nothing came back".
+    alone: str = ""
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -1958,6 +2065,13 @@ def align(
     # is compared with, rendered text against rendered text.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    # What lies ahead of each stretch, for the rules that read a would-be tag; see `_closers`.
+    # A `<` there that can open one, kept from the source or brought by a binding's value, is
+    # bare, and a `>` in the stretch would close it; an `=` can make the `>` end an attribute's
+    # value. Word's text, but a citation as its key: `(Smith 2020)` has a space,
+    # `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag where Word's text said
+    # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
+    ahead = bare = ""
     out: list[str] = []
     lost: list[str] = []
     unread = False
@@ -1978,6 +2092,7 @@ def align(
             # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
             opened = quote_open or "\u2018" in was_prose[index]
             quote_open = opened and _left_open(prose[index], index == 0, quote_open)
+            bare += piece
         else:
             lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
             # What the build printed of the stretch must be what the source reads as, or
@@ -1985,20 +2100,36 @@ def align(
             # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
             unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
             if quote_open and _WORD_CLOSES.search(piece):
+                # Straight even where `_closers` will escape it, after an `=`: left curly, it
+                # closed nothing, and a value the source's own `='` had opened ran on into the
+                # next paragraph. Escaped, it prints straight, the source's opener prints as
+                # an apostrophe, and every word prints.
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
+            # The paragraph is stripped once rebuilt, so the first stretch is escaped as it
+            # will open it: behind a space, a `#` or `:::` was not seen by `_OPENER`, and
+            # the paragraph merged as a heading.
+            opening = piece.lstrip() if index == 0 else piece
             binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
+            tag = {"shown_before": ahead, "bare_before": bare}
             out.append(
                 _respaced(
-                    _escaped(piece, opening=index == 0, **beside),
+                    _escaped(opening, opening=index == 0, **tag, **beside),
                     abbreviations,
                     lead=index == 0,
                     binding_next=bool(binding_next),
                 )
             )
+            bare += piece.replace("<", _SET_ASIDE)
+        ahead += piece
         if index < len(protected):
             out.append(protected[index])
+            start, end = placed[index]
+            shown = "".join(after[start:end])
+            token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
+            ahead += token
+            bare += token
     if lost:
         return Alignment(None, markup=tuple(lost))
     # With nothing between them there is nothing to escape: a citation's `]` against a value
@@ -2010,6 +2141,13 @@ def align(
     if unread:
         return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
+    # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
+    # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
+    # Merged, that would build without one. Only that shape is refused here, because it is
+    # the one the reason names: `_untagged` skips more than a lone token, and asked of any
+    # rewording it refused `B) the ratio was...` as "everything but it was deleted".
+    if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
+        return Alignment(None, alone=rebuilt)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

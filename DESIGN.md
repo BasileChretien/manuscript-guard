@@ -2431,11 +2431,17 @@ Closed since, and why each mattered:
   know quotes or block scalars, and nesting too deep to compose, about 500 levels by
   indentation, is refused the same way. Either is left in the
   body, where pandoc hides it, and is not reported even when it is not YAML.
-- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
-  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
-  enough, since any later real comment supplies the `-->`, and a draft often has one. The
-  comment scanner would have to know code spans.
+- **The comment scanner knows code spans, fences and the front matter, and no other
+  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+  does, but it ends a code span only at a blank line or a front-matter value's edge, where
+  pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
+  or TeX maths as its own, where pandoc reads the enclosing construct first. So
+  ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
+  prints, as a stray backtick in one list item does when it pairs with the one opening
+  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
+  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints it as code. The old regex did all of this and more.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they
@@ -2453,20 +2459,42 @@ Closed since, and why each mattered:
     one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
     paired across the front matter's edge, too, and a backtick inside a `~~~` block with
     one in the prose after it, which pandoc never does. This needs a reader that knows code
-    spans as pandoc does, the one the comment scanner needs.
+    spans as pandoc does; the comment scanner in `text/comments.py` has one.
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, but each of these can still hide a number pandoc prints, all on contrived
-  input:
-  - a `<!--` or a fence opened in one YAML value and closed in another;
+  in the body, and a comment stays inside the value it was opened in, but each of these can
+  still hide a number pandoc prints, all on contrived input:
+  - a fence opened in one YAML value and closed in another;
+  - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
+    a quoted title, which a `# -->` YAML comment after it closes;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - a YAML block in the middle of the body;
-  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
-    though not for the masking.
-
-  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+  - a YAML block in the middle of the body, which pandoc also reads.
+- **Fences are found without knowing what a comment or a code span swallowed.**
+  `text/fences.py` reads the file for fences before anything else. So a fence line that
+  pandoc reads as part of a comment or of an open code span is still an opener there, and
+  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
+  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
+  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
+  such a fence for itself, but it does not look for the fences pandoc finds after it, and it
+  does not know every place pandoc ends a code span. So a comment is hidden only where the
+  old rule hid it too, from `<!--` to the first `-->` with the fences blanked, and the
+  scanner can hide less than the regex did but never more. The price is noise: a comment
+  pandoc drops is read if it opens or closes inside what the toolkit takes for a listing.
+  Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
+  interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
+  code spans and comments together would close all of these.
+- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
+  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
+  mentions both markers hides everything between them.
+- **The other masked patterns match greedily, and can cover a number printed beside them.**
+  A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
+  is masked along with the address. A footnote label, a pandoc attribute and a placeholder
+  do the same inside their brackets, and so does each of them when its first character is
+  escaped. Where the old comment rule hid the start of such a match, text read again now
+  meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
+  rule left readable. The patterns are to be fixed separately.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

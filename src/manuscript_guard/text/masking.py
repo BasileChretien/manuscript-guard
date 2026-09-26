@@ -16,6 +16,7 @@ import re
 from bisect import bisect_right
 from functools import lru_cache
 
+from manuscript_guard.text.comments import comment_spans
 from manuscript_guard.text.fences import Fence, fenced_spans
 
 NUL = "\x00"
@@ -268,10 +269,15 @@ def comparison_escapes(text: str) -> list[int]:
     backslash printed before a `>`, and none inside inline code, which prints it as typed.
     Reading either as an escape let `` `ROR \\> 2` `` pass as the threshold it does not print.
     """
+    runs = list(_BACKSLASHES.finditer(text))
+    if not runs:
+        # `_CODE_SPAN` backtracks on backtick runs that never close: 4 s for 80 KB of them,
+        # paid by `mask` and the classifier alike, in every paper, for escapes it held none of.
+        return []
     code = [m.span() for m in _CODE_SPAN.finditer(text)]
     starts = [start for start, _end in code]
     found = []
-    for run in _BACKSLASHES.finditer(text):
+    for run in runs:
         inside = bisect_right(starts, run.start()) - 1
         if len(run.group()) % 2 and not (inside >= 0 and run.start() < code[inside][1]):
             found.append(run.end() - 1)
@@ -280,7 +286,9 @@ def comparison_escapes(text: str) -> list[int]:
 
 # Ordered: earlier patterns win, because a URL inside a code fence is already gone.
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
-# that is partly machinery and partly prose.
+# that is partly machinery and partly prose. HTML comments are handled separately too, and
+# before any of these, by `text/comments.py`: whether `<!--` opens one depends on whether a
+# code span opened first, which no pattern here can see.
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # A fenced block is masked *here* and read by a different reader. Inline code is not
     # masked at all.
@@ -294,7 +302,6 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # `check_numbers` runs the *code* checker over them instead, the same one G3 uses on
     # figure scripts: a number inside a string literal in the listing is still a claim, a
     # loop bound is not.
-    ("html-comment", re.compile(r"<!--.*?-->", re.DOTALL)),
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
     ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),
@@ -363,6 +370,90 @@ def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
     return [(a, b) for a, b in spans if b > a]
 
 
+def _filled(text: str, spans: list[tuple[int, int]], fill: str) -> str:
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if fill == NUL or chars[index] != "\n":
+                chars[index] = fill
+    return "".join(chars)
+
+
+def html_comments(text: str, fences: list[Fence] | None = None) -> list[tuple[int, int]]:
+    """The HTML comments pandoc drops from a manuscript source. See text/comments.py.
+
+    Read with the front matter's machinery blanked to NUL, which neither a comment nor a
+    code span crosses, because pandoc reads each rendered value on its own. Read whole, a
+    `<!--` in a title ran on to the first `-->` in the body and hid everything between.
+    """
+    if "<!--" not in text:
+        return []
+    view = _filled(text, _frontmatter_spans(text), NUL)
+    if fences is None:
+        fences = fenced_blocks(text)
+    bound = _fence_first_comments(view, fences, front_matter_end(text))
+    return _within(comment_spans(view, fences), bound)
+
+
+def _fence_first_comments(view: str, fences: list[Fence], head: int) -> list[tuple[int, int]]:
+    """The comments the old rule found: from `<!--` to the first `-->`, with the fences and
+    the front matter's machinery blanked, as `mask` blanked them before looking.
+
+    The scanner knows code spans and where pandoc ends a comment, but not every place pandoc
+    ends a code span or starts a block: an indented code block, a list item, maths. Where it
+    guessed one pandoc does not make, a `<!--` it should have ignored closed on a `-->`
+    inside a listing, or one it should have found in a listing opened a comment, and prose
+    pandoc prints was hidden that the old rule had read. So a comment is hidden only where
+    this rule hides it too: the scanner can hide less than the regexes it replaced, never
+    more. Found with `find`, on each side of the front matter, and linear: once a `<!--`
+    has no `-->` after it, none later can.
+
+    `view` has the machinery blanked already. Built from the raw text, the bound let a `-->`
+    in `author:`, which the old rule never read, close a comment the scanner had guessed in
+    the abstract.
+    """
+    flat = list(view)
+    for fence in fences:
+        flat[fence.start : fence.end] = " " * (fence.end - fence.start)
+    blanked = "".join(flat)
+    found: list[tuple[int, int]] = []
+    for low, high in ((0, head), (head, len(blanked))):
+        position = low
+        while (opening := blanked.find("<!--", position, high)) != -1:
+            closing = blanked.find("-->", opening + 4, high)
+            if closing == -1:
+                break
+            found.append((opening, closing + 3))
+            position = closing + 3
+    return found
+
+
+def _within(spans: list[tuple[int, int]], allowed: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """The parts of `spans` that lie inside `allowed`. Both sorted, neither overlapping."""
+    kept: list[tuple[int, int]] = []
+    first = 0
+    for start, end in spans:
+        while first < len(allowed) and allowed[first][1] <= start:
+            first += 1
+        index = first
+        while index < len(allowed) and allowed[index][0] < end:
+            low, high = max(start, allowed[index][0]), min(end, allowed[index][1])
+            if low < high:
+                kept.append((low, high))
+            index += 1
+    return kept
+
+
+def blank(text: str, spans: list[tuple[int, int]]) -> str:
+    """`text` with `spans` replaced by spaces, offsets and newlines kept."""
+    return _filled(text, spans, " ")
+
+
+def blank_comments(text: str) -> str:
+    """`text` with the comments `mask` drops replaced by spaces, offsets and newlines kept."""
+    return blank(text, html_comments(text))
+
+
 def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Match[str]]:
     """Matches in the front matter and in the body, none running from one into the other."""
     return [*pattern.finditer(text, 0, head), *pattern.finditer(text, head)]
@@ -375,10 +466,16 @@ def mask(text: str) -> str:
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    for fence in fenced_blocks(text):
+    fences = fenced_blocks(text)
+    for fence in fences:
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
+        for index in range(start, end):
+            chars[index] = NUL
+    # Found in the source, not in what is left once fences are gone: a comment opened
+    # before a listing ends at a `-->` inside it, and the prose after it is printed.
+    for start, end in html_comments(text, fences):
         for index in range(start, end):
             chars[index] = NUL
     for _name, pattern in _PATTERNS:
@@ -395,7 +492,9 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
     head = front_matter_end(text)
-    fences = [(f.start, f.end) for f in fenced_blocks(text)]
+    blocks = fenced_blocks(text)
+    comments = html_comments(text, blocks)
+    fences = [(f.start, f.end) for f in blocks]
     if fences:
         found["fenced-code"] = fences
         chars = list(working)
@@ -408,6 +507,13 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
         found["frontmatter"] = frontmatter
         chars = list(working)
         for start, end in frontmatter:
+            for index in range(start, end):
+                chars[index] = NUL
+        working = "".join(chars)
+    if comments:
+        found["html-comment"] = comments
+        chars = list(working)
+        for start, end in comments:
             for index in range(start, end):
                 chars[index] = NUL
         working = "".join(chars)

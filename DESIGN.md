@@ -1359,6 +1359,64 @@ before this change put a bookmark in each pipe table's first cell, and a constru
 patterns miss could put one there again. Lists and quotes cost their identifiers, and their edits are counted as
 unexamined rather than merged; see Known gaps.
 
+An identifier is positional, though: the file and the block's place in it once the front
+matter is stripped. So it means something only under the rules that assigned it, and those
+rules change. The front-matter reading changed in plugin release 0.2.13. After that, a
+document built before the change and imported after it had every identifier a block out of
+step: `import --apply` wrote three paragraphs' text over three others and printed "merged 3
+reworded paragraph(s), bindings intact". A review round's anchors went the same way, and G13
+compared the wrong paragraph and passed. The same happened, with no change of rules, to a
+document forced in after a paragraph was added to the source above the one a co-author
+edited: `--force` said to check every hunk, and the plan showed what each edit became,
+never which paragraph it replaced.
+
+So the document now records what each identifier named: for each of its paragraphs, in its
+order, a short hash of the source text and one of the block before it, beside the source
+digest (`roundtrip.PARAGRAPHS_PROPERTY`, split across properties short of the 255
+characters Word may cut one to). The block before is there because text alone cannot tell
+two paragraphs apart that read the same, and a paper repeats "Not applicable." under one
+declaration after another: with one more added above them since the build, the first one's
+identifier named the new one, read the same, and a co-author's ethics approval went under
+"Consent to participate". A paragraph whose text is found once in its file, then and now,
+needs only its text to match; one that repeats needs the block before it to match too.
+
+`import` compares, moves and merges only the paragraphs whose identifier passes that test,
+and names the rest as not compared, whether they came back or not; `respond --open` keeps a
+comment's anchor only on such a paragraph. It does not matter why an identifier came to name
+other text, a source edited since, a release that numbers or tags paragraphs by other rules:
+each is caught the same way, one paragraph at a time. What is left out still counts for what
+is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
+is one whose next paragraph as sent is left out and did not come back, which a join retyped
+across the boundary looks like: merged as a rewording, either put the other paragraph's
+words in the source twice. A paragraph the document carried with no identifier, which has
+one now - a list item made a paragraph since the build, or a block a later release tags - is
+not in its record and so never compared; it is weighed as a join into the paragraph before
+it, by its text, as main weighs every paragraph. Left out, the co-author's join of it into
+that paragraph merged as a rewording, exited 0, and put its text in the source twice. A
+document that records nothing has no order as sent, and the one paragraph it can leave out
+without trusting the rest less, a value it may never have carried, is weighed the same way.
+A number for the rules was tried first and had to be bumped by every change to them; three
+reviews each found a change that would not have.
+
+A document from before paragraphs were recorded is refused only where it matters, which
+can only be judged against the text it was built from. If anything it was built from has
+changed since, it is refused, whatever is passed. If not, it is refused when a file it
+carries numbers differently under the front-matter rule of releases up to 0.2.12, or of
+those from 0.2.13 until 0.2.47, which stripped a header pandoc prints. A release that only
+tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations, kept
+every other block's number, and the identifiers an older document carries on them are named
+as not compared. One that tags more does: 0.2.49 gave a paragraph that is only a value an
+identifier, which an older document may or may not carry. Such a paragraph is compared if
+the document carries it, and named if not.
+
+A review round needs nothing of the kind, because G13 no longer compares by identifier. The
+round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
+commented on counts as unrevised while the manuscript still holds that exact text: in any
+block, or in any run of a block's lines between the headings and markers inside it, with
+whole-line HTML comments left out. Compared by identifier, it broke without any change of
+rules as well: a paragraph added above the anchor during the revision pointed it at a
+neighbour, and a paragraph nobody touched passed as revised.
+
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
 true and useless. And a move and a rewording are applied together. The identifier makes
@@ -1978,8 +2036,9 @@ Added by the adversarial review, verified and **not** fixed:
   corrected in a table is the case that matters, because that is where a stale number is
   likeliest to be. A document built before identifiers moved off lists and quotations comes
   back listing them as changed even untouched: the fresh build it is compared with sets
-  them out as lists and quotations, where it had run them into paragraphs. Nothing is
-  applied, and a current build sent out ends it. Lists and quotes are on the list by choice: a
+  them out as lists and quotations, where it had run them into paragraphs, and names the
+  run-on paragraphs it carries as not compared, because no paragraph goes by their
+  identifier now. Nothing is applied, and a current build sent out ends it. Lists and quotes are on the list by choice: a
   marker in front of one rewrote it, and a marker inside its first item would let `import`
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
@@ -2658,11 +2717,13 @@ Closed since, and why each mattered:
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
-  is the paragraph's position in the file, and applying a reorder moves text between slots -
-  so a `where:` anchor recorded before the reorder afterwards names different text. Content
-  is not the answer either: hashing the text means editing the paragraph a reviewer asked
-  about invalidates the anchor to it, which is the opposite failure. The real fix is to
-  persist the identifier in the source rather than derive it, and it is not done.
+  is the paragraph's position in the file, and applying a reorder moves text between slots,
+  so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
+  longer depends on it: it asks whether the text the reviewer read is still there, which is
+  the question it had, and a revision that edits the paragraph is exactly what should stop
+  it matching. What remains positional is the `where` a person reads in the round file, and
+  the identifiers of a document sent out before the source changed. Persisting the
+  identifier in the source rather than deriving it would fix both, and it is not done.
 - **Text moved between the paper and its supplement is not applied.** The two are built and
   imported as separate documents. Word drops the identifier of a single pasted paragraph, so
   one paragraph pasted from one into the other comes back as new text without an
@@ -2872,46 +2933,53 @@ Closed since, and why each mattered:
   the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
-- **Paragraph identifiers move when the rules that split a source change.** An identifier
-  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
-  the stamp records the sources' digest but not the rules that split them. A document sent
-  out before such a change and imported after it has its identifiers pointing at other
-  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
-  wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
-  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
-  none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
-  So is the change that counts front matter only where pandoc keeps it as metadata, for a
-  source whose header is a list or a sentence, sits behind a byte-order mark or a blank
-  first line, holds a tab, or is closed on the file's last line. `init` writes none of
-  these either. The guard is a scheme version in the stamp and the round file, refused on
-  a mismatch.
-- **Which paragraphs carry an identifier is decided by the code that imports, not the code
-  that built.** The document as sent is rebuilt from the source by what is installed now. A
-  paragraph that is only a value binding carries an identifier now, and in a document built
-  before that change it carried none. Returned after the change, even untouched, that
-  paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
-  to the paragraph on either side of it is refused as a possible split. A move is worse. A
-  paragraph with no place in the returned document stays after the paragraph it followed
-  in the source, or first in its section if it was first, so any move that changes what the
-  value paragraph follows goes wrong. Moving the paragraph before it takes it along:
-  `--apply` writes it where the co-author's document does not have it, and still reports it
-  as left in place. Moving another paragraph in front of it is reported and applied, with
-  the value paragraph left on the wrong side of it; a move that passes the value paragraph
-  and nothing else is not reported at all, and is dropped. No binding is harmed, but the
-  order is not the co-author's. Rebuild and send the document again rather than import one
-  built before the change. Every other identifier stays as it was, because an index counts
-  every block in its file; a change to how a file is split into blocks would renumber them.
-  A later change that starts tagging a block does the same as this one, once, to documents
-  already sent. One that stops tagging a block is quieter. In a document already sent, the
-  block's identifier names nothing the import knows, and is ignored: an edit to the block is
-  dropped without a report, with "nothing came back" if nothing else was edited, and a move
-  that changes what the block follows is dropped, applied with the block on the wrong side,
-  or refused as a move into another section - and only that last exits 1. A version number
-  for the tagging rules, stamped into the document and refused on a mismatch, would catch
-  either change in a document stamped with an earlier number, and neither in one built
-  before such a number existed, which records none. For this change, the fix is to
-  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
-  paragraph, and it is not done.
+- **A document from before paragraphs were recorded is judged by the front-matter rules
+  only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
+  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
+  Any other change to how paragraphs are numbered cannot be detected for such a document.
+  One is known: builds from before front matter was stripped at all (0.1.0, before #7)
+  counted the header as a block, so every identifier is two higher than now, and such a
+  document, returned against an unchanged source, would be merged into the wrong
+  paragraphs. Rebuild any document that old rather than import it.
+- **Such a document can also be refused needlessly.** It is refused whenever anything it
+  was built from has changed since, `--force` or not, because its numbering can only be
+  checked against the text it was built from; a re-run analysis alone is enough. And it is
+  refused when a file it carries has a header some past release read differently from this
+  one, whichever release built it: a blank line after the opening `---`, a `...` closer, a
+  trailing space on the opening `---`, a byte-order mark or a blank line before it, or a
+  header pandoc prints rather than keeps, a list or a sentence. `init` writes none of
+  these. Returned untouched, one from before 0.2.49 also exits 1 over each paragraph that is
+  only a value, named as not in it, which it never carried. Either way, the refusal's own
+  advice is the way through: rebuild and resend.
+- **A paragraph the source changed since the build takes no co-author edit, even under
+  `--force`.** Its identifier no longer names the text they edited, so the edit is named and
+  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
+  paragraph below one the source added or removed since the build, whose identifiers all
+  moved by one block and now name their neighbours: an author who inserts a paragraph near
+  the top before importing ports every co-author edit below it by hand. Re-pointing an
+  identifier to the paragraph now holding its recorded text would recover most of them, and
+  it is not done. So is an edit to a paragraph that reads word for word like another in its
+  file once the block before it changed, and to the paragraph before one that is left out
+  of the comparison and did not come back, which may be a join.
+- **A join retyped from a paragraph left out of the comparison into the next reads as a
+  deletion.** With the first paragraph not compared and the second's bookmark lost, the
+  second is reported deleted in Word, and the first not compared. Nothing is written, but
+  deleting the second from the `.md` as told, without carrying the first's Word text over
+  by hand, loses the second's words. Main reports the join, having the first paragraph's
+  text to weigh it with.
+- **Two paragraphs that read the same after blocks that read the same are told apart by
+  position alone.** The record hashes each paragraph's text and the block before it, so
+  "None." under a "# Funding" heading repeated in two places, with a copy of both added
+  above them since the build, would pass for the paragraph the co-author edited, and the
+  edit would land in the copy.
+- **A paragraph moved in Word past one left out of the comparison may not be reported as
+  moved.** Moves are worked out among the paragraphs compared, and passing one that is not
+  changes nothing in their order. The import names the paragraphs left out and exits 1, and
+  says this of them; the move is not applied.
+- **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
+  paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
+  paper repeats a paragraph word for word and the author revises one copy, the other still
+  reports it unchanged. That is a false alarm, the safe direction.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark

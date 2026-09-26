@@ -398,6 +398,7 @@ def plan_import(
     *,
     every: dict | None = None,
     built: Sequence[str] = (),
+    unsure: frozenset[str] = frozenset(),
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -416,6 +417,8 @@ def plan_import(
     `known` holds the paragraphs to compare, and `every` all of the manuscript's, compared
     or not, for what only the source can say: which section a paragraph is in. `built` is
     every identifier the document was built with, in its order, when it records them.
+    `unsure` names paragraphs a document that records nothing may never have carried
+    (`roundtrip.Numbering.unsure`).
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -437,8 +440,19 @@ def plan_import(
     }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
-    joined += _joined_without_bookmark(rendered, texts, in_join)
     present = {n for b in returned if not b.table for n in b.names}
+    # One the document may never have carried, missing from it, is not compared - and still
+    # weighed as a join into the paragraph before: its text is the source's, as the document
+    # was not stale. Left out, a value retyped into its neighbour merged as a rewording, and
+    # the number was in the source twice.
+    weighed = {
+        b.names[0]: b.text
+        for b in reference
+        if b.names
+        and not b.table
+        and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
+    }
+    joined += _joined_without_bookmark(weighed, texts, in_join)
     beside_lost = _beside_lost(rendered, texts, built, present)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:

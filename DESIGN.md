@@ -1310,7 +1310,9 @@ each is caught the same way, one paragraph at a time. What is left out still cou
 is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
 is one whose next paragraph as sent is left out and did not come back, which a join retyped
 across the boundary looks like: merged as a rewording, either put the other paragraph's
-words in the source twice. A number for the rules was tried first and had to be bumped by
+words in the source twice. A document that records nothing has no order as sent, and the
+one paragraph it can leave out without trusting the rest less, a value it may never have
+carried, is weighed as a join into the paragraph before it, by its text, as any other is. A number for the rules was tried first and had to be bumped by
 every change to them; three reviews each found a change that would not have.
 
 A document from before paragraphs were recorded is refused only where it matters, which
@@ -2636,17 +2638,27 @@ Closed since, and why each mattered:
   checked against the text it was built from; a re-run analysis alone is enough. And it is
   refused when a file it carries has a header some past release read differently from this
   one, whichever release built it: a blank line after the opening `---`, a `...` closer, a
-  trailing space on the opening `---`, or a header pandoc prints rather than keeps, a list
-  or a sentence. `init` writes none of these. Returned untouched, one from before 0.2.49
-  also exits 1 over each paragraph that is only a value, named as not come back, which it
-  never carried. Either way, the refusal's own advice is the way through: rebuild and
-  resend.
+  trailing space on the opening `---`, a byte-order mark or a blank line before it, or a
+  header pandoc prints rather than keeps, a list or a sentence. `init` writes none of
+  these. Returned untouched, one from before 0.2.49 also exits 1 over each paragraph that is
+  only a value, named as not in it, which it never carried. Either way, the refusal's own
+  advice is the way through: rebuild and resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
-  left, to be carried over by hand, even when it would have merged cleanly. So is an edit to
-  a paragraph that reads word for word like another in its file once the block before it
-  changed, and to the paragraph before one that is left out of the comparison and did not
-  come back, which may be a join.
+  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
+  paragraph below one the source added or removed since the build, whose identifiers all
+  moved by one block and now name their neighbours: an author who inserts a paragraph near
+  the top before importing ports every co-author edit below it by hand. Re-pointing an
+  identifier to the paragraph now holding its recorded text would recover most of them, and
+  it is not done. So is an edit to a paragraph that reads word for word like another in its
+  file once the block before it changed, and to the paragraph before one that is left out
+  of the comparison and did not come back, which may be a join.
+- **A join retyped from a paragraph left out of the comparison into the next reads as a
+  deletion.** With the first paragraph not compared and the second's bookmark lost, the
+  second is reported deleted in Word, and the first not compared. Nothing is written, but
+  deleting the second from the `.md` as told, without carrying the first's Word text over
+  by hand, loses the second's words. Main reports the join, having the first paragraph's
+  text to weigh it with.
 - **Two paragraphs that read the same after blocks that read the same are told apart by
   position alone.** The record hashes each paragraph's text and the block before it, so
   "None." under a "# Funding" heading repeated in two places, with a copy of both added

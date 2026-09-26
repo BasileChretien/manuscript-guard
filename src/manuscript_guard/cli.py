@@ -419,7 +419,14 @@ def cmd_import(args: argparse.Namespace) -> int:
     every = tagged_paragraphs(project)
     known = {name: entry for name, entry in every.items() if name in trusted}
     plan = plan_import(
-        known, sent, returned, marked, abbreviated, every=every, built=numbered.sent
+        known,
+        sent,
+        returned,
+        marked,
+        abbreviated,
+        every=every,
+        built=numbered.sent,
+        unsure=numbered.unsure,
     )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
@@ -448,13 +455,11 @@ def cmd_import(args: argparse.Namespace) -> int:
     )
     # And one that did not come back, deleted or joined in Word. Looked for among those that
     # came back only, its deletion left no trace, and the import said nothing came back.
-    unaccounted = [
-        n
-        for n in (*numbered.sent, *sorted(numbered.unsure))
-        if n not in trusted and n not in present
-    ]
-    said = _not_compared(edited, strangers, unaccounted, bool(numbered.unsure & {*unaccounted}))
+    unaccounted = [n for n in numbered.sent if n not in trusted and n not in present]
+    values = sorted(numbered.unsure - present)
+    said = _not_compared(edited, strangers, unaccounted, values)
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
+    unaccounted += values
 
     if plan.empty and not comments and not strangers and not unaccounted:
         print("nothing came back: the document matches the manuscript on disk.")
@@ -503,10 +508,11 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def _not_compared(
-    edited: Path, strangers: list[str], unaccounted: list[str], values: bool
+    edited: Path, strangers: list[str], unaccounted: list[str], values: list[str]
 ) -> list[str]:
-    """What `import` says of the paragraphs whose identifier it could not vouch for.
-    `values` says a paragraph that is only a value is among those that did not come back."""
+    """What `import` says of the paragraphs whose identifier it could not vouch for:
+    those that came back, those it was built with that did not, and the value paragraphs a
+    document that records nothing may never have carried."""
 
     def shown(names: list[str]) -> str:
         return ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
@@ -524,14 +530,15 @@ def _not_compared(
         said.append(
             f"{len(unaccounted)} paragraph(s) {edited.name} was built with did not come back, "
             f"deleted or joined in Word, and were not compared, because their identifier no "
-            f"longer names the paragraph it named then ({shown(unaccounted)})."
-            + (
-                " A paragraph that is only a value may never have been in it: releases "
-                "before 0.2.49 gave it no identifier."
-                if values
-                else ""
-            )
-            + " Delete or join them in the .md yourself if that was intended."
+            f"longer names the paragraph it named then ({shown(unaccounted)}). Delete or join "
+            f"them in the .md yourself if that was intended."
+        )
+    if values:
+        said.append(
+            f"{len(values)} paragraph(s) that are only a value are not in {edited.name} "
+            f"({shown(values)}): deleted or joined in Word, or never in it, since the release "
+            f"that built it may be one before 0.2.49, which gave them no identifier. Delete or "
+            f"join them in the .md yourself if that was intended."
         )
     return said
 
@@ -713,6 +720,15 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 print(numbering_refusal(args.source.name, numbered.refusal))
                 return 1
             trusted = numbered.trusted
+            if numbered.unsure:
+                # As `import` does: one the document carries, it was built with.
+                from manuscript_guard.roundtrip import paragraph_order
+
+                try:
+                    trusted |= numbered.unsure & set(paragraph_order(args.source))
+                except RoundTripError as exc:
+                    print(f"manuscript-guard: {exc}", file=sys.stderr)
+                    return 2
             if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "

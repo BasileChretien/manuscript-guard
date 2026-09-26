@@ -75,6 +75,7 @@ It changes nothing and reports each paragraph:
 | `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 | `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers or tags paragraphs differently (a list tagged by a version before 0.2.45, for one). Not applied; carry any edit in it over by hand (step 6) |
+| `… did not come back` | such a paragraph was deleted or joined in Word; or, in a document built before 0.2.53, a paragraph that is only a value was never in it. Not applied; delete or join it in the `.md` if that was intended |
 
 Anything refused, joined, deleted, not compared or moved between sections or files, and any
 paragraph without an identifier that came back different or in a different order, makes the
@@ -192,9 +193,11 @@ Comments are printed, never stored. Recording them is the reader's job:
 A built document records what each of its paragraphs said in the source, and what came
 before it. `import` merges an edit only into a paragraph that still reads that way; any
 other is listed as `were not compared`, because its identifier now names other text, and
-has to be carried over by hand, and one of those deleted in Word is listed as `did not come
-back`. That happens where the source changed since the build, and across an upgrade that
-numbers or tags paragraphs differently. A paragraph that reads word for word like another
+has to be carried over by hand. One of those deleted in Word usually leaves its identifier
+on the paragraph after it and is listed there; deleted as a tracked change, cut, or joined
+by retyping across the break, it is listed as `did not come back`. That happens where the
+source changed since the build, below any paragraph added or removed there since, and
+across an upgrade that numbers or tags paragraphs differently. A paragraph that reads word for word like another
 in its file, such as "Not applicable." under two declarations, is also listed once the block
 before it changed.
 

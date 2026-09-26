@@ -606,6 +606,37 @@ def test_a_value_paragraph_deleted_in_an_unrecorded_document_is_still_named(
     assert "nothing came back" not in capsys.readouterr().out
 
 
+@needs_pandoc
+def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its_anchor(
+    project: Path, tmp_path: Path
+) -> None:
+    """`import` compares a paragraph that is only a value when the document carries it;
+    `respond --open` dropped the anchor of a comment on one, saying its identifier no longer
+    named the text commented on."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Abstract\n\n", f"# Abstract\n\n{LONE_VALUE}\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    value = next(n for n, text in _texts(project).items() if text == LONE_VALUE)
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    unrecorded(returned)
+
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [value]
+
+
 def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
     """Whether a paragraph reached Word in parts was judged by the section of the identified
     paragraph after it, and one left out of the comparison had none: the rewording of the

@@ -1652,8 +1652,9 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
     assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
 
 
-def _sent_back(project: Path, tmp_path: Path, change) -> Path:
-    """The built document as a co-author returns it, `change` applied to its body's XML."""
+def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+    """The built document as a co-author returns it, `change` applied to its body's XML;
+    without its record of paragraphs unless `recorded`, as releases before 0.2.53 built it."""
     returned = tmp_path / "back.docx"
     with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
         returned, "w"
@@ -1662,8 +1663,49 @@ def _sent_back(project: Path, tmp_path: Path, change) -> Path:
             data = zin.read(item.filename)
             if item.filename == "word/document.xml":
                 data = change(data.decode("utf-8")).encode("utf-8")
+            elif item.filename == "docProps/custom.xml" and not recorded:
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
             zout.writestr(item, data)
     return returned
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document that records nothing may never have carried a paragraph that is only a
+    value, releases before 0.2.49 gave it no identifier, so one missing from it was left out
+    of the comparison, and of the join check with it. Joined into the paragraph before by
+    retyping across the break, which takes its bookmark, it merged as a rewording and the
+    number was in the source twice. Main reports the join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "has not been examined.\n\n# Methods"
+    assert anchor in text
+    path.write_text(
+        text.replace(anchor, "has not been examined.\n\n{{results.ror.point}}\n\n# Methods"),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def retyped(xml: str) -> str:
+        value = _word_paragraph(xml, ">3.84<")
+        return xml.replace(value, "", 1).replace(
+            "has not been examined.", "has not been examined. 3.84", 1
+        )
+
+    returned = _sent_back(project, tmp_path, retyped, recorded=False)
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "the number was written in twice"
 
 
 def _word_paragraph(xml: str, words: str) -> str:

@@ -763,6 +763,113 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
     assert re.search(r"\[\]\{#mg-p-[^}]+\}After\.", tagged), "the prose after them keeps its"
 
 
+def _identified(text: str) -> dict[str, bool]:
+    """For each of the words Alpha to Omega that pandoc prints in the body of `tag(text)`,
+    whether the paragraph holding it carries an identifier. A word inside raw content, which
+    prints nothing, is left out."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    found: dict[str, bool] = {}
+    for block in json.loads(read.stdout)["blocks"]:
+        if block["t"] not in ("Para", "Plain"):
+            continue
+        printed = json.dumps([i for i in block["c"] if i["t"] != "RawInline"])
+        for word in ("Alpha", "Beta", "Gamma", "Omega"):
+            if word in printed:
+                found[word] = "mg-p-" in json.dumps(block)
+    return found
+
+
+BACKSLASH = chr(92)
+RAW_OPENERS = [
+    pytest.param("<!--", "-->", id="comment"),
+    pytest.param(BACKSLASH + "begin{x}", BACKSLASH + "end{x}", id="tex"),
+    pytest.param("<pre>", "</pre>", id="pre"),
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_an_escaped_raw_opener_opens_nothing(opener: str, closer: str, escapes: int) -> None:
+    """After an odd number of backslashes, `<!--`, `\\begin{x}` or `<pre>` is text to pandoc,
+    which prints it; `import` writes a `<!--` typed in Word so. `_blocks` took it for an
+    opener all the same, and its paragraph and every one up to the closer went without an
+    identifier, so a co-author's edit to them was not compared. On main too."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    assert _identified(text) == dict.fromkeys(("Alpha", "Beta", "Gamma", "Omega"), True)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 2])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_a_raw_opener_after_escaped_backslashes_still_opens(
+    opener: str, closer: str, escapes: int
+) -> None:
+    """After an even number, the backslashes escape each other and the opener opens: what
+    pandoc hides is not marked, and what follows the closer is."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+def test_an_escaped_tex_closer_closes_nothing() -> None:
+    """`\\\\end{x}` is a line break and the word "end" to LaTeX, so it closes no environment,
+    and pandoc reads the `\\begin{x}` above it as text. `_blocks` paired the two, and the
+    paragraphs between went without an identifier."""
+    text = (
+        f"Alpha {BACKSLASH}begin{{x}} opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * 2}end{{x}} here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert found["Beta"] and found["Gamma"] and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 1, 2])
+def test_an_escaped_comment_closer_still_closes(escapes: int) -> None:
+    """Inside a comment pandoc reads no escapes: `\\-->` closes it, whatever stands before."""
+    text = (
+        f"Alpha <!-- opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * escapes}--> here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(
+    "markup",
+    ["<div>", '<div class="x">', "</div>", "<table>", BACKSLASH + "begin{x}"],
+    ids=["div", "div-with-class", "div-closer", "table", "tex"],
+)
+def test_an_escaped_block_tag_leaves_its_paragraph_one(markup: str, escapes: int) -> None:
+    """Mid-line, a block-level tag or a LaTeX environment ends a paragraph, so a paragraph
+    holding one is left unmarked. Escaped, it is text, and the paragraph is one: `import`
+    writes a `<div>` typed in Word so, and the paragraph lost its identifier."""
+    text = f"Alpha {BACKSLASH * escapes}{markup} mid-line.\n\nOmega.\n"
+    assert _identified(text) == {"Alpha": True, "Omega": True}
+
+
 def test_tagged_paragraphs_names_what_tag_marks_at_the_right_offsets(project: Path) -> None:
     """`tag` writes the identifiers and `import` splices at the offsets `tagged_paragraphs`
     gives them. Sharing `_blocks` keeps the two lists the same; this pins that down, and
@@ -5770,6 +5877,34 @@ def test_import_keeps_an_inline_comment_and_footnote(
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     assert paragraph in text, "the paragraph, comment and footnote included, is untouched"
     assert "an HTML comment and a footnote" in out, out
+
+
+@needs_pandoc
+def test_a_comment_opener_typed_in_word_leaves_every_paragraph_identified(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end. A co-author types `<!--` into a paragraph, and the merge writes it
+    escaped, `\\<!--`, which pandoc prints as typed. The next build took it for a comment
+    opened there and closed by a `-->` further down, and the paragraphs between went without
+    an identifier: a co-author's next edit to them was dropped with "nothing came back"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import paragraph_text
+
+    with_paragraphs(
+        project, "Alpha comes first.", "Beta sits between.", "Gamma shows an arrow --> here."
+    )
+    # Written into document.xml, where Word stores a typed `<` as `&lt;`.
+    edits = {"Alpha comes first.": "Alpha comes first &lt;!-- as typed."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"Alpha comes first {BACKSLASH}<!-- as typed." in source
+    # Pandoc prints the `--` of `<!--` as a dash; the words are what is compared.
+    printed = list(paragraph_text(built(project)).values())
+    assert "Beta sits between." in printed
+    assert any(text.startswith("Gamma shows an arrow") for text in printed)
+    assert any(text.startswith("Alpha comes first <!") for text in printed)
 
 
 @needs_pandoc

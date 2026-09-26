@@ -270,8 +270,9 @@ _QUOTE_OR_BAR = re.compile(r" {0,3}[>|]")
 # least one dash or equals sign among them.
 _RULE = re.compile(r"(?=[^-=\n]*[-=])[ \t]*[-=:|+][-=:|+ \t]*")
 _THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
-# A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
-_DEFINITION = re.compile(r" {0,3}[:~][ \t]")
+# A definition (`: text` or `~ text`, or the marker alone on its line), which also covers a
+# `: caption` under a table.
+_DEFINITION = re.compile(r" {0,3}[:~](?:[ \t]|$)")
 # A table's caption: `Table:`, `table:`, or a colon alone, which pandoc takes for one beside a
 # table. One block cannot tell whether a table is beside it, so any of them is a caption.
 _CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
@@ -302,8 +303,9 @@ _BLOCK_HTML = (
     "screenshot|segmentedlist|sidebar|simpara|simplelist|synopsis|task|tip|variablelist|warning|"
     "case|default|switch"
 )
-# Its `eitherBlockOrInline`: a raw HTML block only where a block starts, inline after text.
-# `style` is on its block list and reads inline mid-line all the same, so it is here too.
+# A raw HTML block only where a block starts, inline after text: pandoc's
+# `eitherBlockOrInline`, less `script`, which it also lists as a block and splits at mid-line,
+# and with `style`, which it lists as a block and reads inline mid-line all the same.
 _OPENING_HTML = (
     "applet|area|audio|button|del|embed|iframe|ins|map|noscript|object|progress|source|style|"
     "svg|track|video"
@@ -636,7 +638,9 @@ def _ends_line(line: str, opener: str, piped: bool) -> bool:
         return len(opener.split()) > 1
     if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or (piped and "|" in line):
         return True
-    return _HTML_LINE.match(line) is not None and line.rstrip().endswith(">")
+    # Either list: a line holding only `<del>` that starts a block is a raw block, and a table
+    # opens under it. Asked only of block tags, this missed the table and marked its row.
+    return _HTML_TAG.match(line) is not None and line.rstrip().endswith(">")
 
 
 @dataclass(frozen=True)
@@ -1511,8 +1515,9 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
 _OPENER = re.compile(r"(?P<mark>[#>|])|(?P<bullet>[-+])(?=\s|$)")
 
 
-def _opened(text: str) -> str:
-    """Word's text escaped where it would open a paragraph as something else.
+def _opened(text: str, whole: bool = True) -> str:
+    """Word's text escaped where it would open a paragraph as something else. `whole` says
+    the text is the paragraph's last stretch, with no token after it to make it more.
 
     The writer used to keep its own short list of openers, and the tagger read blocks by
     pandoc's rules: `B) the ratio was...` merged as typed, pandoc made a list of it at the
@@ -1520,9 +1525,10 @@ def _opened(text: str) -> str:
     nothing reported. So a numbered list is judged here by the same `_enumerates` that
     `tag` asks, which knows "E. coli" is a sentence and "IV. The" is not, and a caption by
     the same `_CAPTION`, which takes any opening colon for one: beside a table or under a
-    paragraph a bare `:` makes a caption or a definition. A text that is nothing but a rule,
-    `---` or `===`, has its first character escaped. What they would read as a block gets
-    one backslash, and pandoc prints it as typed.
+    paragraph a bare `:` makes a caption or a definition. What they would read as a block
+    gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
+    rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
+    `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
     """
     if block := _OPENER.match(text):
         at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
@@ -1535,9 +1541,9 @@ def _opened(text: str) -> str:
         return text[:at] + "\\" + text[at:]
     if found := _CAPTION.match(first):
         return text[: found.end() - 1] + "\\" + text[found.end() - 1 :]
-    if _RULE.fullmatch(first) or _THEMATIC.fullmatch(first):
-        at = len(first) - len(first.lstrip())
-        return text[:at] + "\\" + text[at:]
+    if whole and _RULE.fullmatch(first):
+        line = text.split("\n", 1)[0]
+        return re.sub(r"[-=]", lambda m: "\\" + m.group(0), line) + text[len(line) :]
     return text
 
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
@@ -1587,7 +1593,7 @@ def _escaped(
         text = text[:-1] + "\\" + text[-1]
     if brace:
         text = text.removesuffix("\\{") + "&lbrace;"
-    return _opened(text) if opening else text
+    return _opened(text, whole=not before_token) if opening else text
 
 
 _NBSP = "\u00a0"
@@ -1732,6 +1738,10 @@ class Alignment:
     #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
     #: not come back, and would be skipped with "nothing came back".
     alone: str = ""
+    #: Rebuilt, a brace kept from the source would lose its partner, written from Word and so
+    #: escaped: `Set {x, {{results.x}}, y\} was chosen.` The source's braces paired, these do
+    #: not, and the next build would give the paragraph no identifier.
+    unpaired: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -1943,6 +1953,11 @@ def align(
     # rewording it refused `B) the ratio was...` as "everything but it was deleted".
     if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
         return Alignment(None, alone=rebuilt)
+    # A stretch kept from the source keeps its braces bare, and one written from Word has
+    # them escaped, so a pair with one half on each side of a token no longer pairs. The
+    # paragraph would build without an identifier, and its next edit could not come back.
+    if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
+        return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

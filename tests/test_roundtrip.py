@@ -4394,6 +4394,66 @@ def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
     assert _merged("E. coli gave 3.84 overall.") == "E. coli gave {{results.ror.point}} overall."
 
 
+@pytest.mark.parametrize(
+    "returned",
+    [
+        pytest.param("Set {x, 3.84, y} was chosen.", id="close-brace-edited"),
+        pytest.param("Sets {x, 3.84, y} was used.", id="open-brace-edited"),
+    ],
+)
+def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -> None:
+    """A brace kept from the source and its partner written from Word, escaped, no longer
+    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` merged, and the next build gave
+    it no identifier, so its next edit in Word could not come back."""
+    from manuscript_guard.merge import why
+
+    aligned = align(
+        "Set {x, {{results.ror.point}}, y} was used.", "Set {x, 3.84, y} was used.", returned
+    )
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+    assert "brace" in why(aligned)[0]
+
+
+def test_a_brace_pair_kept_whole_still_merges() -> None:
+    """Only a pair the merge would split is refused: one kept whole on its own side of the
+    value merges as it always did."""
+    merged = realign(
+        "Note {see the note} gave {{results.ror.point}} here.",
+        "Note {see the note} gave 3.84 here.",
+        "Note {see the note} gave 3.84 there.",
+    )
+    assert merged == "Note {see the note} gave {{results.ror.point}} there."
+
+
+def test_dashes_before_a_value_are_no_rule_and_stay_bare() -> None:
+    """The first stretch goes on past the value, so it is no rule, and escaping its first
+    dash printed `-–` where pandoc typesets `---` as an em dash."""
+    merged = realign(
+        "{{results.ror.point}} was the final ratio.",
+        "3.84 was the final ratio.",
+        "--- 3.84 was the final ratio.",
+    )
+    assert merged == "--- {{results.ror.point}} was the final ratio."
+
+
+@needs_pandoc
+@pytest.mark.parametrize("returned", CUT_DOWN)
+def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:
+    """`\\---` printed `-–`, a hyphen and an en dash: neither what Word showed nor pandoc's own
+    typesetting of it. Each rule character is escaped now."""
+    import subprocess
+
+    merged = realign("Costs were low.", "Costs were low.", returned)
+    printed = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "plain"],
+        input=(merged + "\n").encode("utf-8"),
+        capture_output=True,
+        check=True,
+    ).stdout.decode("utf-8")
+    assert printed.strip() == returned, (merged, printed)
+
+
 PIPE_TABLE = "| a | b |\n|---|---|\n| 1 | 2 |"
 
 

@@ -1423,7 +1423,8 @@ of them at the next build, `tag` gave the paragraph no identifier, and its next 
 was dropped with nothing reported. The writer now asks the tagger's own reading of a
 numbered list and a caption, so "E. coli" stays a sentence and "IV. The" is escaped, and the
 property is tested as it is meant: whatever the merge writes, pandoc reads as one paragraph
-and `tag` names it, read alone, under a paragraph and under a table. The tagger, for its
+and `tag` names it, read alone, under a paragraph and under a table - or the merge is
+refused, and says why. The tagger, for its
 part, took any HTML tag it did not know for a block and counted an escaped brace. Pandoc
 reads a tag it does not know as inline and `\{` as a brace, so "Concentrations <LLOQ and
 >ULOQ were excluded." lost its identifier when the tagger learned pandoc's blocks. Its block
@@ -1431,7 +1432,10 @@ tags are pandoc's own lists now, HTML's and the DocBook and EPUB ones pandoc als
 markdown, checked by a test that asks pandoc about each tag where it stands. A first version
 held HTML's list alone, measured rather than read from pandoc's source, and marked a table
 row under a line holding `<example>`. And `import` escapes a `}` as well as a `{`, so the
-braces a co-author types never look like half of a TeX group.
+braces a co-author types never look like half of a TeX group. Only unescaped braces count,
+so a pair split across a binding - one brace kept from the source bare, its partner edited
+in Word and written escaped - no longer pairs, and that rewording is refused rather than
+merged into a paragraph the next build could not name.
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
@@ -1824,11 +1828,17 @@ Added by the adversarial review, verified and **not** fixed:
   from its source; a later pandoc that takes another tag for a block marks a paragraph it
   splits, until the agreement test is run against it.
 - **A caption or a definition is told from a paragraph by its opening alone.** A block
-  opening `Table:`, `table:` or a colon is a caption beside a table, one opening `: ` or
-  holding a colon alone is a definition under a paragraph, and either is a paragraph
-  otherwise. The tagger sees one block at a time, so it leaves every block that opens so
-  without an identifier. The merge escapes any such opening a co-author types, so an import
-  cannot make one, but a paragraph written that way in the `.md` is never compared.
+  opening `Table:`, `table:` or a colon is a caption beside a table, and a line that is `: `
+  and text, or a colon or a tilde alone, makes a definition of the line or paragraph above
+  it; otherwise each is a paragraph. The tagger sees one block at a time, so it leaves every
+  block that opens so, or holds such a line, without an identifier. The merge escapes any
+  such opening a co-author types, so an import cannot make one, but a paragraph written that
+  way in the `.md` is never compared.
+- **A brace an earlier version wrote back is half a pair now.** Before a `}` was escaped,
+  `import` wrote a co-author's `{a, b}` as `\{a, b}`. Only unescaped braces count now, so
+  such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
+  to it in Word is reported as not compared and not applied, so it can be edited only in
+  the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the

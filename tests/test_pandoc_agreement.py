@@ -478,6 +478,18 @@ TAGGING = {
         "Some prose.\n\n<example>\n----------  -----------\nFirst       A row.\n\n"
         "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
     ),
+    # A tag that opens a raw block only where a block starts does here, and a table opens
+    # straight under it.
+    "an opening-only tag line over a multiline table": (
+        "Some prose.\n\n<del>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a video tag line over a multiline table": (
+        "Some prose.\n\n<video>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a colon alone under a paragraph": "Some prose here.\n:\n",
+    "a tilde alone under a paragraph": "Some prose here.\n~\n",
     "prose opening with a capital roman one": "I. first, in one sense.\n",
     "prose opening with i.e.": "i.e. this one.\n",
     "prose opening with a citation": "[@k] reported this.\n",
@@ -1086,6 +1098,7 @@ HTML_NAMES = (
     "template", "textarea", "tfoot", "th", "thead", "time", "title", "tr", "track", "u", "ul",
     "var", "video", "wbr", "center", "font", "strike", "tt", "dir", "frame", "frameset",
     "noframes", "isindex", "marquee", "Div", "SECTION", "LLOQ", "LOQ", "foo", "custom-el",
+    "applet", "svg",
     "calloutlist", "bibliolist", "glosslist", "itemizedlist", "orderedlist", "segmentedlist",
     "simplelist", "variablelist", "caution", "important", "note", "tip", "warning",
     "literallayout", "programlisting", "programlistingco", "screen", "screenco", "screenshot",

@@ -551,6 +551,13 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "a table, a figure or a misspelt placeholder gets no identifier at the next "
             "build: a later edit to it in Word could not come back. Make the edit in the .md.",
         )
+    if aligned.unpaired:
+        return (
+            "the edit splits a pair of braces: one kept from the .md, the other written back "
+            "from Word, where a brace is escaped so it prints as typed, and the two no longer "
+            "pair. The next build would give the paragraph no identifier, and a later edit to "
+            "it in Word could not come back. Make the edit in the .md.",
+        )
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:

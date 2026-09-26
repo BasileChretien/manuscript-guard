@@ -292,7 +292,12 @@ def build_document(
             (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
         )
 
-    body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
+    # An empty div between two files, which puts nothing in the document, so each file
+    # starts afresh. Joined by blank lines alone, a footnote ending one file took in the next
+    # file's first paragraph when that opened indented, identifier and all: `tag` judges a
+    # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
+    # a `<!--` left open earlier in the file, and the rest of that file vanished.
+    body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
     header = _front_matter(project, supplementary=supplementary, live=mode == LIVE)
     source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations

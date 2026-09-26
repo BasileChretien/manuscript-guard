@@ -20,7 +20,8 @@ from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files, unreadable_header
-from manuscript_guard.text.masking import FRONTMATTER, front_matter_problem
+from manuscript_guard.text.fences import unclear_fence_lines
+from manuscript_guard.text.masking import FRONTMATTER, front_matter_end, front_matter_problem
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import rules_opening_blocks
 
@@ -136,11 +137,47 @@ def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
     )
 
 
-def check_rules(project: Project) -> Report:
-    """`rule_findings` for every source file, so `check` refuses what the build would."""
+def fence_findings(path: Path, text: str) -> tuple[Finding, ...]:
+    """A refusal for each line of backticks or tildes below the front matter that is not a
+    plain fenced listing's (`fences.unclear_fence_lines`).
+
+    Pandoc may read such a line as text, as inline code running on to a later fence, or
+    as a listing the gates do not see, and the gates then read prose as code or code as
+    prose. An R Markdown chunk header is the common one: pandoc opens no listing on it.
+    """
+    lines = text.split("\n")
+    return tuple(
+        Finding(
+            gate=GATE,
+            code="unclear-fence",
+            message=f"{path.name}: a line of backticks or tildes that is not a plain fenced "
+            "listing, which pandoc may read as text, inline code or a listing the gates "
+            "do not see",
+            path=path,
+            line=line,
+            context=lines[line - 1].strip()[:120],
+            hint="open a listing at the margin, under a blank line, outside any comment or "
+            "raw block, with at most a language word or `{.class}` attributes after the "
+            "fence on the same line, and close it; move a listing out of a list item, "
+            "whose indentation pandoc takes off before it looks for the closer; to comment "
+            "a listing out, put the comment's `-->` on a line of its own after the closer; "
+            "knit R Markdown first, since pandoc prints a `{r ...}` chunk as text",
+        )
+        for line in unclear_fence_lines(text, front_matter_end(text))
+    )
+
+
+def refused_shapes(path: Path, text: str) -> tuple[Finding, ...]:
+    """Every shape the build refuses in a source file: `rule_findings` and
+    `fence_findings`."""
+    return (*rule_findings(path, text), *fence_findings(path, text))
+
+
+def check_shapes(project: Project) -> Report:
+    """`refused_shapes` for every source file, so `check` refuses what the build would."""
     report = Report()
     for path in source_files(project.path("manuscript")):
-        report = report.with_findings(*rule_findings(path, path.read_text(encoding="utf-8")))
+        report = report.with_findings(*refused_shapes(path, path.read_text(encoding="utf-8")))
     return report
 
 
@@ -163,7 +200,7 @@ def assemble(
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
         source = path.read_text(encoding="utf-8")
-        report = report.with_findings(*rule_findings(path, source))
+        report = report.with_findings(*refused_shapes(path, source))
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
         problem = front_matter_problem(source)

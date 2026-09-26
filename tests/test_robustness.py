@@ -86,6 +86,92 @@ def test_the_fence_scanner_is_linear() -> None:
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
+    """Code spans were found with a pattern that retried from every position inside a run
+    of backticks: one line of 20,000 took seven seconds to read for comments."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = "# Results\n\nSee " + "`" * count + " there.\n"
+        started = time.perf_counter()
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(5000), 1e-4)
+    large = measure(20000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        lambda count: "<pre>\n" + "<pre " * count,
+        lambda count: "\\begin{a}\n" + "\\begin{a}" * count,
+        lambda count: "".join(f"\\begin{{e{i}}}\\end{{e{i}}}" for i in range(count)),
+    ],
+    ids=["tags", "environments", "distinct names"],
+)
+def test_marks_inside_a_raw_block_are_read_in_linear_time(block) -> None:
+    """Inside a raw block, its closer and another of its name were each searched for from
+    the last mark to the end of the line, mark by mark: a line of 300,000 characters took
+    eighteen seconds. Every mark on a line is now found in one pass."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
+        started = time.perf_counter()
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_narrowing_openers_are_read_in_linear_time() -> None:
+    """A run of openers each one backtick narrower than the last, with no closer: skipping
+    only openers at least as wide as one known unclosed, each read to the end of the text,
+    and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
+    read from the end once."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def measure(lines: int) -> float:
+        text = "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+        started = time.perf_counter()
+        fenced_spans(text)
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(10000), 1e-4)
+    large = measure(40000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_unclosed_attributes_are_read_in_linear_time() -> None:
+    """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
+    backslash before each newline read as an escape, took every opener to the end of the
+    text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
+    attributes on its own line and refuse the rest, so doubling the input must not much
+    more than double the time, and the refusal is read in the same pass."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = (
+            "```{k=a\\\n" * count
+            + "```{.r\n"
+            + ".x k=v\n" * count
+            + "".join(f"```{{k='{i}\n" for i in range(count))
+        )
+        started = time.perf_counter()
+        fenced_spans(text)
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the

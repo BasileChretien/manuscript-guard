@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.sections import headings
 
@@ -261,9 +261,104 @@ FENCE_CASES = {
     "unterminated fence": f"{FENCE}python\nx = 1\n\nProse 9.99.\n",
 }
 
+# Characters that end a line for Python, or are space to it, and what pandoc makes of each.
+_ODD = {
+    "a vertical tab": 0x0B,
+    "a form feed": 0x0C,
+    "a lone carriage return": 0x0D,
+    "a file separator": 0x1C,
+    "a group separator": 0x1D,
+    "a record separator": 0x1E,
+    "a next-line control": 0x85,
+    "a no-break space": 0xA0,
+    "an en quad": 0x2000,
+    "a line separator": 0x2028,
+    "a paragraph separator": 0x2029,
+    "an ideographic space": 0x3000,
+}
+# What may follow an opening fence. Pandoc takes a raw `{=format}`, or a word and
+# `{attributes}`, either or both; anything more and the lines are a paragraph.
+_INFOS = [
+    "", "r", " r", "r ", "\tr\t", "r foo", "r`x", "r{x}", "r{.x}", "r {.x}", "r {r}",
+    "{}", "{-}", "{.r}", "{ .r }", "{.r}\t", "{#id .r}", '{.r .numberLines startFrom="5"}',
+    "{.r key='a b'}", '{.r k=""}', "{.r k=}", '{.r k="a"b}', '{.r k=" a"}', "{.r k=a`b}",
+    "{.r k=a\\}b}", "{.r k=a\\ b}", "{.r k=a\\bc}", '{.r k="a\\"b"}', '{.r k="a\\\\"}',
+    "{.r k=a\\é}", "{.é}", "{.x²}", "{.²x}", "{.2x}", "{r}", "{r, echo=FALSE}",
+    "{r echo=FALSE}", "{.r} x", "{.r}x", "{.r}}", "{.r", "{=html}", " {=html} ", "{= html}",
+    "{=openxml} x", "{ =openxml}", "{#1 .r}", "{#1}", "{#_x}", "{#-x}", "{#.x}", "{#}",
+]
+FENCE_CASES.update(
+    {
+        **{
+            f"opener {FENCE}{info!r}": f"Prose.\n\n{FENCE}{info}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            for info in _INFOS
+        },
+        "tilde opener with a backtick": "Prose.\n\n~~~r`x\nProse 9.99.\n~~~\n\nEnd.\n",
+        # A chunk header pandoc rejects, and its closer, which then paired with the next.
+        "two R Markdown chunks": (
+            f"{FENCE}{{r setup}}\nx <- 1\n{FENCE}\n\nProse 9.99.\n\n{FENCE}{{r plot}}\ny\n{FENCE}\n"
+        ),
+        # Straight under a line of text: pandoc opens a backtick fence there, not a tilde one
+        # or an indented one.
+        "backtick fence under a line": f"We used:\n{FENCE}r\nProse 9.99.\n{FENCE}\n",
+        "tilde fence under a line": "We used:\n~~~\n\nProse 9.99.\n\n~~~r\ny\n~~~\n",
+        "indented fence under a line": (
+            f"We used:\n  {FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
+        "fence behind a byte-order mark": (
+            f"{chr(0xFEFF)}{FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
+        # Pandoc lets attributes, and a quoted value, run on while no line between is blank.
+        **{
+            f"attributes over lines {opener!r}": (
+                f"Prose.\n\n{FENCE}{opener}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for opener in (
+                "{.r\n.x}",
+                "{.r\n  .x\n  k=v}",
+                "{\n.r}",
+                "r {.x\n}",
+                '{.r k="a\nb"}',
+                "{.r\n\n.x}",
+                '{.r k="a\n\nb"}',
+                "{.r\nThe excess}",
+                "{.r\n.x} y",
+            )
+        },
+        "tilde opener with a backtick in a value": (
+            "Prose.\n\n~~~{.r k=a`b}\nProse 9.99.\n~~~\n\nEnd.\n"
+        ),
+        **{
+            f"opener {FENCE}r then {name}": (
+                f"Prose.\n\n{FENCE}r{chr(code)}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for name, code in _ODD.items()
+        },
+        **{
+            f"closer {where}": f"{FENCE}r\nx\n{closer}\n\nProse 9.99.\n\n{FENCE}\ny\n{FENCE}\n"
+            for where, closer in {
+                "after three spaces": "   " + FENCE,
+                "after a tab": "\t" + FENCE,
+                "after a space and a tab": " \t" + FENCE,
+                "then spaces and a tab": FENCE + "  \t",
+                "then a word": FENCE + " x",
+                **{f"then {name}": FENCE + chr(code) for name, code in _ODD.items()},
+                **{f"after {name}": chr(code) + FENCE for name, code in _ODD.items()},
+            }.items()
+        },
+        **{
+            f"a fence after {name} on one line": (
+                f"We found it.{chr(code)}{FENCE}\n\nProse 9.99.\n\nThe end.{chr(code)}{FENCE}\n"
+            )
+            for name, code in _ODD.items()
+        },
+    }
+)
+
 
 def pandoc_code_text(markdown: str) -> str:
-    """Everything pandoc puts inside a CodeBlock, concatenated."""
+    """Everything pandoc puts inside a CodeBlock, or a RawBlock, which a fence opens as well
+    and the gates treat the same, concatenated."""
     finished = subprocess.run(
         [PANDOC, "-f", "markdown", "-t", "json"],
         input=markdown,
@@ -276,7 +371,7 @@ def pandoc_code_text(markdown: str) -> str:
 
     def walk(node) -> None:
         if isinstance(node, dict):
-            if node.get("t") == "CodeBlock":
+            if node.get("t") in ("CodeBlock", "RawBlock"):
                 blocks.append(node["c"][1])
             for value in node.values():
                 walk(value)
@@ -441,6 +536,8 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
 
     Asked as "is the prose after the block inside code, according to each of us?" rather
     than by comparing spans, because pandoc reports content and the toolkit reports offsets.
+    A fence the toolkit does not claim to read as pandoc does is refused instead
+    (`unclear_fence_lines`), so either the two agree or `check` and the build stop.
     """
     markdown = FENCE_CASES[name]
     in_code_for_pandoc = "9.99" in pandoc_code_text(markdown)
@@ -451,9 +548,20 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
             masked[index] = " "
     in_code_for_toolkit = "9.99" not in "".join(masked)
 
-    assert in_code_for_toolkit == in_code_for_pandoc, (
+    if in_code_for_toolkit == in_code_for_pandoc:
+        return
+    # The refusal must be of the fence that misreads, not of any line: the toolkit's listing
+    # over the prose, or, where only pandoc's code holds it, a fence above it.
+    refused = set(unclear_fence_lines(markdown))
+    prose = markdown.index("9.99")
+    if in_code_for_toolkit:
+        covering = next(f for f in fenced_spans(markdown) if f.start <= prose < f.end)
+        wanted = {markdown.count("\n", 0, covering.start) + 1}
+    else:
+        wanted = set(range(1, markdown.count("\n", 0, prose) + 1))
+    assert refused & wanted, (
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
-        f"code block; the toolkit thinks the opposite"
+        f"code block; the toolkit thinks the opposite, and does not refuse the fence"
     )
 
 

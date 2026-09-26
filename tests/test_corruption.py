@@ -2169,6 +2169,490 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     assert "code-block-text-number" not in {f.code for f in report.findings}
 
 
+_TICKS = "`" * 3
+_PRINTED = "The excess was 9.99."
+# Each makes a fenced listing of prose to the gates that pandoc prints: a fence pandoc does
+# not open, or one it does not close, so that the gates' closer paired with the next fence.
+_NOT_A_FENCE = {
+    # Python splits a line at these; pandoc splits at a newline alone, and deletes a lone
+    # carriage return.
+    **{
+        f"a fence after {name} on one line": (
+            f"We found it.{chr(code)}{_TICKS}\n\n{_PRINTED}\n\nThe end.{chr(code)}{_TICKS}\n"
+        )
+        for name, code in {
+            "a form feed": 0x0C,
+            "a vertical tab": 0x0B,
+            "a file separator": 0x1C,
+            "a next-line control": 0x85,
+            "a line separator": 0x2028,
+            "a paragraph separator": 0x2029,
+            "a lone carriage return": 0x0D,
+        }.items()
+    },
+    # After the fence pandoc takes one word, then `{attributes}`, and nothing else.
+    "an opener with two words": f"{_TICKS}r foo\n{_PRINTED}\n{_TICKS}\n",
+    "an R Markdown chunk header": f"{_TICKS}{{r, echo=FALSE}}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener with a word after its attributes": f"{_TICKS}{{.r}} x\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a no-break space": f"{_TICKS}r{chr(0xA0)}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a form feed": f"{_TICKS}r{chr(0x0C)}\n{_PRINTED}\n{_TICKS}\n",
+    "a tilde opener with a backtick": f"~~~r`x\n{_PRINTED}\n~~~\n",
+    # Attributes may run on to the next line, but not past a blank one.
+    "attributes broken by a blank line": f"{_TICKS}{{.r\n\n.x}}\n{_PRINTED}\n{_TICKS}\n",
+    # Pandoc closes on spaces and tabs after the fence, and no indentation past three.
+    **{
+        f"a closer {where}": (
+            f"{_TICKS}r\nx\n{closer}\n\nMore code.\n\n{_TICKS}\n{_PRINTED}\n\n"
+            f"{_TICKS}r\ny\n{_TICKS}\n"
+        )
+        for where, closer in {
+            "ending in a no-break space": _TICKS + chr(0xA0),
+            "ending in a form feed": _TICKS + chr(0x0C),
+            "ending in an ideographic space": _TICKS + chr(0x3000),
+            "after a no-break space": chr(0xA0) + _TICKS,
+            "after a tab": "\t" + _TICKS,
+            "after a space and a tab": " \t" + _TICKS,
+            "after a lone carriage return": "x\r" + _TICKS,
+        }.items()
+    },
+}
+
+
+@pytest.mark.parametrize("name", sorted(_NOT_A_FENCE))
+def test_the_gates_read_prose_that_no_fence_of_pandocs_holds(name: str) -> None:
+    """The fence reader split lines where Python does, at a form feed and six other
+    characters as well as a newline, and stripped every Unicode space off a closer. Pandoc
+    does neither, so prose it printed was a listing to every gate, and G2 read no number in
+    it. Now the gates read it, or the shape is refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+    from manuscript_guard.text.masking import mask
+
+    text = f"# Results\n\nWe found it.\n\n{_NOT_A_FENCE[name]}\nThe end.\n"
+    assert "9.99" in mask(text) or unclear_fence_lines(text)
+
+
+_CHUNK = (
+    f"{_TICKS}{{r setup}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n\n"
+    f"{_TICKS}{{r plot}}\ny <- 2\n{_TICKS}\n"
+)
+# Fences pandoc may not open, or may pair otherwise than the gates.
+_UNCLEAR_FENCES = [
+    # Found by review: pandoc opens no fence on an R Markdown chunk header, and its closer
+    # then opened one to the gates that ran to the next chunk, over the prose between.
+    _CHUNK,
+    _CHUNK.replace(_TICKS, "~~~"),
+    _CHUNK.replace("{r setup}", "{r, echo=FALSE}"),
+    _CHUNK.replace("{r setup}", "r see below"),
+    _CHUNK.replace("{r setup}", "{.r} x"),
+    _CHUNK.replace("{r setup}", 'python title="x"'),
+    # Attributes over two lines pandoc may or may not close.
+    f"{_TICKS}{{.r\n{_TICKS}\n}}\nBody.\n{_TICKS}\n\n{_PRINTED}\n",
+    f"{_TICKS}{{.r\n.x}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n",
+    # A tilde fence, or an indented one, cannot interrupt a paragraph; a backtick one can.
+    f"We used a line:\n~~~\n\n{_PRINTED}\n\n~~~r\ny\n~~~\n",
+    f"We used a line:\n  {_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"We used a line:\n{_TICKS}r\nx\n{_TICKS}\n",
+    # Something other than a space in front of the fence: pandoc reads text.
+    f"{chr(0xFEFF)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"{chr(0xA0)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    # An opener with no closer, and a closer with no opener.
+    f"{_TICKS}r\nx <- 1\n\n{_PRINTED}\n",
+    f"{_PRINTED}\n\n{_TICKS}\n",
+    # Found by the second review. In a list item pandoc takes the item's indentation off
+    # before it looks for the closer, and closed where the gates read on to the next one.
+    f"- {_TICKS}r\n  x <- a\n\n  {_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny <- b\n{_TICKS}\n",
+    (
+        f"1. Step one:\n\n   {_TICKS}r\n   x <- 1\n    {_TICKS}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}r\ny\n{_TICKS}\n"
+    ),
+    f"- [ ] {_TICKS}r\nx\n{_TICKS}\n",
+    f": {_TICKS}r\nx\n{_TICKS}\n",
+    f"[^1]: {_TICKS}r\n    x\n    {_TICKS}\n",
+    # Inside a comment or a raw block the fence is raw text to pandoc, and the gates paired
+    # it with a later one.
+    f"<!-- old version:\n\n{_TICKS}r\nx <- 1\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<pre>\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<script>\n\n{_TICKS}r\nx\n</script>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin{{comment}}\n\n{_TICKS}r\nx\n\\end{{comment}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    # A quoted value not closed on the line: pandoc reads it on over the lines.
+    f"{_TICKS}{{.r label='fit1}}\nThe cohort's data.\n{_TICKS}\n\n{_PRINTED}\n",
+    # A backslash before a tab: pandoc expands the tab first, and escapes a space.
+    f"{_TICKS}{{k=a\\\tb .r}}\nx\n{_TICKS}\n",
+    # Found by the third review: a raw block or a comment closes only on its own mark, and
+    # another mark inside it closed it to the gates.
+    f"<pre>\na --> b\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin{{center}}\na --> b\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<!-- see </pre>\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    # Found by the fourth: pandoc counts a raw block of the same name opened inside one,
+    # reads a backslash before a backtick as a backtick, and closes a code span on a later
+    # line; a space may stand before an environment's brace, and `<?php` opens raw text.
+    f"<pre>\n<pre>\n</pre>\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    (
+        f"\\begin{{center}}\n\\begin{{center}}\n\\end{{center}}\n\n{_TICKS}r\nx\n"
+        f"\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n"
+    ),
+    f"Text \\`<!-- and `x`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"See `x\ny` and <!-- z `w`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin {{center}}\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<?php\n\n{_TICKS}r\nx\n?>\n\n{_PRINTED}\n\n{_TICKS}\n",
+]
+
+
+@pytest.mark.parametrize("block", _UNCLEAR_FENCES)
+def test_a_fence_pandoc_may_not_open_is_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
+
+
+def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, capsys) -> None:
+    """Two chunks and prose between: the gates hid the prose, and pandoc printed it."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{_CHUNK}", encoding="utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-fence" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "not a plain fenced listing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        f"{_TICKS}\nx <- 1\n{_TICKS}\n",
+        "~~~ {.r .numberLines}\nx <- 1\n~~~~\n",
+        f"{_TICKS}{{=openxml}}\n<w:p/>\n{_TICKS}\n",
+        f"{_TICKS}{{#1 .r}}\nx <- 1\n{_TICKS}\n",
+        # Back to back, the second under the first's closer.
+        f"{_TICKS}r\nx\n{_TICKS}\n{_TICKS}python\ny\n{_TICKS}\n",
+        # A listing of Markdown, fences and all.
+        f"````md\n{_TICKS}r\nx\n{_TICKS}\n````\n",
+        # Inline code, and a listing in a list item, indented four columns.
+        f"Use {_TICKS}x{_TICKS} here.\n",
+        f"1. Run this:\n\n    {_TICKS}r\n    x <- 1\n    {_TICKS}\n",
+        # Markup in a listing is code: a comment's marks in it open or close nothing.
+        f"{_TICKS}html\n<p>A <b>bold</b> claim.</p>\n<!-- left open\n{_TICKS}\n",
+        f"{_TICKS}mermaid\ngraph LR\n  A --> B\n{_TICKS}\n",
+        # A custom element whose name starts with a raw one's.
+        f"<pre-x>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Two identical listings.
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n\n{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        # Found by the third review: a mark in inline code, a `<pre>` in a line of text and a
+        # comment closed at once open nothing.
+        f"Use `<!--` to open a comment.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"The HTML `<pre>` element.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Wrap it in `\\begin{{table}}`.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Text with <pre> in it.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-- the <pre> tag -->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found by the fifth: pandoc counts no `<script>` opened inside one, and `<?` opens
+        # nothing before anything but a letter.
+        f"<script>\na <script> b\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<script>\n<script>\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<? marks a query in our notation.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<?= x\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found reviewing round six: a listing commented out whole, the comment's `-->` after
+        # its closer, is the comment's, and pandoc prints none of it.
+        f"<!-- An earlier model:\n\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\n\n{_TICKS}python\ny\n{_TICKS}\n-->\n",
+        f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
+    ],
+)
+def test_a_plain_fence_is_not_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
+def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
+    """A comment whose `-->` falls inside the listing ends there, and the lines after it are
+    printed: the listing is not the comment's, and stays refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = f"# Results\n\n<!--\n{_TICKS}r\nx -->\nThe excess (p < 0.001).\n{_TICKS}\n"
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        # Comments the gates see and pandoc does not: `<!--` in code beside a stray
+        # backtick, and one never closed.
+        "Write `<!--` to hide a line; the `x column is unused.\n\n",
+        "<!-- an aside never closed\n\n",
+    ],
+)
+def test_a_listing_behind_a_false_comment_keeps_the_plain_form(comment: str) -> None:
+    """Found by round 2's review: a listing a comment holds was let be whatever its shape, on
+    the gates' reading of where comments are. Behind a comment pandoc does not see, a listing
+    in a list item, its closer indented past the item's, is code to the gates up to the last
+    closer; pandoc ends it early and prints the claim after it. It passed `check` and the
+    build, where round 1's head refused it. A listing a comment holds keeps the plain form."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = (
+        f"# Results\n\n{comment}- Fit the model:\n  {_TICKS}r\n  fit <- glm(y ~ x)\n"
+        f"    {_TICKS}\n\nThe excess was 9.87 (p < 0.001).\n\n{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_commented_out_whole_builds(project: Path) -> None:
+    """Found reviewing round six: every fence line inside a comment was refused, so a
+    listing commented out while an author decided, an ordinary habit, failed `check` and
+    the build, `--skip-checks` too, where #65's tip built it. Pandoc prints nothing of it,
+    and the gates mask both the comment and the listing."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    anchor = "Reporting follows the checklist declared in `paper.yaml`.\n"
+    assert text.count(anchor) == 1
+    snippet = (
+        f"\n<!-- An earlier model, kept while we decide:\n\n{_TICKS}r\n"
+        f"fit0 <- glm(case ~ drug, family = binomial)\n{_TICKS}\n-->\n"
+    )
+    source.write_text(text.replace(anchor, anchor + snippet), encoding="utf-8")
+    assert main(["check", str(project)]) == 0
+    assert main(["build", str(project), "--offline"]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_in_a_comment_pandoc_does_not_see_is_compared() -> None:
+    """`check` lets a listing a comment holds whole be, and the comment is the tracker's
+    reading, which a stray backtick can fool: here `<!--` is code to pandoc, and the gates'
+    listing runs from one chunk's closer to the next, over a claim pandoc prints. The build
+    finds the listing neither in a comment nor opening a code block, and refuses."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Results\n\nUse `<!--` for the `x variable.\n\n"
+        f"{_TICKS}{{r}}\nx\n{_TICKS}\n\nThe excess (p < 0.001).\n\n{_TICKS}{{r}}\ny\n{_TICKS}\n"
+    )
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is not None
+
+def test_the_unclear_fence_hint_names_the_margin_and_list_items() -> None:
+    """A listing in a list item, indented as Markdown has it, was refused under a hint that
+    said to open it under a blank line, which it was."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Methods\n\n1. Install:\n\n   {_TICKS}r\n   install.packages('x')\n   {_TICKS}\n"
+    hint = fence_findings(Path("main.md"), text)[0].hint
+    assert "margin" in hint and "list item" in hint and "comment" in hint, hint
+
+
+@pytest.mark.parametrize(
+    ("info", "language"),
+    [
+        ("r", "r"),
+        (" python ", "python"),
+        ("{.python}", "python"),
+        ("r{.x}", "r"),
+        ("", ""),
+        ("{k='a .b' .r}", "r"),
+    ],
+)
+def test_a_listing_s_language_is_its_word_or_its_first_class(info: str, language: str) -> None:
+    """`{.python}` and `r {.x}` came out as the languages `{.python}` and `r{.x}`, which no
+    lexer knows, so the listing was reported unread instead of judged."""
+    from manuscript_guard.text.fences import Fence
+
+    assert Fence(start=0, body_start=0, body_end=0, end=0, info=info).language == language
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_refuses_a_listing_pandoc_does_not_make(project: Path, capsys) -> None:
+    """A plain listing inside a TeX group: raw to pandoc, which prints the prose after it,
+    and code to the gates, which read on to the next fence. `check` cannot see the group;
+    the build compares every listing the gates mask with the code pandoc makes."""
+    from manuscript_guard.cli import main
+
+    block = f"\\newcommand{{\\x}}{{\n\n{_TICKS}r\nx\n}}\n\n{_PRINTED}\n\n{_TICKS}\n"
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_finds_each_listing_where_the_gates_read_it(project: Path, capsys) -> None:
+    """Listings were matched to pandoc's code by their lines, so a copy did as well as the
+    listing: the gates read a listing inside a TeX group, masking the claim after it, and an
+    indented block holding the same lines passed for it. Each listing is now found by a line
+    of its own, put in the copy pandoc reads."""
+    from manuscript_guard.cli import main
+
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}r\n}}\n\n{_PRINTED}\n\n{_TICKS}\n\n"
+        f"    }}\n    {_PRINTED}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("written", "built"),
+    [
+        # Found by the sixth review: a caption over a listing whose first line is dashes is
+        # a table to pandoc, its header the fence, ending at the first blank line, and the
+        # YAML and heading after it read. The line put first in the listing to find it made
+        # it a code block, and only that reading was compared.
+        (
+            f"# Methods\n\n: Settings used.\n\n{_TICKS}yaml\n---\nseed: 1\n\n---\n"
+            f"title: Another title\n...\n\n# Results\n\nThe excess (p < 0.001).\n\n{_TICKS}\n",
+            None,
+        ),
+        (
+            f"# Methods\n\n: The model call.\n\n{_TICKS}r\n------\n"
+            f"The reporting odds ratio was 9.99.\n{_TICKS}\n",
+            None,
+        ),
+        # A value holding a fence ends the listing early, and the claim after it prints as
+        # prose: the listings were paired by count, and each compared built to built.
+        (
+            f'# Results\n\n{_TICKS}r\nx <- "{{{{results.label}}}}"\nThe excess was 9.99.\n'
+            f"{_TICKS}\n",
+            f'# Results\n\n{_TICKS}r\nx <- "a"\n{_TICKS}\n"\nThe excess was 9.99.\n{_TICKS}\n',
+        ),
+        # A value holding a whole listing: the file has more listings as built.
+        (
+            "# Results\n\nThe code is {{results.label}}.\n",
+            f"# Results\n\nThe code is a\n\n{_TICKS}r\nx\n{_TICKS}\n\n.\n",
+        ),
+    ],
+)
+def test_the_build_refuses_a_listing_the_line_or_a_value_changes(
+    written: str, built: str | None
+) -> None:
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    document = built or written
+    found = misreading(
+        header + document,
+        header,
+        [("main.md", written)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
+    )
+    assert found is not None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_placeholders_in_a_listing_are_matched_in_linear_time() -> None:
+    """A listing of placeholders was matched with a pattern joined by `.*?`, tried against
+    every block pandoc made: six placeholder lines after an 80-line comment ran past two
+    minutes."""
+    import shutil
+    import time
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    comment = "<!--\n" + "".join(f"draft line {i}\n" for i in range(80)) + "-->\n\n"
+    listing = f"{_TICKS}r\n" + "".join(f"{{{{results.v{i}}}}}\n" for i in range(8)) + "Total\n"
+    body = f"# Results\n\n{comment}{listing}{_TICKS}\n"
+    started = time.perf_counter()
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert time.perf_counter() - started < 20
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_copy_of_a_listing_s_mark_does_not_pass_for_it(project: Path, capsys) -> None:
+    """The line put first in each listing was `mglisting0`, which anyone can type: a
+    listing opening with it, after a listing pandoc does not make, passed for that one. The
+    line is made new each build, and must come back once."""
+    from manuscript_guard.cli import main
+
+    # One listing to the gates, from the first fence to the last; to pandoc, a TeX group,
+    # the claim printed, and a listing opening with a typed copy of the mark.
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}\n}}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}r\nmglisting0\n{_TICKS}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "listing" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_listings_deep_in_quotations_do_not_overflow() -> None:
+    """Pandoc's reading was walked by recursion, and quotations six hundred deep raised
+    RecursionError in the build."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = "# Results\n\n" + "> " * 600 + "Deep.\n"
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+
+
+def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:
+    """Pandoc reads `{ =openxml}` as a raw block, whose text reaches the reader as formatted
+    prose; the gate took it for a listing in no known language and only warned."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = f"# Results\n\n{_TICKS}{{ =openxml}}\n<w:p/>\n{_TICKS}\n"
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "raw-block" in {f.code for f in report.findings}
+
+
+def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:
+    """A YAML block between two fences only the gates saw escaped the refusal, and its
+    `title:` replaced paper.yaml's."""
+    from manuscript_guard.text.sections import rules_opening_blocks, scannable
+
+    feed = chr(0x0C)
+    text = (
+        f"---\ntitle: A study\n---\n\n# Results\n\nWe found it.{feed}{_TICKS}\n\n"
+        f"---\ntitle: Evil\n---\n\nThe end.{feed}{_TICKS}\n"
+    )
+    assert "Evil" in scannable(text)
+    assert rules_opening_blocks(text) != []
+
+
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
     """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
     plain paragraphs, with `# References` among its comments, cut everything after it."""

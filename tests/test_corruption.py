@@ -2071,6 +2071,45 @@ def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
     assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_block_tagged_since_the_build_joined_into_the_one_above_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A list item carries no identifier, so a document records none for it; turned into a
+    paragraph since the build, it has one now, which the record does not hold and the join
+    check did not weigh. Joined in Word into the paragraph above it, the join merged as a
+    rewording, the import exited 0, and the sentence was in the source twice. A release that
+    tags more kinds of block does the same with no source change at all. Main reports the
+    join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    signal = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    item = "- No other signal was examined in this analysis.\n"
+    text = path.read_text(encoding="utf-8")
+    assert signal in text
+    path.write_text(text.replace(signal, f"{signal}\n{item}", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def joined(xml: str) -> str:
+        above = _word_paragraph(xml, "Whether the signal")
+        below = next(
+            p
+            for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            if "No other signal was examined" in p
+        )
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", below, flags=re.DOTALL)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        return xml.replace(below, "", 1).replace(above, above[: -len("</w:p>")] + space + inner, 1)
+
+    returned = _sent_back(project, tmp_path, joined)
+    path.write_text(path.read_text(encoding="utf-8").replace(item, item[2:], 1), encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
 def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:
     """A fence opener in an abstract, with no closer there, paired with a fence in the body,
     and the prose between was judged as R."""

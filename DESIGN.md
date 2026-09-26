@@ -1381,10 +1381,15 @@ each is caught the same way, one paragraph at a time. What is left out still cou
 is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
 is one whose next paragraph as sent is left out and did not come back, which a join retyped
 across the boundary looks like: merged as a rewording, either put the other paragraph's
-words in the source twice. A document that records nothing has no order as sent, and the
-one paragraph it can leave out without trusting the rest less, a value it may never have
-carried, is weighed as a join into the paragraph before it, by its text, as any other is. A number for the rules was tried first and had to be bumped by
-every change to them; three reviews each found a change that would not have.
+words in the source twice. A paragraph the document carried with no identifier, which has
+one now - a list item made a paragraph since the build, or a block a later release tags - is
+not in its record and so never compared; it is weighed as a join into the paragraph before
+it, by its text, as main weighs every paragraph. Left out, the co-author's join of it into
+that paragraph merged as a rewording, exited 0, and put its text in the source twice. A
+document that records nothing has no order as sent, and the one paragraph it can leave out
+without trusting the rest less, a value it may never have carried, is weighed the same way.
+A number for the rules was tried first and had to be bumped by every change to them; three
+reviews each found a change that would not have.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has

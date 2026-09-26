@@ -700,8 +700,10 @@ def plan_import(
     `known` holds the paragraphs to compare, and `every` all of the manuscript's, compared
     or not, for what only the source can say: which section a paragraph is in. `built` is
     every identifier the document was built with, in its order, when it records them.
-    `unsure` names paragraphs a document that records nothing may never have carried
-    (`roundtrip.Numbering.unsure`).
+    `unsure` names paragraphs the document may have carried without an identifier: in one
+    that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
+    in one that does, those its record does not hold. Missing from it, each is still weighed
+    as a join into the paragraph before it.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither

@@ -2180,6 +2180,21 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **A backslash before raw markup was not read.** `<!--`, `\begin{x}` or `<pre>` after an
+  odd number of backslashes is text to pandoc, and `import` writes what a co-author types
+  in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
+  all the same, and where a `-->` followed further down the file, that paragraph and every
+  one up to the `-->` went without an identifier. A co-author's next edit to them was
+  dropped with "nothing came back"; since #69, `import` refused the rewording that typed the
+  `<!--` instead, though it was safe to make. A `\<div>` in a paragraph did the same to that
+  paragraph alone. An opener, a LaTeX `\begin` or `\end` and a block-level tag now count
+  only where no backslash escapes them (`_backslashed`): an odd run makes them text, an
+  even one escapes itself. Inside a comment or a verbatim element pandoc reads no escapes,
+  so `\-->` and `\</pre>` still close them. What is left: `_untagged` counts braces as
+  written, since an unmatched `}` can close a TeX group opened in an earlier block. So a
+  lone `{` typed in Word, which comes back as `\{`, leaves its paragraph unmarked. Counting
+  only the unescaped braces instead left `\{\{results.x}}`, a binding typed as text,
+  unmarked.
 - **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
   with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
   next `---` line in the file, a horizontal rule, and the Introduction above the rule
@@ -3276,10 +3291,6 @@ Closed since, and why each mattered:
     into the next - so one write can cost another paragraph its identifier, and which write
     did it cannot be told. The rewordings in that file are refused, and if that is not it,
     the moves are held after.
-  - *A `<!--` typed in Word opens a comment to `tag`, though not to pandoc.* The merge
-    escapes it, `\<!--`, and pandoc prints it, but `_blocks` does not read the backslash:
-    where a `-->` follows further down the file, it takes all between for a comment and
-    leaves it unmarked, so the check refuses that rewording, which was safe to make.
   - *A paragraph that never reached the document is not checked.* One inside an HTML
     comment has an identifier in the source and none in Word, and nothing writes it.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged

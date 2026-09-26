@@ -453,6 +453,29 @@ _HTML_BLOCK_TAG = re.compile(
     rf"</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?:\s[^<>]*)?/?>", re.IGNORECASE
 )
 _TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
+
+
+def _backslashed(text: str, at: int) -> bool:
+    """Whether the character at `at` is escaped: an odd number of backslashes before it.
+
+    Pandoc reads `\\<!--`, `\\<div>` and `\\\\begin{x}` as the text they show, and `import`
+    writes what a co-author typed in Word so: taken for markup all the same, a `<!--` typed
+    there hid every paragraph up to the next `-->`. Two backslashes escape each other, and
+    what follows them is markup again."""
+    run = at
+    while run > 0 and text[run - 1] == "\\":
+        run -= 1
+    return (at - run) % 2 == 1
+
+
+def _unescaped(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
+    """The first match of `pattern` in `text` that no backslash escapes."""
+    return next(
+        (found for found in pattern.finditer(text) if not _backslashed(text, found.start())),
+        None,
+    )
+
+
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -517,9 +540,9 @@ def _untagged(block: str) -> bool:
     if (
         stripped.startswith("#")
         # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
-        # it opens, mid-line too, and carries on with a raw block.
-        or _TEX_ENVIRONMENT.search(stripped) is not None
-        or _HTML_BLOCK_TAG.search(stripped) is not None
+        # it opens, mid-line too, and carries on with a raw block - unless it is escaped.
+        or _unescaped(_TEX_ENVIRONMENT, stripped) is not None
+        or _unescaped(_HTML_BLOCK_TAG, stripped) is not None
         # One paragraph to pandoc's reader and three to its Word writer, which gives display
         # math a paragraph of its own: the bookmark stayed on the words before the equation,
         # and `import` spliced them over the equation and everything after it.
@@ -593,9 +616,14 @@ class _Closers:
         open_environments: dict[str, list[int]] = {}
         for found in _RAW_CLOSE.finditer(text):
             if found["comment"]:
+                # Inside a comment or a verbatim element pandoc reads no escapes: `\-->`
+                # closes it. A LaTeX command after an odd run of backslashes is none - `\\`
+                # is a line break, and `end{x}` text after it.
                 self._comments.append(found.end())
             elif found["tag"]:
                 self._tags.setdefault(found["tag"].lower(), []).append(found.end())
+            elif _backslashed(text, found.start()):
+                continue
             elif found["tex"] == "begin":
                 open_environments.setdefault(found["env"], []).append(found.start())
             elif open_environments.get(found["env"]):
@@ -622,6 +650,10 @@ def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
     """
     position = start
     while (opened := _RAW_OPEN.search(text, position, end)) is not None:
+        if _backslashed(text, opened.start()):
+            # Escaped, it is the text it shows, and opens nothing (see `_backslashed`).
+            position = opened.start() + 1
+            continue
         closed = closers.end_of(opened)
         if closed > end:
             return closed

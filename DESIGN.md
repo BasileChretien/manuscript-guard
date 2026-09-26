@@ -1312,8 +1312,24 @@ is one whose next paragraph as sent is left out and did not come back, which a j
 across the boundary looks like: merged as a rewording, either put the other paragraph's
 words in the source twice. A document that records nothing has no order as sent, and the
 one paragraph it can leave out without trusting the rest less, a value it may never have
-carried, is weighed as a join into the paragraph before it, by its text, as any other is. A number for the rules was tried first and had to be bumped by
-every change to them; three reviews each found a change that would not have.
+carried, is weighed as a join into the paragraph before it, by its text, as any other is.
+A number for the rules was tried first and had to be bumped by every change to them; three
+reviews each found a change that would not have.
+
+**A paragraph the source moved is followed, where that is certain.** An identifier is
+positional, so one paragraph added to the source since the build moved every identifier
+below it by a block: each named its neighbour, and every co-author edit below it was named
+as not compared, to be ported by hand. `import` now follows such a paragraph to where it
+stands (`roundtrip._repointed`): by its text, when that text is found once in its file both
+then and now, the rule a paragraph is trusted in place by; otherwise by its text and the
+block before it, when that pair is found once in both. And only along the order the
+document was built in. A paragraph the author moved, followed, came back from Word in its
+old place, which `import` reads as the co-author moving it back, and `--apply` would have
+undone the author's move. So a paragraph the author moved relative to the others, one the
+author reworded, and one whose text and block before both repeat are still not compared. A
+followed paragraph is compared, moved, merged and anchored under the identifier the document
+carries: the fresh builds and the source are read under those names for the comparison,
+and `respond --open` anchors a comment on one where it now stands.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
@@ -2645,14 +2661,17 @@ Closed since, and why each mattered:
   advice is the way through: rebuild and resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
-  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
-  paragraph below one the source added or removed since the build, whose identifiers all
-  moved by one block and now name their neighbours: an author who inserts a paragraph near
-  the top before importing ports every co-author edit below it by hand. Re-pointing an
-  identifier to the paragraph now holding its recorded text would recover most of them, and
-  it is not done. So is an edit to a paragraph that reads word for word like another in its
-  file once the block before it changed, and to the paragraph before one that is left out
-  of the comparison and did not come back, which may be a join.
+  left, to be carried over by hand, even when it would have merged cleanly. Paragraphs below
+  one the source added or removed are followed to where they stand; one the author moved
+  relative to the others is not, nor one whose text and the block before it both repeat in
+  its file, and an edit to either is named and left too. So is an edit to a paragraph that
+  reads word for word like another in its file once the block before it changed, and to the
+  paragraph before one that is left out of the comparison and did not come back, which may
+  be a join.
+- **A paragraph is followed by its text alone when that text is unique.** That is the rule
+  it is trusted in place by, and it is as sure: a paragraph deleted from the source since
+  the build and written again word for word elsewhere is taken for the one the co-author
+  edited, and the edit goes to the new place.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

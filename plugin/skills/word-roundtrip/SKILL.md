@@ -36,8 +36,9 @@ manuscript-guard build --offline
   needs to see where each number came from.
 - While the document is out, change nothing it was built from: the manuscript, the
   results, the ledger or `references.bib`. Any change makes `import` refuse the returned
-  copy, and forcing it would offer to undo your change. Keep new wording aside and apply it
-  after the import.
+  copy without `--force`, and with it every paragraph you changed or moved is listed as not
+  compared, its co-author edit to port by hand. Keep new wording aside and apply it after
+  the import.
 
 Tell the co-author, in these words or better ones:
 
@@ -196,10 +197,14 @@ other is listed as `were not compared`, because its identifier now names other t
 has to be carried over by hand. One of those deleted in Word usually leaves its identifier
 on the paragraph after it and is listed there; deleted as a tracked change, cut, or joined
 by retyping across the break, it is listed as `did not come back`. That happens where the
-source changed since the build, below any paragraph added or removed there since, and
-across an upgrade that numbers or tags paragraphs differently. A paragraph that reads word for word like another
-in its file, such as "Not applicable." under two declarations, is also listed once the block
-before it changed.
+source changed since the build, and across an upgrade that numbers or tags paragraphs
+differently. A paragraph that reads word for word like another in its file, such as "Not
+applicable." under two declarations, is also listed once the block before it changed.
+
+Paragraphs below one you added or removed in the `.md` since the build are followed to
+where they now stand, and their edits merge as usual. One you moved relative to the others,
+or one whose text and the block before it both repeat in its file, is not followed and is
+listed as not compared.
 
 When several people edited copies of the same build, dry-run every copy before applying any.
 Apply one, then `--force` the others: each merges only into paragraphs the earlier imports

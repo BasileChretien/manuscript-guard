@@ -637,6 +637,155 @@ def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its
     assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [value]
 
 
+# ---------------------------------------------------------------- following a paragraph
+
+
+def _followed(recorded: dict[int, str], now: dict[int, str]) -> dict[str, str]:
+    """Where each recorded identifier not trusted in place is followed to, as `m-<n>`."""
+    from manuscript_guard.roundtrip import _repointed, _trusted
+
+    def named(record: dict[int, str]) -> dict[str, str]:
+        return {f"mg-p-m-{index}": value for index, value in record.items()}
+
+    was, is_ = named(recorded), named(now)
+    return {
+        old.removeprefix("mg-p-"): new.removeprefix("mg-p-")
+        for old, new in _repointed(was, is_, _trusted(was, is_)).items()
+    }
+
+
+def test_paragraphs_below_one_added_since_the_build_are_followed() -> None:
+    """Identifiers are positional: one paragraph added moved every one below it by a block,
+    each named its neighbour, and every co-author edit below it had to be ported by hand.
+    The one straight under the new paragraph is followed by its text, which is unique,
+    although the block before it changed."""
+    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
+    now = {
+        2: "aaaaaaaa.000000",
+        4: "dddddddd.aaaaaa",
+        6: "bbbbbbbb.dddddd",
+        8: "cccccccc.bbbbbb",
+    }
+    assert _followed(recorded, now) == {"m-4": "m-6", "m-6": "m-8"}
+
+
+def test_paragraphs_below_one_removed_since_the_build_are_followed() -> None:
+    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
+    now = {2: "bbbbbbbb.000000", 4: "cccccccc.bbbbbb"}
+    assert _followed(recorded, now) == {"m-4": "m-2", "m-6": "m-4"}
+
+
+def test_repeated_text_is_followed_by_the_block_before_it() -> None:
+    """ "Not applicable." under three declarations: the heading above each tells them
+    apart, and one added above the other two moves both."""
+    na = "11111111"
+    recorded = {2: f"{na}.eeeeee", 4: f"{na}.ffffff"}
+    now = {2: f"{na}.cccccc", 4: f"{na}.eeeeee", 6: f"{na}.ffffff"}
+    assert _followed(recorded, now) == {"m-2": "m-4", "m-4": "m-6"}
+
+
+def test_repeated_text_after_repeated_blocks_is_not_followed() -> None:
+    """Two paragraphs that read the same after blocks that read the same cannot be told
+    apart, and following either could put an edit into the other."""
+    none = "22222222.ffffff"
+    recorded = {2: "aaaaaaaa.000000", 4: none, 6: none}
+    now = {2: "dddddddd.000000", 4: "aaaaaaaa.dddddd", 6: none, 8: none}
+    assert _followed(recorded, now) == {"m-2": "m-4"}
+
+
+def test_a_paragraph_the_author_moved_is_not_followed_out_of_order() -> None:
+    """Followed to where the author moved it, a paragraph came back from Word in its old
+    place, which `import` reads as the co-author moving it back, and `--apply` undid the
+    author's move. Only an order-preserving match is followed."""
+    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
+    now = {
+        2: "dddddddd.000000",
+        4: "bbbbbbbb.dddddd",
+        6: "aaaaaaaa.bbbbbb",
+        8: "cccccccc.aaaaaa",
+    }
+    followed = _followed(recorded, now)
+    assert followed["m-6"] == "m-8"
+    assert not {"m-2", "m-4"} <= set(followed), "two paragraphs that swapped both followed"
+
+
+def test_a_followed_paragraph_never_crosses_one_trusted_in_place() -> None:
+    """A paragraph trusted where it stands is fixed; following another across it would put
+    the two in an order the document as sent does not have."""
+    same = "33333333.cccccc"
+    recorded = {2: "aaaaaaaa.eeeeee", 4: same, 6: same}
+    now = {2: same, 4: same, 6: "aaaaaaaa.eeeeee"}
+    assert _followed(recorded, now) == {}
+
+
+def _added_to_abstract(project: Path) -> None:
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Abstract\n\n", "# Abstract\n\nA paragraph added after the build.\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+
+@needs_pandoc
+def test_a_move_in_word_below_a_paragraph_added_since_the_build_is_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """Followed, the paragraphs below an insertion are compared as any others: a co-author's
+    move among them is applied where they now stand."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    texts = _texts(project)
+    first = next(t for t in texts.values() if t.startswith("Drug-induced"))
+    second = next(t for t in texts.values() if t.startswith("Whether the signal"))
+    swapped = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        swapped, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml = data.decode("utf-8")
+                paras = [p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p]
+                a = next(p for p in paras if "Drug-induced hepatic injury remains" in p)
+                b = next(p for p in paras if "Whether the signal" in p)
+                data = xml.replace(a, "", 1).replace(b, b + a, 1).encode("utf-8")
+            zout.writestr(item, data)
+    _added_to_abstract(project)
+    path = project / "manuscript" / "main.md"
+    expected = path.read_text(encoding="utf-8").replace(
+        f"{first}\n\n{second}", f"{second}\n\n{first}", 1
+    )
+
+    main(["import", str(swapped), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == expected
+
+
+@needs_pandoc
+def test_a_comment_below_a_paragraph_added_since_the_build_keeps_its_anchor(
+    project: Path, tmp_path: Path
+) -> None:
+    """The anchor names the paragraph where it now stands, which is what G13 looks up."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    first_text = next(t for n, t in _texts(project).items() if n.startswith("mg-p-main"))
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    _added_to_abstract(project)
+    now = next(n for n, text in _texts(project).items() if text == first_text)
+
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [now]
+
+
 def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
     """Whether a paragraph reached Word in parts was judged by the section of the identified
     paragraph after it, and one left out of the comparison had none: the rewording of the

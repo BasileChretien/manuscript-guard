@@ -416,7 +416,7 @@ def test_two_spellings_of_one_reviewer_do_not_split_into_two(tmp_path: Path) -> 
     saved = rt.comments_in
     rt.comments_in = fake
     try:
-        reviewers = _seeded(tmp_path / "unused.docx", frozenset())
+        reviewers = _seeded(tmp_path / "unused.docx", {})
     finally:
         rt.comments_in = saved
 

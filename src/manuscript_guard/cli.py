@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -416,13 +417,34 @@ def cmd_import(args: argparse.Namespace) -> int:
     # would put an edit into whichever paragraph now sits there.
     present = {n for b in returned if not b.table for n in b.names}
     trusted = numbered.trusted | (numbered.unsure & present)
-    every = tagged_paragraphs(project)
-    known = {name: entry for name, entry in every.items() if name in trusted}
+    # A followed paragraph is compared under the identifier the document carries, so the
+    # fresh builds and the source are read under those names too. A paragraph the document
+    # carries under no name is given one it cannot carry: left as it was, it could share a
+    # name with the paragraph the document carries under it. Only a document that records
+    # nothing has `unsure` names, and it follows none.
+    as_sent = {now: was for was, now in numbered.followed.items()}
+
+    def named(name: str) -> str:
+        if name in trusted or name in numbered.unsure:
+            return name
+        return as_sent.get(name, f"{name}#not-sent")
+
+    def renamed(blocks: list | None) -> list | None:
+        if blocks is None:
+            return None
+        return [replace(b, names=tuple(named(n) for n in b.names)) for b in blocks]
+
+    every = {named(name): entry for name, entry in tagged_paragraphs(project).items()}
+    known = {
+        name: entry
+        for name, entry in every.items()
+        if name in trusted or name in numbered.followed
+    }
     plan = plan_import(
         known,
-        sent,
+        renamed(sent),
         returned,
-        marked,
+        renamed(marked),
         abbreviated,
         every=every,
         built=numbered.sent,
@@ -455,7 +477,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     )
     # And one that did not come back, deleted or joined in Word. Looked for among those that
     # came back only, its deletion left no trace, and the import said nothing came back.
-    unaccounted = [n for n in numbered.sent if n not in trusted and n not in present]
+    unaccounted = [n for n in numbered.sent if n not in known and n not in present]
     values = sorted(numbered.unsure - present)
     said = _not_compared(edited, strangers, unaccounted, values)
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
@@ -624,12 +646,13 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print("    delete it in the .md yourself if that was intended.")
 
 
-def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
+def _seeded(source: Path, anchors: dict[str, str]) -> list[dict]:
     """Reviewers and their points, read from the comments in a returned document.
 
-    A comment keeps its paragraph only where the identifier is in `trusted`, still naming
-    the text it named at the build. Anywhere else it would anchor the point to whatever
-    paragraph sits there now, and G13 would then check the revision against the wrong one.
+    A comment keeps its paragraph only where `anchors` maps the identifier to the one naming
+    today the paragraph it named at the build: itself, or where the paragraph was followed
+    to. Anywhere else it would anchor the point to whatever paragraph sits there now, and
+    G13 would then check the revision against the wrong one.
 
     A journal usually sends a PDF or an email and the points get typed in, which is where
     a point quietly becomes the easier point next to it. When the reviewer commented in a
@@ -649,7 +672,7 @@ def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
                 "id": "",
                 "comment": comment.text,
                 "response": "",
-                **({"where": comment.where} if comment.where in trusted else {}),
+                **({"where": anchors[comment.where]} if comment.where in anchors else {}),
             }
         )
 
@@ -729,6 +752,8 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 except RoundTripError as exc:
                     print(f"manuscript-guard: {exc}", file=sys.stderr)
                     return 2
+            # A followed paragraph is anchored where it now stands, which is what G13 reads.
+            anchors = {name: name for name in trusted} | numbered.followed
             if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "
@@ -746,7 +771,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": _seeded(args.source, trusted) if args.source else [
+            "reviewers": _seeded(args.source, anchors) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [

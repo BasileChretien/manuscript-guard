@@ -36,7 +36,7 @@ import unicodedata
 import zipfile
 from collections import Counter
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
@@ -1170,6 +1170,79 @@ class Numbering:
     #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
     #: document may never have carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
+    #: Identifiers the document carries that no longer name their paragraph, each mapped to
+    #: the one that does now: see `_repointed`. Compared, moved and anchored as the paragraph
+    #: they are mapped to.
+    followed: dict[str, str] = field(default_factory=dict)
+
+
+def _repointed(
+    recorded: dict[str, str], now: dict[str, str], trusted: frozenset[str]
+) -> dict[str, str]:
+    """Recorded identifiers not `trusted` where they stand, mapped to the identifier of the
+    paragraph that holds their paragraph now, where that can be told for certain.
+
+    Identifiers are positional, so one paragraph added to the source since the build moved
+    every one below it by a block: each named its neighbour, and every co-author edit below
+    it was named as not compared, to be ported by hand. A paragraph is followed by its text
+    when that text is found once in its file both then and now, the rule it is trusted in
+    place by, and otherwise by its text and the block before it, when that pair is found
+    once in both. Anything else stays where it was: a match that is not certain is how an
+    edit lands in a look-alike.
+
+    And only along the order the document was built in, which cannot cross a paragraph
+    trusted in place. A paragraph the author moved, followed, came back from Word in its
+    old place, which `import` reads as the co-author moving it back, and `--apply` undid the
+    author's move.
+    """
+    followed: dict[str, str] = {}
+    for slug in dict.fromkeys(map(_slug_of, recorded)):
+        sent = {name: value for name, value in recorded.items() if _slug_of(name) == slug}
+        here = {name: value for name, value in now.items() if _slug_of(name) == slug}
+        at_then = {name: i for i, name in enumerate(sent)}
+        at_now = {name: j for j, name in enumerate(here)}
+        fixed = [name for name in sent if name in trusted and name in at_now]
+        for old, new in _aligned(sent, here):
+            if old == new or old in trusted or new in trusted:
+                continue
+            if any(
+                (at_then[old] < at_then[stays]) != (at_now[new] < at_now[stays])
+                for stays in fixed
+            ):
+                continue
+            followed[old] = new
+    return followed
+
+
+def _aligned(sent: dict[str, str], here: dict[str, str]) -> list[tuple[str, str]]:
+    """One file's paragraphs as recorded and as now, paired in order where each pair is
+    certain: see `_repointed`."""
+
+    def counted(record: dict[str, str], whole: bool) -> Counter:
+        return Counter(value if whole else value.partition(".")[0] for value in record.values())
+
+    texts = counted(sent, False), counted(here, False)
+    pairs = counted(sent, True), counted(here, True)
+
+    def key(value: str, otherwise: tuple[str, int]) -> tuple[str, ...] | tuple[str, int]:
+        text = value.partition(".")[0]
+        if texts[0][text] == 1 and texts[1][text] == 1:
+            return ("text", text)
+        if pairs[0][value] == 1 and pairs[1][value] == 1:
+            return ("text and before", value)
+        return otherwise  # found on one side only, so it matches nothing
+
+    then, now = list(sent), list(here)
+    matcher = difflib.SequenceMatcher(
+        a=[key(sent[name], ("then", i)) for i, name in enumerate(then)],
+        b=[key(here[name], ("now", j)) for j, name in enumerate(now)],
+        autojunk=False,
+    )
+    return [
+        (then[block.a + offset], now[block.b + offset])
+        for block in matcher.get_matching_blocks()
+        for offset in range(block.size)
+    ]
 
 
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
@@ -1210,10 +1283,13 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     known = tagged_paragraphs(project)
     recorded = paragraphs_of(document)
     if recorded is not None:
+        now = paragraph_record(project)
+        trusted = _trusted(recorded, now)
         return Numbering(
-            trusted=_trusted(recorded, paragraph_record(project)),
+            trusted=trusted,
             recorded=True,
             sent=tuple(recorded),
+            followed=_repointed(recorded, now, trusted),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.

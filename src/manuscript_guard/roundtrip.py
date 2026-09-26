@@ -273,8 +273,48 @@ _THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
 # A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
 _DEFINITION = re.compile(r" {0,3}[:~][ \t]")
 _CAPTION = re.compile(r" {0,3}[Tt]able:")
-# `[^1]: a footnote` or `[label]: https://...`.
-_REFERENCE = re.compile(r" {0,3}\[[^\]\n]+\]:")
+# A link or footnote definition, `[reg]: https://...` or `[^1]: The note.`, which pandoc
+# reads only at the start of a block. With a marker in front it was a paragraph: every
+# `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
+# definition printed as a line of text, on every build.
+#
+# A block goes without a marker only when every line of it is a definition in a shape that
+# pandoc can read no other way (`_definitions`, asked by `_blocks`). Taking every block that
+# opens `[label]:` for one left prose unmarked that pandoc printed - `[Note]: patients (all
+# adults) were enrolled.` - and a co-author's edit to it was never compared. Three versions
+# that modelled pandoc's grammar more closely were each caught in review doing the same, and
+# one took minutes over a line of attributes. Anything else that opens so is judged as any
+# block is: a definition written another way prints as text, which is visible where the
+# other is not.
+#
+# A link: a plain label, one token for its address - no real address has a space - and
+# perhaps a title, on one line. Pandoc takes almost any words after `[label]:` for an
+# address, so `[Methods]: patients were enrolled.` is a definition to it and prints nothing;
+# marked, it prints as written. The label is read as inline markup: with `@` in it the line
+# may be a citation, and code, maths or HTML opened in it can run past its `]`. No brace
+# anywhere: a binding is filled in after this reading, and its value could change it.
+_LINK_LINE = re.compile(
+    r" {0,3}\[[^\[\]\\`$<@^|{\n]*\]:[ \t]+"
+    r"(?:<[^<>\s\\{]+>|[^\s\"'(<\[{\\][^\s\[\]\\{]*)"
+    r"(?:[ \t]+(?:\"[^\s\"\\\[\]{][^\"\\\[\]{\n]*\"|'[^\s'\\\[\]{][^'\\\[\]{\n]*'"
+    r"|\([^()\\\[\]{\n]*\)))?"
+    r"[ \t]*"
+)
+# A footnote: its label and its text, which may wrap onto the lines under it
+# (`_continues_a_note`). Pandoc parses a note's text by itself, so nothing in it reaches the
+# body - but a line under it is more of the note, even a link's definition, and that link
+# then resolves nowhere. So links come first. And a note runs on
+# through every line pandoc does not take for blank, and past a blank line into an indented
+# one, and the paragraph it takes in leaves the body. So a note is left alone only when a
+# blank line ends it and the block after that is not indented (`_blank_below`). A line
+# holding only a no-break space is no blank line to pandoc; beside one, `_blocks` leaves
+# both blocks unmarked anyway. At the end of a file nothing follows; the build puts an
+# empty div between files, so the next file's first paragraph cannot run into it either.
+_NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
+# Where pandoc 3.9 ends a note (`rawLine`): a line opening a note's marker - `[^`, then no
+# space, tab, caret or bracket, then `]`, colon or not.
+_NOTE_ENDS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]")
+_INDENT = re.compile(r"[ \t]*")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
 # `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
 # paragraph that opens with an image and ends on a bracket losing its identifier is the
@@ -330,7 +370,6 @@ def _opens_block(line: str) -> bool:
         or _THEMATIC.fullmatch(line) is not None
         or _DEFINITION.match(line) is not None
         or _CAPTION.match(line) is not None
-        or _REFERENCE.match(line) is not None
         or _TEX.match(line) is not None
         or _HTML_LEAD.match(line) is not None
         or _HTML_TAG.match(line) is not None
@@ -786,6 +825,100 @@ class _Ruled:
         return max(ends) if ends else None
 
 
+def _definitions(block: str, above: str, below: str) -> bool:
+    """Whether a block is link and footnote definitions and nothing else, in shapes pandoc
+    reads no other way, with a blank line above it and nothing a note would run into below.
+    `above` and `below` are what `_around` gives."""
+    return _blank_above(above) and _only_definitions(block, below)
+
+
+def _only_definitions(block: str, below: str) -> bool:
+    """Whether every line of a block is a link or footnote definition in a shape pandoc
+    can only read as one, the links before the notes, and no note takes in what is below.
+    Not the stripped block: a no-break space is text to pandoc, and a line that ends in one
+    is not a definition; nor is one indented four spaces."""
+    lines = block.strip("\n").split("\n")
+    links = 0
+    while links < len(lines) and _LINK_LINE.fullmatch(lines[links]):
+        links += 1
+    notes = lines[links:]
+    if not notes:
+        return True
+    return (
+        _NOTE_LINE.fullmatch(notes[0]) is not None
+        and all(
+            _NOTE_LINE.fullmatch(line)
+            or _continues_a_note(line, _NOTE_LINE.fullmatch(above) is not None)
+            for above, line in itertools.pairwise(notes)
+        )
+        and _blank_below(below)
+    )
+
+
+def _continues_a_note(line: str, under_label: bool) -> bool:
+    """Whether pandoc reads `line`, under a footnote's first line, as more of that footnote;
+    `under_label` when the line above it is a note's label.
+
+    A note's label decides it, and pandoc takes almost any line under it into the note: a
+    hard-wrapped footnote is one. Marked for its second line, it printed as text on every
+    build, though #25 had let it work. Not a line pandoc ends the note at (`_NOTE_ENDS`),
+    which opens another note or prints; not a link's definition, which would resolve
+    nowhere inside the note; not an underline or a table's rule, which directly under the
+    label make it a heading, and further down leave the block to `_untagged`, which marks
+    none; and not, directly under the label, a definition list's `:` or `~` with a space
+    after it, which make it a term. Further down pandoc takes those into the note too.
+
+    Refusing a line is not the safe side by itself: a block not left alone is read for raw
+    content, where pandoc keeps a `<!--` inside the note or the term, and it then hid the
+    paragraphs below. So a bare `:` under the label, which also makes a term, and a `:::`
+    line, which ends the note inside a fenced div, are taken in. The term prints visibly;
+    what follows the `:::` in the block, `_untagged` leaves unmarked either way, as it does
+    any block with a div fence inside it."""
+    return not (
+        _NOTE_ENDS.match(line)
+        or _LINK_LINE.fullmatch(line)
+        or _RULE.fullmatch(line)
+        or (under_label and _DEFINITION.match(line))
+    )
+
+
+def _blank_below(below: str) -> bool:
+    """Whether the next block starts afresh after a note. `below` is what separates them
+    and the next block's first line, empty at the end of the text.
+
+    Pandoc ends a note at a line blank to it - empty, or spaces and tabs - unless the line
+    after that is indented four columns, a tab reaching the next four: that line opens the
+    note's next paragraph, and the unindented lines under it are more of it. So the note is
+    left alone only when some line between it and the next block is blank, and the line
+    after the last such line is indented less. Indented, a zero-width space in the next
+    block showed nothing and took the paragraph under it into the footnote. A note of
+    several paragraphs is marked with it, as it always was."""
+    lines = below.split("\n")[1:]
+    if not lines:
+        return True
+    blank = [at for at, line in enumerate(lines[:-1]) if line.strip(" \t") == ""]
+    return bool(blank) and len(_INDENT.match(lines[blank[-1] + 1]).group().expandtabs(4)) < 4
+
+
+def _blank_above(above: str) -> bool:
+    """Whether the line directly above a block is blank to pandoc too: empty, or spaces and
+    tabs. `above` is the whole run the split took for blank. Only its last line matters:
+    under a full-width space and then an empty line, a block starts afresh."""
+    lines = above.split("\n")
+    return len(lines) < 2 or lines[-2].strip(" \t") == ""
+
+
+def _around(pieces: list[str], index: int) -> tuple[str, str]:
+    """What separates `pieces[index]` from the blocks before and after it. `below` also
+    holds the next block's first line, whose indent decides whether a note runs on into it;
+    both are empty at the edges of the text."""
+    above = pieces[index - 1] if index else ""
+    below = ""
+    if index + 2 < len(pieces):
+        below = pieces[index + 1] + pieces[index + 2].partition("\n")[0]
+    return above, below
+
+
 def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     """Every piece of `text` in order, with its index and whether it gets an identifier.
 
@@ -850,14 +983,18 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
                     hidden = max(hidden, ends[table])
             yield index, piece, False
             continue
+        # A definition's text is read by itself: a `<!--` or a `<pre>` in a note, or in a
+        # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
+        # note up to the next `-->`, while pandoc printed them all.
+        definitions = apart and _definitions(piece, *_around(pieces, index))
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
-        runs_on = _raw_end(text, origin, end, closers)
-        closer = ruled.end(index)
+        runs_on = 0 if definitions else _raw_end(text, origin, end, closers)
+        closer = None if definitions else ruled.end(index)
         if closer is not None:
             runs_on = max(runs_on, ends[closer])
         hidden = max(hidden, runs_on)
-        yield index, piece, apart and not (runs_on or _untagged(piece))
+        yield index, piece, apart and not (runs_on or _untagged(piece) or definitions)
 
 
 def tag(text: str, relative: str, *, mark: bool = False) -> str:
@@ -867,7 +1004,8 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     fenced divs, code, and paragraphs that are nothing but a table or figure placeholder,
     because those become a table or a figure rather than a paragraph. A misspelt
     placeholder standing alone is skipped with them; `check` refuses it. `_untagged` says
-    why each one.
+    why each one. So are link and footnote definitions, which put nothing in the body
+    (`_definitions`).
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
@@ -1472,6 +1610,76 @@ _OPENER = re.compile(
     r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
 )
 
+#: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
+#: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
+#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for. `[^\W\d_]`
+#: also takes a numeral that is not a digit, `²` or `½`, on which pandoc opens nothing; that
+#: costs a backslash, not a word.
+_TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
+_TAG_OPENS = re.compile(_TAG_OPEN)
+
+#: Inside a tag, pandoc's whitespace is ASCII's. A no-break space Word's text holds is part of
+#: an attribute's value: `dose=5 mg\>1`, with one in "5 mg", closed the tag when Python's `\s`
+#: was taken for pandoc's. Pandoc's own after "e.g." is written back as a plain space, which
+#: ends the value; it is read here as it came back, which only errs safe.
+_TAG_SPACE = "[ \t\n\r\f]"
+#: An attribute's value about to begin: an `=` and nothing after it but spaces.
+_VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
+#: An unquoted attribute value running up to a `>`: an `=`, any spaces, then no space. Inside
+#: a tag pandoc takes a backslash there for part of the value, so `=\>` and `HR=2.1\>1`
+#: closed the tag the backslash was meant to keep shut.
+_UNQUOTED = re.compile(rf"={_TAG_SPACE}*[^ \t\n\r\f]*\Z")
+#: What a would-be tag can be closed or carried on by.
+_TAG_PUNCTUATION = re.compile("[>'\"]")
+#: A `<` Word typed, set aside where it is escaped and so opens nothing; see `_opens_value`.
+_SET_ASIDE = "\x00"
+
+
+def _opens_value(shown_before: str, bare_before: str | None, text: str, at: int) -> bool:
+    """Whether a straight quote at `at` in Word's `text` would open a quoted attribute
+    value: straight after an `=`, once a `<` of the source's or a value's stands before it.
+
+    `bare_before` is `shown_before` with each `<` Word typed set aside, or None to count
+    every `<` in `shown_before`; those in `text` are Word's and set aside either way. Word's
+    own is escaped and opens nothing, and a quote escaped for it printed
+    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`. A
+    kept stretch is read as Word shows it, so a `<` the source escaped counts too: that
+    costs a straight quote, never a word.
+    """
+    where = len(shown_before) + at
+    before = shown_before if bare_before is None else bare_before
+    bare = _TAG_OPENS.search(before + text.replace("<", _SET_ASIDE))
+    if bare is None or bare.start() >= where:
+        return False
+    return _VALUE.search(shown_before + text, 0, where) is not None
+
+
+def _closers(shown_before: str, text: str, bare_before: str | None = None) -> list[str]:
+    """How to write each `>`, `'` and `"` of Word's `text`, read after `shown_before`.
+
+    A `>` is bare where no `<` that can open a tag stands before it. After one it is `\\>`,
+    or `&gt;` at the end of an unquoted attribute value, where a backslash would be read as
+    part of the value: an entity closes no tag anywhere, but G2 reads `\\>` as a threshold's
+    `>` and not `&gt;`. A straight quote straight after an `=` opened a quoted value, which
+    ran on past the paragraph's end, and the tag closed at a `>` in the next one. Escaped
+    where `_opens_value` says it would, it opens nothing, and prints straight.
+    """
+    shown = shown_before + text
+    opens = _TAG_OPENS.search(shown)
+    out = []
+    for found in _TAG_PUNCTUATION.finditer(text):
+        char, at = found.group(), len(shown_before) + found.start()
+        if char != ">":
+            quoted = _opens_value(shown_before, bare_before, text, found.start())
+            out.append("\\" + char if quoted else char)
+        elif opens is None or opens.start() >= at:
+            out.append(">")
+        elif _UNQUOTED.search(shown, 0, at):
+            out.append("&gt;")
+        else:
+            out.append("\\>")
+    return out
+
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
@@ -1481,7 +1689,7 @@ _OPENER = re.compile(
 #: only `_OPENER` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
-    r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
+    rf"|{_TAG_OPEN}"  # a tag, a comment or an autolink; "p < 0.05" is not one
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
@@ -1490,7 +1698,12 @@ _MARKDOWN = re.compile(
 
 
 def _escaped(
-    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+    text: str,
+    opening: bool,
+    after_token: bool = False,
+    before_token: bool = False,
+    shown_before: str = "",
+    bare_before: str | None = None,
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -1510,9 +1723,27 @@ def _escaped(
     own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
     refuses as malformed. The entity is a named one because `&#123;` puts the number 123
     into the prose, and `check` refuses that as a number bound to no source.
+
+    A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
+    this text, or in `shown_before`, the text ahead of it (Word's, with each citation as its
+    key, as pandoc reads it; `bare_before` is the same with Word's own `<` set aside, since
+    this escapes it). That `<` need not be Word's:
+    one the source kept bare, or one a binding's value brings, opens a tag that a `>` later in
+    Word's text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples
+    ULOQ". Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits,
+    so the read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and
+    ROR > 2` stays as typed. A `<` in Word's text is escaped itself, above or at a token's
+    edge, so counting one only adds a backslash pandoc does not need; it is counted all the
+    same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
+    prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash
+    after a `<` of the source's or a value's, not after one Word typed; see `_closers`.
     """
     brace = before_token and text.endswith("{")
+    closers = _closers(shown_before, text, bare_before)
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    # `_MARKDOWN` neither adds nor removes a `>` or a quote, so they are the ones `closers` read.
+    head, *rest = _TAG_PUNCTUATION.split(text)
+    text = head + "".join(closer + part for closer, part in zip(closers, rest, strict=True))
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -1815,6 +2046,13 @@ def align(
     # is compared with, rendered text against rendered text.
     edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
     was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    # What lies ahead of each stretch, for the rules that read a would-be tag; see `_closers`.
+    # A `<` there that can open one, kept from the source or brought by a binding's value, is
+    # bare, and a `>` in the stretch would close it; an `=` can make the `>` end an attribute's
+    # value. Word's text, but a citation as its key: `(Smith 2020)` has a space,
+    # `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag where Word's text said
+    # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
+    ahead = bare = ""
     out: list[str] = []
     lost: list[str] = []
     unread = False
@@ -1835,6 +2073,7 @@ def align(
             # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
             opened = quote_open or "\u2018" in was_prose[index]
             quote_open = opened and _left_open(prose[index], index == 0, quote_open)
+            bare += piece
         else:
             lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
             # What the build printed of the stretch must be what the source reads as, or
@@ -1842,6 +2081,10 @@ def align(
             # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
             unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
             if quote_open and _WORD_CLOSES.search(piece):
+                # Straight even where `_closers` will escape it, after an `=`: left curly, it
+                # closed nothing, and a value the source's own `='` had opened ran on into the
+                # next paragraph. Escaped, it prints straight, the source's opener prints as
+                # an apostrophe, and every word prints.
                 piece = _WORD_CLOSES.sub("'", piece, count=1)
                 quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
@@ -1850,16 +2093,24 @@ def align(
             # the paragraph merged as a heading.
             opening = piece.lstrip() if index == 0 else piece
             binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
+            tag = {"shown_before": ahead, "bare_before": bare}
             out.append(
                 _respaced(
-                    _escaped(opening, opening=index == 0, **beside),
+                    _escaped(opening, opening=index == 0, **tag, **beside),
                     abbreviations,
                     lead=index == 0,
                     binding_next=bool(binding_next),
                 )
             )
+            bare += piece.replace("<", _SET_ASIDE)
+        ahead += piece
         if index < len(protected):
             out.append(protected[index])
+            start, end = placed[index]
+            shown = "".join(after[start:end])
+            token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
+            ahead += token
+            bare += token
     if lost:
         return Alignment(None, markup=tuple(lost))
     # With nothing between them there is nothing to escape: a citation's `]` against a value

@@ -30,7 +30,14 @@ manuscript-guard build --offline
 - **Send the `--offline` build, without `--csl`.** The returned document is compared against
   an offline build in the default citation style, so a document built with a journal style
   comes back with every cited paragraph refused. A live Zotero build probably does the same.
-- Send `build/manuscript.docx`. `supplementary.docx` cannot be imported.
+- Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
+  reading too. Each comes back as its own file and is imported on its own: `import` reads
+  from the paragraph identifiers which of the two it is, and compares it with a fresh build
+  of that one. Text pasted from one document into the other is not applied: one paragraph
+  comes back as new text without an identifier, listed but not applied, and several are
+  refused. Move text between them in the .md. In a project with a supplement, a document
+  that has lost every identifier is refused, and so is a supplement of only headings,
+  tables and figures, which holds nothing to compare.
 - Do not send `manuscript.annotated.docx` to anyone who will edit it. It carries no source
   stamp and no paragraph identifiers, so nothing in it can come back. It is for someone who
   needs to see where each number came from.
@@ -66,18 +73,21 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, a line directly under it looks as if it opens or closes a block (such as an unmatched `\end{table}`; a paragraph with a fence, `</div>` or a definition under it, or a comment in it that closes past it, carries no identifier, and its edit is listed instead), it opens a comment that never closes, display maths follows it directly, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, or into another file. Not applied; move it in the `.md` yourself |
-| `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
+| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier, including an HTML comment or `\newpage`, which Word does not show); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, past an HTML comment or `\newpage`, which Word does not show, past a paragraph import holds in place (one Word shows as an empty line, one with a line such as `\end{table}` directly under it, one with a `<!--` that never closes, or one directly above display maths), or into another file. A held paragraph dragged past two paragraphs or more is named here itself; dragged past one, that one is named. Not applied; move it in the `.md` yourself |
+| `came back somewhere else` | a heading, table or figure was dragged to another place in Word, or a caption or the equation of a display-maths paragraph was. Not applied; move the heading, the table's or figure's placeholder, or the paragraph the caption or equation belongs to, in the `.md` yourself |
+| `could not be found in the returned one` | a table, figure or display equation was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
+| `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption, paragraph with display maths or with a fence under it, or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
 | `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
-| `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
+| `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes, paragraphs with display maths or with a fence under them, and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 
-Anything refused, joined, deleted or moved between sections or files, and any paragraph
-without an identifier that came back different or in a different order, makes the command
-exit 1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted or moved between sections or files, any heading, table,
+figure or equation that was moved or could not be found, and any paragraph without an
+identifier that came back different or in a different order, makes the command exit 1, with
+or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -103,6 +113,15 @@ handled, and each has a test:
 - A move together with rewording is applied in one pass: the paragraph goes to its new
   place in its section, reworded if it was. A move into another section is reported and not
   applied, rather than pushing a paragraph out of every section in between.
+- A move beside an HTML comment with a blank line in it no longer writes the moved paragraph
+  inside the comment. A paragraph with a fence, `</div>`, `\end`, a definition or a
+  heading's underline written directly under it is neither moved nor reworded: its edit is
+  listed or refused.
+- Tables and figures are recognised by what they hold, so deleting a table or pasting in a
+  picture no longer hides a paragraph moved past a figure. A heading, table, figure or
+  display equation dragged elsewhere, and a table, figure or equation deleted, is reported
+  rather than passed over. A deleted heading or caption is listed with the other paragraphs
+  without an identifier.
 - A paragraph split in two in Word is refused, not cut down to its first half.
 - Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
   So is a heading joined into the paragraph under it.
@@ -162,7 +181,15 @@ Read the whole diff. What to look for:
   backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
-  and `check` reports `{{{results.x}}` as malformed.
+  and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
+  `<µg`) stands earlier in the paragraph, a `>` in an edited stretch comes back as `\>`, or
+  as `&gt;` where it ends a value after an `=` (`=>`, `HR=2.1>1`). If that `<` is yours or
+  a value's rather than the co-author's, a straight quote typed just after an `=` comes
+  back as `\'` or `\"`, and prints straight; so does a curly `’` typed there to close a
+  quote of yours. Leave them: pandoc can read a bare
+  `<` and `>` with words between them as an HTML tag and drop everything from one to the
+  other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
+  a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.
 - Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
   the character itself. It prints as it did, but a diff can show a line as changed where
   nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a

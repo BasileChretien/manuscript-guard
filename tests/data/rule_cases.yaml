@@ -16,6 +16,11 @@
 #   accepts: the atom named must classify under this rule
 #   rejects: the atom named must stay UNCLASSIFIED
 #   section: heading chain to classify under (methods_only rules need one)
+#
+# A rule for a line with no number in it, a table's separator row, has no atom to name. Its
+# cases say `atom: null`, and test the rule's own pattern: an accepted text must match it
+# whole, and a rejected text must not match it anywhere. Every rule still needs one reject
+# that names an atom, a real measurement it must leave alone.
 
 conventions:
   significance-threshold:
@@ -214,8 +219,16 @@ structural:
       - {text: "Editors shape rejection[1,2] in the field.", atom: "rejection[1,2"}
       - {text: "As reported previously [11] the effect held.", atom: "11"}
       - {text: "Shown in earlier work[13-15] and since.", atom: "work[13-15"}
-      - {text: "The pipeline (OEP 2026.1)[15] extracted them.", atom: "2026.1)[15"}
     rejects:
+      # The prefix takes no digit: a number glued to a marker is a value, and the audit reads
+      # it apart from the marker. The version below is listed; that cost was chosen.
+      - {text: "The pipeline (OEP 2026.1)[15] extracted them.", atom: "2026.1)[15"}
+      - {text: "It was 2.51 (95% CI 1.20, 9.99)[12]. Then more.", atom: "9.99)[12"}
+      - {text: "Rates reached 45%[14] overall.", atom: "45%[14"}
+      # No bracketed word before the marker: allowed for `[SmPC][4]`, it took `½` and an
+      # interval with the citation. That marker is listed, as it always was.
+      - {text: "About [x]½[12] of them.", atom: "x]½[12"}
+      - {text: "Median [IQR][55-72] years.", atom: "IQR][55-72"}
       # The bracketed run is integers only, so a bracketed interval keeps its decimal point
       # and is left alone. Some journals write confidence intervals exactly this way, and
       # absorbing one would file a paper's headline result as a citation marker.
@@ -270,11 +283,19 @@ structural:
     rejects:
       - {text: "The page reported 33 000 exposures.", atom: "33"}
 
+  # A separator row holds no number, so these cases name no atom: the rule's pattern must
+  # match the accepted rows and must not match the rejected text at all.
   table-alignment-row:
     accepts:
       - {text: "|---|---|", atom: null}
+      - {text: "|---|:---:|", atom: null}
+      - {text: "---|---", atom: null}
+      - {text: "| :-- | --: |", atom: null}
     rejects:
       - {text: "The value was 412 in that row.", atom: "412"}
+      # A pipe on each of two lines is no separator row. With `\s`, the pattern ran across
+      # the line break and matched them as one.
+      - {text: "|\n|", atom: null}
 
   alphanumeric-identifier:
     accepts:

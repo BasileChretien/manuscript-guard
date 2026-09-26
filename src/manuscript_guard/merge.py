@@ -297,7 +297,9 @@ def _parts_apart(
             continue
         wanted = parts[owner]
         after = [_signature(b) for b in returned[index + 1 :] if b.text or b.names or b.kind]
-        if after[: len(wanted)] != wanted and wanted[0] in loose:
+        # Apart only when its equation, its first part, no longer follows it: a later part
+        # reworded - the sentence after the equation - is an edit, not a move.
+        if after[:1] != wanted[:1] and wanted[0] in loose:
             found.add(owner)
     return found
 
@@ -402,7 +404,10 @@ def _unsettled(
             while 0 <= i < len(returned) and returned[i].kind not in ("table", "figure"):
                 names = [n for n in returned[i].names if n in sections]
                 found.update(sections[n] for n in names)
-                if names and not set(names) <= misplaced:
+                # Past a paragraph moved in, named misplaced or not: across a boundary Word
+                # does not show - an HTML comment - one moved in is not named, and it hid the
+                # section of a split's new half beside it.
+                if names and not set(names) <= misplaced and not returned[i].arrived:
                     break
                 i += step
     return found, because

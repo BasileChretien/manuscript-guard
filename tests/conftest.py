@@ -95,9 +95,9 @@ LINEAR_BOUND = 16.0
 #: case's best time reaches this, so a fast machine measures what a slow one does. The size
 #: a test starts from is the smallest it times. Too large, and a quadratic that has come back
 #: is timed at eight times a slow case, for minutes; too small, and a quadratic that runs at
-#: C speed can hide under the per-item work. Where a scan could go quadratic either way, it
-#: is checked from both, as paragraph tagging is: small first, where one in Python fails in
-#: seconds, then from where one at C speed shows.
+#: C speed can hide under the per-item work. Where no one start sees both, a scan is checked
+#: from two, as paragraph tagging is: small first, where one in Python fails in seconds, then
+#: from where one at C speed shows.
 LINEAR_FLOOR_SECONDS = 0.02
 #: Growth costs nothing unless a test never reaches the floor, so the cap only has to be far
 #: past where the fastest runner gets there: CI's were up to about four times this machine.

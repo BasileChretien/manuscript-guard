@@ -6634,7 +6634,7 @@ def test_a_paragraph_moved_among_the_parts_of_another_is_not_reordered(tmp_path:
         Block((), "Methods"),
         Block(("a",), paragraphs["a"]),
         Block(("p",), "The model was fitted as"),
-        Block((), "y = a + b x"),
+        Block(kind="equation", key="y = a + b x"),
         Block((), "where b is the slope."),
         Block(("b",), paragraphs["b"]),
         Block(("c",), paragraphs["c"]),
@@ -6888,7 +6888,7 @@ def _maths(tmp_path: Path) -> tuple[Path, str, dict, list]:
         Block((), "Methods"),
         Block(("a",), paragraphs["a"]),
         Block(("p",), "The model was fitted as"),
-        Block((), "y = a + b x"),
+        Block(kind="equation", key="y = a + b x"),
         Block((), "where b is the slope."),
         Block(("b",), paragraphs["b"]),
         Block(("c",), paragraphs["c"]),
@@ -6926,13 +6926,31 @@ def test_a_paragraph_left_between_the_parts_of_another_is_reported(tmp_path: Pat
     assert "b" in plan.misplaced and not plan.empty
 
 
+def test_a_display_maths_paragraph_whose_later_part_changed_is_not_moved(tmp_path: Path) -> None:
+    """A paragraph Word shows in parts counted as come apart whenever any part after its
+    equation changed - the sentence after it reworded - because its equation, the first
+    part, was still in the document. It was reported "moved into a different section",
+    and it had not moved: it is apart only when its equation no longer follows it."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, sent = _maths(tmp_path)
+    reworded = Block((), "where b is the gradient.")
+    returned = [*sent[:4], reworded, *sent[5:]]
+    plan = plan_import(known, sent, returned)
+    assert "p" not in plan.misplaced and not plan.moved
+
+
+@pytest.mark.parametrize("boundary", ["heading", "comment"])
 def test_a_move_beside_a_split_is_held_whatever_stands_next_to_the_new_text(
-    tmp_path: Path,
+    tmp_path: Path, boundary: str
 ) -> None:
     """A section that gained text keeps its order. The section was found from the paragraphs
     either side of the new text, and a paragraph moved in from another section standing
     beside it hid the one it was in: a paragraph moved between the halves of a split was
-    reordered to after the whole of it."""
+    reordered to after the whole of it. Walking past paragraphs named misplaced was not
+    enough: across an HTML comment, which ends a section in the source and shows nothing in
+    Word, the one moved in is not named misplaced, and it hid the section all the same."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import apply_plan, plan_import
 
@@ -6943,19 +6961,21 @@ def test_a_move_beside_a_split_is_held_whatever_stands_next_to_the_new_text(
         "f": "Foxtrot opens section two.",
         "g": "Golf closes section two.",
     }
-    text = f"# One\n\n{words['x']}\n\n{words['y']}\n\n# Two\n\n{words['f']}\n\n{words['g']}\n"
+    between = "# Two" if boundary == "heading" else "<!-- a note -->"
+    text = f"# One\n\n{words['x']}\n\n{words['y']}\n\n{between}\n\n{words['f']}\n\n{words['g']}\n"
     path.write_text(text, encoding="utf-8")
     known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    shown = [Block((), "Two")] if boundary == "heading" else []
     sent = [Block((), "One"), Block(("x",), words["x"]), Block(("y",), words["y"]),
-            Block((), "Two"), Block(("f",), words["f"]), Block(("g",), words["g"])]
+            *shown, Block(("f",), words["f"]), Block(("g",), words["g"])]
     returned = [
         sent[0],
         Block(("y",), "Yankee closes section one."),
         Block(("x",), words["x"], arrived=True),
         Block(("f",), words["f"], arrived=True),
         Block((), "It has a second sentence."),
-        sent[3],
-        sent[5],
+        *shown,
+        sent[-1],
     ]
     plan = plan_import(known, sent, returned)
     assert not plan.moved and not plan.merged

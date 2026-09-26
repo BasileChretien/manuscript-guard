@@ -607,6 +607,26 @@ def test_a_value_paragraph_deleted_in_an_unrecorded_document_is_still_named(
 
 
 @needs_pandoc
+def test_an_old_supplement_does_not_lack_the_papers_value_paragraph(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The supplement is imported on its own, and a value paragraph of the paper was never
+    meant to be in it: asked about everywhere, an untouched supplement from before the
+    record named the paper's value paragraph as not in it, and the import exited 1."""
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "supplementary.docx"
+    shutil.copy(project / "build" / "supplementary.docx", returned)
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 0
+    assert "only a value" not in capsys.readouterr().out
+
+
+@needs_pandoc
 def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its_anchor(
     project: Path, tmp_path: Path
 ) -> None:
@@ -1789,6 +1809,225 @@ def test_part_of_a_citation_ending_a_paragraph_deleted_is_a_changed_citation() -
     assert aligned.changed == (("(Smith et al. 2020)", "[@smith2020]"),)
 
 
+#: Prose that is also inside a token beside it. The extents were once guessed by looking for
+#: each stretch of the source's prose, stripped, in the rendered text, where it was first
+#: found: the "-" of " - " as the first date's own hyphen, "." as the one after "al", "and"
+#: as the one inside the citation. Every edit here was refused on that guess, and each one
+#: merges. Pandoc's citeproc prints a plain space after "al."; the U+00A0 case stands for a
+#: citation style that prints a no-break space there, which Word's text keeps.
+INSIDE_A_TOKEN = [
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study covered 2015-01-01 - 2024-12-31 in total.",
+        "The study covered {{results.start}} - {{results.end}} in total.",
+        id="hyphen-in-a-date",
+    ),
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study ran 2015-01-01 to 2024-12-31 in total.",
+        "The study ran {{results.start}} to {{results.end}} in total.",
+        id="the-hyphen-between-them-edited",
+    ),
+    pytest.param(
+        "Rates of {{results.ci}} - {{results.n}} overall.",
+        "Rates of ⟦(1.2-3.4)⟧ - ⟦3.84⟧ overall.",
+        "Rates of (1.2-3.4) - 3.84 overall today.",
+        "Rates of {{results.ci}} - {{results.n}} overall today.",
+        id="hyphen-in-an-interval",
+    ),
+    pytest.param(
+        "Risk rose, as reported [@smith2020].",
+        "Risk rose, as reported ⟦(Smith et al. 2020)⟧.",
+        "Risk increased, as reported (Smith et al. 2020).",
+        "Risk increased, as reported [@smith2020].",
+        id="full-stop-in-a-citation",
+    ),
+    pytest.param(
+        "Risk rose, as reported [@smith2020].",
+        "Risk rose, as reported ⟦(Smith et al.\u00a02020)⟧.",
+        "Risk increased, as reported (Smith et al.\u00a02020).",
+        "Risk increased, as reported [@smith2020].",
+        id="full-stop-in-a-citation-no-break-space",
+    ),
+    pytest.param(
+        "Risk rose in two cohorts [@lee2021] and {{results.x}} overall.",
+        "Risk rose in two cohorts ⟦(Lee, Park, and Kim 2021)⟧ and ⟦3.84⟧ overall.",
+        "Risk rose in two cohorts (Lee, Park, and Kim 2021) & 3.84 overall.",
+        "Risk rose in two cohorts [@lee2021] & {{results.x}} overall.",
+        id="and-beside-a-citation-edited",
+    ),
+]
+
+#: Edits to a token whose guessed edges were wrong, each named whole.
+INSIDE_CHANGED = [
+    pytest.param(
+        "Risk rose in two cohorts [@lee2021] and {{results.x}} overall.",
+        "Risk rose in two cohorts ⟦(Lee, Park, and Kim 2021)⟧ and ⟦3.84⟧ overall.",
+        "Risk rose in two cohorts (Lee, Park, & Kim 2021) and 3.84 overall.",
+        (("(Lee, Park, and Kim 2021)", "[@lee2021]"),),
+        id="and-in-a-citation-edited",
+    ),
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study ran 2015-01-01 - 2024-12-30 in total.",
+        (("2024-12-31", "{{results.end}}"),),
+        id="a-date-changed",
+    ),
+]
+
+#: What the build fills each binding in with.
+INSIDE_VALUES = {
+    "results.start": "2015-01-01",
+    "results.end": "2024-12-31",
+    "results.ci": "(1.2-3.4)",
+    "results.n": "3.84",
+    "results.x": "3.84",
+}
+
+
+@pytest.mark.parametrize(("source", "marked", "returned", "expected"), INSIDE_A_TOKEN)
+def test_prose_found_inside_a_token_leaves_its_edges_alone(
+    source: str, marked: str, returned: str, expected: str
+) -> None:
+    """Guessed, the first date ended at "2015" and the second began at "01-01", the interval
+    ended at "(1.2", the citation at "al", and "(Lee, Park," was the whole citation. Each
+    edit was refused, as a value that changed or a rebuild that did not read as typed."""
+    assert merged(source, marked, returned) == expected
+
+
+@pytest.mark.parametrize(("source", "marked", "returned", "changed"), INSIDE_CHANGED)
+def test_a_changed_token_is_named_whole(
+    source: str, marked: str, returned: str, changed: tuple
+) -> None:
+    """Guessed, the citation ended at "Park," and the "&" typed inside it merged as prose:
+    `[@lee2021] & {{results.x}}`, which drops the co-author's edit to the citation and prints
+    an "&" where they left "and". A changed date was named by what lay between the guessed
+    edges: "'01-01 - 2024-12-31' comes from results.end"."""
+    plain, spans = unmark(marked)
+    aligned = align(source, plain, returned, spans)
+    assert aligned.rebuilt is None
+    assert aligned.changed == changed
+
+
+#: Just enough of a citation style to print the citations above as they are shown. The
+#: Chicago style pandoc 3.9 ships puts "et al." after the first of three authors, so "and"
+#: is not in it.
+INSIDE_CSL = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info><title>Test</title><id>test</id><updated>2026-01-01T00:00:00+00:00</updated></info>
+  <citation et-al-min="4" et-al-use-first="1">
+    <layout prefix="(" suffix=")" delimiter="; ">
+      <group delimiter=" ">
+        <names variable="author">
+          <name form="short" and="text" delimiter=", " delimiter-precedes-last="always"/>
+        </names>
+        <date variable="issued"><date-part name="year"/></date>
+      </group>
+    </layout>
+  </citation>
+</style>
+"""
+INSIDE_REFERENCES = [
+    {
+        "id": "smith2020",
+        "type": "article-journal",
+        "author": [{"family": name} for name in ("Smith", "Brown", "Green", "White")],
+        "issued": {"date-parts": [[2020]]},
+    },
+    {
+        "id": "lee2021",
+        "type": "article-journal",
+        "author": [{"family": name} for name in ("Lee", "Park", "Kim")],
+        "issued": {"date-parts": [[2021]]},
+    },
+]
+
+
+def cited_build(markdown: str, folder: Path) -> list:
+    """`markdown` built with its citations rendered, and read back as import reads Word."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import read_blocks
+
+    folder.mkdir(parents=True, exist_ok=True)
+    style, references = folder / "style.csl", folder / "references.json"
+    style.write_text(INSIDE_CSL, encoding="utf-8")
+    references.write_text(json.dumps(INSIDE_REFERENCES), encoding="utf-8")
+    path, document = folder / "a.md", folder / "a.docx"
+    path.write_text(markdown, encoding="utf-8")
+    subprocess.run(
+        ["pandoc", str(path), "--citeproc", f"--bibliography={references}", f"--csl={style}",
+         "-o", str(document)],
+        check=True,
+    )
+    return [block for block in read_blocks(document) if block.names]
+
+
+@pytest.fixture(scope="module")
+def inside_built(tmp_path_factory: pytest.TempPathFactory) -> dict:
+    """Each source above built as import builds it, once plain and once with every token
+    bookmarked, and the paragraph as the marked build reads it. Marking must change nothing
+    a co-author sees, or the extents describe text that was never sent."""
+    from manuscript_guard.roundtrip import tag
+    from manuscript_guard.text.placeholders import substitute
+
+    cases = INSIDE_A_TOKEN + INSIDE_CHANGED
+    sources = list(dict.fromkeys(case.values[0] for case in cases))
+    text = "\n\n".join(sources) + "\n"
+    folder = tmp_path_factory.mktemp("inside")
+    plain = cited_build(substitute(tag(text, "main.md"), INSIDE_VALUES), folder / "plain")
+    marked = cited_build(
+        substitute(tag(text, "main.md", mark=True), INSIDE_VALUES), folder / "marked"
+    )
+    assert len(plain) == len(marked) == len(sources)
+    for sent, block in zip(plain, marked, strict=True):
+        assert sent.names == block.names
+        assert sent.text == block.text, "marking changed the text"
+    return dict(zip(sources, marked, strict=True))
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("source", "marked", "returned", "expected"),
+    [case for case in INSIDE_A_TOKEN if "no-break" not in case.id],
+)
+def test_prose_found_inside_a_token_merges_from_a_marked_build(
+    source: str,
+    marked: str,
+    returned: str,
+    expected: str,
+    inside_built: dict,
+    tmp_path: Path,
+) -> None:
+    """End to end: the extents are the marked build's, not written out by hand, and the
+    merge, built again, prints what the co-author typed. The no-break-space case is not
+    here: citeproc prints a plain space after "al." in a citation."""
+    from manuscript_guard.text.placeholders import substitute
+
+    block = inside_built[source]
+    assert (block.text, list(block.tokens)) == unmark(marked)
+    out = realign(source, block.text, returned, block.tokens)
+    assert out == expected
+    rebuilt = cited_build(f"[]{{#mg-p-x-0}}{substitute(out, INSIDE_VALUES)}\n", tmp_path)
+    assert [paragraph.text for paragraph in rebuilt] == [returned]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "marked", "returned", "changed"), INSIDE_CHANGED)
+def test_a_changed_token_is_named_whole_from_a_marked_build(
+    source: str, marked: str, returned: str, changed: tuple, inside_built: dict
+) -> None:
+    block = inside_built[source]
+    assert (block.text, list(block.tokens)) == unmark(marked)
+    aligned = align(source, block.text, returned, block.tokens)
+    assert aligned.rebuilt is None
+    assert aligned.changed == changed
+
+
 @pytest.mark.parametrize(
     ("paragraph", "expected"),
     [
@@ -2635,24 +2874,23 @@ def test_pandocs_own_no_break_space_written_back_prints_the_same(
     assert printed(expected, "merged") == returned
 
 
-def test_writing_back_a_no_break_space_is_linear_in_a_long_word() -> None:
+def test_writing_back_a_no_break_space_is_linear_in_a_long_word(assert_linear) -> None:
     """Looking for a bare `@` in the word before the abbreviation searched the text before it
     with `\\S*\\Z`, which rescans a long run from every place in it: with a URL of 8,000
-    characters ahead of a few "e.g.", `align` took 16 seconds. Doubling the input must not
-    much more than double the time."""
-    import time
-
+    characters ahead of a few "e.g.", `align` took 16 seconds. Timed as the URL grows, from
+    1,600 characters: the linear scan is quick enough that CI runners found 51,200 (a start
+    of 50 at the check's largest growth, when that was 1024) too little to time. A rescan
+    put back fails from 1,600 at the same size as from 50, in 14 to 20 s, and the largest
+    size is now 6.6 million characters."""
     from manuscript_guard.roundtrip import _respaced
 
-    def measure(length: int) -> float:
-        text = f"See https://example.org/{'a' * length} and e.g.\u00a0this."
-        started = time.perf_counter()
-        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
-        return time.perf_counter() - started
+    def with_url(length: int) -> str:
+        return f"See https://example.org/{'a' * length} and e.g.\u00a0this."
 
-    small = max(min(measure(4000) for _ in range(3)), 1e-4)
-    large = min(measure(16000) for _ in range(3))
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    def respace(text: str) -> None:
+        _respaced(text, ABBREVIATIONS, lead=True, binding_next=False)
+
+    assert_linear(with_url, respace, 1600, "writing back a no-break space, by URL length")
 
 
 @needs_pandoc
@@ -5919,16 +6157,30 @@ def test_import_without_pandoc_says_so_rather_than_crashing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Import rebuilds the document to compare against, and died with a BuildError traceback
-    when pandoc was missing."""
+    when pandoc was missing. The returned document is read first, to know which document to
+    rebuild, so it has to be readable and carry one of the paper's identifiers."""
     import manuscript_guard.build.document as document
     from manuscript_guard.cli import main
     from manuscript_guard.contracts import load_project
     from manuscript_guard.gates.review import document_digest
+    from manuscript_guard.roundtrip import tagged_paragraphs
 
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    loaded = load_project(project)[0]
+    identifier = next(
+        name
+        for name, (path, _text, _start) in tagged_paragraphs(loaded).items()
+        if path.name == "main.md"
+    )
     returned = tmp_path / "back.docx"
     with zipfile.ZipFile(returned, "w") as archive:
-        archive.writestr("word/document.xml", "<w:document/>")
-    stamp_into(returned, document_digest(load_project(project)[0]))
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{w}"><w:body><w:p>'
+            f'<w:bookmarkStart w:id="0" w:name="{identifier}"/><w:bookmarkEnd w:id="0"/>'
+            f"<w:r><w:t>Text.</w:t></w:r></w:p></w:body></w:document>",
+        )
+    stamp_into(returned, document_digest(loaded))
 
     real = shutil.which
     monkeypatch.setattr(
@@ -6164,3 +6416,187 @@ def test_a_paragraph_cut_down_to_its_number_can_be_edited_again(
     again = rewrite(built(project), tmp_path / "again.docx", reworded)
     assert main(["import", str(again), str(project), "--apply"]) == 0
     assert "\n\nAbout {{results.ror.point}}.\n\n" in source.read_text(encoding="utf-8")
+
+
+# --------------------------------------------------- a supplement is a document of its own
+
+SUPPLEMENT = Path("manuscript") / "supplementary" / "S1_code_lists.md"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("edited", ["reworded", "untouched"])
+def test_a_supplement_that_comes_back_is_compared_with_the_supplement(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], edited: str
+) -> None:
+    """`build` writes the supplement as its own document, and `import` compared every
+    returned document with a fresh build of the paper. An edited supplementary.docx reported
+    every paragraph of the paper as deleted in Word, exit 1, and its own edits went nowhere."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    source = project / SUPPLEMENT
+    main_md = project / "manuscript" / "main.md"
+    before, paper = source.read_text(encoding="utf-8"), main_md.read_text(encoding="utf-8")
+    was = "This supplement is referred to from the Methods"
+    now = "This supplement is cited from the Methods" if edited == "reworded" else was
+    supplement = project / "build" / "supplementary.docx"
+    returned = edit_docx(supplement, tmp_path / "back.docx", {was: now})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert main_md.read_text(encoding="utf-8") == paper
+    after = source.read_text(encoding="utf-8")
+    if edited == "reworded":
+        # A merged paragraph comes back unwrapped, so its line breaks are not compared.
+        assert blocks(after) == blocks(before.replace(was, now, 1))
+    else:
+        assert after == before and "nothing came back" in out
+
+
+@needs_pandoc
+def test_a_document_carrying_paragraphs_of_both_the_paper_and_the_supplement_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two paragraphs pasted from the paper into the supplement bring the second one's
+    identifier with them; Word drops the first one's, as it drops a single paragraph's.
+    Compared with either document alone, the other's paragraphs read as deleted or moved;
+    nothing in it is imported, and the refusal says why."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as archive:
+        paper = archive.read("word/document.xml").decode("utf-8")
+    first, second = tagged_xml(paper)[1:3]
+    first = re.sub(r'<w:bookmark(Start|End) [^>]*/>', "", first)
+    pasted = first + second
+    returned = rewrite(
+        project / "build" / "supplementary.docx",
+        tmp_path / "both.docx",
+        lambda xml: xml.replace("</w:body>", pasted + "</w:body>", 1)
+        if "<w:sectPr" not in xml
+        else xml.replace("<w:sectPr", pasted + "<w:sectPr", 1),
+    )
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "paragraphs of both the manuscript and its supplement" in capsys.readouterr().out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+def test_one_paragraph_pasted_from_the_paper_into_the_supplement_is_listed_not_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word drops the identifier of a single paragraph it pastes, so the supplement comes back
+    with new text and nothing of the paper's: it is compared with the supplement, and the
+    pasted paragraph is listed as one without an identifier, and not applied."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as archive:
+        paper = archive.read("word/document.xml").decode("utf-8")
+    pasted = re.sub(r"<w:bookmark(Start|End) [^>]*/>", "", tagged_xml(paper)[1])
+    returned = rewrite(
+        project / "build" / "supplementary.docx",
+        tmp_path / "pasted.docx",
+        lambda xml: xml.replace("</w:body>", pasted + "</w:body>", 1)
+        if "<w:sectPr" not in xml
+        else xml.replace("<w:sectPr", pasted + "<w:sectPr", 1),
+    )
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "without an identifier" in out and "deleted in Word" not in out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+@pytest.mark.parametrize("document", ["manuscript", "supplementary"])
+def test_a_document_carrying_no_identifier_is_refused_when_there_are_two_it_could_be(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], document: str
+) -> None:
+    """Which document came back is read from its identifiers, and both carry the same stamp.
+    One that lost every identifier (pasted into a fresh file, say) was compared with the
+    paper whichever it was, and every paragraph of the paper was reported deleted in Word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = rewrite(
+        project / "build" / f"{document}.docx",
+        tmp_path / "bare.docx",
+        lambda xml: re.sub(r'<w:bookmarkStart [^>]*w:name="mg-p-[^"]*"\s*/>', "", xml),
+    )
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+def test_a_supplement_of_headings_and_tables_only_is_not_compared_with_the_paper(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Whether the project has a supplement was read from the paragraphs carrying an
+    identifier, and a supplement of headings and tables has none. Returned untouched, it was
+    compared with the paper, and every paragraph of the paper was reported deleted in Word."""
+    from manuscript_guard.cli import main
+
+    (project / SUPPLEMENT).write_text(
+        "# Supplementary methods\n\n## Table S1. Code lists used to identify the outcome\n\n"
+        "{{table.outcome_codes}}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = shutil.copy(project / "build" / "supplementary.docx", tmp_path / "back.docx")
+    sources = {p: p.read_text(encoding="utf-8") for p in (project / "manuscript").rglob("*.md")}
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert {p: p.read_text(encoding="utf-8") for p in sources} == sources
+
+
+@needs_pandoc
+def test_a_document_refused_for_carrying_no_identifier_still_reports_its_comments(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The comments were read and then dropped when the document was refused, and with them
+    the prompt to record them for G11."""
+    from manuscript_guard.cli import main
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    comments = (
+        f'<w:comments xmlns:w="{w}"><w:comment w:id="0" w:author="Co-author" '
+        f'w:date="2026-09-25T10:00:00Z"><w:p><w:r><w:t>Please cite the 2024 review.</w:t>'
+        f"</w:r></w:p></w:comment></w:comments>"
+    )
+    bare = rewrite(
+        built(project),
+        tmp_path / "bare.docx",
+        lambda xml: re.sub(r'<w:bookmarkStart [^>]*w:name="mg-p-[^"]*"\s*/>', "", xml),
+    )
+    returned = tmp_path / "commented.docx"
+    with zipfile.ZipFile(bare) as zin, zipfile.ZipFile(returned, "w") as zout:
+        for item in zin.infolist():
+            if item.filename != "word/comments.xml":
+                zout.writestr(item, zin.read(item.filename))
+        zout.writestr("word/comments.xml", comments)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "no telling whether it is the manuscript or its supplement" in out
+    assert "Please cite the 2024 review." in out
+    assert "review/round-<n>/" in out

@@ -121,9 +121,9 @@ def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
     Checked twice, because no one start sees both kinds of quadratic. One running in Python,
     like the walk from every table opener that a3d0453 had, fails in seconds from 10 blocks
     and takes minutes from 1,000. One running at C speed, like a `find` to the end of the
-    text for each comment's closer, hides under the per-block work from 10 blocks (15 to 20,
-    on the bound) and fails from 1,000. A failure in the first pass ends the test. It was
-    timed once per size at 4,000 and 16,000 blocks.
+    text for each comment's closer, sits on the bound from 10 blocks (15 to 20, failing on
+    some runs and not others), so only the start of 1,000 is sure to catch it. A failure in
+    the first pass ends the test. It was timed once per size at 4,000 and 16,000 blocks.
     """
     from manuscript_guard.roundtrip import tag
 

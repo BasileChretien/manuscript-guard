@@ -571,6 +571,18 @@ attribute blocks (`{#sec-methods}`, `{-}`) not, because pandoc does not print th
 is done on the source rather than the built document, so a binding counts as one word
 whatever it resolves to and the count does not move when the analysis is re-run.
 
+The YAML front matter that opens a file is not counted, rendered keys included. The build
+strips every file's block and prints the title from `paper.yaml`, so none of it is in the document a limit is
+about, and a journal counts a title and an abstract against limits of their own anyway. An
+abstract counts when it is written under an Abstract heading, which is where the build
+prints one. Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
+text before the first heading, the closing `---` lost the newline the front-matter pattern
+needs, and the example's title line took its main text from 557 words to 573. G4 had a second
+route to the same mistake. It reads the main text as one string joined from every file, so
+only the first file's block was at the top, and a later file's closing `---` underlined its
+last YAML line into a heading: `title: Methods of the online appendix` satisfied a required
+Methods section. The title page declares the count G4 checks, from the same text.
+
 ## The AI-writing lint measures rate, not presence
 
 The rules come from the English Wikipedia essay "Signs of AI writing", read 2026-08-03.
@@ -1804,6 +1816,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a fresh vector — which is how the wrong figure actually reaches a journal. There is no
   `verify` equivalent for figures, because re-rendering is not reproducible across
   plotting-library versions.
+- **A front-matter `abstract:` is read by G2 and printed by nothing.** The build strips the
+  manuscript's block and writes its own from `paper.yaml`, which has no abstract, so an
+  abstract written there is checked and then left out of the document without a word. It is
+  not counted either, so a journal's abstract limit passes on an abstract of 0 words; a
+  profile asking for abstract headings does report it missing.
+- **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
+  follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
+  none of it. The gates recognise only the block that opens a file, so a later one is read:
+  its words count, and its closing `---` underlines the line above it into a heading. A
+  block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
+  Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
+  chosen in advance.
+- **A required statement can be met by text that does not print.** G4 matches a journal's
+  statement patterns against the main text with its HTML comments and fenced code still in
+  it, so a `# Funding` line inside a multi-line `<!-- -->` satisfies the funding statement
+  of a paper whose .docx has none. On one line, `<!-- # Funding -->`, it does not satisfy
+  the example's pattern, which is anchored at the start of a line; an unanchored pattern
+  would match it there too.
+- **G4 reads the main-text files in path order, and the build prints them in another.** The
+  build puts `main.md` first and sorts the rest by file name, not by path. A section's words
+  count where the headings above it put them, so an `abstract.md` beside a `main.md` written
+  in `##` headings makes the whole paper abstract as far as G4 can tell. A project with one
+  main-text file, which is what `init` writes, is unaffected.
 
 Added by the adversarial review, verified and **not** fixed:
 

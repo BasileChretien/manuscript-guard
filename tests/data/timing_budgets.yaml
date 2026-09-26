@@ -11,8 +11,8 @@
 #
 # Headroom measured 2026-09-26 on a Windows laptop (i7-12800HX) while other test suites ran:
 # the worst of five runs against the budget. The three budgets from #41, #54 and #70 were
-# measured idle and beside one full suite, and the worse is given. CI's runners were up to
-# about four times faster.
+# measured idle and beside one full suite, and the worse is given; #75's beside four. CI's
+# runners were up to about four times faster.
 
 reads:
   - where: tests/test_audit.py::test_a_long_run_of_spaces_does_not_stall_the_heading_check
@@ -74,6 +74,18 @@ reads:
       here, and on the line of spaces and pipes on a runner four times faster. A ratio would
       grow the whole rule scan to the floor, about 3 s a case, to see the same thing.
     headroom: 10 to 110 ms against 2 s, measured idle and beside a full suite, 18x or more.
+
+  - where: tests/test_robustness.py::test_the_rule_scan_does_not_stall_on_a_word_and_spaces
+    kind: budget
+    budget: 2.0
+    why: >-
+      Fifteen fixed texts, each a word a rule reads followed by what the rule backtracked on,
+      scanned for the source and for the audit. Each run is sized so the old pattern took 4 to
+      60 s, and one of them was exponential: a stall many times the budget, not a slide from
+      linear.
+    headroom: >-
+      0.2 to 345 ms against 2 s across the thirty, with four other suites running. The
+      slowest, "A-" repeated for the audit, has 5.8x; the rest 16x or more.
 
   - where: tests/test_corruption.py::test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check
     kind: budget

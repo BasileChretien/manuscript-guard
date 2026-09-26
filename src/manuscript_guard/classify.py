@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.text.blocks import Unprinted, find_headings
 from manuscript_guard.text.masking import comparison_escapes
 from manuscript_guard.text.tokens import Atom
 
@@ -55,6 +56,10 @@ class Rule:
     # invariant. The rule cannot tell them apart by their text, because they have the same
     # text; it can tell them apart by where they are.
     methods_only: bool = False
+    # A rule about headings, which holds only where a match starts a line pandoc prints as
+    # one. A `#` line is a heading at the start of a block and text inside a paragraph, and
+    # no pattern can see the line above it.
+    heading_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,7 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
             kind=kind,
             audit_only=bool(item.get("audit_only", False)),
             methods_only=bool(item.get("methods_only", False)),
+            heading_only=bool(item.get("heading_only", False)),
         )
         for item in document[section]
     )
@@ -233,12 +239,71 @@ def is_methods(section: Sequence[str] | None) -> bool:
     A Methods-like heading counts only while no ancestor is a section that reports what
     happened. "Methods > Sensitivity analyses" is Methods; "Results > Sensitivity analyses"
     is not, and the difference is the whole point of the rule.
+
+    A title pandoc prints as text (`Unprinted`) can say Results, and never Methods: the line
+    ends the section above it either way, but a reader of the document sees no heading there.
+    A chain that knows its printed headings (`sections.Chain`) must say Methods both ways, so
+    such a line can take Methods away and never grant them.
+
+    Results is recognised through the marks a printed title can keep: `# Results` over a rule
+    is a heading pandoc prints as "# Results", `- Results` over one is a list item holding a
+    heading, and `{#sec-results}` is an identifier. Methods is not, so a mark never opens it.
     """
     if not section:
         return False
-    if any(NOT_METHODS_SECTIONS.match(title) for title in section):
+    printed = getattr(section, "printed", None)
+    if printed is not None and not is_methods(printed):
         return False
-    return any(METHODS_SECTIONS.match(title) for title in section)
+    if any(rules_out_methods(title) for title in section):
+        return False
+    return any(
+        METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
+    )
+
+
+def rules_out_methods(title: str) -> bool:
+    """True when a heading's title names a section that is not Methods, Results say, read
+    through the marks and raw markup it may keep."""
+    return bool(NOT_METHODS_SECTIONS.match(_unmarked(title)))
+
+
+_MARKS = re.compile(r"^[\s#>*+_-]+")
+#: What a title can hold that the page does not show: an HTML tag or comment, and raw TeX
+#: such as `\label{sec:results}`. No alternative can start again inside what another failed
+#: on, so a long title is read in one pass.
+_RAW = re.compile(r"<!--.*?(?:-->|$)|</?[A-Za-z][^<>\n]*>|\\[A-Za-z]+\*?(?:\{[^{}]*\})*")
+
+
+def _unmarked(title: str) -> str:
+    """A heading's title without the marks it may keep: leading hashes, quote and list
+    marks, emphasis around it (`**Results**`), trailing attributes, and raw HTML or TeX,
+    which a reader of the built document does not see (`# <del>Results</del>`).
+
+    The attribute block goes first. Stripped after raw markup, an unclosed `<!--` in
+    `{title="<!--"}` took the `}` with it, and "Results" was no longer read."""
+    return _without_emphasis_end(_MARKS.sub("", _RAW.sub("", _without_attributes(title))))
+
+
+def _without_attributes(title: str) -> str:
+    """`title` without a closing `{...}` holding no brace, and the spaces around it. Worked
+    out from the last `{`: as `\\s*\\{[^{}]*\\}\\s*$` it was tried from every character of a
+    run of spaces, and `is_methods` reads every title for every number."""
+    body = title.rstrip()
+    if not body.endswith("}"):
+        return title
+    opening = body.rfind("{")
+    if opening == -1 or "}" in body[opening + 1 : -1]:
+        return title
+    return body[:opening].rstrip()
+
+
+def _without_emphasis_end(title: str) -> str:
+    """`title` without the spaces, `*` and `_` it ends with. `[\\s*_]+$` was tried from
+    every character of such a run: 1,000 ` *_` over five numbers took G2 36 s."""
+    end = len(title)
+    while end and (title[end - 1].isspace() or title[end - 1] in "*_"):
+        end -= 1
+    return title[:end]
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
@@ -299,6 +364,7 @@ def _scan(rules: Iterable[Rule], text: str) -> Scan:
     printed, origin = _printed(text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
+    headings: frozenset[int] | None = None
     for rule in rules:
         at: list[int] = []
         upto: list[int] = []
@@ -307,6 +373,11 @@ def _scan(rules: Iterable[Rule], text: str) -> Scan:
             start, end = match.span()
             if origin is not None:
                 start, end = origin[start], origin[end - 1] + 1 if end > start else origin[start]
+            if rule.heading_only:
+                if headings is None:
+                    headings = frozenset(found.start for found in find_headings(text))
+                if start not in headings:
+                    continue
             at.append(start)
             furthest = max(furthest, end)
             upto.append(furthest)

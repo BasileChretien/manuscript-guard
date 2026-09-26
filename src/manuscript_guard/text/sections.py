@@ -20,153 +20,44 @@ count is reported with the rule, so a disagreement is visible rather than myster
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
 
+from manuscript_guard.text.attributes import strip_attributes
+from manuscript_guard.text.blocks import (
+    Heading,
+    Unprinted,
+    find_headings,
+    scannable,
+    section_breaks,
+)
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import (
-    blank,
-    fenced_blocks,
-    front_matter_end,
-    html_comments,
-    mask,
-    without_front_matter,
-)
+from manuscript_guard.text.masking import mask, without_front_matter
 
-_ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
+# `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
+# `text.attributes` so the walk can title headings with it; both are re-exported for the
+# callers that learned them here.
+__all__ = [
+    "Chain",
+    "Counts",
+    "HeadingIndex",
+    "Section",
+    "chain_at",
+    "count_words",
+    "heading_index",
+    "headings",
+    "measure",
+    "scannable",
+    "section_chain",
+    "split_sections",
+    "strip_attributes",
+    "subsections",
+]
 
-# Setext: a line of text underlined with `=` (level 1) or `-` (level 2). Pandoc renders
-# these, and nothing here saw them — so a manuscript written in that style had no sections
-# at all as far as G2, G4 and the reporting gate were concerned: no required-section check,
-# no abstract, and every `methods_only` rule silently inapplicable.
-#
-# The underline is `=+` or `-+`. One dash is enough for pandoc, and requiring three meant a
-# "Results" heading under `--` was invisible — so Results content inherited the enclosing
-# Methods chain and a fabricated `p < 0.001` passed as the pre-specified alpha. `---` closing
-# YAML front matter would read as an underline too, which is why `scannable` blanks the
-# front matter before any of this runs, and a thematic break is excluded because setext
-# needs its title on the line immediately above with no blank between.
-_SETEXT = re.compile(
-    r"^(?P<title>(?![ \t]*$)(?![ \t]*[-=]+[ \t]*$)(?![ \t]*[#>|])[^\n]+)\n"
-    r"(?P<under>=+|-+)[ \t]*$",
-    re.MULTILINE,
-)
-
-# Kept as the ATX pattern for callers that only ever meant `#` headings.
-HEADING = _ATX
-
-# The spaces pandoc's `isSpace` takes, which is Haskell's: space, tab, the line breaks, form
-# feed, vertical tab, the no-break space and the other space separators (category Zs). Not
-# `\s`, which also takes U+0085, U+2028, U+2029 and U+001C to U+001F: a quoted value opening
-# with one of those is a value to pandoc, and refusing it kept `{title="<U+0085>x y"}` in a
-# Results title.
-_PANDOC_SPACE = (
-    r" \t\n\r\f\v\xa0\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
-    r"\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}"
-)
-
-# One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
-# or `-`, which pandoc reads as `.unnumbered`. A class or a key opens with a letter, which
-# `strip_attributes` checks, since `[^\W\d_]` also takes `²` and `Ⅷ`. A value is quoted,
-# and then may not open with one of pandoc's spaces (`title=" Works"` is not one, and pandoc
-# prints the braces), or runs to a space, a tab, a line break or the closing brace. Only
-# those: `\s` would also end it at a no-break space, a thin space or a form feed, which
-# pandoc reads as part of the value, so a heading whose `lang=fr` and `FR` were joined by a
-# no-break space kept its block.
-#
-# A value may hold backslash escapes, `title="the \"main\" one"` or `note=a\}b`, and an
-# escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints it. Each escape is one
-# backslash and the character after it, and every other character is one of the rest, so a
-# value can be read only one way. Items need no space between them: `{#a.b}` is one
-# identifier and `{#a#b}` two, because pandoc takes the longest item it can at each point
-# and never goes back. `strip_attributes` does the same, one item at a time. With the items
-# under one quantifier in a single pattern, a run such as `#a.b.c` could be divided between
-# items in more ways than it has characters, and a block that failed at its last character
-# would try every one of them.
-_ATTRIBUTE_ITEM = re.compile(
-    r"#[\w:.-]+"
-    r"|\.(?P<lead>[^\W\d_])[\w:.-]*"
-    r"|(?P<key>[^\W\d_])[\w:.-]*="
-    r"(?:\"(?![" + _PANDOC_SPACE + r"])(?:[^\"\\]|\\.)*\""
-    r"|'(?![" + _PANDOC_SPACE + r"])(?:[^'\\]|\\.)*'"
-    r"|(?:[^ \t\n\r}\\]|\\.)*)"
-    r"|-"
-)
-
-
-def _escaped(text: str, index: int) -> tuple[bool, int]:
-    """Whether the character at `index` is escaped, and where the backslashes before it
-    start. An odd run escapes it: `\\{` is a brace, `\\\\{` a backslash and then a brace."""
-    start = index
-    while start > 0 and text[start - 1] == "\\":
-        start -= 1
-    return (index - start) % 2 == 1, start
-
-
-def strip_attributes(text: str) -> str:
-    """`text` without the pandoc attribute block it ends with, if it ends with one.
-
-    `# References {-}` prints as "References", unnumbered, and `## Results {#sec-results}`
-    as "Results". Kept in the title, the block made it another word: `is_methods` matches a
-    title whole, so `Results {#sec-results}` was not Results, and a subsection under it named
-    like a Methods one made a reported `p < 0.001` the alpha chosen in advance.
-
-    Only what pandoc reads as attributes goes. "Results {and more}" and "Results \\{-}"
-    print as they stand, and so does every block but the last. The block opens at the last
-    brace no backslash escapes, and `{k=a\\{b}` is one block. Nothing else in the title
-    changes: `# **Results**` keeps its asterisks. `text` comes back unchanged when nothing
-    goes, so a caller can tell.
-
-    Only spaces and tabs may follow the block, and only they are taken off what precedes it.
-    `rstrip()` takes every Unicode space, and `# References {-}` with a no-break space after
-    it, which pandoc prints braces and all, lost its block.
-    """
-    body = text.rstrip(" \t")
-    if not body.endswith("}"):
-        return text
-    opening = len(body)
-    while True:
-        opening = body.rfind("{", 0, opening)
-        if opening < 0:
-            return text
-        escaped, before = _escaped(body, opening)
-        if not escaped:
-            break
-        opening = before
-    inner, position = body[opening + 1 : -1], 0
-    while True:
-        while position < len(inner) and inner[position] in " \t":
-            position += 1
-        if position == len(inner):
-            return body[:opening].rstrip(" \t")
-        item = _ATTRIBUTE_ITEM.match(inner, position)
-        if item is None:
-            return text
-        letter = item.group("lead") or item.group("key")
-        if letter and not letter.isalpha():
-            return text
-        position = item.end()
-
-
-def _atx_title(found: re.Match[str]) -> str:
-    """An ATX heading's title, without its attribute block and the closing `#`s before it.
-
-    Pandoc reads the closing `#`s, then spaces, then the attribute block, so
-    `## Results ## {#sec-results}` is "Results". A block before the closing `#`s is text:
-    `# Results {-} ##` is "Results {-}".
-
-    Read to the end of the title's own line. `_ATX` can run on past a blank line to a line
-    of `#`s, and read to the end of the match, `# Results {#sec-results}` above one ended in
-    `#` rather than a block, and kept it. And only spaces and tabs are taken off before the
-    block or the closing `#`s are looked for: any other space after them is printed.
-    """
-    source, end = found.string, found.end()
-    newline = source.find("\n", found.end("title"), end)
-    line = source[found.start("title") : newline if newline >= 0 else end].strip(" \t")
-    printed = strip_attributes(line)
-    if printed == line:
-        return found.group("title").strip()
-    return printed.rstrip("#").strip()
-
+# Headings are found by `text.blocks`, which reads them as pandoc does: ATX and setext, and
+# only where a block starts. Setext mattered because a manuscript written in that style had
+# no sections at all as far as G2, G4 and the reporting gate were concerned: no
+# required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
@@ -205,92 +96,91 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-def scannable(text: str) -> str:
-    """`text` with code fences and HTML comments blanked, offsets preserved.
-
-    Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
-    Python, R, shell and YAML. Once fenced code stopped being masked — correctly, because it
-    renders — an ordinary comment inside a listing became a heading:
-
-        ## Methods
-        ```python
-        # Methods          <- level 1, so it *pops* the real level-2 Methods
-        ```
-        ## Results
-        The excess was significant (p < 0.001).   <- nests under the fake heading
-
-    `is_methods` looks at the whole enclosing chain, so a threshold in the Results was
-    accepted as the alpha chosen in advance. No attacker required: that is a comment
-    character in a code block. An HTML comment does the same thing while being invisible in
-    the rendered document, which is worse.
-
-    Blanked rather than removed, because callers index back into the original text.
-    Newlines are kept so line numbers and `^` anchors still line up.
-    """
-    # Front matter too, now that setext headings are recognised: its closing `---` sits
-    # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences are looked for only
-    # after it. Blanked first, a comment on the YAML's first line read as a blank line
-    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
-    # headed a body the build printed without it.
-    #
-    # Fences and comments are found in the text as written too. Blanking the comments
-    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
-    # earlier opener and blanked the headings between them.
-    head = front_matter_end(text)
-    fences = fenced_blocks(text)
-    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
-    return blank(text, [(0, head), *spans])
-
-
-@dataclass(frozen=True)
-class _Found:
-    start: int
-    level: int
-    title: str
-
-
-def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order, titled without its attribute block."""
-    rendered = scannable(text)
-    found = [
-        _Found(m.start(), len(m.group("hashes")), _atx_title(m))
-        for m in _ATX.finditer(rendered)
-    ]
-    found += [
-        _Found(
-            m.start(),
-            1 if m.group("under").startswith("=") else 2,
-            strip_attributes(m.group("title").strip(" \t")).strip(),
-        )
-        for m in _SETEXT.finditer(rendered)
-    ]
-    return sorted(found, key=lambda f: f.start)
-
-
-def heading_index(text: str) -> list[_Found]:
-    """Every heading, computed once so a caller can ask about many offsets cheaply.
+def heading_index(text: str) -> list[Heading]:
+    """Every section break, computed once so a caller can ask about many offsets cheaply.
 
     `section_chain` rescans the whole document — blanking fences, HTML comments and front
-    matter, then running two heading patterns over it. G2 called it once per atom, which is
-    quadratic: a paragraph written on one long line with 20,000 numbers spent three minutes
-    re-deriving the same heading list 20,000 times. The scan is unavoidable; doing it per
-    file rather than per number is not.
+    matter, then walking it line by line. G2 called it once per atom, which is quadratic: a
+    paragraph written on one long line with 20,000 numbers spent three minutes re-deriving
+    the same heading list 20,000 times. The scan is unavoidable; doing it per file rather
+    than per number is not.
+
+    The printed headings, and the lines shaped like headings that pandoc prints as text,
+    titled `Unprinted`: see `section_breaks`. For the headings a reader sees, as a word
+    count or a required-section check wants them, use `split_sections` or `headings`.
     """
-    return _headings_in(text)
+    return HeadingIndex(section_breaks(text))
 
 
-def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
+class Chain(tuple):
+    """The headings enclosing a place, outermost first, and `printed`: the same chain as a
+    reader of the built document has it, from the headings pandoc prints alone and the lines
+    printed as text that say Results.
+
+    `is_methods` asks both. A line pandoc prints as text can end a section for the gates;
+    counted alone, "# of reports" wrapped to the start of a line closed the Results, and a
+    "Sensitivity analyses" under it read as Methods, where the reader sees it in the
+    Results.
+    """
+
+    printed: tuple[str, ...]
+
+    def __new__(cls, titles: tuple[str, ...], printed: tuple[str, ...]) -> Chain:
+        chain = super().__new__(cls, titles)
+        chain.printed = printed
+        return chain
+
+
+class HeadingIndex(list):
+    """Section breaks in document order, with the chain after each worked out once.
+
+    `chain_at` walked every heading before a number, for every number: 4,000 headings and
+    12,000 numbers took 50 s in G2. Found by bisection, it is a lookup.
+    """
+
+    def __init__(self, headings: list[Heading]) -> None:
+        from manuscript_guard.classify import rules_out_methods
+
+        super().__init__(headings)
+        self.starts = [found.start for found in self]
+        self.chains: list[Chain] = []
+        every: list[tuple[int, str]] = []
+        printed: list[tuple[int, str]] = []
+        for found in self:
+            # A line printed as text stays off the printed chain, unless it says Results:
+            # there it can only keep the Results in place. Off it, a later line printed as
+            # text took it off the other chain as well, and left both saying Methods.
+            both = type(found.title) is not Unprinted or rules_out_methods(found.title)
+            for stack in (every, printed) if both else (every,):
+                level = 1 if stack is printed and _hash_over_rule(found) else found.level
+                while stack and stack[-1][0] >= level:
+                    stack.pop()
+                stack.append((level, found.title))
+            self.chains.append(
+                Chain(tuple(t for _l, t in every), tuple(t for _l, t in printed))
+            )
+
+
+def _hash_over_rule(found: Heading) -> bool:
+    """A `# X` line over a `-` rule. Pandoc prints a level-2 heading titled "# X", which is
+    how the walk places it, and the scan before the walk read a level-1 heading "X". Where
+    the walk wrongly placed a `# Methods` above it, under a stray `</script>` say, the level-2
+    reading nested under that Methods, and the level-1 one closes it. So the printed chain
+    takes level 1, and both readings must say Methods."""
+    return (
+        found.setext
+        and found.level == 2
+        and found.title[:1] == "#"
+        and found.title[1:2] in (" ", "\t", "")
+    )
+
+
+def chain_at(index: list[Heading], offset: int) -> Chain:
     """The enclosing heading chain at `offset`, from a precomputed index."""
-    stack: list[tuple[int, str]] = []
-    for found in index:
-        if found.start > offset:
-            break
-        while stack and stack[-1][0] >= found.level:
-            stack.pop()
-        stack.append((found.level, found.title))
-    return tuple(title for _level, title in stack)
+    if not isinstance(index, HeadingIndex):
+        index = HeadingIndex(index)
+    before = bisect_right(index.starts, offset)
+    return index.chains[before - 1] if before else Chain((), ())
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -305,7 +195,7 @@ def section_chain(text: str, offset: int) -> tuple[str, ...]:
     different places: `p < 0.05` in Methods is the alpha the author chose, and in Results
     it is a finding.
     """
-    return chain_at(_headings_in(text), offset)
+    return chain_at(heading_index(text), offset)
 
 
 def split_sections(text: str) -> list[Section]:
@@ -318,7 +208,7 @@ def split_sections(text: str) -> list[Section]:
     was reported absent from the Methods. Both answers are carried now — `body` to sum,
     `enclosed` to read — so no caller has to guess which one it was given.
     """
-    matches = _headings_in(text)
+    matches = find_headings(text)
     if not matches:
         return [Section(title="", level=0, body=text, line=1, enclosed=text)]
 
@@ -333,9 +223,11 @@ def split_sections(text: str) -> list[Section]:
             (later.start for later in matches[index + 1 :] if later.level <= found.level),
             len(text),
         )
-        # Past the heading itself: the `#` line, or the title plus its underline.
+        # Past the heading itself: the `#` line, or the title plus its underline. Asked of the
+        # heading rather than its first character: `## Methods` over an underline is a
+        # setext title to pandoc.
         body_from = text.find("\n", found.start)
-        if body_from != -1 and found.level and text[found.start] != "#":
+        if body_from != -1 and found.setext:
             body_from = text.find("\n", body_from + 1)
         opens = body_from if body_from != -1 else found.start
         sections.append(
@@ -362,7 +254,7 @@ def subsections(sections: list[Section], index: int) -> list[Section]:
 
 
 def headings(text: str) -> list[str]:
-    return [found.title for found in _headings_in(text)]
+    return [found.title for found in find_headings(text)]
 
 
 def count_words(text: str) -> int:

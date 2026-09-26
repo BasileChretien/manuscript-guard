@@ -12,6 +12,10 @@ have been caught by a unit test of the regex, because the regex was self-consist
 disagreed with was pandoc. So this asks pandoc directly, for every structural construct
 worth arguing about, and fails when the two views differ.
 
+A third came from asking pandoc: a `## Methods` line directly under a line of Results prose.
+Pandoc does not let a heading interrupt a paragraph and printed it as text. The toolkit took
+it for a heading, and the `p < 0.001` below it passed as the alpha chosen in advance.
+
 The point is not that pandoc is a specification. It is that pandoc is *the thing that builds
 the document the reader receives*, so where the toolkit and pandoc disagree about what is a
 heading or what is code, the toolkit is wrong by definition.
@@ -176,7 +180,201 @@ CONSTRUCTS = {
     "atx quoted value opening with a zero-width space": (
         '# Results {title="\N{ZERO WIDTH SPACE}x y"}\n\nProse.\n'
     ),
+    # A heading cannot interrupt a paragraph (pandoc's `blank_before_header`), so each of
+    # these is printed as text inside the paragraph above it.
+    "atx continuing a paragraph": (
+        "## Results\n\nThe excess was significant\n## Methods\n(p < 0.001).\n"
+    ),
+    "setext continuing a paragraph": (
+        "## Results\n\nThe excess was significant\nMethods\n-------\n\n(p < 0.001).\n"
+    ),
+    "setext with equals continuing a paragraph": (
+        "## Results\n\nThe excess was significant\nMethods\n=======\n\n(p < 0.001).\n"
+    ),
+    "atx continuing a list item": "- An item\n## Methods\n",
+    "atx continuing a list paragraph": "- An item\n\n  More of it\n## Methods\n",
+    "atx continuing a block quote": "> A quotation\n## Methods\n",
+    "atx continuing a block quote past an html tag": "> A quotation\n<p>\n## Methods\n",
+    "atx directly under a fence after a block quote": (
+        f"> A quotation\n{FENCE}\nx\n{FENCE}\n## Results\n"
+    ),
+    "atx continuing a caption": "| a |\n|---|\n| 1 |\n\n: A caption\n## Methods\n",
+    "setext continuing a caption under its table": "| a |\n|---|\n| 1 |\n: A caption\n-------\n",
+    "atx after an inline html comment": "Prose.\n<!-- a note -->\n## Methods\n",
+    "atx after an inline tex command": "Prose.\n\\newpage\n## Methods\n",
+    "atx after a line of inline tex": "\\textbf{Note}\n## Methods\n",
+    "atx after a tilde fence inside a paragraph": "Prose.\n~~~\nx\n~~~\n## Methods\n",
+    # A lone `#` is an empty heading, not the first half of one spread over two lines.
+    "lone hash above a line": "#\nMethods\n\nProse.\n",
+    # ...and needs no blank line after any block that is not a paragraph.
+    "atx directly under atx": "# Title\n## Methods\n\nProse.\n",
+    "atx directly under a table": "| a | b |\n|---|---|\n| 1 | 2 |\n## Results\n\nProse.\n",
+    "atx directly under a fenced listing": f"{FENCE}r\nx <- 1\n{FENCE}\n## Results\n\nProse.\n",
+    "atx directly under a fence after prose": f"Prose.\n{FENCE}\nx\n{FENCE}\n## Results\n",
+    "atx directly under a tilde fence after a list item": "- An item\n~~~\nx\n~~~\n## Results\n",
+    "atx directly under an html comment": "<!-- a note -->\n## Results\n\nProse.\n",
+    "atx directly under front matter": "---\ntitle: T\n---\n## Results\n\nProse.\n",
+    "atx directly under a thematic break": "Prose.\n\n***\n## Results\n\nProse.\n",
+    "atx directly under a setext heading": "Title\n=====\n## Results\n\nProse.\n",
+    "atx directly under a fenced div": "::: note\nProse.\n:::\n## Results\n\nProse.\n",
+    "atx directly under a page break": "\\newpage\n## Results\n\nProse.\n",
+    "atx directly under an indented listing": "Prose.\n\n    x <- 1\n## Results\n\nProse.\n",
+    "atx directly under an html block": "<div>\nProse.\n</div>\n## Results\n\nProse.\n",
+    "atx directly under an html tag after prose": "Prose.\n<p>\n## Results\n",
+    "atx directly under a line block": "| A line of verse\n## Results\n\nProse.\n",
+    "atx directly under a tex environment after prose": (
+        "Prose.\n\\begin{landscape}\nx\n\\end{landscape}\n## Results\n"
+    ),
+    "atx inside a tex environment": "\\begin{landscape}\n## Methods\n\\end{landscape}\n",
+    "setext directly under atx": "# Title\nMethods\n-------\n\nProse.\n",
+    "setext directly under a table": "| a |\n|---|\n| 1 |\nMethods\n-------\n",
+    "setext directly under a page break": "\\newpage\nMethods\n-------\n",
+    # Pandoc tries a setext heading before an ATX one, and takes any line as its title.
+    "setext titled like atx": "## Methods\n-------\n\nProse.\n",
+    "setext titled like a quotation": "> Methods\n-------\n",
+    # Found by review: what ends a paragraph, a list item or a block quote, and what only
+    # looks as though it might.
+    "atx under a div closing a list": (
+        '## Methods\n\n<div custom-style="Key points">\n- One\n- Two\n</div>\n## Results\n'
+    ),
+    "atx under a div closing a block quote": "<div>\n> A quotation\n</div>\n## Results\n",
+    "atx under a line ending in a block tag": (
+        'Prose. <div style="page-break-after: always"></div>\n## Results\n'
+    ),
+    "atx under prose ending in a closing tag": "<div>\nSome text</div>\n## Results\n",
+    "atx under a block tag inside a line of prose": "Prose <div>x</div> more\n## Methods\n",
+    "atx under a textarea tag": "Prose.\n<textarea>\n## Results\n",
+    "atx under a noscript tag": "Prose.\n<noscript>\n## Methods\n",
+    "atx under an indented fence in a paragraph": (
+        f"The excess\n  {FENCE}\n  x\n  {FENCE}\n## Methods\n"
+    ),
+    "atx under a comment holding a blank line": "The excess\n<!--\n\n-->\n## Methods\n",
+    "atx under a block comment holding a blank line": "<!--\n\n-->\n## Results\n",
+    "atx under a line of no-break spaces": f"The excess\n{chr(0xA0)}\n## Methods\n",
+    "atx under a line starting with a plus": "+12% more reports\n## Methods\n",
+    "atx under a line starting with a pipe": "|d| exceeded the bound\n## Methods\n",
+    "atx under colons that open no div": "::: note text here\nThe excess\n:::\n## Methods\n",
+    "atx under a citation shaped like a link": "[@smith2020]: they found it\n## Methods\n",
+    "atx under a link definition with a title": '[a]: http://x.org "T"\n## Results\n',
+    "atx under a page reference": "\\pageref{x}\n## Results\n",
+    "atx under a fence closing a roman list item": "(ii) An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence in a paragraph starting A.": "A. Smith agreed\n~~~\nx\n~~~\n## Methods\n",
+    # Found by the second review.
+    "atx under a link definition with attributes": "[f]: fig.png {width=80%}\n## Results\n",
+    "atx under a link definition in angle brackets": "[a]: <my file.png>\n## Results\n",
+    "atx under an inline tag after a block tag": "The excess.<hr><br>\n## Methods\n",
+    "atx under a closing span after a closing div": "<div>\nIt was.</div></span>\n## Methods\n",
+    "atx inside a pre block opened after prose": "The excess.<pre>\n## Methods\n</pre>\n",
+    "atx inside a textarea": "<textarea>\n## Methods\n</textarea>\n",
+    "atx under a closed style block": "<style>\n## Methods\n</style>\n## Results\n",
+    "atx under an unclosed style tag": "<style>\n## Results\n",
+    "atx under a noscript tag at the margin": "<noscript>\n## Results\n",
+    "atx under a quote after a div in inline code": (
+        "Wrap it in `<div>` tags.\n\n> A quotation\n</div>\n## Methods\n"
+    ),
+    "atx under an indented closing div in a quote": "<div>\n> A quotation\n </div>\n## Methods\n",
+    "atx under a section closing a block quote": (
+        "<section>\n> A quotation\n</section>\n## Results\n"
+    ),
+    "atx under a list item ending in a block tag": "- An item <hr>\n## Results\n",
+    "atx under a fence ending a lettered item": "(A) An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence ending a roman item": "II. An item\n~~~\nx\n~~~\n## Results\n",
+    "atx under a fence in a paragraph starting dim.": "dim. light\n~~~\nx\n~~~\n## Methods\n",
+    "atx under a fence in a paragraph starting p. 12": "p. 12 of it\n~~~\nx\n~~~\n## Methods\n",
+    "atx under a div with a colon in its class": "::: fig:one\nProse.\n:::\n## Results\n",
+    "setext titled with a block tag": "Some text.<pre>\n-------\n",
+    "atx under a fence opened in the front matter": (
+        f"---\ntitle: T\nabstract: |\n  {FENCE}\n---\n\n## Results\n\n{FENCE}\n"
+    ),
+    # Found by the review of the pushed head.
+    "atx under an either-tag block": "## Methods\n\n<ins>\nThe new text\n</ins>\n## Results\n",
+    "atx under prose closing an either-tag block": "<ins>\nThe new text</ins>\n## Results\n",
+    "atx under seven hashes": "####### Note\n## Results\n",
+    "atx under prose after a comment at a line's start": (
+        "## Results\n\n<!-- check this --> The excess was significant\n## Methods\n"
+    ),
+    "atx after a comment on the same line": "<!-- x -->## Results\n",
+    "atx under a plus-minus at a line's start": (
+        "## Results\n\n+-0.3 SD was the spread\n## Methods\n"
+    ),
+    "atx under a grid table": "+---+---+\n| a | b |\n+---+---+\n## Results\n",
+    "atx under a footnote's second paragraph": (
+        "## Results\n\nText.[^1]\n\n[^1]: A note.\n\n    More of the note.\n## Methods\n"
+    ),
+    "atx under a stray colon fence after a four-colon div": (
+        "## Results\n\n:::: {.box}\nText.\n::::\n\nThe excess was significant\n:::\n## Methods\n"
+    ),
+    "atx under a pandoc title block": "% Title\n% Author\n# Abstract\n",
+    "atx under a title block's continuation": "% Title\n  continued\n% Author\n# Abstract\n",
+    "atx under a fourth percent line": "% a\n% b\n% c\n% d\n# Abstract\n",
+    "atx under a title block after front matter": "---\ntitle: x\n---\n% Title\n# Abstract\n",
+    # A tag at the margin is a block, and the rest of its line starts the next one.
+    "atx under text after a block tag": "<div>Text\n## Results\n",
+    "atx under text after an either tag": "<ins>Text\n## Results\n",
+    "atx under text closing the either tag it follows": "<ins>Text</ins>\n## Results\n",
+    "atx after a block tag on the same line": "<div>## Results\n",
+    "atx under a grid border nothing closes": "+---+---+\n| a | b |\n## Results\n",
+    "atx under a closed grid table": "+---+---+\n| a | b |\n+---+---+\n## Results\n",
+    # A footnote takes every line up to a blank one.
+    "atx under a block tag in a footnote": "T.[^1]\n\n[^1]: A note.\n<div>\n## Methods\n",
+    "atx under a fence in a footnote": (
+        f"T.[^1]\n\n[^1]: A note.\n{FENCE}\nx\n{FENCE}\n## Methods\n"
+    ),
+    "atx under code in a footnote": "T.[^1]\n\n[^1]: A note.\n\n        code\n## Methods\n",
+    "atx after a footnote and a blank line": "T.[^1]\n\n[^1]: A note.\n\n## Methods\n",
+    "atx under a footnote's three-space line": (
+        "T.[^1]\n\n[^1]: A note.\n\n   Three.\n## Methods\n"
+    ),
+    # Found by the fourth review. A note with nothing on its marker line takes the next
+    # stretch of lines after the blank as its first paragraph, indented or not.
+    "atx in an empty footnote's first paragraph": "T.[^1]\n\n[^1]:\n\n## Methods\n",
+    "atx after an empty footnote's first paragraph": (
+        "T.[^1]\n\n[^1]:\n\nNote text.\n\n## Methods\n"
+    ),
+    # Indented one to three spaces, a comment is inline and starts a paragraph.
+    "atx under an indented comment": "## Results\n\n <!-- TODO -->\n## Methods\n",
+    "atx under an indented comment and text": "## Results\n\n  <!-- x --> Text\n## Methods\n",
+    "setext from an indented comment and text": "## Results\n\n  <!-- x --> Text\n=====\n",
+    "atx under an indented comment under an either tag": "<ins>\n <!-- c -->\n## Methods\n",
+    "atx under an indented comment under a div": "<div>\n <!-- c -->\n## Methods\n",
+    # A `<del>` closed in the middle of a line is closed: a later line ending in `</del>`
+    # is inline text, and the paragraph goes on.
+    "atx under a deletion closed mid-line earlier": (
+        "## Results\n\n<del>Not\nsignificant.</del> It was.\n\nIt was <del>not</del>\n"
+        "## Methods\n"
+    ),
+    # Found by the fifth review. What follows a comment on its line is text, not an underline
+    # or a rule; the rest of a tag's line over an underline is a setext title.
+    "setext under an underline after a comment": "## Results\n\nMethods\n<!-- -->===\n",
+    "atx under a rule with a comment after it": (
+        "## Results\n\nText.\n\n--- <!-- revised -->\n## Methods\n"
+    ),
+    "setext from the rest of a tag's line": "## Results\n\n<div># Methods\n-\n\nText.\n\n</div>\n",
+    # `</pre>` does not close a `<p>`: counted as one, the quote below ran on past the `</p>`
+    # that ends its lazy lines, and took the heading under it.
+    "atx under a quote stopped by a p closer after a pre closer": (
+        "<p>\nIntro </pre> here\n\n> Quote\n</p>\n## Results\n"
+    ),
+    "atx under inline latex qty": "\\qty{1}{m}\n## Methods\n",
+    "atx under inline latex ac": "\\ac{ROR}\n## Methods\n",
+    "atx under inline latex acrshort": "\\acrshort{x}\n## Methods\n",
+    "atx under inline latex bfseries": "\\bfseries\n## Methods\n",
+    "atx under inline latex colorbox": "\\colorbox{red}{x}\n## Methods\n",
+    "atx under inline latex vref": "\\vref{x}\n## Methods\n",
+    "atx under inline latex pilcrow": "\\P\n## Methods\n",
+    "atx under latex texttrademark": "\\texttrademark\n## Methods\n",
+    "atx under latex hypertarget": "\\hypertarget{a}{b}\n## Methods\n",
+    "atx under an inline latex index": "\\index{x}\n## Methods\n",
+    "atx under an inline latex si unit": "\\SI{1}{m}\n## Methods\n",
 }
+
+
+def test_an_html_tag_read_inline_over_an_underline_is_a_heading() -> None:
+    """Pandoc looks for a heading before an HTML block, `<div>` apart, so `<noscript>` over
+    an underline is a heading with the tag as its raw title. Compared by count: pandoc's
+    title has no text in it, the toolkit's is the tag."""
+    markdown = "<noscript>\n-------\n\nProse.\n"
+    assert len(headings(markdown)) == len(pandoc_headings(markdown)) == 1
 
 
 @pytest.mark.parametrize("name", sorted(CONSTRUCTS))
@@ -257,6 +455,53 @@ def test_a_quoted_heading_is_deliberately_not_a_section() -> None:
     atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
     chain = section_chain(markdown, atom.start)
     assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
+
+
+def test_a_heading_in_a_list_item_ends_a_section_and_opens_none() -> None:
+    """A second divergence, for the same reason as the quoted one.
+
+    Pandoc reads `- Results` over an underline as a list item holding a heading titled
+    "Results". The toolkit keeps the marker in the title. It still ends the section above,
+    and is printed as a heading, so the p-value under it is not taken for Methods. But a
+    title of "- Methods" never matches Methods, so `- Methods` over an underline cannot
+    re-admit the `methods_only` rules below a Results section.
+    """
+    from manuscript_guard.classify import UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import section_chain
+    from manuscript_guard.text.tokens import find_atoms
+
+    ended = "## Methods\n\n- Results\n---------\n\nThe excess was significant (p < 0.001).\n"
+    opened = "## Results\n\n- Methods\n---------\n\nThe excess was significant (p < 0.001).\n"
+    for markdown in (ended, opened):
+        atom = next(a for a in find_atoms(markdown, mask(markdown)) if a.text == "0.001")
+        chain = section_chain(markdown, atom.start)
+        assert chain[-1].startswith("- ")
+        assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
+
+
+def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it() -> None:
+    """The gates read `{{table.t}}`; pandoc reads the pipe table the build puts in its place,
+    and a table ends at its last row. Read as a line of prose, the placeholder hid the
+    `## Results` under it: the heading the document prints was lost to G2, and a p-value
+    below it would have passed as Methods."""
+    from pathlib import Path
+
+    from manuscript_guard.build.assemble import render_table
+    from manuscript_guard.contracts.results import Table
+
+    table = Table(
+        key="t",
+        columns=("Arm", "Reports"),
+        rows=(("Drug", "412"),),
+        caption=None,
+        align=("left", "right"),
+        quoted=True,
+        source=Path("t.json"),
+    )
+    source = "## Methods\n\n{{table.t}}\n## Results\n\nProse.\n"
+    built = source.replace("{{table.t}}", render_table(table))
+    assert headings(source) == pandoc_headings(built) == ["Methods", "Results"]
 
 
 # ---------------------------------------------------------------- fences

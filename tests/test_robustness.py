@@ -324,6 +324,87 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         gc.enable()
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "<!-- never closed\n", "Prose\n## Methods\n", "- item\n> quote\n| row |\n", "<div>\n",
+        "<>" * 25,
+    ],
+    ids=[
+        "unclosed comments", "paragraph and heading", "list quote row", "html divs",
+        "one line of tags",
+    ],
+)
+def test_the_heading_scan_is_linear(line: str) -> None:
+    """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s
+    for 20,000 such lines, and the heading scan runs once per file in G2, `explain` and the
+    classifier's heading rules alike."""
+    from manuscript_guard.text.blocks import find_headings
+
+    def measure(count: int) -> float:
+        text = line * count
+        started = time.perf_counter()
+        find_headings(text)
+        return time.perf_counter() - started
+
+    small = max(measure(2000), 1e-3)
+    large = measure(8000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["# a" + " " * 3000 + "x\n", ":" * 3000 + " x y\n", "::: a" + ":" * 10000 + " y\n"],
+    ids=["heading line of spaces", "line of colons", "colons after a div's class"],
+)
+def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
+    """Two patterns backtracked on one line: the ATX heading's title and closing hashes, and
+    a div fence's colons and class. A heading line holding 2,000 spaces took 67 s, and 1,000
+    colons 20 s, in a command that reads every line of a file someone sent."""
+    from manuscript_guard.text.blocks import find_headings, heading_shaped
+
+    started = time.perf_counter()
+    find_headings(line)
+    heading_shaped([line])
+    assert time.perf_counter() - started < 2.0
+
+
+def test_the_section_chain_is_looked_up_not_rebuilt() -> None:
+    """`chain_at` walked every heading before a number, for every number: 4,000 headings and
+    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry."""
+    from manuscript_guard.text.sections import chain_at, heading_index
+
+    def measure(count: int) -> float:
+        text = "".join(f"## Part {i}\n\nValues 1, 2 and 3.\n\n" for i in range(count))
+        index = heading_index(text)
+        step = max(1, len(text) // (3 * count))
+        started = time.perf_counter()
+        for offset in range(0, len(text), step):
+            chain_at(index, offset)
+        return time.perf_counter() - started
+
+    small = max(measure(250), 1e-3)
+    large = measure(2000)
+    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [" *_" * 3000 + " x", " " * 9000 + "x"],
+    ids=["emphasis marks", "spaces"],
+)
+def test_a_long_heading_title_does_not_stall_the_methods_check(tail: str) -> None:
+    """`is_methods` reads every title in a number's chain, for every number and every rule
+    that holds only in Methods. The patterns that trimmed a title's emphasis and attribute
+    block backtracked from every character of a run of spaces or marks: a heading ending in
+    1,000 ` *_` over five numbers took G2 36 s."""
+    from manuscript_guard.classify import is_methods
+
+    started = time.perf_counter()
+    is_methods(("Outcomes" + tail, "Methods"))
+    assert time.perf_counter() - started < 0.5
+
+
 # ---------------------------------------------------------------- hostile files
 
 

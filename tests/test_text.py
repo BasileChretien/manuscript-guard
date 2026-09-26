@@ -369,6 +369,13 @@ SPOOFS = {
         "## Results\n\nSignificant (p < 0.05).\n"
     ),
     "html comment": "## Results\n\n<!--\n## Methods\n-->\n\nSignificant (p < 0.05).\n",
+    # Pandoc prints each of these as prose: a heading cannot interrupt a paragraph, and a
+    # lone `#` is an empty heading rather than the first half of one.
+    "atx continuing a paragraph": "## Results\n\nIt was significant\n## Methods\n(p < 0.05).\n",
+    "setext continuing a paragraph": (
+        "## Results\n\nIt was significant\nMethods\n-------\n\n(p < 0.05).\n"
+    ),
+    "lone hash": "## Results\n\nPrevious prose.\n\n#\nMethods\n\nSignificant (p < 0.05).\n",
 }
 
 
@@ -382,14 +389,60 @@ def test_a_heading_cannot_be_forged_from_code_or_a_comment(name: str) -> None:
     in the Results was accepted as the alpha chosen in advance. No attacker needed. The HTML
     comment version is worse: invisible in the rendered document.
     """
+    from manuscript_guard.text.blocks import Unprinted
     from manuscript_guard.text.sections import section_chain
 
     text = SPOOFS[name]
     classifier = Classifier.load()
     atom = next(a for a in find_atoms(text, mask(text)) if a.text == "0.05")
     chain = section_chain(text, atom.start)
-    assert "Methods" not in chain
+    # A `## Methods` pandoc prints as prose is still in the chain, marked, because it ends the
+    # Results above it; it is never a Methods heading.
+    assert not [title for title in chain if title == "Methods" and type(title) is not Unprinted]
     assert classifier.classify(atom, chain).kind == UNCLASSIFIED
+
+
+def test_a_heading_pandoc_prints_as_text_ends_a_section_and_never_opens_methods() -> None:
+    """A line shaped like a heading that the walk does not place is still a section break
+    for G2, so a construct the walk does not model cannot run the Methods on past a heading
+    pandoc prints. Its title is marked, and a marked title never opens Methods: it counts
+    against Methods, as "Results" does, and never for them. The printed headings, which
+    word counts and section checks read, leave it out."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.blocks import Unprinted
+    from manuscript_guard.text.sections import heading_index, headings, section_chain
+
+    text = "# Methods\n\nAlpha was set.\n\nProse ran on\n# Results\n\nIt was 0.05.\n"
+    assert headings(text) == ["Methods"]
+    breaks = heading_index(text)
+    assert [(b.level, b.title) for b in breaks] == [(1, "Methods"), (1, "Results")]
+    assert type(breaks[1].title) is Unprinted
+    assert section_chain(text, text.index("0.05")) == ("Results",)
+
+    assert not is_methods((Unprinted("Methods"),))
+    assert not is_methods(("Methods", Unprinted("Results")))
+    # Nested under a printed Methods, it is still Methods: pandoc prints it all there.
+    assert is_methods(("Methods", Unprinted("Sensitivity")))
+    # Emphasis is a mark a title keeps: `## **Results**` is Results.
+    assert not is_methods(("**Results**", "Sensitivity analyses"))
+    assert not is_methods(("_Results_", "Sensitivity analyses"))
+
+
+@pytest.mark.parametrize(
+    "above", ["| Parameter | Value |\n|---|---|\n| Alpha | set |", "{{table.alpha}}"]
+)
+def test_a_table_over_a_rule_does_not_end_methods(above: str) -> None:
+    """The walk reads the last row of a table as a row, and the `---` under it as a rule, as
+    pandoc does. Shaped like a title over an underline, the row still ended the Methods for
+    G2, and the threshold stated after it was reported."""
+    from manuscript_guard.classify import CONVENTION
+    from manuscript_guard.text.sections import section_chain
+
+    text = f"## Methods\n\n{above}\n---\n\nSignificance was set at p < 0.05.\n"
+    atom = next(a for a in find_atoms(text, mask(text)) if a.text == "0.05")
+    chain = section_chain(text, atom.start)
+    assert chain == ("Methods",)
+    assert Classifier.load().classify(atom, chain).kind == CONVENTION
 
 
 @pytest.mark.parametrize(
@@ -411,6 +464,41 @@ def test_a_real_methods_heading_still_is_one(heading: str) -> None:
     from manuscript_guard.classify import is_methods
 
     assert is_methods((heading,))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "<del>Results</del>",
+        'Results <a id="r"></a>',
+        "Results <!-- final -->",
+        "Results \\label{sec:results}",
+        "**Results** <br> {#sec-results}",
+    ],
+)
+def test_a_results_title_is_read_through_raw_markup(title: str) -> None:
+    """Found by the sixth review of #38. Pandoc prints raw HTML and TeX in a title as nothing,
+    so the page reads "Results". Read as typed, the title was nothing the gates knew, and a
+    Methods heading under it kept the Methods rules."""
+    from manuscript_guard.classify import is_methods
+
+    assert not is_methods((title, "Methods"))
+
+
+def test_a_results_line_printed_as_text_stays_on_the_printed_chain() -> None:
+    """Found by the sixth review of #38. A Results heading after a comment is marked as text,
+    and was left off the printed chain; a `#` line pandoc prints as text then took it off the
+    other one, and both chains said Methods."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.sections import section_chain
+
+    text = (
+        "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n"
+        "Statistical analysis\n-\n\nIt was 0.05.\n"
+    )
+    chain = section_chain(text, text.index("0.05"))
+    assert chain.printed == ("Results", "Statistical analysis")
+    assert not is_methods(chain)
 
 
 def test_a_caller_with_no_sections_keeps_every_rule() -> None:

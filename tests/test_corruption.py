@@ -419,6 +419,216 @@ def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written:
     assert "unclassified-number" in codes(gate_report(project))
 
 
+@pytest.mark.parametrize(
+    ("tail", "number"),
+    [
+        ("# Results\n\nThe excess was significant\n# Methods\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe excess was significant\nMethods\n=======\n\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe reporting odds ratio was\n## 3.84 times the background.\n", "3.84"),
+        ("# Results\n\n#\n3.84 times the background rate was reported.\n", "3.84"),
+    ],
+    ids=["atx", "setext", "numbered atx", "lone hash"],
+)
+def test_a_heading_pandoc_prints_as_prose_does_not_excuse_a_number(
+    project: Path, tail: str, number: str
+) -> None:
+    """Pandoc does not let a heading interrupt a paragraph, so a `# Methods` line directly
+    under Results prose is printed as part of that prose. G2 took it for a heading, and the
+    `p < 0.001` under it passed as the alpha chosen in advance. The same line starting with a
+    number was taken for heading numbering, and so was a number on the line after a lone `#`,
+    which pandoc prints as an empty heading above an ordinary paragraph."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and repr(number) in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # Pandoc reads a table between lines of dashes, and prints the heading under it. The
+        # walk does not model such a table, so it read the rows as a paragraph and the
+        # heading as part of it.
+        "# Methods\n\nAlpha was set in advance.\n\n-----------  -----------\n"
+        "Age          Years\n-----------  -----------\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+        # Pandoc prints a level-7 heading; the walk stopped at six hashes.
+        "# Methods\n\nAlpha was set in advance.\n\n####### Note\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+    ],
+    ids=["dash table", "seven hashes"],
+)
+def test_a_heading_line_the_walk_does_not_place_still_ends_methods(
+    project: Path, tail: str
+) -> None:
+    """Whatever the walk misses, it reads as paragraph text, and a paragraph swallowed the
+    real `# Results` below it: the Methods section ran on, and the p-value passed as the
+    alpha. A line shaped like a heading now ends the section it is in whether or not the walk
+    places it; only a heading the walk does place can open Methods."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
+RESULTS_READ_AS_METHODS = {
+    # Pandoc prints a level-2 heading reading "# Results". Its literal title matched no
+    # Results pattern, so it nested under Methods and kept the Methods rules. `main` read the
+    # line as an ATX "Results", and reported the number.
+    "a hashed title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hashed title over a rule under prose": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a bulleted title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n- Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A wrapped "# of reports" ended the Results for the gates, and the subsection under it
+    # read as Methods. Pandoc prints the line as text, inside the Results.
+    "a wrapped hash over a methods-like subsection": (
+        "# Results\n\nReporting rose over the period, and the\n# of reports naming the drug "
+        "doubled.\n\n## Sensitivity analyses\n\nThe estimate was unchanged (p < 0.001).\n"
+    ),
+    # A `<del>` closed mid-line was counted open for the rest of the file, so a later line
+    # ending in `</del>` ended its paragraph and the `# Methods` under it became a heading.
+    "a deletion closed mid-line": (
+        "# Results\n\n<del>The excess was not\nsignificant.</del> It was.\n\n"
+        "The reporting odds ratio was <del>not</del>\n# Methods\n(p < 0.001).\n"
+    ),
+    # Indented, a comment is inline: it starts a paragraph, which the `#` line continues.
+    "an indented comment": (
+        "# Results\n\n <!-- TODO: check -->\n# Methods\n\nThe excess was significant "
+        "(p < 0.001).\n"
+    ),
+    # A no-break space after the hash: pandoc prints the line as text. `main`'s `\s` ended
+    # the Methods there; the fallback did not.
+    "a hash and a no-break space": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n#" + chr(0xA0) + "Results\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the fifth review. An underline or a rule written after a comment is text:
+    # blanked, the comment left a line the walk read as `===`, or as a rule.
+    "an underline after a comment": (
+        "# Results\n\nMethods\n<!-- -->===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a rule with a comment after it": (
+        "# Results\n\nThe excess was clear.\n\n--- <!-- revised -->\n<!-- TODO --># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Pandoc reads the rest of a tag's line over an underline as a setext title, "# Methods",
+    # not as a `#` heading.
+    "a tag and a hash over an underline": (
+        "# Results\n\n<div># Methods\n-\n\nThe excess was significant (p < 0.001).\n\n</div>\n"
+    ),
+    # A `#` heading after a tag or a comment on its line, which `main` never read, opened
+    # Methods wherever the walk wrongly started a block.
+    "a hash after a tag under a stray closing tag": (
+        "# Results\n\nSome text\n</script>\n<ins># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash after a comment under a raw tag and an indented line": (
+        "# Results\n\n<del>\n    Old sentence.\n<!-- moved --># Methods\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A pipe that is escaped, or in code, is text: the table ended above it, and the
+    # heading under it was skipped by the net as a table row.
+    "an escaped pipe under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results \\| x\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a pipe in code under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results `a|b`\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A lone `##` is an empty heading, and "Results" under it a paragraph. The page shows
+    # "Results" over the number; `main` read it as the heading's title.
+    "a lone hash over a results line": (
+        "# Methods\n\nAlpha was set in advance.\n\n##\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the sixth review. The walk ends a tag at its first `>`, and pandoc does not:
+    # with a quote left open there is no tag, and the heading reads `<div class="a>Methods`.
+    # Only a line starting with the tag was marked as text, not one after a comment.
+    "a tag after a comment over an underline": (
+        '# Results\n\n<!-- c --><div class="a>Methods\n===\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment inside a code span": (
+        "# Results\n\nUse the `x\n<!-- c --><div>Methods\n===\n`\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment under a table": (
+        '# Results\n\n| a | b |\n|---|---|\n| 1 | 2 |\n<!-- c --><div>Methods {k="$ | $"}\n'
+        "===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A Results title with raw HTML or TeX in it, which the page does not show, did not read
+    # as Results; a seven-hash Methods under it, which `main` never read, opened Methods.
+    "a seven-hash methods under a struck-through results": (
+        "# <del>Results</del>\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods with attributes under a results anchor": (
+        '# Results <a id="r"></a>\n\n####### Methods {-}\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods under a results label": (
+        "# Results \\label{sec:results}\n\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A Results heading after a comment is marked as text, so it was never on the printed
+    # chain; a `#` line pandoc prints as text then took it off the other one.
+    "a results after a comment ended by a line printed as text": (
+        "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n# Results\n-\n\n"
+        "Statistical analysis\n-\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # Found by the seventh review. An unclosed comment in an attribute block took the `}`
+    # with it when raw markup was stripped first, and the title no longer read as Results.
+    "a comment in a results attribute block": (
+        "# Methods\n\n-----  -----\na      b\n-----  -----\n"
+        '# Results {title="<!--"}\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Seven hashes, which `main` never read, opened Methods wherever the walk wrongly placed
+    # one, or under a Results title the gates do not read.
+    "seven hashes under a stray closing tag": (
+        "# Outcomes\n\nText\n</script>\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "seven hashes under a results span": (
+        "# [Results]{.underline}\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A `#` line over a rule is a setext heading, "# Outcomes", at level 2, and it nested under
+    # a Methods the walk placed in error. `main` read it at level 1, which closes them.
+    "a hash line over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a dash table": (
+        "# Results\n\n-----  -----\nText\n---\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(RESULTS_READ_AS_METHODS))
+def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
+    """Found by the fourth review of #38. Each let a Results p-value pass as the alpha."""
+    path = main_md(project)
+    tail = RESULTS_READ_AS_METHODS[name]
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -1844,6 +2054,42 @@ def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Pa
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:
+    """`# References` directly under a line of prose is printed as part of that paragraph,
+    not as a heading. It cut everything after it, so the number below was never compared."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The sources are listed below\n# References\n\nThe pooled ROR was 9.99.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(
+    tmp_path: Path,
+) -> None:
+    """The other side of the test above. `# Appendix` directly under a reference entry is
+    printed as part of it, and pandoc gives the appendix no heading. Ending the cut only at
+    headings pandoc prints would hide the appendix as more references. An early end costs a
+    false alarm; a late one hides numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    for appendix in ("# Appendix\n", "Appendix\n--------\n"):
+        paper = tmp_path / "paper.md"
+        paper.write_text(
+            "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n"
+            f"{appendix}\nThe estimate was 9.99.\n",
+            encoding="utf-8",
+        )
+        assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
 def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:

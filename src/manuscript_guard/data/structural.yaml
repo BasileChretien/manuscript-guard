@@ -50,7 +50,14 @@ structural:
 
   - id: numbered-heading
     why: Markdown heading numbering.
-    pattern: '^#{1,6}\s+\d+(?:\.\d+)*[.)]?\s'
+    # Only on a line pandoc prints as a heading. "## 3.84 times higher" directly under a line
+    # of prose is printed as part of that paragraph, and the pattern alone filed its number
+    # as heading numbering. `[ \t]` rather than `\s`, which crossed the line break: a lone
+    # `#` is an empty heading, and the number starting the next line is not part of it.
+    # A space, a tab or a line break must follow the number, not the end of the text: a
+    # table cell or a keyword is classified as a text of its own.
+    heading_only: true
+    pattern: '^#{1,6}[ \t]+\d+(?:\.\d+)*[.)]?(?:[ \t]|(?=\r?\n))'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

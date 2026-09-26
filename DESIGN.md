@@ -2842,8 +2842,10 @@ Closed since, and why each mattered:
   trailing space on the opening `---`, a byte-order mark or a blank line before it, or a
   header pandoc prints rather than keeps, a list or a sentence. `init` writes none of
   these. Returned untouched, one from before 0.2.49 also exits 1 over each paragraph that is
-  only a value, named as not in it, which it never carried. Either way, the refusal's own
-  advice is the way through: rebuild and resend.
+  only a value, named as not in it, which it never carried. The value it printed there comes
+  back as a paragraph without an identifier, listed as new text ("+ 3.84"), and an edit to
+  the paragraph beside it is refused as a possible split, as on releases before this one.
+  Either way, the refusal's own advice is the way through: rebuild and resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
   left, to be carried over by hand, even when it would have merged cleanly. Paragraphs below

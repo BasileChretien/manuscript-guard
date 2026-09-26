@@ -1867,3 +1867,125 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+def _unmarked(node):
+    """Pandoc's reading with every annotation mark, a styled span around a link to an
+    `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""
+    if isinstance(node, list):
+        out: list = []
+        for item in node:
+            if (
+                isinstance(item, dict)
+                and item.get("t") == "Span"
+                and any(key == "custom-style" for key, _ in item["c"][0][2])
+                and len(item["c"][1]) == 1
+                and item["c"][1][0].get("t") == "Link"
+                and item["c"][1][0]["c"][2][0].startswith("#mg-n")
+            ):
+                out.extend(_unmarked(item["c"][1][0]["c"][1]))
+            else:
+                out.append(_unmarked(item))
+        joined: list = []
+        for item in out:
+            if joined and isinstance(item, dict) and item.get("t") == "Str":
+                last = joined[-1]
+                if isinstance(last, dict) and last.get("t") == "Str":
+                    joined[-1] = {"t": "Str", "c": last["c"] + item["c"]}
+                    continue
+            joined.append(item)
+        return joined
+    if isinstance(node, dict):
+        return {key: _unmarked(value) for key, value in node.items()}
+    return node
+
+
+def _marked_texts(node) -> list[str]:
+    """The text of every annotation mark in pandoc's reading."""
+    found: list[str] = []
+    if isinstance(node, list):
+        for item in node:
+            found += _marked_texts(item)
+    elif isinstance(node, dict):
+        if node.get("t") == "Link" and node["c"][2][0].startswith("#mg-n"):
+            found.append(json.dumps(node["c"][1]))
+        found += _marked_texts(node.get("c"))
+    return found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_annotated_copy_keeps_inline_markup_around_numbers(project: Path) -> None:
+    """The annotator wrapped `HbA~1c` in a mark and left the closing `~` outside, so pandoc
+    read no subscript, and wrote a link inside a code span, where it printed literally. The
+    annotated copy must read as the manuscript does, marks aside, with each number marked
+    where a mark can go, and a number in code listed in the appendix instead."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    added = (
+        "\n# Change in HbA~1c~ from baseline\n\n"
+        "The CO~2~ level was read over a 3 m^2^ area, with the `x2` variable.\n"
+    )
+    source.write_text(text + added, encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--annotated", "--skip-checks"]) == 0
+    annotated = (project / "build" / "manuscript.annotated.md").read_text(encoding="utf-8")
+
+    def read(markdown: str):
+        out = subprocess.run(
+            [shutil.which("pandoc"), "-f", "markdown", "-t", "json"],
+            input=markdown.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+        return json.loads(out.stdout)["blocks"]
+
+    blocks = read(annotated)
+    heading = next(
+        b for b in blocks if b["t"] == "Header" and "Change" in json.dumps(b["c"][2])
+    )
+    paragraph = next(b for b in blocks if b["t"] == "Para" and '"CO"' in json.dumps(b["c"]))
+    # The markup survives, marks aside: each reads as the same text without marks does.
+    assert _unmarked(heading) == _unmarked(read(added)[0])
+    assert _unmarked(paragraph) == _unmarked(read(added)[1])
+    # The numbers are marked where they can be, and the one in code is not.
+    marked = _marked_texts(heading) + _marked_texts(paragraph)
+    assert any('"1c"' in m for m in marked), marked
+    assert any('"3"' in m for m in marked), marked
+    assert sum('"2"' in m for m in marked) == 2, marked
+    assert {"t": "Code", "c": [["", [], []], "x2"]} in paragraph["c"]
+    appendix = annotated[annotated.index("# Appendix") :]
+    assert "x2" in appendix and "code" in appendix
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
+    """The number finder reads `width="300` in an HTML tag as a number, and nothing in the
+    annotator's own rule knows tags, so the mark went inside the tag. Pandoc reads the file
+    with its marks and without, and each mark in a paragraph that reads differently is
+    taken out and listed in the appendix with the reason. The next paragraph keeps its own."""
+    import shutil
+
+    from manuscript_guard.annotate import READ_OTHERWISE, annotate, appendix
+    from manuscript_guard.classify import Classifier
+
+    text = (
+        '# Extra\n\nA figure <img src="f.png" width="300"> of 12 patients.\n\n'
+        "Another 42 plain.\n"
+    )
+    annotated, marks = annotate(
+        text, {}, Classifier.load([], []), counter=[0], pandoc=shutil.which("pandoc")
+    )
+    assert '<img src="f.png" width="300">' in annotated
+    shown = {mark.shown: mark for mark in marks}
+    assert shown["12"].unmarked == READ_OTHERWISE
+    assert not shown["42"].unmarked
+    assert "[[42](#" in annotated
+    assert f"Not marked in the text: {READ_OTHERWISE}" in appendix(marks)

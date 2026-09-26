@@ -31,15 +31,24 @@ this repository has spent several rounds of review correcting elsewhere.
 
 from __future__ import annotations
 
+import bisect
+import difflib
+import json
 import re
 import subprocess
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.values import RESULTS, Value
-from manuscript_guard.text.masking import mask
+from manuscript_guard.text.inline import (
+    code_spans,
+    equation_spans,
+    link_text_spans,
+    markable_core,
+)
+from manuscript_guard.text.masking import front_matter_end, mask
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -72,17 +81,40 @@ _ANCHOR = "mg-n{n}"
 
 @dataclass(frozen=True)
 class Mark:
-    """One annotated number: what it is, and what to say when a reader hovers it."""
+    """One annotated number: what it is, and what to say when a reader hovers it.
+    `unmarked` says why it carries no mark in the text, when it carries none."""
 
     anchor: str
     tier: str
     shown: str
     label: str
     detail: str
+    unmarked: str = ""
 
     @property
     def tooltip(self) -> str:
         return f"{self.label} — {self.detail}" if self.detail else self.label
+
+
+# Why a number is listed in the appendix and not marked in the text.
+IN_CODE = "in code, where a mark would print as text"
+IN_EQUATION = "in an equation, which a mark would break"
+IN_MARKUP = "inside markup a mark would break"
+IN_LINK = "in a link's text, where a mark, itself a link, cannot go"
+IN_FRONT_MATTER = "in the front matter"
+READ_OTHERWISE = "with a mark there, pandoc read the paragraph differently"
+
+
+@dataclass(frozen=True)
+class _Piece:
+    """What goes in place of `text[start:end]`: a number, marked or as the manuscript
+    prints it, or a rendered table, each of whose numbers is one or the other."""
+
+    start: int
+    end: int
+    plain: str
+    mark: Mark | None = None
+    table: tuple[tuple[str, Mark | None], ...] = ()
 
 
 def _escape(text: str) -> str:
@@ -145,6 +177,7 @@ def annotate(
     counter: list[int],
     results=None,
     project=None,
+    pandoc: str | None = None,
 ) -> tuple[str, list[Mark]]:
     """Substitute every binding and wrap every number in a highlight and a link.
 
@@ -156,13 +189,65 @@ def annotate(
     substituted only *value* bindings, so `{{table.baseline}}` was printed literally and the
     annotated copy contained no tables and no figures at all — an audit document missing the
     artefacts most likely to carry a stale number.
-    """
-    placeholders, _malformed = parse(text)
-    headings = heading_index(text)
-    scan = classifier.scan(text)
 
-    spans: list[tuple[int, int, Mark]] = []
-    marks_from_tables: list[Mark] = []
+    A mark never goes where it would change how the text reads. The number finder reads
+    raw text, and a mark around what it found split `HbA~1c~` before its closing `~`, so
+    the subscript was lost, and went inside a code span, where it printed as text. A number
+    in code or an equation is left unmarked, and one inside other markup is marked on its
+    digits or around the whole of the markup (`markable_core`). Given `pandoc`, the file is then
+    read with and without its marks, and every mark in a paragraph that reads differently
+    is taken out (`_checked`). A number left unmarked is listed in the appendix all the
+    same, with the reason.
+    """
+    masked = mask(text)
+    placeholders, _malformed = parse(text)
+    unmarkable = _Unmarkable(masked, front_matter_end(text))
+    pieces = [
+        *_value_pieces(placeholders, namespace, counter, unmarkable),
+        *_block_pieces(placeholders, results, project, counter),
+        *_number_pieces(text, masked, classifier, counter, unmarkable),
+    ]
+    pieces.sort(key=lambda piece: piece.start)
+    kept: list[_Piece] = []
+    for piece in pieces:
+        if kept and piece.start < kept[-1].end:  # overlapping; keep the first, the binding
+            continue
+        kept.append(piece)
+    marks = [piece.mark for piece in kept if piece.mark is not None]
+    marks += [mark for piece in kept for _part, mark in piece.table if mark is not None]
+    if pandoc is not None:
+        marks = _checked(text, kept, marks, pandoc)
+    showing = {mark.anchor for mark in marks if not mark.unmarked}
+    return _render(text, kept, showing), marks
+
+
+class _Unmarkable:
+    """Where no mark can go: code, equations, a link's text and the front matter, found
+    once a file."""
+
+    def __init__(self, masked: str, head: int) -> None:
+        self._head = head
+        self._spans = {
+            IN_CODE: code_spans(masked),
+            IN_EQUATION: equation_spans(masked),
+            IN_LINK: link_text_spans(masked),
+        }
+
+    def reason(self, start: int, end: int) -> str:
+        if start < self._head:
+            return IN_FRONT_MATTER
+        for reason, spans in self._spans.items():
+            at = bisect.bisect_right(spans, (start, float("inf"))) - 1
+            if at >= 0 and spans[at][1] > start:
+                return reason
+            if at + 1 < len(spans) and spans[at + 1][0] < end:
+                return reason
+        return ""
+
+
+def _value_pieces(placeholders, namespace, counter, unmarkable) -> list[_Piece]:
+    """Each value binding, to be marked, or put in as its value where no mark can go."""
+    pieces = []
     for placeholder in placeholders:
         if not placeholder.is_value:
             continue
@@ -170,14 +255,22 @@ def annotate(
         if value is None:
             continue
         counter[0] += 1
-        spans.append(
-            (
+        mark = _value_mark(_ANCHOR.format(n=counter[0]), placeholder.ref, value)
+        reason = unmarkable.reason(placeholder.start, placeholder.end)
+        pieces.append(
+            _Piece(
                 placeholder.start,
                 placeholder.end,
-                _value_mark(_ANCHOR.format(n=counter[0]), placeholder.ref, value),
+                value.display,
+                replace(mark, unmarked=reason),
             )
         )
+    return pieces
 
+
+def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
+    """Each table, its numbers marked, and each figure."""
+    pieces = []
     for placeholder in placeholders:
         if placeholder.is_value or results is None:
             continue
@@ -186,11 +279,9 @@ def annotate(
             if table is None:
                 continue
             counter[0] += 1
-            rendered, table_marks = _annotated_table(table, placeholder.key, counter)
-            spans.append(
-                (placeholder.start, placeholder.end, Mark("", "", rendered, "", ""))
-            )
-            marks_from_tables.extend(table_marks)
+            parts = _annotated_table(table, placeholder.key, counter)
+            plain = "".join(part for part, _mark in parts)
+            pieces.append(_Piece(placeholder.start, placeholder.end, plain, table=parts))
         elif placeholder.namespace == "figure" and project is not None:
             from manuscript_guard.build.assemble import find_figure
             from manuscript_guard.build.document import relative_to_root
@@ -200,18 +291,23 @@ def annotate(
                 continue
             raster = (figure.with_suffix(ext) for ext in (".png", ".jpg"))
             shown = next((path for path in raster if path.exists()), figure)
-            spans.append(
-                (
-                    placeholder.start,
-                    placeholder.end,
-                    Mark("", "", f"![]({relative_to_root(project, shown)})", "", ""),
-                )
-            )
+            image = f"![]({relative_to_root(project, shown)})"
+            pieces.append(_Piece(placeholder.start, placeholder.end, image))
+    return pieces
 
-    for atom in find_atoms(text, mask(text)):
+
+def _number_pieces(text, masked, classifier, counter, unmarkable) -> list[_Piece]:
+    """Each number the gates read, classified, marked on the part a mark can go around."""
+    headings = heading_index(text)
+    scan = classifier.scan(text)
+    pieces = []
+    for atom in find_atoms(text, masked):
         verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
         counter[0] += 1
         anchor = _ANCHOR.format(n=counter[0])
+        core = markable_core(text, atom.start, atom.end)
+        start, end = core or (atom.start, atom.end)
+        shown = text[start:end]
         if verdict.kind == UNCLASSIFIED:
             # The hover on a red number carries the way out, not just the verdict. "Not
             # bound to any source" tells an author what they already know from the colour;
@@ -219,38 +315,38 @@ def annotate(
             # the gate prints.
             from manuscript_guard.gates.numbers import _hint_for
 
-            mark = Mark(anchor, DEFECT, atom.text, "not bound to any source", _hint_for(atom))
+            mark = Mark(anchor, DEFECT, shown, "not bound to any source", _hint_for(atom))
         else:
             mark = Mark(
-                anchor,
-                EXEMPT,
-                atom.text,
-                f"{verdict.kind}: {verdict.rule}",
-                verdict.detail or "",
+                anchor, EXEMPT, shown, f"{verdict.kind}: {verdict.rule}", verdict.detail or ""
             )
-        spans.append((atom.start, atom.end, mark))
+        reason = unmarkable.reason(start, end) or ("" if core else IN_MARKUP)
+        pieces.append(_Piece(start, end, shown, replace(mark, unmarked=reason)))
+    return pieces
 
-    spans.sort(key=lambda item: item[0])
+
+def _render(text: str, pieces: list[_Piece], showing: set[str]) -> str:
+    """`text` with each piece put in, the marks whose anchors are in `showing` as marks."""
     out: list[str] = []
-    marks: list[Mark] = []
     cursor = 0
-    for start, end, mark in spans:
-        if start < cursor:  # overlapping; keep the first, which is the binding
-            continue
-        out.append(text[cursor:start])
-        if mark.anchor:
-            out.append(_wrap(mark))
-            marks.append(mark)
+    for piece in pieces:
+        out.append(text[cursor : piece.start])
+        if piece.table:
+            out.extend(
+                _wrap(mark) if mark is not None and mark.anchor in showing else part
+                for part, mark in piece.table
+            )
+        elif piece.mark is not None and piece.mark.anchor in showing:
+            out.append(_wrap(piece.mark))
         else:
-            # A rendered table or figure: already annotated, or nothing to annotate.
-            out.append(mark.shown)
-        cursor = end
+            out.append(piece.plain)
+        cursor = piece.end
     out.append(text[cursor:])
-    return "".join(out), marks + marks_from_tables
+    return "".join(out)
 
 
-def _annotated_table(table, key: str, counter: list[int]) -> tuple[str, list[Mark]]:
-    """Render an emitted table with every number in it marked.
+def _annotated_table(table, key: str, counter: list[int]) -> list[tuple[str, Mark | None]]:
+    """Render an emitted table in parts, each number in it a part with its mark.
 
     A table's numbers are traced by construction: the analysis emitted the table, and G2
     re-checks every cell in the fragment against what the analysis published. What the
@@ -261,31 +357,148 @@ def _annotated_table(table, key: str, counter: list[int]) -> tuple[str, list[Mar
 
     rendered = render_table(table)
     source = table.source.name if table.source else "an analysis"
-    marks: list[Mark] = []
-    out: list[str] = []
-    for line in rendered.split("\n"):
+    parts: list[tuple[str, Mark | None]] = []
+    for number, line in enumerate(rendered.split("\n")):
+        if number:
+            parts.append(("\n", None))
         # The alignment row is punctuation, and the caption is prose.
         if set(line.strip()) <= set("|-: ") or line.lstrip().startswith(":"):
-            out.append(line)
+            parts.append((line, None))
             continue
         cursor = 0
-        pieces: list[str] = []
         for atom in find_atoms(line, mask(line)):
             counter[0] += 1
+            core = markable_core(line, atom.start, atom.end)
+            start, end = core or (atom.start, atom.end)
             mark = Mark(
                 anchor=_ANCHOR.format(n=counter[0]),
                 tier=TRACED,
-                shown=atom.text,
+                shown=line[start:end],
                 label=f"table.{key}",
                 detail=f"emitted by {source}",
+                unmarked="" if core else IN_MARKUP,
             )
-            pieces.append(line[cursor : atom.start])
-            pieces.append(_wrap(mark))
-            marks.append(mark)
-            cursor = atom.end
-        pieces.append(line[cursor:])
-        out.append("".join(pieces))
-    return "\n".join(out), marks
+            parts += [(line[cursor:start], None), (line[start:end], mark)]
+            cursor = end
+        parts.append((line[cursor:], None))
+    return parts
+
+
+_ANCHORS = re.compile(r"mg-n\d+")
+_STYLES = frozenset(style for style, _colour, _meaning in TIERS.values())
+
+
+def _checked(text: str, pieces: list[_Piece], marks: list[Mark], pandoc: str) -> list[Mark]:
+    """`marks`, with every one in a paragraph pandoc reads differently for its marks taken
+    out, and noted.
+
+    The file is read with its marks and without, and each block compared once the marks
+    are unwrapped. A mark `_core` placed wrongly, in a link's text or beside a quote pandoc
+    would have made curly, changes its block, and every mark there is taken out: which one
+    did it is not worked out, and a number left unmarked is listed in the appendix all the
+    same. What still reads differently then loses every mark in the file, so the copy never
+    reads otherwise than the manuscript does."""
+    showing = {mark.anchor for mark in marks if not mark.unmarked}
+    try:
+        plain = _blocks(_render(text, pieces, set()), pandoc)
+        if plain is None:
+            return marks  # pandoc cannot read the manuscript; the build says so
+        expected = [_key(block) for block in plain]
+        for _attempt in range(2):
+            read = _blocks(_render(text, pieces, showing), pandoc)
+            if read is None:
+                break
+            changed = _changed_blocks(read, expected)
+            if not changed:
+                return _unmark(marks, showing)
+            blamed = {anchor for block in changed for anchor in _anchors(block)} & showing
+            if not blamed:
+                break
+            showing -= blamed
+    except RecursionError:
+        pass  # nested too deep to compare, so not compared: nothing is marked
+    return _unmark(marks, set())
+
+
+def _unmark(marks: list[Mark], showing: set[str]) -> list[Mark]:
+    return [
+        replace(mark, unmarked=READ_OTHERWISE)
+        if not mark.unmarked and mark.anchor not in showing
+        else mark
+        for mark in marks
+    ]
+
+
+def _blocks(markdown: str, pandoc: str) -> list | None:
+    finished = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+    )
+    return json.loads(finished.stdout)["blocks"] if finished.returncode == 0 else None
+
+
+def _anchors(block) -> set[str]:
+    return set(_ANCHORS.findall(json.dumps(block)))
+
+
+def _changed_blocks(read: list, expected: list[str]) -> list:
+    """The blocks of `read` that, marks unwrapped, are not the blocks expected."""
+    keys = [_key(block) for block in read]
+    matcher = difflib.SequenceMatcher(None, keys, expected, autojunk=False)
+    return [
+        read[index]
+        for tag, low, high, _other_low, _other_high in matcher.get_opcodes()
+        if tag != "equal"
+        for index in range(low, high)
+    ]
+
+
+def _key(block) -> str:
+    return json.dumps(_unwrapped(block), sort_keys=True)
+
+
+def _unwrapped(node):
+    """Pandoc's reading with each mark replaced by what it holds, neighbouring words
+    joined, and a table's column widths left out: a longer row, marks in it, made pandoc
+    give a pipe table widths, which print nothing different."""
+    if isinstance(node, list):
+        out: list = []
+        for item in node:
+            inner = _marked_content(item)
+            out.extend(_unwrapped(inner) if inner is not None else [_unwrapped(item)])
+        joined: list = []
+        for item in out:
+            if _is_word(item) and joined and _is_word(joined[-1]):
+                joined[-1] = {"t": "Str", "c": joined[-1]["c"] + item["c"]}
+            else:
+                joined.append(item)
+        return joined
+    if not isinstance(node, dict):
+        return node
+    if node.get("t") == "Table":
+        attributes, caption, columns, *rest = node["c"]
+        widthless = [[align, {"t": "ColWidthDefault"}] for align, _width in columns]
+        return {"t": "Table", "c": _unwrapped([attributes, caption, widthless, *rest])}
+    return {key: _unwrapped(value) for key, value in node.items()}
+
+
+def _marked_content(item) -> list | None:
+    """What a mark holds, when `item` is one: a styled span around a single link to an
+    appendix anchor."""
+    if not isinstance(item, dict) or item.get("t") != "Span":
+        return None
+    (_id, _classes, pairs), content = item["c"]
+    if dict(pairs).get("custom-style") not in _STYLES or len(content) != 1:
+        return None
+    link = content[0]
+    if link.get("t") != "Link" or not _ANCHORS.fullmatch(link["c"][2][0].lstrip("#")):
+        return None
+    return link["c"][1]
+
+
+def _is_word(item) -> bool:
+    return isinstance(item, dict) and item.get("t") == "Str"
 
 
 def _wrap(mark: Mark) -> str:
@@ -326,9 +539,11 @@ def appendix(marks: list[Mark]) -> str:
         return ""
     rows = []
     for mark in marks:
+        source = mark.detail or "—"
+        if mark.unmarked:
+            source = f"{source}. Not marked in the text: {mark.unmarked}"
         rows.append(
-            f"| []{{#{mark.anchor}}}{mark.shown} | {mark.tier} | {mark.label} | "
-            f"{mark.detail or '—'} |"
+            f"| []{{#{mark.anchor}}}{mark.shown} | {mark.tier} | {mark.label} | {source} |"
         )
     return (
         "\n\n# Appendix: provenance of every number\n\n"

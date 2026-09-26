@@ -952,7 +952,13 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     for item in assembled:
         source = item.path.read_text(encoding="utf-8") if item.path.exists() else item.text
         text, found = annotate(
-            source, namespace, classifier, counter=counter, results=results, project=project
+            source,
+            namespace,
+            classifier,
+            counter=counter,
+            results=results,
+            project=project,
+            pandoc=pandoc(),
         )
         marked.append(Assembled(path=item.path, text=text))
         marks.extend(found)
@@ -976,6 +982,12 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     print(f"wrote {result.output}")
     print("  " + "  ".join(f"{tier}: {count}" for tier, count in sorted(tiers.items())))
     print(f"  {added} number(s) carry a hover showing where they came from")
+    unmarked = sum(1 for mark in marks if mark.unmarked)
+    if unmarked:
+        print(
+            f"  {unmarked} number(s) in code, an equation or markup a mark would break are "
+            "not marked in the text; the appendix lists them with the reason"
+        )
     if tiers.get("defect"):
         print("  red marks a number bound to nothing. Yellow is not a verification.")
     return 0

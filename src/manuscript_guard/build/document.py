@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shutil
 import subprocess
 import urllib.error
@@ -73,6 +74,40 @@ def pandoc() -> str:
     if not found:
         raise BuildError("pandoc is not on PATH; see https://pandoc.org/installing.html")
     return found
+
+
+def abbreviations() -> frozenset[str]:
+    """The words pandoc's smart typesetting puts a no-break space after, as a build reads them.
+
+    `import` writes that space back into the source as the plain one pandoc makes it of
+    again, so it needs the list pandoc really uses: the one in pandoc's user data directory
+    when there is one, which pandoc reads instead of its own, and pandoc's default otherwise.
+    Taken from the default alone, a no-break space typed after a word the user's pandoc does
+    not treat as an abbreviation would come back plain. The build passes no `--data-dir`; if
+    it ever does, this must read that directory too.
+    """
+    found = re.search(r"^User data directory:\s*(.+?)\s*$", _pandoc_says("--version"), re.M)
+    own = Path(found.group(1)) / "abbreviations" if found else None
+    if own is not None and own.is_file():
+        # Bytes, not text: read as text, a lone carriage return already ended a line.
+        text = own.read_bytes().decode("utf-8")
+    else:
+        text = _pandoc_says("--print-default-data-file", "abbreviations")
+    # As pandoc reads it: the byte-order mark and carriage returns dropped, and each line an
+    # abbreviation exactly as written. Stripped, `e.g. ` with a stray space was on the list
+    # here and not to pandoc, and a no-break space typed after "e.g." was written back plain.
+    lines = text.removeprefix("\ufeff").replace("\r", "").split("\n")
+    return frozenset(line for line in lines if line)
+
+
+def _pandoc_says(*args: str) -> str:
+    """What pandoc prints for `args`."""
+    finished = subprocess.run(
+        [pandoc(), *args], capture_output=True, text=True, encoding="utf-8"
+    )
+    if finished.returncode != 0:
+        raise BuildError(f"pandoc {' '.join(args)} failed:\n{finished.stderr.strip()}")
+    return finished.stdout
 
 
 def relative_to_root(project, path: Path) -> str:

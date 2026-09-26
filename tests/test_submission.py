@@ -299,6 +299,19 @@ def test_a_section_whose_content_is_in_subsections_is_not_empty(project: Path) -
     assert "plan-complete" in codes(report)
 
 
+def test_a_subsection_titled_only_by_its_attribute_block_still_counts(project: Path) -> None:
+    """Once a title lost its attribute block, `### {#inclusion}` had the empty title the
+    plan's preamble has, and was dropped with it: the Population written under it was "a
+    heading with nothing under it"."""
+    _replace_section(
+        project,
+        "Population and data source",
+        "## Population and data source\n\n### {#inclusion}\n\nAdults aged 18 or over.\n\n",
+    )
+    report = check_design(load_project(project)[0])
+    assert "plan-section-empty" not in codes(report), [f.message for f in report.findings]
+
+
 def test_a_section_with_only_empty_subsections_is_still_empty(project: Path) -> None:
     _replace_section(
         project,

@@ -653,7 +653,9 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
     # Text out of place among texts that all came back, only reordered, is one reorder: named
     # both here and below it was said twice, each list naming its own share of the items, and
     # a swapped list item was called a heading. Named first there and never cut: added after
-    # the rest, a heading dragged past a table went unnamed beside a long reversed list.
+    # the rest, a heading dragged past a table went unnamed beside a long reversed list. The
+    # rest keeps twelve lines of its own: sharing them, twelve texts out of place cut a
+    # heading the ordering kept.
     together = bool(plan.reordered)
     strayed = [(kind, text) for kind, text in plan.strayed if not (together and kind == "text")]
     folded = [text for kind, text in plan.strayed if (kind, text) not in strayed]
@@ -662,7 +664,7 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         if text in rest:
             rest.remove(text)
     reordered = folded + rest
-    shown = max(12, len(folded))
+    shown = len(folded) + 12
     if strayed:
         print(
             f"{len(strayed)} heading(s) or other text, table(s), figure(s) or equation(s) came "

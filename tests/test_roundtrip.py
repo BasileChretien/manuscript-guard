@@ -4528,7 +4528,67 @@ def test_a_heading_out_of_place_beside_a_long_reorder_is_still_named(
     _report_plan(None, {}, plan, applying=False)
     out = capsys.readouterr().out
     assert "~ Limitations" in out, out
-    assert "and 2 more" in out, "a list cut short says so"
+    assert "and 1 more" in out, "a list cut short says so"
+
+
+def test_a_text_kept_in_order_is_not_cut_by_the_folded_ones(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Twelve lines were shared between the texts out of place and the rest, so with twelve
+    or more out of place a heading the ordering kept was cut, where it had been named."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Term {chr(ord('M') - n)} is listed." for n in range(13))
+    plan = Plan(
+        reached=frozenset(),
+        order=(),
+        strayed=tuple(("text", t) for t in items),
+        reordered=("Methods", *items[:-1]),
+    )
+    _report_plan(None, {}, plan, applying=False)
+    assert "~ Methods" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_heading_dragged_above_a_reversed_list_is_still_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: a list of thirteen reversed in Word, and the heading after it dragged
+    above it. The ordering keeps the heading and puts all thirteen items out of place, and
+    the heading was named nowhere."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    items = [f"Term {chr(ord('A') + n)} is listed." for n in range(13)]
+    block = "".join(f"- {t}\n" for t in items) + "\n"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("# Methods", block + "# Methods", 1),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def text(p: str) -> str:
+        return "".join(re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", p))
+
+    def edit(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        found = [next(p for p in paragraphs if text(p) == t) for t in items]
+        for n, p in enumerate(found):
+            xml = xml.replace(p, f"\0{n}\0", 1)
+        for n, p in enumerate(reversed(found)):
+            xml = xml.replace(f"\0{n}\0", p, 1)
+        heading = next(p for p in paragraphs if "Heading" in p and text(p) == "Methods")
+        xml = xml.replace(heading, "", 1)
+        return xml.replace(found[-1], heading + found[-1], 1)
+
+    returned = rewrite(document, tmp_path / "methods.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert re.search(r"^    (~ Methods|'Methods')$", out, re.M), out
+    assert source.read_text(encoding="utf-8") == before
 
 
 @needs_pandoc

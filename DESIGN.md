@@ -3018,9 +3018,10 @@ Closed since, and why each mattered:
   after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
   speed shows only at a size where it outweighs the per-item work, and one in Python fails
   quickly from a small size but takes minutes from a large one, so the size a test starts
-  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
-  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
-  proof that nothing else does.
+  from is its sensitivity as well as its cost. Three scans are checked twice, from a small
+  start and a large one: paragraph tagging (10 blocks and 1,000), the comment scanner (1,000
+  characters and 20,000) and fences whose openers each narrow (5 openers and 25). They are
+  tripwires for the scans that went quadratic before, not a proof that nothing else does.
 - **A test that times something is found by its syntax, and only in `tests/`.**
   `tests/test_timing_budgets.py` fails when a test reads a clock in `time`, or uses
   `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a

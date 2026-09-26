@@ -1,11 +1,11 @@
 """A test that reads a clock has to say why.
 
 `check_linear` (the `assert_linear` fixture in conftest.py) exists because tests timed each
-size once, for a few milliseconds, and a busy runner decided the verdict. While it was in
-review, two more tests of that shape merged, and each was converted by hand. This file stops
-the next one: a test that reads a clock outside the helper fails here unless
-`tests/data/timing_budgets.yaml` lists it, as a budget that says why it is not a ratio and
-how much headroom it has, or as a timestamp that times nothing.
+size once, for a few milliseconds, and a busy runner decided the verdict. Tests of that shape
+kept arriving from branches opened before it: #39 merged two after it, and neither the review
+nor the suite noticed. This file stops the next one: a test that reads a clock outside the
+helper fails here unless `tests/data/timing_budgets.yaml` lists it, as a budget that says
+why it is not a ratio and how much headroom it has, or as a timestamp that times nothing.
 
 Like `test_exemptions`, it runs both ways. A clock read nobody listed fails, and so does a
 listed entry that no longer reads one, so the list cannot rot into a record of tests that
@@ -94,10 +94,16 @@ def stale(found: dict[str, list[int]], listed: list[dict]) -> list[str]:
 # ----------------------------------------------------------------------- the guard itself
 
 
-def test_every_clock_read_in_the_tests_is_listed() -> None:
+@pytest.fixture(scope="module")
+def found() -> dict[str, list[int]]:
+    """The clock reads in this repository's tests, parsed once for the three tests below."""
+    return all_clock_reads(REPO)
+
+
+def test_every_clock_read_in_the_tests_is_listed(found: dict[str, list[int]]) -> None:
     """The point of the file. A new test that times something outside the helper fails
     here, and the message says what to do instead."""
-    missing = unlisted(all_clock_reads(REPO), LISTED)
+    missing = unlisted(found, LISTED)
     assert not missing, (
         "these tests read a clock outside check_linear:\n  " + "\n  ".join(missing) + "\n"
         "Time a claim of linear time with the assert_linear fixture. A budget on a fixed input"
@@ -106,17 +112,16 @@ def test_every_clock_read_in_the_tests_is_listed() -> None:
     )
 
 
-def test_every_listed_entry_still_reads_a_clock() -> None:
+def test_every_listed_entry_still_reads_a_clock(found: dict[str, list[int]]) -> None:
     """The other direction: an entry for a test that was renamed, removed or converted would
     otherwise sit in the list looking like a budget someone still relies on."""
-    gone = stale(all_clock_reads(REPO), LISTED)
+    gone = stale(found, LISTED)
     assert not gone, "listed, but no longer reading a clock:\n  " + "\n  ".join(gone)
 
 
-def test_the_helper_is_where_the_guard_looks_for_it() -> None:
+def test_the_helper_is_where_the_guard_looks_for_it(found: dict[str, list[int]]) -> None:
     """If the helper were renamed, its names here would excuse nothing and hide nothing, but
     the next clock read in conftest.py would be read as unlisted for the wrong reason."""
-    found = all_clock_reads(REPO)
     assert found.keys() >= HELPER, sorted(HELPER - found.keys())
 
 

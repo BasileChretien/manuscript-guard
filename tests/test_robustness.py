@@ -132,6 +132,32 @@ def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("[x]: u {" + "a=b" * 15, id="attribute-that-splits"),
+        pytest.param("[x]: a" + " " * 1000 + "b", id="run-of-spaces"),
+        pytest.param("[x]: a" + " " * 1000 + "\n b c", id="spaces-then-a-line"),
+        pytest.param('[x]: u "' + 'a "b ' * 8000, id="unclosed-quotes"),
+        pytest.param('[x]: u "t" {' + 'data-x="1" ' * 24, id="quoted-attributes"),
+        pytest.param('[x]: "a\n' * 4000, id="quote-opening-each-line"),
+        pytest.param("[x]: u\n" * 8000 + "prose", id="many-definitions"),
+    ],
+)
+def test_a_link_definition_is_recognised_quickly(block: str) -> None:
+    """`tag` asks of every block of every file whether it is a link definition, in build,
+    check and import. Versions that modelled more of pandoc's grammar were caught in review
+    taking seconds to minutes: an attribute that could be split two ways made `{a=ba=b...`
+    exponential - 18 of them took a minute and a half - and so did quoted values; optional
+    spaces stacked on optional spaces made a run of a thousand take six seconds; and a quote
+    opening each line was scanned to the end of the block from every line."""
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(block, "main.md")
+    assert time.perf_counter() - started < 2.0
+
+
+@pytest.mark.parametrize(
     "opener",
     [
         "Para <!-- open ",
@@ -296,6 +322,72 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         assert gc.isenabled()
     finally:
         gc.enable()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [" " * 20000, " " * 20000 + "x", "     \n" * 400, " |" * 10000 + "x"],
+    ids=["one line of spaces", "spaces then a letter", "lines of spaces", "spaces and pipes"],
+)
+def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
+    """`table-alignment-row` was `^\\s*\\|?[\\s:|-]+\\|[\\s:|-]*$`. Its three pieces could all
+    take the same spaces, and `\\s` took line breaks too, so the scan backtracked over every
+    way of sharing them out: one line of 20,000 spaces took about 7 s, and 400 lines holding
+    only spaces about 9 s. `check` scans every manuscript file with every rule.
+
+    Whitespace alone, which this rule stalled on. Other rules stalled on a keyword followed by
+    a long run of spaces: see the test below."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load()
+    started = time.perf_counter()
+    classifier.scan(text)
+    assert time.perf_counter() - started < 2.0
+
+
+# A word a rule reads, a long run of spaces, and a character the rule does not take. Each rule
+# here had neighbouring pieces that could take the same spaces, `\s*[-–]?\s*` say, and the scan
+# backtracked through every way of sharing them out. The runs are sized so the old patterns took
+# 4 to 60 seconds each. Scanned with every rule, the rewrites take under 0.1 s, and 0.3 s for
+# "A-" repeated, where each of 28 rules looks at every one of 20,000 word boundaries.
+SPACES = " " * 16000
+STALLS = {
+    # Six optional words, each after its own `\s*`: faster than the fourth power of the run.
+    # 80 spaces took 3.7 s, which a fast runner could pass; 100 took 12 s.
+    "checklist-item": "STROBE" + " " * 100 + "x",
+    "age-band": "age" + " " * 800 + "x",
+    "time-label": "day" + SPACES + "x",
+    "cross-reference": "Table" + SPACES + "x",
+    "categorical-label": "grade" + SPACES + "x",
+    "significance-threshold": "p" + SPACES + "x",
+    "alpha-level": "alpha" + SPACES + "x",
+    "target-power": "power" + SPACES + "x",
+    "coding-system-code": "MedDRA" + SPACES + "x",
+    "balance-criterion": "caliper" + SPACES + "x",
+    # How pandoc's own Markdown writer pads a table's cells: 9 s.
+    "a padded table": ("| STROBE" + " " * 50 + "| Title and abstract | 1 |\n") * 20,
+    # `(?:[A-Z]{1,2}\d*)*` split a run of capitals every way it could: exponential.
+    "alphanumeric-identifier": "A12" + "AB" * 16 + "_",
+    # Audit only. A name was taken from every capital after a hyphen, to the end of the run.
+    "author-year-citation": "A-" * 10000,
+    "author-year-citation, spaces": "Smith et al." + SPACES + "x",
+    # Audit only. The prefix before a `[` was tried from every letter of a run.
+    "numbered-citation": "a" * 20000,
+}
+
+
+@pytest.mark.parametrize("rendered", [False, True], ids=["source", "rendered"])
+@pytest.mark.parametrize("text", list(STALLS.values()), ids=list(STALLS))
+def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: bool) -> None:
+    """Every manuscript file is scanned with every rule, so one rule that backtracks stalls
+    `check`. Rendered, for the audit, the scan also runs the audit-only rules."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load(rendered=rendered)
+    started = time.perf_counter()
+    classifier.scan(text)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 2.0, f"the scan took {elapsed:.1f} s"
 
 
 # ---------------------------------------------------------------- hostile files

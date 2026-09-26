@@ -280,7 +280,12 @@ def build_document(
             (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
         )
 
-    body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
+    # An empty div between two files, which puts nothing in the document, so each file
+    # starts afresh. Joined by blank lines alone, a footnote ending one file took in the next
+    # file's first paragraph when that opened indented, identifier and all: `tag` judges a
+    # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
+    # a `<!--` left open earlier in the file, and the rest of that file vanished.
+    body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
     source.write_text(
         _front_matter(project, supplementary=supplementary, live=mode == LIVE) + body,
         encoding="utf-8",
@@ -341,11 +346,19 @@ def build_document(
         # And inside the file, where it can survive being emailed. The sidecar answers
         # "is my build current"; this answers "which text were these edits made against",
         # which is the question the moment a co-author sends the document back.
+        # With what each paragraph identifier names, so an import can tell an identifier
+        # that still names its paragraph from one that has come to name another. Only the
+        # paragraphs this document carries, in its order: one of them that is missing when
+        # the document comes back was deleted in Word, and a supplement's are elsewhere.
         with contextlib.suppress(Exception):
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import stamp_into
+            from manuscript_guard.roundtrip import paragraph_order, paragraph_record, stamp_into
 
-            stamp_into(output, document_digest(project))
+            record = paragraph_record(project)
+            paragraphs = {
+                name: record[name] for name in paragraph_order(output) if name in record
+            }
+            stamp_into(output, document_digest(project), paragraphs)
     return BuildResult(output=output, mode=mode, report=report)
 
 

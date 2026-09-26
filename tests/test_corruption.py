@@ -18,7 +18,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -1817,6 +1819,297 @@ def test_a_comment_opened_in_the_front_matter_hides_no_binding(project: Path) ->
     assert "interval-reversed" in codes(gate_report(project))
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("header", "rule"),
+    [
+        # 0.2.12 closed front matter only with `---`.
+        ("---\n{title}\n...\n", r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n"),
+        # From 0.2.13 until 0.2.47 a header that is a sentence, which pandoc prints, was
+        # stripped all the same.
+        (
+            "---\nKept for the authors.\n...\n",
+            r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n",
+        ),
+    ],
+    ids=["0.2.12", "0.2.13"],
+)
+def test_a_document_numbered_under_older_rules_is_not_merged(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, header: str, rule: str
+) -> None:
+    """Paragraph identifiers are positional, and 0.2.13 moved where front matter closed by
+    `...` ends. A document built before that and imported after it had every identifier a
+    block out of step: `import --apply` wrote three paragraphs' text over three others and
+    printed "merged 3 reworded paragraph(s), bindings intact". The rule changed again in
+    0.2.47, for a header pandoc does not keep as metadata."""
+    import importlib
+
+    from manuscript_guard.cli import main
+
+    # The module, not the `assemble` function the package exports under the same name.
+    assembly = importlib.import_module("manuscript_guard.build.assemble")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    path.write_text(
+        header.format(title=title) + text[text.index("\n---\n") + len("\n---\n") :], "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+
+    # Built as that release built it.
+    before = re.compile(rule, re.DOTALL)
+
+    def as_before(raw: str) -> tuple[str, str]:
+        found = before.match(raw)
+        return (raw[found.end() :].lstrip("\n"), "") if found else (raw, "")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(assembly, "strip_front_matter", as_before)
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    shutil.copy(project / "build" / "manuscript.docx", returned)
+    # A co-author's edit, in a document that records no paragraphs, as 0.2.12's did not.
+    scratch = tmp_path / "t.docx"
+    with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            elif item.filename == "docProps/custom.xml":
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
+            zout.writestr(item, data)
+
+    main(["import", str(scratch), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
+    project: Path, tmp_path: Path
+) -> None:
+    """Identifiers are positional. With a paragraph added to the source since the build,
+    above the one a co-author edited, every identifier after it named the paragraph before,
+    and `import --apply --force` wrote three edits over their neighbours and printed "merged
+    3 reworded paragraph(s), bindings intact". The plan showed what each edit became, never
+    which paragraph it replaced, so reading every hunk could not have caught it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            zout.writestr(item, data)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+    """The built document as a co-author returns it, `change` applied to its body's XML;
+    without its record of paragraphs unless `recorded`, as releases before 0.2.60 built it."""
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = change(data.decode("utf-8")).encode("utf-8")
+            elif item.filename == "docProps/custom.xml" and not recorded:
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
+            zout.writestr(item, data)
+    return returned
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document that records nothing may never have carried a paragraph that is only a
+    value, releases before 0.2.49 gave it no identifier, so one missing from it was left out
+    of the comparison, and of the join check with it. Joined into the paragraph before by
+    retyping across the break, which takes its bookmark, it merged as a rewording and the
+    number was in the source twice. Main reports the join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "has not been examined.\n\n# Methods"
+    assert anchor in text
+    path.write_text(
+        text.replace(anchor, "has not been examined.\n\n{{results.ror.point}}\n\n# Methods"),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def retyped(xml: str) -> str:
+        value = _word_paragraph(xml, ">3.84<")
+        return xml.replace(value, "", 1).replace(
+            "has not been examined.", "has not been examined. 3.84", 1
+        )
+
+    returned = _sent_back(project, tmp_path, retyped, recorded=False)
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "the number was written in twice"
+
+
+def _word_paragraph(xml: str, words: str) -> str:
+    """The Word paragraph carrying an identifier whose text holds `words`."""
+    return next(
+        p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p and words in p
+    )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
+    project: Path, tmp_path: Path
+) -> None:
+    """Declarations repeat: "Not applicable." under two headings. The record held a hash of
+    each paragraph's text, which cannot tell the two apart, so with a third declaration added
+    above them since the build, the first one's identifier named the new one, read the same,
+    was trusted, and `import --apply --force` wrote a co-author's ethics approval under
+    "Consent to participate"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    path = main_md(project)
+    tail = (
+        "# Funding\n\nThis work received no funding.\n\n# Competing interests\n\nNone declared.\n"
+    )
+    declared = (
+        "# Ethics approval\n\nNot applicable.\n\n# Consent for publication\n\nNot applicable.\n\n"
+        "# Competing interests\n\nNone declared.\n"
+    )
+    text = path.read_text(encoding="utf-8")
+    assert tail in text
+    path.write_text(text.replace(tail, declared), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    ethics = next(
+        name
+        for name, (_path, words, _start) in tagged_paragraphs(load_project(project)[0]).items()
+        if words == "Not applicable."
+    )
+
+    def approved(xml: str) -> str:
+        at = xml.index(f'w:name="{ethics}"')
+        stop = xml.index("</w:p>", at)
+        edited = xml[at:stop].replace("Not applicable.", "Approved by the review board.")
+        return xml[:at] + edited + xml[stop:]
+
+    returned = _sent_back(project, tmp_path, approved)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Ethics approval\n",
+            "# Consent to participate\n\nNot applicable.\n\n# Ethics approval\n",
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("lost", [False, True], ids=["bookmark kept", "bookmark lost"])
+def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
+    project: Path, tmp_path: Path, lost: bool
+) -> None:
+    """With the second of two paragraphs edited in the source since the build, only the first
+    kept a trusted identifier, and the two joined in Word read as the first one reworded:
+    `import --apply --force` merged it, and the second paragraph's text was in the source
+    twice. With the join retyped across the boundary, which takes the second bookmark with
+    it, the import also exited 0. Main reports the join."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def joined(xml: str) -> str:
+        first = _word_paragraph(xml, "Drug-induced hepatic injury remains")
+        second = _word_paragraph(xml, "Whether the signal")
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", second, flags=re.DOTALL)
+        if lost:
+            inner = re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", inner)
+        return xml.replace(second, "", 1).replace(first, first[: -len("</w:p>")] + inner, 1)
+
+    returned = _sent_back(project, tmp_path, joined)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "has not been examined.", "has not been examined before.", 1
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_block_tagged_since_the_build_joined_into_the_one_above_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A list item carries no identifier, so a document records none for it; turned into a
+    paragraph since the build, it has one now, which the record does not hold and the join
+    check did not weigh. Joined in Word into the paragraph above it, the join merged as a
+    rewording, the import exited 0, and the sentence was in the source twice. A release that
+    tags more kinds of block does the same with no source change at all. Main reports the
+    join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    signal = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    item = "- No other signal was examined in this analysis.\n"
+    text = path.read_text(encoding="utf-8")
+    assert signal in text
+    path.write_text(text.replace(signal, f"{signal}\n{item}", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def joined(xml: str) -> str:
+        above = _word_paragraph(xml, "Whether the signal")
+        below = next(
+            p
+            for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            if "No other signal was examined" in p
+        )
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", below, flags=re.DOTALL)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        return xml.replace(below, "", 1).replace(above, above[: -len("</w:p>")] + space + inner, 1)
+
+    returned = _sent_back(project, tmp_path, joined)
+    path.write_text(path.read_text(encoding="utf-8").replace(item, item[2:], 1), encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
 def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:
     """A fence opener in an abstract, with no closer there, paired with a fence in the body,
     and the prose between was judged as R."""
@@ -2248,6 +2541,197 @@ def test_audit_does_not_read_text_moved_away(tmp_path: Path) -> None:
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["-0.5"]
 
 
+def _gone(change: str, style: str | None = None) -> str:
+    """The properties of a paragraph whose mark was deleted or moved away."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    return f'<w:pPr>{styled}<w:rPr><w:{change} w:id="1" w:author="a"/></w:rPr></w:pPr>'
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+@pytest.mark.parametrize(
+    "between",
+    ["", '<w:bookmarkStart w:id="9" w:name="_Ref1"/><w:bookmarkEnd w:id="9"/>'],
+    ids=["adjacent", "bookmark-between"],
+)
+def test_audit_joins_paragraphs_whose_mark_was_removed(
+    tmp_path: Path, change: str, between: str
+) -> None:
+    """A paragraph whose mark was deleted, or moved away, as a tracked change runs on into
+    the next once the change is accepted, and the audit read the two as separate lines: "−"
+    ending one and "0.30" starting the next matched an output of +0.30, and "-0.5" then "1"
+    matched -0.5 and 1 where the paper prints -0.51. A bookmark between them does not part
+    them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "hi": 0.30}')
+
+    def joined(before: str, after: str) -> str:
+        run = f'<w:r><w:t xml:space="preserve">{before}</w:t></w:r>'
+        return f"<w:p>{_gone(change)}{run}</w:p>{between}{_p(after)}"
+
+    paper = _docx(
+        tmp_path / "paper.docx",
+        joined("The estimate was -0.5", "1.") + joined("Its upper bound was −", "0.30."),
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51", "−0.30"}, shown
+
+
+@pytest.mark.parametrize(("part", "note"), [("footnotes", "footnote"), ("endnotes", "endnote")])
+def test_audit_joins_paragraphs_within_a_note(tmp_path: Path, part: str, note: str) -> None:
+    """Footnotes and endnotes go through the same reader as the body. A deleted mark joins
+    two paragraphs of one note, so "-0.5" and "1" there are -0.51, and the last paragraph
+    of a note does not run on into the next note: "2" and "3" stay two numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "a": 2, "b": 3}')
+    joined = f"<w:p>{_gone('del')}<w:r><w:t>The estimate was -0.5</w:t></w:r></w:p>{_p('1.')}"
+    last = f"<w:p>{_gone('del')}<w:r><w:t>Group 2</w:t></w:r></w:p>"
+    notes = "".join(f"<w:{note}>{body}</w:{note}>" for body in (joined, last, _p("3 more.")))
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("See the notes."),
+        {f"word/{part}.xml": f"<w:{part} {W}>{notes}</w:{part}>"},
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        '<w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs>',
+        '<w:pPrChange w:id="2" w:author="a"><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/>'
+        "</w:tabs></w:pPr></w:pPrChange>",
+    ],
+    ids=["tab-stops", "tab-stops-before-the-change"],
+)
+def test_audit_joins_a_paragraph_that_sets_tab_stops(tmp_path: Path, props: str) -> None:
+    """A tab stop is `w:tab` too, under `w:pPr/w:tabs`, and was read as a typed tab: a
+    space at the start of the paragraph's line, where it did no harm until a join put it
+    between "-0.5" and "1". Word writes the old tab stops into `w:pPrChange` when it copies
+    the first paragraph's formatting onto the second."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    after = f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{after}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize("joined", [False, True])
+def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined: bool) -> None:
+    """A text box's paragraphs were read where its anchor sits, in the middle of the paragraph
+    holding it, so the rest of that paragraph, or the one it runs on into, landed on the text
+    box's line: "-0.5", a text box, then "1" read as -0.5, which matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    box = (
+        '<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml"><v:textbox>'
+        f"<w:txbxContent>{_p('Panel A')}</w:txbxContent></v:textbox></v:shape></w:pict></w:r>"
+    )
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    if joined:
+        body = f"<w:p>{_gone('del')}{before}{box}</w:p>{_p('1.')}"
+    else:
+        body = f"<w:p>{before}{box}<w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+def test_audit_reports_a_number_in_a_text_box_once(tmp_path: Path) -> None:
+    """Word writes every text box twice: as DrawingML, and again in VML inside an
+    AlternateContent fallback for readers that predate it. Both copies were read, so a wrong
+    number in a text box was reported twice, on two lines, and took two of the forty findings
+    listed for its file; a right one was counted twice as found."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    content = f"<w:txbxContent>{_p('Cases: 412 of 8393.')}</w:txbxContent>"
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    vml = 'xmlns:v="urn:schemas-microsoft-com:vml"'
+    box = (
+        f"<w:r><mc:AlternateContent {mc}>"
+        f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+        f"<mc:Fallback><w:pict><v:shape {vml}><v:textbox>{content}</v:textbox></v:shape>"
+        "</w:pict></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    paper = _docx(tmp_path / "paper.docx", f"<w:p><w:r><w:t>See the box.</w:t></w:r>{box}</w:p>")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["8393"], report.unmatched
+    assert [c.text for c in report.matched] == ["412"], report.matched
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "1 found in the outputs, 1 not found." in shown, shown
+
+
+def test_audit_reads_an_emoji_word_writes_only_as_a_choice(tmp_path: Path) -> None:
+    """Word writes an emoji it inserts as `w16se:symEx` in an AlternateContent choice, and the
+    character itself only in the fallback. With the fallback unread and the choice not
+    understood, the numbers either side ran together: "12", an emoji and "34" read as 1234,
+    which matched an output the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1234}')
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>Scored 12</w:t></w:r>{emoji}<w:r><w:t>34.</w:t></w:r></w:p>"
+    report = audit([_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert report.matched == [], report.matched
+    assert [c.text.rstrip(".") for c in report.unmatched] == [f"12{chr(0x1F642)}34"]
+
+
+def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Path) -> None:
+    """A deleted text box's text was dropped, but its paragraphs still started lines. One
+    styled as a heading was an empty heading, which ended the reference list there, and the
+    entries after it were reported as numbers missing from the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    box = (
+        '<w:del w:id="2" w:author="a"><w:r><w:drawing><w:txbxContent>'
+        f"{_p('Old panel', 'Heading1')}</w:txbxContent></w:drawing></w:r></w:del>"
+    )
+    entry = f"<w:p><w:r><w:t>Smith J. Lancet. 2019;393:1-2.</w:t></w:r>{box}</w:p>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + entry
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
+    """A paragraph run on into a heading takes the heading's style, which is what Word shows
+    once the change is accepted. Taking the first paragraph's instead read the appendix as
+    part of the reference list, and a wrong number in it went unaudited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    entry = "<w:r><w:t>Smith J. T. Lancet. 2019;393:1-2.</w:t></w:r>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Heading1")
+        + f"<w:p>{_gone('del')}{entry}</w:p>"
+        + _p("Supplementary appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+    )
+    assert "4.65" in [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched]
+
+
 @pytest.mark.parametrize(
     ("name", "content"),
     [
@@ -2269,3 +2753,29 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Path) -> None:
+    """A `<!--` in a listing is code to pandoc. The placeholder parser on main read it as a
+    comment that ran on to a later note's `-->`, so the binding between was never
+    substituted, and the document printed `{{results.ror.point}}` while `check` passed.
+    `test_comments.py` holds the parser to it; this holds the build, end to end. A listing
+    of HTML is an ordinary thing to write, so the build must print the value, not refuse."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    ticks = "`" * 3
+    source.write_text(
+        f"{text}\n# Appendix\n\n{ticks}html\n<!-- a comment left open in a listing\n{ticks}\n\n"
+        "The reporting odds ratio was {{results.ror.point}}.\n\n<!-- a later note -->\n",
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+    assert "{{results.ror.point}}" not in built
+    value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
+    assert f"The reporting odds ratio was {value}." in built

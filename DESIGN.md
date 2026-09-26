@@ -906,7 +906,21 @@ predecessor:
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
   reading it raw reports corrections as errors and misses what will be published. Text moved
   away goes with the deletions, and so does a deleted line break or tab: read as a space, it
-  parted a minus from its number.
+  parted a minus from its number. A paragraph whose mark was deleted or moved away runs on
+  into the next one; read as two lines, "-0.5" and "1" matched two outputs where the paper
+  prints -0.51. The joined line takes the last paragraph's style, and so ends a reference
+  list only if that one is a heading. That is what Word 16 shows once the change is
+  accepted: when it deletes a mark itself it first copies the first paragraph's style onto
+  the second, keeping the old one in `w:pPrChange` (verified 2026-09-24). A text box is
+  read after the paragraph holding it, not where it is anchored, which split that paragraph
+  in two. It is read once: Word writes every text box twice, as DrawingML and again as VML
+  in an `mc:AlternateContent` fallback (verified 2026-09-24, Word 16), and reading both
+  reported each number in it twice. The fallback is skipped, as the import's reader skips
+  it. What Word puts only in a fallback is read from the choice instead: an emoji inserted
+  in Word can be a `w16se:symEx` there (pandoc issue 11113; set as text through Word's COM
+  interface, one was saved as plain text), and without it "12", the emoji and "34" read as
+  1234. The paragraphs of a text box deleted or moved away start no lines: left empty, one
+  styled as a heading used to end the reference list it sat in.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -1352,6 +1366,64 @@ before this change put a bookmark in each pipe table's first cell, and a constru
 patterns miss could put one there again. Lists and quotes cost their identifiers, and their edits are counted as
 unexamined rather than merged; see Known gaps.
 
+An identifier is positional, though: the file and the block's place in it once the front
+matter is stripped. So it means something only under the rules that assigned it, and those
+rules change. The front-matter reading changed in plugin release 0.2.13. After that, a
+document built before the change and imported after it had every identifier a block out of
+step: `import --apply` wrote three paragraphs' text over three others and printed "merged 3
+reworded paragraph(s), bindings intact". A review round's anchors went the same way, and G13
+compared the wrong paragraph and passed. The same happened, with no change of rules, to a
+document forced in after a paragraph was added to the source above the one a co-author
+edited: `--force` said to check every hunk, and the plan showed what each edit became,
+never which paragraph it replaced.
+
+So the document now records what each identifier named: for each of its paragraphs, in its
+order, a short hash of the source text and one of the block before it, beside the source
+digest (`roundtrip.PARAGRAPHS_PROPERTY`, split across properties short of the 255
+characters Word may cut one to). The block before is there because text alone cannot tell
+two paragraphs apart that read the same, and a paper repeats "Not applicable." under one
+declaration after another: with one more added above them since the build, the first one's
+identifier named the new one, read the same, and a co-author's ethics approval went under
+"Consent to participate". A paragraph whose text is found once in its file, then and now,
+needs only its text to match; one that repeats needs the block before it to match too.
+
+`import` compares, moves and merges only the paragraphs whose identifier passes that test,
+and names the rest as not compared, whether they came back or not; `respond --open` keeps a
+comment's anchor only on such a paragraph. It does not matter why an identifier came to name
+other text, a source edited since, a release that numbers or tags paragraphs by other rules:
+each is caught the same way, one paragraph at a time. What is left out still counts for what
+is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
+is one whose next paragraph as sent is left out and did not come back, which a join retyped
+across the boundary looks like: merged as a rewording, either put the other paragraph's
+words in the source twice. A paragraph the document carried with no identifier, which has
+one now - a list item made a paragraph since the build, or a block a later release tags - is
+not in its record and so never compared; it is weighed as a join into the paragraph before
+it, by its text, as main weighs every paragraph. Left out, the co-author's join of it into
+that paragraph merged as a rewording, exited 0, and put its text in the source twice. A
+document that records nothing has no order as sent, and the one paragraph it can leave out
+without trusting the rest less, a value it may never have carried, is weighed the same way.
+A number for the rules was tried first and had to be bumped by every change to them; three
+reviews each found a change that would not have.
+
+A document from before paragraphs were recorded is refused only where it matters, which
+can only be judged against the text it was built from. If anything it was built from has
+changed since, it is refused, whatever is passed. If not, it is refused when a file it
+carries numbers differently under the front-matter rule of releases up to 0.2.12, or of
+those from 0.2.13 until 0.2.47, which stripped a header pandoc prints. A release that only
+tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations, kept
+every other block's number, and the identifiers an older document carries on them are named
+as not compared. One that tags more does: 0.2.49 gave a paragraph that is only a value an
+identifier, which an older document may or may not carry. Such a paragraph is compared if
+the document carries it, and named if not.
+
+A review round needs nothing of the kind, because G13 no longer compares by identifier. The
+round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
+commented on counts as unrevised while the manuscript still holds that exact text: in any
+block, or in any run of a block's lines between the headings and markers inside it, with
+whole-line HTML comments left out. Compared by identifier, it broke without any change of
+rules as well: a paragraph added above the anchor during the revision pointed it at a
+neighbour, and a paragraph nobody touched passed as revised.
+
 Two details earned themselves. Only the paragraphs outside the stable backbone are reported,
 because moving one paragraph shifts every paragraph after it and saying "fifteen moved" is
 true and useless. And a move and a rewording are applied together. The identifier makes
@@ -1380,6 +1452,18 @@ moved missed a paragraph dragged to just below the next heading, which keeps its
 the paragraphs, and blamed a neighbour when the diff preferred it. The file-level check
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
+
+A slot's text is not all that decides whether its paragraph can be found again: `tag` reads
+what surrounds a block too. A footnote is marked, and prints as text, when an indented block
+below it would run into it; swapped in Word with the paragraph above it, it landed over a
+plain paragraph, became a note again, and the next build printed nothing of it in the body,
+while `import` said it had reordered a paragraph. A `-->` typed into a paragraph can close
+a `<!--` left open above it, and pandoc then reads both, and all between, as one comment. So
+before anything is written, each file is worked out as it would be written and read the way
+`tag` reads it, and a paragraph that would not come out marked - at the place the splice
+put it, with the text written - is withdrawn, one kind of cause at a time: its rewording is
+refused, or the moves in its section are held (see "Closed since").
+
 
 Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
 refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
@@ -1971,8 +2055,9 @@ Added by the adversarial review, verified and **not** fixed:
   corrected in a table is the case that matters, because that is where a stale number is
   likeliest to be. A document built before identifiers moved off lists and quotations comes
   back listing them as changed even untouched: the fresh build it is compared with sets
-  them out as lists and quotations, where it had run them into paragraphs. Nothing is
-  applied, and a current build sent out ends it. Lists and quotes are on the list by choice: a
+  them out as lists and quotations, where it had run them into paragraphs, and names the
+  run-on paragraphs it carries as not compared, because no paragraph goes by their
+  identifier now. Nothing is applied, and a current build sent out ends it. Lists and quotes are on the list by choice: a
   marker in front of one rewrote it, and a marker inside its first item would let `import`
   splice that item over the whole block (see "The round trip carries prose"). Comparing
   them needs an identifier per item and a merge that puts the list marker back, and neither
@@ -2079,7 +2164,8 @@ Closed since, and why each mattered:
   in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
   all the same, and where a `-->` followed further down the file, that paragraph and every
   one up to the `-->` went without an identifier. A co-author's next edit to them was
-  dropped with "nothing came back". A `\<div>` in a paragraph did the same to that
+  dropped with "nothing came back"; since #69, `import` refused the rewording that typed the
+  `<!--` instead, though it was safe to make. A `\<div>` in a paragraph did the same to that
   paragraph alone. An opener, a LaTeX `\begin` or `\end` and a block-level tag now count
   only where no backslash escapes them (`_backslashed`): an odd run makes them text, an
   even one escapes itself. Inside a comment or a verbatim element pandoc reads no escapes,
@@ -2445,13 +2531,26 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
-- **The audit reads a deleted paragraph mark as a paragraph break.** Once the change is
-  accepted Word joins the two paragraphs, and it does the same for a mark moved away; the
-  audit reads them as two lines, so the numbers either side of the join are read apart:
-  "−", a deleted mark, then "0.30" matches an output of +0.30, and "-0.5", a deleted mark,
-  then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
-  (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
-  take one of two styles, and a heading style is what ends a reference list.
+- **A text box anchored in a reference heading is cut with the list.** A text box is read
+  after the paragraph that holds it, so one anchored in a styled `References` heading is
+  the list's first line and is not audited. The report gives the range of lines it cut
+  under "Not audited", and nothing there singles out the box. When text boxes were read
+  where they are anchored, one anchored after the heading's text was cut the same way. One
+  anchored before it ran into the heading ("Figure 1: n = 34References"), so no list was
+  found: the entries with a reference's shape were listed apart and the rest were audited
+  as prose. A floating box has an anchor but no place in the text, and reading it before
+  its paragraph instead would cut one anchored in the heading that ends a list.
+- **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
+  mark was deleted into the first cell of a table after it. The audit joins a paragraph only
+  to the next paragraph beside it, so a table, or a content control, ends the line, and a
+  number split across the two is read in two pieces. Joining into the cell would mean
+  moving the row and cell separators the reader writes before the cell's text.
+- **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
+  Word does the same for everything it writes, since it writes a choice only where it
+  understands it. Text that sits only in a fallback, behind a choice the reader does not
+  know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
+  does know, and would for any other such element it adds. A second choice, which the
+  format allows and Word does not write, would be read as well as the first.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
@@ -2658,11 +2757,13 @@ Closed since, and why each mattered:
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
-  is the paragraph's position in the file, and applying a reorder moves text between slots -
-  so a `where:` anchor recorded before the reorder afterwards names different text. Content
-  is not the answer either: hashing the text means editing the paragraph a reviewer asked
-  about invalidates the anchor to it, which is the opposite failure. The real fix is to
-  persist the identifier in the source rather than derive it, and it is not done.
+  is the paragraph's position in the file, and applying a reorder moves text between slots,
+  so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
+  longer depends on it: it asks whether the text the reviewer read is still there, which is
+  the question it had, and a revision that edits the paragraph is exactly what should stop
+  it matching. What remains positional is the `where` a person reads in the round file, and
+  the identifiers of a document sent out before the source changed. Persisting the
+  identifier in the source rather than deriving it would fix both, and it is not done.
 - **Text moved between the paper and its supplement is not applied.** The two are built and
   imported as separate documents. Word drops the identifier of a single pasted paragraph, so
   one paragraph pasted from one into the other comes back as new text without an
@@ -2732,6 +2833,18 @@ Closed since, and why each mattered:
   with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
   [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
   `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
+- **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
+  "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
+  blank line between them they are two paragraphs, and the number opening the second is
+  reported: `\s*` used to cross any number of line breaks, and a count opening a paragraph
+  after one ending "the next section" passed as a cross-reference. The rewrite that made
+  every rule linear is what set the limit. The same limit lets a label opening a paragraph
+  match as it does on its own: after a paragraph ending "one year", "12-month outcomes" is a
+  time label, where the match that crossed the blank line used to take its digits and leave
+  "12-month" reported, and in the audit "(2019, n = 412)" after "et al." is now read as the
+  whole parenthetical it is anywhere else. The other way, a count that such a match left to
+  the rule's next match can be reported now. In a rendered author-year citation, a name is
+  at most 61 letters; a longer one is read as no name, and its year is compared.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period
@@ -2758,7 +2871,9 @@ Closed since, and why each mattered:
     `CD4^+^` refuses every edit to it.
   - *The reading is pandoc's, closely enough, not exactly.* Emphasis is paired by pattern,
     not by pandoc's rules, and `[1][2]` with no reference definition is text to pandoc and a
-    link here, so an edit to it is refused. Where the reading takes source markup for text
+    link here, so an edit to it is refused. The reverse holds for a shortcut link: `[reg]`
+    with a definition is a link to pandoc and text here, so a paragraph holding one cannot be
+    lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
   - *The read-back reads a binding as digits.* What a binding's value makes of the text
@@ -2870,46 +2985,53 @@ Closed since, and why each mattered:
   the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
-- **Paragraph identifiers move when the rules that split a source change.** An identifier
-  is positional, `mg-p-<file>-<n>` with `n` counted after the front matter is stripped, and
-  the stamp records the sources' digest but not the rules that split them. A document sent
-  out before such a change and imported after it has its identifiers pointing at other
-  paragraphs: `import --apply` writes an edit into the wrong one, and G13 compares the
-  wrong one. 0.2.13 is such a change for a source whose front matter has a blank line after
-  the opening `---`, a `...` closer, or a trailing space on the opening `---`. `init` writes
-  none of these; a document built from one before 0.2.13 has to be rebuilt and sent again.
-  So is the change that counts front matter only where pandoc keeps it as metadata, for a
-  source whose header is a list or a sentence, sits behind a byte-order mark or a blank
-  first line, holds a tab, or is closed on the file's last line. `init` writes none of
-  these either. The guard is a scheme version in the stamp and the round file, refused on
-  a mismatch.
-- **Which paragraphs carry an identifier is decided by the code that imports, not the code
-  that built.** The document as sent is rebuilt from the source by what is installed now. A
-  paragraph that is only a value binding carries an identifier now, and in a document built
-  before that change it carried none. Returned after the change, even untouched, that
-  paragraph is reported as deleted in Word and left in place, and `import` exits 1. An edit
-  to the paragraph on either side of it is refused as a possible split. A move is worse. A
-  paragraph with no place in the returned document stays after the paragraph it followed
-  in the source, or first in its section if it was first, so any move that changes what the
-  value paragraph follows goes wrong. Moving the paragraph before it takes it along:
-  `--apply` writes it where the co-author's document does not have it, and still reports it
-  as left in place. Moving another paragraph in front of it is reported and applied, with
-  the value paragraph left on the wrong side of it; a move that passes the value paragraph
-  and nothing else is not reported at all, and is dropped. No binding is harmed, but the
-  order is not the co-author's. Rebuild and send the document again rather than import one
-  built before the change. Every other identifier stays as it was, because an index counts
-  every block in its file; a change to how a file is split into blocks would renumber them.
-  A later change that starts tagging a block does the same as this one, once, to documents
-  already sent. One that stops tagging a block is quieter. In a document already sent, the
-  block's identifier names nothing the import knows, and is ignored: an edit to the block is
-  dropped without a report, with "nothing came back" if nothing else was edited, and a move
-  that changes what the block follows is dropped, applied with the block on the wrong side,
-  or refused as a move into another section - and only that last exits 1. A version number
-  for the tagging rules, stamped into the document and refused on a mismatch, would catch
-  either change in a document stamped with an earlier number, and neither in one built
-  before such a number existed, which records none. For this change, the fix is to
-  recognise a paragraph that lost its bookmark but kept its text, which Word can do to any
-  paragraph, and it is not done.
+- **A document from before paragraphs were recorded is judged by the front-matter rules
+  only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
+  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
+  Any other change to how paragraphs are numbered cannot be detected for such a document.
+  One is known: builds from before front matter was stripped at all (0.1.0, before #7)
+  counted the header as a block, so every identifier is two higher than now, and such a
+  document, returned against an unchanged source, would be merged into the wrong
+  paragraphs. Rebuild any document that old rather than import it.
+- **Such a document can also be refused needlessly.** It is refused whenever anything it
+  was built from has changed since, `--force` or not, because its numbering can only be
+  checked against the text it was built from; a re-run analysis alone is enough. And it is
+  refused when a file it carries has a header some past release read differently from this
+  one, whichever release built it: a blank line after the opening `---`, a `...` closer, a
+  trailing space on the opening `---`, a byte-order mark or a blank line before it, or a
+  header pandoc prints rather than keeps, a list or a sentence. `init` writes none of
+  these. Returned untouched, one from before 0.2.49 also exits 1 over each paragraph that is
+  only a value, named as not in it, which it never carried. Either way, the refusal's own
+  advice is the way through: rebuild and resend.
+- **A paragraph the source changed since the build takes no co-author edit, even under
+  `--force`.** Its identifier no longer names the text they edited, so the edit is named and
+  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
+  paragraph below one the source added or removed since the build, whose identifiers all
+  moved by one block and now name their neighbours: an author who inserts a paragraph near
+  the top before importing ports every co-author edit below it by hand. Re-pointing an
+  identifier to the paragraph now holding its recorded text would recover most of them, and
+  it is not done. So is an edit to a paragraph that reads word for word like another in its
+  file once the block before it changed, and to the paragraph before one that is left out
+  of the comparison and did not come back, which may be a join.
+- **A join retyped from a paragraph left out of the comparison into the next reads as a
+  deletion.** With the first paragraph not compared and the second's bookmark lost, the
+  second is reported deleted in Word, and the first not compared. Nothing is written, but
+  deleting the second from the `.md` as told, without carrying the first's Word text over
+  by hand, loses the second's words. Main reports the join, having the first paragraph's
+  text to weigh it with.
+- **Two paragraphs that read the same after blocks that read the same are told apart by
+  position alone.** The record hashes each paragraph's text and the block before it, so
+  "None." under a "# Funding" heading repeated in two places, with a copy of both added
+  above them since the build, would pass for the paragraph the co-author edited, and the
+  edit would land in the copy.
+- **A paragraph moved in Word past one left out of the comparison may not be reported as
+  moved.** Moves are worked out among the paragraphs compared, and passing one that is not
+  changes nothing in their order. The import names the paragraphs left out and exits 1, and
+  says this of them; the move is not applied.
+- **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
+  paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
+  paper repeats a paragraph word for word and the author revises one copy, the other still
+  reports it unchanged. That is a false alarm, the safe direction.
 - **A tracked change is accepted, not shown.** The import reads the document as if every
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
@@ -2937,21 +3059,29 @@ Closed since, and why each mattered:
   document matches, and it exits 1 - but the move itself is still not named. A table or
   figure that cannot be found in the returned document is not among them either. That one is
   reported, but a move past it is not.
-- **A paragraph is held in place by its source, not by what the co-author meant.** A
-  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
-  move across it is refused where nothing would have broken. A paragraph written directly
-  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
-  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
-  the paragraph on the next build. The lines are found by pattern: prose that happens to
-  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
-  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
-  that paragraph reported as moved; dragged past two or more, or past a heading, the line
-  itself is reported. A paragraph with display maths is held too, so dragging it whole,
-  equation and all, is refused like dragging its first part. A comment opened in a
-  paragraph is found by reading the source with its code spans set aside, and a backtick in
-  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
-  one that opens a code span; a comment opened after it and closed past a blank line is then
-  not seen, and that paragraph can be moved.
+- **A paragraph is held in place by its source, not by what the co-author meant.** Since the
+  tagging rules changed, most of what was held carries no identifier at all, so import
+  neither moves nor rewords it, and an edit to it is listed with the paragraphs without an
+  identifier: a comment, a `\newpage`, a paragraph holding a comment that closes past it or
+  holding display maths, and one with a fence, `</div>` or a definition directly under it.
+  What is still tagged and held is held although nothing would break: a paragraph Word shows
+  as an empty line, such as a spacer written `&nbsp;` or `\ `; one with a line directly
+  under it that looks as if it opens or closes a block but that pandoc prints as text, such
+  as an unmatched `\end{table}`, a line starting `: ` below its second line, or a `:::`
+  indented four spaces; one with a `<!--` that never closes; and one directly above display
+  maths. The last is held because the rule that display maths right after a paragraph
+  belongs to it dates from when a paragraph holding `$$` carried an identifier, and now
+  fires only on a separate equation. A rewording of any of them is refused, and a swap with
+  it reported rather than applied. A comment or a `\newpage` still ends a section though
+  Word shows nothing there, so a swap of the two paragraphs around one is reported rather
+  than applied. A co-author who drags a held paragraph past the one paragraph beside it sees
+  that paragraph reported as moved; dragged past two or more, or past a heading, the held
+  paragraph itself is reported. A comment opened in a paragraph is found first by the
+  tagging rules, which give no identifier to a paragraph holding a `<!--` that closes past
+  it. Behind them, `_bare` reads the source with code spans and closed comments set aside,
+  and a backtick in a link's address, an autolink, inline maths or an HTML attribute can
+  still be taken for one that opens a code span; a comment opened after it and closed past a
+  blank line is then not seen by that reading.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -2963,14 +3093,14 @@ Closed since, and why each mattered:
   matches neither copy and is reported as not found; a copy pasted into another section is
   new content, and is not reported at all.
 - **A paragraph that reaches Word in parts is only recognised by what lies around it.**
-  Untagged text between it and the next paragraph of its section, display maths in its
-  source, or a line under it that opens a block, marks it. One that pandoc splits for
-  another reason and that ends its section is not recognised: a rewording of its first part
-  would replace the rest, and a move of its first part would carry the rest along.
-- **The part of a paragraph after its equation is not compared.** Only the part carrying the
-  identifier is. A rewording after the equation, with the first part untouched, is listed
-  with the paragraphs without an identifier that came back different, and not applied. With
-  the first part edited too, the paragraph is refused.
+  Untagged text between it and the next paragraph of its section marks it; a paragraph with
+  display maths in its source, or with a line under it that opens a block, carries no
+  identifier at all. One that pandoc splits for another reason and that ends its section is
+  not recognised: a rewording of its first part would replace the rest, and a move of its
+  first part would carry the rest along.
+- **A paragraph with display maths is not compared.** It carries no identifier, so a
+  rewording of any part of it, before or after the equation, is listed with the paragraphs
+  without an identifier that came back different, and not applied.
 - **A duplicated heading is matched with the one it copies only when that is unambiguous.**
   Headings and captions are paired as a sequence, and then any text of which one copy is
   left over on each side. A pasted copy of a heading that is still in place is paired with
@@ -2986,6 +3116,148 @@ Closed since, and why each mattered:
   past that text is then refused as a move into another section. Safe, and a refusal. Such
   a paragraph now carries no identifier, so this arises only for a document built before
   that change.
+- **A link or footnote definition carries no identifier.** Pandoc reads `[reg]: https://...`
+  and `[^1]: ...` only at the start of a block, and neither puts anything in the body: a
+  link's definition renders nothing, and a note's text reaches Word as a footnote, which
+  `import` does not read (see above). So there is no body paragraph for an identifier to
+  name, and nowhere in the definition to put one. In front of it, the identifier made the
+  definition a paragraph, and every link or footnote using it printed as bracketed text
+  on every build. `_blocks` then took every block opening `[label]:` for a definition, and
+  left prose unmarked that pandoc printed - `[Note]: patients (all adults) were enrolled.` -
+  so a co-author's edit to it was never compared. A block is now left untagged for being a
+  definition only when every line of it is one, in a shape pandoc can read no other way
+  (`_definitions`); anything else opening `[label]:` is judged as any block is, and marked
+  when it is one paragraph. Untagged, a definition is never a splice target and stays where
+  it was written. What that leaves:
+  - *Only the plainest shapes count.* A link is a label, one token for its address and
+    perhaps a quoted or parenthesised title, on one line. The label holds no bracket,
+    backslash, backtick, `$`, `<`, `@`, `^` or `|`, because pandoc reads it as inline
+    markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
+    line a citation. No part holds a brace, because a binding is filled in after this
+    reading and its value could change it. A footnote is its label and its text, which may
+    wrap onto the lines under it: pandoc takes almost any line under a note's label into the
+    note. It ends the note at a line opening a note's marker - `[^`, then no space, tab,
+    caret or bracket, then `]`, with a colon or without. Directly under the label, a
+    definition list's `:` or `~` makes the label a term, and an underline makes it a
+    heading. Those lines are refused - the `:` and `~` with a space after them - and so is
+    an underline or a table's rule further down, which pandoc takes into the note: the
+    block then opens nothing `_untagged` marks, and the note works. A bare `:` or `~` under
+    the label, and a line closing a fenced div, which ends the note inside one, are taken
+    in, because refusing is not the safe side it looks: a block not left alone is read for
+    raw content (below), and a `<!--` that pandoc keeps inside the note or the term then
+    hid the paragraphs after it. What those two lines make prints visibly, or `_untagged`
+    leaves it unmarked either way. Links come before notes, because a
+    line under a note is more of the note, and a link's definition there resolves nowhere. A note
+    also runs on through every line pandoc does not take for blank, unless it opens another
+    note; and after a blank line
+    (empty, or spaces and tabs), a line indented four columns - four spaces, or a tab,
+    which reaches the next four - is the note's next paragraph, and the unindented lines
+    under it are more of it. So a note is left alone only when a blank line ends it and the
+    line after the last blank one is indented less, and a note of several paragraphs is
+    marked. Anything else - a link wrapped over two lines, with attributes or a title on the
+    next line, a nested bracket in its label, a link under a note, a footnote running to a
+    second paragraph - is marked, and prints as text. That failure is visible, and it is a
+    choice: on `main` after #25, which left every block opening `[label]:` alone, these
+    worked, and so did prose opening `[label]:`, uncompared. The strict rule gives them up
+    so that such prose is compared; a hard-wrapped footnote, the common one, it keeps. Three versions that
+    modelled more of pandoc's grammar were each caught in review failing the other way: they
+    left a block unmarked that pandoc printed, so a co-author's edit to it was dropped while
+    `import` said nothing came back, and one took minutes over a line of attributes. A
+    fourth left a definition unmarked under a line that is blank here and not to pandoc -
+    one holding only a no-break or full-width space, or a form feed - which pandoc reads
+    with the definition as a paragraph; a fifth, a note over such a line, into which the
+    next paragraph ran and left the body; a sixth, a note over a blank line and then an
+    indented one holding only such a character, which carried the next paragraph off the
+    same way; and a seventh, a note over an indented line holding only a zero-width space,
+    which is no whitespace to Python, so that line opened the next block unseen. One
+    definition per line, with an empty line before the block, is what works; after a note,
+    an empty line and then a line that is not indented.
+  - *A document built before this change is best sent again.* Built before #25, it shows
+    each definition as a paragraph, with an identifier the rebuild no longer has, so a
+    co-author's edit to one is not compared, and is not named in the report. Built after #25,
+    it gives prose opening `[label]:` no identifier and prints a non-strict link as nothing,
+    where the rebuild marks both. With no edit made at all, `import` then reports such prose
+    as deleted in Word and as come back without an identifier, reports the link's paragraph
+    as deleted, and holds back the paragraph beside either for the new paragraph it seems to
+    have gained. Loud, and wrong, and nothing is written; sent again, the document compares.
+  - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
+    `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
+    definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and
+    it prints nothing of either. No real address has several words, so such a line is
+    marked, and prints as it was written, as it did before `_blocks` took it for a
+    definition. With one word after the colon, `[Note]: none.`, the line is a definition
+    to both, and prints nothing.
+  - *Beside a line pandoc does not take for blank, nothing is marked.* A line holding only
+    a no-break or full-width space, or a form feed, separates blocks here and not for
+    pandoc, and `_blocks` leaves the blocks on both sides of it unmarked. A definition under
+    such a line is prose to pandoc, and prints; a note over one takes in the paragraph
+    below. Either way what prints there carries no identifier, and is not compared.
+  - *Each source file ends its notes.* `tag` judges a note at the end of a file by what
+    follows it there, which is nothing. The build joined the files with blank lines alone, so
+    a note ending one file took in the next file's first paragraph when that opened indented,
+    and a co-author's edit to it was dropped. An empty div between the files, which puts
+    nothing in the document, now ends the note. A comment did too, but its `-->` closed a
+    `<!--` left open earlier in the file, and the rest of that file vanished. The next
+    file's first paragraph, opening indented, is still code to pandoc, as it would be
+    anywhere, and carries no identifier.
+  - *A note straight under a heading or a fence is not checked.* A block that opens with a
+    heading or a fence - code or a div - is left unmarked whole, as it always was, so a note
+    written on the line under it, with no empty line between, is never asked whether it
+    runs on. Under a line holding only a no-break space, the paragraph below goes into the
+    footnote, and is not compared. An empty line before the note avoids it.
+  - *Only a note left alone is read by itself.* Pandoc reads a note's text apart from the
+    body. A note that runs on into the block below, or is marked for a line the rule
+    refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
+    `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
+    them. And a code fence wrapped onto a note's second line, left alone or not, is still
+    paired with the next fence below, so what lies between goes unmarked, or a marker lands
+    inside a real code block. Both are so on `main`.
+  - *A note marked only for what is below it would become a definition if moved.* A note
+    over a blank line and then a line indented four columns would take that line in, so it
+    is marked, and prints as text. Moved in Word to a place with a plain paragraph below
+    it, it would be a definition to the next build and print nothing; `import` applied such
+    a move and exited 0. It now refuses it, and no move in that section is applied (next
+    entry). Typed into a definition's shape in Word, a paragraph was never at risk: the
+    merge escapes the bracket, `\[x]: …`, and it prints.
+  - *A definition between two paragraphs is no section boundary.* It renders nothing in the
+    body and pandoc reads it wherever it stands, so a move across it is applied: the
+    paragraphs change places, and the definition stays where it was written. As untagged
+    source text it first counted as a boundary, and such a move was refused as one past a
+    heading, a table or a figure. `merge` asks `only_definitions_between`, by the test
+    `_blocks` marks by, so a line in a definition's shape that is marked - in a shape pandoc
+    could read otherwise, or a note that would run on into what is below - is a paragraph,
+    not something between two. And a line pandoc does not take for blank - one holding only
+    a no-break space - is a boundary wherever it stands between the two, above a definition
+    or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
+    across a definition that would carry a note marked for what is below it to where it
+    becomes a definition is refused (next entry).
+- **`import` refuses a write the next build would not find again, by `tag`'s reading.**
+  Before anything is written, each file is worked out as `apply_plan` would write it and
+  read through `marked_blocks`, the reading `tag` and `tagged_paragraphs` share. A
+  paragraph written must be a marked block at the offset the splice put it, with the text
+  written; one not written must keep its mark and its text. What fails is withdrawn one
+  kind of cause at a time, and everything checked again after each. First a reworded
+  paragraph that fails has its rewording refused, since that may be what does it. Then one
+  that fails where the moves put it holds back every move in its section, and each move the
+  co-author made is reported with the paragraph it would have left without an identifier.
+  Holding back its own move alone pushed the paragraphs around it into other slots, so a
+  paragraph nobody moved was refused, and the file came out in an order neither the source
+  nor Word had; and acting on every failing paragraph at once held back moves that a
+  rewording's `-->` had spoilt, not the moves themselves. Rewordings in a held section still
+  land, in place, and are checked there too: back in place, a `-->` typed into one closed a
+  `<!--` above it that it had not closed where it was moved, and it was merged. What that
+  leaves:
+  - *It is only as right as `tag`.* Where `tag` marks a block pandoc reads otherwise, the
+    check takes `tag`'s word for it; the gaps in the entries above are its gaps too.
+  - *A move is held back by section.* A co-author's other moves in the same section are not
+    applied either, though nothing was wrong with them; they are named.
+  - *A paragraph that loses its identifier to a write beside it holds back its file's
+    rewordings.* `_blocks` reads across blocks - a comment or a fence opened in one runs on
+    into the next - so one write can cost another paragraph its identifier, and which write
+    did it cannot be told. The rewordings in that file are refused, and if that is not it,
+    the moves are held after.
+  - *A paragraph that never reached the document is not checked.* One inside an HTML
+    comment has an identifier in the source and none in Word, and nothing writes it.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

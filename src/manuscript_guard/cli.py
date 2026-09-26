@@ -295,8 +295,9 @@ def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
         return ""
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
-        f"not compared: table cells, headings, captions, list items, block quotes, and "
-        f"anything newly written. "
+        f"not compared: table cells, headings, captions, list items, block quotes, "
+        f"paragraphs with display maths or with a fence under them, and anything newly "
+        f"written. "
         + (
             "Those outside tables that changed are listed above; "
             if listed
@@ -544,12 +545,12 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
-            "another file, or a paragraph it holds in place ends one - and a paragraph moved "
-            "into the middle of another, between the parts Word shows display maths in, is in "
-            "none. It "
-            "holds an HTML comment (an empty line in Word), and a paragraph that opens a "
-            "comment, holds display maths, or has a fence, `</div>` or a similar line directly "
-            "under it in the .md. Move it in the .md yourself."
+            "another file, or a paragraph it holds in place ends one, and a paragraph moved "
+            "between the parts Word shows display maths in is in none. An HTML comment or a "
+            "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
+            "Word shows as an empty line, one with a line such as `\\end{table}` directly "
+            "under it in the .md, one with a `<!--` that never closes, and one directly above "
+            "display maths. Move it in the .md yourself."
         )
 
     if plan.strayed:
@@ -587,8 +588,9 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         else:
             print(
                 f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
-                f"an identifier - a heading, a list item, a quotation, a caption or new "
-                f"text - came back different and were not compared:"
+                f"an identifier - a heading, a list item, a quotation, a caption, a "
+                f"paragraph with display maths or with a fence under it, or new text - came "
+                f"back different and were not compared:"
             )
         for text in plan.vanished[:12]:
             print(f"    - {text[:120]}")

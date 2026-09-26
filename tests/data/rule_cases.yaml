@@ -16,6 +16,11 @@
 #   accepts: the atom named must classify under this rule
 #   rejects: the atom named must stay UNCLASSIFIED
 #   section: heading chain to classify under (methods_only rules need one)
+#
+# A rule for a line with no number in it, a table's separator row, has no atom to name. Its
+# cases say `atom: null`, and test the rule's own pattern: an accepted text must match it
+# whole, and a rejected text must not match it anywhere. Every rule still needs one reject
+# that names an atom, a real measurement it must leave alone.
 
 conventions:
   significance-threshold:
@@ -278,11 +283,19 @@ structural:
     rejects:
       - {text: "The page reported 33 000 exposures.", atom: "33"}
 
+  # A separator row holds no number, so these cases name no atom: the rule's pattern must
+  # match the accepted rows and must not match the rejected text at all.
   table-alignment-row:
     accepts:
       - {text: "|---|---|", atom: null}
+      - {text: "|---|:---:|", atom: null}
+      - {text: "---|---", atom: null}
+      - {text: "| :-- | --: |", atom: null}
     rejects:
       - {text: "The value was 412 in that row.", atom: "412"}
+      # A pipe on each of two lines is no separator row. With `\s`, the pattern ran across
+      # the line break and matched them as one.
+      - {text: "|\n|", atom: null}
 
   alphanumeric-identifier:
     accepts:

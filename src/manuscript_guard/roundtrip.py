@@ -303,8 +303,48 @@ _THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
 # A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
 _DEFINITION = re.compile(r" {0,3}[:~][ \t]")
 _CAPTION = re.compile(r" {0,3}[Tt]able:")
-# `[^1]: a footnote` or `[label]: https://...`.
-_REFERENCE = re.compile(r" {0,3}\[[^\]\n]+\]:")
+# A link or footnote definition, `[reg]: https://...` or `[^1]: The note.`, which pandoc
+# reads only at the start of a block. With a marker in front it was a paragraph: every
+# `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
+# definition printed as a line of text, on every build.
+#
+# A block goes without a marker only when every line of it is a definition in a shape that
+# pandoc can read no other way (`_definitions`, asked by `_blocks`). Taking every block that
+# opens `[label]:` for one left prose unmarked that pandoc printed - `[Note]: patients (all
+# adults) were enrolled.` - and a co-author's edit to it was never compared. Three versions
+# that modelled pandoc's grammar more closely were each caught in review doing the same, and
+# one took minutes over a line of attributes. Anything else that opens so is judged as any
+# block is: a definition written another way prints as text, which is visible where the
+# other is not.
+#
+# A link: a plain label, one token for its address - no real address has a space - and
+# perhaps a title, on one line. Pandoc takes almost any words after `[label]:` for an
+# address, so `[Methods]: patients were enrolled.` is a definition to it and prints nothing;
+# marked, it prints as written. The label is read as inline markup: with `@` in it the line
+# may be a citation, and code, maths or HTML opened in it can run past its `]`. No brace
+# anywhere: a binding is filled in after this reading, and its value could change it.
+_LINK_LINE = re.compile(
+    r" {0,3}\[[^\[\]\\`$<@^|{\n]*\]:[ \t]+"
+    r"(?:<[^<>\s\\{]+>|[^\s\"'(<\[{\\][^\s\[\]\\{]*)"
+    r"(?:[ \t]+(?:\"[^\s\"\\\[\]{][^\"\\\[\]{\n]*\"|'[^\s'\\\[\]{][^'\\\[\]{\n]*'"
+    r"|\([^()\\\[\]{\n]*\)))?"
+    r"[ \t]*"
+)
+# A footnote: its label and its text, which may wrap onto the lines under it
+# (`_continues_a_note`). Pandoc parses a note's text by itself, so nothing in it reaches the
+# body - but a line under it is more of the note, even a link's definition, and that link
+# then resolves nowhere. So links come first. And a note runs on
+# through every line pandoc does not take for blank, and past a blank line into an indented
+# one, and the paragraph it takes in leaves the body. So a note is left alone only when a
+# blank line ends it and the block after that is not indented (`_blank_below`). A line
+# holding only a no-break space is no blank line to pandoc; beside one, `_blocks` leaves
+# both blocks unmarked anyway. At the end of a file nothing follows; the build puts an
+# empty div between files, so the next file's first paragraph cannot run into it either.
+_NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
+# Where pandoc 3.9 ends a note (`rawLine`): a line opening a note's marker - `[^`, then no
+# space, tab, caret or bracket, then `]`, colon or not.
+_NOTE_ENDS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]")
+_INDENT = re.compile(r"[ \t]*")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
 # `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
 # paragraph that opens with an image and ends on a bracket losing its identifier is the
@@ -360,7 +400,6 @@ def _opens_block(line: str) -> bool:
         or _THEMATIC.fullmatch(line) is not None
         or _DEFINITION.match(line) is not None
         or _CAPTION.match(line) is not None
-        or _REFERENCE.match(line) is not None
         or _TEX.match(line) is not None
         or _HTML_LEAD.match(line) is not None
         or _HTML_TAG.match(line) is not None
@@ -816,6 +855,100 @@ class _Ruled:
         return max(ends) if ends else None
 
 
+def _definitions(block: str, above: str, below: str) -> bool:
+    """Whether a block is link and footnote definitions and nothing else, in shapes pandoc
+    reads no other way, with a blank line above it and nothing a note would run into below.
+    `above` and `below` are what `_around` gives."""
+    return _blank_above(above) and _only_definitions(block, below)
+
+
+def _only_definitions(block: str, below: str) -> bool:
+    """Whether every line of a block is a link or footnote definition in a shape pandoc
+    can only read as one, the links before the notes, and no note takes in what is below.
+    Not the stripped block: a no-break space is text to pandoc, and a line that ends in one
+    is not a definition; nor is one indented four spaces."""
+    lines = block.strip("\n").split("\n")
+    links = 0
+    while links < len(lines) and _LINK_LINE.fullmatch(lines[links]):
+        links += 1
+    notes = lines[links:]
+    if not notes:
+        return True
+    return (
+        _NOTE_LINE.fullmatch(notes[0]) is not None
+        and all(
+            _NOTE_LINE.fullmatch(line)
+            or _continues_a_note(line, _NOTE_LINE.fullmatch(above) is not None)
+            for above, line in itertools.pairwise(notes)
+        )
+        and _blank_below(below)
+    )
+
+
+def _continues_a_note(line: str, under_label: bool) -> bool:
+    """Whether pandoc reads `line`, under a footnote's first line, as more of that footnote;
+    `under_label` when the line above it is a note's label.
+
+    A note's label decides it, and pandoc takes almost any line under it into the note: a
+    hard-wrapped footnote is one. Marked for its second line, it printed as text on every
+    build, though #25 had let it work. Not a line pandoc ends the note at (`_NOTE_ENDS`),
+    which opens another note or prints; not a link's definition, which would resolve
+    nowhere inside the note; not an underline or a table's rule, which directly under the
+    label make it a heading, and further down leave the block to `_untagged`, which marks
+    none; and not, directly under the label, a definition list's `:` or `~` with a space
+    after it, which make it a term. Further down pandoc takes those into the note too.
+
+    Refusing a line is not the safe side by itself: a block not left alone is read for raw
+    content, where pandoc keeps a `<!--` inside the note or the term, and it then hid the
+    paragraphs below. So a bare `:` under the label, which also makes a term, and a `:::`
+    line, which ends the note inside a fenced div, are taken in. The term prints visibly;
+    what follows the `:::` in the block, `_untagged` leaves unmarked either way, as it does
+    any block with a div fence inside it."""
+    return not (
+        _NOTE_ENDS.match(line)
+        or _LINK_LINE.fullmatch(line)
+        or _RULE.fullmatch(line)
+        or (under_label and _DEFINITION.match(line))
+    )
+
+
+def _blank_below(below: str) -> bool:
+    """Whether the next block starts afresh after a note. `below` is what separates them
+    and the next block's first line, empty at the end of the text.
+
+    Pandoc ends a note at a line blank to it - empty, or spaces and tabs - unless the line
+    after that is indented four columns, a tab reaching the next four: that line opens the
+    note's next paragraph, and the unindented lines under it are more of it. So the note is
+    left alone only when some line between it and the next block is blank, and the line
+    after the last such line is indented less. Indented, a zero-width space in the next
+    block showed nothing and took the paragraph under it into the footnote. A note of
+    several paragraphs is marked with it, as it always was."""
+    lines = below.split("\n")[1:]
+    if not lines:
+        return True
+    blank = [at for at, line in enumerate(lines[:-1]) if line.strip(" \t") == ""]
+    return bool(blank) and len(_INDENT.match(lines[blank[-1] + 1]).group().expandtabs(4)) < 4
+
+
+def _blank_above(above: str) -> bool:
+    """Whether the line directly above a block is blank to pandoc too: empty, or spaces and
+    tabs. `above` is the whole run the split took for blank. Only its last line matters:
+    under a full-width space and then an empty line, a block starts afresh."""
+    lines = above.split("\n")
+    return len(lines) < 2 or lines[-2].strip(" \t") == ""
+
+
+def _around(pieces: list[str], index: int) -> tuple[str, str]:
+    """What separates `pieces[index]` from the blocks before and after it. `below` also
+    holds the next block's first line, whose indent decides whether a note runs on into it;
+    both are empty at the edges of the text."""
+    above = pieces[index - 1] if index else ""
+    below = ""
+    if index + 2 < len(pieces):
+        below = pieces[index + 1] + pieces[index + 2].partition("\n")[0]
+    return above, below
+
+
 def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     """Every piece of `text` in order, with its index and whether it gets an identifier.
 
@@ -880,14 +1013,18 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
                     hidden = max(hidden, ends[table])
             yield index, piece, False
             continue
+        # A definition's text is read by itself: a `<!--` or a `<pre>` in a note, or in a
+        # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
+        # note up to the next `-->`, while pandoc printed them all.
+        definitions = apart and _definitions(piece, *_around(pieces, index))
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
-        runs_on = _raw_end(text, origin, end, closers)
-        closer = ruled.end(index)
+        runs_on = 0 if definitions else _raw_end(text, origin, end, closers)
+        closer = None if definitions else ruled.end(index)
         if closer is not None:
             runs_on = max(runs_on, ends[closer])
         hidden = max(hidden, runs_on)
-        yield index, piece, apart and not (runs_on or _untagged(piece))
+        yield index, piece, apart and not (runs_on or _untagged(piece) or definitions)
 
 
 def tag(text: str, relative: str, *, mark: bool = False) -> str:
@@ -897,7 +1034,8 @@ def tag(text: str, relative: str, *, mark: bool = False) -> str:
     fenced divs, code, and paragraphs that are nothing but a table or figure placeholder,
     because those become a table or a figure rather than a paragraph. A misspelt
     placeholder standing alone is skipped with them; `check` refuses it. `_untagged` says
-    why each one.
+    why each one. So are link and footnote definitions, which put nothing in the body
+    (`_definitions`).
 
     With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
     around it as well, written as raw OpenXML that pandoc passes through untouched. Only the

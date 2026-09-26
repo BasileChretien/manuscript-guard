@@ -2831,7 +2831,9 @@ Closed since, and why each mattered:
     `CD4^+^` refuses every edit to it.
   - *The reading is pandoc's, closely enough, not exactly.* Emphasis is paired by pattern,
     not by pandoc's rules, and `[1][2]` with no reference definition is text to pandoc and a
-    link here, so an edit to it is refused. Where the reading takes source markup for text
+    link here, so an edit to it is refused. The reverse holds for a shortcut link: `[reg]`
+    with a definition is a link to pandoc and text here, so a paragraph holding one cannot be
+    lined up and is refused whatever the edit. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
   - *The read-back reads a binding as digits.* What a binding's value makes of the text
@@ -3047,21 +3049,29 @@ Closed since, and why each mattered:
   document matches, and it exits 1 - but the move itself is still not named. A table or
   figure that cannot be found in the returned document is not among them either. That one is
   reported, but a move past it is not.
-- **A paragraph is held in place by its source, not by what the co-author meant.** A
-  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
-  move across it is refused where nothing would have broken. A paragraph written directly
-  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
-  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
-  the paragraph on the next build. The lines are found by pattern: prose that happens to
-  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
-  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
-  that paragraph reported as moved; dragged past two or more, or past a heading, the line
-  itself is reported. A paragraph with display maths is held too, so dragging it whole,
-  equation and all, is refused like dragging its first part. A comment opened in a
-  paragraph is found by reading the source with its code spans set aside, and a backtick in
-  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
-  one that opens a code span; a comment opened after it and closed past a blank line is then
-  not seen, and that paragraph can be moved.
+- **A paragraph is held in place by its source, not by what the co-author meant.** Since the
+  tagging rules changed, most of what was held carries no identifier at all, so import
+  neither moves nor rewords it, and an edit to it is listed with the paragraphs without an
+  identifier: a comment, a `\newpage`, a paragraph holding a comment that closes past it or
+  holding display maths, and one with a fence, `</div>` or a definition directly under it.
+  What is still tagged and held is held although nothing would break: a paragraph Word shows
+  as an empty line, such as a spacer written `&nbsp;` or `\ `; one with a line directly
+  under it that looks as if it opens or closes a block but that pandoc prints as text, such
+  as an unmatched `\end{table}`, a line starting `: ` below its second line, or a `:::`
+  indented four spaces; one with a `<!--` that never closes; and one directly above display
+  maths. The last is held because the rule that display maths right after a paragraph
+  belongs to it dates from when a paragraph holding `$$` carried an identifier, and now
+  fires only on a separate equation. A rewording of any of them is refused, and a swap with
+  it reported rather than applied. A comment or a `\newpage` still ends a section though
+  Word shows nothing there, so a swap of the two paragraphs around one is reported rather
+  than applied. A co-author who drags a held paragraph past the one paragraph beside it sees
+  that paragraph reported as moved; dragged past two or more, or past a heading, the held
+  paragraph itself is reported. A comment opened in a paragraph is found first by the
+  tagging rules, which give no identifier to a paragraph holding a `<!--` that closes past
+  it. Behind them, `_bare` reads the source with code spans and closed comments set aside,
+  and a backtick in a link's address, an autolink, inline maths or an HTML attribute can
+  still be taken for one that opens a code span; a comment opened after it and closed past a
+  blank line is then not seen by that reading.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -3073,14 +3083,14 @@ Closed since, and why each mattered:
   matches neither copy and is reported as not found; a copy pasted into another section is
   new content, and is not reported at all.
 - **A paragraph that reaches Word in parts is only recognised by what lies around it.**
-  Untagged text between it and the next paragraph of its section, display maths in its
-  source, or a line under it that opens a block, marks it. One that pandoc splits for
-  another reason and that ends its section is not recognised: a rewording of its first part
-  would replace the rest, and a move of its first part would carry the rest along.
-- **The part of a paragraph after its equation is not compared.** Only the part carrying the
-  identifier is. A rewording after the equation, with the first part untouched, is listed
-  with the paragraphs without an identifier that came back different, and not applied. With
-  the first part edited too, the paragraph is refused.
+  Untagged text between it and the next paragraph of its section marks it; a paragraph with
+  display maths in its source, or with a line under it that opens a block, carries no
+  identifier at all. One that pandoc splits for another reason and that ends its section is
+  not recognised: a rewording of its first part would replace the rest, and a move of its
+  first part would carry the rest along.
+- **A paragraph with display maths is not compared.** It carries no identifier, so a
+  rewording of any part of it, before or after the equation, is listed with the paragraphs
+  without an identifier that came back different, and not applied.
 - **A duplicated heading is matched with the one it copies only when that is unambiguous.**
   Headings and captions are paired as a sequence, and then any text of which one copy is
   left over on each side. A pasted copy of a heading that is still in place is paired with
@@ -3096,6 +3106,111 @@ Closed since, and why each mattered:
   past that text is then refused as a move into another section. Safe, and a refusal. Such
   a paragraph now carries no identifier, so this arises only for a document built before
   that change.
+- **A link or footnote definition carries no identifier.** Pandoc reads `[reg]: https://...`
+  and `[^1]: ...` only at the start of a block, and neither puts anything in the body: a
+  link's definition renders nothing, and a note's text reaches Word as a footnote, which
+  `import` does not read (see above). So there is no body paragraph for an identifier to
+  name, and nowhere in the definition to put one. In front of it, the identifier made the
+  definition a paragraph, and every link or footnote using it printed as bracketed text
+  on every build. `_blocks` then took every block opening `[label]:` for a definition, and
+  left prose unmarked that pandoc printed - `[Note]: patients (all adults) were enrolled.` -
+  so a co-author's edit to it was never compared. A block is now left untagged for being a
+  definition only when every line of it is one, in a shape pandoc can read no other way
+  (`_definitions`); anything else opening `[label]:` is judged as any block is, and marked
+  when it is one paragraph. Untagged, a definition is never a splice target and stays where
+  it was written. What that leaves:
+  - *Only the plainest shapes count.* A link is a label, one token for its address and
+    perhaps a quoted or parenthesised title, on one line. The label holds no bracket,
+    backslash, backtick, `$`, `<`, `@`, `^` or `|`, because pandoc reads it as inline
+    markup: code, maths or HTML opened in it can run past its `]`, and an `@` can make the
+    line a citation. No part holds a brace, because a binding is filled in after this
+    reading and its value could change it. A footnote is its label and its text, which may
+    wrap onto the lines under it: pandoc takes almost any line under a note's label into the
+    note. It ends the note at a line opening a note's marker - `[^`, then no space, tab,
+    caret or bracket, then `]`, with a colon or without. Directly under the label, a
+    definition list's `:` or `~` makes the label a term, and an underline makes it a
+    heading. Those lines are refused - the `:` and `~` with a space after them - and so is
+    an underline or a table's rule further down, which pandoc takes into the note: the
+    block then opens nothing `_untagged` marks, and the note works. A bare `:` or `~` under
+    the label, and a line closing a fenced div, which ends the note inside one, are taken
+    in, because refusing is not the safe side it looks: a block not left alone is read for
+    raw content (below), and a `<!--` that pandoc keeps inside the note or the term then
+    hid the paragraphs after it. What those two lines make prints visibly, or `_untagged`
+    leaves it unmarked either way. Links come before notes, because a
+    line under a note is more of the note, and a link's definition there resolves nowhere. A note
+    also runs on through every line pandoc does not take for blank, unless it opens another
+    note; and after a blank line
+    (empty, or spaces and tabs), a line indented four columns - four spaces, or a tab,
+    which reaches the next four - is the note's next paragraph, and the unindented lines
+    under it are more of it. So a note is left alone only when a blank line ends it and the
+    line after the last blank one is indented less, and a note of several paragraphs is
+    marked. Anything else - a link wrapped over two lines, with attributes or a title on the
+    next line, a nested bracket in its label, a link under a note, a footnote running to a
+    second paragraph - is marked, and prints as text. That failure is visible, and it is a
+    choice: on `main` after #25, which left every block opening `[label]:` alone, these
+    worked, and so did prose opening `[label]:`, uncompared. The strict rule gives them up
+    so that such prose is compared; a hard-wrapped footnote, the common one, it keeps. Three versions that
+    modelled more of pandoc's grammar were each caught in review failing the other way: they
+    left a block unmarked that pandoc printed, so a co-author's edit to it was dropped while
+    `import` said nothing came back, and one took minutes over a line of attributes. A
+    fourth left a definition unmarked under a line that is blank here and not to pandoc -
+    one holding only a no-break or full-width space, or a form feed - which pandoc reads
+    with the definition as a paragraph; a fifth, a note over such a line, into which the
+    next paragraph ran and left the body; a sixth, a note over a blank line and then an
+    indented one holding only such a character, which carried the next paragraph off the
+    same way; and a seventh, a note over an indented line holding only a zero-width space,
+    which is no whitespace to Python, so that line opened the next block unseen. One
+    definition per line, with an empty line before the block, is what works; after a note,
+    an empty line and then a line that is not indented.
+  - *A document built before this change is best sent again.* Built before #25, it shows
+    each definition as a paragraph, with an identifier the rebuild no longer has, so a
+    co-author's edit to one is not compared, and is not named in the report. Built after #25,
+    it gives prose opening `[label]:` no identifier and prints a non-strict link as nothing,
+    where the rebuild marks both. With no edit made at all, `import` then reports such prose
+    as deleted in Word and as come back without an identifier, reports the link's paragraph
+    as deleted, and holds back the paragraph beside either for the new paragraph it seems to
+    have gained. Loud, and wrong, and nothing is written; sent again, the document compares.
+  - *A line pandoc would swallow is marked on purpose.* Pandoc takes almost any words after
+    `[label]:` for an address, run together: `[Methods]: patients were enrolled.` is a
+    definition to it, and so is a reference list typed as `[1]: Smith J, Doe A. ...`, and
+    it prints nothing of either. No real address has several words, so such a line is
+    marked, and prints as it was written, as it did before `_blocks` took it for a
+    definition. With one word after the colon, `[Note]: none.`, the line is a definition
+    to both, and prints nothing.
+  - *Beside a line pandoc does not take for blank, nothing is marked.* A line holding only
+    a no-break or full-width space, or a form feed, separates blocks here and not for
+    pandoc, and `_blocks` leaves the blocks on both sides of it unmarked. A definition under
+    such a line is prose to pandoc, and prints; a note over one takes in the paragraph
+    below. Either way what prints there carries no identifier, and is not compared.
+  - *Each source file ends its notes.* `tag` judges a note at the end of a file by what
+    follows it there, which is nothing. The build joined the files with blank lines alone, so
+    a note ending one file took in the next file's first paragraph when that opened indented,
+    and a co-author's edit to it was dropped. An empty div between the files, which puts
+    nothing in the document, now ends the note. A comment did too, but its `-->` closed a
+    `<!--` left open earlier in the file, and the rest of that file vanished. The next
+    file's first paragraph, opening indented, is still code to pandoc, as it would be
+    anywhere, and carries no identifier.
+  - *A note straight under a heading or a fence is not checked.* A block that opens with a
+    heading or a fence - code or a div - is left unmarked whole, as it always was, so a note
+    written on the line under it, with no empty line between, is never asked whether it
+    runs on. Under a line holding only a no-break space, the paragraph below goes into the
+    footnote, and is not compared. An empty line before the note avoids it.
+  - *Only a note left alone is read by itself.* Pandoc reads a note's text apart from the
+    body. A note that runs on into the block below, or is marked for a line the rule
+    refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
+    `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
+    them. And a code fence wrapped onto a note's second line, left alone or not, is still
+    paired with the next fence below, so what lies between goes unmarked, or a marker lands
+    inside a real code block. Both are so on `main`.
+  - *A note marked only for what is below it can become a definition.* A note over a blank
+    line and then a line indented four columns would take that line in, so it is marked,
+    and prints as text. Moved in Word to a place with a plain paragraph below it, it is a
+    definition to the next build and prints nothing, while `import` reported the move as
+    applied. The text stays in the source. Nothing yet refuses a change after which a
+    paragraph `import` wrote would carry no identifier.
+  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
+    source, so a move across it is refused as a move past a heading, a table or a figure.
+    Safe, and the reason given is wrong.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

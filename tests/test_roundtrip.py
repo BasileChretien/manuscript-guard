@@ -2325,6 +2325,225 @@ def test_part_of_a_citation_ending_a_paragraph_deleted_is_a_changed_citation() -
     assert aligned.changed == (("(Smith et al. 2020)", "[@smith2020]"),)
 
 
+#: Prose that is also inside a token beside it. The extents were once guessed by looking for
+#: each stretch of the source's prose, stripped, in the rendered text, where it was first
+#: found: the "-" of " - " as the first date's own hyphen, "." as the one after "al", "and"
+#: as the one inside the citation. Every edit here was refused on that guess, and each one
+#: merges. Pandoc's citeproc prints a plain space after "al."; the U+00A0 case stands for a
+#: citation style that prints a no-break space there, which Word's text keeps.
+INSIDE_A_TOKEN = [
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study covered 2015-01-01 - 2024-12-31 in total.",
+        "The study covered {{results.start}} - {{results.end}} in total.",
+        id="hyphen-in-a-date",
+    ),
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study ran 2015-01-01 to 2024-12-31 in total.",
+        "The study ran {{results.start}} to {{results.end}} in total.",
+        id="the-hyphen-between-them-edited",
+    ),
+    pytest.param(
+        "Rates of {{results.ci}} - {{results.n}} overall.",
+        "Rates of ⟦(1.2-3.4)⟧ - ⟦3.84⟧ overall.",
+        "Rates of (1.2-3.4) - 3.84 overall today.",
+        "Rates of {{results.ci}} - {{results.n}} overall today.",
+        id="hyphen-in-an-interval",
+    ),
+    pytest.param(
+        "Risk rose, as reported [@smith2020].",
+        "Risk rose, as reported ⟦(Smith et al. 2020)⟧.",
+        "Risk increased, as reported (Smith et al. 2020).",
+        "Risk increased, as reported [@smith2020].",
+        id="full-stop-in-a-citation",
+    ),
+    pytest.param(
+        "Risk rose, as reported [@smith2020].",
+        "Risk rose, as reported ⟦(Smith et al.\u00a02020)⟧.",
+        "Risk increased, as reported (Smith et al.\u00a02020).",
+        "Risk increased, as reported [@smith2020].",
+        id="full-stop-in-a-citation-no-break-space",
+    ),
+    pytest.param(
+        "Risk rose in two cohorts [@lee2021] and {{results.x}} overall.",
+        "Risk rose in two cohorts ⟦(Lee, Park, and Kim 2021)⟧ and ⟦3.84⟧ overall.",
+        "Risk rose in two cohorts (Lee, Park, and Kim 2021) & 3.84 overall.",
+        "Risk rose in two cohorts [@lee2021] & {{results.x}} overall.",
+        id="and-beside-a-citation-edited",
+    ),
+]
+
+#: Edits to a token whose guessed edges were wrong, each named whole.
+INSIDE_CHANGED = [
+    pytest.param(
+        "Risk rose in two cohorts [@lee2021] and {{results.x}} overall.",
+        "Risk rose in two cohorts ⟦(Lee, Park, and Kim 2021)⟧ and ⟦3.84⟧ overall.",
+        "Risk rose in two cohorts (Lee, Park, & Kim 2021) and 3.84 overall.",
+        (("(Lee, Park, and Kim 2021)", "[@lee2021]"),),
+        id="and-in-a-citation-edited",
+    ),
+    pytest.param(
+        "The study ran {{results.start}} - {{results.end}} in total.",
+        "The study ran ⟦2015-01-01⟧ - ⟦2024-12-31⟧ in total.",
+        "The study ran 2015-01-01 - 2024-12-30 in total.",
+        (("2024-12-31", "{{results.end}}"),),
+        id="a-date-changed",
+    ),
+]
+
+#: What the build fills each binding in with.
+INSIDE_VALUES = {
+    "results.start": "2015-01-01",
+    "results.end": "2024-12-31",
+    "results.ci": "(1.2-3.4)",
+    "results.n": "3.84",
+    "results.x": "3.84",
+}
+
+
+@pytest.mark.parametrize(("source", "marked", "returned", "expected"), INSIDE_A_TOKEN)
+def test_prose_found_inside_a_token_leaves_its_edges_alone(
+    source: str, marked: str, returned: str, expected: str
+) -> None:
+    """Guessed, the first date ended at "2015" and the second began at "01-01", the interval
+    ended at "(1.2", the citation at "al", and "(Lee, Park," was the whole citation. Each
+    edit was refused, as a value that changed or a rebuild that did not read as typed."""
+    assert merged(source, marked, returned) == expected
+
+
+@pytest.mark.parametrize(("source", "marked", "returned", "changed"), INSIDE_CHANGED)
+def test_a_changed_token_is_named_whole(
+    source: str, marked: str, returned: str, changed: tuple
+) -> None:
+    """Guessed, the citation ended at "Park," and the "&" typed inside it merged as prose:
+    `[@lee2021] & {{results.x}}`, which drops the co-author's edit to the citation and prints
+    an "&" where they left "and". A changed date was named by what lay between the guessed
+    edges: "'01-01 - 2024-12-31' comes from results.end"."""
+    plain, spans = unmark(marked)
+    aligned = align(source, plain, returned, spans)
+    assert aligned.rebuilt is None
+    assert aligned.changed == changed
+
+
+#: Just enough of a citation style to print the citations above as they are shown. The
+#: Chicago style pandoc 3.9 ships puts "et al." after the first of three authors, so "and"
+#: is not in it.
+INSIDE_CSL = """<?xml version="1.0" encoding="utf-8"?>
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info><title>Test</title><id>test</id><updated>2026-01-01T00:00:00+00:00</updated></info>
+  <citation et-al-min="4" et-al-use-first="1">
+    <layout prefix="(" suffix=")" delimiter="; ">
+      <group delimiter=" ">
+        <names variable="author">
+          <name form="short" and="text" delimiter=", " delimiter-precedes-last="always"/>
+        </names>
+        <date variable="issued"><date-part name="year"/></date>
+      </group>
+    </layout>
+  </citation>
+</style>
+"""
+INSIDE_REFERENCES = [
+    {
+        "id": "smith2020",
+        "type": "article-journal",
+        "author": [{"family": name} for name in ("Smith", "Brown", "Green", "White")],
+        "issued": {"date-parts": [[2020]]},
+    },
+    {
+        "id": "lee2021",
+        "type": "article-journal",
+        "author": [{"family": name} for name in ("Lee", "Park", "Kim")],
+        "issued": {"date-parts": [[2021]]},
+    },
+]
+
+
+def cited_build(markdown: str, folder: Path) -> list:
+    """`markdown` built with its citations rendered, and read back as import reads Word."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import read_blocks
+
+    folder.mkdir(parents=True, exist_ok=True)
+    style, references = folder / "style.csl", folder / "references.json"
+    style.write_text(INSIDE_CSL, encoding="utf-8")
+    references.write_text(json.dumps(INSIDE_REFERENCES), encoding="utf-8")
+    path, document = folder / "a.md", folder / "a.docx"
+    path.write_text(markdown, encoding="utf-8")
+    subprocess.run(
+        ["pandoc", str(path), "--citeproc", f"--bibliography={references}", f"--csl={style}",
+         "-o", str(document)],
+        check=True,
+    )
+    return [block for block in read_blocks(document) if block.names]
+
+
+@pytest.fixture(scope="module")
+def inside_built(tmp_path_factory: pytest.TempPathFactory) -> dict:
+    """Each source above built as import builds it, once plain and once with every token
+    bookmarked, and the paragraph as the marked build reads it. Marking must change nothing
+    a co-author sees, or the extents describe text that was never sent."""
+    from manuscript_guard.roundtrip import tag
+    from manuscript_guard.text.placeholders import substitute
+
+    cases = INSIDE_A_TOKEN + INSIDE_CHANGED
+    sources = list(dict.fromkeys(case.values[0] for case in cases))
+    text = "\n\n".join(sources) + "\n"
+    folder = tmp_path_factory.mktemp("inside")
+    plain = cited_build(substitute(tag(text, "main.md"), INSIDE_VALUES), folder / "plain")
+    marked = cited_build(
+        substitute(tag(text, "main.md", mark=True), INSIDE_VALUES), folder / "marked"
+    )
+    assert len(plain) == len(marked) == len(sources)
+    for sent, block in zip(plain, marked, strict=True):
+        assert sent.names == block.names
+        assert sent.text == block.text, "marking changed the text"
+    return dict(zip(sources, marked, strict=True))
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("source", "marked", "returned", "expected"),
+    [case for case in INSIDE_A_TOKEN if "no-break" not in case.id],
+)
+def test_prose_found_inside_a_token_merges_from_a_marked_build(
+    source: str,
+    marked: str,
+    returned: str,
+    expected: str,
+    inside_built: dict,
+    tmp_path: Path,
+) -> None:
+    """End to end: the extents are the marked build's, not written out by hand, and the
+    merge, built again, prints what the co-author typed. The no-break-space case is not
+    here: citeproc prints a plain space after "al." in a citation."""
+    from manuscript_guard.text.placeholders import substitute
+
+    block = inside_built[source]
+    assert (block.text, list(block.tokens)) == unmark(marked)
+    out = realign(source, block.text, returned, block.tokens)
+    assert out == expected
+    rebuilt = cited_build(f"[]{{#mg-p-x-0}}{substitute(out, INSIDE_VALUES)}\n", tmp_path)
+    assert [paragraph.text for paragraph in rebuilt] == [returned]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("source", "marked", "returned", "changed"), INSIDE_CHANGED)
+def test_a_changed_token_is_named_whole_from_a_marked_build(
+    source: str, marked: str, returned: str, changed: tuple, inside_built: dict
+) -> None:
+    block = inside_built[source]
+    assert (block.text, list(block.tokens)) == unmark(marked)
+    aligned = align(source, block.text, returned, block.tokens)
+    assert aligned.rebuilt is None
+    assert aligned.changed == changed
+
+
 @pytest.mark.parametrize(
     ("paragraph", "expected"),
     [

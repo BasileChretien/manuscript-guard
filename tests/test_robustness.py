@@ -54,6 +54,12 @@ def timed_check(project: Path) -> float:
         ("many citations", " ".join(f"[@key{i}]" for i in range(3000)) + "\n"),
         ("many headings", "".join(f"## Section {i}\n\nProse.\n\n" for i in range(1500))),
         ("setext underlines", "".join(f"Heading {i}\n---\n\nProse.\n\n" for i in range(1500))),
+        ("comment openers, no closer", "<!-- " * 5000 + "\n"),
+        (
+            "unmatched backtick runs",
+            " ".join("`" * n + "x" for n in range(1, 400)) + " <!-- x\n",
+        ),
+        ("one long backtick run", "a " + "`" * 200_000 + " <!-- x\n"),
     ],
     # Explicit ids: pytest builds one from the parameters otherwise, and puts it in
     # PYTEST_CURRENT_TEST — which Windows refuses past 32767 characters, so a 60 KB body
@@ -88,6 +94,27 @@ def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
     in the test, not a pass."""
     with pytest.raises(ValueError, match="too little to time"):
         assert_linear(opener_lines, len, 10, "len")
+
+
+def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
+    """The shortcut that fixed the test above rejected only openers *wider* than one already
+    known to have no closer. Openers each narrower than the last still read to the end of
+    the file, and 400 KB of them took 33 seconds: the binding parser now reads fences
+    whenever a paper holds `<!--`, so that reached `parse` too."""
+    from manuscript_guard.text.fences import fenced_spans
+
+    def measure(openers: int) -> float:
+        text = "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
+        started = time.perf_counter()
+        fenced_spans(text)
+        return time.perf_counter() - started
+
+    # Eight times the input, because at four the quadratic scanner's constant overhead kept
+    # its ratio near 12-16, too close to a linear one's for a threshold to tell them apart.
+    measure(5)  # warm the caches
+    small = max(measure(25), 1e-3)
+    large = measure(200)
+    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
 
 
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
@@ -130,21 +157,18 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
-def test_definitions_over_a_paragraph_are_passed_over_in_linear_time() -> None:
+def test_definitions_over_a_paragraph_are_passed_over_in_linear_time(assert_linear) -> None:
     """Each definition passed over looked at the rest of the block for a title on the next
     line by copying it: 40,000 definitions over a paragraph took 42 seconds, where the
     definitions alone took a fifth of one."""
     from manuscript_guard.roundtrip import tag
 
-    def measure(count: int) -> float:
-        text = "[x]: u\n" * count + "Prose."
-        started = time.perf_counter()
-        tag(text, "main.md")
-        return time.perf_counter() - started
-
-    small = max(measure(10000), 1e-4)
-    large = measure(40000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(
+        lambda count: "[x]: u\n" * count + "Prose.",
+        lambda text: tag(text, "main.md"),
+        5000,
+        "passing over definitions above a paragraph",
+    )
 
 
 @pytest.mark.parametrize(
@@ -312,6 +336,27 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         assert gc.isenabled()
     finally:
         gc.enable()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [" " * 20000, " " * 20000 + "x", "     \n" * 400, " |" * 10000 + "x"],
+    ids=["one line of spaces", "spaces then a letter", "lines of spaces", "spaces and pipes"],
+)
+def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
+    """`table-alignment-row` was `^\\s*\\|?[\\s:|-]+\\|[\\s:|-]*$`. Its three pieces could all
+    take the same spaces, and `\\s` took line breaks too, so the scan backtracked over every
+    way of sharing them out: one line of 20,000 spaces took about 7 s, and 400 lines holding
+    only spaces about 9 s. `check` scans every manuscript file with every rule.
+
+    Whitespace alone, which this rule stalled on. Other rules stall on a keyword followed by a
+    long run of spaces, "age" and 800 spaces say, and are not covered here."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load()
+    started = time.perf_counter()
+    classifier.scan(text)
+    assert time.perf_counter() - started < 2.0
 
 
 # ---------------------------------------------------------------- hostile files

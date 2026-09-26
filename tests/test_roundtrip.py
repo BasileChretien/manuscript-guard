@@ -844,6 +844,42 @@ def test_a_comment_below_a_paragraph_added_since_the_build_keeps_its_anchor(
     assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [now]
 
 
+def _beside_one_not_compared(tmp_path: Path, returned_text: str):
+    """The plan for a first paragraph that came back as `returned_text`, with the paragraph
+    after it in the fresh build not compared and not in the returned document."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    path.write_text("Not applicable.\n\nNone declared.\n", encoding="utf-8")
+    sent = [Block(("a",), "Not applicable."), Block(("b",), "None declared.")]
+    return plan_import(
+        {"a": (path, "Not applicable.", 0)},
+        sent,
+        [Block(("a",), returned_text)],
+        unsure=frozenset({"b"}),
+    )
+
+
+def test_a_rewording_that_shares_no_word_with_either_paragraph_is_no_join(
+    tmp_path: Path,
+) -> None:
+    """Sharing no word with the paragraph or the one after it, a rewording read no more like
+    the two joined than like the paragraph alone, both at nothing, and the tie counted as a
+    join: "Not applicable." rewritten whole above a declaration added since the build was
+    refused, where main merged it. A join holds some of the other paragraph's words."""
+    plan = _beside_one_not_compared(tmp_path, "Approved by the review board.")
+    assert not plan.joined
+    assert plan.merged == {"a": "Approved by the review board."}
+
+
+def test_a_paragraph_joined_with_the_one_after_it_not_compared_is_still_a_join(
+    tmp_path: Path,
+) -> None:
+    plan = _beside_one_not_compared(tmp_path, "Not applicable. None declared.")
+    assert plan.joined and not plan.merged
+
+
 def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
     """Whether a paragraph reached Word in parts was judged by the section of the identified
     paragraph after it, and one left out of the comparison had none: the rewording of the

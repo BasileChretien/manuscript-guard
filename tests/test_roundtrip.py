@@ -1572,6 +1572,20 @@ HEADED = [
     pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
     pytest.param("# Notes \\begin{x}\ny \\end{x} Patients.", None, id="heading-open-tex"),
     pytest.param("# The `lm` function\nWe used it.", "We used it.", id="heading-closed-code"),
+    # Round five: a citation's locator, a citation group, maths, and a code span opened
+    # after an escaped backtick all run onto the next line too. The locator was the
+    # paragraph's to `import`, and an edit in Word wrote it into the source cut off from
+    # its citation.
+    pytest.param(
+        "# Zeta as in @smith2020\n[p. 33]\nAlpha paragraph.", None, id="heading-citation-locator"
+    ),
+    pytest.param(
+        "# Compared [@smith2020;\n@jones2021]\nText.", None, id="heading-citation-group"
+    ),
+    pytest.param(
+        "## Costs ($US)\nCosts were converted to US$ at 2020 rates.", None, id="heading-maths"
+    ),
+    pytest.param("# Quote \\` and `x\nMore` text.", None, id="heading-escaped-backtick"),
     # Under a link and a heading, a definition the strict rule does not take is left alone,
     # as under a heading alone: #54 left the block alone for its underline (round four).
     pytest.param(

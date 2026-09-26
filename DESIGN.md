@@ -3115,11 +3115,15 @@ Closed since, and why each mattered:
   - *A heading whose line leaves something open is not passed over.* A code span, a
     comment or a TeX environment opened in it may close on the next line: pandoc then reads
     both lines into an ATX heading, or reads a setext title and all under it as one
-    paragraph, and a marker between would print inside it. Such a block stays unmarked, as
-    it was, though a lone backtick that closes nothing costs the paragraph under it its
-    identifier too. A `<div>` line over an underline is taken for a setext title; pandoc
-    reads a div around what follows, and the paragraph there keeps its identifier inside
-    it.
+    paragraph, and a marker between would print inside it. So may a citation, whose
+    locator pandoc reads from the next line - `[p. 33]` under `@key` - or a citation group
+    wrapped after `;`, or maths. Passed over, the locator was the paragraph's to `import`,
+    and an edit in Word wrote it into the source cut off from its citation. A heading whose
+    line holds an `@`, a `$`, an unclosed `[` or a code span left open, an escaped backtick
+    not counting, stays unmarked with its paragraph, as it was; so does one with a lone
+    backtick that closes nothing, whose paragraph pandoc would have read apart. A `<div>`
+    line over an underline is taken for a setext title; pandoc reads a div around what
+    follows, and the paragraph there keeps its identifier inside it.
   - *A reworded paragraph can take the link above it along.* One that comes back from Word
     opening with `(`, `"` or `'` could be the title of a link's definition written straight
     above it, so the next build marks the whole block, as #54 does, and the definition

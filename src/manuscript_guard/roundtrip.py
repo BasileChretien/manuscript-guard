@@ -954,13 +954,23 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
 
 
 def _runs_on(line: str) -> bool:
-    """Whether something opened in `line` may close only on a later one: a code span, or
-    raw content - a comment, a TeX environment, a verbatim HTML element."""
-    if _RAW_OPEN.search(line):
+    """Whether something opened in `line` may close only on a later one: a code span, raw
+    content - a comment, a TeX environment, a verbatim HTML element - maths, a citation, or
+    a bracket. Pandoc reads a citation's locator on the next line into the citation, `[p.
+    33]` under `@key`, and a group wrapped after `;`; passed over, the line was the
+    paragraph's to `import`, and an edit in Word wrote it into the source cut off from its
+    citation. Only a whole paragraph under a heading is worth marking, so any `@`, `$` or
+    unclosed `[` keeps the block as it was."""
+    if _RAW_OPEN.search(line) or "@" in line or "$" in line or line.count("[") > line.count("]"):
         return True
     opened = None
-    for run in _CODE_RUN.findall(line):
-        opened = None if run == opened else opened or run
+    for found in _CODE_RUN.finditer(line):
+        run = found.group()
+        # An escaped backtick is text, and the run goes on from the one after it.
+        escapes = found.start() - len(line[: found.start()].rstrip("\\"))
+        run = run[escapes % 2 :]
+        if run:
+            opened = None if run == opened else opened or run
     return opened is not None
 
 

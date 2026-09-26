@@ -2578,14 +2578,19 @@ Closed since, and why each mattered:
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, and a comment stays inside the value it was opened in, but each of these can
-  still hide a number pandoc prints, all on contrived input:
+  in the body, a comment stays inside the value it was opened in, and a URL ends at the
+  value's end. But each of these can still hide a number pandoc prints, all on contrived
+  input:
   - a fence opened in one YAML value and closed in another;
   - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
     a quoted title, which a `# -->` YAML comment after it closes;
-  - a URL at the end of a value swallowing the next value's first word;
-  - a code block in an abstract indented four spaces, which is not found;
-  - a YAML block in the middle of the body, which pandoc also reads.
+  - a code block in an abstract indented four spaces, which is not found.
+  The build strips the manuscript's front matter, so these matter to `audit`, which reads
+  papers another tool built, more than to G2. Reading each YAML value on its own, from
+  where PyYAML places it, and un-indenting a block scalar before looking for code in it,
+  would close all three. A YAML block in the middle of the body is read as pandoc reads
+  it (`masking.metadata_blocks`), but a fence opened in one can still pair with a fence in
+  the body below it.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and

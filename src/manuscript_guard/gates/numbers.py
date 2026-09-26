@@ -23,6 +23,7 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.text.masking import (
     fenced_blocks,
     front_matter_abstract,
+    front_matter_end,
     front_matter_problem,
     mask,
 )
@@ -260,10 +261,16 @@ def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> 
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
+    head = front_matter_end(text)
     for fence in fenced_blocks(text):
         line = text.count("\n", 0, fence.start) + 1
         body = text[fence.body_start : fence.body_end]
 
+        if fence.is_raw and fence.start < head:
+            # The build strips the manuscript's front matter, so a raw block there - LaTeX
+            # under `header-includes`, the usual one - reaches no document, and reporting it
+            # as written straight into the build was a false alarm on every such paper.
+            continue
         if fence.is_raw:
             # ```{=openxml} and friends are not listings. pandoc splices the contents into
             # the output verbatim, so this reaches the reader as formatted prose — and it

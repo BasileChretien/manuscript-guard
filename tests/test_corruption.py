@@ -70,6 +70,29 @@ def test_clean_example_passes(project: Path) -> None:
     assert report.counts["results_uncovered"] == 0
 
 
+@pytest.mark.parametrize("tail", ["/", "//", ":/", " "])
+def test_a_citation_locator_hard_against_punctuation_passes_g2(project: Path, tail: str) -> None:
+    """`import` writes `@key [p. 3]/{{results.x}}` when a co-author deletes the words between
+    a citation and a value. The locator ran on through its `]` as `3]/`, G2 failed it as an
+    unbound number, and the build refused a paragraph pandoc prints correctly."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = f"As @fictionalClassSignal2019 [p. 3]{tail}{{{{results.ror.point}}}} overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+def test_a_value_written_hard_after_a_citation_locator_is_still_caught(project: Path) -> None:
+    """Cutting the atom at the locator's `]` must not hide what follows it: 9.99 is a claim."""
+    text = main_md(project).read_text(encoding="utf-8")
+    probe = "As @fictionalClassSignal2019 [p. 3]/9.99 overall."
+    main_md(project).write_text(f"{text}\n\n# Probe\n\n{probe}\n", encoding="utf-8")
+    report = gate_report(project)
+    messages = [f.message for f in report.failures]
+    assert any("9.99" in m for m in messages), messages
+    assert not any("'3" in m for m in messages), "the locator is not the unbound number"
+
+
 # --------------------------------------------------------------------------------------
 # The headline: every binding, replaced by its own current value, must be caught.
 # --------------------------------------------------------------------------------------
@@ -349,6 +372,50 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
         path.read_text(encoding="utf-8") + f"\n\nAn added sentence with {convention} in it.\n",
         encoding="utf-8",
     )
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def _in_methods(project: Path, sentence: str) -> None:
+    path = main_md(project)
+    anchor = "Reporting follows the checklist"
+    text = path.read_text(encoding="utf-8")
+    assert anchor in text
+    path.write_text(text.replace(anchor, f"{sentence}\n\n{anchor}", 1), encoding="utf-8")
+
+
+def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
+    """Pandoc's Markdown writer escapes every comparison, so a Methods section converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` escapes a `>` that a `<` earlier in the
+    paragraph could close as a tag. Each prints the bare character. G2 read neither: the
+    threshold rules never matched, and `\\>3` was an atom no rule began at."""
+    _in_methods(
+        project,
+        r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
+    )
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(r"A signal needed ROR \> 7 here.", id="no-conventional-value"),
+        pytest.param(r"A signal needed p \< 0.37 here.", id="no-conventional-p"),
+        pytest.param(r"A signal needed \>9 cases here.", id="no-conventional-count"),
+        pytest.param(
+            "Of the reports,\n412)\\>ULOQ were excluded.", id="list-marker-at-a-line-start"
+        ),
+        pytest.param("## 1204\\<ULOQ reports", id="numbered-heading"),
+        pytest.param(r"A signal needed `ROR \> 2` here.", id="backslash-printed-in-code"),
+        pytest.param(r"A signal needed \\>3 cases here.", id="backslash-printed-before-it"),
+    ],
+)
+def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written: str) -> None:
+    """Read as the character it prints, and no further. Read as a space, the backslash met a
+    rule that wanted one: `412)\\>ULOQ` at a line start was a list marker, and 412 passed. And
+    a backslash that prints is no escape: in code, or after another backslash, `\\>` prints
+    both characters, and `ROR \\> 2` there is not the threshold."""
+    _in_methods(project, written)
     assert "unclassified-number" in codes(gate_report(project))
 
 
@@ -883,6 +950,232 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+# --------------------------------------------------------------------- the journal gate
+# A journal's limits, sections and statements are about the document the editor receives,
+# and the build strips every file's front matter before printing it.
+
+
+def _journal(root: Path):
+    from manuscript_guard.gates import check_journal
+
+    project, _ = load_project(root)
+    return check_journal(project)
+
+
+def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:
+    """The gate reads the main text as one string joined from every file, and only the first
+    file's front matter is at the top of it. A later file's block was read as prose: its
+    closing `---`, directly under a YAML line, underlined that line into a heading, so
+    `title: Methods of the online appendix` satisfied the required Methods section of a
+    paper that had none, and its words counted as main text."""
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", "# Approach\n"), encoding="utf-8"
+    )
+    before = _journal(project)
+    assert "missing-required-section" in codes(before)
+
+    (project / "manuscript" / "online_appendix.md").write_text(
+        "---\ntitle: Methods of the online appendix\n---\n\nThree more words.\n",
+        encoding="utf-8",
+    )
+    after = _journal(project)
+    assert "missing-required-section" in codes(after)
+    assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
+
+
+def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
+    """`# Funding` is a heading in Markdown and a comment in YAML. Inside the front matter it
+    satisfied the journal's funding statement, and the build, which strips the block,
+    printed a paper with no funding statement in it."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    text = text.replace("---\n", "---\n# Funding: none was received.\n", 1)
+    main.write_text(text, encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        "<!--\n# Funding\nTBD\n-->\n",
+        "```r\n# Funding source, from the registry\nfunder <- NA\n```\n",
+        "~~~python\n# Funding\nfunder = None\n~~~\n",
+    ],
+)
+def test_a_statement_that_does_not_print_as_one_is_missing(project: Path, hidden: str) -> None:
+    """The statement patterns were searched in the main text with its HTML comments and
+    fenced code still in it. `# Funding` is a heading in Markdown and a comment in R and
+    Python: inside `<!-- -->` it satisfied the journal's funding statement and printed
+    nothing, and inside a listing it printed as a line of code. Either way the paper went
+    out with no funding statement."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    main.write_text(f"{text}\n{hidden}", encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
+    )
+
+
+def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) -> None:
+    """The abstract's required headings were looked for in its text with its comments still
+    in it, so `<!-- Conclusions: to write -->` met a Conclusions heading the abstract did
+    not print."""
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["structure"]["abstract_headings"] = ["Background", "Methods", "Conclusions"]
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace(
+        "**Conclusions.** Reporting", "<!-- Conclusions: to write -->\nReporting"
+    )
+    main.write_text(text, encoding="utf-8")
+    assert "abstract-headings-missing" in codes(_journal(project))
+
+
+# ------------------------------------------------------------- what the build prints
+# The build strips every file's front matter and writes the header from paper.yaml. Text
+# the gates read there and the build drops is checked, then left out of the document.
+
+SENTINEL = "Zebrafish marmalade sentinel phrase."
+
+
+@pytest.mark.parametrize(
+    "abstract",
+    [
+        f"abstract: |\n  {SENTINEL}\n",
+        "abstract: >-\n  Zebrafish marmalade\n  sentinel phrase.\n",
+        f"abstract: {SENTINEL}\n",
+        f'"abstract": {SENTINEL}\n',
+    ],
+)
+def test_an_abstract_in_the_front_matter_is_refused(project: Path, abstract: str, capsys) -> None:
+    """G2 read an `abstract:` in the front matter, because pandoc prints one, and the build
+    stripped the block and wrote a header from paper.yaml, which has no abstract. The
+    abstract was checked and then left out of the document without a word, and the word
+    count, which follows the build, gave a journal's abstract limit 0 words to pass on.
+    `check` refuses it now, and the build refuses it even when told to skip the checks."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\n" + abstract, 1), encoding="utf-8")
+
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    failing = [(f["code"], f["line"]) for f in findings if f["severity"] == "fail"]
+    assert failing == [("front-matter-abstract", 2)]
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "under a `# Abstract` heading" in capsys.readouterr().out
+    # Any name: a build that skipped failing checks writes `manuscript.UNCHECKED.*`.
+    assert list((project / "build").glob("manuscript*")) == []
+
+
+def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
+    """The build strips a supplement's front matter as it strips the paper's."""
+    from manuscript_guard.build.assemble import assemble
+
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text(f"---\nabstract: {SENTINEL}\n---\n\n# Appendix\n\nText.\n", "utf-8")
+
+    def refused(report) -> list[tuple[str, str, int | None]]:
+        found = [f for f in report.failures if f.code == "front-matter-abstract"]
+        return [(f.gate, f.path.name, f.line) for f in found]
+
+    assert refused(gate_report(project)) == [("G2", "appendix.md", 2)]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
+
+
+def _abstract_line(front: str) -> int | None:
+    from manuscript_guard.text.masking import front_matter_abstract
+
+    found = front_matter_abstract(f"---\n{front}---\n\nBody.\n")
+    return None if found is None else found[0]
+
+
+@pytest.mark.parametrize(
+    ("front", "line"),
+    [
+        (f"abstract: {SENTINEL}\n", 2),
+        (f"'abstract': {SENTINEL}\n", 2),
+        (f'abstract: "\n  {SENTINEL}"\n', 2),
+        (f"abstract: '\n  {SENTINEL}'\n", 2),
+        (f"{{title: T, abstract: {SENTINEL}}}\n", 2),
+        (f"title: T\nabstract:\n\n  {SENTINEL}\n", 3),
+        ("abstract: 0\n", 2),
+        # Blocks pandoc reads and PyYAML could not turn into Python values, or not scan.
+        (f'date: 2024-02-30\n"abstract": {SENTINEL}\n', 3),
+        (f"created: !r Sys.Date()\n'abstract': {SENTINEL}\n", 3),
+        (f'subtitle:\tS\n"abstract": {SENTINEL}\n', 3),
+        # Pandoc expands a tab to the next multiple of four columns, so this is one block.
+        ('"abstract": |\n  Zebrafish marmalade\n\tsentinel phrase.\n', 2),
+        (f'title:\tT\n"abstract":\t{SENTINEL}\n', 3),
+        # Pandoc takes a merge key's mapping into the one holding it, and knows a merge key
+        # by its text, `<<`, however it is quoted or tagged.
+        (f"base: &b {{abstract: {SENTINEL}}}\n<<: *b\n", 2),
+        (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
+        (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
+        (f"!!merge abstract: {SENTINEL}\n", 2),
+        # PyYAML counts U+2028 as a line break, and the file does not.
+        (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
+        # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
+        (f"abstract: !!null {SENTINEL}\n", 2),
+        ('abstract: "null"\n', 2),
+    ],
+)
+def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: int) -> None:
+    """G2 finds a front-matter value by its key line, and YAML has spellings that line
+    misses: a quoted key, a quoted value opened on the key's line and continued below it, a
+    flow mapping, a merge key. Pandoc prints each as the abstract, so the refusal reads the
+    block as YAML, the way pandoc reads it, and names the line of the key."""
+    assert _abstract_line(front) == line
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        'abstract: ""\n',
+        "abstract:\n",
+        "abstract: |\n",
+        "abstract: >-\n",
+        "abstract: |2\n",
+        "abstract: null\n",
+        "abstract: # written last\n",
+        'abstract: "" # none\n',
+        f"meta:\n  abstract: {SENTINEL}\n",
+        # The first of two merge keys wins, quoted or not, and its abstract is empty.
+        f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
+    ],
+)
+def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:
+    """Nothing is lost by stripping an abstract pandoc reads as empty, or a key named
+    `abstract` inside another mapping, which pandoc does not take for the abstract."""
+    assert _abstract_line(front) is None
+
+
+def test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check() -> None:
+    """A mapping merging the one before it twice doubles, with each line, the work of
+    anything that expands merge keys: 22 lines, 614 bytes, held `check` for 38 seconds when
+    the block was built into Python values. The search for a merged abstract has the same
+    shape, so it visits each mapping once; this one is found only after all of `a21`."""
+    merges = [f"a{i}: &a{i} {{<<: [*a{i - 1}, *a{i - 1}]}}" for i in range(1, 22)]
+    lines = ["a0: &a0 {k: v}", *merges, f"z: &z {{abstract: {SENTINEL}}}", "<<: [*a21, *z]"]
+    started = time.perf_counter()
+    line = _abstract_line("\n".join(lines) + "\n")
+    assert time.perf_counter() - started < 5
+    assert line == 24
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never
@@ -1078,6 +1371,224 @@ def test_audit_does_not_take_a_wrapped_line_for_a_references_heading(tmp_path: P
     assert "9.99" in [c.text for c in audit([paper], [outputs]).unmatched]
 
 
+_BOOK = "Smith J. Pharmacovigilance: a practical guide. 3rd ed. Oxford: Wiley; 2019. 412 p."
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}",
+        "# References {.unnumbered}",
+        "# References {#refs .unnumbered}",
+        "References {-}\n==============",
+        "# References # {-}",
+    ],
+)
+def test_audit_cuts_at_a_references_heading_with_pandoc_attributes(
+    tmp_path: Path, heading: str
+) -> None:
+    """Pandoc users write an unnumbered reference heading as `# References {-}`, and only
+    `[\\s*_:.|]` could follow the heading word. No heading was found, nothing was cut, and
+    an entry no shape recognises, a book here, had every number reported as a finding, so
+    `--strict` failed on the bibliography."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77 cases.\n\n{heading}\n\n{_BOOK}\n\n# Appendix {{#sec-appendix}}\n\n"
+        "The sensitivity estimate was 4.65.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert report.reference_like == []
+    assert len(report.not_audited) == 1
+
+
+def test_audit_cuts_at_a_styled_references_heading_with_pandoc_attributes(
+    tmp_path: Path,
+) -> None:
+    """A heading style marks the paragraph as a heading, as `#` does in Markdown."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References {-}", "Heading1")
+        + _p(_BOOK)
+        + _p("Appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+        {"word/styles.xml": styles},
+    )
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.65"]
+    assert len(report.not_audited) == 1
+
+
+def test_audit_does_not_take_an_unmarked_line_with_braces_for_a_references_heading(
+    tmp_path: Path,
+) -> None:
+    """An attribute block is markup only on a heading. On a line of prose, or a paragraph
+    in Word with no heading style, pandoc and Word print "References {-}" as it stands, and
+    taking it for a heading would hide everything after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    markdown = tmp_path / "paper.md"
+    markdown.write_text(
+        "We saw 77 cases, as the section headed\nReferences {-}\n"
+        "explains. The pooled reporting odds ratio was 9.99.\n",
+        encoding="utf-8",
+    )
+    word = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.") + _p("References {-}") + _p("The pooled ratio was 9.99."),
+    )
+    for paper in (markdown, word):
+        report = audit([paper], [outputs])
+        assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"], paper.name
+        assert report.not_audited == [], paper.name
+
+
+def test_audit_does_not_cut_at_a_heading_that_prints_its_braces_or_its_hash(
+    tmp_path: Path,
+) -> None:
+    """Pandoc reads no quoted value that opens with a space, so it prints
+    `# References {title=" Works cited"}` braces and all. And closing `#`s belong to an ATX
+    heading: a setext heading or a Word heading reading "References #" prints the `#`.
+    Taken for reference headings, each cut the paragraph after it, and its number went
+    unread."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    papers = []
+    for index, heading in enumerate(
+        ['# References {title=" Works cited"}', "References #\n------------"]
+    ):
+        path = tmp_path / f"paper{index}.md"
+        path.write_text(
+            f"We saw 77 cases.\n\n{heading}\n\nThe pooled reporting odds ratio was 9.99.\n",
+            encoding="utf-8",
+        )
+        papers.append(path)
+    papers.append(
+        _docx(
+            tmp_path / "paper.docx",
+            _p("We saw 77 cases.")
+            + _p("References #", "Heading1")
+            + _p("The pooled ratio was 9.99."),
+            {"word/styles.xml": styles},
+        )
+    )
+    for paper in papers:
+        report = audit([paper], [outputs])
+        assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"], paper.name
+        assert report.not_audited == [], paper.name
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "# References {-}\N{NO-BREAK SPACE}",
+        "# References {-}\N{IDEOGRAPHIC SPACE}",
+        "# References {-}\N{THIN SPACE}",
+        "# References {-}\f",
+        "# References #\N{NO-BREAK SPACE}",
+        "# References {.\N{SUPERSCRIPT TWO}}",
+        "# References {\N{SUPERSCRIPT TWO}=1}",
+        "# References {.\N{ROMAN NUMERAL EIGHT}}",
+    ],
+)
+def test_audit_does_not_cut_at_braces_or_a_hash_pandoc_prints(
+    tmp_path: Path, heading: str
+) -> None:
+    """`strip()` takes every Unicode space, and pandoc allows only spaces and tabs after a
+    block or a closing `#`: a no-break space after `{-}` leaves the braces printed. And a
+    class or a key opens with a letter, where `[^\\W\\d_]` also took `\u00b2` and `\u2167`. Each was
+    read as a reference heading, and the paragraph after it was cut unread."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"We saw 77 cases.\n\n{heading}\n\nThe pooled ratio was 9.99.\n", encoding="utf-8"
+    )
+    report = audit([paper], [outputs])
+    assert "9.99" in [c.text.rstrip(".") for c in report.unmatched]
+    assert report.not_audited == []
+
+
+def test_audit_does_not_cut_at_a_word_heading_that_prints_its_hashes(tmp_path: Path) -> None:
+    """Closing `#`s are Markdown syntax. A Word Heading 1 reading "# References #" prints
+    both, and was read as a Markdown heading with its closing `#` taken off."""
+    from manuscript_guard.audit import audit
+
+    styles = (
+        f"<w:styles {W}>"
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>'
+        "</w:styles>"
+    )
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("# References #", "Heading1")
+        + _p("The pooled ratio was 9.99."),
+        {"word/styles.xml": styles},
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        "# Results {#sec-results}",
+        '# Results {#sec-results title="the \\"main\\" results"}',
+        "# Results {#sec-results note=a\\}b}",
+        "# Results {#sec-results}\n\n###",
+        "# Results {#sec-results lang=fr\u00a0FR}",
+        '# Results {#sec-results title="\N{NEXT LINE}x y"}',
+        '# Results {#sec-results title="\N{LINE SEPARATOR}x y"}',
+    ],
+)
+def test_g2_reads_a_results_heading_with_pandoc_attributes_as_results(
+    project: Path, results: str
+) -> None:
+    """A heading's title kept its attribute block, and `is_methods` matches a title whole.
+    So `# Results {#sec-results}` was not a Results heading, and a subsection under it named
+    like a Methods one, "Sensitivity analyses", made a reported `p < 0.001` the alpha chosen
+    in advance. The first fix read no backslash escapes in a value, which pandoc reads, and
+    read the heading's line to the end of the match, which ran on past a blank line to a
+    line of `#`s. The second ended an unquoted value at a no-break space, where pandoc ends
+    one only at a space, a tab, a line break or `}`. The third refused a quoted value that
+    opens with any `\\s`, where pandoc refuses only its own spaces, and U+0085 or U+2028 is
+    not one of them."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("\n# Results\n", f"\n{results}\n", 1)
+    text = text.replace(
+        "\n# Discussion\n",
+        "\n## Sensitivity analyses\n\nThe excess was significant (p < 0.001).\n\n# Discussion\n",
+        1,
+    )
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: Path) -> None:
     """A .docx table cell is its own line, so a column headed "References" read as the
     start of the bibliography and hid everything up to the next styled heading."""
@@ -1105,7 +1616,10 @@ def test_audit_does_not_take_a_table_header_for_a_references_heading(tmp_path: P
         "## Methods\n\n<!--\n# References\n-->\n",
         "## Methods\n\n<!--\nReferences\n-->\n",
         "---\ntitle: A study\n# References\nbibliography: refs.bib\n---\n",
-        "---\n<!-- keep in step with paper.yaml -->\n# References\nbibliography: refs.bib\n---\n",
+        # A comment inside the YAML. On a line of its own the comment makes the header not
+        # YAML, which pandoc refuses to build, so it sits in a value here.
+        "---\ntitle: A study <!-- keep in step with paper.yaml -->\n# References\n"
+        "bibliography: refs.bib\n---\n",
     ],
 )
 def test_audit_does_not_start_a_reference_list_in_code_or_a_comment(
@@ -1153,7 +1667,7 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
         (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
     ],
 )
@@ -1171,6 +1685,74 @@ def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[s
     assert headings(body) == headings(text) == printed
 
 
+_INTRODUCTION = (
+    "# Introduction\n\nThe first reports came in 2019.\n\n---\n\n# Methods\n\n"
+    "Cases were compared with non-cases.\n"
+)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Closed by `...`, which YAML and pandoc accept. The build took only `---` and ran on
+        # to the horizontal rule, and the Introduction went with the header.
+        f"---\ntitle: A study\n...\n\n{_INTRODUCTION}",
+        "---\r\ntitle: A study\r\n...\r\n\r\n" + _INTRODUCTION.replace("\n", "\r\n"),
+        # Never closed. Pandoc reads to the rule, finds no YAML there and refuses to build.
+        f"---\ntitle: A study\n\n{_INTRODUCTION}",
+        # Closed, but not a mapping, so not metadata: pandoc prints it.
+        f"---\n- first\n- second\n---\n\n{_INTRODUCTION}",
+        f"---\nA sentence, not a key.\n...\n\n{_INTRODUCTION}",
+    ],
+    ids=["closed by dots", "closed by dots, crlf", "never closed", "a list", "a sentence"],
+)
+def test_the_front_matter_never_takes_the_body_with_it(text: str) -> None:
+    """`strip_front_matter` ran to the first `---` line in the file, wherever it was, and
+    called everything above it front matter. A header closed by `...` and a rule further
+    down took the Introduction out of the built document, out of `import` and out of G13,
+    with no warning. The front matter now ends at the first `---` or `...` line, and counts
+    only when pandoc keeps it as metadata; anything else is left where pandoc prints it or
+    refuses it."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import headings
+
+    body, _title = strip_front_matter(text)
+    assert "The first reports came in 2019." in body
+    assert "Introduction" in headings(body)
+    assert headings(body) == headings(text)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "---\n<!-- keep in step -->\ntitle: A study\n# Methods\n---\n",
+        "---\ntitle: A study\n\n# Methods\n\nCases were compared with non-cases.\n\n---\n",
+        "---\ntitle: Reporting of hepatic injury: a study\n---\n",
+    ],
+    ids=["a comment on its first line", "never closed before a rule", "an unquoted colon"],
+)
+def test_a_header_pandoc_cannot_read_stops_check_and_the_build(
+    project: Path, header: str
+) -> None:
+    """A header pandoc cannot read as YAML was left in the body, for pandoc to refuse. It
+    never did: the identifier in front of the header's first paragraph made it prose, the
+    build printed the YAML as text and exited 0, and the gates read the `# Methods` in it as
+    a heading, so `p < 0.001` under it passed as the alpha chosen in advance. Both now stop
+    and name the YAML's error."""
+    from manuscript_guard.build.assemble import assemble
+
+    source = main_md(project)
+    body = source.read_text(encoding="utf-8").split("\n---\n", 1)[1]
+    source.write_text(
+        header + "\nThe excess was significant (p < 0.001).\n" + body, encoding="utf-8"
+    )
+    assert "front-matter-unreadable" in codes(gate_report(project))
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    _assembled, built = assemble(projekt, namespace, results)
+    assert "front-matter-unreadable" in codes(built)
+
+
 @pytest.mark.parametrize(
     ("paper", "shown"),
     [
@@ -1186,6 +1768,12 @@ def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[s
             "```r\nx <- 1\n```\n",
             {"9.99"},
         ),
+        # A code block in the abstract is still code: its `<!--` opens no comment.
+        (
+            "---\nabstract: |\n  Drafts were searched for\n\n  ```\n  <!--\n  ```\n\n"
+            "  and 9.99% held one. <!-- recheck -->\n---\n\n# Results\n\nIt was 3.84%.\n",
+            {"9.99%", "3.84%"},
+        ),
     ],
 )
 def test_nothing_opened_in_the_front_matter_hides_the_body(
@@ -1196,15 +1784,51 @@ def test_nothing_opened_in_the_front_matter_hides_the_body(
     and a fence opener in an abstract paired with a fence in the body, so everything between
     was hidden from G2 and the audit while pandoc printed it. Once the heading scan stopped
     at the front matter and the masking did not, a reference heading between the two cut the
-    body's `-->` away, and the title's comment ran on over an appendix."""
+    body's `-->` away, and the title's comment ran on over an appendix. The first fix looked
+    for fences in the body alone, so a `<!--` in a code block in the abstract opened a
+    comment again."""
     from manuscript_guard.audit import audit
-    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.masking import NUL, mask, masked_spans
 
     outputs = _outputs(tmp_path, '{"n": 1}')
     path = tmp_path / "paper.md"
     path.write_text(paper, encoding="utf-8")
     assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
     assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
+    hidden = {i for spans in masked_spans(paper).values() for a, b in spans for i in range(a, b)}
+    explained = "".join(NUL if i in hidden else ch for i, ch in enumerate(paper))
+    assert explained == mask(paper), "`explain` reports what G2 masks"
+
+
+def test_a_comment_opened_in_the_front_matter_hides_no_binding(project: Path) -> None:
+    """The binding parser blanked HTML comments across the whole file, so a `<!--` in a YAML
+    comment ran on to the next comment in the body, and no binding between was parsed: a
+    reversed interval passed and printed as "(95% CI 5.12 to 2.89)"."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("\n---\n", "\n# note <!-- keep the title in step\n---\n", 1)
+    text = text.replace(
+        "{{results.ror.ci_low}} to {{results.ror.ci_high}}",
+        "{{results.ror.ci_high}} to {{results.ror.ci_low}}",
+        1,
+    )
+    text = text.replace("# Introduction", "<!-- checked -->\n\n# Introduction", 1)
+    path.write_text(text, encoding="utf-8")
+    assert "interval-reversed" in codes(gate_report(project))
+
+
+def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:
+    """A fence opener in an abstract, with no closer there, paired with a fence in the body,
+    and the prose between was judged as R."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = (
+        '---\nabstract: |\n  ```r\n---\n\n## Results\n\nThe label read "ROR 9.99".\n\n'
+        "```r\nx <- 1\n```\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" not in {f.code for f in report.findings}
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
@@ -1414,6 +2038,138 @@ def test_audit_reads_prose_between_html_comments(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched} == {"9.99", "413"}
+
+
+COMMENT_MARKERS_IN_CODE = "We stripped `<!--` markers. The ROR was {}.\n\nNote: `-->` closes.\n"
+
+
+def test_audit_reads_prose_between_comment_markers_in_code(tmp_path: Path) -> None:
+    """Pandoc prints `` `<!--` `` as code. The masking took it for a comment and hid
+    everything up to the next `-->`, a later `` `-->` `` included: the audit reported 0
+    numeric tokens and `--strict` passed."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text("# Methods\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"), encoding="utf-8")
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == 1
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "<!-- draft\n```r\nx <- 1 # -->\n```\n\nThe ROR was 9.99. <!-- a -->\n",
+        "---\ntitle: Stripping <!-- markers\n---\n\nThe ROR was 9.99. <!-- note -->\n",
+        "<!-- Cut after review --\n> The pilot ROR was 9.99.\n-->\n",
+        "Set `<!-- ROR 9.99\n```\n-->\n```\n` in the template.\n",
+    ],
+    ids=[
+        "closed in a listing",
+        "opened in the title",
+        "cut short by --, newline, >",
+        "code across a fence line",
+    ],
+)
+def test_audit_reads_prose_pandoc_prints_near_comment_markers(tmp_path: Path, paper: str) -> None:
+    """Pandoc prints 9.99 in each. The first three comments end before the next `-->`: at
+    one inside a listing, at the end of the title they were opened in, or nowhere, because
+    pandoc's HTML reader stops at `--` and `>` and then prints the whole thing. In the last
+    the `<!--` is code, and a code span already open runs across the fence lines."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "# Methods\n\nThe template begins:\n\n    <!-- header\n\n# Results\n\n"
+        "The ROR was 9.99.\n\n```html\n<!-- footer -->\n```\n",
+        "# Methods\n\n- Wrap the template in ```:\n```html\n<!-- template\n```\n\n"
+        "# Results\n\nThe ROR was 9.99.\n\n<!-- TODO -->\n",
+        "Set `x\n````\ny`\n```\n<!--\n````\n\nThe ROR was 9.99. -->\n",
+        "---\nabstract: |\n  Let $x <!-- y$. The ROR was 9.99.\n\n  ```\n  -->\n  ```\n"
+        "author: A. Author <!-- add B -->\n---\n\nBody.\n",
+    ],
+    ids=[
+        "an opener pandoc prints as code, closed in a listing",
+        "a code span pandoc ends at a list item",
+        "a code span over a fence line",
+        "a front-matter key the old rule never read",
+    ],
+)
+def test_the_comment_scanner_hides_nothing_the_old_rule_did_not(tmp_path: Path, paper: str) -> None:
+    """The scanner knows code spans and fences, but not every place pandoc ends one: an
+    indented code block, a list item, maths. Where it guessed a code span or a comment that
+    pandoc does not make, a `<!--` it should have ignored closed on a `-->` inside a listing,
+    or one it should have found in a listing opened a comment, and Results and 9.99 were
+    hidden: `audit --strict` exited 0. The old rule read all three."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+
+
+def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
+    """The old binding parser got this right and the first version of the shared scanner
+    did not: it read with the fences blanked, so the comment ran on over the binding."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n<!-- draft\n```r\nx <- 1 # -->\n```\n\n"
+        + "The ROR was {{results.no_such_key}}. <!-- a -->\n",
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
+
+
+def test_g2_reads_a_number_in_an_escaped_comment(project: Path) -> None:
+    """`\\<!--` opens no comment: pandoc prints "A note <!– 42 –> here.", and G2 masked it as
+    one, so the 42 passed unbound. `import --apply` writes exactly this shape, since it
+    escapes a `<` before `!` that a co-author typed in Word."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\nA note \\<!-- 42 --> here.\n",
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "42" in f.message for f in report.failures
+    ), report.render(project)
+
+
+def test_g2_reads_prose_between_comment_markers_in_code(project: Path) -> None:
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n\n" + COMMENT_MARKERS_IN_CODE.format("9.99"),
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "9.99" in f.message for f in report.failures
+    ), report.render(project)
+
+
+def test_a_bad_binding_between_comment_markers_in_code_is_caught(project: Path) -> None:
+    """Skipped as commented out, it was neither resolved nor substituted, and the document
+    printed `{{results.no_such_key}}`."""
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "\n\n"
+        + COMMENT_MARKERS_IN_CODE.format("{{results.no_such_key}}"),
+        encoding="utf-8",
+    )
+    assert "unresolved-binding" in codes(gate_report(project))
 
 
 @pytest.mark.parametrize(
@@ -1634,3 +2390,29 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Path) -> None:
+    """A `<!--` in a listing is code to pandoc. The placeholder parser on main read it as a
+    comment that ran on to a later note's `-->`, so the binding between was never
+    substituted, and the document printed `{{results.ror.point}}` while `check` passed.
+    `test_comments.py` holds the parser to it; this holds the build, end to end. A listing
+    of HTML is an ordinary thing to write, so the build must print the value, not refuse."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    ticks = "`" * 3
+    source.write_text(
+        f"{text}\n# Appendix\n\n{ticks}html\n<!-- a comment left open in a listing\n{ticks}\n\n"
+        "The reporting odds ratio was {{results.ror.point}}.\n\n<!-- a later note -->\n",
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+    assert "{{results.ror.point}}" not in built
+    value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
+    assert f"The reporting odds ratio was {value}." in built

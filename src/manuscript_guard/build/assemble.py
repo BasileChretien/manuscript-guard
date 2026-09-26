@@ -19,8 +19,16 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.text.masking import FRONTMATTER
+from manuscript_guard.gates.numbers import (
+    abstract_in_header,
+    source_files,
+    unreadable_header,
+)
+from manuscript_guard.text.masking import (
+    FRONTMATTER,
+    front_matter_abstract,
+    front_matter_problem,
+)
 from manuscript_guard.text.placeholders import parse
 
 GATE = "BUILD"
@@ -99,10 +107,14 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     return text[found.end():].lstrip("\n"), declared
 
 
-def assemble(project: Project, namespace: dict[str, Value], results: Results) -> tuple[
-    list[Assembled], Report
-]:
-    """Substitute every binding in every source file. Nothing is written to disk here."""
+def assemble(
+    project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
+) -> tuple[list[Assembled], Report]:
+    """Substitute every binding in every source file. Nothing is written to disk here.
+
+    `mark` wraps each binding and citation in a bookmark of its own, for the build `import`
+    compares with and for nothing else; see `roundtrip.tag`.
+    """
     report = Report()
     out: list[Assembled] = []
 
@@ -113,7 +125,18 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
         from manuscript_guard.roundtrip import tag
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
-        raw, declared = strip_front_matter(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        # Built anyway, the header printed as text: the identifier in front of it hid it
+        # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
+        problem = front_matter_problem(source)
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
+        # Stripped below and printed nowhere else, so refused; `--skip-checks` does not
+        # reach this either.
+        abstract = front_matter_abstract(source)
+        if abstract is not None:
+            report = report.with_findings(abstract_in_header(path, *abstract, GATE))
+        raw, declared = strip_front_matter(source)
         if declared and declared != str(project.paper.get("title", "")):
             report = report.with_findings(
                 Finding(
@@ -127,7 +150,7 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
                     "delete the title from the manuscript or make them agree",
                 )
             )
-        text = tag(raw, relative)
+        text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
         rendered = text
 

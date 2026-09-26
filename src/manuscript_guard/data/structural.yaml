@@ -74,10 +74,16 @@ structural:
       numbered-reference journal prints and therefore what auditing a submitted document
       meets. Found on a real paper: 25 of its 232 unexplained numbers were citation markers,
       each dragging the preceding word in with it because an atom runs to the next space.
-      The bracketed run is integers, commas, spaces and dashes only, so unlike the
-      author-year rule nothing measured can hide inside the span — "[0.72-0.82]", a
-      confidence interval some journals bracket, carries a decimal point and is not matched.
-    pattern: '[\w.%)\]]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
+      The bracketed run is integers, commas, spaces and dashes only, so nothing with a
+      decimal point can hide inside the brackets — "[0.72-0.82]", a confidence interval some
+      journals bracket, is not matched. The word before the marker is spanned, not a number:
+      the audit reads "9.99)[12]" as the value 9.99 and the marker, and a whole-number range
+      after the value it encloses, "64 [55-72]", as an interval.
+    # No digit in the prefix: it filed a value glued to a marker, "(95% CI 1.20, 9.99)[12]",
+    # as part of the citation. No `]` either: it made `3.40][12]` one match. `_` is a word
+    # character here, for `_E. coli_[3]`. A bracketed word before the marker, allowed for
+    # `[SmPC][4]`, took `½` and an interval, `[IQR][55-72]`, with it; that marker is listed.
+    pattern: '(?:[^\W\d]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
 
   - id: orcid
     why: >-
@@ -133,7 +139,12 @@ structural:
 
   - id: table-alignment-row
     why: Markdown table separator rows.
-    pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'
+    # One line, cell by cell, and no two neighbouring pieces can take the same character.
+    # It was `^\s*\|?[\s:|-]+\|[\s:|-]*$`: every piece could take the same spaces and `\s`
+    # took line breaks, so the scan backtracked through every way of sharing them out. One
+    # line of 20,000 spaces took 7 s, 400 lines holding only spaces 9 s, and it matched a
+    # pipe on each of two lines as one row.
+    pattern: '^[ \t]*(?:\|[ \t]*)?(?::?-+:?[ \t]*\|[ \t]*)+(?::?-+:?[ \t]*)?\r?$'
 
   - id: checklist-item
     why: >-

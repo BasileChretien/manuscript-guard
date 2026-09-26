@@ -19,6 +19,7 @@ from pathlib import Path
 
 from manuscript_guard import __version__
 from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
+from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import ContractError, load_namespace, load_project
 from manuscript_guard.findings import Report, merge_all
@@ -271,13 +272,14 @@ def cmd_bind(args: argparse.Namespace) -> int:
 
 
 
-def _unexamined(document: Path, identified: int) -> str:
+def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     """How much of the returned document this command could not look at.
 
-    Import compares paragraphs that carry an identifier. Table cells, headings, captions and
-    any paragraph the co-author newly wrote carry none, so an edit to one is not merged, not
-    refused, and not reported - it simply does not exist as far as the tool is concerned.
-    A co-author who corrects a number in a table has every reason to believe it landed.
+    Import compares paragraphs that carry an identifier. Table cells, headings, captions,
+    list items, block quotes and any paragraph the co-author newly wrote carry none, so an
+    edit to one is not merged and not refused. Outside tables such an edit is at least
+    listed; inside one it is only counted here. A co-author who corrects a number in a table
+    has every reason to believe it landed.
     """
     import re as _re
     import zipfile as _zip
@@ -293,9 +295,59 @@ def _unexamined(document: Path, identified: int) -> str:
         return ""
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
-        f"not compared: table cells, headings, captions, and anything newly written. An "
-        f"edit to one of those is not reported here."
+        f"not compared: table cells, headings, captions, list items, block quotes, "
+        f"paragraphs with display maths or with a fence under them, and anything newly "
+        f"written. "
+        + (
+            "Those outside tables that changed are listed above; "
+            if listed
+            else "None outside a table changed; "
+        )
+        + "an edit inside a table is not reported at all."
     )
+
+
+def _which_document(project, known: dict, returned, name: str) -> bool | None:
+    """Whether a returned document is the supplement; None when it is not one document.
+
+    `build` writes the supplement as a document of its own, and import compared every
+    returned document with a fresh build of the paper. An edited supplementary.docx reported
+    every paragraph of the paper as deleted in Word, exit 1, and its own edits went nowhere.
+    The paragraph identifiers a document carries say which one it is, because each names its
+    source file; the source stamp cannot, since both documents carry the same one. A document
+    carrying neither kind is refused when the project has a supplement, because it could be
+    either, and compared with the paper when it has none. Whether there is a supplement is
+    read from the source files: read from the identifiers, a supplement of headings and tables,
+    which has none, was taken for no supplement, and compared with the paper.
+    """
+    from manuscript_guard.gates.numbers import is_supplementary, source_files
+
+    manuscript_dir = project.path("manuscript")
+    kinds = {
+        is_supplementary(manuscript_dir, known[identifier][0])
+        for block in returned
+        for identifier in block.names
+        if identifier in known
+    }
+    has_supplement = any(is_supplementary(manuscript_dir, p) for p in source_files(manuscript_dir))
+    if not kinds and has_supplement:
+        print(
+            f"{name} carries no paragraph identifier this manuscript knows, so there is no "
+            f"telling whether it is the manuscript or its supplement, and import compares "
+            f"paragraphs only through those identifiers. Nothing was imported. A supplement of "
+            f"headings, tables and figures carries none, and holds nothing import compares; "
+            f"otherwise, import the document the co-author was sent, edited in place."
+        )
+        return None
+    if kinds == {True, False}:
+        print(
+            f"{name} carries paragraphs of both the manuscript and its supplement. They are "
+            f"built as two documents and imported one at a time, and a paragraph pasted from "
+            f"one into the other is not something import can apply. Nothing was imported: "
+            f"make the move in the .md yourself, and import each document on its own."
+        )
+        return None
+    return kinds == {True}
 
 
 def cmd_import(args: argparse.Namespace) -> int:
@@ -347,15 +399,37 @@ def cmd_import(args: argparse.Namespace) -> int:
         )
         return 1
 
+    try:
+        returned = read_blocks(edited)
+        comments = comments_in(edited)
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    known = tagged_paragraphs(project)
+    supplementary = _which_document(project, known, returned, edited.name)
+    if supplementary is None:
+        # The comments need no identifier to be read, and are the most useful thing in the
+        # document: refusing the edits is no reason to drop them.
+        _report_comments(comments)
+        return 1
+
     namespace, results, _literature, _r = load_namespace(project)
     assembled, _ar = assemble(project, namespace, results)
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
-    # compared with - so import needs everything a build needs, pandoc first.
+    # compared with - so import needs everything a build needs, pandoc first. A second copy
+    # has every binding and citation bookmarked, which is how a reworded paragraph learns
+    # where each of them begins and ends without guessing at how they render.
+    marked_assembly, _mr = assemble(project, namespace, results, mark=True)
     with tempfile.TemporaryDirectory() as scratch:
         reference = Path(scratch) / "reference.docx"
+        tokens = Path(scratch) / "reference-tokens.docx"
         try:
-            build_document(project, assembled, mode=OFFLINE, output=reference)
+            for assembly, output in ((assembled, reference), (marked_assembly, tokens)):
+                build_document(
+                    project, assembly, mode=OFFLINE, output=output, supplementary=supplementary
+                )
+            abbreviated = abbreviations()
         except BuildError as exc:
             print(
                 f"manuscript-guard: import compares {edited.name} with a fresh build of the "
@@ -364,24 +438,37 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             return 2
         sent = read_blocks(reference)
+        # The marked build is this command's own, not a document anyone sent, and a failure
+        # to read it once stopped the import of every paragraph over a file the author had
+        # never seen. Without it no token has a position: a reworded paragraph holding a
+        # binding or citation is refused, and every other change is still examined.
+        try:
+            marked: list | None = read_blocks(tokens)
+        except RoundTripError as exc:
+            print(
+                f"manuscript-guard: {exc}. That is the build import reads where each binding "
+                f"and citation sits from, so no reworded paragraph holding a binding or "
+                f"citation can be merged this time; each is refused below. Please report it.",
+                file=sys.stderr,
+            )
+            marked = None
 
-    try:
-        returned = read_blocks(edited)
-        comments = comments_in(edited)
-    except RoundTripError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        return 2
-    known = tagged_paragraphs(project)
-    plan = plan_import(known, sent, returned)
+    plan = plan_import(known, sent, returned, marked, abbreviated)
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
-    # cells, headings, captions, the reference list, and anything the co-author newly wrote
-    # - is invisible to this command, and saying nothing about that let a co-author believe
-    # they had corrected a table when the correction went nowhere.
-    unexamined = _unexamined(edited, sum(1 for b in returned if b.names and not b.table))
+    # cells, headings, captions, list items, block quotes, the reference list, and anything
+    # the co-author newly wrote - is invisible to this command, and saying nothing about
+    # that let a co-author believe they had corrected a table when the correction went
+    # nowhere.
+    unexamined = _unexamined(
+        edited,
+        sum(1 for b in returned if b.names and not b.table),
+        listed=bool(plan.unidentified or plan.vanished or plan.reordered),
+    )
 
     if plan.empty and not comments:
-        print("nothing came back: the document matches the manuscript on disk.")
+        what = "supplement" if supplementary else "manuscript"
+        print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
             print(f"  {unexamined}")
         return 0
@@ -395,13 +482,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         if plan.merged:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
-    for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
-    if comments:
-        print(
-            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
-        )
+    _report_comments(comments)
 
     if unexamined:
         print(f"\n{unexamined}")
@@ -413,10 +494,29 @@ def cmd_import(args: argparse.Namespace) -> int:
     # reported a problem when a co-author had done nothing but leave notes. Anything not
     # applied is: a paragraph moved into another file was reported "not applied" and still
     # exited 0.
-    outstanding = bool(plan.refused or plan.gone or plan.joined or plan.misplaced) or (
-        not args.apply and bool(plan.moved or plan.merged)
-    )
+    outstanding = bool(
+        plan.refused
+        or plan.gone
+        or plan.joined
+        or plan.misplaced
+        or plan.lost
+        or plan.strayed
+        or plan.unidentified
+        or plan.vanished
+        or plan.reordered
+    ) or (not args.apply and bool(plan.moved or plan.merged))
     return 1 if outstanding else 0
+
+
+def _report_comments(comments) -> None:
+    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    for comment in comments:
+        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+    if comments:
+        print(
+            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
+            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
+        )
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
@@ -426,16 +526,72 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         return known[name][0].relative_to(project.root).as_posix()
 
     def opening(name: str) -> str:
-        return known[name][1].strip()[:80]
+        # On one line: a held comment's source runs over several.
+        return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table or a figure, or into another "
-            "file, changes how many paragraphs a section holds, and import only reorders "
-            "within one; move it in the .md yourself."
+            "    Not applied: import only reorders paragraphs within a section, and a heading, "
+            "a table, a figure, a list, a quotation or anything else without an identifier, "
+            "another file, or a paragraph it holds in place ends one. An HTML comment or a "
+            "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
+            "Word shows as an empty line, one with a line such as `\\end{table}` directly "
+            "under it in the .md, one with a `<!--` that never closes, and one directly above "
+            "display maths. Move it in the .md yourself."
+        )
+
+    if plan.strayed:
+        print(
+            f"{len(plan.strayed)} heading(s), table(s), figure(s) or equation(s) came back "
+            f"somewhere else:"
+        )
+        for kind, text in plan.strayed:
+            article = "an" if kind == "equation" else "a"
+            print(f"    '{text[:80]}'" if kind == "text" else f"    {article} {kind}")
+        print(
+            "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
+            "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
+            ".md yourself."
+        )
+
+    if plan.lost:
+        what = " and ".join(f"{plan.lost.count(k)} {k}(s)" for k in sorted(set(plan.lost)))
+        print(
+            f"{what} of the document as sent could not be found in the returned one: deleted, "
+            f"pasted twice, or changed while others were added or removed."
+        )
+        print(
+            "    Nothing about them is applied, and a paragraph moved past one cannot be seen. "
+            "Tables and figures are built from the analysis: change them there, or remove "
+            "the placeholder from the .md. An equation is edited in the .md."
+        )
+
+    if plan.unidentified or plan.vanished or plan.reordered:
+        if plan.reordered:
+            print(
+                "\nParagraphs without an identifier - headings, list items, quotations, "
+                "captions - came back in a different order, and were not compared:"
+            )
+        else:
+            print(
+                f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
+                f"an identifier - a heading, a list item, a quotation, a caption, a "
+                f"paragraph with display maths or with a fence under it, or new text - came "
+                f"back different and were not compared:"
+            )
+        for text in plan.vanished[:12]:
+            print(f"    - {text[:120]}")
+        for text in plan.unidentified[:12]:
+            print(f"    + {text[:120]}")
+        for text in plan.reordered[:12]:
+            print(f"    ~ {text[:120]}")
+        print(
+            "    Not applied; make these edits in the .md. They also mark where sections "
+            "begin, so a paragraph moved past one of them may not be reported as moved: "
+            "compare the two documents as text before trusting the rest."
         )
 
     if plan.moved:
@@ -1580,7 +1736,7 @@ _FOLD = str.maketrans(
         "±": "+/-",
         "→": "->",
         "•": "*",
-        " ": " ",
+        "\u00a0": " ",
     }
 )
 

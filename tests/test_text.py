@@ -324,14 +324,42 @@ def test_a_citation_masks_its_key_not_its_whole_bracket(text: str, expected: lis
 
 
 @pytest.mark.parametrize(
-    "text", ["As shown [@key2019, p. 33].", "Reported [@other2020, pp. 12-19]."]
+    "text",
+    [
+        "As shown [@key2019, p. 33].",
+        "Reported [@other2020, pp. 12-19].",
+        # Punctuation hard after the bracket: `import` writes this when a co-author deletes
+        # the words between a citation and a value. The atom ran on through the `]` as
+        # `3]/`, which no locator rule covers, and G2 failed an honest paragraph.
+        "As @key2019 [p. 3]/{{results.x}} overall.",
+        "As @key2019 [p. 3]//{{results.x}} overall.",
+        "As @key2019 [p. 3]:/{{results.x}} overall.",
+        "Shown [@key2019, p. 33]/{{results.x}} here.",
+    ],
 )
 def test_a_citation_locator_is_structural(text: str) -> None:
     """Reading the bracket means meeting the one thing legitimately written in it."""
     classifier = Classifier.load()
     found = find_atoms(text, mask(text))
     assert found
-    assert all(classifier.classify(a).kind == STRUCTURAL for a in found)
+    assert all(classifier.classify(a).kind == STRUCTURAL for a in found), [
+        (a.text, classifier.classify(a).kind) for a in found
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("As @key2019 [p. 3]/5 mg here.", ["3", "/5"]),
+        ("Shown [@key2019, p. 33]-4.2 here.", ["33", "-4.2"]),
+        # A bracket opened inside the atom is the atom's own, and keeps it whole.
+        ("The x[2]y value.", ["x[2]y"]),
+    ],
+)
+def test_a_bracket_closed_from_outside_ends_an_atom(text: str, expected: list) -> None:
+    """A number written after a citation's bracket is read as its own atom. Joined to the
+    locator as `3]/5`, it was one unclassified atom that named the locator too."""
+    assert atoms_of(text) == expected
 
 
 FENCE = "`" * 3

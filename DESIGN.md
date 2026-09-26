@@ -437,15 +437,17 @@ The abstract is found by reading the block as pandoc does, with the loader that 
 the block is front matter, and not with G2's reader, which finds a value by its key line.
 Read G2's way, a quoted key (`"abstract":`), a quoted value opened on the key's line and
 continued below it, or a flow mapping passed `check` and was dropped by the build, though
-pandoc prints each of them; and `abstract: null` or `abstract: # to do` was refused, though
-pandoc prints nothing for either. Merge keys are followed, because pandoc honours them: an
-abstract merged in with `<<: *base` prints. Each mapping is visited once, since a chain of
-mappings each merging the one before it twice doubles the work of expanding them with each
-line, and 614 bytes of such front matter once held `check` for 38 seconds. An abstract
-pandoc reads as empty is let through, and so is a key named `abstract` inside another
-mapping, which pandoc does not take for the abstract. Any other value, a number or `yes`,
-is refused rather than guessed about. PyYAML's composer and pandoc 3.9 were compared on
-each of these spellings, and on a duplicated key, where both keep the last.
+pandoc prints each of them; and `abstract: null` or `abstract: # to do` was refused,
+though pandoc prints nothing for either. Merge keys are followed, because pandoc honours
+them: an abstract merged in with `<<: *base` prints. A key is known by its text, as pandoc
+knows it, so `"<<": *base` merges too, although PyYAML tags only a plain `<<` as a merge.
+Each mapping is visited once, since a chain of mappings each merging the one before it
+twice doubles the work of expanding them with each line, and 614 bytes of such front
+matter once held `check` for 38 seconds. An abstract pandoc reads as empty is let through,
+and so is a key named `abstract` inside another mapping, which pandoc does not take for
+the abstract. Any other value, a number or `yes`, is refused rather than guessed about.
+PyYAML's composer and pandoc 3.9 were compared on each of these spellings, and on a
+duplicated key, where both keep the last.
 
 ## Zotero is never on the critical path
 
@@ -1875,12 +1877,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   but the text itself is dropped without a word. Only the abstract is refused
   (`front-matter-abstract`), and only the title is compared with `paper.yaml`
   (`two-titles`).
-- **A front matter is composed twice, at about 15 seconds a megabyte each time.** PyYAML's
+- **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
   pure-Python composer is linear but slow: once to decide the block is front matter, once
-  to look for an abstract in it, each cached for the rest of the process. A front matter of
-  about a megabyte, which only a deliberately hostile manuscript has, takes `check` past
-  the 20-second budget of `test_robustness.py`. The C composer is 40 times faster and
-  overflows its stack on deep nesting, which is why the pure-Python one is used.
+  to look for an abstract in it, each cached for the rest of the process. With half a
+  megabyte of front matter, which only a deliberately hostile manuscript has, `check` on
+  the example took 30 seconds against the 20-second budget of `test_robustness.py`, and
+  24 without the second reading. The C composer is 40 times faster and overflows its stack
+  on deep nesting, which is why the pure-Python one is used.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:

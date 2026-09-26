@@ -248,7 +248,6 @@ def _abstract_in(yaml_text: str) -> tuple[int, str] | None:
     return line, words
 
 
-_MERGE = "tag:yaml.org,2002:merge"
 _NULL = "tag:yaml.org,2002:null"
 _NULLS = ("~", "null", "Null", "NULL")
 
@@ -259,6 +258,10 @@ def _abstract_entry(root):
     Pandoc honours merge keys: `<<: *base` takes the abstract `base` holds. A mapping's own
     key wins over a merged one, and an earlier merged mapping over a later one, searched
     depth first. Each mapping is visited once, however many aliases reach it.
+
+    Keys are known by their text, as pandoc knows them. PyYAML tags only a plain `<<` as a
+    merge, so `"<<": *base` was passed over while pandoc merged it and printed the abstract,
+    and `!!merge abstract:` was not taken for the abstract pandoc printed.
     """
     import yaml
 
@@ -270,12 +273,12 @@ def _abstract_entry(root):
             continue
         seen.add(id(mapping))
         scalar_keys = [(k, v) for k, v in mapping.value if isinstance(k, yaml.ScalarNode)]
-        own = [(k, v) for k, v in scalar_keys if k.value == "abstract" and k.tag != _MERGE]
+        own = [(k, v) for k, v in scalar_keys if k.value == "abstract"]
         if own:
             return own[-1]  # pandoc, like PyYAML, keeps the last of a duplicated key
         merged = []
         for key, value in scalar_keys:
-            if key.tag == _MERGE:
+            if key.value == "<<":
                 merged += value.value if isinstance(value, yaml.SequenceNode) else [value]
         pending += reversed(merged)
     return None

@@ -1120,8 +1120,12 @@ def _abstract_line(front: str) -> int | None:
         # Pandoc expands a tab to the next multiple of four columns, so this is one block.
         ('"abstract": |\n  Zebrafish marmalade\n\tsentinel phrase.\n', 2),
         (f'title:\tT\n"abstract":\t{SENTINEL}\n', 3),
-        # Pandoc takes a merge key's mapping into the one holding it.
+        # Pandoc takes a merge key's mapping into the one holding it, and knows a merge key
+        # by its text, `<<`, however it is quoted or tagged.
         (f"base: &b {{abstract: {SENTINEL}}}\n<<: *b\n", 2),
+        (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
+        (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
+        (f"!!merge abstract: {SENTINEL}\n", 2),
         # PyYAML counts U+2028 as a line break, and the file does not.
         (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
         # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
@@ -1149,6 +1153,8 @@ def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: in
         "abstract: # written last\n",
         'abstract: "" # none\n',
         f"meta:\n  abstract: {SENTINEL}\n",
+        # The first of two merge keys wins, quoted or not, and its abstract is empty.
+        f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
     ],
 )
 def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:

@@ -36,8 +36,9 @@ manuscript-guard build --offline
   needs to see where each number came from.
 - While the document is out, change nothing it was built from: the manuscript, the
   results, the ledger or `references.bib`. Any change makes `import` refuse the returned
-  copy, and forcing it would offer to undo your change. Keep new wording aside and apply it
-  after the import.
+  copy without `--force`, and with it every paragraph you changed, and every one below a
+  paragraph you added or removed, is listed as not compared, its co-author edit to port by
+  hand. Keep new wording aside and apply it after the import.
 
 Tell the co-author, in these words or better ones:
 
@@ -66,20 +67,23 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, a line directly under it opens or closes something else (a `:::` or code fence, `</div>`, `\begin` or `\end`, a definition, a heading's underline), a comment it opens closes past a blank line, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
-| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
-| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, or into another file. Not applied; move it in the `.md` yourself |
+| `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations, HTML comments, fences or other blocks without an identifier); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, past a paragraph import holds in place (an HTML comment, which Word shows as an empty line; a paragraph that opens a comment or holds display maths; or one with a fence or other such line directly under it), or into another file. A held paragraph dragged past two paragraphs or more is named here itself; dragged past one, that one is named. Not applied; move it in the `.md` yourself |
+| `came back somewhere else` | a heading, table or figure was dragged to another place in Word, or a caption or the equation of a display-maths paragraph was. Not applied; move the heading, the table's or figure's placeholder, or the paragraph the caption or equation belongs to, in the `.md` yourself |
+| `could not be found in the returned one` | a table, figure or display equation was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
 | `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
 | `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 | `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers or tags paragraphs differently (a list tagged by a version before 0.2.45, for one). Not applied; carry any edit in it over by hand (step 6) |
-| `… did not come back` | such a paragraph was deleted or joined in Word; or, in a document built before 0.2.53, a paragraph that is only a value was never in it. Not applied; delete or join it in the `.md` if that was intended |
+| `… did not come back` | such a paragraph was deleted or joined in Word; or, in a document built before 0.2.60, a paragraph that is only a value was never in it. Not applied; delete or join it in the `.md` if that was intended |
 
-Anything refused, joined, deleted, not compared or moved between sections or files, and any
-paragraph without an identifier that came back different or in a different order, makes the
-command exit 1, with or without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted, not compared or moved between sections or files, any
+heading, table, figure or equation that was moved or could not be found, and any paragraph
+without an identifier that came back different or in a different order, makes the command
+exit 1, with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -105,33 +109,39 @@ handled, and each has a test:
 - A move together with rewording is applied in one pass: the paragraph goes to its new
   place in its section, reworded if it was. A move into another section is reported and not
   applied, rather than pushing a paragraph out of every section in between.
-- A paragraph split in two in Word is refused, not cut down to its first half.
-- Two paragraphs joined in Word are reported as joined and left alone, not duplicated.
-  So is a heading joined into the paragraph under it.
-- A tab or other Word layout in a paragraph no longer leaks XML into the merge.
-- A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
-  (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit
-  added after the number, is not caught: read those in the diff.
-- A citation ending a paragraph, "(Smith et al. 2020).", is no longer cut at "al."; a
-  narrative `@key` comes back as `@key`, not as the text "Smith (2020)"; and apostrophes
-  and dashes no longer stop a paragraph with a binding from taking a rewording.
-- A rewording is refused, not merged, when the edited text carries something Word's text
-  cannot bring back: a footnote, an HTML comment, a link, an image, an equation, raw TeX or
-  HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line break,
-  emphasis or code wrapped around a binding, or code holding a `--`, a `...` or a quote
-  (written back as text, `--offline` printed as "–offline"). The reason names it. In a
+- A move beside an HTML comment with a blank line in it is refused rather than splitting the
+  comment, which wrote the moved paragraph inside it. A fence, `</div>`, `\end`, a
+  definition or a heading's underline written directly under a paragraph stays where it
+  is: that paragraph is neither moved nor reworded.
+- Tables and figures are recognised by what they hold, so deleting a table or pasting in a
+  picture no longer hides a paragraph moved past a figure. A heading, table, figure or
+  display equation dragged elsewhere, and a table, figure or equation deleted, is reported
+  rather than passed over. A deleted heading or caption is listed with the other paragraphs
+  without an identifier. - A paragraph split in two in Word is refused, not cut down to its
+  first half. - Two paragraphs joined in Word are reported as joined and left alone, not
+  duplicated. So is a heading joined into the paragraph under it. - A tab or other Word
+  layout in a paragraph no longer leaks XML into the merge. - A digit added to a number
+  (`3.84` to `13.84`), or a sign or dash glued in front of it (`–3.84`, `<3.84`), is refused
+  as a changed number. A sign separated by a space, or a unit added after the number, is not
+  caught: read those in the diff. - A citation ending a paragraph, "(Smith et al. 2020).",
+  is no longer cut at "al."; a narrative `@key` comes back as `@key`, not as the text "Smith
+  (2020)"; and apostrophes and dashes no longer stop a paragraph with a binding from taking
+  a rewording. - A rewording is refused, not merged, when the edited text carries something
+  Word's text cannot bring back: a footnote, an HTML comment, a link, an image, an equation,
+  raw TeX or HTML, a superscript or subscript (`10^9^` reads "109" in Word), a hard line
+  break, emphasis or code wrapped around a binding, or code holding a `--`, a `...` or a
+  quote (written back as text, `--offline` printed as "–offline"). The reason names it. In a
   paragraph with a binding, markup of those kinds on one side of the binding does not stop
   an edit on the other side. Markup the import does not recognise does: `[Methods]`, a link
   to the heading, refuses every edit to its paragraph. A paragraph without a binding is all
-  one piece, so one `kg/m^2^` in it refuses every edit to it.
-- A no-break space comes back as the character it is, so a rewording around it merges and
-  keeps it: one in the source ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect
-  put before a colon or inside « ».
-- An edit that would make pandoc read a citation differently is refused: a space deleted
-  after a full stop before a citation, or between two citations, or text deleted between a
-  citation and a number.
-- What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
-  co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
+  one piece, so one `kg/m^2^` in it refuses every edit to it. - A no-break space comes back
+  as the character it is, so a rewording around it merges and keeps it: one in the source
+  ("5 mg", `\ `, `&nbsp;`), and one Word's French AutoCorrect put before a colon or inside «
+  ». - An edit that would make pandoc read a citation differently is refused: a space
+  deleted after a full stop before a citation, or between two citations, or text deleted
+  between a citation and a number. - What comes back is written as text, not Markdown: a
+  `*`, an `@name`, a `<` or a `{{` the co-author typed is escaped, so it cannot become
+  italics, a citation, a tag or a binding.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
 paragraph without an identifier. Port those edits from the dry run and the text diff above.
@@ -164,7 +174,15 @@ Read the whole diff. What to look for:
   backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
-  and `check` reports `{{{results.x}}` as malformed.
+  and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
+  `<µg`) stands earlier in the paragraph, a `>` in an edited stretch comes back as `\>`, or
+  as `&gt;` where it ends a value after an `=` (`=>`, `HR=2.1>1`). If that `<` is yours or
+  a value's rather than the co-author's, a straight quote typed just after an `=` comes
+  back as `\'` or `\"`, and prints straight; so does a curly `’` typed there to close a
+  quote of yours. Leave them: pandoc can read a bare
+  `<` and `>` with words between them as an HTML tag and drop everything from one to the
+  other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
+  a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.
 - Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
   the character itself. It prints as it did, but a diff can show a line as changed where
   nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a

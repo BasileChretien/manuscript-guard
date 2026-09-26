@@ -818,10 +818,10 @@ _RUNS_ON = (
     "is held where it is. Make the edit in the .md."
 )
 _GLUED = (
-    "in the .md a line that looks as if it opens or closes a block follows it with no blank "
-    "line between - such as `\\end{table}`, a line starting `: `, or an indented `:::` - so "
-    "it is held where it is rather than merged with that line. Make the edit in the .md; a "
-    "blank line before that line frees the paragraph on the next build."
+    "in the .md a line that opens or closes a block, or looks as if it does, follows it with "
+    "no blank line between - a `:::` or code fence, `\\end{table}`, a line starting `: ` - "
+    "so it is held where it is rather than merged with that line. Make the edit in the .md; "
+    "a blank line before that line frees the paragraph on the next build."
 )
 _IN_PARTS = (
     "display maths follows it directly in the .md, or Word shows it as more than one "

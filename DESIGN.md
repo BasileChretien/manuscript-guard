@@ -2793,6 +2793,18 @@ Closed since, and why each mattered:
   with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
   [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
   `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
+- **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
+  "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
+  blank line between them they are two paragraphs, and the number opening the second is
+  reported: `\s*` used to cross any number of line breaks, and a count opening a paragraph
+  after one ending "the next section" passed as a cross-reference. The rewrite that made
+  every rule linear is what set the limit. The same limit lets a label opening a paragraph
+  match as it does on its own: after a paragraph ending "one year", "12-month outcomes" is a
+  time label, where the match that crossed the blank line used to take its digits and leave
+  "12-month" reported, and in the audit "(2019, n = 412)" after "et al." is now read as the
+  whole parenthetical it is anywhere else. The other way, a count that such a match left to
+  the rule's next match can be reported now. In a rendered author-year citation, a name is
+  at most 61 letters; a longer one is read as no name, and its year is compared.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

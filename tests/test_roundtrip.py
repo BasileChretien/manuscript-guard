@@ -994,6 +994,102 @@ def test_a_comment_opened_in_a_link_title_hides_nothing_after_it() -> None:
     assert all("mg-p-" in paragraph for paragraph in paragraphs)
 
 
+def _printed(text: str) -> tuple[list[str], list[str]]:
+    """What pandoc prints of `tag(text)` in the body, outside notes: each paragraph's JSON,
+    and each code block's text."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs: list[str] = []
+    code: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+        elif isinstance(node, dict) and node.get("t") != "Note":
+            if node.get("t") in ("Para", "Plain"):
+                paragraphs.append(json.dumps(node))
+            elif node.get("t") == "CodeBlock":
+                code.append(node["c"][1])
+            else:
+                walk(node.get("c"))
+
+    walk(json.loads(read.stdout)["blocks"])
+    return paragraphs, code
+
+
+FENCED_BELOW = "Beta cites it.[^w]\n\n```\ncode one\n\ncode two\n```\n\nOmega.\n"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("[^w]: A note\n```", id="backticks"),
+        pytest.param("[^w]: A note\n~~~", id="tildes"),
+        pytest.param("[^w]: A note\n```r", id="with-a-language"),
+        pytest.param("[^w]: A note\nwrapped onto a second line\n```", id="third-line"),
+        pytest.param("[^w]: A note\n```\nwith text after it\n```", id="a-pair"),
+        pytest.param(f"[reg]: {REGISTRY}\n[^w]: A note\n```", id="under-a-link"),
+        pytest.param("[^w]: A note\n[^v]: Another\n```", id="second-note"),
+        # A note that runs on into the block below: left alone all the same, since a fence
+        # line in it leaves no one paragraph to mark.
+        pytest.param("[^w]: A note\n```\n\n    It was rare.", id="running-on"),
+    ],
+)
+def test_a_fence_line_inside_a_note_opens_no_code_block(note: str) -> None:
+    """Pandoc keeps a line under a footnote's label in the note, a fence's too, and reads it
+    there. `fenced_spans` opened a code block on it and paired it with the next fence below:
+    the paragraphs between went without an identifier, so a co-author's edit to them was not
+    compared, and the paragraph inside the real code's first half got a marker printed in
+    the code. On main too."""
+    paragraphs, code = _printed(f"Alpha comes first.\n\n{note}\n\n{FENCED_BELOW}")
+    assert len(paragraphs) == 3, paragraphs
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+    assert code == ["code one\n\ncode two"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        # A line pandoc ends the note at: after it, the fence is the body's.
+        pytest.param("[^w]: A note\n[^b] was typed.\n```", id="after-the-note-ends"),
+        # An underline under the label makes it a heading, and the fence opens after it.
+        pytest.param("[^w]: A note\n---\n```", id="under-a-heading"),
+        # So does a definition list's marker, bare or not: the label is a term, and a fence
+        # in its definition is the body's (the sweep found it, 72 of 44,520 documents).
+        pytest.param("[^w]: A note\n: a definition\n```", id="under-a-term"),
+        pytest.param("[^w]: A note\n~\n```", id="under-a-bare-term"),
+        # Not a note at all: under a paragraph's line.
+        pytest.param("Gamma says\n[^w]: A note\n```", id="under-prose"),
+        # Under a line holding only a no-break space, which pandoc does not take for blank:
+        # the label continues the paragraph above.
+        pytest.param(f"Gamma says\n{chr(0xA0)}\n[^w]: A note\n```", id="under-a-no-break-space"),
+    ],
+)
+def test_a_fence_line_where_pandoc_opens_code_still_opens_it(note: str) -> None:
+    """Where the build reads the fence line in the body, it opens code, and pairs with the
+    next fence, as before: what lies between is code, and no marker is printed in it. (The
+    paragraph above a fence in the same block, and what follows a closing fence in the same
+    block, go unmarked; that is `main`'s rule, not this one.)"""
+    paragraphs, code = _printed(f"Alpha comes first.\n\n{note}\n\n{FENCED_BELOW}")
+    assert any("Beta cites it" in block for block in code)
+    assert not any("mg-p-" in block for block in code)
+    assert "mg-p-" in paragraphs[-1] and "Omega" in paragraphs[-1]
+
+
 #: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc
 #: can read no other way is left alone; prose is marked; and a definition written any other
 #: way is marked on purpose, so it prints as text - visibly, where leaving a block unmarked

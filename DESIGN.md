@@ -3169,9 +3169,18 @@ Closed since, and why each mattered:
     body. A note that runs on into the block below, or is marked for a line the rule
     refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
     `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
-    them. And a code fence wrapped onto a note's second line, left alone or not, is still
-    paired with the next fence below, so what lies between goes unmarked, or a marker lands
-    inside a real code block. Both are so on `main`.
+    them. This is so on `main`.
+  - *A fence line in a note is the note's text, as far as `tag` goes.* Pandoc keeps a code
+    fence written on a note's lines inside the note. `fenced_spans` opened code there and
+    paired it with the next fence below, so the paragraphs between went unmarked and a
+    marker was printed in the real code's first half, on `main` too. `_blocks` now tells it
+    which lines are a note's (`_note_fences`), and an opener there opens nothing. A block
+    with a fence line under its first line is never marked, so the build keeps the note a
+    note. What is left: inside a fenced div, a `:::` line ends a note, and a fence after it
+    in the same block opens code; outside one, pandoc takes the `:::` into the note, and a
+    fence after it is still read as opening code here. And the gates' view of code
+    (`masking`) still pairs a fence in a note with the next one below, so a number in the
+    prose between is not checked by G2.
   - *A note marked only for what is below it can become a definition.* A note over a blank
     line and then a line indented four columns would take that line in, so it is marked,
     and prints as text. Moved in Word to a place with a plain paragraph below it, it is a

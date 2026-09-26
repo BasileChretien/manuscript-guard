@@ -34,6 +34,7 @@ A line scanner has neither problem and is easier to read than the regex was.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 # Up to three spaces of indent; four would be an indented code block, not a fence.
@@ -88,7 +89,9 @@ def _closes(line: str, char: str, width: int) -> bool:
     return closing is not None and closing[0] == char and closing[1] >= width
 
 
-def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
+def fenced_spans(
+    text: str, begin: int = 0, inert: Mapping[int, int] | None = None
+) -> list[Fence]:
     """Every fenced block, in document order. Linear in the length of the text.
 
     An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
@@ -99,9 +102,16 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
 
     `begin`, the start of a line, is where the body starts: no fence opens in the front
     matter before it (see `masking.front_matter_end`). Offsets are still into `text`.
+
+    `inert` maps the offset of a line to that of the block it stands in, for lines a caller
+    knows pandoc reads as part of something else - a footnote's text, where a fence line is
+    only text. An opener on such a line opens nothing, as long as no fence was open where
+    its block starts; a closer is read wherever it stands.
     """
     found: list[Fence] = []
     offset = begin
+    # Where the last fence found ends: a block starting before it started inside code.
+    last_end = begin
     lines = text[begin:].splitlines(keepends=True)
     index = 0
 
@@ -136,7 +146,9 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
         fence = opener.group("fence")
         # A backtick fence's info string may not contain a backtick; that construct is
         # inline code, not a fence. Tilde fences have no such restriction.
-        if fence[0] == "`" and "`" in opener.group("info"):
+        if (fence[0] == "`" and "`" in opener.group("info")) or (
+            inert is not None and inert.get(offset, -1) >= last_end
+        ):
             offset += len(line)
             index += 1
             continue
@@ -162,6 +174,7 @@ def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
         body_end = offset
         offset += len(lines[index])
         index += 1
+        last_end = offset
 
         found.append(
             Fence(

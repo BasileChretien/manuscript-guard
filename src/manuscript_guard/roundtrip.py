@@ -314,6 +314,15 @@ _NOTE_LINE = re.compile(r" {0,3}\[\^[^\s\[\]\\`^]+\]:[ \t]+\S[^\n]*")
 # Where pandoc 3.9 ends a note (`rawLine`): a line opening a note's marker - `[^`, then no
 # space, tab, caret or bracket, then `]`, colon or not.
 _NOTE_ENDS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]")
+# Where pandoc starts a note (`noteBlock`): that marker and a colon, at a block's start.
+_NOTE_STARTS = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]:")
+# Directly under a note's label, an underline makes the label a setext heading; indented,
+# or with anything else on it, the line is more of the note. And a definition list's
+# marker (`defListStart`), bare or followed by a space or a tab, makes it a term.
+_UNDERLINE = re.compile(r"(?:=+|-+)[ \t\r]*")
+_TERM_MARKER = re.compile(r" {0,3}[:~](?:[ \t]|\r?\Z)")
+# A line closing a fenced div, where pandoc ends a note inside a div.
+_DIV_CLOSES = re.compile(r":{3,}[ \t\r]*")
 _INDENT = re.compile(r"[ \t]*")
 # An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
 # `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
@@ -919,6 +928,62 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
     return above, below
 
 
+def _in_a_note(block: str) -> list[int]:
+    """Where in `block` the lines start that pandoc keeps inside a footnote the block opens
+    with, after its label: none, unless the block opens with a note's label, after any link
+    definitions.
+
+    Every line under the label is more of the note, a fence's too, up to a line that opens
+    another note's marker without a colon or closes a fenced div - which ends the note, and
+    what follows is the body's - or, directly under a label, an underline or a definition
+    list's `:` or `~`, which make the label a heading or a term, and what follows the body's
+    too: a fence in the term's definition pairs with the next one below. A new note's label
+    goes on as the note did."""
+    lines = block.split("\n")
+    starts = list(itertools.accumulate((len(line) + 1 for line in lines), initial=0))
+    at = 0
+    while at < len(lines) and not lines[at].strip(" \t"):
+        at += 1
+    while at < len(lines) and _LINK_LINE.fullmatch(lines[at]):
+        at += 1
+    if at == len(lines) or not _NOTE_STARTS.match(lines[at]):
+        return []
+    found = []
+    label = True
+    for line, start in zip(lines[at + 1 :], starts[at + 1 : len(lines)], strict=True):
+        if _NOTE_STARTS.match(line):
+            label = True
+            continue
+        if (
+            _NOTE_ENDS.match(line)
+            or _DIV_CLOSES.fullmatch(line)
+            or (label and (_UNDERLINE.fullmatch(line) or _TERM_MARKER.match(line)))
+        ):
+            break
+        label = False
+        found.append(start)
+    return found
+
+
+def _note_fences(pieces: list[str], joined: list[bool]) -> dict[int, int]:
+    """The lines of `pieces` that pandoc keeps inside a footnote, where a fence line is only
+    the note's text: each line's offset, mapped to that of its block, for `fenced_spans`.
+
+    A fence wrapped onto a note's lines opened code to `fenced_spans`, which paired it with
+    the next fence below: the paragraphs between went unmarked, and a marker was printed in
+    the real code's first half. `_blocks` never marks a block with a fence line under its
+    first line (`_untagged`), so the build keeps such a note a note, as written. A block
+    under a separator pandoc does not take for blank - a no-break space - is no block to it:
+    its first line goes on the paragraph above, and a fence there opens code."""
+    found: dict[int, int] = {}
+    cursor = 0
+    for index, piece in enumerate(pieces):
+        if index % 2 == 0 and not (index and joined[index - 1]):
+            found.update((cursor + start, cursor) for start in _in_a_note(piece))
+        cursor += len(piece)
+    return found
+
+
 def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     """Every piece of `text` in order, with its index and whether it gets an identifier.
 
@@ -931,8 +996,6 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
     blank line in it, or of a comment. A marker there would print inside the code, or name a
     paragraph that reaches no document.
     """
-    fences = iter(fenced_spans(text))
-    fence = next(fences, None)
     closers = _Closers(text)
     hidden = 0
     cursor = 0
@@ -946,6 +1009,8 @@ def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
         index % 2 == 1 and re.search(r"[^ \t\n]", piece) is not None
         for index, piece in enumerate(pieces)
     ]
+    fences = iter(fenced_spans(text, inert=_note_fences(pieces, joined)))
+    fence = next(fences, None)
     ruled = _Ruled(pieces)
     ends = list(itertools.accumulate(len(piece) for piece in pieces))
     for index, piece in enumerate(pieces):

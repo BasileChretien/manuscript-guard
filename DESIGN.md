@@ -1909,12 +1909,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `-->` or fence, where the build, reading `main.md` first, may print them. A project with
   one main-text file, which is what `init` writes, is unaffected.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
-  `<!--` inside inline code, a stray fence line inside a comment, or a fence directly under
-  prose that is tilde or indented a space or more hides what follows from the statement and
-  abstract-heading searches while pandoc prints it, so a statement there is reported
-  missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
-  passes its text into the document. An indented code block is not blanked, so a pattern
-  written for a phrase can be met by a line of code; one anchored on a heading cannot.
+  stray fence line inside a comment, or a fence directly under prose that is tilde or
+  indented a space or more, hides what follows from the statement and abstract-heading
+  searches while pandoc prints it, so a statement there is reported missing: a false alarm.
+  A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
+  document. An indented code block is not blanked, so a pattern written for a phrase can be
+  met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -2499,7 +2499,9 @@ Closed since, and why each mattered:
     one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
     paired across the front matter's edge, too, and a backtick inside a `~~~` block with
     one in the prose after it, which pandoc never does. This needs a reader that knows code
-    spans as pandoc does; the comment scanner in `text/comments.py` has one.
+    spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
+    knows escapes, fences and the front matter's edge, but it still ends a code span only at
+    a blank line and misreads backticks in maths, links and indented code.
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes

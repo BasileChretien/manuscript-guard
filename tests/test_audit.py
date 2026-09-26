@@ -22,7 +22,7 @@ from manuscript_guard.audit import (
     render,
     strip_bibliography,
 )
-from manuscript_guard.text.docx import NotADocx, read_docx
+from manuscript_guard.text.docx import NotADocx, read_docx, read_docx_text
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
@@ -72,6 +72,59 @@ def test_tracked_deletions_are_dropped_and_insertions_kept(tmp_path: Path) -> No
     text = read_docx(make_docx(tmp_path / "d.docx", body))
     assert "77" in text
     assert "41" not in text, "a deleted number is not in the paper anyone will read"
+
+
+def gone(text: str, style: str = "") -> str:
+    """A paragraph whose mark was deleted as a tracked change: it runs on into the next."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    mark = f'<w:pPr>{styled}<w:rPr><w:del w:id="1" w:author="a"/></w:rPr></w:pPr>'
+    return f"<w:p>{mark}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def heading(text: str) -> str:
+    return f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>'
+
+
+@pytest.mark.parametrize(
+    ("body", "line", "is_heading"),
+    [
+        (gone("Appendix", "Heading1") + para("Text"), "AppendixText", False),
+        (gone("Text") + heading("Appendix"), "TextAppendix", True),
+        (gone("A1") + gone("B2", "Heading1") + para("C3"), "A1B2C3", False),
+    ],
+    ids=["heading-then-text", "text-then-heading", "three"],
+)
+def test_a_joined_line_takes_the_last_paragraphs_style(
+    tmp_path: Path, body: str, line: str, is_heading: bool
+) -> None:
+    """The mark that is left is the last paragraph's, and so is the style: Word 16, accepting
+    the change, keeps it. When Word deletes a mark itself it first copies the first
+    paragraph's style onto the second, recording the old one in `w:pPrChange`, so this is
+    what Word shows either way."""
+    document = read_docx_text(make_docx(tmp_path / "j.docx", para("Intro") + body))
+    assert document.body.split("\n") == ["", "Intro", line]
+    assert document.headings == (frozenset({2}) if is_heading else frozenset())
+
+
+def test_a_join_stops_at_a_table(tmp_path: Path) -> None:
+    """Only a sibling paragraph continues the line, and only empty elements - a bookmark, a
+    comment's range - may sit between them. Joined past the table, "-0.5" and the "1" after
+    the table read as -0.51."""
+    table = f"<w:tbl>{row('0.3')}</w:tbl>"
+    text = read_docx(make_docx(tmp_path / "t.docx", gone("-0.5") + table + para("1")))
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    assert lines == ["-0.5", "|", "0.3", "1"]
+
+
+def test_a_joined_line_in_a_table_cell_is_still_a_cell(tmp_path: Path) -> None:
+    """A cell's line is marked, because "References" there is a column header. The mark goes
+    at the start of the joined line, not in the middle of it."""
+    cell = f"<w:tc>{gone('-0.5')}{para('1')}</w:tc>"
+    table = f"<w:tbl><w:tr>{cell}</w:tr></w:tbl>"
+    document = read_docx_text(make_docx(tmp_path / "c.docx", table))
+    lines = document.body.split("\n")
+    assert lines[-1] == "-0.51", lines
+    assert len(lines) - 1 in document.cells
 
 
 def test_a_file_that_is_not_a_docx_says_so(tmp_path: Path) -> None:
@@ -958,33 +1011,47 @@ def test_an_entry_with_accented_or_particled_names_is_recognised(entry: str) -> 
     assert looks_like_reference(entry)
 
 
-def test_indented_lines_do_not_stall_the_reference_list_search() -> None:
+def test_indented_lines_do_not_stall_the_reference_list_search(assert_linear) -> None:
     """`pdftotext -layout` indents a right-hand column by a hundred spaces or more, and the
-    heading check was quadratic in leading whitespace: 20 s for 3,000 such lines."""
-    import time
-
+    heading check was quadratic in leading whitespace: 20 s for 3,000 such lines. Timed as
+    the indent grows, since that is what it was quadratic in, and as the lines do; a budget
+    of 1 s for 3,000 lines left 2x headroom on a loaded machine. Both start small, so that
+    a quadratic that has come back fails in seconds rather than being timed at length."""
     from manuscript_guard.audit import bibliography_spans, strip_bibliography
 
-    text = "\n".join([" " * 150 + "Some text 12"] * 3000)
-    started = time.perf_counter()
-    assert bibliography_spans(text) == []
-    strip_bibliography(text)
-    assert time.perf_counter() - started < 1.0
+    def indented(width: int, lines: int = 300) -> str:
+        return "\n".join([" " * width + "Some text 12"] * lines)
+
+    def search(text: str) -> None:
+        bibliography_spans(text)
+        strip_bibliography(text)
+
+    assert bibliography_spans(indented(150)) == []
+    assert_linear(indented, search, 20, "the reference-list search, by indent")
+    assert_linear(
+        lambda lines: indented(150, lines), search, 20, "the reference-list search, by lines"
+    )
 
 
 def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
     assert looks_like_reference("Smith, J. et al. (2020). Hepatic injury. Drug Safety, 42, 1-9.")
 
 
-def test_indented_prose_does_not_stall_the_entry_shape() -> None:
+def test_indented_prose_does_not_stall_the_entry_shape(assert_linear) -> None:
     """Two whitespace runs side by side at the start of the numbered-style shape made every
-    unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines."""
-    import time
+    unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines.
+    Timed as the indent grows, from a small indent, as the search above is. The shape reads
+    one line, so the number of lines is the caller's loop, not the shape's."""
 
-    started = time.perf_counter()
-    for _ in range(3000):
-        assert not looks_like_reference(" " * 150 + "accounted for 12 of 8,393 cases")
-    assert time.perf_counter() - started < 1.0
+    def indented(width: int) -> str:
+        return " " * width + "accounted for 12 of 8,393 cases"
+
+    def recognise(line: str) -> None:
+        for _ in range(300):
+            looks_like_reference(line)
+
+    assert not looks_like_reference(indented(150))
+    assert_linear(indented, recognise, 20, "the entry shape, by indent")
 
 
 @pytest.mark.parametrize(

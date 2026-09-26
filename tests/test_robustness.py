@@ -132,6 +132,32 @@ def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("[x]: u {" + "a=b" * 15, id="attribute-that-splits"),
+        pytest.param("[x]: a" + " " * 1000 + "b", id="run-of-spaces"),
+        pytest.param("[x]: a" + " " * 1000 + "\n b c", id="spaces-then-a-line"),
+        pytest.param('[x]: u "' + 'a "b ' * 8000, id="unclosed-quotes"),
+        pytest.param('[x]: u "t" {' + 'data-x="1" ' * 24, id="quoted-attributes"),
+        pytest.param('[x]: "a\n' * 4000, id="quote-opening-each-line"),
+        pytest.param("[x]: u\n" * 8000 + "prose", id="many-definitions"),
+    ],
+)
+def test_a_link_definition_is_recognised_quickly(block: str) -> None:
+    """`tag` asks of every block of every file whether it is a link definition, in build,
+    check and import. Versions that modelled more of pandoc's grammar were caught in review
+    taking seconds to minutes: an attribute that could be split two ways made `{a=ba=b...`
+    exponential - 18 of them took a minute and a half - and so did quoted values; optional
+    spaces stacked on optional spaces made a run of a thousand take six seconds; and a quote
+    opening each line was scanned to the end of the block from every line."""
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(block, "main.md")
+    assert time.perf_counter() - started < 2.0
+
+
+@pytest.mark.parametrize(
     "opener",
     [
         "Para <!-- open ",

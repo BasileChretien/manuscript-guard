@@ -328,6 +328,201 @@ def test_a_bound_written_hard_against_a_citation_marker_is_still_audited(
     assert "3.40" in unmatched and "9.99" in unmatched, unmatched
 
 
+def _audited(tmp_path: Path, outputs: list[str], text: str):
+    csv = tmp_path / "out.csv"
+    csv.write_text("v\n" + "\n".join(outputs) + "\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], [csv])
+    return [c.text for c in report.unmatched], [c.text for c in report.matched]
+
+
+def test_a_value_glued_to_a_citation_marker_is_audited_apart_from_it(tmp_path: Path) -> None:
+    """The marker rule spanned the word before a marker, digits included, so in
+    `(95% CI 1.20, 9.99)[12]` the bound was filed as part of the citation and never compared
+    with the outputs: a fabricated bound in a numbered-reference paper passed."""
+    unmatched, matched = _audited(
+        tmp_path,
+        ["2.51", "1.20", "3.40"],
+        "It was 2.51 (95% CI 1.20, 9.99)[12]. Rates reached 45%[14] overall.\n"
+        "The upper bound was 3.40[12], and later work[13-15] agreed.\n",
+    )
+    assert "9.99" in unmatched and "45%" in unmatched, unmatched
+    # A value that is in the outputs still matches: reading it apart adds no noise.
+    assert "3.40" in matched, matched
+    # The markers themselves are still citations.
+    assert not any("[" in text or text in ("12", "14", "13-15") for text in unmatched), unmatched
+
+
+def test_a_number_glued_to_a_marker_that_is_no_result_is_listed(tmp_path: Path) -> None:
+    """The cost of reading them apart, chosen knowingly: a version is a number, and one the
+    outputs do not hold is listed. A year in brackets is still a citation."""
+    unmatched, _ = _audited(
+        tmp_path, ["412"], "The pipeline (OEP 2026.1)[15] ran, as described (2019)[4].\n"
+    )
+    assert unmatched == ["2026.1"], unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "bounds"),
+    [
+        ("Age, median [IQR]: 64 [55-72] years.\n", "55-72"),
+        ("Age was 64 [55, 72] years.\n", "55"),
+        ("Length of stay was 7 [4-12] days.\n", "4-12"),
+        ("| Age | 64 [55–72] | 61 [50–70] |\n", "55–72"),
+    ],
+)
+def test_a_whole_number_interval_after_its_value_is_audited(
+    tmp_path: Path, text: str, bounds: str
+) -> None:
+    """A bracketed run of whole numbers was always a citation marker, so the bounds of a
+    median [IQR] went unaudited. An interval encloses the value before it; a citation range
+    does not, so `[13-15]` after a word, and `12% [4-6]`, are still citations."""
+    unmatched, _ = _audited(tmp_path, ["64", "61", "7"], text)
+    assert bounds in unmatched, unmatched
+
+
+def test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation(
+    tmp_path: Path,
+) -> None:
+    unmatched, _ = _audited(
+        tmp_path,
+        ["12", "412"],
+        "Rates of 12% [4-6] were reported, in 412 records [3], as earlier work [13-15] had.\n",
+    )
+    assert unmatched == [], unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "value"),
+    [
+        ("The earlier trial (N=2004)[4] was larger.\n", "2004"),
+        ("A registry study (reported in 2019, n=412)[5] found it.\n", "412"),
+        ("The pooled estimate (2019; 95% CI 1.20–9.99)[12] held.\n", "9.99"),
+        ("As before (Smith 2019, n=412)[5], rates rose.\n", "412"),
+    ],
+)
+def test_a_value_read_apart_from_its_marker_is_not_filed_as_an_author_year_citation(
+    tmp_path: Path, text: str, value: str
+) -> None:
+    """Read apart from the marker, the value sat inside a parenthetical holding a year, and
+    the author-year rule filed it: `(N=2004)[4]` was listed whole before, and hidden after."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(value in listed for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "bound"),
+    [
+        ("Le rapport était de 2,51[1,20-9,99] dans la cohorte.\n", "9,99"),
+        ("Median stay was 1,204[1,100-1,300] days.\n", "1,300"),
+    ],
+)
+def test_a_comma_written_value_keeps_its_bracket(tmp_path: Path, text: str, bound: str) -> None:
+    """With a comma in the value, the bracket glued to it may be a decimal-comma interval,
+    `[1,20-9,99]`, which a marker's shape also fits: split off, its bounds were filed as a
+    citation. The run is left whole, and listed, as before."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(bound in listed for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "bound"),
+    [
+        ("The odds were OR=3[1,20-9,99] overall.\n", "9,99"),
+        ("Median stay N=1204[1,100-1,300] days.\n", "1,300"),
+        ("Age 64 (Q1–Q3)[55–72] years.\n", "55–72"),
+    ],
+)
+def test_a_run_the_marker_rule_never_took_whole_is_listed_whole(
+    tmp_path: Path, text: str, bound: str
+) -> None:
+    """Read apart, these left their bracket to the marker rule, which filed the bounds; the
+    rule never took the whole run, so it used to be listed. Only a run the rule took whole
+    is read apart now, and reading one apart can only add to what is compared."""
+    unmatched, _ = _audited(tmp_path, ["3", "64"], text)
+    assert any(bound in listed for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "As reported (Smith 2019, p. 12)[5], rates rose.\n",
+        "Fitted as before (Smith 2019; R 4.3.1)[5] here.\n",
+    ],
+)
+def test_a_number_read_apart_falls_through_to_the_other_rules(tmp_path: Path, text: str) -> None:
+    """The author-year verdict is not taken for a number read apart, but the locator and
+    version rules after it still are: `p. 12` is a page, `R 4.3.1` a version."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert unmatched == [], unmatched
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Rates of 12,5 [4-6] were seen.\n", "In n=1,204 [150-300] records.\n"],
+)
+def test_digits_after_a_comma_are_not_taken_for_the_value(tmp_path: Path, text: str) -> None:
+    """`12,5 [4-6]` read 5 as the value, which the citation range encloses, so the marker
+    was taken for an interval and listed."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert not any(listed in ("4-6", "150-300") for listed in unmatched), unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [("About [½][12] of them.\n", "½"), ("Item [①][12] held.\n", "①")],
+)
+def test_a_number_in_the_bracket_before_a_marker_is_compared(
+    tmp_path: Path, text: str, number: str
+) -> None:
+    """The one-word bracket the marker rule allows, for `[SmPC][4]`, took any character but
+    a decimal digit, and `½` and `①` are numbers that are not: they were filed as part of the
+    citation, where the audit used to compare them."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert any(number in listed for listed in unmatched), unmatched
+
+
+def test_a_marker_that_never_closes_leaves_its_run_whole(tmp_path: Path) -> None:
+    """The marker rule takes a closed bracket, so a run whose bracket never closes was never
+    one it took, and is listed whole, not read apart into a table reference and a number."""
+    unmatched, _ = _audited(tmp_path, ["7"], "Shown in Table 2[3. then it held.\n")
+    assert "2[3" in unmatched, unmatched
+
+
+def test_emphasis_before_a_marker_is_a_citation(tmp_path: Path) -> None:
+    unmatched, _ = _audited(tmp_path, ["7"], "Infection with _E. coli_[3] was common.\n")
+    assert unmatched == [], unmatched
+
+
+@pytest.mark.parametrize(
+    ("text", "listed"),
+    [
+        ("About [x]½[12] of them.\n", "x]½[12"),
+        ("Median [IQR][55-72] years.\n", "IQR][55-72"),
+        ("See the Summary of Product Characteristics [SmPC][4].\n", "SmPC][4"),
+    ],
+)
+def test_a_run_opening_on_a_bracketed_word_is_listed_whole(
+    tmp_path: Path, text: str, listed: str
+) -> None:
+    """The marker rule once allowed a bracketed word before a marker, so that `[SmPC][4]`
+    was not listed. It filed `½` and a whole-number interval with the citation too, where
+    they used to be compared; the false positive is the smaller cost, and it is listed."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert listed in unmatched, unmatched
+
+
+def test_a_value_before_a_spaced_citation_list_is_compared(tmp_path: Path) -> None:
+    """The atom stops at the list's first number, so the marker's `]` is not right after it:
+    requiring that left `9.99)[1` whole, and a correct value was listed as unexplained."""
+    unmatched, matched = _audited(
+        tmp_path, ["1.20", "9.99", "45"], "CI 1.20, 9.99)[1, 2] and 45%[3; 4] held.\n"
+    )
+    assert "9.99" in matched and "45%" in matched, (matched, unmatched)
+    assert unmatched == [], unmatched
+
+
 def test_an_orcid_is_not_an_unexplained_number(tmp_path: Path) -> None:
     outputs = tmp_path / "out.csv"
     outputs.write_text("n\n412\n", encoding="utf-8")
@@ -763,33 +958,47 @@ def test_an_entry_with_accented_or_particled_names_is_recognised(entry: str) -> 
     assert looks_like_reference(entry)
 
 
-def test_indented_lines_do_not_stall_the_reference_list_search() -> None:
+def test_indented_lines_do_not_stall_the_reference_list_search(assert_linear) -> None:
     """`pdftotext -layout` indents a right-hand column by a hundred spaces or more, and the
-    heading check was quadratic in leading whitespace: 20 s for 3,000 such lines."""
-    import time
-
+    heading check was quadratic in leading whitespace: 20 s for 3,000 such lines. Timed as
+    the indent grows, since that is what it was quadratic in, and as the lines do; a budget
+    of 1 s for 3,000 lines left 2x headroom on a loaded machine. Both start small, so that
+    a quadratic that has come back fails in seconds rather than being timed at length."""
     from manuscript_guard.audit import bibliography_spans, strip_bibliography
 
-    text = "\n".join([" " * 150 + "Some text 12"] * 3000)
-    started = time.perf_counter()
-    assert bibliography_spans(text) == []
-    strip_bibliography(text)
-    assert time.perf_counter() - started < 1.0
+    def indented(width: int, lines: int = 300) -> str:
+        return "\n".join([" " * width + "Some text 12"] * lines)
+
+    def search(text: str) -> None:
+        bibliography_spans(text)
+        strip_bibliography(text)
+
+    assert bibliography_spans(indented(150)) == []
+    assert_linear(indented, search, 20, "the reference-list search, by indent")
+    assert_linear(
+        lambda lines: indented(150, lines), search, 20, "the reference-list search, by lines"
+    )
 
 
 def test_an_entry_with_et_al_after_initials_is_recognised() -> None:
     assert looks_like_reference("Smith, J. et al. (2020). Hepatic injury. Drug Safety, 42, 1-9.")
 
 
-def test_indented_prose_does_not_stall_the_entry_shape() -> None:
+def test_indented_prose_does_not_stall_the_entry_shape(assert_linear) -> None:
     """Two whitespace runs side by side at the start of the numbered-style shape made every
-    unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines."""
-    import time
+    unclassified number on an indented line quadratic: 17.5 s to audit 3,000 such lines.
+    Timed as the indent grows, from a small indent, as the search above is. The shape reads
+    one line, so the number of lines is the caller's loop, not the shape's."""
 
-    started = time.perf_counter()
-    for _ in range(3000):
-        assert not looks_like_reference(" " * 150 + "accounted for 12 of 8,393 cases")
-    assert time.perf_counter() - started < 1.0
+    def indented(width: int) -> str:
+        return " " * width + "accounted for 12 of 8,393 cases"
+
+    def recognise(line: str) -> None:
+        for _ in range(300):
+            looks_like_reference(line)
+
+    assert not looks_like_reference(indented(150))
+    assert_linear(indented, recognise, 20, "the entry shape, by indent")
 
 
 @pytest.mark.parametrize(

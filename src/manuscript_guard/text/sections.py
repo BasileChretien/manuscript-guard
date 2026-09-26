@@ -10,6 +10,8 @@ alongside the number rather than left implicit:
 * The abstract and the references are counted separately from the main text, because every
   journal treats them separately.
 * Headings count towards the main text, because they are printed.
+* The YAML front matter does not count, rendered keys included. The build strips it and
+  prints the title from paper.yaml, so none of it is in the document a limit is about.
 
 Where a journal counts differently, the profile can say so. Where it does not say, the
 count is reported with the rule, so a disagreement is visible rather than mysterious.
@@ -21,7 +23,14 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import (
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    mask,
+    without_front_matter,
+)
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -196,9 +205,6 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
@@ -221,20 +227,21 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # text as written, as the build and `mask` find it, and fences are looked for only
+    # after it. Blanked first, a comment on the YAML's first line read as a blank line
+    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
     # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
-    return blank(opening) + rest if opening else rest
+    #
+    # Fences and comments are found in the text as written too. Blanking the comments
+    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
+    # earlier opener and blanked the headings between them.
+    head = front_matter_end(text)
+    fences = fenced_blocks(text)
+    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
+    return blank(text, [(0, head), *spans])
 
 
 @dataclass(frozen=True)
@@ -462,12 +469,10 @@ def rules_opening_blocks(text: str) -> list[int]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
-    # of it because pandoc renders them, but a journal counts those against their own limits,
-    # not against the body.
-    opening = FRONTMATTER.match(text)
-    stripped = text[opening.end() :] if opening else text
-    stripped = blank_fences(stripped)
+    # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of
+    # it because pandoc renders them, but the build strips the block, and a journal counts a
+    # title and an abstract against limits of their own, not against the body.
+    stripped = blank_fences(without_front_matter(text))
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
@@ -495,7 +500,12 @@ def measure(text: str) -> Counts:
     whatever it resolves to. That is close enough for a limit, and it means the count does
     not change when the analysis is re-run.
     """
-    sections = split_sections(text)
+    # The front matter goes before the split. `split_sections` trims the text before the
+    # first heading, which takes the newline after the closing `---` with it, and without
+    # that newline `count_words` no longer recognised the block: every word of the YAML,
+    # keys included, counted as main text.
+    printed = without_front_matter(text)
+    sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title
     # alone, `## Background` under `# Abstract` was main text, so a structured abstract
@@ -519,6 +529,6 @@ def measure(text: str) -> Counts:
         main_text_words=main,
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
-        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", text)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", text)),
+        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
     )

@@ -533,21 +533,22 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     part replaced the whole source paragraph with it, deleting the equation and everything
     after. Within a section nothing stands between two paragraphs, so anything untagged
     between them in the document as sent is part of the one before.
+
+    An equation directly after a paragraph was taken for part of it too, wherever the
+    paragraph stood. No paragraph with `$$` in it carries an identifier any more, so that
+    rule only ever found an equation standing on its own, or a list item or quotation holding
+    only maths, which Word also shows as an equation, and held the paragraph above it for
+    nothing.
     """
     found: set[str] = set()
     last: str | None = None
     between = False
-    for index, block in enumerate(reference):
+    for block in reference:
         if block.names and not block.table:
             name = block.names[0]
             if last and between and sections.get(last, 0) == sections.get(name, 1):
                 found.add(last)
             last, between = name, False
-            # An equation directly after it is its own, wherever the paragraph stands: the
-            # document as sent says so, where reading the source for `$$` can be fooled.
-            following = reference[index + 1] if index + 1 < len(reference) else None
-            if block.text and following is not None and following.kind == "equation":
-                found.add(name)
         else:
             between = True
     return found
@@ -823,19 +824,19 @@ _HIDDEN = (
     "the .md."
 )
 _RUNS_ON = (
-    "it opens an HTML comment with `<!--` in the .md, which can hide what follows it, so it "
-    "is held where it is. Make the edit in the .md."
+    "it holds a `<!--` that nothing in the .md seems to close, so it is held where it is, as "
+    "a paragraph opening a comment would be. Make the edit in the .md; closing the comment in "
+    "the same paragraph, or removing the `<!--`, frees the paragraph on the next build."
 )
 _GLUED = (
-    "in the .md a line that opens or closes a block, or looks as if it does, follows it with "
-    "no blank line between - a `:::` or code fence, `\\end{table}`, a line starting `: ` - "
-    "so it is held where it is rather than merged with that line. Make the edit in the .md; "
-    "a blank line before that line frees the paragraph on the next build."
+    "in the .md a line directly under it, with no blank line between, looks as if it opens "
+    "or closes a block - an unmatched `\\end{table}`, a line starting `: `, an indented `:::` "
+    "fence - so it is held where it is rather than merged with that line. Make the edit in "
+    "the .md; a blank line before that line frees the paragraph on the next build."
 )
 _IN_PARTS = (
-    "display maths follows it directly in the .md, or Word shows it as more than one "
-    "paragraph, so it is held where it is: merged, its first part could replace the whole. "
-    "Make the edit in the .md."
+    "Word shows it as more than one paragraph, so it is held where it is: merged, its first "
+    "part would replace the whole. Make the edit in the .md."
 )
 _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "

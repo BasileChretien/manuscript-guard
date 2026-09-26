@@ -1433,17 +1433,20 @@ backtick is an escaped one, as in `` \``onset` ``, or one of a run that never cl
 pandoc opens a span on a run's last backtick, as in ``` ``crude'' ratio came from `ror ```.
 Stopped, the real span's closer was taken for an opener, and the false span it began hid
 the `<!--` after it: a paragraph swapped in the Introduction was written inside the
-comment, exit 0. Display maths is also read from the document as sent, which
-says it outright: an equation directly after a paragraph is part of that paragraph, however
-its source is written. And a held paragraph whose only change is a no-break space pandoc put
-in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
-refused instead. That is decided only for a source with no no-break space of its own and no
-binding or citation: asked of every paragraph, the check dropped a co-author's change to one
-the author had written, with "nothing came back". An author can write one as `\ `, as the
-character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
-also decided only when no new text stands beside the paragraph. Only the part carrying the
-identifier is compared, so when the part after an equation had been reworded, skipping the
-paragraph dropped that rewording.
+comment, exit 0. Display maths was also read from the document as sent, an equation directly
+after a paragraph being taken for part of it, however its source was written. That rule went
+once no paragraph with `$$` anywhere in it carried an identifier: it then found only an
+equation standing on its own, or a list item or quotation holding only maths, which Word
+also shows as an equation, and it held the paragraph above for nothing, refusing its
+rewording and a swap with the paragraph before it. And a held paragraph whose only change is
+a no-break space pandoc put in and Word's editor took out again has nothing to merge, as an
+ordinary one has not; it was refused instead. That is decided only for a source with no
+no-break space of its own and no binding or citation: asked of every paragraph, the check
+dropped a co-author's change to one the author had written, with "nothing came back". An
+author can write one as `\ `, as the character, or as an entity pandoc reads,
+`&NonBreakingSpace;` and `&#0160;` included. It is also decided only when no new text stands
+beside the paragraph. Only the part carrying the identifier is compared, so when the part
+after an equation had been reworded, skipping the paragraph dropped that rewording.
 
 Headings and captions are matched between the two documents as a sequence, not one text at
 a time. With two "Outcome" subheadings, matching by text alone, first come first served,
@@ -1467,7 +1470,13 @@ from the Results and another pasted into the Funding were taken for one table, a
 deletion went unreported. One that cannot be found is reported and makes the command exit
 1, because a move past it cannot be seen. A heading, table or figure that is found but came
 back somewhere else is reported too. It had been the anchor the ordering dropped, which
-named nothing. A display equation is a block of the same kind, known by its text. Word
+named nothing. When the paragraphs without an identifier all came back, only reordered, one
+of them out of place is named with them, as having come back in a different order. Named in
+both reports, a swap of two list items was said twice, each report naming its own share of
+the items, and a list item was called a heading. The closing note on what import could not
+look at counts a figure or equation that went missing or moved as a change outside a table:
+it had said that nothing outside a table changed, beside the report that a figure could not
+be found. A display equation is a block of the same kind, known by its text. Word
 keeps it as OMML, whose text is not `w:t`, so it was read as an empty paragraph: dragged
 into another section or deleted, it came back as "nothing came back".
 
@@ -2948,20 +2957,17 @@ Closed since, and why each mattered:
   as an empty line, such as a spacer written `&nbsp;` or `\ `; one with a line directly
   under it that looks as if it opens or closes a block but that pandoc prints as text, such
   as an unmatched `\end{table}`, a line starting `: ` below its second line, or a `:::`
-  indented four spaces; one with a `<!--` that never closes; and one directly above display
-  maths. The last is held because the rule that display maths right after a paragraph
-  belongs to it dates from when a paragraph holding `$$` carried an identifier, and now
-  fires only on a separate equation. A rewording of any of them is refused, and a swap with
-  it reported rather than applied. A comment or a `\newpage` still ends a section though
-  Word shows nothing there, so a swap of the two paragraphs around one is reported rather
-  than applied. A co-author who drags a held paragraph past the one paragraph beside it sees
-  that paragraph reported as moved; dragged past two or more, or past a heading, the held
-  paragraph itself is reported. A comment opened in a paragraph is found first by the
-  tagging rules, which give no identifier to a paragraph holding a `<!--` that closes past
-  it. Behind them, `_bare` reads the source with code spans and closed comments set aside,
-  and a backtick in a link's address, an autolink, inline maths or an HTML attribute can
-  still be taken for one that opens a code span; a comment opened after it and closed past a
-  blank line is then not seen by that reading.
+  indented four spaces; and one with a `<!--` that never closes. A rewording of any of them
+  is refused, and a swap with it reported rather than applied. A comment or a `\newpage`
+  still ends a section though Word shows nothing there, so a swap of the two paragraphs
+  around one is reported rather than applied. A co-author who drags a held paragraph past
+  the one paragraph beside it sees that paragraph reported as moved; dragged past two or
+  more, or past a heading, the held paragraph itself is reported. A comment opened in a
+  paragraph is found first by the tagging rules, which give no identifier to a paragraph
+  holding a `<!--` that closes past it. Behind them, `_bare` reads the source with code
+  spans and closed comments set aside, and a backtick in a link's address, an autolink,
+  inline maths or an HTML attribute can still be taken for one that opens a code span; a
+  comment opened after it and closed past a blank line is then not seen by that reading.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -2975,9 +2981,11 @@ Closed since, and why each mattered:
 - **A paragraph that reaches Word in parts is only recognised by what lies around it.**
   Untagged text between it and the next paragraph of its section marks it; a paragraph with
   display maths in its source, or with a line under it that opens a block, carries no
-  identifier at all. One that pandoc splits for another reason and that ends its section is
-  not recognised: a rewording of its first part would replace the rest, and a move of its
-  first part would carry the rest along.
+  identifier at all. An equation directly after a tagged paragraph is not taken for part of
+  it, since `$$` anywhere in a paragraph keeps the identifier off; display maths written
+  without `$$` would need its own tagging rule. One that pandoc splits for another reason
+  and that ends its section is not recognised: a rewording of its first part would replace
+  the rest, and a move of its first part would carry the rest along.
 - **A paragraph with display maths is not compared.** It carries no identifier, so a
   rewording of any part of it, before or after the equation, is listed with the paragraphs
   without an identifier that came back different, and not applied.

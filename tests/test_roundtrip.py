@@ -3748,7 +3748,7 @@ TYPED_IN_WORD = [
     pytest.param("Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
                  "Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
                  id="german-quotes"),
-    pytest.param("Use {{results.x}} here.", r"Use \{\{results.x}} here.", id="binding"),
+    pytest.param("Use {{results.x}} here.", r"Use \{\{results.x\}\} here.", id="binding"),
     pytest.param("1990. The year was bad.", r"1990\. The year was bad.", id="list"),
     pytest.param("A *real* change.", r"A \*real\* change.", id="emphasis"),
     pytest.param(
@@ -7505,6 +7505,253 @@ def test_a_paragraph_cut_down_to_its_number_can_be_edited_again(
     again = rewrite(built(project), tmp_path / "again.docx", reworded)
     assert main(["import", str(again), str(project), "--apply"]) == 0
     assert "\n\nAbout {{results.ror.point}}.\n\n" in source.read_text(encoding="utf-8")
+
+
+# ------------------------------------------- what import writes, the next build must name
+
+
+#: Openings a co-author can type that pandoc reads as a list, a line block, a definition or a
+#: caption when they open a paragraph - and that `tag` therefore leaves without an identifier.
+WRITTEN_OPENINGS = [
+    pytest.param("B) the ratio was 3.84 overall.", id="capital-and-parenthesis"),
+    pytest.param("(B) the ratio was 3.84 overall.", id="capital-in-parentheses"),
+    pytest.param("IV. the ratio was 3.84 overall.", id="capital-roman"),
+    pytest.param("A.  the ratio was 3.84 overall.", id="capital-full-stop-two-spaces"),
+    pytest.param("| The ratio was 3.84 overall.", id="bar"),
+    pytest.param(": the ratio was 3.84 overall.", id="colon"),
+    pytest.param(":the ratio was 3.84 overall.", id="colon-without-a-space"),
+    pytest.param("Table: the ratio was 3.84 overall.", id="table-colon"),
+    pytest.param("iv) the ratio was 3.84 overall.", id="small-roman"),
+    pytest.param("--- the ratio was 3.84 overall.", id="dashes"),
+    pytest.param("The ratio } was 3.84 overall.", id="close-brace"),
+]
+
+#: What a paragraph without a binding can be cut down to in Word: as typed, each is a list, a
+#: rule or a definition, or a paragraph `tag` skips.
+CUT_DOWN = [
+    pytest.param("-", id="dash"),
+    pytest.param("+", id="plus"),
+    pytest.param("---", id="rule"),
+    pytest.param("===", id="equals"),
+    pytest.param("--", id="two-dashes"),
+    pytest.param("-- |", id="dashes-and-bar"),
+    pytest.param("-:::", id="dash-and-colons"),
+    pytest.param(":", id="colon"),
+]
+
+
+def _merged(returned: str) -> str | None:
+    """What the merge writes for `returned`: into the binding's paragraph if it keeps the
+    value, into a paragraph without one if not."""
+    if "3.84" in returned:
+        return realign(
+            "The final ratio was {{results.ror.point}} overall.",
+            "The final ratio was 3.84 overall.",
+            returned,
+        )
+    return realign("Costs were low.", "Costs were low.", returned)
+
+
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS)
+def test_a_rewording_merges_as_a_paragraph_the_next_build_names(returned: str) -> None:
+    """The writer escaped only some of what the tagger skips. `B) the ratio was...` merged,
+    pandoc read it as a list at the next build, `tag` gave it no identifier, and the
+    paragraph's next edit in Word was dropped with nothing reported."""
+    from manuscript_guard.roundtrip import tag
+
+    merged = _merged(returned)
+    assert merged is not None
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS + CUT_DOWN)
+def test_a_plain_paragraph_retyped_merges_as_one_the_next_build_names(returned: str) -> None:
+    """The same for a paragraph without a binding, which Word's text replaces whole."""
+    from manuscript_guard.roundtrip import tag
+
+    merged = realign("Costs were low.", "Costs were low.", returned.replace("3.84", "low"))
+    assert merged is not None
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
+    """Pandoc wants two spaces after a single capital and a full stop before it starts a
+    list, so "E. coli" is a sentence. Escaping it anyway would put a backslash into every
+    species name a co-author types."""
+    assert _merged("E. coli gave 3.84 overall.") == "E. coli gave {{results.ror.point}} overall."
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [
+        pytest.param("Set {x, 3.84, y} was chosen.", id="close-brace-edited"),
+        pytest.param("Sets {x, 3.84, y} was used.", id="open-brace-edited"),
+    ],
+)
+def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -> None:
+    """A brace kept from the source and its partner written from Word, escaped, no longer
+    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` merged, and the next build gave
+    it no identifier, so its next edit in Word could not come back."""
+    from manuscript_guard.merge import why
+
+    aligned = align(
+        "Set {x, {{results.ror.point}}, y} was used.", "Set {x, 3.84, y} was used.", returned
+    )
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+    assert "brace" in why(aligned)[0]
+
+
+def test_a_brace_pair_kept_whole_still_merges() -> None:
+    """Only a pair the merge would split is refused: one kept whole on its own side of the
+    value merges as it always did."""
+    merged = realign(
+        "Note {see the note} gave {{results.ror.point}} here.",
+        "Note {see the note} gave 3.84 here.",
+        "Note {see the note} gave 3.84 there.",
+    )
+    assert merged == "Note {see the note} gave {{results.ror.point}} there."
+
+
+def test_dashes_before_a_value_are_no_rule_and_stay_bare() -> None:
+    """The first stretch goes on past the value, so it is no rule, and escaping its first
+    dash printed `-–` where pandoc typesets `---` as an em dash."""
+    merged = realign(
+        "{{results.ror.point}} was the final ratio.",
+        "3.84 was the final ratio.",
+        "--- 3.84 was the final ratio.",
+    )
+    assert merged == "--- {{results.ror.point}} was the final ratio."
+
+
+@needs_pandoc
+@pytest.mark.parametrize("returned", CUT_DOWN)
+def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:
+    """`\\---` printed `-–`, a hyphen and an en dash: neither what Word showed nor pandoc's own
+    typesetting of it. Each rule character is escaped now."""
+    import subprocess
+
+    merged = realign("Costs were low.", "Costs were low.", returned)
+    printed = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "plain"],
+        input=(merged + "\n").encode("utf-8"),
+        capture_output=True,
+        check=True,
+    ).stdout.decode("utf-8")
+    assert printed.strip() == returned, (merged, printed)
+
+
+PIPE_TABLE = "| a | b |\n|---|---|\n| 1 | 2 |"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS + CUT_DOWN)
+@pytest.mark.parametrize(
+    ("above", "reads"),
+    [
+        pytest.param("", ["Para"], id="alone"),
+        pytest.param("Above.\n\n", ["Para", "Para"], id="under-a-paragraph"),
+        pytest.param(PIPE_TABLE + "\n\n", ["Table", "Para"], id="under-a-table"),
+    ],
+)
+def test_what_import_writes_pandoc_reads_as_one_paragraph(
+    returned: str, above: str, reads: list[str]
+) -> None:
+    """The property itself, asked of pandoc: whatever the merge writes, built, is one
+    paragraph. Read where it may stand, because a definition needs the paragraph above it
+    and a caption the table: alone, `: the ratio...` and `Table: ...` were paragraphs."""
+    import json
+    import subprocess
+
+    merged = _merged(returned)
+    built_text = above + merged.replace("{{results.ror.point}}", "3.84") + "\n"
+    out = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=built_text.encode("utf-8"),
+        capture_output=True,
+        check=True,
+    ).stdout
+    blocks = json.loads(out)["blocks"]
+    assert [b["t"] for b in blocks] == reads, (merged, blocks)
+
+
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        pytest.param("Concentrations <LLOQ and >ULOQ were excluded.", id="unknown-tag"),
+        pytest.param("<LOQ values> were imputed as half the limit.", id="unknown-tag-opening"),
+        pytest.param(
+            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            id="escaped-angle",
+        ),
+        pytest.param(r"Alpha beta \{&lbrace;{{results.drug}} gamma delta.", id="escaped-brace"),
+        pytest.param(r"\{\{table.cases\}\}", id="escaped-braces"),
+        pytest.param(r"The ratio \{ was {{results.ror.point}} overall.", id="escaped-brace-open"),
+        pytest.param("Text\n<del>x</del> more.", id="opening-only-tag-on-a-later-line"),
+    ],
+)
+def test_a_paragraph_pandoc_reads_as_one_is_tagged(paragraph: str) -> None:
+    """`_untagged` took any tag it did not know for a block, and counted an escaped brace:
+    pandoc reads each of these as one paragraph, and each went without an identifier. The
+    first was tagged before #25."""
+    from manuscript_guard.roundtrip import tag
+
+    assert tag(paragraph, "main.md").startswith("[]{#mg-p-")
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("Text <div>x</div> more.", id="block-tag-mid-line"),
+        pytest.param("<section>A section.</section>", id="block-tag-opening"),
+        pytest.param("Doses were adjusted <note>see it</note> as needed.", id="docbook-tag"),
+        pytest.param("Doses were adjusted <case>x</case> as needed.", id="epub-tag"),
+        pytest.param(r"\footnote{In one analysis.", id="open-tex-group"),
+        pytest.param("And in another.}", id="tail-of-a-tex-group"),
+        pytest.param(r"The set \{a, b\} was used.} after.", id="tail-holding-escaped-braces"),
+        pytest.param(": a definition of the term above.", id="definition"),
+        pytest.param(":a caption beside a table.", id="caption"),
+    ],
+)
+def test_a_block_pandoc_reads_as_more_than_a_paragraph_stays_untagged(block: str) -> None:
+    """What is not one paragraph keeps going without a marker, which would rewrite it. Pandoc
+    splits a paragraph at a DocBook or EPUB block tag as at an HTML one; a colon opening a
+    block may make it a caption or a definition, which one block alone cannot tell."""
+    from manuscript_guard.roundtrip import tag
+
+    assert not tag(block, "main.md").startswith("[]{#mg-p-")
+
+
+@needs_pandoc
+def test_a_paragraph_reworded_to_open_like_a_list_can_be_edited_again(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end, the way the review of #33 found it. A co-author reworded a paragraph to
+    open with `B)`; it merged, and the next build made a list of it with no identifier, so
+    its next edit in Word was dropped with "nothing came back"."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The final ratio was {{results.ror.point}} overall.")
+    first = edit_docx(
+        built(project),
+        tmp_path / "first.docx",
+        {"The final ratio was 3.84 overall.": "B) the ratio was 3.84 overall."},
+    )
+    assert main(["import", str(first), str(project), "--apply"]) == 0
+    source = project / "manuscript" / "main.md"
+    assert r"B\) the ratio was {{results.ror.point}} overall." in source.read_text(
+        encoding="utf-8"
+    )
+
+    again = edit_docx(
+        built(project),
+        tmp_path / "again.docx",
+        {"B) the ratio was 3.84 overall.": "B) the ratio was 3.84 in all."},
+    )
+    assert main(["import", str(again), str(project), "--apply"]) == 0
+    assert r"B\) the ratio was {{results.ror.point}} in all." in source.read_text(
+        encoding="utf-8"
+    )
 
 
 # --------------------------------------------------- a supplement is a document of its own

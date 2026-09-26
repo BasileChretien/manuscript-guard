@@ -560,6 +560,28 @@ TAGGING = {
     "prose opening with a negative number": "-5 is below zero.\n",
     "prose opening with a decimal": "1.5 mg was given.\n",
     "prose opening with an initial": "C. difficile was isolated.\n",
+    "prose with a tag pandoc does not know": "Concentrations <LLOQ and >ULOQ were excluded.\n",
+    "prose opening with a tag pandoc does not know": "<LOQ values> were imputed as half.\n",
+    "prose with an escaped angle": "Concentrations \\<LLOQ and >ULOQ were excluded.\n",
+    "prose with an escaped brace": "Alpha beta \\{ gamma delta.\n",
+    "prose with a DocBook tag": "Doses were adjusted <note>see it</note> as needed.\n",
+    "prose with an EPUB tag": "In the <case>x</case> group.\n",
+    "a DocBook tag line over a multiline table": (
+        "Some prose.\n\n<example>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    # A tag that opens a raw block only where a block starts does here, and a table opens
+    # straight under it.
+    "an opening-only tag line over a multiline table": (
+        "Some prose.\n\n<del>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a video tag line over a multiline table": (
+        "Some prose.\n\n<video>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a colon alone under a paragraph": "Some prose here.\n:\n",
+    "a tilde alone under a paragraph": "Some prose here.\n~\n",
     "prose opening with a capital roman one": "I. first, in one sense.\n",
     "prose opening with i.e.": "i.e. this one.\n",
     "prose opening with a citation": "[@k] reported this.\n",
@@ -1151,3 +1173,45 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         assert returned.get(marker.group(1)) == written_out[0], (
             f"{name}: the marked Word paragraph holds only part of {piece!r}"
         )
+
+
+#: Every HTML5 element, some from before it that pandoc still knows, the DocBook and EPUB block
+#: tags pandoc's reader knows too (its `TagCategories.hs`), and names it does not know.
+HTML_NAMES = (
+    "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi", "bdo",
+    "blockquote", "body", "br", "button", "canvas", "caption", "cite", "code", "col", "colgroup",
+    "data", "datalist", "dd", "del", "details", "dfn", "dialog", "div", "dl", "dt", "em", "embed",
+    "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "head", "header", "hgroup", "hr", "html", "i", "iframe", "img", "input", "ins", "kbd", "label",
+    "legend", "li", "link", "main", "map", "mark", "menu", "meta", "meter", "nav", "noscript",
+    "object", "ol", "optgroup", "option", "output", "p", "param", "picture", "pre", "progress",
+    "q", "rp", "rt", "ruby", "s", "samp", "script", "search", "section", "select", "slot", "small",
+    "source", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td",
+    "template", "textarea", "tfoot", "th", "thead", "time", "title", "tr", "track", "u", "ul",
+    "var", "video", "wbr", "center", "font", "strike", "tt", "dir", "frame", "frameset",
+    "noframes", "isindex", "marquee", "Div", "SECTION", "LLOQ", "LOQ", "foo", "custom-el",
+    "applet", "svg",
+    "calloutlist", "bibliolist", "glosslist", "itemizedlist", "orderedlist", "segmentedlist",
+    "simplelist", "variablelist", "caution", "important", "note", "tip", "warning",
+    "literallayout", "programlisting", "programlistingco", "screen", "screenco", "screenshot",
+    "synopsis", "example", "informalexample", "informalfigure", "informaltable", "para",
+    "simpara", "formalpara", "equation", "informalequation", "mediaobject", "qandaset",
+    "procedure", "task", "cmdsynopsis", "funcsynopsis", "classsynopsis", "epigraph", "msgset",
+    "sidebar", "case", "switch", "default",
+)
+
+
+@pytest.mark.parametrize("name", HTML_NAMES)
+@pytest.mark.parametrize("where", ["mid-line", "opening"])
+def test_a_tag_ends_a_paragraph_exactly_when_pandoc_ends_it(name: str, where: str) -> None:
+    """`_untagged` took any tag it did not know for a block, so "Concentrations <LLOQ and
+    >ULOQ were excluded." went without an identifier, though pandoc reads a tag it does not
+    know as inline and the sentence as one paragraph. The lists are measured, not recalled:
+    this asks pandoc about every name, where it stands."""
+    from manuscript_guard.roundtrip import _untagged
+
+    block = f"Text <{name}>x</{name}> more." if where == "mid-line" else f"<{name}>x</{name}> more."
+    one_paragraph = [b["t"] for b in pandoc_ast(block + "\n")] == ["Para"]
+    assert _untagged(block) != one_paragraph, (
+        f"pandoc reads {block!r} as {'one paragraph' if one_paragraph else 'more than one'}"
+    )

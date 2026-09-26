@@ -384,9 +384,15 @@ _QUOTE_OR_BAR = re.compile(r" {0,3}[>|]")
 # least one dash or equals sign among them.
 _RULE = re.compile(r"(?=[^-=\n]*[-=])[ \t]*[-=:|+][-=:|+ \t]*")
 _THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
-# A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
-_DEFINITION = re.compile(r" {0,3}[:~][ \t]")
-_CAPTION = re.compile(r" {0,3}[Tt]able:")
+# A definition (`: text` or `~ text`, or the marker alone on its line), which also covers a
+# `: caption` under a table.
+_DEFINITION = re.compile(r" {0,3}[:~](?:[ \t]|$)")
+# `: text` or `~ text`: a definition less the marker alone, which `_continues_a_note` takes
+# into a footnote (see there).
+_DEFINITION_TEXT = re.compile(r" {0,3}[:~][ \t]")
+# A table's caption: `Table:`, `table:`, or a colon alone, which pandoc takes for one beside a
+# table. One block cannot tell whether a table is beside it, so any of them is a caption.
+_CAPTION = re.compile(r" {0,3}(?:[Tt]able)?:")
 # A link or footnote definition, `[reg]: https://...` or `[^1]: The note.`, which pandoc
 # reads only at the start of a block. With a marker in front it was a paragraph: every
 # `[text][reg]` in the manuscript printed with its brackets and linked nowhere, and the
@@ -436,23 +442,70 @@ _INDENT = re.compile(r"[ \t]*")
 _FIGURE = re.compile(r"!\[.*[)\]}]", re.DOTALL)
 # A TeX command. `\newpage` alone is a raw block, and marked it became an empty paragraph.
 _TEX = re.compile(r" {0,3}\\[A-Za-z]")
-# Tags pandoc reads as inline, so a paragraph may open with one and stay a paragraph. Any
-# other tag at the start of a line may open a raw HTML block - `<div>`, `<table>`, `<del>` -
-# and is treated as one: leaving a paragraph unmarked costs it its identifier, while marking
-# an HTML block rewrites it.
+# The tags pandoc's reader takes for a block: its `blockHtmlTags`, `blockDocBookTags` and
+# `epubTags` (Text/Pandoc/Readers/HTML/TagCategories.hs, 3.9.0.2), taken from its source and
+# checked by `test_a_tag_ends_a_paragraph_exactly_when_pandoc_ends_it`, which asks pandoc about
+# each. These end a paragraph wherever they stand: `text <div>x</div> more` is three blocks.
+# Pandoc reads DocBook in markdown, so `<note>` and `<example>` are blocks as much as `<div>`;
+# the first version of this list held HTML's own and marked a table row under `<example>`.
+_BLOCK_HTML = (
+    "address|article|aside|blockquote|body|canvas|caption|center|col|colgroup|dd|details|dir|"
+    "div|dl|dt|fieldset|figcaption|figure|footer|form|frameset|h[1-6]|head|header|hgroup|hr|"
+    "html|isindex|li|main|menu|meta|nav|noframes|ol|output|p|pre|script|section|summary|table|"
+    "tbody|td|textarea|tfoot|th|thead|title|tr|ul|"
+    "bibliolist|calloutlist|caution|classsynopsis|cmdsynopsis|epigraph|equation|example|"
+    "formalpara|funcsynopsis|glosslist|important|informalequation|informalexample|"
+    "informalfigure|informaltable|itemizedlist|literallayout|mediaobject|msgset|note|"
+    "orderedlist|para|procedure|programlisting|programlistingco|qandaset|screen|screenco|"
+    "screenshot|segmentedlist|sidebar|simpara|simplelist|synopsis|task|tip|variablelist|warning|"
+    "case|default|switch"
+)
+# A raw HTML block only where a block starts, inline after text: pandoc's
+# `eitherBlockOrInline`, less `script`, which it also lists as a block and splits at mid-line,
+# and with `style`, which it lists as a block and reads inline mid-line all the same.
+_OPENING_HTML = (
+    "applet|area|audio|button|del|embed|iframe|ins|map|noscript|object|progress|source|style|"
+    "svg|track|video"
+)
+# A tag pandoc does not know is inline wherever it stands, so "Concentrations <LLOQ and
+# >ULOQ were excluded." is one paragraph. Anything but these used to be taken for a block,
+# and such a paragraph went without an identifier. `_HTML_TAG` is the first line of a block,
+# where either list opens one; `_HTML_LINE` a later line, where only a block tag does.
+_HTML_TAG = re.compile(
+    rf" {{0,3}}</?(?:{_BLOCK_HTML}|{_OPENING_HTML})(?=[\s/>]|$)", re.IGNORECASE
+)
+_HTML_LINE = re.compile(rf" {{0,3}}</?(?:{_BLOCK_HTML})(?=[\s/>]|$)", re.IGNORECASE)
+# A block tag, whole, anywhere in a line - and not escaped: `\<div>` is text to pandoc, which
+# is how `import` writes a `<div>` a co-author typed. `\\<div>` is a backslash and a tag.
+_HTML_BLOCK_TAG = re.compile(
+    rf"(?<!\\)(?:\\\\)*</?(?:{_BLOCK_HTML})(?![\w-])(?:\s[^<>]*)?/?>", re.IGNORECASE
+)
+# Tags pandoc reads as inline. The tagger no longer asks this list, since pandoc reads a tag
+# it does not know as inline too; `gates.revision` does, and takes a line holding one whole
+# tag that is not on it for a boundary between runs of a paragraph's lines.
 _INLINE_HTML = (
     "a|abbr|b|bdi|bdo|br|cite|code|data|dfn|em|font|i|img|kbd|mark|q|s|samp|small|span|"
     "strike|strong|sub|sup|time|tt|u|var|wbr"
 )
-_HTML_TAG = re.compile(
-    rf" {{0,3}}</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?=[\s/>]|$)", re.IGNORECASE
-)
-# The same tags, whole, anywhere in a line. Mid-line too `text <div>x</div> more` is three
-# paragraphs to pandoc. Whole, because "values <LOQ were imputed" is a sentence.
-_HTML_BLOCK_TAG = re.compile(
-    rf"</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?:\s[^<>]*)?/?>", re.IGNORECASE
-)
 _TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
+# A brace not escaped: after an even number of backslashes, none included.
+_UNESCAPED_OPEN = re.compile(r"(?<!\\)(?:\\\\)*\{")
+_UNESCAPED_CLOSE = re.compile(r"(?<!\\)(?:\\\\)*\}")
+
+
+def _brace_group_runs_on(stripped: str) -> bool:
+    """Whether a block holds half of a brace group: an open brace left unclosed, the head of
+    a group that runs on past the blank line, or a close brace nothing opened, its tail.
+
+    Only an unescaped brace counts, either way: an escaped one is text. Counting every
+    brace refused the `\\{&lbrace;` `import` writes before a binding, three against two. And
+    `import` escapes both braces a co-author types, so `{{table.x}}` typed in Word comes back
+    `\\{\\{table.x\\}\\}`, none against none. A close brace used to go back bare and was a
+    tail with nothing opened: `The ratio } was...` merged and went without an identifier.
+    """
+    return len(_UNESCAPED_OPEN.findall(stripped)) != len(_UNESCAPED_CLOSE.findall(stripped))
+
+
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -527,7 +580,7 @@ def _untagged(block: str) -> bool:
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
         # is the paragraph the bookmark lands in.
-        or stripped.count("{") != stripped.count("}")
+        or _brace_group_runs_on(stripped)
         or _FENCE.match(stripped) is not None
         # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
         # paragraph printing a number: skipped, a paragraph cut down to its number in Word
@@ -547,7 +600,7 @@ def _untagged(block: str) -> bool:
     if (rest != [] and _DEFINITION.match(rest[0]) is not None) or any(
         _RULE.fullmatch(line) is not None
         or _FENCE_LINE.match(line) is not None
-        or _HTML_TAG.match(line) is not None
+        or _HTML_LINE.match(line) is not None
         for line in rest
     ):
         return True
@@ -748,6 +801,8 @@ def _ends_line(line: str, opener: str, piped: bool) -> bool:
         return len(opener.split()) > 1
     if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or (piped and "|" in line):
         return True
+    # Either list: a line holding only `<del>` that starts a block is a raw block, and a table
+    # opens under it. Asked only of block tags, this missed the table and marked its row.
     return _HTML_TAG.match(line) is not None and line.rstrip().endswith(">")
 
 
@@ -1011,7 +1066,7 @@ def _continues_a_note(line: str, under_label: bool) -> bool:
         _NOTE_ENDS.match(line)
         or _LINK_LINE.fullmatch(line)
         or _RULE.fullmatch(line)
-        or (under_label and _DEFINITION.match(line))
+        or (under_label and _DEFINITION_TEXT.match(line))
     )
 
 
@@ -1921,13 +1976,42 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     )
 
 
-#: A paragraph that opens like a block: a heading, a list item, a block quote, a fenced div.
-#: Word's text rarely does, and "1990. The year..." at the start of a paragraph is a list.
-_OPENER = re.compile(
-    r"(?P<mark>[#>]|:(?=::))|(?P<bullet>[-+])(?=\s)"
-    r"|(?:\d+|[a-z]|[ivxlcdm]+)(?P<delim>[.)])(?=\s)"
-    r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
-)
+#: A paragraph that opens like a block by its first character: a heading, a block quote, a
+#: line block, a bullet - a `-` or `+` alone is one too. A numbered list, a caption and a
+#: definition are judged by `_opened`, with the tagger's own reading of them.
+_OPENER = re.compile(r"(?P<mark>[#>|])|(?P<bullet>[-+])(?=\s|$)")
+
+
+def _opened(text: str, whole: bool = True) -> str:
+    """Word's text escaped where it would open a paragraph as something else. `whole` says
+    the text is the paragraph's last stretch, with no token after it to make it more.
+
+    The writer used to keep its own short list of openers, and the tagger read blocks by
+    pandoc's rules: `B) the ratio was...` merged as typed, pandoc made a list of it at the
+    next build, `tag` gave it no identifier, and its next edit in Word was dropped with
+    nothing reported. So a numbered list is judged here by the same `_enumerates` that
+    `tag` asks, which knows "E. coli" is a sentence and "IV. The" is not, and a caption by
+    the same `_CAPTION`, which takes any opening colon for one: beside a table or under a
+    paragraph a bare `:` makes a caption or a definition. What they would read as a block
+    gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
+    rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
+    `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
+    """
+    if block := _OPENER.match(text):
+        at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
+        return text[:at] + "\\" + text[at:]
+    # Judged as it may end up: `_respaced` turns pandoc's no-break space after an
+    # abbreviation into a plain one after this, and "p." then "4" opens a list.
+    first = text.split("\n", 1)[0].replace(_NBSP, " ")
+    if (found := _ENUMERATOR.match(first)) and _enumerates(first):
+        at = found.start("open") if found.group("open") else found.start("delim")
+        return text[:at] + "\\" + text[at:]
+    if found := _CAPTION.match(first):
+        return text[: found.end() - 1] + "\\" + text[found.end() - 1 :]
+    if whole and _RULE.fullmatch(first):
+        line = text.split("\n", 1)[0]
+        return re.sub(r"[-=]", lambda m: "\\" + m.group(0), line) + text[len(line) :]
+    return text
 
 #: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
 #: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
@@ -2005,9 +2089,9 @@ def _closers(shown_before: str, text: str, bare_before: str | None = None) -> li
 #: and was text to it, so the words were merged bare and deleted at the next build. A
 #: backslash before punctuation never changes what pandoc prints, except before a quote, a
 #: hyphen or a full stop, which it would stop typesetting; those are left alone here, and
-#: only `_OPENER` escapes one, where it would open the paragraph as a list.
+#: only `_opened` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
-    r"[\\`*\[^~{$]"
+    r"[\\`*\[^~{}$]"
     rf"|{_TAG_OPEN}"  # a tag, a comment or an autolink; "p < 0.05" is not one
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
@@ -2069,10 +2153,7 @@ def _escaped(
         text = text[:-1] + "\\" + text[-1]
     if brace:
         text = text.removesuffix("\\{") + "&lbrace;"
-    if opening and (block := _OPENER.match(text)):
-        at = next(block.start(g) for g in ("mark", "bullet", "delim", "paren") if block.group(g))
-        text = text[:at] + "\\" + text[at:]
-    return text
+    return _opened(text, whole=not before_token) if opening else text
 
 
 _NBSP = "\u00a0"
@@ -2217,6 +2298,10 @@ class Alignment:
     #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
     #: not come back, and would be skipped with "nothing came back".
     alone: str = ""
+    #: Rebuilt, a brace kept from the source would lose its partner, written from Word and so
+    #: escaped: `Set {x, {{results.x}}, y\} was chosen.` The source's braces paired, these do
+    #: not, and the next build would give the paragraph no identifier.
+    unpaired: bool = False
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -2448,6 +2533,11 @@ def align(
     # rewording it refused `B) the ratio was...` as "everything but it was deleted".
     if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
         return Alignment(None, alone=rebuilt)
+    # A stretch kept from the source keeps its braces bare, and one written from Word has
+    # them escaped, so a pair with one half on each side of a token no longer pairs. The
+    # paragraph would build without an identifier, and its next edit could not come back.
+    if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
+        return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)

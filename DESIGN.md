@@ -1655,6 +1655,27 @@ what pandoc prints, except before a quote, a hyphen or a full stop, which it wou
 typesetting; those are escaped only where they open a paragraph as a list would (`1990.`,
 `- `), and there nothing is typeset.
 
+The writer and the tagger have to read an opening the same way. The tagger judges a block by
+pandoc's rules, and the writer kept a short list of its own: `B) the ratio was...`, `IV.
+The`, `| The` and `Table: The` merged as typed, pandoc made a list, a line block or a caption
+of them at the next build, `tag` gave the paragraph no identifier, and its next edit in Word
+was dropped with nothing reported. The writer now asks the tagger's own reading of a
+numbered list and a caption, so "E. coli" stays a sentence and "IV. The" is escaped, and the
+property is tested as it is meant: whatever the merge writes, pandoc reads as one paragraph
+and `tag` names it, read alone, under a paragraph and under a table - or the merge is
+refused, and says why. The tagger, for its
+part, took any HTML tag it did not know for a block and counted an escaped brace. Pandoc
+reads a tag it does not know as inline and `\{` as a brace, so "Concentrations <LLOQ and
+>ULOQ were excluded." lost its identifier when the tagger learned pandoc's blocks. Its block
+tags are pandoc's own lists now, HTML's and the DocBook and EPUB ones pandoc also reads in
+markdown, checked by a test that asks pandoc about each tag where it stands. A first version
+held HTML's list alone, measured rather than read from pandoc's source, and marked a table
+row under a line holding `<example>`. And `import` escapes a `}` as well as a `{`, so the
+braces a co-author types never look like half of a TeX group. Only unescaped braces count,
+so a pair split across a binding - one brace kept from the source bare, its partner edited
+in Word and written escaped - no longer pairs, and that rewording is refused rather than
+merged into a paragraph the next build could not name.
+
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
 catches what this module can see - a delimiter left unpaired, a span stretched over new
@@ -2067,12 +2088,12 @@ Added by the adversarial review, verified and **not** fixed:
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
   and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI skips because
   CI has no pandoc. Where the patterns are unsure they leave a block unmarked, which costs a
-  comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
-  tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
-  one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
-  after a `<!--` written inside inline code, up to the next `-->`; a paragraph whose braces
-  do not pair. Raw TeX other than an environment is not followed across a blank line. When
-  the blank line falls inside braces, the blocks either side are refused by the brace
+  comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
+  (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
+  (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
+  inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
+  Raw TeX other than an environment is not followed across a blank line. When the blank line
+  falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
   marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which
@@ -2083,7 +2104,21 @@ Added by the adversarial review, verified and **not** fixed:
   interval such as `[0, 1)`. Every review round on these patterns found holes in the
   version before it,
   each by running pandoc on a construct the table did not yet hold, so the table is
-  evidence for what is in it and no more.
+  evidence for what is in it and no more. The HTML block tags are pandoc 3.9.0.2's, taken
+  from its source; a later pandoc that takes another tag for a block marks a paragraph it
+  splits, until the agreement test is run against it.
+- **A caption or a definition is told from a paragraph by its opening alone.** A block
+  opening `Table:`, `table:` or a colon is a caption beside a table, and a line that is `: `
+  and text, or a colon or a tilde alone, makes a definition of the line or paragraph above
+  it; otherwise each is a paragraph. The tagger sees one block at a time, so it leaves every
+  block that opens so, or holds such a line, without an identifier. The merge escapes any
+  such opening a co-author types, so an import cannot make one, but a paragraph written that
+  way in the `.md` is never compared.
+- **A brace an earlier version wrote back is half a pair now.** Before a `}` was escaped,
+  `import` wrote a co-author's `{a, b}` as `\{a, b}`. Only unescaped braces count now, so
+  such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
+  to it in Word is reported as not compared and not applied, so it can be edited only in
+  the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the

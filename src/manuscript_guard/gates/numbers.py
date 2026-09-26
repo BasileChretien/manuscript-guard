@@ -27,7 +27,7 @@ from manuscript_guard.text.masking import (
     mask,
 )
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chain_at, chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 GATE = "G2"
@@ -106,6 +106,7 @@ def check_numbers(
         text = path.read_text(encoding="utf-8")
         loose = 0
         headings = heading_index(text)
+        notes = footnote_index(text)
 
         # Read as prose until it is fixed, a `# Methods` in it heads a section here while
         # pandoc refuses the whole file; see `front_matter_problem`.
@@ -158,7 +159,11 @@ def check_numbers(
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
-            verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
+            # A footnote's text is judged where it stands and at every reference to it,
+            # where pandoc prints it.
+            verdict = classifier.classify_under(
+                atom, chains_at(headings, notes, atom.start), scan
+            )
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):

@@ -2808,21 +2808,25 @@ Closed since, and why each mattered:
   document matches, and it exits 1 - but the move itself is still not named. A table or
   figure that cannot be found in the returned document is not among them either. That one is
   reported, but a move past it is not.
-- **A paragraph is held in place by its source, not by what the co-author meant.** A
-  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
-  move across it is refused where nothing would have broken. A paragraph written directly
-  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
-  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
-  the paragraph on the next build. The lines are found by pattern: prose that happens to
-  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
-  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
-  that paragraph reported as moved; dragged past two or more, or past a heading, the line
-  itself is reported. A paragraph with display maths is held too, so dragging it whole,
-  equation and all, is refused like dragging its first part. A comment opened in a
-  paragraph is found by reading the source with its code spans set aside, and a backtick in
-  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
-  one that opens a code span; a comment opened after it and closed past a blank line is then
-  not seen, and that paragraph can be moved.
+- **A paragraph is held in place by its source, not by what the co-author meant.** Since the
+  tagging rules changed, most of what was held carries no identifier at all, so import
+  neither moves nor rewords it, and an edit to it is listed with the paragraphs without an
+  identifier: a comment, a `\newpage`, a paragraph that opens a comment or holds display
+  maths, and one with a fence, `</div>` or a definition directly under it. What is still
+  tagged and held: a paragraph with another line that opens or closes a block written
+  directly under it, such as `\end{table}`, and a paragraph directly above an equation that
+  stands on its own. The second is held although nothing would break. The rule that an
+  equation right after a paragraph belongs to it dates from when a paragraph holding `$$`
+  carried an identifier, and now fires only on a separate equation, so a rewording of that
+  paragraph, or a swap with the one before it, is refused. The lines are found by pattern,
+  so a block tag missing from the list is not recognised. A co-author who drags a held
+  paragraph past the one paragraph beside it sees that paragraph reported as moved; dragged
+  past two or more, or past a heading, the held paragraph itself is reported. A comment
+  opened in a paragraph is found first by the tagging rules, which give no identifier to a
+  paragraph holding a `<!--` that closes past it. Behind them, `_bare` reads the source with
+  code spans and closed comments set aside, and a backtick in a link's address, an autolink,
+  inline maths or an HTML attribute can still be taken for one that opens a code span; a
+  comment opened after it and closed past a blank line is then not seen by that reading.
 - **A table, figure or equation is recognised by what it holds, and failing that by its
   place.** An equation is paired as a table is, so one deleted or edited while another is
   inserted in the same stretch is taken for it, and the deletion is not reported. A
@@ -2838,10 +2842,9 @@ Closed since, and why each mattered:
   source, or a line under it that opens a block, marks it. One that pandoc splits for
   another reason and that ends its section is not recognised: a rewording of its first part
   would replace the rest, and a move of its first part would carry the rest along.
-- **The part of a paragraph after its equation is not compared.** Only the part carrying the
-  identifier is. A rewording after the equation, with the first part untouched, is listed
-  with the paragraphs without an identifier that came back different, and not applied. With
-  the first part edited too, the paragraph is refused.
+- **A paragraph with display maths is not compared.** It carries no identifier, so a
+  rewording of any part of it, before or after the equation, is listed with the paragraphs
+  without an identifier that came back different, and not applied.
 - **A duplicated heading is matched with the one it copies only when that is unambiguous.**
   Headings and captions are paired as a sequence, and then any text of which one copy is
   left over on each side. A pasted copy of a heading that is still in place is paired with

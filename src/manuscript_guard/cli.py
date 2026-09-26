@@ -477,10 +477,9 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
-            "another file, or a paragraph it holds in place ends one. It "
-            "holds an HTML comment (an empty line in Word), and a paragraph that opens a "
-            "comment, holds display maths, or has a fence, `</div>` or a similar line directly "
-            "under it in the .md. Move it in the .md yourself."
+            "another file, or a paragraph it holds in place ends one. It holds a paragraph "
+            "with a line such as `\\end{table}` directly under it in the .md, and one directly "
+            "above an equation that stands on its own. Move it in the .md yourself."
         )
 
     if plan.strayed:

@@ -1932,11 +1932,18 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
     assert path.read_text(encoding="utf-8") == edited, "the edit is not where it was made"
 
 
-def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+def _sent_back(
+    project: Path,
+    tmp_path: Path,
+    change,
+    *,
+    recorded: bool = True,
+    document: str = "manuscript.docx",
+) -> Path:
     """The built document as a co-author returns it, `change` applied to its body's XML;
     without its record of paragraphs unless `recorded`, as releases before 0.2.60 built it."""
     returned = tmp_path / "back.docx"
-    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+    with zipfile.ZipFile(project / "build" / document) as zin, zipfile.ZipFile(
         returned, "w"
     ) as zout:
         for item in zin.infolist():
@@ -2159,6 +2166,139 @@ def test_two_identical_paragraphs_swapped_in_the_source_take_no_edit_meant_for_t
         before,
         before.replace("# Funding\n\nNot applicable.", "# Funding\n\nNo external funding."),
     }
+
+
+_ALPHA = "Alpha paragraph talks about the cohort of patients."
+_BRAVO = "Bravo paragraph describes the exposure window."
+_PAPA = "Papa paragraph reports that twelve reports were excluded for missing dates."
+_ROMEO = "Romeo paragraph explains how duplicates were removed before the analysis."
+_NEW = "Novel paragraph inserted by the author after the build."
+#: A paper cut down to a few paragraphs fails the gates; built past them, the document is
+#: named for it.
+_UNCHECKED = "manuscript.UNCHECKED.docx"
+
+
+def _paper(project: Path, *blocks: str) -> Path:
+    """The example with its main text replaced by `blocks`, its title kept."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    front = text[: text.index("\n---\n") + len("\n---\n")]
+    path.write_text(front + "\n" + "\n\n".join(blocks) + "\n", encoding="utf-8")
+    return path
+
+
+def _xml_paragraphs(xml: str) -> list[str]:
+    return re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+
+
+def _runs(paragraph: str) -> str:
+    """A Word paragraph's content, without its properties or bookmarks."""
+    body = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
+    return re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", body[: -len("</w:p>")])
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "now",
+    [(_ALPHA, _PAPA, _NEW, _ROMEO, _BRAVO), (_ALPHA, _PAPA, _BRAVO, _ROMEO)],
+    ids=["added between", "moved between"],
+)
+def test_a_join_across_a_paragraph_the_source_put_between_is_not_merged(
+    project: Path, tmp_path: Path, now: tuple[str, ...]
+) -> None:
+    """Followed, two paragraphs of the document were compared with a paragraph the author
+    put between them since the build, which the co-author never had. Joined in Word by
+    retyping across the break, which takes the second bookmark, the join was never weighed:
+    it merged as a rewording of the first, the second was reported deleted and left, and its
+    text was in the source twice."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, "# Methods", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def joined(xml: str) -> str:
+        first = _word_paragraph(xml, "Papa paragraph")
+        second = _word_paragraph(xml, "Romeo paragraph")
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        return xml.replace(second, "", 1).replace(
+            first, first[: -len("</w:p>")] + space + _runs(second) + "</w:p>", 1
+        )
+
+    returned = _sent_back(project, tmp_path, joined, document=_UNCHECKED)
+    _paper(project, "# Methods", *now)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("below", [False, True], ids=["heading above", "heading below"])
+def test_a_heading_run_into_a_followed_paragraph_is_not_merged(
+    project: Path, tmp_path: Path, below: bool
+) -> None:
+    """A heading run into the paragraph beside it in Word is refused: its text would be in
+    the source twice. The heading was looked for beside the paragraph in the fresh build,
+    where a paragraph the author added since the build now stood between them, so the
+    heading was not seen and the run-in paragraph merged."""
+    from manuscript_guard.cli import main
+
+    if below:
+        built = ("# Intro", _ALPHA, _PAPA, "# Methods", _ROMEO)
+        now = ("# Intro", _NEW, _ALPHA, _PAPA, _NEW.replace("Novel", "Second"), "# Methods", _ROMEO)
+    else:
+        built = ("# Intro", _ALPHA, "# Methods", _PAPA, _ROMEO)
+        now = ("# Intro", _ALPHA, "# Methods", _NEW, _PAPA, _ROMEO)
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def run_in(xml: str) -> str:
+        heading = next(p for p in _xml_paragraphs(xml) if ">Methods<" in p and "Heading" in p)
+        paragraph = _word_paragraph(xml, "Papa paragraph")
+        if below:
+            joined = paragraph[: -len("</w:p>")] + _runs(heading) + "</w:p>"
+        else:
+            opening = re.match(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", paragraph, re.DOTALL)
+            joined = opening.group(0) + _runs(heading) + paragraph[opening.end() :]
+        return xml.replace(heading, "", 1).replace(paragraph, joined, 1)
+
+    returned = _sent_back(project, tmp_path, run_in, document=_UNCHECKED)
+    _paper(project, *now)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "second", ["Unfunded.", "{{results.cohort.n_reports}}"], ids=["word", "value"]
+)
+def test_two_one_word_paragraphs_joined_without_a_space_are_not_merged(
+    project: Path, tmp_path: Path, second: str
+) -> None:
+    """"None." and the paragraph after it, joined in Word with no space and the second
+    bookmark lost, read as one word that shares none with either: no longer counted as a
+    join, it merged as a rewording, and a value was written into the source as a typed
+    number beside the binding that prints it."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, "# Notes", _ALPHA, "None.", second, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def joined(xml: str) -> str:
+        paragraphs = _xml_paragraphs(xml)
+        first = next(p for p in paragraphs if ">None.<" in p)
+        after = paragraphs[paragraphs.index(first) + 1]
+        return xml.replace(after, "", 1).replace(
+            first, first[: -len("</w:p>")] + _runs(after) + "</w:p>", 1
+        )
+
+    returned = _sent_back(project, tmp_path, joined, document=_UNCHECKED)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

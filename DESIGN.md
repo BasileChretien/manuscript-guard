@@ -1407,8 +1407,9 @@ then and now, the rule a paragraph is trusted in place by; otherwise by its text
 block before it, when that pair is found once in both. And only along the order the
 document was built in. A paragraph the author moved, followed, came back from Word in its
 old place, which `import` reads as the co-author moving it back, and `--apply` would have
-undone the author's move. So a paragraph the author moved relative to the others, one the
-author reworded, and one whose text and block before both repeat are still not compared. A
+undone the author's move. So of paragraphs the author reordered only the longest run
+still in order is followed, and one the author reworded, or whose text and block before
+both repeat, is still not compared. A
 followed paragraph is compared, moved, merged and anchored under the identifier the document
 carries: the fresh builds and the source are read under those names for the comparison,
 and `respond --open` anchors a comment on one where it now stands.
@@ -2980,6 +2981,18 @@ Closed since, and why each mattered:
   reads word for word like another in its file once the block before it changed, and to the
   paragraph before one that is left out of the comparison and did not come back, which may
   be a join.
+- **A paragraph the author moved across a heading is followed, and reads as moved by the
+  co-author.** The order kept is the paragraphs' own, not the headings', so it came back
+  where it stood in the document sent, and `import` lists it as moved into another
+  section. Nothing is written, and the listing says the move was made in the `.md`, but
+  moving it back as the listing otherwise advises would undo the author's move.
+- **A paragraph beside one the co-author never had is refused more often.** Every
+  paragraph of the fresh build compared under none of the document's identifiers - added,
+  moved or edited by the author since the build - is weighed as a join into the paragraph
+  above it, since a block untagged at the build looks the same. A wholesale rewrite of
+  that paragraph sharing a few common words with it reads as the join, and is refused:
+  about one in five complete rewrites of a short paragraph, none below 40% of its words
+  replaced.
 - **A paragraph is followed by its text alone when that text is unique.** That is the rule
   it is trusted in place by, and it is as sure: a paragraph deleted from the source since
   the build and written again word for word elsewhere is taken for the one the co-author

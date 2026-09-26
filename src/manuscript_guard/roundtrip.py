@@ -79,7 +79,7 @@ _PAST_FRONTS = (_OLD_FRONT, _MID_FRONT)
 #: A paragraph that is only a placeholder. Releases before 0.2.49 gave none an identifier,
 #: and since then one that is only a value has one.
 _LONE = re.compile(r"\{\{[^}]*\}\}")
-#: A block opening like a link or footnote definition. Releases before #54 (0.2.55) gave
+#: A block opening like a link or footnote definition. Releases before #54 (some 0.2.55) gave
 #: none an identifier, and since then one that pandoc prints as prose has one.
 _DEFINITION_LIKE = re.compile(r" {0,3}\[[^\]\n]+\]:")
 

@@ -558,7 +558,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"  {unexamined}")
         return 0
 
-    _report_plan(project, known, plan, applying=args.apply)
+    _report_plan(project, known, plan, applying=args.apply, followed=numbered.followed)
 
     if args.apply:
         apply_plan(known, plan)
@@ -642,7 +642,7 @@ def _report_comments(comments) -> None:
         )
 
 
-def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
+def _report_plan(project, known: dict, plan, *, applying: bool, followed=()) -> None:
     """Say what the returned document changed and what will, or will not, be applied.
 
     `known` holds the paragraphs compared. A join can take in one that was not, which is
@@ -654,14 +654,18 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
 
     def opening(name: str) -> str:
         if name not in known:
-            return f"({name}, not compared)"
+            return f"({name.partition('#')[0]}, not compared)"
         # On one line: a held comment's source runs over several.
         return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
         for name in sorted(plan.misplaced):
-            print(f"    {opening(name)}")
+            # Followed to where the author moved it, across a heading: it came back where it
+            # stood in the document sent, which reads as a move. Moving it back would undo
+            # the author's own.
+            since = " (moved in the .md since the build: check before moving it)"
+            print(f"    {opening(name)}{since if name in followed else ''}")
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "

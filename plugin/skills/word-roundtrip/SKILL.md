@@ -86,7 +86,7 @@ It changes nothing and reports each paragraph:
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes, paragraphs with display maths or with a fence under them, and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 | `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers or tags paragraphs differently (a list tagged by a version before 0.2.45, for one). Not applied; carry any edit in it over by hand (step 6) |
 | `… did not come back` | such a paragraph was deleted or joined in Word. Not applied; delete or join it in the `.md` if that was intended |
-| `… that older releases gave no identifier are not in …` | a document built before 0.2.60, which records nothing, lacks a paragraph that is only a value, or prose opening like a link definition (`[label]: ...`): deleted or joined in Word, or never in it if an older release built it (before 0.2.49 for a value, before the link-definition fix for the other). Not applied; delete or join it in the `.md` if that was intended |
+| `… that older releases gave no identifier are not in …` | a document built before 0.2.83, which records nothing, lacks a paragraph that is only a value, or prose opening like a link definition (`[label]: ...`): deleted or joined in Word, or never in it if an older release built it (before 0.2.49 for a value, before the link-definition fix for the other). Not applied; delete or join it in the `.md` if that was intended |
 
 Anything refused, joined, deleted, not compared or moved between sections or files, any
 heading, table, figure or equation that was moved or could not be found, and any paragraph
@@ -230,9 +230,11 @@ differently. A paragraph that reads word for word like another in its file, such
 applicable." under two declarations, is also listed once the block before it changed.
 
 Paragraphs below one you added or removed in the `.md` since the build are followed to
-where they now stand, and their edits merge as usual. One you moved relative to the others,
-or one whose text and the block before it both repeat in its file, is not followed and is
-listed as not compared.
+where they now stand, and their edits merge as usual. Of paragraphs you reordered, only the
+longest run still in order is followed; the rest, and one whose text and the block before it
+both repeat in its file, are listed as not compared. One you moved across a heading can be
+followed and listed as moved into another section, marked as moved in the `.md` since the
+build: leave it where you put it.
 
 When several people edited copies of the same build, dry-run every copy before applying any.
 Apply one, then `--force` the others: each merges only into paragraphs the earlier imports

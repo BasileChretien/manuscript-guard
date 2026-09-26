@@ -555,7 +555,14 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     return found
 
 
-def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
+def _took_in(
+    name: str,
+    now: str,
+    was: str,
+    reference: list[Block],
+    missing: Counter,
+    compared: Collection[str] = (),
+) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
@@ -565,14 +572,24 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
     not merely found, because a paragraph often opens by naming its heading ("Statistical
     analysis used..."), and requiring the text to be new let that join through as
     "Statistical analysisStatistical analysis used...".
+
+    A paragraph of the fresh build that is not `compared` - one the author added since the
+    build - is looked past: the co-author never had it between the heading and this one,
+    and stopped at it, the heading was not seen and the run-in paragraph merged.
     """
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
+
+    def passed(block: Block) -> bool:
+        if block.table:
+            return False
+        if block.names:
+            return compared and not any(n in compared for n in block.names)
+        return not block.text
+
     for step in (-1, 1):
         i = at + step
-        while 0 <= i < len(reference) and not (
-            reference[i].names or reference[i].table or reference[i].text
-        ):
+        while 0 <= i < len(reference) and passed(reference[i]):
             i += step
         if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
             continue
@@ -624,7 +641,8 @@ def _absorbed(now: str, other: str, was: str) -> bool:
     the returned paragraph resembles more is taken, a tie counting as the join. Except a tie
     at nothing: a rewording sharing no word with either paragraph holds none of the
     neighbour's words, which a join does, and counted as one, "Not applicable." rewritten whole
-    above a paragraph added since the build was refused where main merged it.
+    above a paragraph added since the build was refused where main merged it. A join retyped
+    with no space holds them inside one word, and is still one.
 
     Two earlier versions looked for the neighbour's words instead, and each was defeated in
     a round of review: one unbroken run of six words was split by a single edited word, and
@@ -636,7 +654,11 @@ def _absorbed(now: str, other: str, was: str) -> bool:
         return False
     alone = difflib.SequenceMatcher(a=before, b=mine, autojunk=False).ratio()
     together = difflib.SequenceMatcher(a=before + theirs, b=mine, autojunk=False).ratio()
-    return together >= alone and together > 0
+    if together == 0:
+        # Nothing in common word by word: "None." and "Unfunded." retyped with no space are
+        # one word, "None.Unfunded.", a join all the same.
+        return any(token in now for token in theirs)
+    return together >= alone
 
 
 def _joined_without_bookmark(
@@ -750,6 +772,11 @@ def plan_import(
         and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
     }
     joined += _joined_without_bookmark(weighed, texts, in_join)
+    # And over the compared paragraphs alone, in the order the document had them. The fresh
+    # build can hold, between two of them, a paragraph the author added or moved since the
+    # build, which the co-author never had; the pair was then never weighed, and a join of
+    # the two retyped in Word merged as a rewording of the first.
+    joined += _joined_without_bookmark(rendered, texts, in_join)
     beside_lost = _beside_lost(rendered, texts, built, present)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:
@@ -801,7 +828,7 @@ def plan_import(
             refused.append(Refusal(name, now, (_GLUED,)))
         elif name in in_parts or held.get(name) == "in-parts":
             refused.append(Refusal(name, now, (_IN_PARTS,)))
-        elif took := _took_in(name, now, was, reference, missing):
+        elif took := _took_in(name, now, was, reference, missing, rendered):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))

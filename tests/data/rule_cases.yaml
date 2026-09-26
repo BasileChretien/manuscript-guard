@@ -199,6 +199,10 @@ structural:
       - {text: "At day 30 after exposure.", atom: "30"}
       - {text: "30-day mortality was assessed.", atom: "30-day"}
       - {text: "Assessed at week 12.", atom: "12"}
+      # A label opening a paragraph matches as it does on its own. A match from the paragraph
+      # above, "year" and the blank line and "12", used to take its digits, and "12-month"
+      # was reported only because of what the paragraph before it ended with.
+      - {text: "Follow-up lasted one year\n\n12-month outcomes were recorded.", atom: "12-month"}
     rejects:
       # Round four. Three digits was the round-one bound; one digit fewer walked back in.
       - {text: "In the first 6 months 214 cases of myocarditis were reported.", atom: "214"}

@@ -166,11 +166,12 @@ def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
 # here had neighbouring pieces that could take the same spaces, `\s*[-–]?\s*` say, and the scan
 # backtracked through every way of sharing them out. The runs are sized so the old patterns took
 # 4 to 60 seconds each. Scanned with every rule, the rewrites take under 0.1 s, and 0.3 s for
-# "A-" repeated, where each of thirty rules looks at every one of 20,000 word boundaries.
+# "A-" repeated, where each of 28 rules looks at every one of 20,000 word boundaries.
 SPACES = " " * 16000
 STALLS = {
     # Six optional words, each after its own `\s*`: faster than the fourth power of the run.
-    "checklist-item": "STROBE" + " " * 80 + "x",
+    # 80 spaces took 3.7 s, which a fast runner could pass; 100 took 12 s.
+    "checklist-item": "STROBE" + " " * 100 + "x",
     "age-band": "age" + " " * 800 + "x",
     "time-label": "day" + SPACES + "x",
     "cross-reference": "Table" + SPACES + "x",

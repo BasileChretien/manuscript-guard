@@ -67,7 +67,7 @@ structural:
     # with a year — "(Smith 2019, n = 412)" — as structural. Source citations are [@key]
     # and already masked, so the rule is pure cost there.
     # A name is at most 61 letters. Unbounded, it was read from every capital after a hyphen
-    # to the end of the run, and "A-" 5,000 times took 7 s.
+    # to the end of the run, and "A-" 10,000 times took 7.7 s.
     audit_only: true
     why: >-
       A rendered author-year citation. In manuscript source a citation is [@key] and gets

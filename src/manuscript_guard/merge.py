@@ -28,7 +28,7 @@ from __future__ import annotations
 import difflib
 import re
 from collections import Counter, deque
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -435,6 +435,8 @@ def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     for index, block in enumerate(reference):
         if block.names and not block.table:
             here = rank(block.names[0])
+            if here is None:
+                continue
             if previous is None or previous[:2] != here[:2]:
                 for place, key in enumerate(pending):
                     found.setdefault(key, deque()).append((*here[:2], 0, place))
@@ -589,6 +591,10 @@ def _read_returned(
     When a paragraph is deleted in Word its bookmark can survive, pushed to the start of the
     next paragraph. A block carrying two identifiers whose text is exactly one of them
     unchanged is that, not a join.
+
+    An identifier left out of the comparison still counts here. Ignored, a paragraph joined
+    to one of those read as the first paragraph reworded, and merged with the second's
+    text in it, while the second stayed in the source too.
     """
     texts: dict[str, str] = {}
     joined: list[tuple[str, ...]] = []
@@ -597,15 +603,15 @@ def _read_returned(
         names = [name for name in block.names if name in rendered]
         if block.table or not names:
             continue
-        if len(names) == 1:
+        if len(block.names) == 1:
             texts.setdefault(names[0], block.text)
             continue
         kept = [name for name in names if _same(rendered[name], block.text)]
         if len(kept) == 1:
             texts.setdefault(kept[0], block.text)
-            slid.update(name for name in names if name != kept[0])
+            slid.update(name for name in block.names if name != kept[0])
         else:
-            joined.append(tuple(names))
+            joined.append(tuple(dict.fromkeys(block.names)))
     return texts, joined, slid
 
 
@@ -652,12 +658,40 @@ def _joined_without_bookmark(
     return found
 
 
+def _beside_lost(
+    rendered: dict[str, str], texts: dict[str, str], built: Sequence[str], present: set[str]
+) -> set[str]:
+    """Paragraphs changed in Word whose next paragraph in the document as sent is left out
+    of the comparison and did not come back.
+
+    That one may have been joined into this one with its bookmark lost, as a join retyped
+    across the boundary loses it, and `_absorbed` cannot weigh a text it does not know:
+    merged, the lost paragraph's words went into the source a second time.
+    """
+    found = set()
+    for before, name in zip(built, built[1:], strict=False):
+        now = texts.get(before)
+        if (
+            before in rendered
+            and name not in rendered
+            and name not in present
+            and now is not None
+            and not _same(rendered[before], now)
+        ):
+            found.add(before)
+    return found
+
+
 def plan_import(
     known: dict,
     reference: list[Block],
     returned: list[Block],
     marked: list[Block] | None = None,
     abbreviations: frozenset[str] = frozenset(),
+    *,
+    every: dict | None = None,
+    built: Sequence[str] = (),
+    unsure: frozenset[str] = frozenset(),
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -672,8 +706,23 @@ def plan_import(
     `abbreviations` are the words pandoc puts that no-break space after, from
     `build.document.abbreviations`: a rewording writes it back as the space pandoc makes one
     of again, rather than into the source as a character nobody can see.
+
+    `known` holds the paragraphs to compare, and `every` all of the manuscript's, compared
+    or not, for what only the source can say: which section a paragraph is in. `built` is
+    every identifier the document was built with, in its order, when it records them.
+    `unsure` names paragraphs the document may have carried without an identifier: in one
+    that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
+    in one that does, those its record does not hold. Missing from it, each is still weighed
+    as a join into the paragraph before it.
     """
-    rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+    # Only the identifiers in `known`. The import leaves out one that no longer names the
+    # paragraph it named when the document was built, and its block is then neither
+    # compared nor moved: the edit in it belongs to a paragraph that is not there now.
+    rendered = {
+        b.names[0]: b.text
+        for b in reference
+        if b.names and not b.table and b.names[0] in known
+    }
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
@@ -686,7 +735,20 @@ def plan_import(
     }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
-    joined += _joined_without_bookmark(rendered, texts, in_join)
+    present = {n for b in returned if not b.table for n in b.names}
+    # One the document may never have carried, missing from it, is not compared - and still
+    # weighed as a join into the paragraph before: its text is the source's, as the document
+    # was not stale. Left out, a value retyped into its neighbour merged as a rewording, and
+    # the number was in the source twice.
+    weighed = {
+        b.names[0]: b.text
+        for b in reference
+        if b.names
+        and not b.table
+        and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
+    }
+    joined += _joined_without_bookmark(weighed, texts, in_join)
+    beside_lost = _beside_lost(rendered, texts, built, present)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:
     # left in, its first copy decided where it went, wherever that copy had been pasted.
@@ -700,8 +762,10 @@ def plan_import(
 
     # Whether a paragraph reaches Word in parts is judged within the sections the source
     # has, before paragraphs held in place split them further: one held after it hid the
-    # split, and a rewording of the first part deleted the rest.
-    in_parts = _in_parts(reference, _sections(known))
+    # split, and a rewording of the first part deleted the rest. And of every paragraph:
+    # judged by the section of the one after it, a paragraph beside one left out of the
+    # comparison was never found in parts, and its first part merged.
+    in_parts = _in_parts(reference, _sections(every if every is not None else known))
     held = _held_in_place(known, rendered, in_parts)
     sections = _sections(known, held)
     headings = _text_counterparts(reference, returned)
@@ -739,6 +803,8 @@ def plan_import(
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
+        elif name in beside_lost:
+            refused.append(Refusal(name, now, (_BESIDE_LOST,)))
         else:
             aligned = align(source, was, now, extents.get(name), abbreviations)
             if aligned.rebuilt == source:
@@ -754,7 +820,10 @@ def plan_import(
     for name in rendered:
         files.setdefault(known[name][0], len(files))
 
-    def rank(name: str) -> tuple:
+    def rank(name: str) -> tuple | None:
+        # None for an identifier left out of `known`, whose paragraph is not ranked at all.
+        if name not in sections:
+            return None
         path, section = sections[name]
         return (files[path], section, 1)
 
@@ -846,6 +915,12 @@ _TOOK_IN = (
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "
     "paragraph cannot be told. Make the edit in the .md."
+)
+_BESIDE_LOST = (
+    "the paragraph after it in the document as sent did not come back, and is not compared, "
+    "because its identifier no longer names the paragraph it named at the build, so whether "
+    "it was joined into this one cannot be told. Merging a join would put its text in the "
+    "source twice. Make the edit in the .md."
 )
 
 

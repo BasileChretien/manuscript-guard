@@ -521,6 +521,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.gone
         or plan.joined
         or plan.misplaced
+        or plan.lost
+        or plan.strayed
         or plan.unidentified
         or plan.vanished
         or plan.reordered
@@ -578,17 +580,46 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
     def opening(name: str) -> str:
         if name not in known:
             return f"({name}, not compared)"
-        return known[name][1].strip()[:80]
+        # On one line: a held comment's source runs over several.
+        return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table, a figure, a list, a quotation "
-            "or anything else without an identifier, or into another file, changes how many "
-            "paragraphs a section holds, and import only reorders within one; move it in the "
+            "    Not applied: import only reorders paragraphs within a section, and a heading, "
+            "a table, a figure, a list, a quotation or anything else without an identifier, "
+            "another file, or a paragraph it holds in place ends one. It "
+            "holds an HTML comment (an empty line in Word), and a paragraph that opens a "
+            "comment, holds display maths, or has a fence, `</div>` or a similar line directly "
+            "under it in the .md. Move it in the .md yourself."
+        )
+
+    if plan.strayed:
+        print(
+            f"{len(plan.strayed)} heading(s), table(s), figure(s) or equation(s) came back "
+            f"somewhere else:"
+        )
+        for kind, text in plan.strayed:
+            article = "an" if kind == "equation" else "a"
+            print(f"    '{text[:80]}'" if kind == "text" else f"    {article} {kind}")
+        print(
+            "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
+            "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
             ".md yourself."
+        )
+
+    if plan.lost:
+        what = " and ".join(f"{plan.lost.count(k)} {k}(s)" for k in sorted(set(plan.lost)))
+        print(
+            f"{what} of the document as sent could not be found in the returned one: deleted, "
+            f"pasted twice, or changed while others were added or removed."
+        )
+        print(
+            "    Nothing about them is applied, and a paragraph moved past one cannot be seen. "
+            "Tables and figures are built from the analysis: change them there, or remove "
+            "the placeholder from the .md. An equation is edited in the .md."
         )
 
     if plan.unidentified or plan.vanished or plan.reordered:

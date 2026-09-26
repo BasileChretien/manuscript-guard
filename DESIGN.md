@@ -1453,6 +1453,18 @@ the paragraphs, and blamed a neighbour when the diff preferred it. The file-leve
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
 
+A slot's text is not all that decides whether its paragraph can be found again: `tag` reads
+what surrounds a block too. A footnote is marked, and prints as text, when an indented block
+below it would run into it; swapped in Word with the paragraph above it, it landed over a
+plain paragraph, became a note again, and the next build printed nothing of it in the body,
+while `import` said it had reordered a paragraph. A `-->` typed into a paragraph can close
+a `<!--` left open above it, and pandoc then reads both, and all between, as one comment. So
+before anything is written, each file is worked out as it would be written and read the way
+`tag` reads it, and a paragraph that would not come out marked - at the place the splice
+put it, with the text written - is withdrawn, one kind of cause at a time: its rewording is
+refused, or the moves in its section are held (see "Closed since").
+
+
 Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
 refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
 first reaches Word as an empty line, the second does not reach it at all. Filled like any
@@ -3185,12 +3197,13 @@ Closed since, and why each mattered:
     them. And a code fence wrapped onto a note's second line, left alone or not, is still
     paired with the next fence below, so what lies between goes unmarked, or a marker lands
     inside a real code block. Both are so on `main`.
-  - *A note marked only for what is below it can become a definition.* A note over a blank
-    line and then a line indented four columns would take that line in, so it is marked,
-    and prints as text. Moved in Word to a place with a plain paragraph below it, it is a
-    definition to the next build and prints nothing, while `import` reported the move as
-    applied. The text stays in the source. Nothing yet refuses a change after which a
-    paragraph `import` wrote would carry no identifier.
+  - *A note marked only for what is below it would become a definition if moved.* A note
+    over a blank line and then a line indented four columns would take that line in, so it
+    is marked, and prints as text. Moved in Word to a place with a plain paragraph below
+    it, it would be a definition to the next build and print nothing; `import` applied such
+    a move and exited 0. It now refuses it, and no move in that section is applied (next
+    entry). Typed into a definition's shape in Word, a paragraph was never at risk: the
+    merge escapes the bracket, `\[x]: …`, and it prints.
   - *A definition between two paragraphs is no section boundary.* It renders nothing in the
     body and pandoc reads it wherever it stands, so a move across it is applied: the
     paragraphs change places, and the definition stays where it was written. As untagged
@@ -3201,8 +3214,39 @@ Closed since, and why each mattered:
     not something between two. And a line pandoc does not take for blank - one holding only
     a no-break space - is a boundary wherever it stands between the two, above a definition
     or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
-    across a definition can also carry a note marked for what is below it to where it
-    becomes a definition (above).
+    across a definition that would carry a note marked for what is below it to where it
+    becomes a definition is refused (next entry).
+- **`import` refuses a write the next build would not find again, by `tag`'s reading.**
+  Before anything is written, each file is worked out as `apply_plan` would write it and
+  read through `marked_blocks`, the reading `tag` and `tagged_paragraphs` share. A
+  paragraph written must be a marked block at the offset the splice put it, with the text
+  written; one not written must keep its mark and its text. What fails is withdrawn one
+  kind of cause at a time, and everything checked again after each. First a reworded
+  paragraph that fails has its rewording refused, since that may be what does it. Then one
+  that fails where the moves put it holds back every move in its section, and each move the
+  co-author made is reported with the paragraph it would have left without an identifier.
+  Holding back its own move alone pushed the paragraphs around it into other slots, so a
+  paragraph nobody moved was refused, and the file came out in an order neither the source
+  nor Word had; and acting on every failing paragraph at once held back moves that a
+  rewording's `-->` had spoilt, not the moves themselves. Rewordings in a held section still
+  land, in place, and are checked there too: back in place, a `-->` typed into one closed a
+  `<!--` above it that it had not closed where it was moved, and it was merged. What that
+  leaves:
+  - *It is only as right as `tag`.* Where `tag` marks a block pandoc reads otherwise, the
+    check takes `tag`'s word for it; the gaps in the entries above are its gaps too.
+  - *A move is held back by section.* A co-author's other moves in the same section are not
+    applied either, though nothing was wrong with them; they are named.
+  - *A paragraph that loses its identifier to a write beside it holds back its file's
+    rewordings.* `_blocks` reads across blocks - a comment or a fence opened in one runs on
+    into the next - so one write can cost another paragraph its identifier, and which write
+    did it cannot be told. The rewordings in that file are refused, and if that is not it,
+    the moves are held after.
+  - *A `<!--` typed in Word opens a comment to `tag`, though not to pandoc.* The merge
+    escapes it, `\<!--`, and pandoc prints it, but `_blocks` does not read the backslash:
+    where a `-->` follows further down the file, it takes all between for a comment and
+    leaves it unmarked, so the check refuses that rewording, which was safe to make.
+  - *A paragraph that never reached the document is not checked.* One inside an HTML
+    comment has an identifier in the source and none in Word, and nothing writes it.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

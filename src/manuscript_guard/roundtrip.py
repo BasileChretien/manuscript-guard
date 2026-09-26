@@ -1412,6 +1412,20 @@ def numbering_refusal(name: str, problem: str) -> str:
     )
 
 
+def marked_blocks(raw: str) -> list[tuple[int, str, int]]:
+    """Every block of one source file that `tag` gives an identifier: its place in the
+    split, its text, and where that text starts in `raw`.
+
+    Read by `_walk`, as `tagged_paragraphs` reads every file, so that `import` reads the file
+    as it would write it the same way, to refuse a change after which the next build would
+    not find a paragraph again.
+    """
+    return [
+        (int(name.rsplit("-", 1)[1]), text, start)
+        for name, text, start, _before in _walk(raw, "")
+    ]
+
+
 def read_blocks(document: Path):
     """The body of a document as a reader sees it; see `docxtext.blocks`."""
     from manuscript_guard.docxtext import DocumentUnreadable, blocks

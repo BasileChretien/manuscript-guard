@@ -563,6 +563,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.unidentified
         or plan.vanished
         or plan.reordered
+        or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either.
     return 1 if outstanding or strangers or unaccounted else 0
@@ -657,6 +658,22 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
             "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
             ".md yourself."
+        )
+
+    if plan.held_back:
+        print(
+            f"{len(plan.held_back)} paragraph(s) were moved where a paragraph would reach the "
+            "next build without its identifier:"
+        )
+        for name, lost in plan.held_back:
+            print(f"    {opening(name)}")
+            if lost != name:
+                print(f"      (it would leave behind: {opening(lost)})")
+        print(
+            "    Not applied, nor any other move in that section. With what would be around it, "
+            "pandoc would read that paragraph as something other than itself - a definition, a "
+            "heading, part of a comment: no identifier, so a later edit to it could not come "
+            "back. Move them in the .md yourself."
         )
 
     if plan.lost:

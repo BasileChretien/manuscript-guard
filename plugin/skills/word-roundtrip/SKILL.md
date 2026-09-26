@@ -74,10 +74,11 @@ It changes nothing and reports each paragraph:
 | Reported as | Meaning |
 |---|---|
 | `would merge into manuscript/…` | reworded prose; the bindings and citations in it survive |
-| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, a line directly under it looks as if it opens or closes a block (such as an unmatched `\end{table}`; a paragraph with a fence, `</div>` or a definition under it, or a comment in it that closes past it, carries no identifier, and its edit is listed instead), it opens a comment that never closes, display maths follows it directly, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source. The whole paragraph is refused, including any rewording in it |
+| `NOT merged` | refused, with the reason under it: a number or citation changed (`'3.84' comes from results.ror.point`), the paragraph was split or has new text beside it, a heading was joined into it, text was typed where it renders nothing, a line directly under it looks as if it opens or closes a block (such as an unmatched `\end{table}`; a paragraph with a fence, `</div>` or a definition under it, or a comment in it that closes past it, carries no identifier, and its edit is listed instead), it opens a comment that never closes, display maths follows it directly, the edited text carries markup Word's text cannot bring back (named: a footnote, an HTML comment, a link, an equation, raw TeX…), merged it would not read as the text that came back, the text between two numbers or citations was deleted so they would touch, everything but a table, figure or misspelt placeholder was deleted so it would build with no identifier, or its numbers, citations and markup could not be told apart from its prose, as when two tokens touch in the source; or reworded so, the next build would give it no identifier. The whole paragraph is refused, including any rewording in it |
 | `came back joined into one` | two or more paragraphs were merged in Word. Not applied; join them in the `.md` yourself |
 | `deleted in Word, left in place here` | deleted outright or as a tracked change. Not applied; delete it in the `.md` yourself if that was intended |
 | `came back in a different place` | a move within one section (between the same two headings, tables, figures, lists, quotations or other blocks without an identifier, including an HTML comment or `\newpage`, which Word does not show); `--apply` reorders from the text on disk, so bindings stay intact, and applies any rewording in the same pass |
+| `moved where a paragraph would reach the next build without its identifier` | a move that would leave a paragraph where pandoc reads it, with what is around it, as something other than itself: a definition, a heading, part of a comment. Not applied, nor any other move in that section; each move made is named with the paragraph it would leave behind. Rewordings there still land in place, unless one would cost a paragraph its identifier there too. Make the moves in the `.md` |
 | `moved into a different section or file` | a move past a heading, table, figure, list, quotation or other block without an identifier, past an HTML comment or `\newpage`, which Word does not show, past a paragraph import holds in place (one Word shows as an empty line, one with a line such as `\end{table}` directly under it, one with a `<!--` that never closes, or one directly above display maths), or into another file. A held paragraph dragged past two paragraphs or more is named here itself; dragged past one, that one is named. Not applied; move it in the `.md` yourself |
 | `came back somewhere else` | a heading, table or figure was dragged to another place in Word, or a caption or the equation of a display-maths paragraph was. Not applied; move the heading, the table's or figure's placeholder, or the paragraph the caption or equation belongs to, in the `.md` yourself |
 | `could not be found in the returned one` | a table, figure or display equation was deleted, pasted twice, or changed while others were added or removed. Nothing about it is applied, and **a move past it cannot be seen**: look for one in the text diff below |
@@ -88,9 +89,10 @@ It changes nothing and reports each paragraph:
 | `… did not come back` | such a paragraph was deleted or joined in Word; or, in a document built before 0.2.60, a paragraph that is only a value was never in it. Not applied; delete or join it in the `.md` if that was intended |
 
 Anything refused, joined, deleted, not compared or moved between sections or files, any
-heading, table, figure or equation that was moved or could not be found, and any paragraph
-without an identifier that came back different or in a different order, makes the command
-exit 1, with or without `--apply`; the safe changes are still applied.
+move held back for a paragraph it would leave without an identifier, any heading, table,
+figure or equation that was moved or could not be found, and any paragraph without an
+identifier that came back different or in a different order, makes the command exit 1,
+with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -152,6 +154,12 @@ handled, and each has a test:
   citation and a number.
 - What comes back is written as text, not Markdown: a `*`, an `@name`, a `<` or a `{{` the
   co-author typed is escaped, so it cannot become italics, a citation, a tag or a binding.
+- A move or a rewording after which the next build would not find a paragraph again is
+  refused: each file is worked out as it would be written and read the way the build reads
+  it. A footnote marked because an indented block below would run into it prints as text;
+  moved in Word over a plain paragraph, it would become a footnote again and leave the body.
+  No move in its section is applied, and the moves are named; rewordings there, and changes
+  elsewhere, still land.
 
 What is still yours to do by hand: every refused, joined or deleted paragraph, and every
 paragraph without an identifier. Port those edits from the dry run and the text diff above.

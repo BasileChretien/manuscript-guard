@@ -7213,6 +7213,261 @@ def test_import_writes_pandocs_no_break_space_back_as_a_space(
     assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
 
 
+# ------------------------------------ end to end: a write the next build would not identify
+
+SHAPED = "[x]: https://example.org/xyz"
+NOTE = "[^cap]: Capped at forty."
+#: A block pandoc takes into the note above it: after a blank line, indented four columns,
+#: a zero-width space that shows nothing. The note is marked for it, and prints as text.
+RUNS_INTO = f"    {chr(0x200B)}\nIt was rare."
+
+
+def swapped(first: str, second: str):
+    """A co-author, simulated: the paragraph holding `second` cut and pasted above the one
+    holding `first`."""
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        above = next(p for p in paragraphs if first in p)
+        below = next(p for p in paragraphs if second in p)
+        return xml.replace(below, "", 1).replace(above, below + above, 1)
+
+    return swap
+
+
+@needs_pandoc
+def test_a_move_that_would_make_a_paragraph_a_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end. A note is marked where what is below it would run into it, and prints
+    as text. Swapped in Word with the paragraph above it, it landed over a plain paragraph,
+    where the next build read it as a note again and printed nothing of it in the body -
+    while `import --apply` exited 0 and said it had reordered a paragraph."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Alpha comes first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    assert "Capped at forty." in _docx_part(document, "word/document.xml")
+    returned = rewrite(document, tmp_path / "moved.docx", swapped("Alpha comes", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    dry = capsys.readouterr().out
+    assert "without its identifier" in dry
+    assert "applies the safe changes" not in dry
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "without its identifier" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+    assert "Capped at forty." in _docx_part(built(project), "word/document.xml")
+
+
+@needs_pandoc
+def test_a_move_that_pushes_a_note_into_a_definitions_place_holds_its_section(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review round one: the co-author moved only the first paragraph, below the note, and
+    that pushed the note, which nobody touched, up into a place where it was a definition
+    again. Holding back the note alone refused a paragraph nobody moved and put the others
+    in an order neither side had. No move in the section is applied now, and each is named
+    with the note it would leave behind."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Aaa first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    once = rewrite(document, tmp_path / "once.docx", swapped("Doses were", "Aaa first"))
+    returned = rewrite(once, tmp_path / "moved.docx", swapped("Doses were", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "Doses were capped." in out and "it would leave behind: [^cap]" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_the_other_changes_beside_a_refused_move_are_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Moves are held back in the one section, and a rewording there still lands, in place;
+    a move in another section is applied."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Doses were capped.[^cap]",
+        "Alpha comes first.",
+        NOTE,
+        RUNS_INTO,
+        "## Later",
+        "Beta was second.",
+        "Gamma was third.",
+    )
+    source = project / "manuscript" / "main.md"
+    document = built(project)
+    first = rewrite(document, tmp_path / "one.docx", swapped("Alpha comes", "Capped at"))
+    both = rewrite(first, tmp_path / "two.docx", swapped("Beta was", "Gamma was"))
+    returned = edit_docx(both, tmp_path / "back.docx", {"Alpha comes first.": "Alpha came first."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    text = source.read_text(encoding="utf-8")
+    assert f"Alpha came first.\n\n{NOTE}\n\n{RUNS_INTO}" in text
+    assert "## Later\n\nGamma was third.\n\nBeta was second." in text
+    assert "without its identifier" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
+    project: Path, tmp_path: Path
+) -> None:
+    """The other way a paragraph could take a definition's shape is typed in Word, and that
+    one never lost anything: the merge escapes the bracket, so the paragraph prints as it was
+    typed and keeps its identifier. Kept here beside the move, which has no such escape."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The registry is at https://example.org/xyz for anyone.")
+    edit = {"The registry is at https://example.org/xyz for anyone.": SHAPED}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert f"\n\n\\{SHAPED}\n\n" in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "example.org/xyz" in _docx_part(built(project), "word/document.xml")
+
+
+def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -> None:
+    """The plan itself, without pandoc: no move in the section is applied, the move made -
+    the note's, by the order diff - is named with the note it would strand, none is listed
+    as moved, and applying the plan writes nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    source = tmp_path / "main.md"
+    text = f"Alpha.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "n": (source, NOTE, text.index(NOTE))}
+    sent = [Block((name,), known[name][1]) for name in known]
+
+    plan = plan_import(known, sent, [sent[1], sent[0]])
+    assert plan.held == {"a", "n"}
+    assert dict(plan.held_back) == {"n": "n"}
+    assert not plan.moved and not plan.refused
+    apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_write_that_would_cost_another_paragraph_its_identifier_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write can cost a paragraph beside it its identifier - a comment or a fence opened in
+    one block runs on into the next - and which write did it cannot be told, so every
+    rewording in that file is refused. Simulated: the next build is made to lose `Gamma.`
+    once `Alpha.` is reworded."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    source = tmp_path / "main.md"
+    text = "Alpha.\n\nGamma.\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "g": (source, "Gamma.", 8)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    marked = merge.marked_blocks
+
+    def losing_gamma(raw: str) -> list:
+        return [block for block in marked(raw) if "Alpha now." not in raw or block[1] != "Gamma."]
+
+    monkeypatch.setattr(merge, "marked_blocks", losing_gamma)
+    plan = merge.plan_import(known, sent, [Block(("a",), "Alpha now."), sent[1]])
+    assert not plan.merged
+    assert "another paragraph" in plan.refused[0].why[0]
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def _plan_of(tmp_path: Path, text: str, back) -> tuple:
+    """A source of paragraphs named by their first word, and the plan for what came back:
+    `back` maps those names to the returned blocks, in their returned order."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.roundtrip import marked_blocks
+
+    source = tmp_path / "main.md"
+    source.write_text(text, encoding="utf-8")
+    known = {body.split()[0]: (source, body, start) for _i, body, start in marked_blocks(text)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    return source, known, merge.plan_import(known, sent, back({b.names[0]: b for b in sent}))
+
+
+def test_a_rewording_that_strands_a_paragraph_once_its_section_is_held_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Review round two, HIGH: held, a section's moves go back, and a rewording there lands
+    in place, where it can do what it did not do where it was moved. Beta, reworded with a
+    `-->` and moved above Alpha, closed nothing there; held back under Alpha, it closed
+    Alpha's `<!--`, and pandoc read the two as one comment. The check looked at no held
+    paragraph again, so the rewording was merged, and the next build lost Beta."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = f"Alpha opens <!-- here.\n\nBeta plain.\n\nGamma plain.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [Block(("Beta",), "Beta --> plain."), by["Alpha"], by["[^cap]:"], by["Gamma"]],
+    )
+    assert "Beta" not in plan.merged
+    refusal = next(r for r in plan.refused if r.name == "Beta")
+    assert refusal.text == "Beta --> plain."
+    assert not merge._unidentified(known, plan)
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_hides_moved_paragraphs_does_not_hold_the_moves(
+    tmp_path: Path,
+) -> None:
+    """Review round two, MEDIUM: Rho's `-->` closed the `<!--` above Alpha and Beta, so the
+    two came out without their identifiers, swapped or not. Every lost paragraph was acted
+    on in one round: the rewording was refused and the swap held back too, blamed on a
+    definition or a heading. A rewording is refused first now, and the plan checked again."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = "Opens <!-- here.\n\nAlpha plain.\n\nBeta plain.\n\n## Heading\n\nRho plain.\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [by["Opens"], by["Beta"], by["Alpha"], Block(("Rho",), "Rho --> plain.")],
+    )
+    assert "Rho" in {refusal.name for refusal in plan.refused}
+    assert not plan.held and not plan.held_back
+    assert {entry[0] for entry in plan.moved} & {"Alpha", "Beta"}
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text.replace(
+        "Alpha plain.\n\nBeta plain.", "Beta plain.\n\nAlpha plain."
+    )
+
+
+def test_a_held_section_names_the_moves_made_not_every_paragraph_they_shift(
+    tmp_path: Path,
+) -> None:
+    """Review round two, LOW: one paragraph moved from the top of a section to below a note
+    shifts every paragraph between, and each was named as moved - nine for one move."""
+    paragraphs = [f"P{number} was written here." for number in range(8)]
+    text = "\n\n".join([*paragraphs, NOTE, RUNS_INTO]) + "\n"
+    _source, _known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [block for name, block in by.items() if name != "P0"] + [by["P0"]],
+    )
+    assert [name for name, _left in plan.held_back] == ["P0"]
+
+
 # ------------------------------------ end to end: a paragraph cut down to its number stays named
 
 

@@ -173,6 +173,20 @@ It builds as `supplementary.docx` and reaches the pack as its own file. A direct
 than a declaration, matching how figures and results already work, and because a heading can
 be renamed without anyone noticing what left the submission.
 
+A document of its own also comes back from a co-author on its own. `import` compared every
+returned document with a fresh build of the paper, so an edited `supplementary.docx` reported
+every paragraph of the paper as deleted in Word and applied none of its own edits. The source
+stamp cannot tell the two documents apart: both are built from the same sources and carry
+the same one. The paragraph identifiers can, because each names its source file. A document
+whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
+the supplement, and one whose identifiers all come from the paper with a build of the paper.
+One carrying both is refused: neither build accounts for it. Word drops the identifier of a
+single paragraph it pastes, so only two or more paragraphs pasted across bring one along. A
+document carrying none is refused too when the project has a supplement, since it could be
+either. Whether there is a supplement is read from the source files: a supplement of
+headings and tables carries no identifier, and read from the identifiers it was taken for no
+supplement, so its document was compared with the paper.
+
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
 contribution groups, ORCID, funding and competing interests. One validated file fills the
@@ -383,10 +397,10 @@ Two modes, and the choice is a fact about the machine rather than a preference:
   latter only once `author-in-text: true` is set in the generated front matter, which is
   the second of the two chores the first pipeline test uncovered.
 - **offline** — pandoc `--citeproc` against a committed `literature/references.bib` and a
-  CSL style. Citations become formatted text rather than live fields. This is what CI and a
-  co-author without Zotero get, and it is why the `.bib` is committed rather than exported
-  on demand. `manuscript-guard sync-bib` rewrites it from Zotero, containing exactly the
-  keys the manuscript cites.
+  CSL style. Citations become formatted text rather than live fields. This is what a
+  co-author without Zotero gets, and what CI builds with, and it is why the `.bib` is
+  committed rather than exported on demand. `manuscript-guard sync-bib` rewrites the `.bib`
+  from Zotero, containing exactly the keys the manuscript cites.
 
 `zotero.lua` is fetched and cached under `build/.cache/` rather than vendored: it belongs to
 Better BibTeX and tracks its behaviour, so a pinned copy would go stale.
@@ -394,6 +408,11 @@ Better BibTeX and tracks its behaviour, so a pinned copy would go stale.
 After a live build the document is reopened and its Zotero fields counted, because the
 filter fails quietly when Zotero is closed — the result looks fine until someone clicks
 Refresh in Word and every citation vanishes.
+
+CI installs the pandoc version pinned as `MANUSCRIPT_GUARD_REQUIRE_PANDOC` in
+`.github/workflows/ci.yml`, and with that variable set the test suite refuses to start
+unless that pandoc is on PATH. Until it did, no test job had pandoc: every test that needs
+it skipped on every job, and none failed for want of it.
 
 **Tables are emitted, not written.** `em.table(...)` puts a table in the results fragment,
 `{{table.key}}` places it, and the build renders a pipe table. A hand-typed table is the
@@ -1856,6 +1875,10 @@ so a cut in the wrong place shows.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **One pandoc version is tested.** CI pins one, in `.github/workflows/ci.yml`: the version
+  the tests that assert on pandoc's output were written against. It refuses to run the
+  suite with any other. An author's pandoc may be older or newer, and nothing here checks
+  that the build and the import behave the same with it.
 - **Digests are byte-level, so line endings are part of the guarantee.** `.gitattributes`
   pins `eol=lf` here, and `init` now writes the same file into every scaffolded project:
   without it Git stores LF and hands Windows CRLF, and every byte-level check reports a
@@ -2628,6 +2651,15 @@ Closed since, and why each mattered:
   it matching. What remains positional is the `where` a person reads in the round file, and
   the identifiers of a document sent out before the source changed. Persisting the
   identifier in the source rather than deriving it would fix both, and it is not done.
+- **Text moved between the paper and its supplement is not applied.** The two are built and
+  imported as separate documents. Word drops the identifier of a single pasted paragraph, so
+  one paragraph pasted from one into the other comes back as new text without an
+  identifier, which import lists but does not apply. Two or more bring the later ones'
+  identifiers, and the whole document is refused. Either way, the author makes the move
+  in the .md.
+- **A supplement of headings, tables and figures cannot be imported.** It carries no
+  paragraph identifier, so its document is refused as one that could be either, even when
+  it comes back untouched. It holds nothing import compares.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
@@ -3032,6 +3064,19 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
+  times a scan on eight times its input, taking each size's best of three in alternation,
+  and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
+  quadratic part is under a seventh of its time on the smaller input passes, and so does
+  n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
+  per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
+  Each of these tests used to rest on one timing per size (one on a best of three, one size
+  after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
+  speed shows only at a size where it outweighs the per-item work, and one in Python fails
+  quickly from a small size but takes minutes from a large one, so the size a test starts
+  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
+  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
+  proof that nothing else does.
 
 ## Still open
 

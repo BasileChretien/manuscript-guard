@@ -375,6 +375,50 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+def _in_methods(project: Path, sentence: str) -> None:
+    path = main_md(project)
+    anchor = "Reporting follows the checklist"
+    text = path.read_text(encoding="utf-8")
+    assert anchor in text
+    path.write_text(text.replace(anchor, f"{sentence}\n\n{anchor}", 1), encoding="utf-8")
+
+
+def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
+    """Pandoc's Markdown writer escapes every comparison, so a Methods section converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` escapes a `>` that a `<` earlier in the
+    paragraph could close as a tag. Each prints the bare character. G2 read neither: the
+    threshold rules never matched, and `\\>3` was an atom no rule began at."""
+    _in_methods(
+        project,
+        r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
+    )
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(r"A signal needed ROR \> 7 here.", id="no-conventional-value"),
+        pytest.param(r"A signal needed p \< 0.37 here.", id="no-conventional-p"),
+        pytest.param(r"A signal needed \>9 cases here.", id="no-conventional-count"),
+        pytest.param(
+            "Of the reports,\n412)\\>ULOQ were excluded.", id="list-marker-at-a-line-start"
+        ),
+        pytest.param("## 1204\\<ULOQ reports", id="numbered-heading"),
+        pytest.param(r"A signal needed `ROR \> 2` here.", id="backslash-printed-in-code"),
+        pytest.param(r"A signal needed \\>3 cases here.", id="backslash-printed-before-it"),
+    ],
+)
+def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written: str) -> None:
+    """Read as the character it prints, and no further. Read as a space, the backslash met a
+    rule that wanted one: `412)\\>ULOQ` at a line start was a list marker, and 412 passed. And
+    a backslash that prints is no escape: in code, or after another backslash, `\\>` prints
+    both characters, and `ROR \\> 2` there is not the threshold."""
+    _in_methods(project, written)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     ("tail", "number"),
     [
@@ -1113,6 +1157,55 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     report = _g7(project)
     assert any(
         f.code == "citation-unresolved" and "ghostKey2020" in f.message for f in report.failures
+    )
+
+
+# --------------------------------------------------------------------- the journal gate
+# A journal's limits, sections and statements are about the document the editor receives,
+# and the build strips every file's front matter before printing it.
+
+
+def _journal(root: Path):
+    from manuscript_guard.gates import check_journal
+
+    project, _ = load_project(root)
+    return check_journal(project)
+
+
+def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:
+    """The gate reads the main text as one string joined from every file, and only the first
+    file's front matter is at the top of it. A later file's block was read as prose: its
+    closing `---`, directly under a YAML line, underlined that line into a heading, so
+    `title: Methods of the online appendix` satisfied the required Methods section of a
+    paper that had none, and its words counted as main text."""
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace("# Methods\n", "# Approach\n"), encoding="utf-8"
+    )
+    before = _journal(project)
+    assert "missing-required-section" in codes(before)
+
+    (project / "manuscript" / "online_appendix.md").write_text(
+        "---\ntitle: Methods of the online appendix\n---\n\nThree more words.\n",
+        encoding="utf-8",
+    )
+    after = _journal(project)
+    assert "missing-required-section" in codes(after)
+    assert after.counts["main_text_words"] == before.counts["main_text_words"] + 3
+
+
+def test_a_comment_in_the_front_matter_is_not_a_required_statement(project: Path) -> None:
+    """`# Funding` is a heading in Markdown and a comment in YAML. Inside the front matter it
+    satisfied the journal's funding statement, and the build, which strips the block,
+    printed a paper with no funding statement in it."""
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8").replace("# Funding\n", "# Acknowledgements\n")
+    text = text.replace("---\n", "---\n# Funding: none was received.\n", 1)
+    main.write_text(text, encoding="utf-8")
+    report = _journal(project)
+    assert any(
+        f.code == "missing-required-statement" and "funding" in f.message
+        for f in report.failures
     )
 
 

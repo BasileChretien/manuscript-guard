@@ -10,6 +10,8 @@ alongside the number rather than left implicit:
 * The abstract and the references are counted separately from the main text, because every
   journal treats them separately.
 * Headings count towards the main text, because they are printed.
+* The YAML front matter does not count, rendered keys included. The build strips it and
+  prints the title from paper.yaml, so none of it is in the document a limit is about.
 
 Where a journal counts differently, the profile can say so. Where it does not say, the
 count is reported with the rule, so a disagreement is visible rather than mysterious.
@@ -30,7 +32,7 @@ from manuscript_guard.text.blocks import (
     section_breaks,
 )
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import mask, without_front_matter
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
 # `text.attributes` so the walk can title headings with it; both are re-exported for the
@@ -257,12 +259,10 @@ def headings(text: str) -> list[str]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
-    # of it because pandoc renders them, but a journal counts those against their own limits,
-    # not against the body.
-    opening = FRONTMATTER.match(text)
-    stripped = text[opening.end() :] if opening else text
-    stripped = blank_fences(stripped)
+    # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of
+    # it because pandoc renders them, but the build strips the block, and a journal counts a
+    # title and an abstract against limits of their own, not against the body.
+    stripped = blank_fences(without_front_matter(text))
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
@@ -290,7 +290,12 @@ def measure(text: str) -> Counts:
     whatever it resolves to. That is close enough for a limit, and it means the count does
     not change when the analysis is re-run.
     """
-    sections = split_sections(text)
+    # The front matter goes before the split. `split_sections` trims the text before the
+    # first heading, which takes the newline after the closing `---` with it, and without
+    # that newline `count_words` no longer recognised the block: every word of the YAML,
+    # keys included, counted as main text.
+    printed = without_front_matter(text)
+    sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title
     # alone, `## Background` under `# Abstract` was main text, so a structured abstract
@@ -314,6 +319,6 @@ def measure(text: str) -> Counts:
         main_text_words=main,
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
-        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", text)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", text)),
+        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
     )

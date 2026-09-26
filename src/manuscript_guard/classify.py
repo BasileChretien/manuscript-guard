@@ -25,6 +25,7 @@ from pathlib import Path
 import yaml
 
 from manuscript_guard.text.blocks import Unprinted, find_headings
+from manuscript_guard.text.masking import comparison_escapes
 from manuscript_guard.text.tokens import Atom
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -344,7 +345,23 @@ class Scan:
         return index >= 0 and self.reach[rule_id][index] >= end
 
 
+def _printed(text: str) -> tuple[str, list[int] | None]:
+    """`text` without the backslashes that escape a comparison, and where each character of
+    that came from; see `comparison_escapes`. `ROR \\> 2` prints as `ROR > 2`, and a rule
+    reads what prints.
+
+    Removed, not blanked. A space kept every offset and satisfied any rule that wants one
+    there: `412)\\>ULOQ` at the start of a line read as a list marker, and 412 passed.
+    """
+    gone = set(comparison_escapes(text))
+    if not gone:
+        return text, None
+    origin = [index for index in range(len(text) + 1) if index not in gone]
+    return "".join(text[index] for index in origin[:-1]), origin
+
+
 def _scan(rules: Iterable[Rule], text: str) -> Scan:
+    printed, origin = _printed(text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
     headings: frozenset[int] | None = None
@@ -352,14 +369,17 @@ def _scan(rules: Iterable[Rule], text: str) -> Scan:
         at: list[int] = []
         upto: list[int] = []
         furthest = -1
-        for match in rule.pattern.finditer(text):
+        for match in rule.pattern.finditer(printed):
+            start, end = match.span()
+            if origin is not None:
+                start, end = origin[start], origin[end - 1] + 1 if end > start else origin[start]
             if rule.heading_only:
                 if headings is None:
                     headings = frozenset(found.start for found in find_headings(text))
-                if match.start() not in headings:
+                if start not in headings:
                     continue
-            at.append(match.start())
-            furthest = max(furthest, match.end())
+            at.append(start)
+            furthest = max(furthest, end)
             upto.append(furthest)
         if at:
             starts[rule.id] = at

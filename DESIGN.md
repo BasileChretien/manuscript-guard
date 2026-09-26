@@ -1310,6 +1310,89 @@ the paragraphs, and blamed a neighbour when the diff preferred it. The file-leve
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
 
+Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
+refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
+first reaches Word as an empty line, the second does not reach it at all. Filled like any
+other slot, the first half moved and the second stayed, and a paragraph dragged below the
+empty line that ends the example's Methods was written inside the comment and vanished from
+the next build. A `:::` or a code fence written directly under a paragraph belongs to that
+paragraph's source but not to its Word text, so it travelled with the paragraph, and a
+rewording deleted it: the div then ran to the end of the document. Five kinds of paragraph
+are now held in place, each a section of its own, so a move past one is reported like a move
+past a heading:
+
+- one that never reaches Word;
+- one that opens a comment it does not close, or whose raw markup runs on into the next;
+- one that renders nothing;
+- one with a line directly under it that opens or closes something else: a `:::` or code
+  fence, an HTML block tag such as `</div>`, `\begin` or `\end`, a definition, or a heading's
+  underline;
+- one that Word shows as more than one paragraph: with untagged text before the next
+  paragraph of its section, or with display maths in its source, which Word sets apart
+  even when the paragraph ends its section.
+
+None of them takes a rewording. A held paragraph the co-author drags past two paragraphs or
+more, or past a heading, is reported by name, like any other paragraph that left its
+section. The first version made it an anonymous anchor, so a held paragraph dragged past a
+heading was dropped with "nothing came back"; the second weighed it above all other
+paragraphs together, so dragged to the top of the Methods it had the four paragraphs it
+passed reported instead. It now outweighs one paragraph and not two. Whether a paragraph
+reaches Word in parts is still judged within the sections the source has. Judged within the
+finer sections that holding creates, a one-line comment after a definition list hid the
+split, and a rewording of the term deleted the definition. Whether a paragraph opens a
+comment or holds display maths is read with its code spans and closed comments set aside,
+so `$$` or `<!--` inside backticks holds nothing. Searched for as written, they held a
+paragraph that explained them in inline code. The rewording's own scan of inline markup was
+tried next and set aside too much: it took `` `glmer` from $$…$$ `nlme`{.r} `` for one code
+span, and `~~ $$x$$ ~~` for struck-through text, so display maths went unseen and the first
+part of such a paragraph was moved without its equation. Setting aside too little only
+holds a paragraph that could have moved: `$$` inside a footnote does. A backtick escaped with
+a backslash opens no code span; taken for one, it swallowed the `$$` or `<!--` up to the next
+real code span. Escapes are read as pairs, so the backtick after an escaped backslash still
+opens one: refused after any backslash, the closing backtick of `\\` then `` `data` ``
+opened a false span of its own. Nor does a backtick just before an opener stop it. That
+backtick is an escaped one, as in `` \``onset` ``, or one of a run that never closes, and
+pandoc opens a span on a run's last backtick, as in ``` ``crude'' ratio came from `ror ```.
+Stopped, the real span's closer was taken for an opener, and the false span it began hid
+the `<!--` after it: a paragraph swapped in the Introduction was written inside the
+comment, exit 0. Display maths is also read from the document as sent, which
+says it outright: an equation directly after a paragraph is part of that paragraph, however
+its source is written. And a held paragraph whose only change is a no-break space pandoc put
+in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
+refused instead. That is decided only for a source with no no-break space of its own and no
+binding or citation: asked of every paragraph, the check dropped a co-author's change to one
+the author had written, with "nothing came back". An author can write one as `\ `, as the
+character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
+also decided only when no new text stands beside the paragraph. Only the part carrying the
+identifier is compared, so when the part after an equation had been reworded, skipping the
+paragraph dropped that rewording.
+
+Headings and captions are matched between the two documents as a sequence, not one text at
+a time. With two "Outcome" subheadings, matching by text alone, first come first served,
+made the second stand in for the first once the first was renamed or deleted. The second
+was then reported as having moved, and a real move in the same document went unnamed. A
+text the sequence leaves exactly one copy of on each side is then paired too, which is how
+a dragged heading is still found: paired only when its text was unique in the whole paper,
+a dragged "Outcome" with another "Outcome" elsewhere was paired with nothing, and the drag
+went unreported.
+
+A table or a figure is a boundary only if it can be found again in the returned document.
+They were matched by position, both kinds together, and only while their total was
+unchanged, so a co-author who deleted one table or pasted in any picture switched every
+boundary off, and a paragraph dragged below a figure came back as "nothing came back". Each
+is now matched within its own kind by what it holds: a table by its text, a figure by the
+bytes of its picture, because Word renumbers and renames the part a picture is stored in
+every time it saves. What is left is paired by place, within the stretch between the same
+two headings, captions or matched tables and figures, when that stretch holds as many of
+the kind in both documents. Paired by position anywhere in the document, a table deleted
+from the Results and another pasted into the Funding were taken for one table, and the
+deletion went unreported. One that cannot be found is reported and makes the command exit
+1, because a move past it cannot be seen. A heading, table or figure that is found but came
+back somewhere else is reported too. It had been the anchor the ordering dropped, which
+named nothing. A display equation is a block of the same kind, known by its text. Word
+keeps it as OMML, whose text is not `w:t`, so it was read as an empty paragraph: dragged
+into another section or deleted, it came back as "nothing came back".
+
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and `@key
@@ -2668,22 +2751,71 @@ Closed since, and why each mattered:
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
   is a join. Rejecting a co-author's change means rejecting it in Word before sending it
   back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
-  the new one, so it is reported rather than applied.
+  the new one, so it is reported rather than applied. The same holds for a table, a figure
+  or an equation: a tracked deletion of one is a deletion, and a tracked move puts it where
+  it was moved to. A picture or an equation inside `w:del` or `w:moveFrom` used to be read
+  as if it were still there, and so did a table's deleted rows, so each came back as
+  "nothing came back".
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
   into its paragraph is recognised by its text vanishing from the document and turning up
   in the paragraph; a heading reworded in the same edit is not recognised.
 - **A move is applied only within its section.** A paragraph moved past a heading, table,
-  figure, list, quotation or anything else without an identifier, or into another file, is
-  reported and left where it was. Where each paragraph now sits is read against those
-  blocks as the document was sent. An edited or deleted one is not among them, so a
-  paragraph that crossed only that block is not seen to leave its section: with the order
-  unchanged the move is not reported as a move, and with it changed the paragraph goes to
-  the edge of its own section. Since lists and quotations lost their identifiers this is
-  no rare case, so any block without an identifier that came back reworded, deleted or in a
-  different order is now listed, import no longer says the document matches, and it exits
-  1 - but the move itself is still not named.
+  figure, list, quotation or anything else without an identifier, past a paragraph held in
+  place, or into another file, is reported and left where it was. Where each paragraph now
+  sits is read against those blocks as the document was sent. An edited or deleted one is
+  not among them, so a paragraph that crossed only that block is not seen to leave its
+  section: with the order unchanged the move is not reported as a move, and with it changed
+  the paragraph goes to the edge of its own section. Since lists and quotations lost their
+  identifiers this is no rare case, so any block without an identifier that came back
+  reworded, deleted or in a different order is now listed, import no longer says the
+  document matches, and it exits 1 - but the move itself is still not named. A table or
+  figure that cannot be found in the returned document is not among them either. That one is
+  reported, but a move past it is not.
+- **A paragraph is held in place by its source, not by what the co-author meant.** A
+  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
+  move across it is refused where nothing would have broken. A paragraph written directly
+  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
+  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
+  the paragraph on the next build. The lines are found by pattern: prose that happens to
+  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
+  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
+  that paragraph reported as moved; dragged past two or more, or past a heading, the line
+  itself is reported. A paragraph with display maths is held too, so dragging it whole,
+  equation and all, is refused like dragging its first part. A comment opened in a
+  paragraph is found by reading the source with its code spans set aside, and a backtick in
+  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
+  one that opens a code span; a comment opened after it and closed past a blank line is then
+  not seen, and that paragraph can be moved.
+- **A table, figure or equation is recognised by what it holds, and failing that by its
+  place.** An equation is paired as a table is, so one deleted or edited while another is
+  inserted in the same stretch is taken for it, and the deletion is not reported. A
+  table with a corrected cell, or a picture Word stored again, no longer matches by content,
+  and is taken to be the one in its place among its kind, between the same two headings,
+  captions or matched tables and figures, when that stretch holds as many of its kind in
+  both documents. A table deleted and another pasted into the same stretch are taken for
+  one, and the deletion is not reported. A figure pasted a second time into its own stretch
+  matches neither copy and is reported as not found; a copy pasted into another section is
+  new content, and is not reported at all.
+- **A paragraph that reaches Word in parts is only recognised by what lies around it.**
+  Untagged text between it and the next paragraph of its section, display maths in its
+  source, or a line under it that opens a block, marks it. One that pandoc splits for
+  another reason and that ends its section is not recognised: a rewording of its first part
+  would replace the rest, and a move of its first part would carry the rest along.
+- **The part of a paragraph after its equation is not compared.** Only the part carrying the
+  identifier is. A rewording after the equation, with the first part untouched, is listed
+  with the paragraphs without an identifier that came back different, and not applied. With
+  the first part edited too, the paragraph is refused.
+- **A duplicated heading is matched with the one it copies only when that is unambiguous.**
+  Headings and captions are paired as a sequence, and then any text of which one copy is
+  left over on each side. A pasted copy of a heading that is still in place is paired with
+  nothing, and is listed only as new text without an identifier; a heading dragged elsewhere
+  while a copy of it was pasted is paired with nothing either, so that drag, and a move past
+  it, is not named, though the new copy is listed. A heading renamed while a new heading
+  with its old text is pasted elsewhere reads as that heading dragged there, and is reported
+  as moved: text cannot tell a drag from a rename and a paste, and a false report is the
+  safer of the two mistakes.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
@@ -2694,7 +2826,19 @@ Closed since, and why each mattered:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
-  That is the price of never truncating a split paragraph.
+  That is the price of refusing a split, and it does not refuse every one. The search for
+  new text stops at the first untagged text the document already had. A table moved with
+  its caption between the halves of a split, or a heading dragged there, puts that text
+  first, so the paragraph is merged as its first half and the rest is gone from the source,
+  as on main. Exit 1, because the caption or heading is reported out of place, but the
+  merge is written. A tagged paragraph moved between the halves does the same, but only
+  when Word keeps its bookmark; real Word drops it on a cut and paste, and the split is
+  refused. A table, figure or equation the
+  document as sent did not have counts as new text: a paragraph split around a pasted
+  picture or a new equation was merged as its first half, because the search stopped at the
+  first block that was not prose. One the document did have is looked past, as an empty line
+  is: an equation cut from further down and pasted between the halves still matched itself,
+  and the search stopped there too.
 - **A join that lost its bookmark is recognised by resemblance, which is a judgement.** A
   join made by selecting across the boundary deletes the second paragraph's bookmark. When
   a paragraph changed and the one after it vanished, the import asks which the returned text

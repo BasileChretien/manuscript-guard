@@ -139,7 +139,12 @@ structural:
 
   - id: table-alignment-row
     why: Markdown table separator rows.
-    pattern: '^\s*\|?[\s:|-]+\|[\s:|-]*$'
+    # One line, cell by cell, and no two neighbouring pieces can take the same character.
+    # It was `^\s*\|?[\s:|-]+\|[\s:|-]*$`: every piece could take the same spaces and `\s`
+    # took line breaks, so the scan backtracked through every way of sharing them out. One
+    # line of 20,000 spaces took 7 s, 400 lines holding only spaces 9 s, and it matched a
+    # pipe on each of two lines as one row.
+    pattern: '^[ \t]*(?:\|[ \t]*)?(?::?-+:?[ \t]*\|[ \t]*)+(?::?-+:?[ \t]*)?\r?$'
 
   - id: checklist-item
     why: >-

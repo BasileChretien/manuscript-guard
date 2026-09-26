@@ -1962,14 +1962,15 @@ def test_the_build_refuses_what_its_reading_used_to_let_through(
 )
 def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
     """Found reviewing #71: six hundred nested divs overflowed the recursive walk of
-    pandoc's reading, and the build stopped on a traceback. Two thousand overflow Python's
-    own JSON reader, and are refused rather than passed."""
+    pandoc's reading, and the build stopped on a traceback. Where Python's own JSON reader
+    gives up depends on its version, before 600 on 3.10 and past 2000 on 3.13, so either
+    depth may be compared or refused; neither may crash."""
     import shutil
 
     from manuscript_guard.build.reading import misreading
 
     header = "---\ntitle: A study\n---\n"
-    for depth, agrees in ((600, True), (2000, False)):
+    for depth in (600, 2000):
         body = (
             "# Results\n\n"
             + "".join(":" * (depth + 3 - i) + " {.d}\n\n" for i in range(depth))
@@ -1979,7 +1980,10 @@ def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
         found = misreading(
             header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
         )
-        assert (found is None) == agrees, (depth, found)
+        assert found is None or found.startswith("a document nested too deep"), (
+            depth,
+            found,
+        )
 
 
 def test_opener_lines_are_read_in_linear_time() -> None:

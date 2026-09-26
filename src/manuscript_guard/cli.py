@@ -296,8 +296,9 @@ def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
         f"not compared: table cells, headings, captions, list items, block quotes, "
-        f"paragraphs with display maths or with a fence under them, and anything newly "
-        f"written. "
+        f"paragraphs tied to markup in or around them, such as display maths, a comment "
+        f"closing past them, or a fence, `</div>` or definition directly under them, and "
+        f"anything newly written. "
         + (
             "Those outside tables that changed are listed above; "
             if listed
@@ -498,10 +499,14 @@ def cmd_import(args: argparse.Namespace) -> int:
     # the co-author newly wrote - is invisible to this command, and saying nothing about
     # that let a co-author believe they had corrected a table when the correction went
     # nowhere.
+    # A figure or equation deleted or dragged is outside a table too: asked only of the
+    # paragraphs without an identifier, the note said none had changed beside the report
+    # that a figure could not be found.
+    outside = [k for k in plan.lost if k != "table"] + [k for k, _ in plan.strayed if k != "table"]
     unexamined = _unexamined(
         edited,
         sum(1 for b in returned if b.names and not b.table),
-        listed=bool(plan.unidentified or plan.vanished or plan.reordered),
+        listed=bool(plan.unidentified or plan.vanished or plan.reordered or outside),
     )
     # A paragraph whose identifier no longer names the text it was built from: the source
     # changed there since, or this version numbers or tags paragraphs by other rules. Its
@@ -642,22 +647,37 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "another file, or a paragraph it holds in place ends one. An HTML comment or a "
             "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
             "Word shows as an empty line, one with a line such as `\\end{table}` directly "
-            "under it in the .md, one with a `<!--` that never closes, and one directly above "
-            "display maths. Move it in the .md yourself."
+            "under it in the .md, one with a `<!--` that never closes, and one Word shows as "
+            "more than one paragraph. Move it in the .md yourself."
         )
 
-    if plan.strayed:
+    # Text out of place among texts that all came back, only reordered, is one reorder: named
+    # both here and below it was said twice, each list naming its own share of the items, and
+    # a swapped list item was called a heading. Named first there and never cut: added after
+    # the rest, a heading dragged past a table went unnamed beside a long reversed list. The
+    # rest keeps twelve lines of its own: sharing them, twelve texts out of place cut a
+    # heading the ordering kept.
+    together = bool(plan.reordered)
+    strayed = [(kind, text) for kind, text in plan.strayed if not (together and kind == "text")]
+    folded = [text for kind, text in plan.strayed if (kind, text) not in strayed]
+    rest = [*plan.reordered]
+    for text in folded:
+        if text in rest:
+            rest.remove(text)
+    reordered = folded + rest
+    shown = len(folded) + 12
+    if strayed:
         print(
-            f"{len(plan.strayed)} heading(s), table(s), figure(s) or equation(s) came back "
-            f"somewhere else:"
+            f"{len(strayed)} heading(s) or other text, table(s), figure(s) or equation(s) came "
+            f"back somewhere else:"
         )
-        for kind, text in plan.strayed:
+        for kind, text in strayed:
             article = "an" if kind == "equation" else "a"
             print(f"    '{text[:80]}'" if kind == "text" else f"    {article} {kind}")
         print(
-            "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
-            "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
-            ".md yourself."
+            "    Not applied: each goes where the .md puts it. Move the heading or other text, "
+            "the table's or figure's placeholder, or the equation, in the .md yourself; a "
+            "caption goes with its table or figure."
         )
 
     if plan.held_back:
@@ -688,8 +708,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "the placeholder from the .md. An equation is edited in the .md."
         )
 
-    if plan.unidentified or plan.vanished or plan.reordered:
-        if plan.reordered:
+    if plan.unidentified or plan.vanished or reordered:
+        if reordered:
             print(
                 "\nParagraphs without an identifier - headings, list items, quotations, "
                 "captions - came back in a different order, and were not compared:"
@@ -697,16 +717,19 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         else:
             print(
                 f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
-                f"an identifier - a heading, a list item, a quotation, a caption, a "
-                f"paragraph with display maths or with a fence under it, or new text - came "
+                f"an identifier - a heading, list item, quotation or caption, new text, or a "
+                f"paragraph tied to markup in or around it, such as display maths, a comment "
+                f"closing past it, or a fence, `</div>` or definition directly under it - came "
                 f"back different and were not compared:"
             )
         for text in plan.vanished[:12]:
             print(f"    - {text[:120]}")
         for text in plan.unidentified[:12]:
             print(f"    + {text[:120]}")
-        for text in plan.reordered[:12]:
+        for text in reordered[:shown]:
             print(f"    ~ {text[:120]}")
+        if len(reordered) > shown:
+            print(f"    ~ and {len(reordered) - shown} more")
         print(
             "    Not applied; make these edits in the .md. They also mark where sections "
             "begin, so a paragraph moved past one of them may not be reported as moved: "

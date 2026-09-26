@@ -3464,28 +3464,49 @@ def test_audit_reads_a_number_typed_in_the_symbol_font(tmp_path: Path) -> None:
     assert [c.text for c in audit([paper], [outputs]).unmatched] == ["40"]
 
 
-def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Path) -> None:
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+def test_audit_reads_past_a_text_box_deleted_or_moved_out_of_the_reference_list(
+    tmp_path: Path, change: str
+) -> None:
     """A deleted text box's text was dropped, but its paragraphs still started lines. One
     styled as a heading was an empty heading, which ended the reference list there, and the
-    entries after it were reported as numbers missing from the outputs."""
+    entries after it were reported as numbers missing from the outputs. A box moved away
+    with Track Changes on is the same where it was, and is read once, where it went."""
     from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import read_docx_text
 
-    outputs = _outputs(tmp_path, '{"n": 77}')
+    outputs = _outputs(tmp_path, '{"n": 77, "panel": 12}')
+    content = f"<w:txbxContent>{_p('Panel 12', 'Heading1')}</w:txbxContent>"
     box = (
-        '<w:del w:id="2" w:author="a"><w:r><w:drawing><w:txbxContent>'
-        f"{_p('Old panel', 'Heading1')}</w:txbxContent></w:drawing></w:r></w:del>"
+        f'<w:{change} w:id="2" w:author="a"><w:r><w:drawing>{content}</w:drawing></w:r>'
+        f"</w:{change}>"
     )
     entry = f"<w:p><w:r><w:t>Smith J. Lancet. 2019;393:1-2.</w:t></w:r>{box}</w:p>"
+    moved_to = (
+        '<w:p><w:r><w:t>See the panel.</w:t></w:r><w:moveTo w:id="3" w:author="a"><w:r>'
+        f"<w:drawing>{content}</w:drawing></w:r></w:moveTo></w:p>"
+        if change == "moveFrom"
+        else ""
+    )
     paper = _docx(
         tmp_path / "paper.docx",
         _p("We found 77 cases.")
+        + moved_to
         + _p("References", "Heading1")
         + entry
         + _p("Jones K. BMJ. 2020;368:45-52."),
     )
     report = audit([paper], [outputs])
     assert report.unmatched == [], report.unmatched
-    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+    lines = "3-5" if change == "del" else "5-7"
+    assert report.not_audited == [f"paper.docx: lines {lines}, read as the reference list"]
+    document = read_docx_text(paper)
+    body = document.body.split("\n")
+    # Only "References", and the moved copy before it, are headings: none inside the list.
+    assert sorted(body[i] for i in document.headings) == sorted(
+        ["References"] + (["Panel 12"] if change == "moveFrom" else [])
+    )
+    assert document.body.count("Panel 12") == (1 if change == "moveFrom" else 0)
 
 
 #: A text box as Word writes one, twice over. In a row moved away Word 16 marks none of its

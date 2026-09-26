@@ -629,6 +629,128 @@ def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
     )
 
 
+def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
+    """`numbered-heading` took the number opening any setext title for section numbering, so
+    "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
+    text."""
+    path = main_md(project)
+    tail = "# Results\n\n412 serious reports\n-------------------\n\nOf these, most were hepatic.\n"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "# Results\n\nThe number of reports was\n412. Of these, most were hepatic.\n",
+        "# Results\n\nThe number of reports was\n412) of them hepatic.\n",
+    ],
+    ids=["full stop", "bracket"],
+)
+def test_a_count_at_a_wrap_point_is_not_list_numbering(project: Path, tail: str) -> None:
+    """`ordered-list-marker` took any number starting a line and followed by ". " for list
+    numbering. A list cannot interrupt a paragraph, so where a hard wrap put a count at the
+    start of a line pandoc prints it as prose, and a hand-typed count passed G2."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize("cell", ["412.", "412)"])
+def test_a_count_ending_a_table_cell_is_not_list_numbering(project: Path, cell: str) -> None:
+    """Each cell of a results table is classified as a text of its own. List numbering's
+    pattern ended in `$`, which holds at the end of a text, so a cell reading "412." passed
+    as list numbering where a trailing space had been needed before."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = cell
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes
+
+
+@pytest.mark.parametrize("value", ["412.", "412)"])
+def test_a_string_value_ending_in_a_count_is_refused(value: str) -> None:
+    """The same `$`: an emitted string holding only "412." passed as a list number."""
+    from manuscript_guard.contracts.values import DisplayError, check_string_value
+
+    with pytest.raises(DisplayError, match="no gate can trace"):
+        check_string_value("n", value, label=False)
+
+
+# Found by the fourth review of #47. Each is text to pandoc, under a line the walk ended the
+# list at, where pandoc does or not, and then read as a block of its own.
+UNDER_A_LIST = {
+    "a line in the outer item of a nested list": "1. Next\n   - next\n\n    More\n",
+    "an indented comment over a rule": "1. Item\n\n <!-- c -->\n  ***\n",
+    "an indented line block": "1. Item\n\n | line\n",
+    "raw HTML over an indented line": "1. Item\n\n <hr>\n\tMore\n",
+    "raw HTML over an indented line, no blank": "1. Item\n <hr>\n\tMore\n",
+    "a definition over an indented line block": "1. Item\n : def\n\n | line\n",
+    "a rule at the margin over an indented line block": "  - Item\n\n- - -\n | a |\n",
+    # Found by the fifth review. A rule shaped like a marker, or a marker in digits other than
+    # ASCII, at the margin ended the list for headings, where #38 kept it.
+    "a spaced rule at the margin over raw HTML": "- Item\n\n* * *\n <hr>\n\tMore\n",
+    "a dashed rule at the margin over raw HTML": "1. Item\n\n- - -\n <hr>\n\tMore\n",
+    "a wide rule over an indented dashed rule": "- First\n\n*  *  *\n  - - -\n",
+    "a fullwidth number over raw HTML": "- Item\n\n" + chr(0xFF11) + ". Note\n\n <hr>\n\tMore\n",
+}
+
+
+@pytest.mark.parametrize(
+    ("heading", "number"),
+    [("## 12 Patients\n\n", "'12'"), ("# Methods\n\nThe threshold was p < 0.05.\n\n", "'0.05'")],
+    ids=["numbered", "methods"],
+)
+@pytest.mark.parametrize("name", sorted(UNDER_A_LIST))
+def test_a_heading_line_under_a_list_is_text(
+    project: Path, name: str, heading: str, number: str
+) -> None:
+    """#38 kept every indented line under a list as the list's, and pandoc prints each `#`
+    line here as text. Ending the list where pandoc does, the walk read the lines after it
+    as blocks, and misread several indented one to three spaces."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = UNDER_A_LIST[name] + heading
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+
+
+@pytest.mark.parametrize("above", ["", "* * *\n"], ids=["under the item", "under a spaced rule"])
+def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
+    project: Path, above: str
+) -> None:
+    """Pandoc reads a rule, a title and a line of dashes after a list as a table with no
+    header. The walk read a rule and a setext Methods."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = (
+        f"# Safety\n\n1. Item\n\n{above} ---\nMethods\n-------\n\nThe threshold was p < 0.05.\n\n"
+    )
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -1917,6 +2039,54 @@ def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Pa
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+def test_audit_compares_a_count_at_a_wrap_point(tmp_path: Path) -> None:
+    """A Markdown paper is read as pandoc reads it: a count a hard wrap put at the start of
+    a line is prose, not list numbering, and was never compared with the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The number of reports was\n412. Of these, most were hepatic.\n", encoding="utf-8"
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["412"]
+
+
+def test_audit_still_reads_typed_numbering_in_word_as_numbering(tmp_path: Path) -> None:
+    """A .docx is one Word paragraph per line, with no blank line between, so read as
+    Markdown every line after the first would be a wrapped line of one long paragraph.
+    Each paragraph starts a block, and "2. The second criterion." typed in Word is list
+    numbering, as it was before the Markdown rule changed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Criteria were applied in turn.")
+        + _p("2. The second criterion.")
+        + _p("3. The third, on 9.99 of them."),
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
+def test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering(
+    tmp_path: Path,
+) -> None:
+    """Taking each Word paragraph for a block switched off the heading check as well, so a
+    paragraph typed "# 3 sites were excluded" counted its 3 as heading numbering. Word's
+    headings carry a style, not a `#`, and the paragraph is text."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Sites were screened in turn.")
+        + _p("# 3 sites were excluded after the audit.")
+        + _p("The pooled ROR was 9.99."),
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["3", "9.99"]
 
 
 def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:

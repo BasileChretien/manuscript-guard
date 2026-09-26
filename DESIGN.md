@@ -2550,6 +2550,54 @@ Closed since, and why each mattered:
   further into an item: an indented one, one under a later item's own underline, or
   `- # Results` on the item's own line. The same goes for a definition list. The old scan
   saw none of these either.
+- **List numbering is read where pandoc starts a list item, and only in Markdown.**
+  `ordered-list-marker` took any line opening with "412. " for numbering, so a count a hard
+  wrap put there passed G2; a list cannot interrupt a paragraph, and the rule now holds
+  only where the walk in `text/blocks.py` starts an item. A .docx and a figure's text have
+  no wrapped paragraphs, so the audit and G3 read them a paragraph or an element per line,
+  as before: "2. The second criterion" typed in Word is numbering, and so is a Word
+  paragraph that opens with a count and a full stop, which is not compared. A marker must be
+  followed by a space, a tab or a line break, so a table cell, a keyword or an emitted
+  string reading "412." is compared. A `#` typed at the start of a Word paragraph is
+  text, since Word's headings carry a style, so its number is compared. A plain-text paper
+  is read as Markdown, so one exported a paragraph per line with no blank lines between
+  reads as a single paragraph, and typed numbering after its first line is reported. A
+  numbered item indented four spaces or more is never taken for numbering, and nor is one in
+  the lines of a definition list (`Term`, then `:   Definition`), where pandoc does start
+  lists; both are reported rather than excused. Pandoc folds the digits opening the line
+  under a bare LaTeX command, `\newpage`, into the raw block, and the gates follow that at
+  the start of a block. A numbered title over an underline there is still a heading: pandoc
+  prints "2. Results" as ". Results", and the gates keep the number. `numbered-heading`
+  takes numbering's shape only: on a `#` heading of one to six hashes, components of one or
+  two digits, "2.1 Statistical analysis"; on a setext title, list numbering's shape, "2.
+  Results"; then a capital or the end of the line. On a `#` heading, emphasis or a link may
+  come before the capital, "2.1 *Sensitivity analyses*", and closing hashes before the end
+  of the line, "## 12 ##". The walk reads the last row of a table
+  written with dashes as a setext title over the rule under it, so a looser shape passed
+  "12 Patients" or "3.84" in such a cell. "412 serious reports", "3.84 times higher", a
+  setext title's own "2.1" and a heading of seven hashes are reported, as is a title whose
+  first word is lower case or starts with a capital outside A to Z. A cell of such a table
+  reading "12. Patients" still passes as numbering, as it did before, and so does a
+  numbered line pandoc reads as a table's header row over a spaced rule, or as a second
+  term under a definition. Inside a list item's lines pandoc folds the digits in some
+  positions and not others, and there an indented "1." under `\newpage` is still taken for
+  numbering.
+- **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
+  line indented less than the item's text that starts no item, at a definition under it,
+  and at a rule at the margin. The walk ends the items there, so a count opening a later
+  line is not list numbering, but reads each line up to the next one at the margin as the
+  list's text, as it did before it read list items. A rule shaped like a marker, `* * *`,
+  and a marker in digits pandoc does not read, `１.`, do not count as that line: the walk
+  read both as markers then. Read as blocks of their own, lines indented one to three
+  spaces were misread (a comment, a line block, raw HTML over an indented line), and a `#`
+  line under them, which pandoc prints as text, opened Methods. The cost is a heading
+  pandoc prints directly under such a line: under `1. Item`, a blank line and `  ***`,
+  "## 12 Patients" is a heading, and the gates read it as text, so its number is reported
+  and it opens no Methods. After such a line the walk records no item until a line at the
+  margin that is not a lazy line of the list, so a numbered item pandoc starts there is
+  reported: a new list under `1. First` and an indented paragraph (` 2. Second`), a nested
+  item under a line of the outer item of a nested list, which pandoc keeps in the list,
+  and an outer item (`2. Second step`) directly under such a line.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,

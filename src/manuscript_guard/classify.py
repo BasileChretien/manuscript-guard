@@ -24,7 +24,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.text.blocks import Unprinted, find_headings
+from manuscript_guard.text.blocks import Unprinted, read_blocks
 from manuscript_guard.text.masking import comparison_escapes
 from manuscript_guard.text.tokens import Atom
 
@@ -60,6 +60,9 @@ class Rule:
     # one. A `#` line is a heading at the start of a block and text inside a paragraph, and
     # no pattern can see the line above it.
     heading_only: bool = False
+    # The same for list numbering: a list cannot interrupt a paragraph either, so "412." that
+    # a hard wrap put at the start of a line is prose, and a hand-typed count there passed.
+    list_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,6 +87,7 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
             audit_only=bool(item.get("audit_only", False)),
             methods_only=bool(item.get("methods_only", False)),
             heading_only=bool(item.get("heading_only", False)),
+            list_only=bool(item.get("list_only", False)),
         )
         for item in document[section]
     )
@@ -155,9 +159,18 @@ class Classifier:
         merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def scan(self, text: str) -> Scan:
-        """Find every rule's matches in one document, so `classify` is a lookup."""
-        return _scan((*self.structural, *self.conventions), text)
+    def scan(self, text: str, *, lines_are_blocks: bool = False) -> Scan:
+        """Find every rule's matches in one document, so `classify` is a lookup.
+
+        `text` is read as Markdown, where a heading or a list item starts only where pandoc
+        would start one. `lines_are_blocks` is for text that is not Markdown and has no
+        paragraphs spanning lines: a .docx read one Word paragraph per line, or a figure's
+        text one element per line. Read as Markdown, every line after the first would be a
+        wrapped line of one long paragraph, and typed numbering there would stop counting.
+        Every line then starts a list item where one is typed, and none is a heading.
+        """
+        rules = (*self.structural, *self.conventions)
+        return _scan(rules, text, lines_are_blocks=lines_are_blocks)
 
     def classify(
         self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
@@ -360,23 +373,31 @@ def _printed(text: str) -> tuple[str, list[int] | None]:
     return "".join(text[index] for index in origin[:-1]), origin
 
 
-def _scan(rules: Iterable[Rule], text: str) -> Scan:
+def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -> Scan:
     printed, origin = _printed(text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
-    headings: frozenset[int] | None = None
+    blocks: tuple[frozenset[int], frozenset[int]] | None = None
     for rule in rules:
         at: list[int] = []
         upto: list[int] = []
         furthest = -1
+        # Text whose lines are blocks (a .docx, a figure) has no Markdown headings: Word's
+        # carry a style, not a `#`, so a heading rule holds nowhere in it.
+        if rule.heading_only and lines_are_blocks:
+            continue
         for match in rule.pattern.finditer(printed):
             start, end = match.span()
             if origin is not None:
                 start, end = origin[start], origin[end - 1] + 1 if end > start else origin[start]
-            if rule.heading_only:
-                if headings is None:
-                    headings = frozenset(found.start for found in find_headings(text))
-                if start not in headings:
+            if (rule.heading_only or rule.list_only) and not lines_are_blocks:
+                if blocks is None:
+                    found = read_blocks(text)
+                    blocks = (
+                        frozenset(heading.start for heading in found.headings),
+                        frozenset(found.items),
+                    )
+                if start not in blocks[0 if rule.heading_only else 1]:
                     continue
             at.append(start)
             furthest = max(furthest, end)

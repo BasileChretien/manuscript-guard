@@ -187,14 +187,49 @@ structural:
   ordered-list-marker:
     accepts:
       - {text: "1. The first criterion applied.", atom: "1"}
+      - {text: "# Criteria\n12. The twelfth applied.", atom: "12"}
     rejects:
       - {text: "We identified 1204 reports meeting it.", atom: "1204"}
+      # A hard wrap put the count at the start of a line. A list cannot interrupt a
+      # paragraph, so pandoc prints it as prose.
+      - {text: "The number of reports was\n412. Of these, most were hepatic.", atom: "412"}
+      - {text: "The number of reports was\n412) of them hepatic.", atom: "412"}
 
   numbered-heading:
     accepts:
       - {text: "## 2.1 Statistical analysis", atom: "2.1"}
       - {text: "# 2 Methods\n## 2.1 Statistical analysis", atom: "2.1"}
+      # A setext title takes list numbering's shape only, a number and a full stop or a
+      # bracket. Read as a list item, "2. Results" over its underline was list numbering, and
+      # once that took only real items its number was reported.
+      - {text: "Intro.\n\n2. Results\n----------", atom: "2"}
+      - {text: "## 12 Months on", atom: "12"}
+      # Emphasis or a link may open the title, and closing hashes end the line: pandoc prints
+      # each as a numbered heading, and `main` read them so.
+      - {text: "## 2.1 *Sensitivity analyses*", atom: "2.1"}
+      - {text: "## 2 **Methods**", atom: "2"}
+      - {text: "## 2.1 [Methods](#m)", atom: "2.1"}
+      - {text: "## 12 ##\n\nText.", atom: "12"}
     rejects:
+      # Emphasis opens no count: a lower-case word after it is still the heading's text.
+      - {text: "## 12 *patients* had a reaction", atom: "12"}
+      # A count or a ratio opening a heading's text is the text, not its numbering. Taken
+      # for numbering on every setext title, a count at the start of a line the gates read as
+      # a title passed G2: a heading, or a cell of a table between rules.
+      - {text: "Intro.\n\n412 serious reports\n-------------------", atom: "412"}
+      - {text: "Intro.\n\n3.84 times higher in the exposed\n=====", atom: "3.84"}
+      - {text: "Intro.\n\n---\n412 reports were serious.\n---", atom: "412"}
+      - {text: "## 412 reports", atom: "412"}
+      # A short one before a capital too: the walk reads the last row of a table written
+      # with dashes as a title over the rule under it, and pandoc prints it as a cell.
+      - {text: "Intro.\n\n12 Patients had a serious reaction\n---", atom: "12"}
+      - {text: "Intro.\n\n3.84\n---", atom: "3.84"}
+      - {text: "Intro.\n\n------------------\nDrug      Reports\n\n3.84      Methotrexate\n------------------", atom: "3.84"}
+      - {text: "####### 12 Patients", atom: "12"}
+      # So a setext title's own dotted numbering, and seven hashes, are reported as they
+      # were before setext titles were read at all.
+      - {text: "Intro.\n\n2.1 Sensitivity analyses\n========================", atom: "2.1"}
+      - {text: "####### 3 Notes", atom: "3"}
       - {text: "The ratio was 2.1 overall.", atom: "2.1"}
       # Pandoc prints both as prose: a heading cannot interrupt a paragraph, and a lone `#`
       # is an empty heading, so the number on the next line is not part of it.

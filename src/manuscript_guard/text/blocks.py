@@ -126,19 +126,24 @@ def _setext_title(line: str) -> str:
 _UNDERLINE = re.compile(r"^(?:=+|-+)[ \t]*$")
 
 _THEMATIC_BREAK = re.compile(r"^[ ]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$")
-# Pandoc's markers: bullets, numbers, letters, roman numerals, `#` and example `@`, closed by
-# a full stop or a bracket. A capital and a full stop need two spaces after them, so
-# "A. Smith agreed" and "I. Introduction" are prose, and so is a page reference, "p. 12".
+# Pandoc's markers: bullets, numbers (ASCII digits only), letters, roman numerals, `#` and
+# example `@`, closed by a full stop or a bracket. A capital and a full stop need two spaces
+# after them, so "A. Smith agreed" and "I. Introduction" are prose, and so is a page
+# reference, "p. 12".
 _ROMAN = r"m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})"
 _ROMAN_UPPER = _ROMAN.upper()
 _LIST_ITEM = re.compile(
     r"^(?P<marker>[ ]{0,3}(?!p\.[ \t]+\d)(?:[-*+]"
-    rf"|\((?:\d{{1,9}}|#|[A-Za-z]|(?=[ivxlcdm]){_ROMAN}|(?=[IVXLCDM]){_ROMAN_UPPER}|@[\w-]*)\)"
-    rf"|(?:\d{{1,9}}|#|[a-z]|(?=[ivxlcdm]{{2}}){_ROMAN}|(?=[IVXLCDM]{{2}}){_ROMAN_UPPER}"
+    rf"|\((?:[0-9]{{1,9}}|#|[A-Za-z]|(?=[ivxlcdm]){_ROMAN}|(?=[IVXLCDM]){_ROMAN_UPPER}|@[\w-]*)\)"
+    rf"|(?:[0-9]{{1,9}}|#|[a-z]|(?=[ivxlcdm]{{2}}){_ROMAN}|(?=[IVXLCDM]{{2}}){_ROMAN_UPPER}"
     r"|@[\w-]*)[.)]"
     r"|[A-Z]\)|[A-Z]\.(?=[ \t]{2}|\t)))"
     r"(?P<gap>[ \t]+|$)"
 )
+# The shape the walk took for a marker before it read list items, any digit included: `* * *`
+# and `１. Note` have it. At the margin under a list, such a line ends the items, and the lines
+# under it stay the list's for headings, as they did then. See `_Walk._in_list`.
+_MARKER_SHAPE = re.compile(_LIST_ITEM.pattern.replace("[0-9]", r"\d"))
 _QUOTE = re.compile(r"^[ ]{0,3}>")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
 _DIV_RUN = re.compile(r":{3,}[ \t]*")
@@ -169,8 +174,9 @@ def _div_open(line: str) -> bool:
     return not tail.lstrip(" \t").strip(":")
 _TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
 # A grid table opens on a border, `+---+---+`, and a line block on a pipe and a space:
-# "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose.
-_GRID_TOP = re.compile(r"^[ ]{0,3}\+(?:[-=:]+\+)+[ \t]*$")
+# "+12% more reports", "+-0.3 SD" and "|d| exceeded" are prose. Both at the margin: indented,
+# pandoc reads either as a paragraph, and a `#` line under it as its text.
+_GRID_TOP = re.compile(r"^\+(?:[-=:]+\+)+[ \t]*$")
 # A pipe table's row has a pipe that is a cell's edge: not escaped, and not in code or math.
 # Taken on any pipe, "Results \| x" over `===` under a table was a row, and the heading
 # pandoc prints there was lost to the gates.
@@ -182,8 +188,8 @@ def _cell_pipe(line: str) -> bool:
     return "|" in _CODE_OR_MATH.sub("", _ESCAPED_PIPE.sub("", line))
 
 
-_GRID_ROW = re.compile(r"^[ ]{0,3}[+|]")
-_LINE_BLOCK = re.compile(r"^[ ]{0,3}\|(?:[ \t]|$)")
+_GRID_ROW = re.compile(r"^[+|]")
+_LINE_BLOCK = re.compile(r"^\|(?:[ \t]|$)")
 _CONTINUATION = re.compile(r"^[ \t]+\S")
 _CAPTION = re.compile(r"^[ ]{0,3}(?:[Tt]able:|:(?![^\w\s]))")
 # A link definition: a destination, then at most a title and attributes.
@@ -229,6 +235,12 @@ _QUOTE_STOP = re.compile(rf"^</({_BLOCK_TAGS}|{_EITHER_TAGS})\s*>", re.IGNORECAS
 def _blank(line: str) -> bool:
     """Blank as pandoc means it: spaces and tabs. A no-break space is a character."""
     return not line.strip(" \t\r")
+
+
+def _indent(line: str) -> int:
+    """How far in a line's text starts, in columns, with tab stops every four."""
+    expanded = line.expandtabs(4)
+    return len(expanded) - len(expanded.lstrip(" "))
 
 
 def _ends_on_block_tag(line: str, html: dict[str, int]) -> bool:
@@ -303,6 +315,19 @@ def _tex_block(line: str) -> bool:
             return False
         position = command.end()
     return position > 0 and position == len(stripped)
+
+
+def _bare_tex(line: str) -> bool:
+    """A LaTeX block line ending on a command with no argument, `\\newpage` say. Pandoc folds
+    the digits that open the next line into the raw block, so "412. Of these" under one is
+    no list item: the raw "\\newpage\\n412" and a paragraph ". Of these"."""
+    commands = list(_TEX_COMMAND.finditer(line.rstrip()))
+    return bool(commands) and not re.search(r"[{\[]", commands[-1].group(0))
+
+
+_DIGIT_FIRST = re.compile(r"^[ \t]*\d")
+# A definition marker, with its text or bare: `:` alone on its line is one too.
+_DEFINITION = re.compile(r"^[ ]{0,3}[:~](?:[ \t]|$)")
 
 
 def _lone_table(line: str) -> bool:
@@ -393,9 +418,14 @@ class _Walk:
         self.lines = _lines(text)
         self.fences = _fences(text, self.lines)
         self.found: list[Heading] = []
+        #: Where each list item's first line starts.
+        self.items: list[int] = []
         self.open: str | None = None
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
+        #: Pandoc has ended the list, and its lines start no item, but they are still the
+        #: list's for headings. See `_in_list`.
+        self.items_off = False
         self.divs = 0
         #: HTML blocks open around this line, by tag, which a block quote's lazy lines stop
         #: to close. Counted from tags that start or end a line, not from ones in the middle
@@ -415,12 +445,14 @@ class _Walk:
         self.tagged: set[int] = set()
         self._ends: dict[str, list[int]] | None = None
         self._closers: dict[str, list[int]] = {}
+        #: The last line holding a LaTeX block that ends on a bare command. See `_bare_tex`.
+        self._bare_tex_line = -2
 
-    def run(self) -> list[Heading]:
+    def run(self) -> _Walk:
         index = self._title_block()
         while index < len(self.lines):
             index = self._step(index)
-        return self.found
+        return self
 
     def _title_block(self) -> int:
         """Where the text starts after a pandoc title block: up to three `%` lines at the very
@@ -488,9 +520,42 @@ class _Walk:
             if self.open == _QUOTE_LINES:
                 return index + 1
             self.inline = True
+            if self.open == _ITEM:
+                # Inside a list, a marker ends the lazy lines and starts the next item. A
+                # paragraph gets no such line: a list cannot interrupt one.
+                shown = self.lines[index].shown
+                if _DEFINITION.match(shown):
+                    # A definition under the item's text ends the list, and the rest is the
+                    # definition's paragraph: a marker starts no item there, and a tilde
+                    # fence does not end it. A line indented after a blank stays the list's
+                    # for headings, as after any line pandoc ends a list at: see `_in_list`.
+                    # Indented to the item's text, it is a definition list inside the item,
+                    # and the item goes on.
+                    if _indent(shown) < (self.list_indent or 0):
+                        self.open = _PARAGRAPH
+                        self.items_off = True
+                else:
+                    self._item(index)
             return self._paragraph_line(index)
         self.open = None
         return self._block(index)
+
+    def _item(self, index: int) -> bool:
+        """Record a list item if this line starts one, and where its content starts.
+
+        The gap after the marker is counted in columns: a tab reaches the next tab stop, so
+        the text of `1.<tab>First` starts at column 4, where pandoc puts it. `* * *` is not an
+        item: at a block's start it is a rule, and under an item it is text of the item."""
+        shown = self.lines[index].shown
+        item = _LIST_ITEM.match(shown)
+        if item is None or _THEMATIC_BREAK.match(shown):
+            return False
+        marker = item.group("marker")
+        gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
+        self.list_indent = len(marker) + (gap if 0 < gap <= 4 else 1)
+        if not self.items_off:
+            self.items.append(self.lines[index].start)
+        return True
 
     def _paragraph_line(self, index: int) -> int:
         """After a line of a paragraph or a list item: a block-level tag closing the line ends
@@ -528,8 +593,12 @@ class _Walk:
             return last + 1
         self.open = None
         if not indented:
-            self.list_indent = None
+            self._end_list()
         return last + 1
+
+    def _end_list(self) -> None:
+        self.list_indent = None
+        self.items_off = False
 
     def _continues(self, index: int) -> bool:
         """Whether a line carries on what the line above left open. See `_PARAGRAPH`."""
@@ -542,8 +611,15 @@ class _Walk:
         return not _BLOCK_TAG.match(shown) and self._environment(index) is None
 
     def _block(self, index: int) -> int:
-        shown = self.lines[index].shown
-        if self.list_indent is not None and self._in_list(shown):
+        if self._bare_tex_line == index - 1 and _DIGIT_FIRST.match(self.lines[index].shown):
+            # The digits go to the raw block, so the line starts no list item. Over an
+            # underline it is still a heading: pandoc prints "2. Results" there as ". Results".
+            heading = self._heading(index)
+            if heading is not None:
+                return heading
+            self.open = _PARAGRAPH
+            return self._paragraph_line(index)
+        if self.list_indent is not None and self._in_list(index):
             return index + 1
         for opens in (self._container, self._heading, self._leaf):
             after = opens(index)
@@ -552,15 +628,43 @@ class _Walk:
         self.open = _PARAGRAPH
         return self._paragraph_line(index)
 
-    def _in_list(self, shown: str) -> bool:
-        """An indented line under a list item belongs to it: a paragraph, or code if it is
-        indented four more. Anything else at the margin closes the list."""
-        indent = len(shown.expandtabs(4)) - len(shown.expandtabs(4).lstrip(" "))
+    def _in_list(self, index: int) -> bool:
+        """A line indented to a list item's text, after a blank line, belongs to it: a
+        paragraph, a nested item, or code if it is indented four more. A line at the margin
+        closes the list, unless it starts an item. A rule shaped like a marker, `* * *`, or a
+        marker in digits pandoc does not read, `１.`, ends the items and not the list: the
+        walk read both as markers before it read list items, and the lines under them stay
+        the list's for headings, as below.
+
+        Pandoc also ends the list at a line indented less than the item's text, and a marker
+        under that is prose: "  More" under "1. First". Items end there. For headings the
+        line stays the list's, as does everything indented up to the next line at the margin:
+        read as blocks of their own, lines indented one to three spaces were misread, and a
+        `#` line under a line block, a comment or raw HTML over an indented line, text to
+        pandoc, opened Methods. So does a line of the outer item of a nested list, which is
+        indented less than the inner item's text and still in the list."""
+        shown = self.lines[index].shown
+        indent = _indent(shown)
+        marker = _LIST_ITEM.match(shown) is not None and not _THEMATIC_BREAK.match(shown)
         if indent == 0:
-            if not _LIST_ITEM.match(shown):
-                self.list_indent = None
+            if marker:
+                self.items_off = False
+            elif _MARKER_SHAPE.match(shown):
+                self.items_off = True
+            else:
+                self._end_list()
             return False
-        self.open = _ITEM if indent < (self.list_indent or 0) + 4 else None
+        if indent < (self.list_indent or 0):
+            if marker and not self.items_off:
+                return False
+            self.items_off = True
+            self.open = _ITEM
+            return True
+        if indent >= (self.list_indent or 0) + 4:
+            self.open = None
+            return True
+        self._item(index)
+        self.open = _ITEM
         return True
 
     def _container(self, index: int) -> int | None:
@@ -671,15 +775,18 @@ class _Walk:
         html = self._html_block(index)
         if html is not None:
             return html
+        if shown.startswith(("    ", "\t")):
+            # An indented listing runs on to its last indented line, so its second line over
+            # a rule is code over a rule, not a heading. Indented as written: a comment
+            # blanked to spaces is not code.
+            end = index + 1
+            while end < len(self.lines) and self._indented_code(end):
+                end += 1
+            return end
         # A rule as written: `--- <!-- revised -->` is text, not a rule with a comment.
-        if shown.startswith(("    ", "\t")) or (
-            _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw)
-        ):
+        if _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw):
             return index + 1
-        item = _LIST_ITEM.match(shown)
-        if item is not None:
-            gap = len(item.group("gap"))
-            self.list_indent = len(item.group("marker")) + (gap if 0 < gap <= 4 else 1)
+        if self._item(index):
             self.open = _ITEM
             return self._paragraph_line(index)
         if _QUOTE.match(shown):
@@ -690,9 +797,17 @@ class _Walk:
         if _lone_table(shown):
             self.rows.add(index)
             return index + 1
-        if _REFERENCE.match(shown) or _tex_block(shown):
+        if _tex_block(shown):
+            if _bare_tex(shown):
+                self._bare_tex_line = index
+            return index + 1
+        if _REFERENCE.match(shown):
             return index + 1
         return self._environment(index) or self._table(index)
+
+    def _indented_code(self, index: int) -> bool:
+        line = self.lines[index]
+        return line.raw.startswith(("    ", "\t")) and not _blank(line.shown)
 
     def _table(self, index: int) -> int | None:
         """A pipe table runs while its rows have a pipe; a grid table or a line block while
@@ -752,9 +867,29 @@ class _Walk:
         return ends[later] + 1 if later < len(ends) else None
 
 
+@dataclass(frozen=True)
+class Blocks:
+    """What one walk of a document found."""
+
+    headings: tuple[Heading, ...]
+    #: Where the first line of each list item starts, in document order.
+    items: tuple[int, ...]
+
+
+def read_blocks(text: str) -> Blocks:
+    walk = _Walk(text).run()
+    return Blocks(tuple(walk.found), tuple(walk.items))
+
+
 def find_headings(text: str) -> list[Heading]:
     """Every heading pandoc prints, ATX and setext, in document order."""
-    return _Walk(text).run()
+    return list(read_blocks(text).headings)
+
+
+def list_items(text: str) -> list[int]:
+    """Where each list item pandoc makes starts. A marker a hard wrap put at the start of a
+    line in a paragraph starts none: a list cannot interrupt a paragraph."""
+    return list(read_blocks(text).items)
 
 
 # Looser than `ATX_LINE`: any whitespace after the hashes, a no-break space included. Pandoc
@@ -805,8 +940,7 @@ def section_breaks(text: str) -> list[Heading]:
     titled with that line: pandoc prints the line as a paragraph, and the page shows
     "Results" over the numbers under it.
     """
-    walk = _Walk(text)
-    placed_headings = walk.run()
+    walk = _Walk(text).run()
     raw_at = {line.start: line.raw for line in walk.lines}
     found = [
         replace(heading, title=Unprinted(heading.title))
@@ -815,7 +949,7 @@ def section_breaks(text: str) -> list[Heading]:
         or (not heading.setext and heading.level >= 7)
         or (heading.setext and _START_TAG.match(raw_at[heading.start]))
         else heading
-        for heading in placed_headings
+        for heading in walk.found
     ]
     by_start = {heading.start: heading for heading in found}
     shown = [line.shown for line in walk.lines]
@@ -849,10 +983,13 @@ def section_breaks(text: str) -> list[Heading]:
 
 __all__ = [
     "ATX_LINE",
+    "Blocks",
     "Heading",
     "Unprinted",
     "find_headings",
     "heading_shaped",
+    "list_items",
+    "read_blocks",
     "scannable",
     "section_breaks",
 ]

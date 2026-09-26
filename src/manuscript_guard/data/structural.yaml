@@ -46,7 +46,16 @@ structural:
 
   - id: ordered-list-marker
     why: Markdown list numbering.
-    pattern: '^\s{0,3}\d+[.)]\s'
+    # Only on a line pandoc starts a list item on. A list cannot interrupt a paragraph, so
+    # "412. Of these" where a hard wrap put the count at the start of a line is prose, and
+    # the pattern alone filed a hand-typed count as list numbering. `[ \t]` rather than
+    # `\s`, which crossed the line break and could start a match on the line above. `[0-9]`
+    # rather than `\d`: pandoc numbers a list with ASCII digits, and prints "４１２." as text.
+    # A space, a tab or a line break must follow the marker, not the end of the text: a
+    # table cell or an emitted string is classified as a text of its own, and one reading
+    # "412." passed as numbering.
+    list_only: true
+    pattern: '^[ \t]{0,3}[0-9]+[.)](?:[ \t]|(?=\r?\n))'
 
   - id: numbered-heading
     why: Markdown heading numbering.
@@ -54,10 +63,18 @@ structural:
     # of prose is printed as part of that paragraph, and the pattern alone filed its number
     # as heading numbering. `[ \t]` rather than `\s`, which crossed the line break: a lone
     # `#` is an empty heading, and the number starting the next line is not part of it.
-    # A space, a tab or a line break must follow the number, not the end of the text: a
-    # table cell or a keyword is classified as a text of its own.
+    # Numbering is short, and a title word after it is capitalised. On a `#` heading of one to
+    # six hashes that is "2.1 Statistical analysis". A setext title over its underline takes
+    # list numbering's shape only, "2. Results": the walk reads the last row of a table
+    # written with dashes as a title over the rule under it, and taken as any short number,
+    # "12 Patients" or "3.84" in such a cell passed G2 as numbering, where pandoc prints a
+    # cell. A setext title's own "2.1", and seven hashes, are reported, as they were before
+    # setext titles were read at all. A heading that is only its number ends at a line
+    # break, not at the end of the text: a table cell or a keyword is a text of its own.
+    # On a `#` heading, emphasis or a link may open the title, "2.1 *Sensitivity analyses*",
+    # and closing hashes may end one that is only its number, "## 12 ##".
     heading_only: true
-    pattern: '^#{1,6}[ \t]+\d+(?:\.\d+)*[.)]?(?:[ \t]|(?=\r?\n))'
+    pattern: '^(?:#{1,6}[ \t]+[0-9]{1,2}(?:\.[0-9]{1,2}){0,3}[.)]?(?:[ \t]+(?=[*_\[]*[A-Z])|(?:[ \t]+#+)?[ \t]*(?=\r?\n))|[0-9]{1,2}[.)](?:[ \t]+(?=[A-Z])|[ \t]*(?=\r?\n)))'
 
   - id: author-year-citation
     # Audit only. The pattern spans a whole parenthetical, and a rule that spans an atom

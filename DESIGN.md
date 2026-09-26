@@ -1812,16 +1812,22 @@ pandoc, which the gates paired with a later one. A comment or raw block is taken
 from its opening to its closing mark, outside listings, so an arrow `-->` in a Mermaid
 listing refuses nothing. A listing a comment holds whole, with no `-->` on its lines, so
 that the comment closes after its closer, is the comment's and is not refused: pandoc
-prints none of it, and the gates mask both. The review of the sixth round's fixes found it
-refused, and a listing commented out while an author decided failed `check` and the build,
-`--skip-checks` too, where #65 built it. Past three spaces pandoc reads indented code or
-a list item's listing, and the gates read the lines as text: its numbers are read, the safe
-side, but a `<!--` in it is read as a comment's, and hides the prose after it up to the
-next `-->`, as the sixth review found (see the comment gap in Known gaps). Refused on
-purpose, though pandoc opens them: a fence straight under a heading, a list item's text, a
-`:::` line or a comment, and a line of text that opens with backticks.
-`tests/test_pandoc_agreement.py` asks pandoc about 128 fenced shapes: the old reader got 63 wrong; now 120 agree, the 8 that
-do not are refused, and 65 are refused in all.
+prints none of it where it sees the comment, and the gates mask both. The review of the
+sixth round's fixes found it refused, and a listing commented out while an author decided
+failed `check` and the build, `--skip-checks` too, where #65 built it. The comment is the
+gates' reading, which a stray backtick fools, so such a listing must also be one pandoc
+reads as the gates do if the comment is not there: opened at the margin, and a tilde fence
+apart from the line above. Let be in a list item, behind a comment only the gates saw, it
+was code to the gates up to the last closer, ended early for pandoc, and the claim after
+it printed unread (the second round of review of those fixes). Past three spaces pandoc
+reads indented code or a list item's listing, and the gates read the lines as text: its
+numbers are read, the safe side, but a `<!--` in it is read as a comment's, and hides the
+prose after it up to the next `-->`, as the sixth review found (see the comment gap in
+Known gaps). Refused on purpose, though pandoc opens them: a fence straight under a
+heading, a list item's text, a `:::` line or a comment, and a line of text that opens with
+backticks. `tests/test_pandoc_agreement.py` asks pandoc about 128 fenced shapes: the old
+reader got 63 wrong; now 120 agree, the 8 that do not are refused, and 65 are refused in
+all.
 
 Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
 attribute over blank lines), so the build compares too (`build/reading.py`, beside the
@@ -2534,6 +2540,13 @@ Closed since, and why each mattered:
     comment's mark is read.
 
   The hint names an open comment or raw block as a cause, and nothing is read wrongly.
+- **A listing commented out with `-->` on its closing line is refused.** In ```` ``` --> ````
+  or ```` ```--> ````, pandoc reads the whole listing as the comment, and the gates read no
+  closer there: a closer is its fence and spaces only. So the opener is left unpaired, or
+  pairs with a later fence across printed prose. Accepting it would mean ending a listing
+  and a comment on one line, in the fence reader, which reads before any comment is known.
+  So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
+  which is accepted.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
   starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
   14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an

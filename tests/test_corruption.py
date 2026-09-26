@@ -2377,6 +2377,30 @@ def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
     assert unclear_fence_lines(text) != []
 
 
+@pytest.mark.parametrize(
+    "comment",
+    [
+        # Comments the gates see and pandoc does not: `<!--` in code beside a stray
+        # backtick, and one never closed.
+        "Write `<!--` to hide a line; the `x column is unused.\n\n",
+        "<!-- an aside never closed\n\n",
+    ],
+)
+def test_a_listing_behind_a_false_comment_keeps_the_plain_form(comment: str) -> None:
+    """Found by round 2's review: a listing a comment holds was let be whatever its shape, on
+    the gates' reading of where comments are. Behind a comment pandoc does not see, a listing
+    in a list item, its closer indented past the item's, is code to the gates up to the last
+    closer; pandoc ends it early and prints the claim after it. It passed `check` and the
+    build, where round 1's head refused it. A listing a comment holds keeps the plain form."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = (
+        f"# Results\n\n{comment}- Fit the model:\n  {_TICKS}r\n  fit <- glm(y ~ x)\n"
+        f"    {_TICKS}\n\nThe excess was 9.87 (p < 0.001).\n\n{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    assert unclear_fence_lines(text) != []
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )

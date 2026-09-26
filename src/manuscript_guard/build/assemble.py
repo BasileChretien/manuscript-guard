@@ -159,8 +159,9 @@ def fence_findings(path: Path, text: str) -> tuple[Finding, ...]:
             hint="open a listing at the margin, under a blank line, outside any comment or "
             "raw block, with at most a language word or `{.class}` attributes after the "
             "fence on the same line, and close it; move a listing out of a list item, "
-            "whose indentation pandoc takes off before it looks for the closer; knit R "
-            "Markdown first, since pandoc prints a `{r ...}` chunk as text",
+            "whose indentation pandoc takes off before it looks for the closer; to comment "
+            "a listing out, put the comment's `-->` on a line of its own after the closer; "
+            "knit R Markdown first, since pandoc prints a `{r ...}` chunk as text",
         )
         for line in unclear_fence_lines(text, front_matter_end(text))
     )

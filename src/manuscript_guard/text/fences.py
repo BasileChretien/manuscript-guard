@@ -389,8 +389,11 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     pandoc makes (`build.reading`).
 
     A listing a comment holds whole, its closer before the comment's `-->`, is the
-    comment's and is not refused either: pandoc prints none of it, and the gates mask both.
-    Refused, a listing commented out while an author decided failed `check` and the build.
+    comment's and is not refused either, when it opens at the margin and a tilde fence apart
+    from the line above: pandoc prints none of it where it sees the comment, and the gates
+    mask both. Refused, a listing commented out while an author decided failed `check` and
+    the build. The comment is the gates' reading, which a stray backtick can fool, and where
+    pandoc sees none the listing is read as a plain one is, which the build confirms.
     """
     bares, inside, _commented = _walk(text, begin)
     above_begin = text.count("\n", 0, begin)
@@ -423,19 +426,25 @@ def _walk(text: str, begin: int) -> tuple[list[str], set[int], list[Fence]]:
     while index < len(bares):
         last, fence = fence_of.get(index, (None, None))
         above = bares[index - 1] if index else ""
-        if (
-            last is not None
-            and raw is None
-            and bares[index][:1] in ("`", "~")
-            and (index == 0 or not above.strip(" ") or index - 1 in closers)
-        ):
+        margin = bares[index][:1] in ("`", "~")
+        apart = index == 0 or not above.strip(" ") or index - 1 in closers
+        if last is not None and raw is None and margin and apart:
             inside.update(range(index, last + 1))
             index = last + 1
             continue
+        # A listing a comment holds whole. The comment is the gates' reading, which a stray
+        # backtick fools, so the listing must also be one pandoc reads as the gates do if
+        # the comment is not there: opened at the margin, and a tilde fence apart from the
+        # line above, which pandoc does not open under text. Let be in a list item, it was
+        # code to the gates to the last closer and ended early for pandoc, which printed
+        # the claim after it (round 2's review). A backtick fence at the margin interrupts
+        # a line of text for pandoc, so `<!--` straight above one still holds it.
         if (
             last is not None
             and raw is not None
             and raw.kind == "comment"
+            and margin
+            and (apart or bares[index][0] == "`")
             and not any("-->" in bares[at] for at in range(index, last + 1))
         ):
             inside.update(range(index, last + 1))

@@ -636,6 +636,12 @@ UNDER_A_LIST = {
     "raw HTML over an indented line, no blank": "1. Item\n <hr>\n\tMore\n",
     "a definition over an indented line block": "1. Item\n : def\n\n | line\n",
     "a rule at the margin over an indented line block": "  - Item\n\n- - -\n | a |\n",
+    # Found by the fifth review. A rule shaped like a marker, or a marker in digits other than
+    # ASCII, at the margin ended the list for headings, where #38 kept it.
+    "a spaced rule at the margin over raw HTML": "- Item\n\n* * *\n <hr>\n\tMore\n",
+    "a dashed rule at the margin over raw HTML": "1. Item\n\n- - -\n <hr>\n\tMore\n",
+    "a wide rule over an indented dashed rule": "- First\n\n*  *  *\n  - - -\n",
+    "a fullwidth number over raw HTML": "- Item\n\n" + chr(0xFF11) + ". Note\n\n <hr>\n\tMore\n",
 }
 
 
@@ -659,12 +665,17 @@ def test_a_heading_line_under_a_list_is_text(
     assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
 
 
-def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(project: Path) -> None:
+@pytest.mark.parametrize("above", ["", "* * *\n"], ids=["under the item", "under a spaced rule"])
+def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
+    project: Path, above: str
+) -> None:
     """Pandoc reads a rule, a title and a line of dashes after a list as a table with no
     header. The walk read a rule and a setext Methods."""
     path = main_md(project)
     text = path.read_text(encoding="utf-8")
-    snippet = "# Safety\n\n1. Item\n\n ---\nMethods\n-------\n\nThe threshold was p < 0.05.\n\n"
+    snippet = (
+        f"# Safety\n\n1. Item\n\n{above} ---\nMethods\n-------\n\nThe threshold was p < 0.05.\n\n"
+    )
     path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
     report = gate_report(project)
     assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)

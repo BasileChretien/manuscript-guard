@@ -2380,17 +2380,21 @@ Closed since, and why each mattered:
   positions and not others, and there an indented "1." under `\newpage` is still taken for
   numbering.
 - **Every indented line under a list is the list's for headings.** Pandoc ends a list at a
-  line indented less than the item's text that starts no item, or at a definition under
-  it. The walk ends the items there, so a count opening a later line is not list numbering,
-  but reads each line up to the next one at the margin as the list's text, as it did
-  before it read list items. Read as blocks of their own, lines indented one to three
+  line indented less than the item's text that starts no item, at a definition under it,
+  and at a rule at the margin. The walk ends the items there, so a count opening a later
+  line is not list numbering, but reads each line up to the next one at the margin as the
+  list's text, as it did before it read list items. A rule shaped like a marker, `* * *`,
+  and a marker in digits pandoc does not read, `１.`, do not count as that line: the walk
+  read both as markers then. Read as blocks of their own, lines indented one to three
   spaces were misread (a comment, a line block, raw HTML over an indented line), and a `#`
   line under them, which pandoc prints as text, opened Methods. The cost is a heading
   pandoc prints directly under such a line: under `1. Item`, a blank line and `  ***`,
   "## 12 Patients" is a heading, and the gates read it as text, so its number is reported
-  and it opens no Methods. A line of the outer item of a nested list, which pandoc keeps
-  in the list, is indented less than the inner item's text, and after it the walk records
-  no item until a line at the margin: a numbered item nested there is reported.
+  and it opens no Methods. After such a line the walk records no item until a line at the
+  margin that is not a lazy line of the list, so a numbered item pandoc starts there is
+  reported: a new list under `1. First` and an indented paragraph (` 2. Second`), a nested
+  item under a line of the outer item of a nested list, which pandoc keeps in the list,
+  and an outer item (`2. Second step`) directly under such a line.
 - **A fence directly under a line of prose is code to the gates and prose to pandoc.**
   Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
   one indented a space or more, is printed as text, until a blank line ends the paragraph,

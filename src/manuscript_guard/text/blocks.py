@@ -163,6 +163,10 @@ _LIST_ITEM = re.compile(
     r"|[A-Z]\)|[A-Z]\.(?=[ \t]{2}|\t)))"
     r"(?P<gap>[ \t]+|$)"
 )
+# The shape the walk took for a marker before it read list items, any digit included: `* * *`
+# and `１. Note` have it. At the margin under a list, such a line ends the items, and the lines
+# under it stay the list's for headings, as they did then. See `_Walk._in_list`.
+_MARKER_SHAPE = re.compile(_LIST_ITEM.pattern.replace("[0-9]", r"\d"))
 _QUOTE = re.compile(r"^[ ]{0,3}>")
 _DIV_CLOSE = re.compile(r"^:{3,}[ \t]*$")
 _DIV_RUN = re.compile(r":{3,}[ \t]*")
@@ -650,8 +654,10 @@ class _Walk:
     def _in_list(self, index: int) -> bool:
         """A line indented to a list item's text, after a blank line, belongs to it: a
         paragraph, a nested item, or code if it is indented four more. A line at the margin
-        closes the list, unless it starts an item; a rule does, though `* * *` has the shape
-        of a marker.
+        closes the list, unless it starts an item. A rule shaped like a marker, `* * *`, or a
+        marker in digits pandoc does not read, `１.`, ends the items and not the list: the
+        walk read both as markers before it read list items, and the lines under them stay
+        the list's for headings, as below.
 
         Pandoc also ends the list at a line indented less than the item's text, and a marker
         under that is prose: "  More" under "1. First". Items end there. For headings the
@@ -664,9 +670,12 @@ class _Walk:
         indent = _indent(shown)
         marker = _LIST_ITEM.match(shown) is not None and not _THEMATIC_BREAK.match(shown)
         if indent == 0:
-            if not marker:
+            if marker:
+                self.items_off = False
+            elif _MARKER_SHAPE.match(shown):
+                self.items_off = True
+            else:
                 self._end_list()
-            self.items_off = False
             return False
         if indent < (self.list_indent or 0):
             if marker and not self.items_off:

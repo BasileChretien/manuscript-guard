@@ -985,8 +985,8 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     unmarked = sum(1 for mark in marks if mark.unmarked)
     if unmarked:
         print(
-            f"  {unmarked} number(s) in code, an equation or markup a mark would break are "
-            "not marked in the text; the appendix lists them with the reason"
+            f"  {unmarked} number(s) are not marked in the text, where a mark would change how "
+            "it reads; the appendix lists each with the reason"
         )
     if tiers.get("defect"):
         print("  red marks a number bound to nothing. Yellow is not a verification.")

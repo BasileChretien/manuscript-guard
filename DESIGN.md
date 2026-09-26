@@ -1185,9 +1185,12 @@ out of `<span>7</span>`. A mark around what it found left the closing `~` outsid
 pandoc read no subscript, and a number in a code span, `` `x2` ``, got its mark written
 inside the span, where the link printed as text. So the annotator places each mark first:
 - **Code, equations, a link's text and the front matter take no mark.** Code spans are
-  paired as pandoc pairs them, a run of backticks with the next run of the same length in
-  its paragraph. Equations are pandoc's dollars. A link's text can't hold a mark, which is
-  itself a link. A binding there is put in as its value, unmarked.
+  paired a run of backticks with the next run of the same length in its paragraph, which
+  is pandoc's rule but for two edges (see Known gaps). Equations are pandoc's dollars,
+  looked for outside code: a `$` in `` `df$age` `` opened one that ran to the next code
+  span's (review of #76). A dollar sign beside a number is a currency's, not markup, and
+  `US$5` is marked whole. A link's text, the target a URL or an anchor, can't hold a mark,
+  which is itself a link. A binding there is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc
   reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
@@ -1200,9 +1203,12 @@ is read with its marks and without, the marks unwrapped and each block compared,
 mark in a block that reads differently is taken out. Which mark did it is not worked out,
 so a paragraph can lose all its marks for one; a number in an HTML tag's attribute,
 `width="300"`, is the example the tests hold. What still reads differently after that loses
-every mark in the file, so the annotated copy never reads otherwise than the manuscript. A
-pipe table's column widths are left out of the comparison: a longer row, marks in it, makes
-pandoc give the table widths, which prints nothing different. A number left unmarked is
+every mark in the file, so the annotated copy never reads otherwise than the manuscript,
+marks aside. Two things are left out of the comparison. A pipe table's column widths: a
+longer row, marks in it, makes pandoc give the table widths, which changes the layout of
+the annotated copy's tables and not their words. And a citation as written, which pandoc
+keeps and citeproc replaces: with a mark on its locator, `p. 33`, it differed, and the
+paragraph lost every mark (review of #76). A number left unmarked is
 still listed in the appendix, with the reason, and the build says how many there are. It
 costs two runs of pandoc's reader a file, and a third where a mark is taken out.
 
@@ -2700,9 +2706,17 @@ Closed since, and why each mattered:
   A number in code, an equation, a link's text or the front matter takes no mark, and nor
   does one inside markup the annotator cannot mark around. Where pandoc reads a paragraph
   differently with its marks in, every mark in that paragraph comes out, not only the one
-  that did it: a number in an HTML tag's attribute unmarks its whole paragraph. Each is in
-  the appendix with the reason, but the reader has to look there for it; its colour is not
-  on the page.
+  that did it: a number in an HTML tag's attribute unmarks its whole paragraph, and a
+  hand-written grid or simple table, or a block with attributes, loses every mark in it.
+  Each is in the appendix with the reason, but the reader has to look there for it; its
+  colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
+  pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
+  read as an escape, and a backtick left unpaired in one list item that pairs with one in
+  the next.
+- **The annotated copy prints a manuscript file's own front matter.** The annotated build
+  re-reads each source whole, where the build strips its YAML block, so whatever pandoc
+  prints from that block prints in the annotated copy and not in the manuscript, its
+  numbers listed as "in the front matter".
 - **An interval is only checked in prose when it was emitted as one.** `em.interval()`
   publishes the estimate and both bounds together, verifies that the bounds bracket the
   estimate, and records which end each bound is — which is what lets G2 refuse

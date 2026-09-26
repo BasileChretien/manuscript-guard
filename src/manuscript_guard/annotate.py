@@ -201,7 +201,7 @@ def annotate(
     """
     masked = mask(text)
     placeholders, _malformed = parse(text)
-    unmarkable = _Unmarkable(masked, front_matter_end(text))
+    unmarkable = _Unmarkable(text, masked, front_matter_end(text))
     pieces = [
         *_value_pieces(placeholders, namespace, counter, unmarkable),
         *_block_pieces(placeholders, results, project, counter),
@@ -225,12 +225,13 @@ class _Unmarkable:
     """Where no mark can go: code, equations, a link's text and the front matter, found
     once a file."""
 
-    def __init__(self, masked: str, head: int) -> None:
+    def __init__(self, text: str, masked: str, head: int) -> None:
         self._head = head
+        code = code_spans(masked)
         self._spans = {
-            IN_CODE: code_spans(masked),
-            IN_EQUATION: equation_spans(masked),
-            IN_LINK: link_text_spans(masked),
+            IN_CODE: code,
+            IN_EQUATION: equation_spans(masked, code),
+            IN_LINK: link_text_spans(text),
         }
 
     def reason(self, start: int, end: int) -> str:
@@ -476,6 +477,11 @@ def _unwrapped(node):
         return joined
     if not isinstance(node, dict):
         return node
+    if node.get("t") == "Cite":
+        # The citation as written, which citeproc replaces and never prints: with a mark
+        # on a locator, `p. 33`, it differed, and the paragraph lost every mark.
+        citations, _written = node["c"]
+        return {"t": "Cite", "c": [_unwrapped(citations), []]}
     if node.get("t") == "Table":
         attributes, caption, columns, *rest = node["c"]
         widthless = [[align, {"t": "ColWidthDefault"}] for align, _width in columns]

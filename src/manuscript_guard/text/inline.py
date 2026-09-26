@@ -13,8 +13,11 @@ import bisect
 import re
 
 # Characters that open or close inline markup: code, sub- and superscripts, emphasis and
-# struck text, HTML, links and spans, attributes, equations, escapes and table cells.
-_MARKUP = r"`~^*_<>\[\]{}$\\|"
+# struck text, HTML, links and spans, attributes, escapes and table cells. Not `$`: beside
+# a number it is a currency's, and marked on the digits alone, `US$5` left one dollar sign
+# facing another across the paragraph, which pandoc read as an equation. Equations are
+# found apart (`equation_spans`), and a number in one takes no mark.
+_MARKUP = r"`~^*_<>\[\]{}\\|"
 _PLAIN_RUN = re.compile(rf"[^{_MARKUP}]+")
 
 
@@ -37,7 +40,7 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
     ]
     if len(runs) == 1:
         return runs[0]
-    if not runs or any(character in found for character in "`*_<>[]{}$\\|"):
+    if not runs or any(character in found for character in "`*_<>[]{}\\|"):
         return None
     if found.count("~") % 2 or found.count("^") % 2:
         return None
@@ -90,15 +93,26 @@ _EQUATION = re.compile(
 )
 
 
-def equation_spans(masked: str) -> list[tuple[int, int]]:
-    return [found.span() for found in _EQUATION.finditer(masked)]
+def equation_spans(masked: str, code: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Where pandoc reads an equation in `masked`, outside the code spans `code`: a dollar
+    sign in code, `` `df$age` ``, opened one that ran to the next code span's and took the
+    prose between."""
+    pieces: list[str] = []
+    at = 0
+    for start, end in code:
+        pieces += [masked[at:start], " " * (end - start)]
+        at = end
+    pieces.append(masked[at:])
+    return [found.span() for found in _EQUATION.finditer("".join(pieces))]
 
 
-# A link's text, brackets one deep inside it, before its target or its reference. A mark
-# there nested a link in a link, and pandoc read the paragraph differently: every mark in
-# it was then taken out, where only this one needs to be.
-_LINK_TEXT = re.compile(r"\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\](?=[(\[])")
+# A link's text, brackets one deep inside it, before its target or its reference, and not
+# an image's. A mark there nested a link in a link, and pandoc read the paragraph
+# differently: every mark in it was then taken out, where only this one needs to be.
+_LINK_TEXT = re.compile(r"(?<!!)\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\](?=[(\[])")
 
 
-def link_text_spans(masked: str) -> list[tuple[int, int]]:
-    return [found.span() for found in _LINK_TEXT.finditer(masked)]
+def link_text_spans(text: str) -> list[tuple[int, int]]:
+    """Link texts in `text` as written: masked, a target that is not a URL, `(#tbl-2)`, is
+    blanked, and its text was not found."""
+    return [found.span() for found in _LINK_TEXT.finditer(text)]

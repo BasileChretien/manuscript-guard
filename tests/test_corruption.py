@@ -1989,3 +1989,48 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
     assert not shown["42"].unmarked
     assert "[[42](#" in annotated
     assert f"Not marked in the text: {READ_OTHERWISE}" in appendix(marks)
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("text", "marked", "unmarked"),
+    [
+        # Found by review of round 1: numbers main marked, and the first version did not.
+        # A citation's locator: pandoc keeps the citation's source text, which citeproc
+        # never prints, and it differed with the mark in.
+        ("Of 120 reports, 14 were serious [@smith2021, p. 33].", {"120", "14"}, {}),
+        # A currency sign is not an equation's: a mark on the digits alone left one dollar
+        # sign facing another across the paragraph.
+        ("The fee was US$5 and the refund US$3, and 7 more.", {"US$5", "US$3", "7"}, {}),
+        ("Costs ranged from $10-$50 per dose.", {"$10-$50"}, {}),
+        # A dollar sign in inline code opens no equation.
+        ("Age (`df$age`) was split into 3 groups and sex (`df$sex`) into 2.", {"3", "2"}, {}),
+        # A link to an anchor: only the number in its text goes unmarked.
+        (
+            "Of 120 reports, 14 were serious, as shown in [Table 2](#tbl-2).",
+            {"120", "14"},
+            {"2": "IN_LINK"},
+        ),
+    ],
+)
+def test_the_annotated_copy_marks_what_main_marked(
+    text: str, marked: set[str], unmarked: dict[str, str]
+) -> None:
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    shown = {mark.shown: mark.unmarked for mark in marks}
+    assert marked <= {s for s, reason in shown.items() if not reason}, shown
+    for number, reason in unmarked.items():
+        assert shown.get(number) == getattr(module, reason), shown

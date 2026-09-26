@@ -5052,9 +5052,9 @@ def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
 
 
 def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -> None:
-    """The plan itself, without pandoc: no move in the section is applied, both moves are
-    named with the note they would strand, none is listed as moved, and applying the plan
-    writes nothing."""
+    """The plan itself, without pandoc: no move in the section is applied, the move made -
+    the note's, by the order diff - is named with the note it would strand, none is listed
+    as moved, and applying the plan writes nothing."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import apply_plan, plan_import
 
@@ -5066,7 +5066,7 @@ def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -
 
     plan = plan_import(known, sent, [sent[1], sent[0]])
     assert plan.held == {"a", "n"}
-    assert dict(plan.held_back) == {"a": "n", "n": "n"}
+    assert dict(plan.held_back) == {"n": "n"}
     assert not plan.moved and not plan.refused
     apply_plan(known, plan)
     assert source.read_text(encoding="utf-8") == text
@@ -5098,3 +5098,82 @@ def test_a_write_that_would_cost_another_paragraph_its_identifier_is_held(
     assert "another paragraph" in plan.refused[0].why[0]
     merge.apply_plan(known, plan)
     assert source.read_text(encoding="utf-8") == text
+
+
+def _plan_of(tmp_path: Path, text: str, back) -> tuple:
+    """A source of paragraphs named by their first word, and the plan for what came back:
+    `back` maps those names to the returned blocks, in their returned order."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.roundtrip import marked_blocks
+
+    source = tmp_path / "main.md"
+    source.write_text(text, encoding="utf-8")
+    known = {body.split()[0]: (source, body, start) for _i, body, start in marked_blocks(text)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    return source, known, merge.plan_import(known, sent, back({b.names[0]: b for b in sent}))
+
+
+def test_a_rewording_that_strands_a_paragraph_once_its_section_is_held_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Review round two, HIGH: held, a section's moves go back, and a rewording there lands
+    in place, where it can do what it did not do where it was moved. Beta, reworded with a
+    `-->` and moved above Alpha, closed nothing there; held back under Alpha, it closed
+    Alpha's `<!--`, and pandoc read the two as one comment. The check looked at no held
+    paragraph again, so the rewording was merged, and the next build lost Beta."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = f"Alpha opens <!-- here.\n\nBeta plain.\n\nGamma plain.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [Block(("Beta",), "Beta --> plain."), by["Alpha"], by["[^cap]:"], by["Gamma"]],
+    )
+    assert "Beta" not in plan.merged
+    refusal = next(r for r in plan.refused if r.name == "Beta")
+    assert refusal.text == "Beta --> plain."
+    assert not merge._unidentified(known, plan)
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_hides_moved_paragraphs_does_not_hold_the_moves(
+    tmp_path: Path,
+) -> None:
+    """Review round two, MEDIUM: Rho's `-->` closed the `<!--` above Alpha and Beta, so the
+    two came out without their identifiers, swapped or not. Every lost paragraph was acted
+    on in one round: the rewording was refused and the swap held back too, blamed on a
+    definition or a heading. A rewording is refused first now, and the plan checked again."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = "Opens <!-- here.\n\nAlpha plain.\n\nBeta plain.\n\n## Heading\n\nRho plain.\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [by["Opens"], by["Beta"], by["Alpha"], Block(("Rho",), "Rho --> plain.")],
+    )
+    assert "Rho" in {refusal.name for refusal in plan.refused}
+    assert not plan.held and not plan.held_back
+    assert {entry[0] for entry in plan.moved} & {"Alpha", "Beta"}
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text.replace(
+        "Alpha plain.\n\nBeta plain.", "Beta plain.\n\nAlpha plain."
+    )
+
+
+def test_a_held_section_names_the_moves_made_not_every_paragraph_they_shift(
+    tmp_path: Path,
+) -> None:
+    """Review round two, LOW: one paragraph moved from the top of a section to below a note
+    shifts every paragraph between, and each was named as moved - nine for one move."""
+    paragraphs = [f"P{number} was written here." for number in range(8)]
+    text = "\n\n".join([*paragraphs, NOTE, RUNS_INTO]) + "\n"
+    _source, _known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [block for name, block in by.items() if name != "P0"] + [by["P0"]],
+    )
+    assert [name for name, _left in plan.held_back] == ["P0"]

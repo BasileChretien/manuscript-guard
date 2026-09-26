@@ -502,7 +502,7 @@ def plan_import(
         vanished=tuple(vanished),
         reordered=tuple(reordered),
     )
-    return _identified(known, plan)
+    return _identified(known, plan, {name: texts[name] for name in merged})
 
 
 _SPLIT = (
@@ -529,9 +529,9 @@ _TWICE = (
     "paragraph cannot be told. Make the edit in the .md."
 )
 _STRANDED = (
-    "reworded so, the next build would give it no identifier: pandoc would read it as a link "
-    "or footnote definition, a heading or a placeholder, and print it as that or not at all, "
-    "and a later edit to it could not come back. Make the edit in the .md."
+    "reworded so, the next build would give it no identifier: with what is around it, pandoc "
+    "would read it as something other than this paragraph - a definition, a heading, part of "
+    "a comment - and a later edit to it could not come back. Make the edit in the .md."
 )
 _STRANDS = (
     "with this change, another paragraph in the file would reach the next build without its "
@@ -688,20 +688,28 @@ def _unidentified(known: dict, plan: Plan) -> dict[str, str]:
     return lost
 
 
-def _identified(known: dict, plan: Plan) -> Plan:
-    """The plan without a write the next build would not find again.
+def _identified(known: dict, plan: Plan, came_back: dict[str, str]) -> Plan:
+    """The plan without a write the next build would not find again. `came_back` is each
+    reworded paragraph's text as it came back from Word, which a refusal shows.
 
-    A paragraph that would come out without its identifier is looked at again. If it was
-    reworded, the rewording is refused: that may be what does it. If not, it is where the
-    moves put it that does it, and no move in its section is applied - holding back its own
-    move alone would push the paragraphs around it into other slots, one of them a
-    paragraph nobody moved. Rewordings there still land, in place. Each round drops a
+    A paragraph that would come out without its identifier is looked at again, one kind of
+    cause at a time, and the plan checked afresh after each, so that nothing is withdrawn
+    for what another write did:
+    - a rewording that comes out so is refused: that may be what does it;
+    - then a moved paragraph that comes out so: it is where the moves put it that does it,
+      and no move in its section is applied - holding back its own move alone would push
+      the paragraphs around it into other slots, one of them a paragraph nobody moved;
+    - then, when a paragraph not written loses its identifier, which write did it cannot be
+      told: the rewordings in that file are refused first, and the moves held after.
+    A held section's rewordings still land, in place, and are checked there too: back in
+    place, a rewording can do what it did not do where it was moved. Each round refuses a
     rewording or holds a section, so it ends.
     """
     held = set(plan.held)
     merged = dict(plan.merged)
     refused = {refusal.name: refusal for refusal in plan.refused}
     held_back: dict[str, str] = {}
+    moves = {entry[0] for entry in plan.moved}
 
     def section(name: str) -> tuple[Path, int]:
         return plan.sections.get(name, (known[name][0], 0))
@@ -711,22 +719,35 @@ def _identified(known: dict, plan: Plan) -> Plan:
         for name, reason in _unidentified(
             known, replace(plan, merged=merged, held=frozenset(held))
         ).items()
-        if name not in held
+        # A held paragraph is written only if it is reworded.
+        if name in merged or name not in held
     }:
+        stages = (
+            {n: why for n, why in lost.items() if why == _STRANDED and n in merged},
+            {n: why for n, why in lost.items() if why == _STRANDED},
+            {n: why for n, why in lost.items() if n in merged},
+            lost,
+        )
         current = _occupants(known, replace(plan, merged=merged, held=frozenset(held)))
-        for name, reason in sorted(lost.items()):
+        for name, reason in sorted(next(stage for stage in stages if stage).items()):
             if name in merged:
                 earlier = refused.get(name)
                 refused[name] = (
                     Refusal(name, earlier.text, (*earlier.why, reason))
                     if earlier
-                    else Refusal(name, merged.pop(name), (reason,))
+                    else Refusal(name, came_back.get(name, merged[name]), (reason,))
                 )
+                del merged[name]
                 continue
             members = {n for n in known if n in plan.reached and section(n) == section(name)}
-            for slot, incoming in current.get(known[name][0], []):
-                if slot in members and incoming != slot:
-                    held_back.setdefault(incoming, name)
+            shifted = [
+                incoming
+                for slot, incoming in current.get(known[name][0], [])
+                if slot in members and incoming != slot
+            ]
+            # The moves the co-author made, not every paragraph they shift along.
+            for incoming in [n for n in shifted if n in moves] or shifted:
+                held_back.setdefault(incoming, name)
             held |= members
     final = replace(plan, merged=merged, held=frozenset(held))
     moving = {

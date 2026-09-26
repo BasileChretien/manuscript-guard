@@ -489,9 +489,9 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             if lost != name:
                 print(f"      (it would leave behind: {opening(lost)})")
         print(
-            "    Not applied, nor any other move in that section. There pandoc would read that "
-            "paragraph as a link or footnote definition, a heading or a placeholder, and print "
-            "it as that or not at all: no identifier, so a later edit to it could not come "
+            "    Not applied, nor any other move in that section. With what would be around it, "
+            "pandoc would read that paragraph as something other than itself - a definition, a "
+            "heading, part of a comment: no identifier, so a later edit to it could not come "
             "back. Move them in the .md yourself."
         )
 

@@ -10,7 +10,9 @@
 # tests/test_timing_budgets.py checks this list against the tests, both ways.
 #
 # Headroom measured 2026-09-26 on a Windows laptop (i7-12800HX) while other test suites ran:
-# the worst of five runs against the budget. CI's runners were up to about four times faster.
+# the worst of five runs against the budget. The three budgets from #41, #54 and #70 were
+# measured idle and beside one full suite, and the worse is given. CI's runners were up to
+# about four times faster.
 
 reads:
   - where: tests/test_audit.py::test_a_long_run_of_spaces_does_not_stall_the_heading_check
@@ -45,6 +47,41 @@ reads:
       Two fixed front matters nested thousands deep, which are refused unread. The regression
       was the YAML loader taking seconds to give up on them.
     headroom: 0.5 to 16 ms against 1 s, 63x or more.
+
+  - where: tests/test_robustness.py::test_a_link_definition_is_recognised_quickly
+    kind: budget
+    budget: 2.0
+    why: >-
+      Seven fixed blocks, each the shape one of `tag`'s earlier readings of a link definition
+      stalled on: exponential in `{a=ba=b...` and in quoted values (a minute and a half for
+      18), six seconds for a run of 1,000 spaces, and a quote opening each line read to the
+      end of the block. The exponential two are no slide from linear that a ratio measures,
+      and all four were caught in review taking seconds to minutes.
+    headroom: >-
+      0.2 to 230 ms against 2 s across the seven, measured idle and beside a full suite. The
+      slowest, 8,000 definitions, has about 9x; the rest 17x or more.
+
+  - where: tests/test_robustness.py::test_table_alignment_row_does_not_stall_on_whitespace
+    kind: budget
+    budget: 2.0
+    why: >-
+      Four fixed lines of whitespace, the rule scan's worst case. The regression was the old
+      pattern backtracking through every way of sharing the spaces out between its pieces:
+      restored, it takes 4.7 to 18 s on these lines, so the budget fails it on each of them
+      here, and on the line of spaces and pipes on a runner four times faster. A ratio would
+      grow the whole rule scan to the floor, about 3 s a case, to see the same thing.
+    headroom: 10 to 110 ms against 2 s, measured idle and beside a full suite, 18x or more.
+
+  - where: tests/test_corruption.py::test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check
+    kind: budget
+    budget: 5
+    why: >-
+      One fixed front matter of 22 lines in which each mapping merges the one before it
+      twice, so the work of expanding it doubles with every line: exponential in the input,
+      38 s when the block was built into Python values. No ratio is linear in it.
+    headroom: >-
+      0.1 to 91 ms against 5 s, measured idle and beside a full suite; the first, cold run is
+      the slowest. 55x or more.
 
   - where: tests/test_robustness.py::test_an_enormous_figure_sibling_is_not_read_whole
     kind: budget

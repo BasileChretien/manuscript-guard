@@ -136,6 +136,24 @@ def test_a_rule_leaves_a_real_measurement_alone(rule_id: str, text: str, atom: s
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "escapes"),
+    [
+        pytest.param(r"p \< 0.05 and ROR \> 2", [2, 18], id="escaped"),
+        pytest.param(r"a \\> 3", [], id="a-backslash-printed-before-it"),
+        pytest.param(r"a \\\> 3", [4], id="a-backslash-printed-then-an-escape"),
+        pytest.param(r"`a \> 3` and \> 3", [13], id="printed-in-code"),
+        pytest.param("```\na \\> 3\n```", [], id="printed-in-a-listing"),
+    ],
+)
+def test_only_a_backslash_that_prints_nothing_escapes_a_comparison(
+    text: str, escapes: list[int]
+) -> None:
+    from manuscript_guard.text.masking import comparison_escapes
+
+    assert comparison_escapes(text) == escapes
+
+
 def _shapes(kind: str):
     """The cases that name no atom: a rule for a line with no number in it, such as a
     table's separator row, has none to classify. They used to be skipped, so the one such

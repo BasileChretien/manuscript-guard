@@ -215,6 +215,11 @@ def front_matter_end(text: str) -> int:
     return opening.end() if opening else 0
 
 
+def without_front_matter(text: str) -> str:
+    """`text` after its front matter: the part of a source file the build prints."""
+    return text[front_matter_end(text) :]
+
+
 def fenced_blocks(text: str) -> list[Fence]:
     """The fenced blocks of the front matter and of the body, none opening in one and
     closing in the other. A code block in an abstract is still code: looked for in the body

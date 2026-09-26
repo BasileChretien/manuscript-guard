@@ -2473,6 +2473,15 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
+- **A text box anchored in a reference heading is cut with the list.** A text box is read
+  after the paragraph that holds it, so one anchored in a styled `References` heading is
+  the list's first line and is not audited. The report gives the range of lines it cut
+  under "Not audited", and nothing there singles out the box. When text boxes were read
+  where they are anchored, one anchored after the heading's text was cut the same way. One
+  anchored before it ran into the heading ("Figure 1: n = 34References"), so no list was
+  found: the entries with a reference's shape were listed apart and the rest were audited
+  as prose. A floating box has an anchor but no place in the text, and reading it before
+  its paragraph instead would cut one anchored in the heading that ends a list.
 - **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
   mark was deleted into the first cell of a table after it. The audit joins a paragraph only
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
@@ -3124,9 +3133,18 @@ Closed since, and why each mattered:
     definition to the next build and prints nothing, while `import` reported the move as
     applied. The text stays in the source. Nothing yet refuses a change after which a
     paragraph `import` wrote would carry no identifier.
-  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
-    source, so a move across it is refused as a move past a heading, a table or a figure.
-    Safe, and the reason given is wrong.
+  - *A definition between two paragraphs is no section boundary.* It renders nothing in the
+    body and pandoc reads it wherever it stands, so a move across it is applied: the
+    paragraphs change places, and the definition stays where it was written. As untagged
+    source text it first counted as a boundary, and such a move was refused as one past a
+    heading, a table or a figure. `merge` asks `only_definitions_between`, by the test
+    `_blocks` marks by, so a line in a definition's shape that is marked - in a shape pandoc
+    could read otherwise, or a note that would run on into what is below - is a paragraph,
+    not something between two. And a line pandoc does not take for blank - one holding only
+    a no-break space - is a boundary wherever it stands between the two, above a definition
+    or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
+    across a definition can also carry a note marked for what is below it to where it
+    becomes a definition (above).
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

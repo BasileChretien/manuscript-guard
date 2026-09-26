@@ -7257,6 +7257,117 @@ def test_import_merges_prose_that_only_opens_like_a_definition(
 
 @needs_pandoc
 @pytest.mark.parametrize(
+    ("definition", "second", "part", "resolved"),
+    [
+        pytest.param(
+            f"[reg]: {REGISTRY}",
+            "Omega sees [the registry][reg].",
+            "word/_rels/document.xml.rels",
+            f'Target="{REGISTRY}"',
+            id="link",
+        ),
+        pytest.param(
+            "[^cap]: Capped at forty milligrams.",
+            "Omega was capped.[^cap]",
+            "word/footnotes.xml",
+            "Capped at forty milligrams.",
+            id="footnote",
+        ),
+    ],
+)
+def test_a_paragraph_moved_across_a_definition_is_moved(
+    project: Path, tmp_path: Path, definition: str, second: str, part: str, resolved: str
+) -> None:
+    """A definition renders nothing in the body, and pandoc reads it wherever it stands.
+    As untagged source text between two paragraphs it counted as a section boundary, so a
+    co-author's move across it was refused as a move past a heading, a table or a figure.
+    The paragraphs now change places around it, and it still resolves."""
+    from manuscript_guard.cli import main
+
+    first = "Alpha comes first."
+    with_paragraphs(project, first, definition, second)
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        alpha = next(p for p in paragraphs if "Alpha comes first" in p)
+        omega = next(p for p in paragraphs if "Omega" in p)
+        return xml.replace(omega, "", 1).replace(alpha, omega + alpha, 1)
+
+    returned = rewrite(built(project), tmp_path / "moved.docx", swap)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"{second}\n\n{definition}\n\n{first}\n\n" in text
+    assert resolved in _docx_part(built(project), part)
+
+
+@needs_pandoc
+def test_a_definition_beside_a_line_pandoc_prints_leaves_an_edit_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round four: a definition over a line holding only a no-break space still counted as
+    a definition between two paragraphs, though `_blocks` leaves it unmarked for that line,
+    and pandoc prints the line as a block of its own. So the gap made no new section, the
+    section held an untagged block, and an edit to the paragraph above was refused as one
+    that reaches Word as more than one paragraph. On #54 alone the edit merges."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Alpha comes first.",
+        f"[reg]: {REGISTRY}\n{chr(0xA0)}",
+        f"[other]: {REGISTRY}/o",
+        "Omega sees [the registry][reg] and [o][other].",
+    )
+    edits = {"Alpha comes first.": "Alpha now comes first."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "Alpha now comes first.\n\n" in text
+
+
+def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
+    project: Path,
+) -> None:
+    """Blank lines and definitions are no boundary; a table or a heading is. A definition
+    under a line pandoc does not take for blank is prose to pandoc, not a definition: text
+    between two paragraphs that holds one is a boundary, as any untagged text is."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.merge import _sections
+    from manuscript_guard.roundtrip import only_definitions_between, tagged_paragraphs
+
+    assert only_definitions_between(f"\n\n[late]: {REGISTRY}/late\n\n")
+    assert not only_definitions_between(f"\n\n{chr(0xA0)}\n[late]: {REGISTRY}/late\n\n")
+    # Over such a line, or under one with an empty line between, as `_blocks` leaves it.
+    for between in (f"\n{chr(0xA0)}\n\n", f"\n\n{chr(0xA0)}\n\n", f"\n\n{chr(0x3000)}\n\n"):
+        assert not only_definitions_between(
+            f"\n\n[a]: {REGISTRY}/a{between}[b]: {REGISTRY}/b\n\n"
+        )
+    pieces = [
+        "Alpha.",
+        f"[reg]: {REGISTRY}",
+        "[^cap]: A note.",
+        "Beta.",
+        "{{table.baseline}}",
+        "Gamma.",
+        f"[other]: {REGISTRY}/other",
+        "# Heading",
+        "Delta.",
+    ]
+    (project / "manuscript" / "sections.md").write_text("\n\n".join(pieces) + "\n", "utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name: entry
+        for name, entry in tagged_paragraphs(loaded).items()
+        if entry[0].name == "sections.md"
+    }
+    section = {known[name][1]: number for name, (_path, number) in _sections(known).items()}
+    assert section["Alpha."] == section["Beta."]
+    assert section["Gamma."] == section["Beta."] + 1
+    assert section["Delta."] == section["Gamma."] + 1
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
     ("paragraph", "was", "now", "expected"),
     [
         pytest.param(

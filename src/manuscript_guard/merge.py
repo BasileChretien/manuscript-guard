@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import Alignment, align, moves
+from manuscript_guard.roundtrip import Alignment, align, moves, only_definitions_between
 
 
 @dataclass(frozen=True)
@@ -328,6 +328,11 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
     paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
     Discussion to the Introduction pushed one paragraph out of every section in between. A
     section is therefore the unit a move is applied within.
+
+    A link or footnote definition between two paragraphs is no boundary. It renders nothing
+    in the body, and pandoc reads it wherever it stands; counted as untagged text, it made a
+    move across it a move into another section, refused as one past a heading, a table or a
+    figure. The paragraphs change places around it, and it stays where it was written.
     """
     out: dict[str, tuple[Path, int]] = {}
     texts: dict[Path, str] = {}
@@ -340,7 +345,11 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
         if path not in texts:
             texts[path] = path.read_text(encoding="utf-8")
             section[path] = 0
-        elif name in held or alone[path] or texts[path][end[path] : start].strip():
+        elif (
+            name in held
+            or alone[path]
+            or not only_definitions_between(texts[path][end[path] : start])
+        ):
             section[path] += 1
         out[name] = (path, section[path])
         end[path] = start + len(para)
@@ -700,8 +709,10 @@ def plan_import(
     `known` holds the paragraphs to compare, and `every` all of the manuscript's, compared
     or not, for what only the source can say: which section a paragraph is in. `built` is
     every identifier the document was built with, in its order, when it records them.
-    `unsure` names paragraphs a document that records nothing may never have carried
-    (`roundtrip.Numbering.unsure`).
+    `unsure` names paragraphs the document may have carried without an identifier: in one
+    that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
+    in one that does, those its record does not hold. Missing from it, each is still weighed
+    as a join into the paragraph before it.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither

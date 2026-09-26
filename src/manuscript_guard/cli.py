@@ -472,7 +472,8 @@ def cmd_import(args: argparse.Namespace) -> int:
     # document may never have carried is asked about only in the document it belongs to:
     # a supplement does not lack the paper's.
     present = {n for b in returned if not b.table for n in b.names}
-    unsure = numbered.unsure & {n for b in sent for n in b.names}
+    building = {n for b in sent for n in b.names}
+    unsure = numbered.unsure & building
     trusted = numbered.trusted | (unsure & present)
     # A followed paragraph is compared under the identifier the document carries, so the
     # fresh builds and the source are read under those names too. A paragraph the document
@@ -497,15 +498,25 @@ def cmd_import(args: argparse.Namespace) -> int:
         for name, entry in every.items()
         if name in trusted or name in numbered.followed
     }
+    reference = renamed(sent)
+    # And one the document's record does not hold, which is every paragraph of the fresh
+    # build compared under no identifier the document carries: its block had none when it
+    # was built - a list item made a paragraph since, or a release that tags more kinds of
+    # block - or it is one the source added or moved. Never compared, it is still weighed as
+    # a join into the paragraph above it, as main weighs every paragraph; left out, the join
+    # merged as a rewording and its text was in the source twice.
+    untagged_then = (
+        {n for b in reference for n in b.names} - set(known) if numbered.recorded else set()
+    )
     plan = plan_import(
         known,
-        renamed(sent),
+        reference,
         returned,
         renamed(marked),
         abbreviated,
         every=every,
         built=numbered.sent,
-        unsure=unsure,
+        unsure=unsure | untagged_then,
     )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table

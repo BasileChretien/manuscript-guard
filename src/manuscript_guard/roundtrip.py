@@ -949,6 +949,25 @@ def _definitions(block: str, above: str, below: str) -> bool:
     return _blank_above(above) and _only_definitions(block, below)
 
 
+def only_definitions_between(text: str) -> bool:
+    """Whether `text`, the source between two paragraphs, holds nothing but blank lines and
+    the definitions `tag` leaves unmarked for being definitions - nothing that renders in the
+    body.
+
+    `merge` asks it where a section ends, by the same test `_blocks` marks by: a definition
+    is no boundary, because pandoc reads it wherever it stands. A line pandoc does not take
+    for blank - one holding only a no-break space - is a boundary, as `_blocks` has it: it
+    leaves the blocks on both sides unmarked, whatever they are, and pandoc prints the line.
+    """
+    pieces = _BREAK.split(text)
+    return all(
+        re.search(r"[^ \t\n]", piece) is None
+        if index % 2
+        else not piece.strip() or _definitions(piece, *_around(pieces, index))
+        for index, piece in enumerate(pieces)
+    )
+
+
 def _only_definitions(block: str, below: str) -> bool:
     """Whether every line of a block is a link or footnote definition in a shape pandoc
     can only read as one, the links before the notes, and no note takes in what is below.

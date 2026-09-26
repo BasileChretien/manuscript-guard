@@ -906,7 +906,14 @@ predecessor:
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
   reading it raw reports corrections as errors and misses what will be published. Text moved
   away goes with the deletions, and so does a deleted line break or tab: read as a space, it
-  parted a minus from its number.
+  parted a minus from its number. A paragraph whose mark was deleted or moved away runs on
+  into the next one; read as two lines, "-0.5" and "1" matched two outputs where the paper
+  prints -0.51. The joined line takes the last paragraph's style, and so ends a reference
+  list only if that one is a heading. That is what Word 16 shows once the change is
+  accepted: when it deletes a mark itself it first copies the first paragraph's style onto
+  the second, keeping the old one in `w:pPrChange` (verified 2026-09-24). A text box is
+  read after the paragraph holding it, not where it is anchored, which split that paragraph
+  in two.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -1381,9 +1388,13 @@ each is caught the same way, one paragraph at a time. What is left out still cou
 is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
 is one whose next paragraph as sent is left out and did not come back, which a join retyped
 across the boundary looks like: merged as a rewording, either put the other paragraph's
-words in the source twice. A document that records nothing has no order as sent, and the
-one paragraph it can leave out without trusting the rest less, a value it may never have
-carried, is weighed as a join into the paragraph before it, by its text, as any other is.
+words in the source twice. A paragraph the document carried with no identifier, which has
+one now - a list item made a paragraph since the build, or a block a later release tags - is
+not in its record and so never compared; it is weighed as a join into the paragraph before
+it, by its text, as main weighs every paragraph. Left out, the co-author's join of it into
+that paragraph merged as a rewording, exited 0, and put its text in the source twice. A
+document that records nothing has no order as sent, and the one paragraph it can leave out
+without trusting the rest less, a value it may never have carried, is weighed the same way.
 A number for the rules was tried first and had to be bumped by every change to them; three
 reviews each found a change that would not have.
 
@@ -2503,13 +2514,20 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
-- **The audit reads a deleted paragraph mark as a paragraph break.** Once the change is
-  accepted Word joins the two paragraphs, and it does the same for a mark moved away; the
-  audit reads them as two lines, so the numbers either side of the join are read apart:
-  "−", a deleted mark, then "0.30" matches an output of +0.30, and "-0.5", a deleted mark,
-  then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
-  (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
-  take one of two styles, and a heading style is what ends a reference list.
+- **A text box anchored in a reference heading is cut with the list.** A text box is read
+  after the paragraph that holds it, so one anchored in a styled `References` heading is
+  the list's first line and is not audited. The report gives the range of lines it cut
+  under "Not audited", and nothing there singles out the box. When text boxes were read
+  where they are anchored, one anchored after the heading's text was cut the same way. One
+  anchored before it ran into the heading ("Figure 1: n = 34References"), so no list was
+  found: the entries with a reference's shape were listed apart and the rest were audited
+  as prose. A floating box has an anchor but no place in the text, and reading it before
+  its paragraph instead would cut one anchored in the heading that ends a list.
+- **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
+  mark was deleted into the first cell of a table after it. The audit joins a paragraph only
+  to the next paragraph beside it, so a table, or a content control, ends the line, and a
+  number split across the two is read in two pieces. Joining into the cell would mean
+  moving the row and cell separators the reader writes before the cell's text.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
@@ -3171,9 +3189,18 @@ Closed since, and why each mattered:
     definition to the next build and prints nothing, while `import` reported the move as
     applied. The text stays in the source. Nothing yet refuses a change after which a
     paragraph `import` wrote would carry no identifier.
-  - *A definition between two paragraphs is a section boundary.* It is untagged text in the
-    source, so a move across it is refused as a move past a heading, a table or a figure.
-    Safe, and the reason given is wrong.
+  - *A definition between two paragraphs is no section boundary.* It renders nothing in the
+    body and pandoc reads it wherever it stands, so a move across it is applied: the
+    paragraphs change places, and the definition stays where it was written. As untagged
+    source text it first counted as a boundary, and such a move was refused as one past a
+    heading, a table or a figure. `merge` asks `only_definitions_between`, by the test
+    `_blocks` marks by, so a line in a definition's shape that is marked - in a shape pandoc
+    could read otherwise, or a note that would run on into what is below - is a paragraph,
+    not something between two. And a line pandoc does not take for blank - one holding only
+    a no-break space - is a boundary wherever it stands between the two, above a definition
+    or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
+    across a definition can also carry a note marked for what is below it to where it
+    becomes a definition (above).
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

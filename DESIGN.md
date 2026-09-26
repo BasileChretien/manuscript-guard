@@ -2984,6 +2984,20 @@ Closed since, and why each mattered:
   from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
   blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
   proof that nothing else does.
+- **A test that times something is found by its syntax, and only in `tests/`.**
+  `tests/test_timing_budgets.py` fails when a test reads a clock in `time`, or uses
+  `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
+  budget on a fixed input, saying why a ratio would not do and how much headroom it was
+  measured to have, or as a timestamp that times nothing. Like the exemption inventory it
+  runs both ways, and it checks that each listed budget is the number its test asserts. It
+  does not see a clock read any other way: `datetime.now()`, `os.times()`, a clock fetched
+  with `getattr`, one in `src/` that a test calls, or a timing a subprocess reports. And a
+  ratio has a blind spot that a budget does not. Inputs timed together as they grow hide a
+  quadratic in one of them under the linear cost of the rest, which is why the eighteen
+  attribute-block lines keep a 5 s budget: `_escaped` scanning back from the start of the
+  line passed `check_linear` there and took 35 s. The headroom was measured on one laptop
+  under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is thin, and
+  most of what they time is `check` itself rather than the hostile input.
 
 ## Still open
 

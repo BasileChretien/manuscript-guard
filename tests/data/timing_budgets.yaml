@@ -1,0 +1,81 @@
+# Every place a test reads a clock, outside `check_linear` in tests/conftest.py.
+#
+# A claim that something runs in linear time belongs in `check_linear` (the `assert_linear`
+# fixture): it times each size several times, in alternation, and cannot be decided by one
+# slow sample. A budget is right only for a fixed input, where the failure it guards against
+# is a hang or catastrophic backtracking many times over the budget, and where the budget
+# has room to spare. Each budget says why it is not a ratio and how much headroom it has, as
+# measured. A timestamp is not timing at all.
+#
+# tests/test_timing_budgets.py checks this list against the tests, both ways.
+#
+# Headroom measured 2026-09-26 on a Windows laptop (i7-12800HX) while other test suites ran:
+# the worst of five runs against the budget. CI's runners were up to about four times faster.
+
+reads:
+  - where: tests/test_audit.py::test_a_long_run_of_spaces_does_not_stall_the_heading_check
+    kind: budget
+    budget: 0.5
+    why: >-
+      Two fixed lines of the kind `pdftotext -layout` writes. The regression was catastrophic
+      backtracking, 26 s for one line, not a slide from linear.
+    headroom: 0.06 to 0.71 ms against 0.5 s, 700x or more.
+
+  - where: tests/test_audit.py::test_a_long_attribute_block_does_not_stall_the_heading_check
+    kind: budget
+    budget: 5.0
+    why: >-
+      Eighteen fixed lines of 20,000 characters. Timed together as they grow, a quadratic in
+      one of them hides among the rest: `_escaped` scanning back from the start of the line
+      passed `assert_linear` and takes 35 s here, which this budget fails.
+    headroom: 297 to 398 ms against 5 s, about 13x. At its old budget of 0.5 s it had 1.3x.
+
+  - where: tests/test_audit.py::test_a_long_chain_of_numbers_does_not_stall_the_interval_split
+    kind: budget
+    budget: 0.5
+    why: >-
+      Three fixed tokens. The regression multiplied the work per segment, 100 s for a
+      72-character token: exponential, far past any budget, not a slide from linear.
+    headroom: 0.75 to 1.42 ms against 0.5 s, about 350x.
+
+  - where: tests/test_robustness.py::test_deeply_nested_front_matter_is_not_composed
+    kind: budget
+    budget: 1.0
+    why: >-
+      Two fixed front matters nested thousands deep, which are refused unread. The regression
+      was the YAML loader taking seconds to give up on them.
+    headroom: 0.5 to 16 ms against 1 s, 63x or more.
+
+  - where: tests/test_robustness.py::test_an_enormous_figure_sibling_is_not_read_whole
+    kind: budget
+    budget: 20.0
+    constant: BUDGET_SECONDS
+    why: >-
+      One fixed 16 MB sibling file, which must not be read whole. A size cap, not a scan: the
+      failure it guards against is memory and time without limit.
+    headroom: 0.83 s against 20 s, about 24x.
+
+  - where: tests/test_robustness.py::timed_check
+    kind: budget
+    budget: 20.0
+    constant: BUDGET_SECONDS
+    why: >-
+      A whole `check` run on a hostile project, for eleven tests: the pathological prose
+      cases, an enormous source stamp and a FIFO. It guards against a hang or a blow-up
+      anywhere in the gates, which a ratio over one scan cannot see.
+    headroom: >-
+      5.7 to 10.9 s against 20 s, 1.8 to 3.5x, and one run took 20.9 s under heavy load.
+      Most of that is `check` itself, not the hostile input; a follow-up task is to budget
+      what the input adds over a plain `check`.
+
+  - where: tests/test_corruption.py::test_modified_analysis_script_is_caught
+    kind: timestamp
+    why: Sets a script's modification time ten seconds ahead. Times nothing.
+
+  - where: tests/test_corruption.py::test_touching_a_script_without_changing_it_is_not_a_change
+    kind: timestamp
+    why: Sets a script's modification time ten seconds ahead. Times nothing.
+
+  - where: tests/test_methods.py::test_touching_a_file_without_changing_it_is_not_drift
+    kind: timestamp
+    why: Sets a file's modification time a hundred seconds ahead. Times nothing.

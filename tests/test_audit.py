@@ -899,8 +899,11 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
 
     from manuscript_guard.audit import is_bibliography_heading
 
-    # 20,000 characters each: a quadratic reading of any of them takes seconds, and a linear
-    # one a few milliseconds even item by item in Python.
+    # 20,000 characters each. A linear reading of all of them took 300 to 400 ms on a loaded
+    # machine, which the old 0.5 s budget barely covered; a quadratic one takes tens of
+    # seconds (`_escaped` scanning back from the start of the line: 35 s). A budget rather
+    # than `assert_linear`, because a quadratic in one line alone hides among the eighteen
+    # when they are timed together as they grow.
     n = 10000
     started = time.perf_counter()
     for line in (
@@ -924,7 +927,7 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
         '# References {k=" ' + "a" * 2 * n + '"}',
     ):
         assert not is_bibliography_heading(line, marked=True)
-    assert time.perf_counter() - started < 0.5
+    assert time.perf_counter() - started < 5.0
 
 
 def test_a_number_on_a_line_misread_as_a_reference_is_still_shown(tmp_path: Path) -> None:

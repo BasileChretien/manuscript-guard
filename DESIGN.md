@@ -3370,9 +3370,28 @@ Closed since, and why each mattered:
   after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
   speed shows only at a size where it outweighs the per-item work, and one in Python fails
   quickly from a small size but takes minutes from a large one, so the size a test starts
-  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
-  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
-  proof that nothing else does.
+  from is its sensitivity as well as its cost. Three scans are checked twice, from a small
+  start and a large one: paragraph tagging (10 blocks and 1,000), the comment scanner (1,000
+  characters and 20,000) and fences whose openers each narrow (5 openers and 25). They are
+  tripwires for the scans that went quadratic before, not a proof that nothing else does.
+- **A test that times something is found by its syntax, and only in `tests/`.**
+  `tests/test_timing_budgets.py` fails when a test reads a clock in `time`, or uses
+  `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
+  budget on a fixed input, saying why a ratio would not do and how much headroom it was
+  measured to have, or as a timestamp that times nothing. Like the exemption inventory it
+  runs both ways, and it checks that each listed budget is the number the test holds its
+  timing to. It does not see a clock read any other way: `datetime.now()`, `os.times()`, a
+  clock fetched with `getattr` or `importlib`, a module bound to a second name (`clock =
+  time`), one in `src/` that a test calls, or a timing a subprocess reports. It judges each
+  top-level function whole, so a second timing added to a listed test is excused with the
+  first. And a ratio has a blind spot that a budget does not: a part of the input that does
+  not grow. If that part alone reaches the 20 ms floor, the input is never grown, and the
+  ratio compares two times made mostly of the same constant. The attribute-block lines hid
+  `_escaped` scanning back from the start of the line that way, behind the one line of
+  eighteen whose run of backslashes is as long at any size. So the seventeen that grow are
+  timed by `check_linear`, and all eighteen keep a 5 s budget. The headroom was measured on
+  one laptop under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is
+  thin, and most of what they time is `check` itself rather than the hostile input.
 
 ## Still open
 

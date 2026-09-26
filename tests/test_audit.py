@@ -1009,19 +1009,11 @@ def test_a_long_run_of_spaces_does_not_stall_the_heading_check() -> None:
     assert time.perf_counter() - started < 0.5
 
 
-def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
-    """A marked heading's attribute block is read item by item, each character once. None
-    of these is a heading, and most fail only at their last character, where a pattern with
-    a quantifier inside a quantifier would try every way of dividing the run between items."""
-    import time
-
-    from manuscript_guard.audit import is_bibliography_heading
-
-    # 20,000 characters each: a quadratic reading of any of them takes seconds, and a linear
-    # one a few milliseconds even item by item in Python.
-    n = 10000
-    started = time.perf_counter()
-    for line in (
+def attribute_blocks(n: int) -> list[str]:
+    """Marked headings whose attribute blocks grow with `n`, about 2n characters each. None
+    of them is a heading, and most fail only at their last character, where a pattern with a
+    quantifier inside a quantifier would try every way of dividing the run between items."""
+    return [
         "# References {" + "#a" * n + " !}",
         "# References {" + ".a" * n + "!}",
         "# References {" + "a" * 2 * n + "}",
@@ -1036,13 +1028,40 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
         "# References {k=" + "\\}" * n + " !}",
         "# References {k=" + "\\" * (2 * n + 1) + "}",
         "# References " + "\\{" * n + "}",
-        "# References " + ("\\" * 999 + "{") * 20 + "}",
         "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
         "# References {k=" + "\u00a0" * 2 * n + " !}",
         '# References {k=" ' + "a" * 2 * n + '"}',
-    ):
+    ]
+
+
+def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
+    """A marked heading's attribute block is read item by item, each character once."""
+    import time
+
+    from manuscript_guard.audit import is_bibliography_heading
+
+    # 20,000 characters each. A linear reading of all eighteen took 300 to 400 ms on a loaded
+    # machine, which the old 0.5 s budget barely covered; a quadratic one takes tens of
+    # seconds (`_escaped` scanning back from the start of the line: 35 s). The run of 999
+    # backslashes is as long whatever `n` is, which is why it is timed here and not below.
+    started = time.perf_counter()
+    for line in (*attribute_blocks(10000), "# References " + ("\\" * 999 + "{") * 20 + "}"):
         assert not is_bibliography_heading(line, marked=True)
-    assert time.perf_counter() - started < 0.5
+    assert time.perf_counter() - started < 5.0
+
+
+def test_the_heading_check_reads_an_attribute_block_in_linear_time(assert_linear) -> None:
+    """The blocks above that grow, timed as they grow. Timed with the run of 999 backslashes
+    among them, `_escaped` scanning back from the start of the line passed: that one line took
+    over the 20 ms floor by itself, so the input never grew, and the ratio compared two times
+    made mostly of the same constant. Without it, the same rescan reads 64 times the time."""
+    from manuscript_guard.audit import is_bibliography_heading
+
+    def read(lines: list[str]) -> None:
+        for line in lines:
+            is_bibliography_heading(line, marked=True)
+
+    assert_linear(attribute_blocks, read, 50, "the heading check, by attribute block")
 
 
 def test_a_number_on_a_line_misread_as_a_reference_is_still_shown(tmp_path: Path) -> None:

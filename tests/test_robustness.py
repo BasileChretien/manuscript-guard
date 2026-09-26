@@ -96,25 +96,28 @@ def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
         assert_linear(opener_lines, len, 10, "len")
 
 
-def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
+def narrowing_openers(openers: int) -> str:
+    """Unclosed openers, each narrower than the last, with a long listing's worth of lines
+    under each."""
+    return "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
+
+
+def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear) -> None:
     """The shortcut that fixed the test above rejected only openers *wider* than one already
     known to have no closer. Openers each narrower than the last still read to the end of
     the file, and 400 KB of them took 33 seconds: the binding parser now reads fences
-    whenever a paper holds `<!--`, so that reached `parse` too."""
+    whenever a paper holds `<!--`, so that reached `parse` too.
+
+    Checked twice, like paragraph tagging. That reading, in Python, fails in ten seconds
+    from 5 openers and takes three and a half minutes from 25. The same reading done by one
+    regex search per opener, at C speed, passes from 5 and fails from 25. It was timed once
+    per size at 25 and 200 openers."""
     from manuscript_guard.text.fences import fenced_spans
 
-    def measure(openers: int) -> float:
-        text = "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
-        started = time.perf_counter()
-        fenced_spans(text)
-        return time.perf_counter() - started
-
-    # Eight times the input, because at four the quadratic scanner's constant overhead kept
-    # its ratio near 12-16, too close to a linear one's for a threshold to tell them apart.
-    measure(5)  # warm the caches
-    small = max(measure(25), 1e-3)
-    large = measure(200)
-    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+    for start in (5, 25):
+        assert_linear(
+            narrowing_openers, fenced_spans, start, f"narrowing fence openers from {start}"
+        )
 
 
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])

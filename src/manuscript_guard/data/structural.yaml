@@ -100,12 +100,14 @@ structural:
       each dragging the preceding word in with it because an atom runs to the next space.
       The bracketed run is integers, commas, spaces and dashes only, so nothing with a
       decimal point can hide inside the brackets — "[0.72-0.82]", a confidence interval some
-      journals bracket, is not matched. A whole-number range is, "64 [55-72]" read as a
-      citation, and so is a value glued to the marker, which is in the span's prefix; neither
-      is audited (DESIGN.md, Known gaps).
-    # No `]` in the prefix: it made `3.40][12]` one match, and a bound written hard against
-    # the marker, its bracket closed, was filed as part of the citation and never audited.
-    pattern: '[\w.%)]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
+      journals bracket, is not matched. The word before the marker is spanned, not a number:
+      the audit reads "9.99)[12]" as the value 9.99 and the marker, and a whole-number range
+      after the value it encloses, "64 [55-72]", as an interval.
+    # No digit in the prefix: it filed a value glued to a marker, "(95% CI 1.20, 9.99)[12]",
+    # as part of the citation. No `]` either: it made `3.40][12]` one match. `_` is a word
+    # character here, for `_E. coli_[3]`. A bracketed word before the marker, allowed for
+    # `[SmPC][4]`, took `½` and an interval, `[IQR][55-72]`, with it; that marker is listed.
+    pattern: '(?:[^\W\d]|[.%)])*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]'
 
   - id: orcid
     why: >-

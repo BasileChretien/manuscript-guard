@@ -20,8 +20,12 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.masking import mask
+from manuscript_guard.text.masking import (
+    fenced_blocks,
+    front_matter_abstract,
+    front_matter_problem,
+    mask,
+)
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chain_at, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -102,6 +106,16 @@ def check_numbers(
         text = path.read_text(encoding="utf-8")
         loose = 0
         headings = heading_index(text)
+
+        # Read as prose until it is fixed, a `# Methods` in it heads a section here while
+        # pandoc refuses the whole file; see `front_matter_problem`.
+        problem = front_matter_problem(text)
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
+        # Read here and printed by nothing: the build strips the block.
+        abstract = front_matter_abstract(text)
+        if abstract is not None:
+            report = report.with_findings(abstract_in_header(path, *abstract, GATE))
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -246,7 +260,7 @@ def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> 
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
-    for fence in fenced_spans(text):
+    for fence in fenced_blocks(text):
         line = text.count("\n", 0, fence.start) + 1
         body = text[fence.body_start : fence.body_end]
 
@@ -332,6 +346,40 @@ def _paper_yaml_prose(project: Project, classifier: Classifier) -> Report:
 #: A sentence, for judging whether two bindings are quoted as one interval. Line breaks do
 #: not end one: every manuscript here is hard-wrapped.
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def unreadable_header(path: Path, reason: str, line: int, gate: str) -> Finding:
+    """A file that opens with a `---` block pandoc cannot read as YAML, and so refuses."""
+    return Finding(
+        gate=gate,
+        code="front-matter-unreadable",
+        message="the block at the top of this file opens like YAML front matter, and "
+        "pandoc cannot read it as YAML, so it refuses to build the paper",
+        path=path,
+        line=line,
+        context=reason,
+        hint="fix the YAML, or close the header with `---` or `...` before the text "
+        "starts; a line of dashes meant as a rule needs a blank line under it",
+    )
+
+
+def abstract_in_header(path: Path, line: int, words: str, gate: str) -> Finding:
+    """An abstract in a file's front matter, which the build does not print.
+
+    Refused rather than printed from the header: under an Abstract heading it prints, is
+    counted against the journal's abstract limit, and carries the paragraph identifiers
+    the Word import maps edits back with, like the rest of the text.
+    """
+    return Finding(
+        gate=gate,
+        code="front-matter-abstract",
+        message=f"{path.name} has an abstract in its front matter, which the build does not print",
+        path=path,
+        line=line,
+        context=words[:120],
+        hint="move it out of the front matter and under a `# Abstract` heading, where "
+        "the build prints it and the journal's abstract limit counts it",
+    )
 
 
 def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text: str) -> Report:

@@ -621,7 +621,10 @@ def _absorbed(now: str, other: str, was: str) -> bool:
     bookmark with the selection, so the second paragraph looks deleted and the first merely
     longer. Two explanations fit a paragraph that changed beside one that vanished - reworded
     while its neighbour was deleted, or joined with its neighbour - and the one whose text
-    the returned paragraph resembles more is taken, a tie counting as the join.
+    the returned paragraph resembles more is taken, a tie counting as the join. Except a tie
+    at nothing: a rewording sharing no word with either paragraph holds none of the
+    neighbour's words, which a join does, and counted as one, "Not applicable." rewritten whole
+    above a paragraph added since the build was refused where main merged it.
 
     Two earlier versions looked for the neighbour's words instead, and each was defeated in
     a round of review: one unbroken run of six words was split by a single edited word, and
@@ -633,7 +636,7 @@ def _absorbed(now: str, other: str, was: str) -> bool:
         return False
     alone = difflib.SequenceMatcher(a=before, b=mine, autojunk=False).ratio()
     together = difflib.SequenceMatcher(a=before + theirs, b=mine, autojunk=False).ratio()
-    return together >= alone
+    return together >= alone and together > 0
 
 
 def _joined_without_bookmark(

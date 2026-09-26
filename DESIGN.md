@@ -1398,6 +1398,21 @@ without trusting the rest less, a value it may never have carried, is weighed th
 A number for the rules was tried first and had to be bumped by every change to them; three
 reviews each found a change that would not have.
 
+**A paragraph the source moved is followed, where that is certain.** An identifier is
+positional, so one paragraph added to the source since the build moved every identifier
+below it by a block: each named its neighbour, and every co-author edit below it was named
+as not compared, to be ported by hand. `import` now follows such a paragraph to where it
+stands (`roundtrip._repointed`): by its text, when that text is found once in its file both
+then and now, the rule a paragraph is trusted in place by; otherwise by its text and the
+block before it, when that pair is found once in both. And only along the order the
+document was built in. A paragraph the author moved, followed, came back from Word in its
+old place, which `import` reads as the co-author moving it back, and `--apply` would have
+undone the author's move. So a paragraph the author moved relative to the others, one the
+author reworded, and one whose text and block before both repeat are still not compared. A
+followed paragraph is compared, moved, merged and anchored under the identifier the document
+carries: the fresh builds and the source are read under those names for the comparison,
+and `respond --open` anchors a comment on one where it now stands.
+
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
 changed since, it is refused, whatever is passed. If not, it is refused when a file it
@@ -1406,8 +1421,10 @@ those from 0.2.13 until 0.2.47, which stripped a header pandoc prints. A release
 tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations, kept
 every other block's number, and the identifiers an older document carries on them are named
 as not compared. One that tags more does: 0.2.49 gave a paragraph that is only a value an
-identifier, which an older document may or may not carry. Such a paragraph is compared if
-the document carries it, and named if not.
+identifier, which an older document may or may not carry, and the fix for link definitions
+(#54) gave one to prose opening like a definition, `[Note]: patients were enrolled.`, which
+no release had tagged before. Such a paragraph is compared if the document carries it, and
+named if not.
 
 A review round needs nothing of the kind, because G13 no longer compares by identifier. The
 round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
@@ -2947,8 +2964,9 @@ Closed since, and why each mattered:
   types them meaning curly ones does not want either.
 - **A document from before paragraphs were recorded is judged by the front-matter rules
   only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
-  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
-  Any other change to how paragraphs are numbered cannot be detected for such a document.
+  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45, 0.2.49 and #54 changed the
+  tagging of. Any other change to how paragraphs are numbered cannot be detected for such a
+  document.
   One is known: builds from before front matter was stripped at all (0.1.0, before #7)
   counted the header as a block, so every identifier is two higher than now, and such a
   document, returned against an unchanged source, would be merged into the wrong
@@ -2961,18 +2979,23 @@ Closed since, and why each mattered:
   trailing space on the opening `---`, a byte-order mark or a blank line before it, or a
   header pandoc prints rather than keeps, a list or a sentence. `init` writes none of
   these. Returned untouched, one from before 0.2.49 also exits 1 over each paragraph that is
-  only a value, named as not in it, which it never carried. Either way, the refusal's own
-  advice is the way through: rebuild and resend.
+  only a value, named as not in it, which it never carried. The value it printed there comes
+  back as a paragraph without an identifier, listed as new text ("+ 3.84"), and an edit to
+  the paragraph beside it is refused as a possible split, as on releases before this one.
+  Either way, the refusal's own advice is the way through: rebuild and resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
-  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
-  paragraph below one the source added or removed since the build, whose identifiers all
-  moved by one block and now name their neighbours: an author who inserts a paragraph near
-  the top before importing ports every co-author edit below it by hand. Re-pointing an
-  identifier to the paragraph now holding its recorded text would recover most of them, and
-  it is not done. So is an edit to a paragraph that reads word for word like another in its
-  file once the block before it changed, and to the paragraph before one that is left out
-  of the comparison and did not come back, which may be a join.
+  left, to be carried over by hand, even when it would have merged cleanly. Paragraphs below
+  one the source added or removed are followed to where they stand; one the author moved
+  relative to the others is not, nor one whose text and the block before it both repeat in
+  its file, and an edit to either is named and left too. So is an edit to a paragraph that
+  reads word for word like another in its file once the block before it changed, and to the
+  paragraph before one that is left out of the comparison and did not come back, which may
+  be a join.
+- **A paragraph is followed by its text alone when that text is unique.** That is the rule
+  it is trusted in place by, and it is as sure: a paragraph deleted from the source since
+  the build and written again word for word elsewhere is taken for the one the co-author
+  edited, and the edit goes to the new place.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

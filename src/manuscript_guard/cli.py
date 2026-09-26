@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -474,19 +475,44 @@ def cmd_import(args: argparse.Namespace) -> int:
     building = {n for b in sent for n in b.names}
     unsure = numbered.unsure & building
     trusted = numbered.trusted | (unsure & present)
-    every = known
-    known = {name: entry for name, entry in every.items() if name in trusted}
-    # And one the document's record does not hold: its block had no identifier when it was
-    # built - a list item made a paragraph since, or a release that tags more kinds of block.
-    # Never compared, it is still weighed as a join into the paragraph above it, as main
-    # weighs every paragraph; left out, the join merged as a rewording and its text was in
-    # the source twice.
-    untagged_then = building - set(numbered.sent) if numbered.recorded else set()
+    # A followed paragraph is compared under the identifier the document carries, so the
+    # fresh builds and the source are read under those names too. A paragraph the document
+    # carries under no name is given one it cannot carry: left as it was, it could share a
+    # name with the paragraph the document carries under it. Only a document that records
+    # nothing has `unsure` names, and it follows none.
+    as_sent = {now: was for was, now in numbered.followed.items()}
+
+    def named(name: str) -> str:
+        if name in trusted or name in numbered.unsure:
+            return name
+        return as_sent.get(name, f"{name}#not-sent")
+
+    def renamed(blocks: list | None) -> list | None:
+        if blocks is None:
+            return None
+        return [replace(b, names=tuple(named(n) for n in b.names)) for b in blocks]
+
+    every = {named(name): entry for name, entry in known.items()}
+    known = {
+        name: entry
+        for name, entry in every.items()
+        if name in trusted or name in numbered.followed
+    }
+    reference = renamed(sent)
+    # And one the document's record does not hold, which is every paragraph of the fresh
+    # build compared under no identifier the document carries: its block had none when it
+    # was built - a list item made a paragraph since, or a release that tags more kinds of
+    # block - or it is one the source added or moved. Never compared, it is still weighed as
+    # a join into the paragraph above it, as main weighs every paragraph; left out, the join
+    # merged as a rewording and its text was in the source twice.
+    untagged_then = (
+        {n for b in reference for n in b.names} - set(known) if numbered.recorded else set()
+    )
     plan = plan_import(
         known,
-        sent,
+        reference,
         returned,
-        marked,
+        renamed(marked),
         abbreviated,
         every=every,
         built=numbered.sent,
@@ -519,7 +545,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     )
     # And one that did not come back, deleted or joined in Word. Looked for among those that
     # came back only, its deletion left no trace, and the import said nothing came back.
-    unaccounted = [n for n in numbered.sent if n not in trusted and n not in present]
+    unaccounted = [n for n in numbered.sent if n not in known and n not in present]
     values = sorted(unsure - present)
     said = _not_compared(edited, strangers, unaccounted, values)
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
@@ -572,8 +598,8 @@ def _not_compared(
     edited: Path, strangers: list[str], unaccounted: list[str], values: list[str]
 ) -> list[str]:
     """What `import` says of the paragraphs whose identifier it could not vouch for:
-    those that came back, those it was built with that did not, and the value paragraphs a
-    document that records nothing may never have carried."""
+    those that came back, those it was built with that did not, and those a document that
+    records nothing may never have carried (`Numbering.unsure`)."""
 
     def shown(names: list[str]) -> str:
         return ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
@@ -596,10 +622,11 @@ def _not_compared(
         )
     if values:
         said.append(
-            f"{len(values)} paragraph(s) that are only a value are not in {edited.name} "
-            f"({shown(values)}): deleted or joined in Word, or never in it, since the release "
-            f"that built it may be one before 0.2.49, which gave them no identifier. Delete or "
-            f"join them in the .md yourself if that was intended."
+            f"{len(values)} paragraph(s) that older releases gave no identifier are not in "
+            f"{edited.name} ({shown(values)}): deleted or joined in Word, or never in it. A "
+            f"paragraph that is only a value had none before 0.2.49, and prose opening like "
+            f"a link definition (`[label]: ...`) none before the release that fixed link "
+            f"definitions. Delete or join them in the .md yourself if that was intended."
         )
     return said
 
@@ -727,12 +754,13 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print("    delete it in the .md yourself if that was intended.")
 
 
-def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
+def _seeded(source: Path, anchors: dict[str, str]) -> list[dict]:
     """Reviewers and their points, read from the comments in a returned document.
 
-    A comment keeps its paragraph only where the identifier is in `trusted`, still naming
-    the text it named at the build. Anywhere else it would anchor the point to whatever
-    paragraph sits there now, and G13 would then check the revision against the wrong one.
+    A comment keeps its paragraph only where `anchors` maps the identifier to the one naming
+    today the paragraph it named at the build: itself, or where the paragraph was followed
+    to. Anywhere else it would anchor the point to whatever paragraph sits there now, and
+    G13 would then check the revision against the wrong one.
 
     A journal usually sends a PDF or an email and the points get typed in, which is where
     a point quietly becomes the easier point next to it. When the reviewer commented in a
@@ -752,7 +780,7 @@ def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
                 "id": "",
                 "comment": comment.text,
                 "response": "",
-                **({"where": comment.where} if comment.where in trusted else {}),
+                **({"where": anchors[comment.where]} if comment.where in anchors else {}),
             }
         )
 
@@ -832,6 +860,8 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 except RoundTripError as exc:
                     print(f"manuscript-guard: {exc}", file=sys.stderr)
                     return 2
+            # A followed paragraph is anchored where it now stands, which is what G13 reads.
+            anchors = {name: name for name in trusted} | numbered.followed
             if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "
@@ -849,7 +879,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": _seeded(args.source, trusted) if args.source else [
+            "reviewers": _seeded(args.source, anchors) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [

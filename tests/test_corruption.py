@@ -1889,14 +1889,25 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("was", "now"),
+    [
+        ("# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n"),
+        ("examined.\n\n# Methods", "examined.\n\nA paragraph added after the build.\n\n# Methods"),
+        ("Whether the signal extends to example-drug specifically has not been examined.\n\n", ""),
+    ],
+    ids=["added above", "added directly above a heading", "removed above"],
+)
 def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
-    project: Path, tmp_path: Path
+    project: Path, tmp_path: Path, was: str, now: str
 ) -> None:
     """Identifiers are positional. With a paragraph added to the source since the build,
     above the one a co-author edited, every identifier after it named the paragraph before,
     and `import --apply --force` wrote three edits over their neighbours and printed "merged
     3 reworded paragraph(s), bindings intact". The plan showed what each edit became, never
-    which paragraph it replaced, so reading every hunk could not have caught it."""
+    which paragraph it replaced, so reading every hunk could not have caught it. Refused,
+    every edit below the change had to be ported by hand; followed, each lands in its own
+    paragraph and nowhere else."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
@@ -1910,16 +1921,15 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
                 data = data.replace(b"received no funding", b"received no external funding")
             zout.writestr(item, data)
     path = main_md(project)
-    path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
-        ),
-        encoding="utf-8",
+    text = path.read_text(encoding="utf-8")
+    assert was in text
+    path.write_text(text.replace(was, now, 1), encoding="utf-8")
+    edited = path.read_text(encoding="utf-8").replace(
+        "received no funding", "received no external funding"
     )
-    source = path.read_text(encoding="utf-8")
 
-    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
-    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == edited, "the edit is not where it was made"
 
 
 def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
@@ -1993,7 +2003,8 @@ def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
     each paragraph's text, which cannot tell the two apart, so with a third declaration added
     above them since the build, the first one's identifier named the new one, read the same,
     was trusted, and `import --apply --force` wrote a co-author's ethics approval under
-    "Consent to participate"."""
+    "Consent to participate". The heading above each tells them apart: followed, the
+    approval lands under "Ethics approval", and nowhere else."""
     from manuscript_guard.cli import main
     from manuscript_guard.roundtrip import tagged_paragraphs
 
@@ -2029,10 +2040,125 @@ def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
         ),
         encoding="utf-8",
     )
+    edited = path.read_text(encoding="utf-8").replace(
+        "# Ethics approval\n\nNot applicable.", "# Ethics approval\n\nApproved by the review board."
+    )
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == edited, "the edit is not where it was made"
+
+
+def _edited_under(name: str, was: str, now: str):
+    """A change to the Word paragraph carrying identifier `name`, from `was` to `now`."""
+
+    def change(xml: str) -> str:
+        at = xml.index(f'w:name="{name}"')
+        stop = xml.index("</w:p>", at)
+        return xml[:at] + xml[at:stop].replace(was, now, 1) + xml[stop:]
+
+    return change
+
+
+def _declarations(project: Path, declared: str) -> Path:
+    """The example with its last two declarations replaced by `declared`, built."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    tail = (
+        "# Funding\n\nThis work received no funding.\n\n# Competing interests\n\nNone declared.\n"
+    )
+    text = path.read_text(encoding="utf-8")
+    assert tail in text
+    path.write_text(text.replace(tail, declared), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    return path
+
+
+def _named(project: Path, words: str) -> list[str]:
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    known = tagged_paragraphs(load_project(project)[0])
+    return [name for name, (_path, text, _start) in known.items() if text == words]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_repeat_after_a_repeated_heading_is_not_followed_below_an_insertion(
+    project: Path, tmp_path: Path
+) -> None:
+    """Two declarations with the same heading and the same text cannot be told apart once
+    they move: followed, a co-author's edit to one could land in the other."""
+    from manuscript_guard.cli import main
+
+    path = _declarations(
+        project, "# Declarations\n\nNone.\n\n# Declarations\n\nNone.\n\n# Other\n\nNone declared.\n"
+    )
+    first = _named(project, "None.")[0]
+    returned = _sent_back(project, tmp_path, _edited_under(first, "None.", "None whatsoever."))
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
+        ),
+        encoding="utf-8",
+    )
     source = path.read_text(encoding="utf-8")
 
     assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
-    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in a look-alike"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_moved_in_the_source_and_edited_in_word_lands_only_in_itself(
+    project: Path, tmp_path: Path
+) -> None:
+    """The author swapped two paragraphs since the build, and the co-author reworded one.
+    Followed out of order, the paragraph came back in its old place, which reads as the
+    co-author moving it back. Either the edit lands in that paragraph, or nowhere."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    drug = text[text.index("Drug-induced") : text.index("\n\nWhether the signal")]
+    signal = "Whether the signal extends to example-drug specifically has not been examined."
+    returned = _sent_back(
+        project,
+        tmp_path,
+        lambda xml: xml.replace("has not been examined.", "has never been examined.", 1),
+    )
+    path.write_text(text.replace(f"{drug}\n\n{signal}", f"{signal}\n\n{drug}", 1), "utf-8")
+    moved = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") in {
+        moved,
+        moved.replace("has not been examined.", "has never been examined.", 1),
+    }
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_two_identical_paragraphs_swapped_in_the_source_take_no_edit_meant_for_the_other(
+    project: Path, tmp_path: Path
+) -> None:
+    """Both read "Not applicable.", each under its own heading, and the author swapped the
+    two sections since the build. The co-author's edit to the one under "Funding" may land
+    there or nowhere, never under "Competing interests"."""
+    from manuscript_guard.cli import main
+
+    declared = "# Funding\n\nNot applicable.\n\n# Competing interests\n\nNot applicable.\n"
+    path = _declarations(project, declared)
+    funding = _named(project, "Not applicable.")[0]
+    returned = _sent_back(
+        project, tmp_path, _edited_under(funding, "Not applicable.", "No external funding.")
+    )
+    swapped = "# Competing interests\n\nNot applicable.\n\n# Funding\n\nNot applicable.\n"
+    path.write_text(path.read_text(encoding="utf-8").replace(declared, swapped), "utf-8")
+    before = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") in {
+        before,
+        before.replace("# Funding\n\nNot applicable.", "# Funding\n\nNo external funding."),
+    }
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

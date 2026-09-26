@@ -486,9 +486,10 @@ switched the check off. The lists are aligned, so a refusal names the heading, w
 file and line of one the gates read. Pandoc's reading is walked without recursion, and a
 document nested too deep for Python's JSON reader, two thousand divs, is refused.
 
-It costs two more runs of pandoc's reader a document, and one on the header, kept for the
-next document with the same header. It guards the document, not `check`: a source the
-build refuses can still pass `check`, and a number a misread hides from G2 without touching
+It costs two more runs of pandoc's reader a document, three with listings, and one on the
+header, kept for the next document with the same header. It guards the document, not
+`check`: a source the build refuses can still pass `check`, and a number a misread hides
+from G2 without touching
 metadata, headings or listings is not compared. A refused build removes the document the last one
 left in build/, which is not this source's, so that it is not sent or packed; a refused
 supplement fails `build` and `submit` like the paper, and `submit --document` refuses a pack
@@ -1809,13 +1810,17 @@ it looks for the closer, and closed a listing the gates read on through the pros
 and why raw blocks: inside a comment, a `<pre>` or a TeX environment a fence is raw text to
 pandoc, which the gates paired with a later one. A comment or raw block is taken as open
 from its opening to its closing mark, outside listings, so an arrow `-->` in a Mermaid
-listing refuses nothing. Past three spaces pandoc reads indented code or a list item's
-listing, and the gates read the lines as text: its numbers are read, the safe side, but a
-`<!--` in it is read as a comment's, and hides the prose after it up to the next `-->`, as
-the sixth review found (see the comment gap in Known gaps). Refused on purpose, though
-pandoc opens them: a fence straight under a heading, a list item's text, a `:::` line or a
-comment, and a line of text that opens with backticks. `tests/test_pandoc_agreement.py`
-asks pandoc about 128 fenced shapes: the old reader got 63 wrong; now 120 agree, the 8 that
+listing refuses nothing. A listing a comment holds whole, with no `-->` on its lines, so
+that the comment closes after its closer, is the comment's and is not refused: pandoc
+prints none of it, and the gates mask both. The review of the sixth round's fixes found it
+refused, and a listing commented out while an author decided failed `check` and the build,
+`--skip-checks` too, where #65 built it. Past three spaces pandoc reads indented code or
+a list item's listing, and the gates read the lines as text: its numbers are read, the safe
+side, but a `<!--` in it is read as a comment's, and hides the prose after it up to the
+next `-->`, as the sixth review found (see the comment gap in Known gaps). Refused on
+purpose, though pandoc opens them: a fence straight under a heading, a list item's text, a
+`:::` line or a comment, and a line of text that opens with backticks.
+`tests/test_pandoc_agreement.py` asks pandoc about 128 fenced shapes: the old reader got 63 wrong; now 120 agree, the 8 that
 do not are refused, and 65 are refused in all.
 
 Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
@@ -1835,8 +1840,12 @@ and a copy of it in a listing pandoc did make passed for the one it did not. The
 found the line itself changing the reading: a caption over a listing opening with dashes
 is a table to pandoc, and a line put first made it a code block, so the metadata and
 headings after it went unread. The metadata and headings are read from the text without
-the lines, and the reading with them must be that reading once they are taken off. Code
-pandoc makes that the gates read as prose, an indented listing, is not refused.
+the lines, and the reading with them must be that reading once they are taken off. A
+listing `check` lets be because a comment holds it whole may come back inside a comment
+pandoc reads, once, instead of opening a code block: the comment is the gates' reading of
+where comments are, which a stray backtick can fool, and a listing in a comment pandoc does
+not see must still be code. Code pandoc makes that the gates read as prose, an indented
+listing, is not refused.
 
 In `check`, a comment or raw block closes only on its own mark: a `-->` closed a `<pre>`,
 and `\end{center}` a comment. One of the same name opened inside it is counted, as pandoc
@@ -2512,7 +2521,8 @@ Closed since, and why each mattered:
     early, and an unpaired backtick opening a false comment that takes in a real `<pre>`.
 - **Some listings pandoc makes are refused.** The same tracker opens a context pandoc does
   not, and every later listing in the file is refused, the finding on the listing's own
-  lines. The fifth and sixth reviews of #71 found:
+  lines; save one a false comment holds whole, which `check` lets be and the build finds in
+  pandoc's code. The fifth and sixth reviews of #71 found:
   - a `<pre>` or `\begin{center}` opened inside one of its name and left unclosed, which
     pandoc takes for a lone tag, pairing the inner one with the closer, and a nested
     `\begin{verbatim}`;

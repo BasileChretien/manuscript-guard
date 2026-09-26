@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from manuscript_guard.text.fences import Fence, fenced_spans
+from manuscript_guard.text.fences import Fence, commented_listings, fenced_spans
 from manuscript_guard.text.masking import front_matter_end
 from manuscript_guard.text.placeholders import PLACEHOLDER
 from manuscript_guard.text.sections import heading_index, scannable
@@ -324,10 +324,22 @@ def _marked(source: str, mark: str) -> tuple[str, list[Fence]]:
 
 
 def _without_marks(read: dict, mark: str) -> str:
-    """Pandoc's reading of the marked copy, as JSON text, with each marked line taken off
-    the code or raw block it opens: what it reads as the text without them, when the lines
-    changed nothing else. A marked line anywhere else leaves text behind, and does not."""
-    return re.sub(rf'"{mark}\d+(?:\\n|(?="))', '"', json.dumps(read))
+    """Pandoc's reading of the marked copy, as JSON text, with each marked line taken out:
+    off the code or raw block it opens, or out of the comment that holds its listing. That
+    is what pandoc reads as the text without them, when the lines changed nothing else. A
+    marked line anywhere else, a paragraph's, leaves an empty word behind, and does not."""
+    return re.sub(rf"{mark}\d+(?:\\n)?", "", json.dumps(read))
+
+
+def _in_comments(blocks: list, mark: str) -> Counter[str]:
+    """Each marked line pandoc reads inside an HTML comment, counted."""
+    found: Counter[str] = Counter()
+    for node in _nodes(blocks, lambda node: node.get("t") not in ("RawBlock", "RawInline")):
+        if node.get("t") in ("RawBlock", "RawInline"):
+            kind, content = node["c"]
+            if kind == "html" and content.startswith("<!--"):
+                found.update(re.findall(rf"{mark}\d+", content))
+    return found
 
 
 def _fits(written: str, built: str) -> bool:
@@ -382,8 +394,12 @@ def _listing_misread(
     stands. Each is paired with the one at its place in the same file as built, values in,
     and in order with the listings in `source`, the text the build hands pandoc, each of
     which must hold the same lines and be one code block, or raw block for `{=format}`,
-    opening with its marked line."""
+    opening with its marked line. One the gates read in a comment may instead be in a
+    comment pandoc reads, once: `check` lets such a listing be, on the gates' reading of
+    where comments are, which a stray backtick can fool."""
     made = _first_lines(blocks)
+    commented = _in_comments(blocks, mark)
+    held = {fence.start for fence in commented_listings(source, front_matter_end(source))}
     number = 0
     for (name, text), shown in zip(sources, built, strict=True):
         written = fenced_spans(text, front_matter_end(text))
@@ -397,11 +413,13 @@ def _listing_misread(
             at = fences[number] if number < len(fences) else None
             kind = "RawBlock" if at is not None and at.is_raw else "CodeBlock"
             as_shown = shown[as_built.body_start : as_built.body_end]
+            line = f"{mark}{number}"
+            placed = (made[(line, kind)], commented[line])
             if (
                 at is None
                 or not _fits(text[fence.body_start : fence.body_end], as_shown)
                 or _lines(as_shown) != _lines(source[at.body_start : at.body_end])
-                or made[(f"{mark}{number}", kind)] != 1
+                or placed not in ({(1, 0), (0, 1)} if at.start in held else {(1, 0)})
             ):
                 where = f"{name}:{text.count(chr(10), 0, fence.start) + 1}"
                 opener = text[fence.start : fence.body_start].strip()

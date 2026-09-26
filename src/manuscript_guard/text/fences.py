@@ -387,17 +387,41 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     Modelling each of those grew a reader review kept finding wrong, so the gates read the
     plain listing and refuse the rest, and the build compares what they read with the code
     pandoc makes (`build.reading`).
+
+    A listing a comment holds whole, its closer before the comment's `-->`, is the
+    comment's and is not refused either: pandoc prints none of it, and the gates mask both.
+    Refused, a listing commented out while an author decided failed `check` and the build.
     """
+    bares, inside, _commented = _walk(text, begin)
+    above_begin = text.count("\n", 0, begin)
+    return [
+        above_begin + index + 1
+        for index, bare in enumerate(bares)
+        if index not in inside and _fence_like(bare)
+    ]
+
+
+def commented_listings(text: str, begin: int = 0) -> list[Fence]:
+    """The listings the gates read that a comment holds whole, as `unclear_fence_lines`
+    finds them. The comment is the gates' reading, which a stray backtick can fool, so the
+    build asks pandoc where each one is (`build.reading`)."""
+    return _walk(text, begin)[2]
+
+
+def _walk(text: str, begin: int) -> tuple[list[str], set[int], list[Fence]]:
+    """The lines from `begin` as fences are read, the indexes of those in a plain listing
+    or in a listing a comment holds whole, and those listings."""
     lines = _LINE.findall(text, begin)
     bares = [_bare(line) for line in lines]
     listings = _listings(lines, bares, begin)
-    last_of = {first: last for first, last, _fence in listings}
-    closers = set(last_of.values())
+    fence_of = {first: (last, fence) for first, last, fence in listings}
+    closers = {last for last, _fence in fence_of.values()}
     inside: set[int] = set()
+    commented: list[Fence] = []
     raw: _Raw | None = None
     index = 0
     while index < len(bares):
-        last = last_of.get(index)
+        last, fence = fence_of.get(index, (None, None))
         above = bares[index - 1] if index else ""
         if (
             last is not None
@@ -408,14 +432,19 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
             inside.update(range(index, last + 1))
             index = last + 1
             continue
+        if (
+            last is not None
+            and raw is not None
+            and raw.kind == "comment"
+            and not any("-->" in bares[at] for at in range(index, last + 1))
+        ):
+            inside.update(range(index, last + 1))
+            commented.append(fence)
+            index = last + 1
+            continue
         raw = _raw_after(bares[index], raw)
         index += 1
-    above_begin = text.count("\n", 0, begin)
-    return [
-        above_begin + index + 1
-        for index, bare in enumerate(bares)
-        if index not in inside and _fence_like(bare)
-    ]
+    return bares, inside, commented
 
 
 def _listings(lines: list[str], bares: list[str], begin: int) -> list[tuple[int, int, Fence]]:

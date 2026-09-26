@@ -548,7 +548,18 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
             masked[index] = " "
     in_code_for_toolkit = "9.99" not in "".join(masked)
 
-    assert in_code_for_toolkit == in_code_for_pandoc or unclear_fence_lines(markdown), (
+    if in_code_for_toolkit == in_code_for_pandoc:
+        return
+    # The refusal must be of the fence that misreads, not of any line: the toolkit's listing
+    # over the prose, or, where only pandoc's code holds it, a fence above it.
+    refused = set(unclear_fence_lines(markdown))
+    prose = markdown.index("9.99")
+    if in_code_for_toolkit:
+        covering = next(f for f in fenced_spans(markdown) if f.start <= prose < f.end)
+        wanted = {markdown.count("\n", 0, covering.start) + 1}
+    else:
+        wanted = set(range(1, markdown.count("\n", 0, prose) + 1))
+    assert refused & wanted, (
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
         f"code block; the toolkit thinks the opposite, and does not refuse the fence"
     )

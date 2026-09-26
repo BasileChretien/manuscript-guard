@@ -2355,6 +2355,11 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
         f"<script>\n<script>\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
         f"<? marks a query in our notation.\n\n{_TICKS}r\nx\n{_TICKS}\n",
         f"<?= x\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found reviewing round six: a listing commented out whole, the comment's `-->` after
+        # its closer, is the comment's, and pandoc prints none of it.
+        f"<!-- An earlier model:\n\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\n\n{_TICKS}python\ny\n{_TICKS}\n-->\n",
+        f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
     ],
 )
 def test_a_plain_fence_is_not_refused(block: str) -> None:
@@ -2362,6 +2367,58 @@ def test_a_plain_fence_is_not_refused(block: str) -> None:
 
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
 
+
+def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
+    """A comment whose `-->` falls inside the listing ends there, and the lines after it are
+    printed: the listing is not the comment's, and stays refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = f"# Results\n\n<!--\n{_TICKS}r\nx -->\nThe excess (p < 0.001).\n{_TICKS}\n"
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_commented_out_whole_builds(project: Path) -> None:
+    """Found reviewing round six: every fence line inside a comment was refused, so a
+    listing commented out while an author decided, an ordinary habit, failed `check` and
+    the build, `--skip-checks` too, where #65's tip built it. Pandoc prints nothing of it,
+    and the gates mask both the comment and the listing."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    anchor = "Reporting follows the checklist declared in `paper.yaml`.\n"
+    assert text.count(anchor) == 1
+    snippet = (
+        f"\n<!-- An earlier model, kept while we decide:\n\n{_TICKS}r\n"
+        f"fit0 <- glm(case ~ drug, family = binomial)\n{_TICKS}\n-->\n"
+    )
+    source.write_text(text.replace(anchor, anchor + snippet), encoding="utf-8")
+    assert main(["check", str(project)]) == 0
+    assert main(["build", str(project), "--offline"]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_in_a_comment_pandoc_does_not_see_is_compared() -> None:
+    """`check` lets a listing a comment holds whole be, and the comment is the tracker's
+    reading, which a stray backtick can fool: here `<!--` is code to pandoc, and the gates'
+    listing runs from one chunk's closer to the next, over a claim pandoc prints. The build
+    finds the listing neither in a comment nor opening a code block, and refuses."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Results\n\nUse `<!--` for the `x variable.\n\n"
+        f"{_TICKS}{{r}}\nx\n{_TICKS}\n\nThe excess (p < 0.001).\n\n{_TICKS}{{r}}\ny\n{_TICKS}\n"
+    )
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is not None
 
 def test_the_unclear_fence_hint_names_the_margin_and_list_items() -> None:
     """A listing in a list item, indented as Markdown has it, was refused under a hint that

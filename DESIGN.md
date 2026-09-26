@@ -2525,6 +2525,15 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
+- **A text box anchored in a reference heading is cut with the list.** A text box is read
+  after the paragraph that holds it, so one anchored in a styled `References` heading is
+  the list's first line and is not audited. The report gives the range of lines it cut
+  under "Not audited", and nothing there singles out the box. When text boxes were read
+  where they are anchored, one anchored after the heading's text was cut the same way. One
+  anchored before it ran into the heading ("Figure 1: n = 34References"), so no list was
+  found: the entries with a reference's shape were listed apart and the rest were audited
+  as prose. A floating box has an anchor but no place in the text, and reading it before
+  its paragraph instead would cut one anchored in the heading that ends a list.
 - **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
   mark was deleted into the first cell of a table after it. The audit joins a paragraph only
   to the next paragraph beside it, so a table, or a content control, ends the line, and a

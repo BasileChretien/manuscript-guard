@@ -13,6 +13,7 @@ dangerous direction, so anything questionable is left unmasked and allowed to fa
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from functools import lru_cache
 
 from manuscript_guard.text.fences import Fence, fenced_spans
@@ -238,6 +239,40 @@ _KEY_LINE = re.compile(
     r"^(?P<indent>[ \t]*)(?P<key>" + "|".join(RENDERED_KEYS) + r")[ \t]*:[ \t]*(?P<value>.*)$"
 )
 
+_BACKSLASHES = re.compile(r"\\+(?=[<>])")
+# A run of backticks, closed by the next run exactly as long, within a paragraph: pandoc's
+# rule, less its fallbacks. It is not pandoc's reader: a `~~~` block, or a ```` ``` ```` one
+# with a blank line inside, is not seen as code here, nor is code handed over without its
+# fence, a listing's string or a figure script's. And the runs are paired in the text as it
+# stands, so a backtick inside a `~~~` block pairs with one in the prose after it, and a
+# code span there goes unseen. DESIGN.md's Known gaps has the rest.
+_CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+
+
+def comparison_escapes(text: str) -> list[int]:
+    """Where a backslash escapes a `<` or `>`, so that it prints the bare character.
+
+    Pandoc's Markdown writer puts one before every comparison, so a paper converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` puts one before a `>` that a `<` earlier
+    in the paragraph could close as a tag. G2 read neither: the threshold rules never
+    matched, and `\\>3` was an atom no rule began at. `mask` blanks these, so `\\>3` is read
+    from its `3`, and the classifier matches its rules without them. Blanked, one also ends
+    the atom before it, where the printed `>` does not: `n\\>3` is read as `n` and `>3`.
+
+    Only a backslash that prints nothing counts: the last of an odd run, since `\\\\>` is a
+    backslash printed before a `>`, and none inside inline code, which prints it as typed.
+    Reading either as an escape let `` `ROR \\> 2` `` pass as the threshold it does not print.
+    """
+    code = [m.span() for m in _CODE_SPAN.finditer(text)]
+    starts = [start for start, _end in code]
+    found = []
+    for run in _BACKSLASHES.finditer(text):
+        inside = bisect_right(starts, run.start()) - 1
+        if len(run.group()) % 2 and not (inside >= 0 and run.start() < code[inside][1]):
+            found.append(run.end() - 1)
+    return found
+
+
 # Ordered: earlier patterns win, because a URL inside a code fence is already gone.
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
 # that is partly machinery and partly prose.
@@ -345,6 +380,8 @@ def mask(text: str) -> str:
         for match in _either_side(pattern, "".join(chars), head):
             for index in range(match.start(), match.end()):
                 chars[index] = NUL
+    for index in comparison_escapes(text):
+        chars[index] = NUL
     return "".join(chars)
 
 
@@ -378,6 +415,9 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
                 for index in range(start, end):
                     chars[index] = NUL
             working = "".join(chars)
+    escapes = [(index, index + 1) for index in comparison_escapes(text)]
+    if escapes:
+        found["escaped-comparison"] = escapes
     return found
 
 

@@ -1904,14 +1904,14 @@ def test_an_email_address_is_not_a_citation() -> None:
             r"Values \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             "Values <LLOQ and >ULOQ (n = 56) were excluded.",
             "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
-            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            r"Concentrations \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             id="escape",
         ),
         pytest.param(
             "Values &lt;LLOQ and &gt;ULOQ (n = {{results.n}}) were excluded.",
             "Values <LLOQ and >ULOQ (n = 56) were excluded.",
             "Concentrations <LLOQ and >ULOQ (n = 56) were excluded.",
-            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            r"Concentrations \<LLOQ and \>ULOQ (n = {{results.n}}) were excluded.",
             id="entity",
         ),
         pytest.param(
@@ -2403,8 +2403,20 @@ TYPED_IN_WORD = [
     pytest.param("A *real* change.", r"A \*real\* change.", id="emphasis"),
     pytest.param(
         "Samples <LLOQ in mg/L and >ULOQ were redone.",
-        r"Samples \<LLOQ in mg/L and >ULOQ were redone.",
+        r"Samples \<LLOQ in mg/L and \>ULOQ were redone.",
         id="tag-to-pandoc",
+    ),
+    pytest.param("Age > 65 and p > 0.05.", "Age > 65 and p > 0.05.", id="nothing-to-close"),
+    pytest.param(
+        "Set at p < 0.05, <18 years and ROR > 2.",
+        "Set at p < 0.05, <18 years and ROR > 2.",
+        id="nothing-a-tag-opens-with",
+    ),
+    pytest.param("Values <µg/L and >ULOQ.", r"Values \<µg/L and \>ULOQ.", id="tag-in-any-script"),
+    pytest.param(
+        "Values <LOD were imputed => no change.",
+        r"Values \<LOD were imputed =&gt; no change.",
+        id="equals-inside-a-would-be-tag",
     ),
     pytest.param("Ask @2020 or @_user.", r"Ask \@2020 or \@\_user.", id="odd-citation"),
     pytest.param("See [Methods] here.", r"See \[Methods] here.", id="header-reference"),
@@ -2449,8 +2461,71 @@ BESIDE_A_TOKEN = [
         "Patients took {{results.drug}} daily with water.",
         "Patients took aspirin daily with water.",
         "Patients took <aspirin daily and >placebo.",
-        r"Patients took \<{{results.drug}} daily and >placebo.",
+        r"Patients took \<{{results.drug}} daily and \>placebo.",
         id="angle-before-a-binding",
+    ),
+    pytest.param(
+        "Samples <LLOQ in {{results.unit}} and ULOQ were redone.",
+        "Samples <LLOQ in mg/L and ULOQ were redone.",
+        "Samples <LLOQ in mg/L and >ULOQ were redone.",
+        r"Samples <LLOQ in {{results.unit}} and \>ULOQ were redone.",
+        id="angle-kept-and-a-word-for-a-value",
+    ),
+    pytest.param(
+        "Levels {{results.cut}} were imputed and excluded.",
+        "Levels <LOD were imputed and excluded.",
+        "Levels <LOD were imputed and >ULOQ excluded.",
+        r"Levels {{results.cut}} were imputed and \>ULOQ excluded.",
+        id="angle-from-a-value",
+    ),
+    pytest.param(
+        "Values {{results.drug}} ok and >ULOQ excluded.",
+        "Values aspirin ok and >ULOQ excluded.",
+        "Values <µg aspirin ok and >ULOQ excluded.",
+        r"Values \<µg {{results.drug}} ok and >ULOQ excluded.",
+        id="angle-before-a-letter-of-any-script",
+    ),
+    pytest.param(
+        "At p < 0.05, {{results.x}} signals had ROR > 2 overall.",
+        "At p < 0.05, 3.84 signals had ROR > 2 overall.",
+        "At p < 0.05, 3.84 signals had ROR > 2 in all.",
+        "At p < 0.05, {{results.x}} signals had ROR > 2 in all.",
+        id="comparison-that-opens-nothing",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} were imputed.",
+        "Values <LOD in mg/L were imputed.",
+        "Values <LOD in mg/L were imputed => no change.",
+        "Values <LOD in {{results.unit}} were imputed =&gt; no change.",
+        id="equals-before-the-angle",
+    ),
+    pytest.param(
+        "Levels {{results.cut}} were imputed.",
+        "Levels <LOD were imputed.",
+        "Levels <LOD were imputed => no change.",
+        "Levels {{results.cut}} were imputed =&gt; no change.",
+        id="equals-after-an-angle-from-a-value",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} and HR={{results.hr}} were redone.",
+        "Values <LOD in mg/L and HR=2.1 were redone.",
+        "Values <LOD in mg/L and HR=2.1>1 were redone.",
+        "Values <LOD in {{results.unit}} and HR={{results.hr}}&gt;1 were redone.",
+        id="equals-kept-before-a-value",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} were imputed.",
+        "Values <LOD in mg/L were imputed.",
+        "Values <LOD in mg/L were imputed at dose=5\u00a0mg>1 only.",
+        "Values <LOD in {{results.unit}} were imputed at dose=5\u00a0mg&gt;1 only.",
+        id="equals-then-a-no-break-space",
+    ),
+    pytest.param(
+        "Values <LOD in {{results.unit}} had HR=[@smith2019] here.",
+        "Values <LOD in mg/L had HR=(Smith 2019) here.",
+        "Values <LOD in mg/L had HR=(Smith 2019)>1 here.",
+        "Values <LOD in {{results.unit}} had HR=[@smith2019]&gt;1 here.",
+        id="equals-then-a-citation",
     ),
     pytest.param(
         "Alpha beta {{results.drug}} gamma delta.",
@@ -2492,11 +2567,14 @@ BESIDE_A_TOKEN = [
 #: What the build fills each binding in with, and what Word showed for each citation.
 BESIDE_VALUES = {
     "results.drug": "aspirin",
+    "results.unit": "mg/L",
+    "results.cut": "<LOD",
+    "results.hr": "2.1",
     "results.x": "3.84",
     "results.y": "7.02",
     "results.ci": "(1.2-3.4)",
 }
-BESIDE_CITED = {"(Jones 2019)": "[@jones2019]"}
+BESIDE_CITED = {"(Jones 2019)": "[@jones2019]", "(Smith 2019)": "[@smith2019]"}
 
 
 @pytest.mark.parametrize(("source", "rendered", "returned", "expected"), BESIDE_A_TOKEN)
@@ -2511,7 +2589,14 @@ def test_text_beside_a_token_is_escaped_for_its_neighbour(
 
     Two were refused where they could merge. `\\{` before a binding's own `{{` reads as the
     binding `{{{results.drug}}`, which `check` refuses as malformed; and a `](` formed inside
-    an edited stretch, its `[` in the stretch before, was a link."""
+    an edited stretch, its `[` in the stretch before, was a link.
+
+    A `>` was never escaped. After a `<` the source kept bare, or one a binding's value
+    brought, a `>` typed in Word closed a tag around a value that is a word, and pandoc
+    deleted everything in between. `_reads_as` saw text, because it fills a binding with
+    digits and a digit is not an attribute name. Escaped after any `<`, the `>` of `ROR > 2`
+    became `\\>` after `p < 0.05`, and G2 no longer read the threshold; only a `<` a tag can
+    open with counts, and that is any letter: `<µg` was left bare, and opened one."""
     assert realign(source, rendered, returned) == expected
 
 
@@ -2538,6 +2623,137 @@ def test_text_beside_a_token_prints_as_typed(
     for shown, cited in BESIDE_CITED.items():
         typed = typed.replace(shown, cited)
     assert printed == typed
+
+
+@needs_pandoc
+def test_a_quote_after_an_equals_keeps_the_next_paragraph(tmp_path: Path) -> None:
+    """A straight quote after an `=` opens a quoted attribute value, which runs on past the
+    paragraph's end and its neighbour's identifier: the tag opened by `<LOD` closed at the
+    `>` of the next paragraph, and "Values 0.5 in all." was all that printed of the two."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    returned = "Values <LOD in mg/L were set to label='low."
+    merged = realign(
+        "Values <LOD in {{results.unit}} were set to low.",
+        "Values <LOD in mg/L were set to low.",
+        returned,
+    )
+    assert merged == r"Values <LOD in {{results.unit}} were set to label=\'low."
+    path = tmp_path / "a.md"
+    body = merged.replace("{{results.unit}}", "mg/L")
+    path.write_text(
+        f"[]{{#mg-p-x-0}}{body}\n\n[]{{#mg-p-x-2}}Cohen's d was >0.5 in all.\n", encoding="utf-8"
+    )
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")
+    assert printed["mg-p-x-0"] == returned
+    assert printed["mg-p-x-2"] == "Cohen’s d was >0.5 in all."
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "expected"),
+    [
+        pytest.param(
+            "Costs were low.",
+            "Costs were low.",
+            "Models were fitted with <LOD handled by family='binomial' as usual.",
+            r"Models were fitted with \<LOD handled by family='binomial' as usual.",
+            id="whole-paragraph",
+        ),
+        pytest.param(
+            "Models of {{results.x}} were fitted.",
+            "Models of 3.84 were fitted.",
+            "Models of 3.84 were fitted with <LOD handled by family='binomial'.",
+            r"Models of {{results.x}} were fitted with \<LOD handled by family='binomial'.",
+            id="beside-a-binding",
+        ),
+    ],
+)
+def test_a_quote_after_an_equals_is_left_alone_after_words_own_angle(
+    source: str, rendered: str, returned: str, expected: str
+) -> None:
+    """Word's own `<` is escaped and opens no tag, so a quote after an `=` beside it needs no
+    backslash. Escaped for it all the same, the quote printed straight where pandoc curled
+    its partner: `family='binomial’`, where `‘binomial’` had printed before."""
+    assert realign(source, rendered, returned) == expected
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "Values <LOD in {{results.unit}} were coded='HR {{results.x}} or LOD' in all.",
+            r"Values <LOD in {{results.unit}} were coded='HR {{results.x}} or LOD=\' in all.",
+            id="the-sources-quote-opens-a-value",
+        ),
+        pytest.param(
+            "Values 'HR <LOD in {{results.unit}} or {{results.x}} LOD' in all.",
+            r"Values 'HR <LOD in {{results.unit}} or {{results.x}} LOD=\' in all.",
+            id="the-sources-quote-stands-before-the-angle",
+        ),
+    ],
+)
+def test_a_closing_quote_after_an_equals_keeps_every_word(
+    source: str, expected: str, tmp_path: Path
+) -> None:
+    """A `’` that closes a quotation opened by a straight `'` kept from the source is written
+    straight, so that pandoc pairs the two. Straight after an `=`, after a `<` of the source's,
+    it could open an attribute's value; left curly, it closed nothing, and a value the
+    source's own `='` had opened ran on into the next paragraph: "Values 0.5 in all." was all
+    that printed of the two. Written straight and escaped, it does neither."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    values = {"results.unit": "mg/L", "results.x": "3.84"}
+    rendered = source.replace("'", "‘", 1).replace("'", "’")
+    for key, value in values.items():
+        rendered = rendered.replace("{{" + key + "}}", value)
+    returned = rendered.replace("LOD’", "LOD=’")
+    # Where each token's rendering sits, as the bookmarked build gives it to `import`.
+    extents = [(rendered.index(shown), rendered.index(shown) + 4) for shown in ("mg/L", "3.84")]
+    merged = realign(source, rendered, returned, extents)
+    assert merged == expected
+    body = merged
+    for key, value in values.items():
+        body = body.replace("{{" + key + "}}", value)
+    path = tmp_path / "a.md"
+    path.write_text(
+        f"[]{{#mg-p-x-0}}{body}\n\n[]{{#mg-p-x-2}}Cohen's d was >0.5 in all.\n", encoding="utf-8"
+    )
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    printed = paragraph_text(tmp_path / "a.docx")
+    # Every word, whichever way its quotes turned.
+    straight = str.maketrans({"‘": "'", "’": "'"})
+    assert printed["mg-p-x-0"].translate(straight) == returned.translate(straight)
+    assert printed["mg-p-x-2"] == "Cohen’s d was >0.5 in all."
+
+
+@needs_pandoc
+def test_pandocs_space_after_an_abbreviation_keeps_the_tag_shut(tmp_path: Path) -> None:
+    """The `>` is decided on Word's text, where pandoc's space after "e.g." is a no-break one
+    and part of the value; it is then written back as a plain space, which ends the value
+    sooner. So the decision can only have been more careful than it needed to be."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text
+
+    returned = "Values <LOD in mg/L were imputed at dose=e.g.\N{NO-BREAK SPACE}5>1 only."
+    merged = realign(
+        "Values <LOD in {{results.unit}} were imputed.",
+        "Values <LOD in mg/L were imputed.",
+        returned,
+        abbreviations=frozenset({"e.g."}),
+    )
+    assert merged == "Values <LOD in {{results.unit}} were imputed at dose=e.g. 5&gt;1 only."
+    path = tmp_path / "a.md"
+    body = merged.replace("{{results.unit}}", "mg/L")
+    path.write_text(f"[]{{#mg-p-x-0}}{body}\n", encoding="utf-8")
+    subprocess.run(["pandoc", str(path), "-o", str(tmp_path / "a.docx")], check=True)
+    assert paragraph_text(tmp_path / "a.docx")["mg-p-x-0"] == returned
 
 
 @pytest.mark.parametrize(
@@ -2646,14 +2862,14 @@ def test_an_escape_in_a_stretch_left_alone_is_kept() -> None:
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD were imputed as LOD/2 and >ULOQ dropped.",
-            r"Levels \<LOD were imputed as LOD/2 and >ULOQ dropped.",
+            r"Levels \<LOD were imputed as LOD/2 and \>ULOQ dropped.",
             id="angle-brackets",
         ),
         pytest.param(
             "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ excluded.",
             "Levels <LOD (n = 56) were imputed as LOD/2 and >ULOQ dropped.",
-            "Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and >ULOQ dropped.",
+            r"Levels <LOD (n = {{results.n}}) were imputed as LOD/2 and \>ULOQ dropped.",
             id="angle-brackets-and-a-binding",
         ),
         pytest.param(

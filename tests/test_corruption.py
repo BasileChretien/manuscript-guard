@@ -375,6 +375,50 @@ def test_near_miss_conventions_are_not_waved_through(project: Path, convention: 
     assert "unclassified-number" in codes(gate_report(project))
 
 
+def _in_methods(project: Path, sentence: str) -> None:
+    path = main_md(project)
+    anchor = "Reporting follows the checklist"
+    text = path.read_text(encoding="utf-8")
+    assert anchor in text
+    path.write_text(text.replace(anchor, f"{sentence}\n\n{anchor}", 1), encoding="utf-8")
+
+
+def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
+    """Pandoc's Markdown writer escapes every comparison, so a Methods section converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` escapes a `>` that a `<` earlier in the
+    paragraph could close as a tag. Each prints the bare character. G2 read neither: the
+    threshold rules never matched, and `\\>3` was an atom no rule began at."""
+    _in_methods(
+        project,
+        r"Significance was set at p \< 0.05; a signal needed ROR \> 2, IC025 \> 0 and \>3 cases.",
+    )
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        pytest.param(r"A signal needed ROR \> 7 here.", id="no-conventional-value"),
+        pytest.param(r"A signal needed p \< 0.37 here.", id="no-conventional-p"),
+        pytest.param(r"A signal needed \>9 cases here.", id="no-conventional-count"),
+        pytest.param(
+            "Of the reports,\n412)\\>ULOQ were excluded.", id="list-marker-at-a-line-start"
+        ),
+        pytest.param("## 1204\\<ULOQ reports", id="numbered-heading"),
+        pytest.param(r"A signal needed `ROR \> 2` here.", id="backslash-printed-in-code"),
+        pytest.param(r"A signal needed \\>3 cases here.", id="backslash-printed-before-it"),
+    ],
+)
+def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written: str) -> None:
+    """Read as the character it prints, and no further. Read as a space, the backslash met a
+    rule that wanted one: `412)\\>ULOQ` at a line start was a list marker, and 412 passed. And
+    a backslash that prints is no escape: in code, or after another backslash, `\\>` prints
+    both characters, and `ROR \\> 2` there is not the threshold."""
+    _in_methods(project, written)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 

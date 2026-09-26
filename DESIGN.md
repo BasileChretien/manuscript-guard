@@ -2282,6 +2282,26 @@ Closed since, and why each mattered:
   everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
   enough, since any later real comment supplies the `-->`, and a draft often has one. The
   comment scanner would have to know code spans.
+- **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
+  `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
+  pandoc's own Markdown writer produces and `import` can write, are the thresholds they
+  print. Where the pattern and pandoc disagree, only a value a shipped rule already names
+  can pass; any other number still fails:
+  - *In text that is not Markdown.* A string in a listing or a figure script,
+    `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
+    Escapes should be read only where the source is Markdown.
+  - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
+    read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word. Atoms
+    should be found in the printed text and mapped back, as the rules already are.
+  - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
+    backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
+    backslash there counts as an escape. An escaped backtick, which `import` writes for every
+    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
+    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
+    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    spans as pandoc does, the one the comment scanner needs.
+
+  A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
   in the body, but each of these can still hide a number pandoc prints, all on contrived
   input:
@@ -2494,13 +2514,37 @@ Closed since, and why each mattered:
     link here, so an edit to it is refused. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
-  - *The read-back reads a binding as digits, and a `>` is never escaped.* What a binding's
-    value makes of the text beside it is seen only by the escaper, at the edges it knows: a
-    `<`, `&`, `]` or `{` before a binding, a `(` after one. A `<` in a stretch kept as it
-    was, a binding whose value is a word, and a `>` typed after it in Word make a tag:
-    `Samples <LLOQ in {{results.unit}} and >ULOQ were redone.` merges, and pandoc prints
-    "Samples ULOQ were redone." A number in between is not an attribute, so pandoc prints
-    the text.
+  - *The read-back reads a binding as digits.* What a binding's value makes of the text
+    beside it is seen only by the escaper, at the edges it knows: a `<`, `&`, `]` or `{`
+    before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
+    once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
+    of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
+    At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
+    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
+    ends only at ASCII whitespace, so a no-break space does not end it, and each citation
+    ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
+    quote straight after the `=` opens a quoted value that runs past the paragraph's end and
+    closed at a `>` in the next one; once a `<` shown in a stretch kept from the source, or
+    in a value, stands before it, it is written `\'` or `\"`, which prints straight. Word's
+    own `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl. A
+    `<` the source had escaped still counts, since a kept stretch is read as Word shows it:
+    `\<LOD`, which the merge itself writes for a `<` typed in Word, makes a later
+    `family='binomial'` print `'binomial’`. A `’` Word typed after an `=` to close a quote of
+    the source's is written straight and escaped like any other; left curly, it closed
+    nothing, and a value the source's own `='` had opened ran on. An `=` that ends an
+    edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
+    of a paragraph with a `>` of its own merges, and the two print as the words after that
+    `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
+    in `=` itself, which the next paragraph's escaper cannot see. G2 reads
+    `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
+    source is not Word's to escape, after a `<` kept from the source or brought by a value.
+    Pandoc read the two as text only because something between them was not an attribute
+    name, and an edit that deletes or changes it can make a tag: with values that are words,
+    `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were
+    redone.`, with "(see Table 2)" deleted in Word, or turned into `="(see Table 2)"`,
+    merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value is the
+    same case. The read-back does not see it: a digit is not an attribute name, and pandoc's
+    tags are looser than its own reading, which does not take `mg/L` for one.
   - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
     in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
     `import` reads none of them. An edit inside a footnote or an equation, a changed link
@@ -2566,7 +2610,17 @@ Closed since, and why each mattered:
   them curled at the next build; the second change is lost with nothing reported, since the
   rebuilt paragraph equals the source. A straight quote typed in an edited stretch can also
   pair with a straight one kept from the source across a token: `'high' at "{{x}} and
-  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
+  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes
+  within a paragraph. Across one they did: a straight quote after an `=`, once a `<` that
+  can open a tag stood before it, opened a quoted value that ran on into the next
+  paragraph, whose `>` closed the tag, and both printed as the words after that `>`. That
+  quote is now escaped, and an `=` ending an edited stretch still does the same; see "The
+  read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
+  it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
+  the source opened itself after a `<` of its own, `Values <LOD in {{unit}} were
+  coded="HR {{x}} or LOD" in all.`, stays open if its stretch is edited, since Word's closing
+  `”` is written back curly and closes nothing: with `"d was >0.5"` in the next paragraph,
+  the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier

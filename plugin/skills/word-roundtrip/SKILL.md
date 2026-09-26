@@ -162,7 +162,15 @@ Read the whole diff. What to look for:
   backslash in front where the straight quote mattered. A co-author who only turned curly
   quotes straight has changed nothing that reaches the build. A `{` typed straight before a
   binding comes back as `&lbrace;`. Leave it: a bare `{` there joins the binding's braces,
-  and `check` reports `{{{results.x}}` as malformed.
+  and `check` reports `{{{results.x}}` as malformed. Once a `<` before a letter (`<LLOQ`,
+  `<µg`) stands earlier in the paragraph, a `>` in an edited stretch comes back as `\>`, or
+  as `&gt;` where it ends a value after an `=` (`=>`, `HR=2.1>1`). If that `<` is yours or
+  a value's rather than the co-author's, a straight quote typed just after an `=` comes
+  back as `\'` or `\"`, and prints straight; so does a curly `’` typed there to close a
+  quote of yours. Leave them: pandoc can read a bare
+  `<` and `>` with words between them as an HTML tag and drop everything from one to the
+  other, and `check` reads `ROR \> 2` as the threshold it prints. A `<` before a number or
+  a space, as in `p < 0.05`, opens nothing, and what follows it comes back as typed.
 - Invisible no-break spaces. A `\ ` or `&nbsp;` of yours in an edited stretch comes back as
   the character itself. It prints as it did, but a diff can show a line as changed where
   nothing visible changed. The one pandoc puts after "e.g." or "et al." is written back as a

@@ -818,25 +818,24 @@ _SPLIT = (
     "would replace the whole source paragraph with only part of it. Make the edit in the .md."
 )
 _HIDDEN = (
-    "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
-    "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+    "text was typed where this paragraph renders nothing - a spacer such as `&nbsp;`, or "
+    "markup that prints no text. Merging it would replace what is there. Add the text in "
+    "the .md."
 )
 _RUNS_ON = (
-    "an HTML comment or other markup opened in it closes only after a blank line, in the "
-    "next paragraph of the .md. Merging Word's text over it would delete the opening and "
-    "leave the close to print as text. Make the edit in the .md."
+    "it opens an HTML comment with `<!--` in the .md, which can hide what follows it, so it "
+    "is held where it is. Make the edit in the .md."
 )
 _GLUED = (
-    "in the .md a line that opens or closes something else follows it with no blank line "
-    "between - a `:::` or code fence, an HTML block tag such as `</div>`, `\\begin` or "
-    "`\\end`, a definition, or a heading's underline - and Word shows only the paragraph. "
-    "Merging would delete that line, and whatever it opens, along with it. Make the edit in "
-    "the .md; for a fence, a blank line before it frees the paragraph on the next build."
+    "in the .md a line that opens or closes a block, or looks as if it does, follows it with "
+    "no blank line between - a `:::` or code fence, `\\end{table}`, a line starting `: ` - "
+    "so it is held where it is rather than merged with that line. Make the edit in the .md; "
+    "a blank line before that line frees the paragraph on the next build."
 )
 _IN_PARTS = (
-    "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "
-    "- and only its first part carries its identifier. Merging would replace the whole "
-    "paragraph with that part. Make the edit in the .md."
+    "display maths follows it directly in the .md, or Word shows it as more than one "
+    "paragraph, so it is held where it is: merged, its first part could replace the whole. "
+    "Make the edit in the .md."
 )
 _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "

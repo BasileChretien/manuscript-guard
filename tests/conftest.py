@@ -7,6 +7,8 @@ copy has to be per test; only the expensive part is shared.
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +29,43 @@ SCRIPTS = (
 )
 
 IGNORE = shutil.ignore_patterns("build", "__pycache__", ".pytest_cache")
+
+#: Set by CI to the pandoc version it installs. Every test that needs pandoc skips without
+#: it, which is right on a contributor's machine and was wrong on CI: no test job had
+#: pandoc, and none failed for want of it.
+REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
+
+#: The version on the line that names the program, wherever that line falls in the output.
+#: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
+#: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
+PANDOC_VERSION_LINE = re.compile(r"^pandoc(?i:\.exe)?\s+(\S+)", re.MULTILINE)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Where pandoc is required, refuse to start without it rather than skip every test that
+    needs it. Unset, a missing pandoc still skips them."""
+    wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
+    if not wanted:
+        return
+    found = shutil.which("pandoc")
+    if found is None:
+        raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc is not on PATH")
+    try:
+        printed = subprocess.run(
+            [found, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        ).stdout
+    except OSError as exc:
+        raise pytest.UsageError(
+            f"{REQUIRE_PANDOC}={wanted}, but {found} did not run: {exc}"
+        ) from exc
+    line = PANDOC_VERSION_LINE.search(printed)
+    version = line.group(1) if line else "unreadable"
+    if version != wanted:
+        raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
 
 
 def run_analysis(root: Path) -> None:

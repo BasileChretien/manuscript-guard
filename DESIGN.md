@@ -2442,6 +2442,13 @@ Closed since, and why each mattered:
   take any run of whole numbers, so a median and interquartile range written with whole
   bounds, `64 [55-72]` or `64 [55, 72]`, or a stay of `7 [4-12] days`, is read as a
   citation and never audited, as on main; only a bracketed decimal is left alone.
+- **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
+  "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
+  blank line between them they are two paragraphs, and the number opening the second is
+  reported: `\s*` used to cross any number of line breaks, and a count opening a paragraph
+  after one ending "the next section" passed as a cross-reference. The rewrite that made
+  every rule linear is what set the limit. In a rendered author-year citation, a name is at
+  most 61 letters; a longer one is read as no name, and its year is compared.
 - **A study period, a risk window and a censoring horizon must be emitted like any other
   number.** There is no separate namespace for design parameters, so they come from the
   analysis or they fail the gate. That is the intended answer — the reported study period

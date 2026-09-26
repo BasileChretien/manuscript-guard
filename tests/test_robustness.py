@@ -152,14 +152,58 @@ def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
     way of sharing them out: one line of 20,000 spaces took about 7 s, and 400 lines holding
     only spaces about 9 s. `check` scans every manuscript file with every rule.
 
-    Whitespace alone, which this rule stalled on. Other rules stall on a keyword followed by a
-    long run of spaces, "age" and 800 spaces say, and are not covered here."""
+    Whitespace alone, which this rule stalled on. Other rules stalled on a keyword followed by
+    a long run of spaces: see the test below."""
     from manuscript_guard.classify import Classifier
 
     classifier = Classifier.load()
     started = time.perf_counter()
     classifier.scan(text)
     assert time.perf_counter() - started < 2.0
+
+
+# A word a rule reads, a long run of spaces, and a character the rule does not take. Each rule
+# here had neighbouring pieces that could take the same spaces, `\s*[-–]?\s*` say, and the scan
+# backtracked through every way of sharing them out. The runs are sized so the old patterns took
+# 4 to 60 seconds each. Scanned with every rule, the rewrites take under 0.1 s, and 0.3 s for
+# "A-" repeated, where each of thirty rules looks at every one of 20,000 word boundaries.
+SPACES = " " * 16000
+STALLS = {
+    # Six optional words, each after its own `\s*`: faster than the fourth power of the run.
+    "checklist-item": "STROBE" + " " * 80 + "x",
+    "age-band": "age" + " " * 800 + "x",
+    "time-label": "day" + SPACES + "x",
+    "cross-reference": "Table" + SPACES + "x",
+    "categorical-label": "grade" + SPACES + "x",
+    "significance-threshold": "p" + SPACES + "x",
+    "alpha-level": "alpha" + SPACES + "x",
+    "target-power": "power" + SPACES + "x",
+    "coding-system-code": "MedDRA" + SPACES + "x",
+    "balance-criterion": "caliper" + SPACES + "x",
+    # How pandoc's own Markdown writer pads a table's cells: 9 s.
+    "a padded table": ("| STROBE" + " " * 50 + "| Title and abstract | 1 |\n") * 20,
+    # `(?:[A-Z]{1,2}\d*)*` split a run of capitals every way it could: exponential.
+    "alphanumeric-identifier": "A12" + "AB" * 16 + "_",
+    # Audit only. A name was taken from every capital after a hyphen, to the end of the run.
+    "author-year-citation": "A-" * 10000,
+    "author-year-citation, spaces": "Smith et al." + SPACES + "x",
+    # Audit only. The prefix before a `[` was tried from every letter of a run.
+    "numbered-citation": "a" * 20000,
+}
+
+
+@pytest.mark.parametrize("rendered", [False, True], ids=["source", "rendered"])
+@pytest.mark.parametrize("text", list(STALLS.values()), ids=list(STALLS))
+def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: bool) -> None:
+    """Every manuscript file is scanned with every rule, so one rule that backtracks stalls
+    `check`. Rendered, for the audit, the scan also runs the audit-only rules."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load(rendered=rendered)
+    started = time.perf_counter()
+    classifier.scan(text)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 2.0, f"the scan took {elapsed:.1f} s"
 
 
 # ---------------------------------------------------------------- hostile files

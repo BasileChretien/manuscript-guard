@@ -113,6 +113,49 @@ def test_a_subsection_of_the_abstract_is_counted_as_abstract() -> None:
     assert counts.main_text_words == measure(flat).main_text_words
 
 
+@pytest.mark.parametrize("gap", ["", "\n"])
+@pytest.mark.parametrize(
+    "front",
+    [
+        '---\ntitle: "Hepatic injury with example-drug"\n---\n',
+        "---\ntitle: A study\nabstract: |\n  Background words.\n  Results words.\n"
+        "keywords: [one, two]\nlang: en-GB\n...\n",
+        "---  \r\ntitle: A study\r\n---  \r\n",
+    ],
+)
+def test_front_matter_is_not_counted(front: str, gap: str) -> None:
+    """`split_sections` trims the text before the first heading, so the block reached
+    `count_words` without the newline after its closing `---` that the front-matter pattern
+    needs. It went unrecognised, and every word of it, keys included, counted as main text.
+
+    The rendered keys do not count either. The build strips the whole block and prints the
+    title from paper.yaml, and it prints no front-matter abstract at all."""
+    body = "# Abstract\n\nOne two three.\n\n# Introduction\n\nFour five.\n"
+    assert measure(front + gap + body) == measure(body)
+
+
+def test_the_example_counts_what_the_build_prints(project: Path) -> None:
+    """The example's title line, 16 words with its key, made its main text 573 words, not 557."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    printed, title = strip_front_matter(text)
+    assert title, "the example is meant to carry front matter"
+    assert measure(text) == measure(printed)
+
+
+def test_front_matter_does_not_push_a_paper_over_its_limit(project: Path) -> None:
+    """A paper at exactly the journal's limit was reported over it by its title's length."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    printed = measure(strip_front_matter(text)[0]).main_text_words
+    edit_yaml(project / JOURNAL, lambda d: d["limits"].update(main_text_words=printed))
+    report = journal_report(project)
+    assert report.counts["main_text_words"] == printed
+    assert "over-journal-limit" not in codes(report)
+
+
 def test_the_abstract_and_references_are_counted_apart(project: Path) -> None:
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     counts = measure(text)

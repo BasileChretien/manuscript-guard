@@ -10,6 +10,8 @@ alongside the number rather than left implicit:
 * The abstract and the references are counted separately from the main text, because every
   journal treats them separately.
 * Headings count towards the main text, because they are printed.
+* The YAML front matter does not count, rendered keys included. The build strips it and
+  prints the title from paper.yaml, so none of it is in the document a limit is about.
 
 Where a journal counts differently, the profile can say so. Where it does not say, the
 count is reported with the rule, so a disagreement is visible rather than mysterious.
@@ -21,7 +23,7 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import FRONTMATTER, mask, without_front_matter
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -44,6 +46,120 @@ _SETEXT = re.compile(
 
 # Kept as the ATX pattern for callers that only ever meant `#` headings.
 HEADING = _ATX
+
+# The spaces pandoc's `isSpace` takes, which is Haskell's: space, tab, the line breaks, form
+# feed, vertical tab, the no-break space and the other space separators (category Zs). Not
+# `\s`, which also takes U+0085, U+2028, U+2029 and U+001C to U+001F: a quoted value opening
+# with one of those is a value to pandoc, and refusing it kept `{title="<U+0085>x y"}` in a
+# Results title.
+_PANDOC_SPACE = (
+    r" \t\n\r\f\v\xa0\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
+    r"\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}"
+)
+
+# One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
+# or `-`, which pandoc reads as `.unnumbered`. A class or a key opens with a letter, which
+# `strip_attributes` checks, since `[^\W\d_]` also takes `²` and `Ⅷ`. A value is quoted,
+# and then may not open with one of pandoc's spaces (`title=" Works"` is not one, and pandoc
+# prints the braces), or runs to a space, a tab, a line break or the closing brace. Only
+# those: `\s` would also end it at a no-break space, a thin space or a form feed, which
+# pandoc reads as part of the value, so a heading whose `lang=fr` and `FR` were joined by a
+# no-break space kept its block.
+#
+# A value may hold backslash escapes, `title="the \"main\" one"` or `note=a\}b`, and an
+# escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints it. Each escape is one
+# backslash and the character after it, and every other character is one of the rest, so a
+# value can be read only one way. Items need no space between them: `{#a.b}` is one
+# identifier and `{#a#b}` two, because pandoc takes the longest item it can at each point
+# and never goes back. `strip_attributes` does the same, one item at a time. With the items
+# under one quantifier in a single pattern, a run such as `#a.b.c` could be divided between
+# items in more ways than it has characters, and a block that failed at its last character
+# would try every one of them.
+_ATTRIBUTE_ITEM = re.compile(
+    r"#[\w:.-]+"
+    r"|\.(?P<lead>[^\W\d_])[\w:.-]*"
+    r"|(?P<key>[^\W\d_])[\w:.-]*="
+    r"(?:\"(?![" + _PANDOC_SPACE + r"])(?:[^\"\\]|\\.)*\""
+    r"|'(?![" + _PANDOC_SPACE + r"])(?:[^'\\]|\\.)*'"
+    r"|(?:[^ \t\n\r}\\]|\\.)*)"
+    r"|-"
+)
+
+
+def _escaped(text: str, index: int) -> tuple[bool, int]:
+    """Whether the character at `index` is escaped, and where the backslashes before it
+    start. An odd run escapes it: `\\{` is a brace, `\\\\{` a backslash and then a brace."""
+    start = index
+    while start > 0 and text[start - 1] == "\\":
+        start -= 1
+    return (index - start) % 2 == 1, start
+
+
+def strip_attributes(text: str) -> str:
+    """`text` without the pandoc attribute block it ends with, if it ends with one.
+
+    `# References {-}` prints as "References", unnumbered, and `## Results {#sec-results}`
+    as "Results". Kept in the title, the block made it another word: `is_methods` matches a
+    title whole, so `Results {#sec-results}` was not Results, and a subsection under it named
+    like a Methods one made a reported `p < 0.001` the alpha chosen in advance.
+
+    Only what pandoc reads as attributes goes. "Results {and more}" and "Results \\{-}"
+    print as they stand, and so does every block but the last. The block opens at the last
+    brace no backslash escapes, and `{k=a\\{b}` is one block. Nothing else in the title
+    changes: `# **Results**` keeps its asterisks. `text` comes back unchanged when nothing
+    goes, so a caller can tell.
+
+    Only spaces and tabs may follow the block, and only they are taken off what precedes it.
+    `rstrip()` takes every Unicode space, and `# References {-}` with a no-break space after
+    it, which pandoc prints braces and all, lost its block.
+    """
+    body = text.rstrip(" \t")
+    if not body.endswith("}"):
+        return text
+    opening = len(body)
+    while True:
+        opening = body.rfind("{", 0, opening)
+        if opening < 0:
+            return text
+        escaped, before = _escaped(body, opening)
+        if not escaped:
+            break
+        opening = before
+    inner, position = body[opening + 1 : -1], 0
+    while True:
+        while position < len(inner) and inner[position] in " \t":
+            position += 1
+        if position == len(inner):
+            return body[:opening].rstrip(" \t")
+        item = _ATTRIBUTE_ITEM.match(inner, position)
+        if item is None:
+            return text
+        letter = item.group("lead") or item.group("key")
+        if letter and not letter.isalpha():
+            return text
+        position = item.end()
+
+
+def _atx_title(found: re.Match[str]) -> str:
+    """An ATX heading's title, without its attribute block and the closing `#`s before it.
+
+    Pandoc reads the closing `#`s, then spaces, then the attribute block, so
+    `## Results ## {#sec-results}` is "Results". A block before the closing `#`s is text:
+    `# Results {-} ##` is "Results {-}".
+
+    Read to the end of the title's own line. `_ATX` can run on past a blank line to a line
+    of `#`s, and read to the end of the match, `# Results {#sec-results}` above one ended in
+    `#` rather than a block, and kept it. And only spaces and tabs are taken off before the
+    block or the closing `#`s are looked for: any other space after them is printed.
+    """
+    source, end = found.string, found.end()
+    newline = source.find("\n", found.end("title"), end)
+    line = source[found.start("title") : newline if newline >= 0 else end].strip(" \t")
+    printed = strip_attributes(line)
+    if printed == line:
+        return found.group("title").strip()
+    return printed.rstrip("#").strip()
+
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
@@ -131,14 +247,18 @@ class _Found:
 
 
 def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order."""
+    """Every heading, ATX and setext, in document order, titled without its attribute block."""
     rendered = scannable(text)
     found = [
-        _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
+        _Found(m.start(), len(m.group("hashes")), _atx_title(m))
         for m in _ATX.finditer(rendered)
     ]
     found += [
-        _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
+        _Found(
+            m.start(),
+            1 if m.group("under").startswith("=") else 2,
+            strip_attributes(m.group("title").strip(" \t")).strip(),
+        )
         for m in _SETEXT.finditer(rendered)
     ]
     return sorted(found, key=lambda f: f.start)
@@ -242,12 +362,10 @@ def headings(text: str) -> list[str]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
-    # of it because pandoc renders them, but a journal counts those against their own limits,
-    # not against the body.
-    opening = FRONTMATTER.match(text)
-    stripped = text[opening.end() :] if opening else text
-    stripped = blank_fences(stripped)
+    # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of
+    # it because pandoc renders them, but the build strips the block, and a journal counts a
+    # title and an abstract against limits of their own, not against the body.
+    stripped = blank_fences(without_front_matter(text))
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
@@ -275,7 +393,12 @@ def measure(text: str) -> Counts:
     whatever it resolves to. That is close enough for a limit, and it means the count does
     not change when the analysis is re-run.
     """
-    sections = split_sections(text)
+    # The front matter goes before the split. `split_sections` trims the text before the
+    # first heading, which takes the newline after the closing `---` with it, and without
+    # that newline `count_words` no longer recognised the block: every word of the YAML,
+    # keys included, counted as main text.
+    printed = without_front_matter(text)
+    sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title
     # alone, `## Background` under `# Abstract` was main text, so a structured abstract
@@ -299,6 +422,6 @@ def measure(text: str) -> Counts:
         main_text_words=main,
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
-        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", text)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", text)),
+        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
     )

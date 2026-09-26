@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -72,24 +73,27 @@ def test_check_finishes_on_pathological_prose(project: Path, name: str, body: st
     assert elapsed < BUDGET_SECONDS, f"{name}: check took {elapsed:.1f}s"
 
 
-def test_the_fence_scanner_is_linear() -> None:
+def opener_lines(count: int) -> str:
+    return "".join(f"```lang{i}\n" for i in range(count))
+
+
+def test_the_fence_scanner_is_linear(assert_linear) -> None:
     """Measured directly, because the gate budget is too coarse to see a slide.
 
     The regex this replaced took 0.24s at 1,000 opener-shaped lines and 6.09s at 4,000 —
     quadratic. The first attempt at handling unterminated fences reintroduced it at 55s for
-    8,000. Doubling the input must not much more than double the time.
+    8,000.
     """
     from manuscript_guard.text.fences import fenced_spans
 
-    def measure(count: int) -> float:
-        text = "".join(f"```lang{i}\n" for i in range(count))
-        started = time.perf_counter()
-        fenced_spans(text)
-        return time.perf_counter() - started
+    assert_linear(opener_lines, fenced_spans, 50, "the fence scanner")
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
+    """A ratio of microseconds is noise, so a size that never reaches the floor is an error
+    in the test, not a pass."""
+    with pytest.raises(ValueError, match="too little to time"):
+        assert_linear(opener_lines, len, 10, "len")
 
 
 def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
@@ -111,6 +115,187 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
     small = max(measure(25), 1e-3)
     large = measure(200)
     assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
+def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
+    """Front matter counts only where pandoc keeps it as metadata, which means reading the
+    YAML, and every gate asks. Thousands of nesting levels took the pure-Python loader
+    seconds to give up on, so nesting that deep is refused unread: it is nobody's metadata.
+    """
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    text = f"---\nnote: {value}\n---\n\nBody.\n"
+    started = time.perf_counter()
+    assert strip_front_matter(text) == (text, "")
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    "opener",
+    [
+        "Para <!-- open ",
+        "\\begin{figure}\n",
+        "\\begin{e#}\n",
+        "<pre>\n",
+        "---\nkey#: ",
+        "--\nT\n--\n--\nT\n",
+    ],
+    ids=[
+        "comment",
+        "latex environment",
+        "latex environments, all different",
+        "pre",
+        "yaml that never closes",
+        "tables that each open straight under the last",
+    ],
+)
+def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
+    """A block that opens raw content with no closer used to search to the end of the text,
+    once per block: 80,000 of them took 26 seconds, and `check` reaches this through G13.
+    Distinct environment names are measured separately because a cache keyed by closing
+    string fixed the repeated case and left each new name searching to the end of the text.
+
+    Padded, because with short blocks the per-block work hides the search: at four times
+    the input and without the fix the ratio was 13 to 17, and with it about 4.
+
+    Checked twice, because no one start sees both kinds of quadratic. One running in Python,
+    like the walk from every table opener that a3d0453 had, fails in seconds from 10 blocks
+    and takes minutes from 1,000. One running at C speed, like a `find` to the end of the
+    text for each comment's closer, sits on the bound from 10 blocks (15 to 20, failing on
+    some runs and not others), so only the start of 1,000 is sure to catch it. A failure in
+    the first pass ends the test. It was timed once per size at 4,000 and 16,000 blocks.
+    """
+    from manuscript_guard.roundtrip import tag
+
+    def blocks(count: int) -> str:
+        return "".join(opener.replace("#", str(i)) + "x" * 200 + "\n\n" for i in range(count))
+
+    for start in (10, 1000):
+        assert_linear(
+            blocks, lambda text: tag(text, "main.md"), start, f"paragraph tagging from {start}"
+        )
+
+
+# The check itself, on a clock that only the job below moves: that it fails a quadratic,
+# and how it handles noise. Each test catches a change to the check that the real scans
+# above cannot see, because a real machine is neither quadratic nor noisy on cue. A real
+# quadratic scan was timed here too, and cost more CI time than it told: the one below is
+# exact.
+
+
+def virtual_job(
+    seconds: Callable[[int], float], slow: Callable[[int, int], float] | None = None
+) -> tuple[Callable[[], float], Callable[[int], None], list[int]]:
+    """A job whose `n` items take `seconds(n)` virtual seconds, times `slow(n, k)` on its
+    `k`th call with `n`, counting from 0. Returns the clock, the work, and the sizes it was
+    called with."""
+    now = [0.0]
+    seen: dict[int, int] = {}
+    calls: list[int] = []
+
+    def work(n: int) -> None:
+        k = seen.get(n, 0)
+        seen[n] = k + 1
+        calls.append(n)
+        now[0] += seconds(n) * (slow(n, k) if slow else 1.0)
+
+    return (lambda: now[0]), work, calls
+
+
+def same(n: int) -> int:
+    return n
+
+
+def test_one_slow_sample_does_not_fail_a_linear_job(assert_linear) -> None:
+    """The first time the larger input runs, it runs ten times slow. Its best of three is
+    linear; its mean, its worst, or a single sample reads 32 or more."""
+    clock, work, _ = virtual_job(
+        lambda n: n * 3e-5, lambda n, k: 10.0 if n == 8000 and k == 0 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+
+
+def test_a_slow_first_round_is_measured_again_before_it_fails(assert_linear) -> None:
+    """All three samples of the larger input run 2.5 times slow, and read 20: a verdict the
+    next five samples overturn."""
+    clock, work, _ = virtual_job(
+        lambda n: n * 3e-5, lambda n, k: 2.5 if n == 8000 and k < 3 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+
+
+def test_one_slow_sample_at_the_floor_does_not_choose_the_size(assert_linear) -> None:
+    """1,000 items take 6 ms, and the first timed run of them 30 ms. The size is chosen on
+    the best of three, so the check goes on to 4,000 items (24 ms) rather than stopping at a
+    size whose real time is under the floor. The first call, `k` 0, is the untimed warm-up."""
+    clock, work, calls = virtual_job(
+        lambda n: n * 6e-6, lambda n, k: 5.0 if n == 1000 and k == 1 else 1.0
+    )
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+    assert max(calls) == 8 * 4000
+
+
+def test_the_two_sizes_are_timed_in_alternation(assert_linear) -> None:
+    """So that a slow spell falls on both; timed one size after the other, a spell that
+    covers the larger size's samples reads as a quadratic."""
+    clock, work, calls = virtual_job(lambda n: n * 3e-5)
+    assert_linear(same, work, 1000, "a linear job", clock=clock)
+    first_large = calls.index(8000)
+    assert calls[first_large - 1:] == [1000, 8000] * 3
+
+
+@pytest.mark.parametrize(
+    ("share", "fails"), [(0.2, True), (0.15, True), (0.13, False), (0.1, False)]
+)
+def test_the_bound_fails_a_quadratic_part_of_a_seventh(
+    assert_linear, share: float, fails: bool
+) -> None:
+    """The check has to fail the regression it exists for, not just pass what is linear. A
+    job whose quadratic part is `share` of its time on the smaller input reads 8 + 56 *
+    share, and a seventh reads 16: a fifth (19.2) and 0.15 (16.4) fail, 0.13 (15.28) and a
+    tenth (13.6) pass, which puts the bound between 15.28 and 16.4."""
+
+    def seconds(n: int) -> float:
+        return 0.024 * ((1 - share) * n / 1000 + share * (n / 1000) ** 2)
+
+    clock, work, _ = virtual_job(seconds)
+    if fails:
+        with pytest.raises(AssertionError, match=f"took {8 + 56 * share:.1f}x the time"):
+            assert_linear(same, work, 1000, "a job", clock=clock)
+    else:
+        assert_linear(same, work, 1000, "a job", clock=clock)
+
+
+def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -> None:
+    """Off for every timed sample, and on again afterwards, even when the work raises in the
+    middle of one: left off, it would stay off for the rest of the session."""
+    import gc
+
+    clock, work, _ = virtual_job(lambda n: n * 3e-5)
+    collecting: list[bool] = []
+
+    def watched(n: int) -> None:
+        collecting.append(gc.isenabled())
+        work(n)
+
+    def fails_once_timed(n: int) -> None:
+        collecting.append(gc.isenabled())
+        if len(collecting) > 1:
+            raise RuntimeError("the job failed")
+
+    try:
+        assert_linear(same, watched, 1000, "a linear job", clock=clock)
+        # The first call is the warm-up, off the clock.
+        assert collecting[0] and not any(collecting[1:])
+        assert gc.isenabled()
+        collecting.clear()
+        with pytest.raises(RuntimeError, match="the job failed"):
+            assert_linear(same, fails_once_timed, 1000, "a job that fails", clock=clock)
+        assert collecting == [True, False]
+        assert gc.isenabled()
+    finally:
+        gc.enable()
 
 
 # ---------------------------------------------------------------- hostile files

@@ -41,7 +41,7 @@ from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.values import RESULTS, Value
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 TRACED = "traced"
@@ -159,6 +159,7 @@ def annotate(
     """
     placeholders, _malformed = parse(text)
     headings = heading_index(text)
+    notes = footnote_index(text)
     scan = classifier.scan(text)
 
     spans: list[tuple[int, int, Mark]] = []
@@ -209,7 +210,9 @@ def annotate(
             )
 
     for atom in find_atoms(text, mask(text)):
-        verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
+        verdict = classifier.classify_under(
+            atom, chains_at(headings, notes, atom.start), scan
+        )
         counter[0] += 1
         anchor = _ANCHOR.format(n=counter[0])
         if verdict.kind == UNCLASSIFIED:

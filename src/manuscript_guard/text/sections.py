@@ -19,6 +19,7 @@ count is reported with the rule, so a disagreement is visible rather than myster
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass
 
@@ -291,6 +292,125 @@ def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
             stack.pop()
         stack.append((found.level, found.title))
     return tuple(title for _level, title in stack)
+
+
+@dataclass(frozen=True)
+class Note:
+    """A footnote's definition: where its text runs in the file, and where it is
+    referenced, which is where pandoc prints it."""
+
+    start: int
+    end: int
+    references: tuple[int, ...]
+    # The heading chain of each reference, each once, found when the note is.
+    chains: tuple[tuple[str, ...], ...] = ()
+
+
+# A footnote's marker, as referenced or, at the start of a line and before a colon, defined.
+# Pandoc's labels hold no space and match case and all.
+_NOTE_MARKER = re.compile(r"\[\^(?P<label>[^\]\s]+)\]")
+_NOTE_DEFINITION = re.compile(r"[ ]{0,3}\[\^(?P<label>[^\]\s]+)\]:")
+# A line that may start a block of its own, which ends a definition's first paragraph here
+# whether or not it would for pandoc: a heading, a quotation, a listing, raw markup, a table,
+# a caption or definition, a rule or a list item, or another footnote.
+_MAY_START_BLOCK = re.compile(r"[ ]{0,3}(?:[#>`~<|:*+=_-]|\d+[.)]|\[\^)")
+_INDENTED = re.compile(r"(?: {4}|\t)")
+
+
+def footnote_index(text: str) -> list[Note]:
+    """Every footnote definition in `text` with the references that print it.
+
+    Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
+    section its definition line sits in only: a finding referenced from Results and defined
+    under Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is
+    also read where it is referenced (`chains_at`).
+
+    Its text is the definition's line, the lines under it up to a blank one or one that may
+    start a block of its own, and after blank lines each block indented four spaces or a
+    tab. That is pandoc's reading of a plain note, not of every note: review found a `[^n]:`
+    line pandoc reads as the paragraph above's, and paragraphs a list item or a comment
+    holds, taken for a note's text. Since a number is still judged where it stands, such a
+    misreading only adds a section it must pass in. A reference inside a definition is not
+    counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
+    """
+    shown = scannable(text)
+    found_headings = _headings_in(text)
+    headings = {found.start for found in found_headings}
+    lines: list[tuple[int, str]] = []
+    offset = 0
+    for line in shown.split("\n"):
+        lines.append((offset, line))
+        offset += len(line) + 1
+    spans: list[tuple[int, int, str]] = []
+    index = 0
+    while index < len(lines):
+        start, line = lines[index]
+        defined = _NOTE_DEFINITION.match(line)
+        if defined is None or start in headings:
+            index += 1
+            continue
+        last = index
+        index += 1
+        while index < len(lines):
+            at, line = lines[index]
+            if not line.strip() or at in headings or _MAY_START_BLOCK.match(line):
+                break
+            last, index = index, index + 1
+        while index < len(lines):
+            ahead = index
+            while ahead < len(lines) and not lines[ahead][1].strip():
+                ahead += 1
+            block = ahead
+            while block < len(lines) and lines[block][1].strip():
+                if not _INDENTED.match(lines[block][1]):
+                    break
+                block += 1
+            if block == ahead or (block < len(lines) and lines[block][1].strip()):
+                break
+            last, index = block - 1, block
+        end = lines[last][0] + len(lines[last][1])
+        spans.append((start, end, defined.group("label")))
+    references: dict[str, list[int]] = {}
+    defined = [Note(low, high, ()) for low, high, _label in spans]
+    for found in _NOTE_MARKER.finditer(shown):
+        if _containing(defined, found.start()) is None:
+            references.setdefault(found.group("label"), []).append(found.start())
+    return [
+        Note(
+            low,
+            high,
+            tuple(references[label]),
+            tuple(dict.fromkeys(chain_at(found_headings, at) for at in references[label])),
+        )
+        for low, high, label in spans
+        if label in references
+    ]
+
+
+def _containing(notes: list[Note], offset: int) -> Note | None:
+    """The note, of those in document order and apart, whose text holds `offset`."""
+    at = bisect.bisect_right(notes, offset, key=lambda note: note.start) - 1
+    return notes[at] if at >= 0 and notes[at].end > offset else None
+
+
+def chains_at(
+    index: list[_Found], notes: list[Note], offset: int
+) -> tuple[tuple[str, ...], ...]:
+    """Every heading chain a number at `offset` is judged under, and must pass under each:
+    where it stands, and, inside a footnote's definition, where each reference to it stands.
+
+    Where it stands is kept for a footnote's text too, although pandoc prints it at the
+    references. Judged at the references alone, a claim the gates took for a note's text and
+    pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
+    pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
+    of #77). Judged in both places, a number can only fail more than it did, never pass what
+    it failed before, however the note's end is misread. One chain per heading at most, so a
+    note referenced a thousand times costs no more than one referenced from every section."""
+    here = chain_at(index, offset)
+    note = _containing(notes, offset)
+    if note is None:
+        return (here,)
+    return tuple(dict.fromkeys([here, *note.chains]))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:

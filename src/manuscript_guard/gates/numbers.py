@@ -20,7 +20,12 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.text.masking import fenced_blocks, front_matter_problem, mask
+from manuscript_guard.text.masking import (
+    fenced_blocks,
+    front_matter_abstract,
+    front_matter_problem,
+    mask,
+)
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.sections import chain_at, chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -108,6 +113,10 @@ def check_numbers(
         problem = front_matter_problem(text)
         if problem is not None:
             report = report.with_findings(unreadable_header(path, *problem, GATE))
+        # Read here and printed by nothing: the build strips the block.
+        abstract = front_matter_abstract(text)
+        if abstract is not None:
+            report = report.with_findings(abstract_in_header(path, *abstract, GATE))
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -356,6 +365,25 @@ def unreadable_header(path: Path, reason: str, line: int, gate: str) -> Finding:
         context=reason,
         hint="fix the YAML, or close the header with `---` or `...` before the text "
         "starts; a line of dashes meant as a rule needs a blank line under it",
+    )
+
+
+def abstract_in_header(path: Path, line: int, words: str, gate: str) -> Finding:
+    """An abstract in a file's front matter, which the build does not print.
+
+    Refused rather than printed from the header: under an Abstract heading it prints, is
+    counted against the journal's abstract limit, and carries the paragraph identifiers
+    the Word import maps edits back with, like the rest of the text.
+    """
+    return Finding(
+        gate=gate,
+        code="front-matter-abstract",
+        message=f"{path.name} has an abstract in its front matter, which the build does not print",
+        path=path,
+        line=line,
+        context=words[:120],
+        hint="move it out of the front matter and under a `# Abstract` heading, where "
+        "the build prints it and the journal's abstract limit counts it",
     )
 
 

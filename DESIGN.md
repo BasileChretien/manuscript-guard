@@ -173,6 +173,20 @@ It builds as `supplementary.docx` and reaches the pack as its own file. A direct
 than a declaration, matching how figures and results already work, and because a heading can
 be renamed without anyone noticing what left the submission.
 
+A document of its own also comes back from a co-author on its own. `import` compared every
+returned document with a fresh build of the paper, so an edited `supplementary.docx` reported
+every paragraph of the paper as deleted in Word and applied none of its own edits. The source
+stamp cannot tell the two documents apart: both are built from the same sources and carry
+the same one. The paragraph identifiers can, because each names its source file. A document
+whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
+the supplement, and one whose identifiers all come from the paper with a build of the paper.
+One carrying both is refused: neither build accounts for it. Word drops the identifier of a
+single paragraph it pastes, so only two or more paragraphs pasted across bring one along. A
+document carrying none is refused too when the project has a supplement, since it could be
+either. Whether there is a supplement is read from the source files: a supplement of
+headings and tables carries no identifier, and read from the identifiers it was taken for no
+supplement, so its document was compared with the paper.
+
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
 contribution groups, ORCID, funding and competing interests. One validated file fills the
@@ -383,10 +397,10 @@ Two modes, and the choice is a fact about the machine rather than a preference:
   latter only once `author-in-text: true` is set in the generated front matter, which is
   the second of the two chores the first pipeline test uncovered.
 - **offline** — pandoc `--citeproc` against a committed `literature/references.bib` and a
-  CSL style. Citations become formatted text rather than live fields. This is what CI and a
-  co-author without Zotero get, and it is why the `.bib` is committed rather than exported
-  on demand. `manuscript-guard sync-bib` rewrites it from Zotero, containing exactly the
-  keys the manuscript cites.
+  CSL style. Citations become formatted text rather than live fields. This is what a
+  co-author without Zotero gets, and what CI builds with, and it is why the `.bib` is
+  committed rather than exported on demand. `manuscript-guard sync-bib` rewrites the `.bib`
+  from Zotero, containing exactly the keys the manuscript cites.
 
 `zotero.lua` is fetched and cached under `build/.cache/` rather than vendored: it belongs to
 Better BibTeX and tracks its behaviour, so a pinned copy would go stale.
@@ -394,6 +408,11 @@ Better BibTeX and tracks its behaviour, so a pinned copy would go stale.
 After a live build the document is reopened and its Zotero fields counted, because the
 filter fails quietly when Zotero is closed — the result looks fine until someone clicks
 Refresh in Word and every citation vanishes.
+
+CI installs the pandoc version pinned as `MANUSCRIPT_GUARD_REQUIRE_PANDOC` in
+`.github/workflows/ci.yml`, and with that variable set the test suite refuses to start
+unless that pandoc is on PATH. Until it did, no test job had pandoc: every test that needs
+it skipped on every job, and none failed for want of it.
 
 **Tables are emitted, not written.** `em.table(...)` puts a table in the results fragment,
 `{{table.key}}` places it, and the build renders a pipe table. A hand-typed table is the
@@ -404,6 +423,36 @@ emitted table nothing places is a coverage failure, exactly like an unquoted val
 preferring raster or PDF over SVG because Word's SVG support is uneven and a journal's
 production system is worse. The caption stays in the manuscript as ordinary prose, so it is
 checked like prose and can carry bindings.
+
+**The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
+build strips every source file's YAML block and writes a header of its own with the title,
+short title and keywords from `paper.yaml`. A `title:` in the manuscript is compared with
+that one and a disagreement warned about (`two-titles`). An `abstract:` there is refused,
+by G2 and by the build alike (`front-matter-abstract`), as a block pandoc cannot read is
+(`front-matter-unreadable`). G2 reads it, because pandoc prints one, and until 2026-09-26
+the build dropped it without a word: the abstract was checked, then left out of the
+document, and the word count, which follows the build, let a journal's abstract limit pass
+on 0 words. It is refused rather than printed because everything else here already finds
+an abstract by its heading: the word count, G4's structured-abstract headings, and the
+paragraph identifiers the Word import maps edits back with. Printed from the header, each
+would have needed a second place to look, and a co-author's edit to it in Word would have
+had no source paragraph to go back to.
+
+The abstract is found by reading the block as pandoc does, with the loader that decides
+the block is front matter, and not with G2's reader, which finds a value by its key line.
+Read G2's way, a quoted key (`"abstract":`), a quoted value opened on the key's line and
+continued below it, or a flow mapping passed `check` and was dropped by the build, though
+pandoc prints each of them; and `abstract: null` or `abstract: # to do` was refused,
+though pandoc prints nothing for either. Merge keys are followed, because pandoc honours
+them: an abstract merged in with `<<: *base` prints. A key is known by its text, as pandoc
+knows it, so `"<<": *base` merges too, although PyYAML tags only a plain `<<` as a merge.
+Each mapping is visited once, since a chain of mappings each merging the one before it
+twice doubles the work of expanding them with each line, and 614 bytes of such front
+matter once held `check` for 38 seconds. An abstract pandoc reads as empty is let through,
+and so is a key named `abstract` inside another mapping, which pandoc does not take for
+the abstract. Any other value, a number or `yes`, is refused rather than guessed about.
+PyYAML's composer and pandoc 3.9 were compared on each of these spellings, and on a
+duplicated key, where both keep the last.
 
 ## Zotero is never on the critical path
 
@@ -467,6 +516,15 @@ journal's page actually says; an absent limit is not checked, because a guessed 
 produces confident failures about a rule that does not exist. A profile over a year old
 warns. Switching journals after a rejection means writing a second profile and reading the
 resulting failure list, which is the reformatting job itemised.
+
+**A required statement counts where it prints as one.** A profile's statement patterns, and
+a structured abstract's required headings, are searched with HTML comments and fenced code
+blanked (`scannable`). A comment prints nothing, and a listing prints its lines as code, not
+as a declaration. `# Funding` is a heading in Markdown and a comment in R and Python, and
+inside either it met the funding statement of a paper that had none. A statement written in
+a fenced block therefore does not count, and no journal takes one written as code. The
+blanking is close to what pandoc prints but not the same; where they differ is under Known
+gaps.
 
 **Checklists are transcribed from their official documents, never written from memory.**
 Item text that is approximately right produces confident coverage of the wrong things, and
@@ -570,6 +628,19 @@ references counted separately; headings counted, because they are printed, and t
 attribute blocks (`{#sec-methods}`, `{-}`) not, because pandoc does not print them. Counting
 is done on the source rather than the built document, so a binding counts as one word
 whatever it resolves to and the count does not move when the analysis is re-run.
+
+The YAML front matter that opens a file is not counted, rendered keys included. The build
+strips every file's block and prints the title from `paper.yaml`, so none of it is in the document a limit is
+about, and a journal counts a title and an abstract against limits of their own anyway. An
+abstract counts when it is written under an Abstract heading, which is where the build
+prints one. One written in the front matter is refused rather than counted as 0 words (see
+the build). Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
+text before the first heading, the closing `---` lost the newline the front-matter pattern
+needs, and the example's title line took its main text from 557 words to 573. G4 had a second
+route to the same mistake. It reads the main text as one string joined from every file, so
+only the first file's block was at the top, and a later file's closing `---` underlined its
+last YAML line into a heading: `title: Methods of the online appendix` satisfied a required
+Methods section. The title page declares the count G4 checks, from the same text.
 
 ## The AI-writing lint measures rate, not presence
 
@@ -1331,6 +1402,89 @@ the paragraphs, and blamed a neighbour when the diff preferred it. The file-leve
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
 
+Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
+refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
+first reaches Word as an empty line, the second does not reach it at all. Filled like any
+other slot, the first half moved and the second stayed, and a paragraph dragged below the
+empty line that ends the example's Methods was written inside the comment and vanished from
+the next build. A `:::` or a code fence written directly under a paragraph belongs to that
+paragraph's source but not to its Word text, so it travelled with the paragraph, and a
+rewording deleted it: the div then ran to the end of the document. Five kinds of paragraph
+are now held in place, each a section of its own, so a move past one is reported like a move
+past a heading:
+
+- one that never reaches Word;
+- one that opens a comment it does not close, or whose raw markup runs on into the next;
+- one that renders nothing;
+- one with a line directly under it that opens or closes something else: a `:::` or code
+  fence, an HTML block tag such as `</div>`, `\begin` or `\end`, a definition, or a heading's
+  underline;
+- one that Word shows as more than one paragraph: with untagged text before the next
+  paragraph of its section, or with display maths in its source, which Word sets apart
+  even when the paragraph ends its section.
+
+None of them takes a rewording. A held paragraph the co-author drags past two paragraphs or
+more, or past a heading, is reported by name, like any other paragraph that left its
+section. The first version made it an anonymous anchor, so a held paragraph dragged past a
+heading was dropped with "nothing came back"; the second weighed it above all other
+paragraphs together, so dragged to the top of the Methods it had the four paragraphs it
+passed reported instead. It now outweighs one paragraph and not two. Whether a paragraph
+reaches Word in parts is still judged within the sections the source has. Judged within the
+finer sections that holding creates, a one-line comment after a definition list hid the
+split, and a rewording of the term deleted the definition. Whether a paragraph opens a
+comment or holds display maths is read with its code spans and closed comments set aside,
+so `$$` or `<!--` inside backticks holds nothing. Searched for as written, they held a
+paragraph that explained them in inline code. The rewording's own scan of inline markup was
+tried next and set aside too much: it took `` `glmer` from $$…$$ `nlme`{.r} `` for one code
+span, and `~~ $$x$$ ~~` for struck-through text, so display maths went unseen and the first
+part of such a paragraph was moved without its equation. Setting aside too little only
+holds a paragraph that could have moved: `$$` inside a footnote does. A backtick escaped with
+a backslash opens no code span; taken for one, it swallowed the `$$` or `<!--` up to the next
+real code span. Escapes are read as pairs, so the backtick after an escaped backslash still
+opens one: refused after any backslash, the closing backtick of `\\` then `` `data` ``
+opened a false span of its own. Nor does a backtick just before an opener stop it. That
+backtick is an escaped one, as in `` \``onset` ``, or one of a run that never closes, and
+pandoc opens a span on a run's last backtick, as in ``` ``crude'' ratio came from `ror ```.
+Stopped, the real span's closer was taken for an opener, and the false span it began hid
+the `<!--` after it: a paragraph swapped in the Introduction was written inside the
+comment, exit 0. Display maths is also read from the document as sent, which
+says it outright: an equation directly after a paragraph is part of that paragraph, however
+its source is written. And a held paragraph whose only change is a no-break space pandoc put
+in and Word's editor took out again has nothing to merge, as an ordinary one has not; it was
+refused instead. That is decided only for a source with no no-break space of its own and no
+binding or citation: asked of every paragraph, the check dropped a co-author's change to one
+the author had written, with "nothing came back". An author can write one as `\ `, as the
+character, or as an entity pandoc reads, `&NonBreakingSpace;` and `&#0160;` included. It is
+also decided only when no new text stands beside the paragraph. Only the part carrying the
+identifier is compared, so when the part after an equation had been reworded, skipping the
+paragraph dropped that rewording.
+
+Headings and captions are matched between the two documents as a sequence, not one text at
+a time. With two "Outcome" subheadings, matching by text alone, first come first served,
+made the second stand in for the first once the first was renamed or deleted. The second
+was then reported as having moved, and a real move in the same document went unnamed. A
+text the sequence leaves exactly one copy of on each side is then paired too, which is how
+a dragged heading is still found: paired only when its text was unique in the whole paper,
+a dragged "Outcome" with another "Outcome" elsewhere was paired with nothing, and the drag
+went unreported.
+
+A table or a figure is a boundary only if it can be found again in the returned document.
+They were matched by position, both kinds together, and only while their total was
+unchanged, so a co-author who deleted one table or pasted in any picture switched every
+boundary off, and a paragraph dragged below a figure came back as "nothing came back". Each
+is now matched within its own kind by what it holds: a table by its text, a figure by the
+bytes of its picture, because Word renumbers and renames the part a picture is stored in
+every time it saves. What is left is paired by place, within the stretch between the same
+two headings, captions or matched tables and figures, when that stretch holds as many of
+the kind in both documents. Paired by position anywhere in the document, a table deleted
+from the Results and another pasted into the Funding were taken for one table, and the
+deletion went unreported. One that cannot be found is reported and makes the command exit
+1, because a move past it cannot be seen. A heading, table or figure that is found but came
+back somewhere else is reported too. It had been the anchor the ordering dropped, which
+named nothing. A display equation is a block of the same kind, known by its text. Word
+keeps it as OMML, whose text is not `w:t`, so it was read as an empty paragraph: dragged
+into another section or deleted, it came back as "nothing came back".
+
 **Rewording a paragraph that quotes a number now works too.** A source paragraph is prose
 and protected tokens in alternation: bindings, and citations in the forms pandoc reads,
 `[@key]`, `[see @key, p. 4]`, `[@key, p. 3 [emphasis added]]`, a narrative `@key` and `@key
@@ -1704,6 +1858,10 @@ so a cut in the wrong place shows.
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **One pandoc version is tested.** CI pins one, in `.github/workflows/ci.yml`: the version
+  the tests that assert on pandoc's output were written against. It refuses to run the
+  suite with any other. An author's pandoc may be older or newer, and nothing here checks
+  that the build and the import behave the same with it.
 - **Digests are byte-level, so line endings are part of the guarantee.** `.gitattributes`
   pins `eol=lf` here, and `init` now writes the same file into every scaffolded project:
   without it Git stores LF and hands Windows CRLF, and every byte-level check reports a
@@ -1742,6 +1900,42 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a fresh vector — which is how the wrong figure actually reaches a journal. There is no
   `verify` equivalent for figures, because re-rendering is not reproducible across
   plotting-library versions.
+- **The other rendered keys in a manuscript's front matter are read by G2 and printed by
+  nothing.** `subtitle`, `summary`, `keywords`, `short_title` and `running_title` are read
+  because pandoc can print them, and the build strips the block and takes its header from
+  `paper.yaml`. A number in one is checked and never printed, which is the safe direction,
+  but the text itself is dropped without a word. Only the abstract is refused
+  (`front-matter-abstract`), and only the title is compared with `paper.yaml`
+  (`two-titles`).
+- **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
+  pure-Python composer is linear but slow: once to decide the block is front matter, once
+  to look for an abstract in it, each cached for the rest of the process. With half a
+  megabyte of front matter, which only a deliberately hostile manuscript has, `check` on
+  the example took 30 seconds against the 20-second budget of `test_robustness.py`, and
+  24 without the second reading. The C composer is 40 times faster and overflows its stack
+  on deep nesting, which is why the pure-Python one is used.
+- **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
+  follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
+  none of it. The gates recognise only the block that opens a file, so a later one is read:
+  its words count, and its closing `---` underlines the line above it into a heading. A
+  block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
+  Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
+  chosen in advance.
+- **G4 reads the main-text files in path order, and the build prints them in another.** The
+  build puts `main.md` first and sorts the rest by file name, not by path. A section's words
+  count where the headings above it put them, so an `abstract.md` beside a `main.md` written
+  in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
+  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
+  end of a file G4 reads first hides the next file's headings and statements up to the next
+  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
+  one main-text file, which is what `init` writes, is unaffected.
+- **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
+  stray fence line inside a comment, or a fence directly under prose that is tilde or
+  indented a space or more, hides what follows from the statement and abstract-heading
+  searches while pandoc prints it, so a statement there is reported missing: a false alarm.
+  A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
+  document. An indented code block is not blanked, so a pattern written for a phrase can be
+  met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -2298,22 +2492,48 @@ Closed since, and why each mattered:
   know quotes or block scalars, and nesting too deep to compose, about 500 levels by
   indentation, is refused the same way. Either is left in the
   body, where pandoc hides it, and is not reported even when it is not YAML.
-- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
-  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
-  enough, since any later real comment supplies the `-->`, and a draft often has one. The
-  comment scanner would have to know code spans.
+- **The comment scanner knows code spans, fences and the front matter, and no other
+  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+  does, but it ends a code span only at a blank line or a front-matter value's edge, where
+  pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
+  or TeX maths as its own, where pandoc reads the enclosing construct first. So
+  ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
+  prints, as a stray backtick in one list item does when it pairs with the one opening
+  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
+  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints it as code. The old regex did all of this and more.
+- **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
+  `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
+  pandoc's own Markdown writer produces and `import` can write, are the thresholds they
+  print. Where the pattern and pandoc disagree, only a value a shipped rule already names
+  can pass; any other number still fails:
+  - *In text that is not Markdown.* A string in a listing or a figure script,
+    `print("Signal if ROR \> 2")`, prints its backslash, and is read as the threshold.
+    Escapes should be read only where the source is Markdown.
+  - *Split where the printed text is not.* The backslash is blanked, so `n\>3 cases` is
+    read as `n` and a count of `>3 cases`, where `n>3 cases` is one unbound word. Atoms
+    should be found in the printed text and mapped back, as the rules already are.
+  - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
+    backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
+    backslash there counts as an escape. An escaped backtick, which `import` writes for every
+    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
+    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
+    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
+    knows escapes, fences and the front matter's edge, but it still ends a code span only at
+    a blank line and misreads backticks in maths, links and indented code.
+
+  A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, but each of these can still hide a number pandoc prints, all on contrived
-  input:
-  - a `<!--` or a fence opened in one YAML value and closed in another;
+  in the body, and a comment stays inside the value it was opened in, but each of these can
+  still hide a number pandoc prints, all on contrived input:
+  - a fence opened in one YAML value and closed in another;
+  - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
+    a quoted title, which a `# -->` YAML comment after it closes;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - a YAML block in the middle of the body;
-  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
-    though not for the masking.
-
-  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+  - a YAML block in the middle of the body, which pandoc also reads.
 - **A Methods footnote defined outside Methods is read as a finding.** A number in a note
   must pass where the definition stands as well as at each reference, so a note referenced
   from Methods and defined at the end of the paper, as authors gather them, has its alpha
@@ -2328,6 +2548,30 @@ Closed since, and why each mattered:
   note defined under Methods and referenced from Results, still passes as the alpha, as on
   `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
   section a number must pass in.
+- **Fences are found without knowing what a comment or a code span swallowed.**
+  `text/fences.py` reads the file for fences before anything else. So a fence line that
+  pandoc reads as part of a comment or of an open code span is still an opener there, and
+  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
+  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
+  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
+  such a fence for itself, but it does not look for the fences pandoc finds after it, and it
+  does not know every place pandoc ends a code span. So a comment is hidden only where the
+  old rule hid it too, from `<!--` to the first `-->` with the fences blanked, and the
+  scanner can hide less than the regex did but never more. The price is noise: a comment
+  pandoc drops is read if it opens or closes inside what the toolkit takes for a listing.
+  Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
+  interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
+  code spans and comments together would close all of these.
+- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
+  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
+  mentions both markers hides everything between them.
+- **The other masked patterns match greedily, and can cover a number printed beside them.**
+  A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
+  is masked along with the address. A footnote label, a pandoc attribute and a placeholder
+  do the same inside their brackets, and so does each of them when its first character is
+  escaped. Where the old comment rule hid the start of such a match, text read again now
+  meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
+  rule left readable. The patterns are to be fixed separately.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
@@ -2440,6 +2684,15 @@ Closed since, and why each mattered:
   is not the answer either: hashing the text means editing the paragraph a reviewer asked
   about invalidates the anchor to it, which is the opposite failure. The real fix is to
   persist the identifier in the source rather than derive it, and it is not done.
+- **Text moved between the paper and its supplement is not applied.** The two are built and
+  imported as separate documents. Word drops the identifier of a single pasted paragraph, so
+  one paragraph pasted from one into the other comes back as new text without an
+  identifier, which import lists but does not apply. Two or more bring the later ones'
+  identifiers, and the whole document is refused. Either way, the author makes the move
+  in the .md.
+- **A supplement of headings, tables and figures cannot be imported.** It carries no
+  paragraph identifier, so its document is refused as one that could be either, even when
+  it comes back untouched. It holds nothing import compares.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
@@ -2529,13 +2782,37 @@ Closed since, and why each mattered:
     link here, so an edit to it is refused. Where the reading takes source markup for text
     it keeps - an unnamed construct that renders nothing - the backstop or the alignment
     refuses. Where it misjudges a span around a binding, nothing does.
-  - *The read-back reads a binding as digits, and a `>` is never escaped.* What a binding's
-    value makes of the text beside it is seen only by the escaper, at the edges it knows: a
-    `<`, `&`, `]` or `{` before a binding, a `(` after one. A `<` in a stretch kept as it
-    was, a binding whose value is a word, and a `>` typed after it in Word make a tag:
-    `Samples <LLOQ in {{results.unit}} and >ULOQ were redone.` merges, and pandoc prints
-    "Samples ULOQ were redone." A number in between is not an attribute, so pandoc prints
-    the text.
+  - *The read-back reads a binding as digits.* What a binding's value makes of the text
+    beside it is seen only by the escaper, at the edges it knows: a `<`, `&`, `]` or `{`
+    before a binding, a `(` after one, and a `>` in an edited stretch. That `>` is escaped
+    once Word's paragraph shows, before it, a `<` that can open a tag: one before a letter
+    of any script, `/`, `!` or `?`, whether the source kept it bare or a value brought it.
+    At the end of an unquoted attribute value, after an `=`, pandoc takes a backslash for
+    part of the value, and `=\>` closed the tag; there the `>` is written `&gt;`. The value
+    ends only at ASCII whitespace, so a no-break space does not end it, and each citation
+    ahead of it is read as its key, as pandoc reads it; the rest is Word's text. A straight
+    quote straight after the `=` opens a quoted value that runs past the paragraph's end and
+    closed at a `>` in the next one; once a `<` shown in a stretch kept from the source, or
+    in a value, stands before it, it is written `\'` or `\"`, which prints straight. Word's
+    own `<` is escaped and opens nothing, so a quote after it is left for pandoc to curl. A
+    `<` the source had escaped still counts, since a kept stretch is read as Word shows it:
+    `\<LOD`, which the merge itself writes for a `<` typed in Word, makes a later
+    `family='binomial'` print `'binomial’`. A `’` Word typed after an `=` to close a quote of
+    the source's is written straight and escaped like any other; left curly, it closed
+    nothing, and a value the source's own `='` had opened ran on. An `=` that ends an
+    edited stretch still lets a tag run on into whatever follows it: `…set to low x=` ahead
+    of a paragraph with a `>` of its own merges, and the two print as the words after that
+    `>`; so does a value of `'low` after a typed `label=`, and a source paragraph that ends
+    in `=` itself, which the next paragraph's escaper cannot see. G2 reads
+    `\>` as the `>` it prints, so `ROR \> 2` is still a threshold. A `>` kept from the
+    source is not Word's to escape, after a `<` kept from the source or brought by a value.
+    Pandoc read the two as text only because something between them was not an attribute
+    name, and an edit that deletes or changes it can make a tag: with values that are words,
+    `Samples <LLOQ in {{results.unit}} (see Table 2) at {{results.site}} and >ULOQ were
+    redone.`, with "(see Table 2)" deleted in Word, or turned into `="(see Table 2)"`,
+    merges, and pandoc prints "Samples ULOQ were redone." A `>` in a binding's value is the
+    same case. The read-back does not see it: a digit is not an attribute name, and pandoc's
+    tags are looser than its own reading, which does not take `mg/L` for one.
   - *What Word holds outside the paragraph's text is never compared.* A footnote's text is
     in `footnotes.xml`, an equation in `m:t` runs, a link's address in the relationships;
     `import` reads none of them. An edit inside a footnote or an equation, a changed link
@@ -2601,7 +2878,17 @@ Closed since, and why each mattered:
   them curled at the next build; the second change is lost with nothing reported, since the
   rebuilt paragraph equals the source. A straight quote typed in an edited stretch can also
   pair with a straight one kept from the source across a token: `'high' at "{{x}} and
-  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
+  "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes
+  within a paragraph. Across one they did: a straight quote after an `=`, once a `<` that
+  can open a tag stood before it, opened a quoted value that ran on into the next
+  paragraph, whose `>` closed the tag, and both printed as the words after that `>`. That
+  quote is now escaped, and an `=` ending an edited stretch still does the same; see "The
+  read-back reads a binding as digits" above. Escaped, the quote prints straight, and where
+  it closes a straight `'` of the source's, that `'` prints as an apostrophe. A quoted value
+  the source opened itself after a `<` of its own, `Values <LOD in {{unit}} were
+  coded="HR {{x}} or LOD" in all.`, stays open if its stretch is edited, since Word's closing
+  `”` is written back curly and closes nothing: with `"d was >0.5"` in the next paragraph,
+  the two print as "Values 0.5” in all.".
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
 - **Paragraph identifiers move when the rules that split a source change.** An identifier
@@ -2649,22 +2936,71 @@ Closed since, and why each mattered:
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
   is a join. Rejecting a co-author's change means rejecting it in Word before sending it
   back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
-  the new one, so it is reported rather than applied.
+  the new one, so it is reported rather than applied. The same holds for a table, a figure
+  or an equation: a tracked deletion of one is a deletion, and a tracked move puts it where
+  it was moved to. A picture or an equation inside `w:del` or `w:moveFrom` used to be read
+  as if it were still there, and so did a table's deleted rows, so each came back as
+  "nothing came back".
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined
   into its paragraph is recognised by its text vanishing from the document and turning up
   in the paragraph; a heading reworded in the same edit is not recognised.
 - **A move is applied only within its section.** A paragraph moved past a heading, table,
-  figure, list, quotation or anything else without an identifier, or into another file, is
-  reported and left where it was. Where each paragraph now sits is read against those
-  blocks as the document was sent. An edited or deleted one is not among them, so a
-  paragraph that crossed only that block is not seen to leave its section: with the order
-  unchanged the move is not reported as a move, and with it changed the paragraph goes to
-  the edge of its own section. Since lists and quotations lost their identifiers this is
-  no rare case, so any block without an identifier that came back reworded, deleted or in a
-  different order is now listed, import no longer says the document matches, and it exits
-  1 - but the move itself is still not named.
+  figure, list, quotation or anything else without an identifier, past a paragraph held in
+  place, or into another file, is reported and left where it was. Where each paragraph now
+  sits is read against those blocks as the document was sent. An edited or deleted one is
+  not among them, so a paragraph that crossed only that block is not seen to leave its
+  section: with the order unchanged the move is not reported as a move, and with it changed
+  the paragraph goes to the edge of its own section. Since lists and quotations lost their
+  identifiers this is no rare case, so any block without an identifier that came back
+  reworded, deleted or in a different order is now listed, import no longer says the
+  document matches, and it exits 1 - but the move itself is still not named. A table or
+  figure that cannot be found in the returned document is not among them either. That one is
+  reported, but a move past it is not.
+- **A paragraph is held in place by its source, not by what the co-author meant.** A
+  one-line comment, a `\newpage` or anything else Word shows as an empty line is held, so a
+  move across it is refused where nothing would have broken. A paragraph written directly
+  above a fence, an HTML block tag, a LaTeX environment, a definition or a heading's
+  underline is never moved or reworded by `import`; for a fence, a blank line before it frees
+  the paragraph on the next build. The lines are found by pattern: prose that happens to
+  start a line with `<p>` or `: ` is held too, and an HTML block tag missing from the list is
+  not recognised. A co-author who drags the empty line past the one paragraph beside it sees
+  that paragraph reported as moved; dragged past two or more, or past a heading, the line
+  itself is reported. A paragraph with display maths is held too, so dragging it whole,
+  equation and all, is refused like dragging its first part. A comment opened in a
+  paragraph is found by reading the source with its code spans set aside, and a backtick in
+  a link's address, an autolink, inline maths or an HTML attribute can still be taken for
+  one that opens a code span; a comment opened after it and closed past a blank line is then
+  not seen, and that paragraph can be moved.
+- **A table, figure or equation is recognised by what it holds, and failing that by its
+  place.** An equation is paired as a table is, so one deleted or edited while another is
+  inserted in the same stretch is taken for it, and the deletion is not reported. A
+  table with a corrected cell, or a picture Word stored again, no longer matches by content,
+  and is taken to be the one in its place among its kind, between the same two headings,
+  captions or matched tables and figures, when that stretch holds as many of its kind in
+  both documents. A table deleted and another pasted into the same stretch are taken for
+  one, and the deletion is not reported. A figure pasted a second time into its own stretch
+  matches neither copy and is reported as not found; a copy pasted into another section is
+  new content, and is not reported at all.
+- **A paragraph that reaches Word in parts is only recognised by what lies around it.**
+  Untagged text between it and the next paragraph of its section, display maths in its
+  source, or a line under it that opens a block, marks it. One that pandoc splits for
+  another reason and that ends its section is not recognised: a rewording of its first part
+  would replace the rest, and a move of its first part would carry the rest along.
+- **The part of a paragraph after its equation is not compared.** Only the part carrying the
+  identifier is. A rewording after the equation, with the first part untouched, is listed
+  with the paragraphs without an identifier that came back different, and not applied. With
+  the first part edited too, the paragraph is refused.
+- **A duplicated heading is matched with the one it copies only when that is unambiguous.**
+  Headings and captions are paired as a sequence, and then any text of which one copy is
+  left over on each side. A pasted copy of a heading that is still in place is paired with
+  nothing, and is listed only as new text without an identifier; a heading dragged elsewhere
+  while a copy of it was pasted is paired with nothing either, so that drag, and a move past
+  it, is not named, though the new copy is listed. A heading renamed while a new heading
+  with its old text is pasted elsewhere reads as that heading dragged there, and is reported
+  as moved: text cannot tell a drag from a rename and a paste, and a false report is the
+  safer of the two mistakes.
 - **The tail of a split paragraph at the end of a section reads as a boundary.** Display
   maths ending the last paragraph of a section leaves untagged text just before the next
   heading, and it is taken for part of that heading's boundary. A move inside the section
@@ -2675,7 +3011,19 @@ Closed since, and why each mattered:
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the
   paragraph under it are both edited in one round, that paragraph's rewording is refused.
-  That is the price of never truncating a split paragraph.
+  That is the price of refusing a split, and it does not refuse every one. The search for
+  new text stops at the first untagged text the document already had. A table moved with
+  its caption between the halves of a split, or a heading dragged there, puts that text
+  first, so the paragraph is merged as its first half and the rest is gone from the source,
+  as on main. Exit 1, because the caption or heading is reported out of place, but the
+  merge is written. A tagged paragraph moved between the halves does the same, but only
+  when Word keeps its bookmark; real Word drops it on a cut and paste, and the split is
+  refused. A table, figure or equation the
+  document as sent did not have counts as new text: a paragraph split around a pasted
+  picture or a new equation was merged as its first half, because the search stopped at the
+  first block that was not prose. One the document did have is looked past, as an empty line
+  is: an equation cut from further down and pasted between the halves still matched itself,
+  and the search stopped there too.
 - **A join that lost its bookmark is recognised by resemblance, which is a judgement.** A
   join made by selecting across the boundary deletes the second paragraph's bookmark. When
   a paragraph changed and the one after it vanished, the import asks which the returned text
@@ -2737,6 +3085,19 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
+  times a scan on eight times its input, taking each size's best of three in alternation,
+  and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
+  quadratic part is under a seventh of its time on the smaller input passes, and so does
+  n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
+  per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
+  Each of these tests used to rest on one timing per size (one on a best of three, one size
+  after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
+  speed shows only at a size where it outweighs the per-item work, and one in Python fails
+  quickly from a small size but takes minutes from a large one, so the size a test starts
+  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
+  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
+  proof that nothing else does.
 
 ## Still open
 

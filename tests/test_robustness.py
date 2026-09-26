@@ -319,3 +319,24 @@ def test_an_interrupted_stamp_does_not_leave_an_empty_one(tmp_path: Path) -> Non
 
     source = inspect.getsource(document._stamp_source)
     assert "os.replace(pending, stamp)" in source
+
+
+def test_footnotes_are_indexed_in_linear_time() -> None:
+    """Each footnote's references, and each number's note, are found by bisection: read
+    against every definition in turn, a paper of many notes took time in their square."""
+    from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+
+    def measure(count: int) -> float:
+        text = "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
+            f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
+        )
+        started = time.perf_counter()
+        notes = footnote_index(text)
+        headings = heading_index(text)
+        for note in notes[:: max(1, count // 100)]:
+            chains_at(headings, notes, note.start)
+        return time.perf_counter() - started
+
+    small = max(measure(2000), 1e-4)
+    large = measure(8000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"

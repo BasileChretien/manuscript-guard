@@ -1867,3 +1867,85 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+# A sentence in the example's Results, one in its Methods, and its last line.
+_IN_RESULTS = "are shown in Table 2."
+_IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
+_AT_END = "None declared.\n"
+
+
+def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, note: str) -> None:
+    """The example with `[^n]` after each sentence in `referenced`, and `note`, its
+    definition, in a paragraph of its own after the sentence `defined`."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    for sentence in referenced:
+        assert text.count(sentence) == 1, sentence
+        text = text.replace(sentence, sentence + "[^n]")
+    anchor = defined + "[^n]" if defined in referenced else defined
+    assert text.count(anchor) == 1, anchor
+    text = text.replace(anchor, anchor.rstrip("\n") + "\n\n" + note, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # The review's reproduction: referenced from Results, defined under Methods.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        # Its first paragraph runs on over lines, and later ones are indented.
+        ((_IN_RESULTS,), _IN_METHODS, "[^n]: The excess\nwas significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n    The excess was significant (p < 0.001).\n",
+        ),
+        # Referenced from Methods and from Results, it prints in both, and must pass in both.
+        (
+            (_IN_METHODS, _IN_RESULTS),
+            _AT_END,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+    ],
+)
+def test_a_footnote_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    """Pandoc prints a footnote where it is referenced. G2 filed its text under the section
+    its definition sits in, so a finding referenced from Results and defined under Methods,
+    `p < 0.001`, passed as the alpha chosen in advance, and the document printed it as a
+    footnote to a Results sentence."""
+    _with_footnote(project, referenced, defined, note)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # The other way: a Methods footnote defined at the end of the paper, as authors
+        # gather them, had its alpha read as a finding in the last section.
+        ((_IN_METHODS,), _AT_END, "[^n]: Significance was set at p < 0.05.\n"),
+        # Past its end the text is its own section's: a paragraph at the margin after a
+        # blank line, or indented three spaces, is not the note's.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\nSignificance was set at p < 0.05.\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n   Significance was set at p < 0.05.\n",
+        ),
+    ],
+)
+def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    _with_footnote(project, referenced, defined, note)
+    assert not gate_report(project).failures, codes(gate_report(project))

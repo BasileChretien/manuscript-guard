@@ -181,6 +181,15 @@ class Classifier:
                 return Verdict(CONVENTION, rule=rule.id, detail=rule.why)
         return Verdict(UNCLASSIFIED)
 
+    def classify_under(
+        self, atom: Atom, sections: Sequence[Sequence[str]], scan: Scan | None = None
+    ) -> Verdict:
+        """Judge an atom printed under each of `sections`, as a footnote is printed at each
+        of its references (`sections.chains_at`): unclassified if it is anywhere it
+        prints, and otherwise judged where it prints first."""
+        verdicts = [self.classify(atom, section, scan) for section in sections]
+        return next((v for v in verdicts if v.kind == UNCLASSIFIED), verdicts[0])
+
     def _scan_of(self, text: str) -> Scan:
         """One-entry memo, keyed by the text itself, for callers that pass no scan."""
         cached = self._memo.get("text")

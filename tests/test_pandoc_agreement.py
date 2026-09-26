@@ -1059,3 +1059,60 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         assert returned.get(marker.group(1)) == written_out[0], (
             f"{name}: the marked Word paragraph holds only part of {piece!r}"
         )
+
+
+# ---------------------------------------------------------------- footnote definitions
+
+# Each word is a token, `wN`, so what lands in pandoc's note can be told from what does not.
+FOOTNOTE_CASES = {
+    "one line": "Text.[^n]\n\n[^n]: w1 w2\n\nw3\n",
+    "lazy lines": "Text.[^n]\n\n[^n]: w1\nw2\nw3\n\nw4\n",
+    "indented paragraph": "Text.[^n]\n\n[^n]: w1\n\n    w2\n\nw3\n",
+    "tabbed paragraph": "Text.[^n]\n\n[^n]: w1\n\n\tw2\n\n   w3\n",
+    "three spaces": "Text.[^n]\n\n[^n]: w1\n\n   w2\n",
+    "two notes": "Text.[^n] and[^m]\n\n[^n]: w1\n[^m]: w2\nw3\n\nw4\n",
+    "heading under": "Text.[^n]\n\n[^n]: w1\n# w2\n\nw3\n",
+    "quote under": "Text.[^n]\n\n[^n]: w1\n> w2\n\nw3\n",
+    "list under": "Text.[^n]\n\n[^n]: w1\n- w2\n\nw3\n",
+    "fence under": "Text.[^n]\n\n[^n]: w1\n```\nw2\n```\n\nw3\n",
+    "indented then margin": "Text.[^n]\n\n[^n]: w1\n\n    w2\nw3\n\nw4\n",
+    "many blank lines": "Text.[^n]\n\n[^n]: w1\n\n\n\n    w2\n\n\nw3\n",
+    "defined first": "[^n]: w1\n\nw2 Text.[^n]\n",
+    "empty then indented": "Text.[^n]\n\n[^n]:\n    w1\n\nw2\n",
+}
+
+
+def _note_words(node, inside: bool, out: set[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _note_words(item, inside, out)
+    elif isinstance(node, dict):
+        if node.get("t") == "Str" and inside:
+            out.update(re.findall(r"w\d+", node["c"]))
+        _note_words(node.get("c"), inside or node.get("t") == "Note", out)
+
+
+@pytest.mark.parametrize("name", list(FOOTNOTE_CASES))
+def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
+    """G2 reads a footnote's text where it is referenced, so a number past its end would be
+    read there too, and could pass: every word the gates take for a note's must be in
+    pandoc's note. Where the gates stop early, the rest stays in its own section, as before."""
+    from manuscript_guard.text.sections import footnote_index
+
+    text = FOOTNOTE_CASES[name]
+    read = json.loads(
+        subprocess.run(
+            [PANDOC, "-f", "markdown", "-t", "json"],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    pandoc: set[str] = set()
+    _note_words(read["blocks"], False, pandoc)
+    ours = {
+        word
+        for note in footnote_index(text)
+        for word in re.findall(r"w\d+", text[note.start : note.end])
+    }
+    assert ours <= pandoc, (ours - pandoc, pandoc)

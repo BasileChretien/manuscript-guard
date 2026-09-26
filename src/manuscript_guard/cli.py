@@ -59,7 +59,7 @@ from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -885,9 +885,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # when a finding surprises them. Its answer was the input to deciding whether to add a
     # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
     headings = heading_index(text)
+    notes = footnote_index(text)
     rows = []
     for atom in find_atoms(text, mask(text)):
-        verdict = classifier.classify(atom, chain_at(headings, atom.start))
+        verdict = classifier.classify_under(atom, chains_at(headings, notes, atom.start))
         rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
     if not rows:
         print("no numeric atoms outside masked regions")

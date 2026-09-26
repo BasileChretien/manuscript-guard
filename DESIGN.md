@@ -1115,6 +1115,23 @@ the failure `methods_only` was built to close, reintroduced through the chain ra
 through the heading text. A Methods-like heading now counts only while no ancestor is a
 section that reports what happened.
 
+**A footnote is read where it is referenced.** Pandoc prints a footnote at its reference, and
+G2 read its text under the section its definition line sits in, so a finding referenced from
+Results and defined under Methods, `p < 0.001`, passed as the alpha chosen in advance, while
+the document printed it as a footnote to a Results sentence (found reviewing #65). The other
+way round, a Methods footnote defined at the end of the paper, as authors gather them, had
+its alpha read as a finding in the last section. `sections.footnote_index` finds each
+definition's text and its references, and a number in it is judged under the section of
+every reference (`chains_at`, `Classifier.classify_under`): a note referenced from Methods
+and from Results prints in both, and must pass in both. `explain`, `bind` and the annotated
+copy read it the same way. The text runs as pandoc's does and never further, since a number
+past its end would be judged at the reference: the definition's line and the lines under it
+up to a blank one or one that may start a block of its own, then each block after blank
+lines indented four spaces or a tab. Where the gates stop earlier than pandoc, the rest is
+read in its own section, as before. `tests/test_pandoc_agreement.py` holds fourteen shapes to
+never running past pandoc's note. A note that is never referenced, which pandoc does not
+print, and a reference inside another note's text, are read where they stand.
+
 **And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
 RECORD-PE is for routinely collected health data and the example is a spontaneous-report
 disproportionality study, so the guideline that applies is READUS-PV. It declared neither in
@@ -2293,6 +2310,14 @@ Closed since, and why each mattered:
     though not for the masking.
 
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+- **The end of a footnote's text is read short of pandoc's in places.** G2 reads a note's
+  text at its references only as far as the gates are sure pandoc does, and the rest in the
+  section where it stands, as it always was. So a lazy line pandoc keeps in a note after one
+  that may start a block (`# Heading` straight under the definition, which pandoc prints as
+  note text), or an unindented line continuing an indented paragraph of the note, is judged
+  where it sits: a `p < 0.001` there, in a note defined under Methods and referenced from
+  Results, still passes as the alpha. A marker in inline code, `` `[^n]` ``, counts as a
+  reference, which only adds a section a number must pass in.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

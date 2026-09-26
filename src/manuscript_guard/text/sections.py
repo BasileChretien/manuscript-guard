@@ -109,7 +109,7 @@ def heading_index(text: str) -> list[Heading]:
     titled `Unprinted`: see `section_breaks`. For the headings a reader sees, as a word
     count or a required-section check wants them, use `split_sections` or `headings`.
     """
-    return HeadingIndex(section_breaks(text))
+    return HeadingIndex(section_breaks(text), text)
 
 
 class Chain(tuple):
@@ -138,7 +138,7 @@ class HeadingIndex(list):
     12,000 numbers took 50 s in G2. Found by bisection, it is a lookup.
     """
 
-    def __init__(self, headings: list[Heading]) -> None:
+    def __init__(self, headings: list[Heading], text: str | None = None) -> None:
         from manuscript_guard.classify import rules_out_methods
 
         super().__init__(headings)
@@ -152,7 +152,13 @@ class HeadingIndex(list):
             # text took it off the other chain as well, and left both saying Methods.
             both = type(found.title) is not Unprinted or rules_out_methods(found.title)
             for stack in (every, printed) if both else (every,):
-                level = 1 if stack is printed and _hash_over_rule(found) else found.level
+                level = (
+                    1
+                    if stack is printed
+                    and _hash_over_rule(found)
+                    and (text is None or text.startswith("#", found.start))
+                    else found.level
+                )
                 while stack and stack[-1][0] >= level:
                     stack.pop()
                 stack.append((level, found.title))
@@ -166,7 +172,9 @@ def _hash_over_rule(found: Heading) -> bool:
     how the walk places it, and the scan before the walk read a level-1 heading "X". Where
     the walk wrongly placed a `# Methods` above it, under a stray `</script>` say, the level-2
     reading nested under that Methods, and the level-1 one closes it. So the printed chain
-    takes level 1, and both readings must say Methods."""
+    takes level 1, and both readings must say Methods: `HeadingIndex` does so only for a `#`
+    at the margin, which is all the old scan read. Taken for an indented ` # Y`, or one after
+    a comment, level 1 popped a Results the printed chain still held."""
     return (
         found.setext
         and found.level == 2

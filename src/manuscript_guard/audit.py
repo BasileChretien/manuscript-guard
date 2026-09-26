@@ -34,7 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
+from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import strip_attributes
@@ -455,8 +455,15 @@ def looks_like_reference(line: str) -> bool:
 
 
 def _markdown_heading_lines(text: str) -> frozenset[int]:
-    # The headings pandoc prints: a line it prints as text starts no reference list.
-    return frozenset(text.count("\n", 0, found.start) for found in find_headings(text))
+    # The headings pandoc prints: a line it prints as text starts no reference list. The ones
+    # G2 calls printed, not every heading the walk places: under a stray `</script>` the walk
+    # can place `####### References`, which pandoc prints as text, and the cut after it hid
+    # every number below from the comparison.
+    return frozenset(
+        text.count("\n", 0, found.start)
+        for found in section_breaks(text)
+        if type(found.title) is not Unprinted
+    )
 
 
 def bibliography_spans(

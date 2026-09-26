@@ -614,6 +614,36 @@ RESULTS_READ_AS_METHODS = {
         "# Results\n\n-----  -----\nText\n---\n# Methods\n# Outcomes\n---\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    # Found by the eighth review. The level-1 reading of a `# X` line over a rule is `main`'s,
+    # and `main` read only a `#` at the margin: an indented ` # Y`, or one after a comment,
+    # took level 1 too, and the printed chain lost the Results it still held.
+    "an indented hash line over a rule after a comment-led one": (
+        "# Results\n\nText\n<!-- c --># Outcomes\n\n # Y\n-\n\n## Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "an indented hash line over a rule after an unclosed quote": (
+        '# Results\n\n<div class="a># Outcomes\n\n # Y\n-\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a comment-led hash line over a rule after a quote over an underline": (
+        "# Results\n\nText\n> Outcomes\n===\n\n<!-- c --># Y\n-\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A setext title `main` refused, starting `>` or `|`, opened a section wherever the walk
+    # placed one wrongly, under a stray `</script>`.
+    "a quote title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n> Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a pipe title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n| Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # An empty `###` in a paragraph, which `main` read with the line below it as its title.
+    "an empty heading in a paragraph over a results line": (
+        "# Res<!-- -->ults\n\n## Statistical analysis\n\nText\n###\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 
@@ -2070,6 +2100,30 @@ def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["####### References", "<!-- c --># References", " # References\n---"],
+    ids=["seven hashes", "after a comment", "indented over a rule"],
+)
+def test_audit_does_not_start_a_reference_list_at_a_heading_the_walk_misplaces(
+    tmp_path: Path, heading: str
+) -> None:
+    """Found by the eighth review of #38. Under a stray `</script>` the walk can place a
+    heading pandoc prints as text; G2 marks such a heading so that it opens no Methods, but
+    the audit took it as the reference list's heading, and cut the prose after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"ror": 1.23}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"# Introduction\n\nThe ROR was 1.23.\n\nText\n</script>\n{heading}\n"
+        "The final ROR was 9.87.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert "9.87" in [c.text.rstrip(".") for c in report.unmatched]
 
 
 def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(

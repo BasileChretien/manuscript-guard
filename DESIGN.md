@@ -913,7 +913,14 @@ predecessor:
   accepted: when it deletes a mark itself it first copies the first paragraph's style onto
   the second, keeping the old one in `w:pPrChange` (verified 2026-09-24). A text box is
   read after the paragraph holding it, not where it is anchored, which split that paragraph
-  in two.
+  in two. It is read once: Word writes every text box twice, as DrawingML and again as VML
+  in an `mc:AlternateContent` fallback (verified 2026-09-24, Word 16), and reading both
+  reported each number in it twice. The fallback is skipped, as the import's reader skips
+  it. What Word puts only in a fallback is read from the choice instead: an emoji inserted
+  in Word can be a `w16se:symEx` there (pandoc issue 11113; set as text through Word's COM
+  interface, one was saved as plain text), and without it "12", the emoji and "34" read as
+  1234. The paragraphs of a text box deleted or moved away start no lines: left empty, one
+  styled as a heading used to end the reference list it sat in.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -2511,6 +2518,12 @@ Closed since, and why each mattered:
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
   number split across the two is read in two pieces. Joining into the cell would mean
   moving the row and cell separators the reader writes before the cell's text.
+- **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
+  Word does the same for everything it writes, since it writes a choice only where it
+  understands it. Text that sits only in a fallback, behind a choice the reader does not
+  know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
+  does know, and would for any other such element it adds. A second choice, which the
+  format allows and Word does not write, would be read as well as the first.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing

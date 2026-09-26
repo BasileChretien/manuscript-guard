@@ -2643,6 +2643,76 @@ def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined:
     assert shown == {"-0.51"}, shown
 
 
+def test_audit_reports_a_number_in_a_text_box_once(tmp_path: Path) -> None:
+    """Word writes every text box twice: as DrawingML, and again in VML inside an
+    AlternateContent fallback for readers that predate it. Both copies were read, so a wrong
+    number in a text box was reported twice, on two lines, and took two of the forty findings
+    listed for its file; a right one was counted twice as found."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    content = f"<w:txbxContent>{_p('Cases: 412 of 8393.')}</w:txbxContent>"
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    vml = 'xmlns:v="urn:schemas-microsoft-com:vml"'
+    box = (
+        f"<w:r><mc:AlternateContent {mc}>"
+        f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+        f"<mc:Fallback><w:pict><v:shape {vml}><v:textbox>{content}</v:textbox></v:shape>"
+        "</w:pict></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    paper = _docx(tmp_path / "paper.docx", f"<w:p><w:r><w:t>See the box.</w:t></w:r>{box}</w:p>")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["8393"], report.unmatched
+    assert [c.text for c in report.matched] == ["412"], report.matched
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "1 found in the outputs, 1 not found." in shown, shown
+
+
+def test_audit_reads_an_emoji_word_writes_only_as_a_choice(tmp_path: Path) -> None:
+    """Word writes an emoji it inserts as `w16se:symEx` in an AlternateContent choice, and the
+    character itself only in the fallback. With the fallback unread and the choice not
+    understood, the numbers either side ran together: "12", an emoji and "34" read as 1234,
+    which matched an output the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1234}')
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>Scored 12</w:t></w:r>{emoji}<w:r><w:t>34.</w:t></w:r></w:p>"
+    report = audit([_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert report.matched == [], report.matched
+    assert [c.text.rstrip(".") for c in report.unmatched] == [f"12{chr(0x1F642)}34"]
+
+
+def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Path) -> None:
+    """A deleted text box's text was dropped, but its paragraphs still started lines. One
+    styled as a heading was an empty heading, which ended the reference list there, and the
+    entries after it were reported as numbers missing from the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    box = (
+        '<w:del w:id="2" w:author="a"><w:r><w:drawing><w:txbxContent>'
+        f"{_p('Old panel', 'Heading1')}</w:txbxContent></w:drawing></w:r></w:del>"
+    )
+    entry = f"<w:p><w:r><w:t>Smith J. Lancet. 2019;393:1-2.</w:t></w:r>{box}</w:p>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + entry
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
 def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
     """A paragraph run on into a heading takes the heading's style, which is what Word shows
     once the change is accepted. Taking the first paragraph's instead read the appendix as

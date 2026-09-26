@@ -3198,15 +3198,19 @@ Closed since, and why each mattered:
   `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
   budget on a fixed input, saying why a ratio would not do and how much headroom it was
   measured to have, or as a timestamp that times nothing. Like the exemption inventory it
-  runs both ways, and it checks that each listed budget is the number its test asserts. It
-  does not see a clock read any other way: `datetime.now()`, `os.times()`, a clock fetched
-  with `getattr`, one in `src/` that a test calls, or a timing a subprocess reports. And a
-  ratio has a blind spot that a budget does not. Inputs timed together as they grow hide a
-  quadratic in one of them under the linear cost of the rest, which is why the eighteen
-  attribute-block lines keep a 5 s budget: `_escaped` scanning back from the start of the
-  line passed `check_linear` there and took 35 s. The headroom was measured on one laptop
-  under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is thin, and
-  most of what they time is `check` itself rather than the hostile input.
+  runs both ways, and it checks that each listed budget is the number the test holds its
+  timing to. It does not see a clock read any other way: `datetime.now()`, `os.times()`, a
+  clock fetched with `getattr` or `importlib`, a module bound to a second name (`clock =
+  time`), one in `src/` that a test calls, or a timing a subprocess reports. It judges each
+  top-level function whole, so a second timing added to a listed test is excused with the
+  first. And a ratio has a blind spot that a budget does not: a part of the input that does
+  not grow. If that part alone reaches the 20 ms floor, the input is never grown, and the
+  ratio compares two times made mostly of the same constant. The attribute-block lines hid
+  `_escaped` scanning back from the start of the line that way, behind the one line of
+  eighteen whose run of backslashes is as long at any size. So the seventeen that grow are
+  timed by `check_linear`, and all eighteen keep a 5 s budget. The headroom was measured on
+  one laptop under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is
+  thin, and most of what they time is `check` itself rather than the hostile input.
 
 ## Still open
 

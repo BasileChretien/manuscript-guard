@@ -27,9 +27,12 @@ reads:
     kind: budget
     budget: 5.0
     why: >-
-      Eighteen fixed lines of 20,000 characters. Timed together as they grow, a quadratic in
-      one of them hides among the rest: `_escaped` scanning back from the start of the line
-      passed `assert_linear` and takes 35 s here, which this budget fails.
+      Eighteen fixed lines: seventeen of 20,000 characters, also timed as they grow by
+      `test_the_heading_check_reads_an_attribute_block_in_linear_time`, and a run of 999
+      backslashes that is as long at any size, which only a budget can hold. Timed among the
+      growing lines, that one took the ratio's 20 ms floor by itself under `_escaped` scanning
+      back from the start of the line, so the input never grew and the ratio passed. That
+      rescan takes 35 s here, which this budget fails.
     headroom: 297 to 398 ms against 5 s, about 13x. At its old budget of 0.5 s it had 1.3x.
 
   - where: tests/test_audit.py::test_a_long_chain_of_numbers_does_not_stall_the_interval_split

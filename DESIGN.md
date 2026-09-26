@@ -1260,8 +1260,10 @@ inside the span, where the link printed as text. So the annotator places each ma
   paired a run of backticks with the next run of the same length in its paragraph, which
   is pandoc's rule but for two edges (see Known gaps). Equations are pandoc's dollars,
   looked for outside code: a `$` in `` `df$age` `` opened one that ran to the next code
-  span's (review of #76). A dollar sign beside a number is a currency's, not markup, and
-  `US$5` is marked whole. A link's text, the target a URL or an anchor, can't hold a mark,
+  span's (review of #76). A dollar sign before a number is a currency's, not markup, and
+  `US$5` is marked whole; one after a number stays outside the mark, where `5$ … 10$`
+  faced each other across the marks between, and a backslash before a number goes
+  inside it, where it escaped the mark's own bracket (the fix-only review of #76). A link's text, the target a URL or an anchor, can't hold a mark,
   which is itself a link. A binding there is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc

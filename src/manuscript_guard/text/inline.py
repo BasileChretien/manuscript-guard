@@ -39,11 +39,24 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
         if any(character.isdigit() for character in run.group())
     ]
     if len(runs) == 1:
-        return runs[0]
+        return _settled(text, *runs[0])
     if not runs or any(character in found for character in "`*_<>[]{}\\|"):
         return None
     if found.count("~") % 2 or found.count("^") % 2:
         return None
+    return _settled(text, start, end)
+
+
+def _settled(text: str, start: int, end: int) -> tuple[int, int]:
+    """`text[start:end]`, taking in the backslashes just before it and leaving out the
+    dollar signs it ends with. A backslash escapes what follows it, and outside the mark it
+    escaped the mark's own bracket: `\\$5` lost its mark, and its paragraph with it. A dollar
+    sign after a number, `5$ … 10$`, faced the next one across the marks between, which
+    pandoc read as an equation; one before a number is a currency's, and stays with it."""
+    while start > 0 and text[start - 1] == "\\":
+        start -= 1
+    while end - start > 1 and text[end - 1] == "$":
+        end -= 1
     return start, end
 
 
@@ -108,8 +121,10 @@ def equation_spans(masked: str, code: list[tuple[int, int]]) -> list[tuple[int, 
 
 # A link's text, brackets one deep inside it, before its target or its reference, and not
 # an image's. A mark there nested a link in a link, and pandoc read the paragraph
-# differently: every mark in it was then taken out, where only this one needs to be.
-_LINK_TEXT = re.compile(r"(?<!!)\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\](?=[(\[])")
+# differently: every mark in it was then taken out, where only this one needs to be. A
+# footnote's marker after a bracket, `[95% CI 1.2-3.4][^2]`, is no reference, and a bracket
+# holding `@` is a citation, not a link's text: read as links, their numbers went unmarked.
+_LINK_TEXT = re.compile(r"(?<!!)\[(?:[^\[\]\n@]|\[[^\[\]\n]*\])*\](?=\(|\[(?!\^))")
 
 
 def link_text_spans(text: str) -> list[tuple[int, int]]:

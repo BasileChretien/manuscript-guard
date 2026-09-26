@@ -2433,6 +2433,24 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
         # sign facing another across the paragraph.
         ("The fee was US$5 and the refund US$3, and 7 more.", {"US$5", "US$3", "7"}, {}),
         ("Costs ranged from $10-$50 per dose.", {"$10-$50"}, {}),
+        # Found by the fix-only round: an escaped dollar, the mark after its backslash,
+        # which escaped the mark's bracket; and a dollar after the digits, which faced the
+        # next one across the marks.
+        ("The fee was \\$5 for 3 visits.", {"\\$5", "3"}, {}),
+        ("It cost 5$ and then 10$, over 3 days.", {"5", "10", "3"}, {}),
+        # A footnote marker after a bracket is not a link's target, and a citation is not a
+        # link's text.
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][^2] in 40 patients.\n\n[^2]: Adjusted.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        (
+            "Of 120 reports, 14 were serious [@smith2021, p. 33][^1].\n\n[^1]: A note.",
+            {"120", "14", "33"},
+            {},
+        ),
+        ("As shown [@a2020, p. 3][@b2021, p. 5].", {"3", "5"}, {}),
         # A dollar sign in inline code opens no equation.
         ("Age (`df$age`) was split into 3 groups and sex (`df$sex`) into 2.", {"3", "2"}, {}),
         # A link to an anchor: only the number in its text goes unmarked.

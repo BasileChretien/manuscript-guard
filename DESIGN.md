@@ -2971,6 +2971,19 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
+  times a scan on eight times its input, taking each size's best of three in alternation,
+  and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose
+  quadratic part is under a seventh of its time on the smaller input passes, and so does
+  n log n, which reads 10 to 14. A linear cost with a large constant is invisible to it: the
+  per-atom window scans that took `check` to 30 s were linear, and only a budget caught them.
+  Each of these tests used to rest on one timing per size (one on a best of three, one size
+  after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
+  speed shows only at a size where it outweighs the per-item work, and one in Python fails
+  quickly from a small size but takes minutes from a large one, so the size a test starts
+  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
+  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
+  proof that nothing else does.
 
 ## Still open
 

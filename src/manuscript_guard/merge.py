@@ -980,13 +980,19 @@ def _unidentified(known: dict, plan: Plan) -> dict[str, str]:
     surrounds it makes it prose to pandoc, and moved or reworded into a place with blank
     lines around it, it is a definition that prints nothing. The second can only follow from
     another write, so then every paragraph written in that file is named.
+
+    Only an identifier the file has can be lost. A paragraph the build does not mark as the
+    file stands - one `import` was handed from somewhere other than `tagged_paragraphs` -
+    is not held for coming out unmarked again: a move past it held its whole section.
     """
     lost: dict[str, str] = {}
     for path, occupants in _occupants(known, plan).items():
         edits = _edits(known, plan, occupants)
         if not edits:
             continue
-        text = _spliced(path.read_text(encoding="utf-8"), edits)
+        raw = path.read_text(encoding="utf-8")
+        had = {start for _index, _body, start in marked_blocks(raw)}
+        text = _spliced(raw, edits)
         marked = {start: body for _index, body, start in marked_blocks(text)}
         written = {start: (replacement, name) for start, _end, replacement, name in edits}
         # Slots in source order, each shifted by what the splices before it added.
@@ -1001,6 +1007,8 @@ def _unidentified(known: dict, plan: Plan) -> dict[str, str]:
         for slot, _incoming in occupants:
             _p, original, start = known[slot]
             body, name = written.get(start, (original, None))
+            if known[name or slot][2] not in had:
+                continue
             if marked.get(start + shifts[start] + len(body) - len(body.lstrip())) != body.strip():
                 if name is None:
                     spoilt = True

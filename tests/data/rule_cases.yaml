@@ -16,6 +16,11 @@
 #   accepts: the atom named must classify under this rule
 #   rejects: the atom named must stay UNCLASSIFIED
 #   section: heading chain to classify under (methods_only rules need one)
+#
+# A rule for a line with no number in it, a table's separator row, has no atom to name. Its
+# cases say `atom: null`, and test the rule's own pattern: an accepted text must match it
+# whole, and a rejected text must not match it anywhere. Every rule still needs one reject
+# that names an atom, a real measurement it must leave alone.
 
 conventions:
   significance-threshold:
@@ -29,6 +34,8 @@ conventions:
       - {text: "We report p < 0.37 here.", atom: "0.37"}
       - {text: "We report p < 0.5 here.", atom: "0.5"}
       - {text: "The corrected threshold was p < 0.0036.", atom: "0.0036"}
+      # A paragraph break ends the phrase.
+      - {text: "Significance was assessed by p\n\n< 0.05 in the second pass.", atom: "0.05"}
 
   alpha-level:
     section: [Methods]
@@ -37,6 +44,8 @@ conventions:
       - {text: "The alpha level of 0.01 was pre-specified.", atom: "0.01"}
     rejects:
       - {text: "Alpha was 0.123 in that model.", atom: "0.123"}
+      # A paragraph break ends the phrase.
+      - {text: "The alpha\n\nwas 0.05 in both arms.", atom: "0.05"}
 
   confidence-level:
     accepts:
@@ -65,6 +74,8 @@ conventions:
       - {text: "Statistical power of 90% was assumed.", atom: "90%"}
     rejects:
       - {text: "Observed power of 63% was low.", atom: "63%"}
+      # A paragraph break ends the phrase.
+      - {text: "It had the power\n\n80% of sites reported.", atom: "80%"}
 
   percentile-labels:
     accepts:
@@ -107,6 +118,8 @@ conventions:
       - {text: "The standardised mean difference was 0.34 after matching.", atom: "0.34"}
       - {text: "Matched with a caliper of 0.7 standard deviations.", atom: "0.7"}
       - {text: "We excluded 0.2 percent of records for missing data.", atom: "0.2"}
+      # A paragraph break ends the phrase.
+      - {text: "Matched with a caliper\n\n0.2 of the sample was excluded.", atom: "0.2"}
 
   ratio-null-value:
     accepts:
@@ -155,8 +168,13 @@ structural:
       - {text: "Shown in Table 2.", atom: "2"}
       - {text: "See Figure 1 for the forest plot.", atom: "1"}
       - {text: "Given in Supplementary Table 3.", atom: "3"}
+      # A hard wrap between the word and its number is still a gap the rule crosses.
+      - {text: "Shown in Table\n2 of the appendix.", atom: "2"}
     rejects:
       - {text: "The table listed 412 preferred terms.", atom: "412"}
+      # A paragraph break is not: the gaps in a rule's phrase cross one line break at most,
+      # and a count opening the next paragraph is a count.
+      - {text: "The cohort is described in the next section\n\n2 patients were excluded later.", atom: "2"}
 
   supplement-tag:
     accepts:
@@ -173,16 +191,24 @@ structural:
       # Ordinary English word order, needing only a missing comma.
       - {text: "In the exposed arm 47 hepatic events occurred.", atom: "47"}
       - {text: "In the pooled cohort 3841 reports were assessed.", atom: "3841"}
+      # A paragraph break ends the phrase.
+      - {text: "Doses were assigned by group\n\n12 patients withdrew.", atom: "12"}
 
   time-label:
     accepts:
       - {text: "At day 30 after exposure.", atom: "30"}
       - {text: "30-day mortality was assessed.", atom: "30-day"}
       - {text: "Assessed at week 12.", atom: "12"}
+      # A label opening a paragraph matches as it does on its own. A match from the paragraph
+      # above, "year" and the blank line and "12", used to take its digits, and "12-month"
+      # was reported only because of what the paragraph before it ended with.
+      - {text: "Follow-up lasted one year\n\n12-month outcomes were recorded.", atom: "12-month"}
     rejects:
       # Round four. Three digits was the round-one bound; one digit fewer walked back in.
       - {text: "In the first 6 months 214 cases of myocarditis were reported.", atom: "214"}
       - {text: "Over the study years 1204 reports were received.", atom: "1204"}
+      # A paragraph break ends the phrase.
+      - {text: "Visits were weekly for a year\n\n14 of them were missed.", atom: "14"}
 
   ordered-list-marker:
     accepts:
@@ -204,6 +230,11 @@ structural:
       # Rendered documents only. In manuscript source this must never apply, which
       # test_text.py asserts separately.
       - {text: "There were 2019 reports in the cohort.", atom: "2019"}
+      # A paragraph break ends the phrase.
+      - {text: "As Smith et al.\n\n2019 saw a rise.", atom: "2019"}
+      # A name is at most 61 letters, so the scan does not read a run of them from every
+      # capital in it. Longer, it is no name.
+      - {text: "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa et al. 2019", atom: "2019"}
 
   numbered-citation:
     audit_only: true
@@ -214,13 +245,27 @@ structural:
       - {text: "Editors shape rejection[1,2] in the field.", atom: "rejection[1,2"}
       - {text: "As reported previously [11] the effect held.", atom: "11"}
       - {text: "Shown in earlier work[13-15] and since.", atom: "work[13-15"}
-      - {text: "The pipeline (OEP 2026.1)[15] extracted them.", atom: "2026.1)[15"}
     rejects:
+      # The prefix takes no digit: a number glued to a marker is a value, and the audit reads
+      # it apart from the marker. The version below is listed; that cost was chosen.
+      - {text: "The pipeline (OEP 2026.1)[15] extracted them.", atom: "2026.1)[15"}
+      - {text: "It was 2.51 (95% CI 1.20, 9.99)[12]. Then more.", atom: "9.99)[12"}
+      - {text: "Rates reached 45%[14] overall.", atom: "45%[14"}
+      # No bracketed word before the marker: allowed for `[SmPC][4]`, it took `½` and an
+      # interval with the citation. That marker is listed, as it always was.
+      - {text: "About [x]½[12] of them.", atom: "x]½[12"}
+      - {text: "Median [IQR][55-72] years.", atom: "IQR][55-72"}
       # The bracketed run is integers only, so a bracketed interval keeps its decimal point
       # and is left alone. Some journals write confidence intervals exactly this way, and
       # absorbing one would file a paper's headline result as a citation marker.
       - {text: "The interval was [0.72-0.82] overall.", atom: "0.72-0.82"}
       - {text: "A total of 412 records[3] were kept, of which 77 were serious.", atom: "77"}
+      # A bound written hard against the marker, its bracket closed: the prefix took a `]`,
+      # so `3.40][12]` was one match and the bound was filed as part of a citation.
+      - {text: "It was 2.51 [95% CI 1.20, 3.40][12]—consistent with it.", atom: "3.40"}
+      - {text: "It was 2.51 [95% CI 1.20, 3.40][12]. Then more.", atom: "3.40"}
+      # A paragraph break ends the bracket.
+      - {text: "Rates rose [12,\n\n14] overall.", atom: "14"}
 
   orcid:
     accepts:
@@ -243,6 +288,8 @@ structural:
       - {text: "The risk window was 1-28 days after dispensing.", atom: "1-28"}
       - {text: "The trial enrolled 500+ patients across ten centres.", atom: "500+"}
       - {text: "Response was seen in 45+ mg dosing groups.", atom: "45+"}
+      # A paragraph break ends the phrase.
+      - {text: "Results are given by age\n\n12-15 of the sites reported.", atom: "12-15"}
 
   software-version:
     accepts:
@@ -266,11 +313,19 @@ structural:
     rejects:
       - {text: "The page reported 33 000 exposures.", atom: "33"}
 
+  # A separator row holds no number, so these cases name no atom: the rule's pattern must
+  # match the accepted rows and must not match the rejected text at all.
   table-alignment-row:
     accepts:
       - {text: "|---|---|", atom: null}
+      - {text: "|---|:---:|", atom: null}
+      - {text: "---|---", atom: null}
+      - {text: "| :-- | --: |", atom: null}
     rejects:
       - {text: "The value was 412 in that row.", atom: "412"}
+      # A pipe on each of two lines is no separator row. With `\s`, the pattern ran across
+      # the line break and matched them as one.
+      - {text: "|\n|", atom: null}
 
   alphanumeric-identifier:
     accepts:
@@ -305,6 +360,8 @@ structural:
       - {text: "ICD-10 codes were found in 412 patients.", atom: "412"}
       - {text: "MedDRA coding was applied and the cohort included 83214 people.", atom: "83214"}
       - {text: "The ATC classification was used for 1204 prescriptions.", atom: "1204"}
+      # A list of codes ends at a paragraph break, as the bridge before it already did.
+      - {text: "Events were coded as ICD 12345\n\nand 6789 patients were excluded.", atom: "6789"}
 
   checklist-item:
     accepts:
@@ -314,7 +371,10 @@ structural:
       - {text: "Reported per STROBE 14.", atom: "14"}
       - {text: "This answers CONSORT 3a.", atom: "3a"}
       - {text: "Prepared following RECORD-PE 6.1.", atom: "6.1"}
+      - {text: "Reported per STROBE\n14.", atom: "14"}
     rejects:
       # Naming a guideline does not make the next number an item number.
       - {text: "The STROBE-compliant cohort held 412 patients.", atom: "412"}
       - {text: "We followed RECORD; 3841 reports were eligible.", atom: "3841"}
+      # A paragraph break ends the phrase.
+      - {text: "Reporting followed STROBE\n\n12 patients were excluded.", atom: "12"}

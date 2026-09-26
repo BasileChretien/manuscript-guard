@@ -68,21 +68,27 @@ class Fence:
         return self.info.strip().startswith("{=")
 
 
+def _closing(line: str) -> tuple[str, int] | None:
+    """The character and width of the fences this line could close, or None."""
+    stripped = line.strip()
+    if not stripped or stripped[0] not in "`~" or set(stripped) != {stripped[0]}:
+        return None
+    if len(line) - len(line.lstrip(" ")) > 3:
+        return None
+    return stripped[0], len(stripped)
+
+
 def _closes(line: str, char: str, width: int) -> bool:
     """Is this line a closing fence for a run of `width` of `char`?
 
     "At least as long", per CommonMark. Requiring equality is what let a longer closer
     slip past and swallow the prose after it.
     """
-    stripped = line.strip()
-    if not stripped or stripped[0] != char:
-        return False
-    if len(line) - len(line.lstrip(" ")) > 3:
-        return False
-    return set(stripped) == {char} and len(stripped) >= width
+    closing = _closing(line)
+    return closing is not None and closing[0] == char and closing[1] >= width
 
 
-def fenced_spans(text: str) -> list[Fence]:
+def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
     """Every fenced block, in document order. Linear in the length of the text.
 
     An **unterminated** fence is not a fence. Pandoc's markdown reader renders the opening
@@ -90,22 +96,33 @@ def fenced_spans(text: str) -> list[Fence]:
     against pandoc 3.9.0.2 — so treating it as code to the end of the file would mask prose
     the reader plainly sees. That is the same failure as the longer-closer bug, arrived at
     from the other side, and `tests/test_pandoc_agreement.py` caught it here.
+
+    `begin`, the start of a line, is where the body starts: no fence opens in the front
+    matter before it (see `masking.front_matter_end`). Offsets are still into `text`.
     """
     found: list[Fence] = []
-    offset = 0
-    lines = text.splitlines(keepends=True)
+    offset = begin
+    lines = text[begin:].splitlines(keepends=True)
     index = 0
 
-    # Openers proven to have no closer, by fence character. Without this the scan is
-    # quadratic again: every unterminated opener reads to the end of the file, and a
-    # document of 8,000 of them took 55 seconds — the very cost the regex was replaced to
-    # avoid, reintroduced by the fix for unterminated fences.
+    # The widest line at or below each line that could close a fence, by fence character.
+    # Without it the scan is quadratic again: every unterminated opener reads to the end of
+    # the file, and a document of 8,000 of them took 55 seconds — the very cost the regex
+    # was replaced to avoid, reintroduced by the fix for unterminated fences.
     #
-    # The shortcut is sound because a closing line of width w closes every opener of width
-    # <= w. So once a width is known to have no closer in the remainder of the document, no
-    # *wider* opener of the same character can have one either, and it can be rejected
-    # without looking.
-    dead: dict[str, int] = {}
+    # A closing line of width w closes every opener of width <= w, so an opener has a closer
+    # exactly when the widest one below it is at least as wide, and one that has none is
+    # rejected without looking. This replaced a record of the narrowest width known to have
+    # no closer, which rejected only wider openers: openers each narrower than the last
+    # still read to the end, and 400 KB of them took 33 seconds.
+    widest = {char: [0] * (len(lines) + 1) for char in "`~"}
+    for below in range(len(lines) - 1, -1, -1):
+        for char in widest:
+            widest[char][below] = widest[char][below + 1]
+        closing = _closing(lines[below].rstrip("\r\n"))
+        if closing is not None:
+            char, width = closing
+            widest[char][below] = max(widest[char][below], width)
 
     while index < len(lines):
         line = lines[index]
@@ -124,13 +141,14 @@ def fenced_spans(text: str) -> list[Fence]:
             index += 1
             continue
 
-        if len(fence) >= dead.get(fence[0], 1 << 30):
+        if widest[fence[0]][index + 1] < len(fence):
+            # No closer: pandoc does not read this as a code block, and neither do we. The
+            # rest stays prose.
             offset += len(line)
             index += 1
             continue
 
         start = offset
-        closed_from = index
         offset += len(line)
         index += 1
         body_start = offset
@@ -142,14 +160,6 @@ def fenced_spans(text: str) -> list[Fence]:
             index += 1
 
         body_end = offset
-        if index >= len(lines):
-            # Ran off the end: no closer, so pandoc does not read this as a code block and
-            # neither do we. Resume from the line *after* the opener so the rest stays prose
-            # — and so this loop terminates, which rewinding to the opener itself did not.
-            dead[fence[0]] = min(dead.get(fence[0], 1 << 30), len(fence))
-            index = closed_from + 1
-            offset = start + len(lines[closed_from])
-            continue
         offset += len(lines[index])
         index += 1
 

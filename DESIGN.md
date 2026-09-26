@@ -173,6 +173,20 @@ It builds as `supplementary.docx` and reaches the pack as its own file. A direct
 than a declaration, matching how figures and results already work, and because a heading can
 be renamed without anyone noticing what left the submission.
 
+A document of its own also comes back from a co-author on its own. `import` compared every
+returned document with a fresh build of the paper, so an edited `supplementary.docx` reported
+every paragraph of the paper as deleted in Word and applied none of its own edits. The source
+stamp cannot tell the two documents apart: both are built from the same sources and carry
+the same one. The paragraph identifiers can, because each names its source file. A document
+whose identifiers all come from `manuscript/supplementary/` is compared with a fresh build of
+the supplement, and one whose identifiers all come from the paper with a build of the paper.
+One carrying both is refused: neither build accounts for it. Word drops the identifier of a
+single paragraph it pastes, so only two or more paragraphs pasted across bring one along. A
+document carrying none is refused too when the project has a supplement, since it could be
+either. Whether there is a supplement is read from the source files: a supplement of
+headings and tables carries no identifier, and read from the identifiers it was taken for no
+supplement, so its document was compared with the paper.
+
 `authors.yaml` is structured rather than prose because journals want more than name and
 affiliation: CRediT roles per author, corresponding-author contact block, equal-
 contribution groups, ORCID, funding and competing interests. One validated file fills the
@@ -2556,6 +2570,15 @@ Closed since, and why each mattered:
   is not the answer either: hashing the text means editing the paragraph a reviewer asked
   about invalidates the anchor to it, which is the opposite failure. The real fix is to
   persist the identifier in the source rather than derive it, and it is not done.
+- **Text moved between the paper and its supplement is not applied.** The two are built and
+  imported as separate documents. Word drops the identifier of a single pasted paragraph, so
+  one paragraph pasted from one into the other comes back as new text without an
+  identifier, which import lists but does not apply. Two or more bring the later ones'
+  identifiers, and the whole document is refused. Either way, the author makes the move
+  in the .md.
+- **A supplement of headings, tables and figures cannot be imported.** It carries no
+  paragraph identifier, so its document is refused as one that could be either, even when
+  it comes back untouched. It holds nothing import compares.
 - **A transposed interval passes inside a composed table cell.** `em.interval()` records
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval

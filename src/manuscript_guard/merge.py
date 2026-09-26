@@ -72,8 +72,9 @@ class Plan:
     #: kind were added or removed. A move past one of them cannot be seen.
     lost: tuple[str, ...] = ()
     #: Headings, tables, figures and equations that came back in another place, as (kind,
-    #: text): kind is "table", "figure", "equation", or "text" for a heading or caption. None
-    #: of them moves in the .md.
+    #: text): kind is "table", "figure", "equation", or "text" for a heading, caption, list
+    #: item, quotation or any other paragraph without an identifier. None of them moves in
+    #: the .md.
     strayed: tuple[tuple[str, str], ...] = ()
     #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
     #: caption, a new paragraph - that the document did not have when it was sent.

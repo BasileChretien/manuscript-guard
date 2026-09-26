@@ -4511,6 +4511,26 @@ def test_text_that_came_back_out_of_order_is_reported_once(
     assert "'Results'" in capsys.readouterr().out, "with nothing reordered it is still named"
 
 
+def test_a_heading_out_of_place_beside_a_long_reorder_is_still_named(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Named with the texts that came back in a different order, a heading out of place was
+    added after them, and that list prints its first twelve: beside a reversed list of
+    thirteen items, the heading dragged past a table was named nowhere. The report named it
+    before the two were put together."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Item {n:02d} of the list." for n in range(13, 0, -1))
+    plan = Plan(
+        reached=frozenset(), order=(), strayed=(("text", "Limitations"),), reordered=items
+    )
+    _report_plan(None, {}, plan, applying=False)
+    out = capsys.readouterr().out
+    assert "~ Limitations" in out, out
+    assert "and 2 more" in out, "a list cut short says so"
+
+
 @needs_pandoc
 def test_a_deleted_figure_is_not_followed_by_none_changed(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]

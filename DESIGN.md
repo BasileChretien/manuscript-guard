@@ -3062,10 +3062,14 @@ Closed since, and why each mattered:
   Untagged text between it and the next paragraph of its section marks it; a paragraph with
   display maths in its source, or with a line under it that opens a block, carries no
   identifier at all. An equation directly after a tagged paragraph is not taken for part of
-  it, since `$$` anywhere in a paragraph keeps the identifier off; display maths written
-  without `$$` would need its own tagging rule. One that pandoc splits for another reason
-  and that ends its section is not recognised: a rewording of its first part would replace
-  the rest, and a move of its first part would carry the rest along.
+  it, since `$$` anywhere in a paragraph keeps the identifier off. One that pandoc splits
+  for another reason and that ends its section is not recognised: a rewording of its first
+  part would replace the rest, and a move of its first part would carry the rest along. A
+  binding is one such reason. Bindings are substituted after the identifiers are given, so
+  a value whose display is `$$…$$` splits its paragraph in Word, and `check` only warns
+  that the value is words rather than a number. There a rewording of the first part is
+  refused, as it no longer reads as the source, but a swap of the first part with the
+  paragraph above moves the whole sentence in the .md, equation and all.
 - **A paragraph with display maths is not compared.** It carries no identifier, so a
   rewording of any part of it, before or after the equation, is listed with the paragraphs
   without an identifier that came back different, and not applied.

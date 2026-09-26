@@ -296,8 +296,9 @@ def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
         f"not compared: table cells, headings, captions, list items, block quotes, "
-        f"paragraphs with display maths, with a comment that closes past them, or with a "
-        f"fence, `</div>` or definition directly under them, and anything newly written. "
+        f"paragraphs tied to markup in or around them, such as display maths, a comment "
+        f"closing past them, or a fence, `</div>` or definition directly under them, and "
+        f"anything newly written. "
         + (
             "Those outside tables that changed are listed above; "
             if listed
@@ -651,11 +652,17 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
 
     # Text out of place among texts that all came back, only reordered, is one reorder: named
     # both here and below it was said twice, each list naming its own share of the items, and
-    # a swapped list item was called a heading.
+    # a swapped list item was called a heading. Named first there and never cut: added after
+    # the rest, a heading dragged past a table went unnamed beside a long reversed list.
     together = bool(plan.reordered)
     strayed = [(kind, text) for kind, text in plan.strayed if not (together and kind == "text")]
-    reordered = [*plan.reordered]
-    reordered += [t for k, t in plan.strayed if (k, t) not in strayed and t not in reordered]
+    folded = [text for kind, text in plan.strayed if (kind, text) not in strayed]
+    rest = [*plan.reordered]
+    for text in folded:
+        if text in rest:
+            rest.remove(text)
+    reordered = folded + rest
+    shown = max(12, len(folded))
     if strayed:
         print(
             f"{len(strayed)} heading(s) or other text, table(s), figure(s) or equation(s) came "
@@ -692,16 +699,18 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(
                 f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
                 f"an identifier - a heading, list item, quotation or caption, new text, or a "
-                f"paragraph with display maths, with a comment that closes past it, or with a "
-                f"fence, `</div>` or definition directly under it - came back different and "
-                f"were not compared:"
+                f"paragraph tied to markup in or around it, such as display maths, a comment "
+                f"closing past it, or a fence, `</div>` or definition directly under it - came "
+                f"back different and were not compared:"
             )
         for text in plan.vanished[:12]:
             print(f"    - {text[:120]}")
         for text in plan.unidentified[:12]:
             print(f"    + {text[:120]}")
-        for text in reordered[:12]:
+        for text in reordered[:shown]:
             print(f"    ~ {text[:120]}")
+        if len(reordered) > shown:
+            print(f"    ~ and {len(reordered) - shown} more")
         print(
             "    Not applied; make these edits in the .md. They also mark where sections "
             "begin, so a paragraph moved past one of them may not be reported as moved: "

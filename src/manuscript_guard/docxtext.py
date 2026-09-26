@@ -13,6 +13,11 @@ moved-away text does not, and a paragraph whose mark was deleted runs on into th
 which is what Word shows once the change is accepted. A paragraph deleted with Track Changes
 on used to come back as an empty paragraph and be refused as "a number or a citation
 changed".
+An identifier is an empty bookmark at the very start of its paragraph, and Word treats an
+empty bookmark as belonging to neither side of it. It does not carry one with the text it
+cuts, and it puts text pasted or typed at the start of a paragraph after it. Where the
+tracked changes say what happened, each identifier is put back on the paragraph it names;
+see `_settled`.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ import posixpath
 import re
 import zipfile
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -49,6 +54,13 @@ _UNSEEN = {
 #: Layout elements that read as a space. `w:tab` is also the name of a tab *stop* inside
 #: `w:pPr/w:tabs`, which `_UNSEEN` keeps out.
 _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
+#: Text tracked as arriving: typed or pasted, or moved here. Skipped with `_UNSEEN`, what is
+#: left is the text the document was sent with.
+_ARRIVED = {W + "ins", W + "moveTo"}
+_ARRIVED_OR_UNSEEN = _UNSEEN | _ARRIVED
+#: The two ends of a tracked move's range, by the side of the move they mark.
+_MOVE_STARTS = {W + "moveFromRangeStart": "moveFrom", W + "moveToRangeStart": "moveTo"}
+_MOVE_ENDS = {W + "moveFromRangeEnd": "moveFrom", W + "moveToRangeEnd": "moveTo"}
 
 _IDENTIFIER = re.compile(r"mg-p-[A-Za-z0-9_.-]+$")
 _PICTURES = {W + "drawing", W + "pict", W + "object"}
@@ -99,6 +111,9 @@ class Block:
     #: equation. Word renumbers and renames the parts a picture is stored in when it saves;
     #: the picture stays the same. Empty when the picture could not be read.
     key: str = ""
+    #: Every word of it, and its paragraph mark, tracked as arriving here: typed, pasted, or
+    #: moved here. It was not here in the document as sent, whatever identifier it carries.
+    arrived: bool = False
 
     @property
     def table(self) -> bool:
@@ -122,11 +137,32 @@ class _Paragraph:
     #: The text of the equation it holds, None when it holds none. Word keeps maths as
     #: OMML, whose text is not `w:t`.
     maths: str | None = None
+    #: How its paragraph mark was tracked: "ins", "del", "moveTo", "moveFrom", or "".
+    mark: str = ""
+    #: Its mark and all of its text were tracked as arriving: it was not in the document
+    #: as it was sent.
+    arrived: bool = False
+    #: It arrived and was then deleted again, by a second reviewer: its mark carries both.
+    retracted: bool = False
+    #: The names of the tracked moves its moved text belongs to.
+    moves: tuple[str, ...] = ()
 
 
 def _text(element: ET.Element) -> str:
     """The visible text under `element`, tracked changes accepted."""
     return _read(element)[0]
+
+
+def _kept(element: ET.Element) -> bool:
+    """Whether any text under `element` was there when the document was sent: text neither
+    deleted nor moved away, nor typed, pasted or moved here."""
+    stack = [element]
+    while stack:
+        node = stack.pop()
+        if node.tag == W + "t" and (node.text or "").strip():
+            return True
+        stack.extend(child for child in node if child.tag not in _ARRIVED_OR_UNSEEN)
+    return False
 
 
 def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
@@ -207,7 +243,21 @@ def runs_on(paragraph: ET.Element) -> bool:
     )
 
 
-def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
+def _removes(element: ET.Element) -> bool:
+    """It deleted or moved away text it was sent with: a deletion inside text that arrived
+    is an edit to the arrival, and the paragraph mark's own change is in its properties."""
+
+    def walk(node: ET.Element) -> bool:
+        if node.tag in (W + "del", W + "moveFrom"):
+            return True
+        if node.tag in _ARRIVED or node.tag in (W + "pPr", W + "txbxContent", _MC + "Fallback"):
+            return False
+        return any(walk(child) for child in node)
+
+    return any(walk(child) for child in element)
+
+
+def _paragraph(element: ET.Element, *, table: bool, moves: tuple[str, ...]) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
     for node in element.iter():
@@ -227,6 +277,22 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         for node in seen
         if (rid := node.get(_R + "embed") or (node.tag == _VML_IMAGE and node.get(_R + "id")))
     )
+    properties = element.find(f"{W}pPr/{W}rPr")
+    mark = next(
+        (
+            kind
+            for kind in ("moveFrom", "del", "moveTo", "ins")
+            if properties is not None and properties.find(W + kind) is not None
+        ),
+        "",
+    )
+    joined = runs_on(element)
+    retracted = joined and properties is not None and any(
+        properties.find(W + kind) is not None for kind in ("ins", "moveTo")
+    )
+    # Enter at the end of a paragraph marks its mark inserted too, and one retyped whole has
+    # no text but inserted text: what it does have is the text it deleted.
+    arrived = mark in ("moveTo", "ins") and not _kept(element) and not _removes(element)
     text, tokens = _read(element)
     maths = None
     if any(node.tag == _M + "oMath" for node in seen):
@@ -237,12 +303,16 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         tuple(names),
         text,
         tuple(comments),
-        runs_on(element),
+        joined,
         table,
         picture,
         tokens,
         embeds,
         maths,
+        mark=mark,
+        arrived=arrived,
+        retracted=retracted,
+        moves=moves,
     )
 
 
@@ -255,24 +325,118 @@ def _visible(element: ET.Element):
         stack.extend(child for child in reversed(node) if child.tag not in _UNSEEN)
 
 
-def _walk_body(node: ET.Element, *, table: bool = False) -> list[_Paragraph]:
+def _walk_body(
+    node: ET.Element, moves: dict[int, tuple[str, ...]], *, table: bool = False
+) -> list[_Paragraph]:
     out: list[_Paragraph] = []
     for child in node:
         if child.tag == W + "tr" and child.find(f"{W}trPr/{W}del") is not None:
             # A table row deleted with Track Changes on: gone once the change is accepted.
             continue
         if child.tag == W + "p":
-            out.append(_paragraph(child, table=table))
+            out.append(_paragraph(child, table=table, moves=moves.get(id(child), ())))
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, table=True))
+            out.extend(_walk_body(child, moves, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
-            out.extend(_walk_body(child, table=table or child.tag == W + "tc"))
+            out.extend(_walk_body(child, moves, table=table or child.tag == W + "tc"))
     return out
 
 
+def _move_names(body: ET.Element) -> dict[int, tuple[str, ...]]:
+    """The tracked moves each paragraph's moved text belongs to, by `id()` of the paragraph.
+
+    Word marks a move with a range on each side, a start and an end sharing an id, and names
+    the two ranges alike. The ends need not sit in the paragraph they begin in, or in any
+    paragraph, so the ranges are followed through the body in document order.
+    """
+    found: dict[int, list[str]] = {}
+    open_ranges: dict[tuple[str, str], str] = {}
+
+    def walk(node: ET.Element, paragraph: ET.Element | None) -> None:
+        if node.tag in _MOVE_STARTS:
+            open_ranges[(_MOVE_STARTS[node.tag], node.get(W + "id", ""))] = node.get(
+                W + "name", ""
+            )
+        elif node.tag in _MOVE_ENDS:
+            open_ranges.pop((_MOVE_ENDS[node.tag], node.get(W + "id", "")), None)
+        elif node.tag in (W + "moveFrom", W + "moveTo") and paragraph is not None:
+            side = node.tag.removeprefix(W)
+            names = found.setdefault(id(paragraph), [])
+            names += [
+                name
+                for (kind, _id), name in open_ranges.items()
+                if kind == side and name not in names
+            ]
+        # A paragraph mark's own move is in its properties, and says nothing about a range.
+        if node.tag in (W + "pPr", W + "txbxContent", _MC + "Fallback"):
+            return
+        here = node if node.tag == W + "p" else paragraph
+        for child in node:
+            walk(child, here)
+
+    walk(body, None)
+    return {key: tuple(names) for key, names in found.items()}
+
+
+def _settled(paragraphs: list[_Paragraph]) -> list[_Paragraph]:
+    """Each identifier on the paragraph it names, where tracked changes say Word left it.
+
+    - A paragraph moved with Track Changes on leaves its identifier in the moved-from copy.
+      Word names each move, with the same name on the paragraphs it left and those it
+      arrived as, so the identifier goes to the paragraph it became. Only a move of whole
+      paragraphs is read, with as many arriving as leaving: the identifier then has exactly
+      one place to go. Anything else keeps its identifiers where they are, and the import
+      reports it rather than guessing.
+    - A paragraph that arrived, mark and every word of it, in front of an identified one
+      took that one's identifier, which goes back to the paragraph it names. That is a paste
+      landing at the start of a paragraph, and Enter pressed there. It goes past a paragraph
+      that arrived and was deleted again, and no further: a paragraph deleted whole takes
+      its own identifier back and is reported deleted. Only a recorded move gives one to an
+      empty line; text typed on the empty line an HTML comment renders as is text typed
+      where that paragraph renders nothing, and is refused as such.
+
+    Moves come first, so that an identifier a move carries is not then taken for one that
+    slid.
+    """
+    out = list(paragraphs)
+    carried: set[str] = set()
+    for move in dict.fromkeys(name for paragraph in out for name in paragraph.moves):
+        involved = [i for i, paragraph in enumerate(out) if move in paragraph.moves]
+        left = [i for i in involved if out[i].mark == "moveFrom" and not out[i].text]
+        # Enter at the end of the moved copy marks its mark inserted, not moved.
+        arrived = [i for i in involved if out[i].mark in ("moveTo", "ins") and out[i].arrived]
+        if not left or len(left) != len(arrived) or len(left) + len(arrived) != len(involved):
+            continue
+        for was, now in zip(left, arrived, strict=True):
+            carried.update(out[was].names)
+            out[now] = replace(out[now], names=out[was].names + out[now].names)
+            out[was] = replace(out[was], names=())
+    for index, paragraph in enumerate(out):
+        slid = tuple(name for name in paragraph.names if name not in carried)
+        if not (paragraph.arrived and slid) or paragraph.table:
+            continue
+        after = next(
+            (
+                i
+                for i in range(index + 1, len(out))
+                if not out[i].arrived and not (out[i].retracted and not out[i].text)
+            ),
+            None,
+        )
+        if after is None or out[after].table:
+            continue
+        if not out[after].text and not out[after].runs_on and paragraph.mark != "moveTo":
+            continue
+        out[after] = replace(out[after], names=slid + out[after].names)
+        out[index] = replace(paragraph, names=tuple(n for n in paragraph.names if n in carried))
+    return out
+
+
+
 def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Paragraph]:
-    """Every paragraph in one part of the document, in order, tables included."""
+    """Every paragraph in one part of the document, in order, tables included, each carrying
+    the identifiers of the paragraph it is (see `_settled`)."""
     try:
         with open_archive(document) as archive:
             if part not in archive.namelist():
@@ -281,7 +445,8 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
-    return _walk_body(body if body is not None else root)
+    body = body if body is not None else root
+    return _settled(_walk_body(body, _move_names(body)))
 
 
 def blocks(document: Path) -> list[Block]:
@@ -393,7 +558,8 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
     # Token extents are read from the build import compares with, which has no tracked
     # changes to fold; offsets into a joined paragraph would need shifting, so none are kept.
     tokens = kept[0].tokens if len(kept) == 1 else ()
-    return [Block(names=names, text=text, tokens=tokens)]
+    arrived = all(p.arrived for p in kept)
+    return [Block(names=names, text=text, tokens=tokens, arrived=arrived)]
 
 
 def comment_anchors(document: Path) -> dict[str, str]:

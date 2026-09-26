@@ -111,6 +111,13 @@ These were tested, not assumed, and they determine the architecture.
 - **A pinned key comes back as `citation-key: xyz`**, in the CSL `note`, although it is typed
   in Extra as `Citation Key: xyz`. `item.search` keeps that line; `item.pandoc_filter` and
   `item.export` strip it, so they cannot tell pinned from unpinned.
+- **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
+  driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
+  and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the
+  moved-from copy; without, it moves onto the next paragraph. Text pasted or typed at the
+  start of a paragraph, Enter included, goes in behind that paragraph's bookmark. And
+  pandoc's reference document sets `w:doNotTrackMoves`, so a move made with Track Changes on
+  came back as a deletion and an unrelated insertion. See "A move, the way Word makes one".
 - Environment: Zotero 9.0.6, Better BibTeX installed, `Zotero.dotm` in Word's STARTUP,
   pandoc 3.9.0.2, Word 16, R 4.3.3–4.6.0, Python 3.12.3.
 
@@ -1347,10 +1354,12 @@ paragraph is the failure this command must not have.
 
 **A move needs no content from Word at all**, and that is the one thing the round trip can
 do perfectly. Each source paragraph is tagged with an invisible identifier before
-substitution — `[]{#mg-p-main-12}`, which pandoc emits as a Word bookmark: invisible,
-surviving an edit, and travelling with the paragraph when somebody cuts and pastes it. When
-the document comes back, the identifiers say exactly which paragraph is which, so a move is
-a reordering of text already on disk rather than anything imported. That makes it safe for
+substitution — `[]{#mg-p-main-12}`, which pandoc emits as a Word bookmark: invisible, and
+surviving an edit. This paragraph used to add "travelling with the paragraph when somebody
+cuts and pastes it". Word does not carry it; "A move, the way Word makes one" below says
+what it does instead and how the move is read anyway. When the document comes back, the
+identifiers say exactly which paragraph is which, so a move is a reordering of text already
+on disk rather than anything imported. That makes it safe for
 precisely the paragraphs the content merge has to refuse: a paragraph solid with bindings
 can be moved without a binding going anywhere near Word.
 
@@ -1937,6 +1946,84 @@ The reference list now ends at the next heading, which a .docx gives only in par
 styles, read by style name because a French Word's heading style id is `Titre1`. Notes are
 read after the cut rather than through it, and the report names the lines it did not audit,
 so a cut in the wrong place shows.
+
+## A move, the way Word makes one
+
+A review of the Word round trip reported that a paragraph cut and pasted with Track Changes
+on came back as "deleted in Word, left in place here", with its pasted copy refused as a
+split, and that the advice printed with both - delete it in the .md yourself, make the
+addition in the .md - led an author to delete a paragraph full of bindings and retype it from
+Word's copy, which has numbers where the source has bindings. Nothing was written to the
+source; the advice did the damage.
+
+Driving Word 365 over COM on the example's own build showed it was wider than that. Every
+move test so far had moved the whole `<w:p>`, bookmark and all, which Word never does: the
+identifier is an empty bookmark, and Word does not carry an empty bookmark with the text it
+cuts. With Track Changes on it stays in the moved-from copy; without, it moves onto the next
+paragraph. Text pasted or typed at the start of a paragraph goes in behind that paragraph's
+bookmark, so the paragraph a move landed in front of lost its identifier to the moved one.
+So no paragraph cut and pasted in Word had ever been moved: every one was refused, and two
+paragraphs moved together, or one moved to the top of its section, were reported as a join.
+Pressing Enter at the start of a paragraph reported that paragraph deleted. And pandoc's
+reference document sets `w:doNotTrackMoves`, so with Track Changes on Word wrote a move as a
+deletion and an unrelated insertion, and left out the one piece of markup that pairs the two
+places.
+
+What Word records is now read. The build removes `w:doNotTrackMoves`, and Word then names
+each move, with the same name on the range it left and the range it arrived in. Where a move
+took whole paragraphs, as many arriving as leaving, each identifier goes from the paragraph
+it left to the paragraph it became; the move is applied from the text on disk, and a
+rewording made after the move is merged like any other. A paragraph whose mark and text all
+arrived, and which deleted nothing it was sent with, was not in the document as sent, so an
+identifier at its start goes back to the paragraph after it: past a paragraph that arrived
+and was deleted again, not past one deleted whole, and onto an empty line only for a
+recorded move (text typed on the line an HTML comment renders as stays refused as such).
+
+What Word does not record is not guessed at. The first version of this change also recovered
+moves made with Track Changes off, by matching whole paragraphs word for word. Three rounds
+of independent review each found wrong writes in it, where `main` had refused: a paste
+carrying a deleted paragraph's identifier merged as that paragraph, the moved text in the
+source twice under "bindings intact"; a paragraph split with a moved one pasted between the
+halves merged as its first sentence; a heading pasted with a paragraph replaced the one it
+landed on. Each fix opened the next hole, because every identifier the text rules placed was
+one fewer piece of new text for the split check to see. After the third round the recovery
+by text was taken out. A move Word did not record is refused and named as a move - "moved in
+Word, left in place here", with Word's copy shown and the advice to move it in the .md and
+never retype it - and the skill asks co-authors to keep Track Changes on. Two exact rules
+stayed: an identifier left on an empty line goes back to the next paragraph when that reads
+exactly as the identified one was sent (Enter without Track Changes), and an identifier on a
+block reading exactly as a heading or caption is taken off it (the last paragraph of a
+section, deleted without Track Changes, used to merge the heading's text into itself when
+it named the heading, on `main` too).
+
+The checks that came out of the review rounds guard the tracked path as well:
+
+- A paragraph that arrived with Track Changes on vouches for nothing beside it. The split
+  check looks for new text beside a changed paragraph, and a moved paragraph pasted between
+  the halves of a split, carrying its identifier, stood where the second half had.
+- A move is not applied in a section that gained text the document as sent did not have
+  (a split's second half, a new paragraph, an edited heading or caption, which the report
+  quotes), or that holds an identifier on text that is not its own: where its paragraphs now
+  stand cannot be read with certainty. A paragraph moved in from another section standing
+  beside the new text does not hide which section that is.
+- Display maths reaches Word in parts. A paragraph that came back between the parts, or one
+  whose first part moved without the rest, is reported as moved into the middle of a
+  paragraph, not reordered: the first version moved the whole paragraph, equation and all,
+  when only the line before the equation had moved, and exited 0.
+- A rewording that holds the whole of another paragraph is refused, and so is one that
+  gained most of the words of a paragraph gone from its place, and an identifier on text
+  that reads exactly as another paragraph, a heading or a caption did.
+
+A fourth round, on the tracked path alone, found the display-maths move above, the hidden
+section, and a paragraph pasted onto the end of another merged with it while the report
+advised keeping the vanished original: the text in the source twice. Each is refused now.
+A document built before this change still asks Word not to record moves, and `import` says
+so when one comes back, rather than naming a version the author has no way to check.
+
+`tests/test_roundtrip.py` builds each case from the markup Word wrote, with a helper whose
+documents read the same as Word's own saved files, checked block by block. The pattern is
+the one this file keeps finding: the tests simulated what the code assumed an editor does,
+not what the editor does.
 
 ## Known gaps
 
@@ -3056,12 +3143,49 @@ Closed since, and why each mattered:
   revision had been accepted: inserted text counts, deleted and moved-away text does not, a
   paragraph deleted as a tracked change is reported deleted, and a deleted paragraph mark
   is a join. Rejecting a co-author's change means rejecting it in Word before sending it
-  back. A tracked *move* reads as a deletion at the old place and new, unidentified text at
-  the new one, so it is reported rather than applied. The same holds for a table, a figure
-  or an equation: a tracked deletion of one is a deletion, and a tracked move puts it where
-  it was moved to. A picture or an equation inside `w:del` or `w:moveFrom` used to be read
-  as if it were still there, and so did a table's deleted rows, so each came back as
-  "nothing came back".
+  back. A tracked move of a paragraph is read as the move it is; see the next entry for
+  where that stops. A table, a figure or an equation is read the same way: a tracked
+  deletion of one is a deletion, and a tracked move puts it where it was moved to. A
+  picture or an equation inside `w:del` or `w:moveFrom` used to be read as if it were still
+  there, and so did a table's deleted rows, so each came back as "nothing came back".
+- **A move is applied only when Word recorded it.** Word does not carry a paragraph's
+  identifier when it cuts it (see "A move, the way Word makes one"). What is left:
+  - *A move made with Track Changes off, in a document built before this change (which asked
+    Word not to record moves, and which `import` names), or with move tracking turned off in
+    Word, is refused.* It is reported as moved in Word when its words came back elsewhere -
+    most of them in order,
+    a judgement that only chooses the words of the refusal - and otherwise as deleted, with
+    the advice to move it rather than retype it if it was moved. The author moves it in the
+    .md. With Track Changes off, the paragraph it was pasted in front of is refused too.
+  - *Tracked moves are paired only when they took whole paragraphs*, as many arriving as
+    leaving. A sentence moved out of one paragraph into another changes both paragraphs'
+    text, and is read that way. The paragraph it left is refused if a binding went with it;
+    the paragraph it arrived in merges it as typed text, numbers included, so the sentence is
+    in the source twice until the author deletes one, and `check` reports the typed numbers
+    as unbound. That is how any number typed in Word arrives, on `main` too.
+  - *A section that gained text keeps its order.* A recorded move in a section where a
+    paragraph was also split, a new one typed, or a heading or caption beside it edited, is
+    reported with the new text and not applied. So is one in a section whose display maths
+    came apart.
+  - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
+    words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
+    and paraphrased into another, both in one round, has its rewording refused.
+  - *A paragraph moved beside a reworded one refuses the rewording*, as new text beside it
+    would: it cannot be told from the second half of a split.
+  - *A paragraph typed in front of one that is then deleted*, with Track Changes on,
+    reports the deletion and refuses a rewording of the paragraph after it, beside the new
+    text. `main` merged the new text as a rewording of the deleted paragraph.
+  - *With Track Changes on, a paragraph typed at the start of another is a new paragraph like
+    any other*: its neighbour keeps its identifier, and the new text is only counted among
+    what was not compared. It used to be refused as a split of the neighbour, which at least
+    named it. With Track Changes off it still is.
+  - *A comment's anchor is read from the markup only.* After a paste made without Track
+    Changes at the start of a paragraph, a comment on the pasted text is attached to the
+    paragraph it landed in front of.
+  - *A heading retitled after the last paragraph of its section was deleted without Track
+    Changes* is merged as that paragraph's text, on `main` too. The paragraph's identifier
+    slides onto the heading, and only a heading that still reads exactly as it was sent is
+    recognised as one; paragraph styles are not read.
 - **A split or a join is refused, not applied.** Both change how many paragraphs there are,
   and the identifier only says where a paragraph starts. Doing the split or the join in the
   `.md` is the way through; the refusal names the paragraphs. A heading or caption joined

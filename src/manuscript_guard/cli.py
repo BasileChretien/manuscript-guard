@@ -368,6 +368,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         numbering,
         numbering_refusal,
         read_blocks,
+        records_moves,
         stamp_of,
         tagged_paragraphs,
     )
@@ -533,6 +534,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 0
 
     _report_plan(project, known, plan, applying=args.apply)
+    if not records_moves(edited):
+        print(
+            f"\n{edited.name} was built before manuscript-guard let Word record moves: its "
+            f"settings ask Word not to. A paragraph moved in it comes back as a deletion and new "
+            f"text, and is refused. Rebuild and resend the document for moves to come back."
+        )
 
     if args.apply:
         apply_plan(known, plan)
@@ -556,8 +563,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     outstanding = bool(
         plan.refused
         or plan.gone
+        or plan.displaced
         or plan.joined
         or plan.misplaced
+        or plan.withheld
         or plan.lost
         or plan.strayed
         or plan.unidentified
@@ -639,7 +648,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
-            "another file, or a paragraph it holds in place ends one. An HTML comment or a "
+            "another file, or a paragraph it holds in place ends one, and a paragraph moved "
+            "between the parts Word shows display maths in is in none. An HTML comment or a "
             "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
             "Word shows as an empty line, one with a line such as `\\end{table}` directly "
             "under it in the .md, one with a `<!--` that never closes, and one directly above "
@@ -718,6 +728,20 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name, was_at, now_at in plan.moved:
             print(f"    position {was_at} -> {now_at}: {opening(name)}")
 
+    if plan.withheld:
+        print(f"{len(plan.withheld)} paragraph(s) came back in a different place, not applied:")
+        for name in plan.withheld:
+            print(f"    {opening(name)}")
+        print(
+            "    Their section also came back with text the document as sent did not have - a "
+            "paragraph split, a new one, a heading or caption edited - or with a paragraph "
+            "whose identifier is on other text, or whose display maths came apart, so where "
+            "each of its paragraphs now stands cannot be read with certainty. Move them in "
+            "the .md yourself if the moves were intended."
+        )
+        for text in plan.held_by[:3]:
+            print(f"    new text: {text.strip()[:110]}")
+
     verb = "merging" if applying else "would merge"
     for name, rebuilt in plan.merged.items():
         print(f"\n{verb} into {where(name)}:")
@@ -739,9 +763,24 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "if that was intended, and make any rewording there."
         )
 
+    for name, text in plan.displaced:
+        print(f"\nmoved in Word, left in place here: {known[name][1].strip()[:110]}")
+        print(f"    + {text.strip()[:150]}")
+        print(
+            "    Nothing in the returned document says which paragraph the copy above is - "
+            "Word did not record the move, or recorded one that did not take whole "
+            "paragraphs - so it is not applied. Move the paragraph in the .md, and make any "
+            "rewording there. Do not delete it and retype Word's copy: its numbers and "
+            "citations would come back as typed text, not as bindings."
+        )
+
     for name in plan.gone:
         print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
-        print("    delete it in the .md yourself if that was intended.")
+        print(
+            "    delete it in the .md yourself if that was intended. If it was moved instead, "
+            "move it in the .md: retyped from Word's copy, its numbers and citations would "
+            "come back as typed text."
+        )
 
 
 def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:

@@ -205,6 +205,23 @@ def test_the_section_chain_is_looked_up_not_rebuilt() -> None:
     assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
 
 
+@pytest.mark.parametrize(
+    "tail",
+    [" *_" * 3000 + " x", " " * 9000 + "x"],
+    ids=["emphasis marks", "spaces"],
+)
+def test_a_long_heading_title_does_not_stall_the_methods_check(tail: str) -> None:
+    """`is_methods` reads every title in a number's chain, for every number and every rule
+    that holds only in Methods. The patterns that trimmed a title's emphasis and attribute
+    block backtracked from every character of a run of spaces or marks: a heading ending in
+    1,000 ` *_` over five numbers took G2 36 s."""
+    from manuscript_guard.classify import is_methods
+
+    started = time.perf_counter()
+    is_methods(("Outcomes" + tail, "Methods"))
+    assert time.perf_counter() - started < 0.5
+
+
 # ---------------------------------------------------------------- hostile files
 
 

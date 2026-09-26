@@ -2375,15 +2375,17 @@ Closed since, and why each mattered:
   so that a line starts "# of reports" therefore reports the thresholds after it. The line
   prints as text in the paper as well, so it is worth rewrapping, or escaping as `\#`.
   Rows of a table the walk reads, and `{{table.x}}`, are not such lines: the rule under the
-  last row is a rule. Two kinds of heading pandoc does print are read the same way: a `#`
-  heading after a tag or a comment on its line, and a setext title after a tag, at the start
-  of its line or after a comment. The scan before the walk never read either, and where the
-  walk wrongly starts a block, under a stray `</script>` say, or ends a tag at a `>` pandoc
-  reads inside a quote, one would open Methods; so a Methods section headed that way
-  reports its thresholds. Such a line that says Results holds the Results in place like a
-  printed heading. A lone `##` over a line of text, an empty heading and a paragraph to
-  pandoc, ends the section there, titled with that line. Seven hashes or more make a
-  heading to pandoc and to the walk, which the scan before it never read.
+  last row is a rule. Three kinds of heading pandoc does print are read the same way: a `#`
+  heading after a tag or a comment on its line, a setext title after a tag, at the start of
+  its line or after a comment, and a heading of seven hashes or more. The scan before the
+  walk never read any of them, and where the walk wrongly starts a block, under a stray
+  `</script>` say, or ends a tag at a `>` pandoc reads inside a quote, one would open
+  Methods; so a Methods section headed that way reports its thresholds. Such a line that
+  says Results holds the Results in place like a printed heading. A lone `##` over a line of
+  text, an empty heading and a paragraph to pandoc, ends the section there, titled with that
+  line. A `# X` line over a `-` rule is a level-2 heading titled "# X" to pandoc and the
+  walk, and a level-1 heading "X" to the scan before it; for G2 a section is Methods only if
+  both readings say so.
 - **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
   line under a table for a row when it holds a pipe outside code, math and a backslash
   escape, and reads each of those naively: two dollars are math, a backslash escapes the

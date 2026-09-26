@@ -818,11 +818,13 @@ def section_breaks(text: str) -> list[Heading]:
     Methods, and never open them. A table row is not such a line: the walk reads the table,
     and the rule under its last row is a rule.
 
-    Two kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
-    after a tag or a comment on its line, and a setext title after a tag, at the start of its
-    line or after a comment. The scan before the walk never read either, and wherever the
-    walk wrongly starts a block, under a stray `</script>` say, or ends a tag pandoc does not
-    see, one could open Methods. And an empty `##` over a line of text breaks there too,
+    Three kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
+    after a tag or a comment on its line, a setext title after a tag, at the start of its
+    line or after a comment, and a heading of seven hashes or more. The scan before the walk
+    never read any of them, and wherever the walk wrongly starts a block, under a stray
+    `</script>` say, or ends a tag pandoc does not see, one could open Methods. A seven-hash
+    Methods did so too under a Results title the gates do not read, `# [Results]{.underline}`.
+    And an empty `##` over a line of text breaks there too,
     titled with that line: pandoc prints the line as a paragraph, and the page shows
     "Results" over the numbers under it.
     """
@@ -833,6 +835,7 @@ def section_breaks(text: str) -> list[Heading]:
         replace(heading, title=Unprinted(heading.title))
         if heading.start in walk.tagged
         or (not heading.setext and not raw_at[heading.start].startswith("#"))
+        or (not heading.setext and heading.level >= 7)
         or (heading.setext and _START_TAG.match(raw_at[heading.start]))
         else heading
         for heading in placed_headings

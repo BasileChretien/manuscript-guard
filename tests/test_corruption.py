@@ -544,6 +544,32 @@ RESULTS_READ_AS_METHODS = {
         "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n# Results\n-\n\n"
         "Statistical analysis\n-\n\nThe excess was significant (p < 0.001).\n"
     ),
+    # Found by the seventh review. An unclosed comment in an attribute block took the `}`
+    # with it when raw markup was stripped first, and the title no longer read as Results.
+    "a comment in a results attribute block": (
+        "# Methods\n\n-----  -----\na      b\n-----  -----\n"
+        '# Results {title="<!--"}\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Seven hashes, which `main` never read, opened Methods wherever the walk wrongly placed
+    # one, or under a Results title the gates do not read.
+    "seven hashes under a stray closing tag": (
+        "# Outcomes\n\nText\n</script>\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "seven hashes under a results span": (
+        "# [Results]{.underline}\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A `#` line over a rule is a setext heading, "# Outcomes", at level 2, and it nested under
+    # a Methods the walk placed in error. `main` read it at level 1, which closes them.
+    "a hash line over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a dash table": (
+        "# Results\n\n-----  -----\nText\n---\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 

@@ -150,12 +150,27 @@ class HeadingIndex(list):
             # text took it off the other chain as well, and left both saying Methods.
             both = type(found.title) is not Unprinted or rules_out_methods(found.title)
             for stack in (every, printed) if both else (every,):
-                while stack and stack[-1][0] >= found.level:
+                level = 1 if stack is printed and _hash_over_rule(found) else found.level
+                while stack and stack[-1][0] >= level:
                     stack.pop()
-                stack.append((found.level, found.title))
+                stack.append((level, found.title))
             self.chains.append(
                 Chain(tuple(t for _l, t in every), tuple(t for _l, t in printed))
             )
+
+
+def _hash_over_rule(found: Heading) -> bool:
+    """A `# X` line over a `-` rule. Pandoc prints a level-2 heading titled "# X", which is
+    how the walk places it, and the scan before the walk read a level-1 heading "X". Where
+    the walk wrongly placed a `# Methods` above it, under a stray `</script>` say, the level-2
+    reading nested under that Methods, and the level-1 one closes it. So the printed chain
+    takes level 1, and both readings must say Methods."""
+    return (
+        found.setext
+        and found.level == 2
+        and found.title[:1] == "#"
+        and found.title[1:2] in (" ", "\t", "")
+    )
 
 
 def chain_at(index: list[Heading], offset: int) -> Chain:

@@ -414,12 +414,13 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 2
     # Only the identifiers that still name the paragraph they named at the build. The rest
     # would put an edit into whichever paragraph now sits there.
-    known = {
-        name: entry
-        for name, entry in tagged_paragraphs(project).items()
-        if name in numbered.trusted
-    }
-    plan = plan_import(known, sent, returned, marked, abbreviated)
+    present = {n for b in returned if not b.table for n in b.names}
+    trusted = numbered.trusted | (numbered.unsure & present)
+    every = tagged_paragraphs(project)
+    known = {name: entry for name, entry in every.items() if name in trusted}
+    plan = plan_import(
+        known, sent, returned, marked, abbreviated, every=every, built=numbered.sent
+    )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything
@@ -434,23 +435,28 @@ def cmd_import(args: argparse.Namespace) -> int:
     # A paragraph whose identifier no longer names the text it was built from: the source
     # changed there since, or this version numbers or tags paragraphs by other rules. Its
     # edit belongs to a paragraph that is not there now, so it is not compared; saying so is
-    # the only way it does not vanish.
-    strangers = sorted({n for b in returned if not b.table for n in b.names if n not in known})
-    if strangers:
-        shown = ", ".join(strangers[:5]) + (", …" if len(strangers) > 5 else "")
-        unexamined = "\n  ".join(
-            part
-            for part in (
-                unexamined,
-                f"{len(strangers)} paragraph(s) in {edited.name} were not compared, because "
-                f"their identifier no longer names the paragraph it named when the document "
-                f"was built ({shown}): the source changed there since, or this version "
-                f"numbers paragraphs differently. Carry any edit in them over by hand.",
-            )
-            if part
-        )
+    # the only way it does not vanish. An empty one in a document that records nothing is
+    # what releases before 0.2.45 put under an HTML comment, and nobody wrote in it.
+    strangers = sorted(
+        {
+            n
+            for b in returned
+            if not b.table and (numbered.recorded or b.text.strip())
+            for n in b.names
+            if n not in known
+        }
+    )
+    # And one that did not come back, deleted or joined in Word. Looked for among those that
+    # came back only, its deletion left no trace, and the import said nothing came back.
+    unaccounted = [
+        n
+        for n in (*numbered.sent, *sorted(numbered.unsure))
+        if n not in trusted and n not in present
+    ]
+    said = _not_compared(edited, strangers, unaccounted, bool(numbered.unsure & {*unaccounted}))
+    unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
 
-    if plan.empty and not comments and not strangers:
+    if plan.empty and not comments and not strangers and not unaccounted:
         print("nothing came back: the document matches the manuscript on disk.")
         if unexamined:
             print(f"  {unexamined}")
@@ -493,16 +499,56 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.reordered
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either.
-    return 1 if outstanding or strangers else 0
+    return 1 if outstanding or strangers or unaccounted else 0
+
+
+def _not_compared(
+    edited: Path, strangers: list[str], unaccounted: list[str], values: bool
+) -> list[str]:
+    """What `import` says of the paragraphs whose identifier it could not vouch for.
+    `values` says a paragraph that is only a value is among those that did not come back."""
+
+    def shown(names: list[str]) -> str:
+        return ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
+
+    said = []
+    if strangers:
+        said.append(
+            f"{len(strangers)} paragraph(s) in {edited.name} were not compared, because their "
+            f"identifier no longer names the paragraph it named when the document was built "
+            f"({shown(strangers)}): the source changed there since, or this version numbers "
+            f"or tags paragraphs differently. Carry any edit in them over by hand. A paragraph "
+            f"moved past one of them in Word may not be reported as moved."
+        )
+    if unaccounted:
+        said.append(
+            f"{len(unaccounted)} paragraph(s) {edited.name} was built with did not come back, "
+            f"deleted or joined in Word, and were not compared, because their identifier no "
+            f"longer names the paragraph it named then ({shown(unaccounted)})."
+            + (
+                " A paragraph that is only a value may never have been in it: releases "
+                "before 0.2.49 gave it no identifier."
+                if values
+                else ""
+            )
+            + " Delete or join them in the .md yourself if that was intended."
+        )
+    return said
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
-    """Say what the returned document changed and what will, or will not, be applied."""
+    """Say what the returned document changed and what will, or will not, be applied.
+
+    `known` holds the paragraphs compared. A join can take in one that was not, which is
+    named by its identifier: what the source now has under it is another paragraph.
+    """
 
     def where(name: str) -> str:
         return known[name][0].relative_to(project.root).as_posix()
 
     def opening(name: str) -> str:
+        if name not in known:
+            return f"({name}, not compared)"
         return known[name][1].strip()[:80]
 
     if plan.misplaced:
@@ -557,7 +603,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {line}")
 
     for group in plan.joined:
-        print(f"\n{len(group)} paragraphs came back joined into one, in {where(group[0])}:")
+        home = next(name for name in group if name in known)
+        print(f"\n{len(group)} paragraphs came back joined into one, in {where(home)}:")
         for name in group:
             print(f"    {opening(name)}")
         print(

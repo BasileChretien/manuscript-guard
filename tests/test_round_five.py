@@ -317,6 +317,32 @@ def test_a_line_starting_with_a_hash_inside_a_paragraph_revises_it(project: Path
     assert "claimed-change-missed-the-point" not in codes(project)
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "added",
+    [
+        '\n<span class="added">\nIt is examined here for the first time.\n</span>',
+        "\n<br>\nAnd more.",
+    ],
+)
+def test_a_line_holding_an_inline_tag_inside_a_paragraph_revises_it(
+    project: Path, added: str
+) -> None:
+    """A tag pandoc reads inline, alone on a line, is part of its paragraph. Taken for a
+    block boundary, it split the revised paragraph, the old text turned up as one half, and
+    the revision was reported as unchanged."""
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    anchor, (_path, paragraph, _start) = next(iter(known.items()))
+    _anchored_round(project, known, anchor)
+
+    path.write_text(whole.replace(paragraph, paragraph + added, 1), encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" not in codes(project)
+
+
 def test_an_anchor_the_round_did_not_record_is_reported(project: Path) -> None:
     """Skipped because the baseline did not hold it, the point's revision passed unchecked."""
     projekt, _ = load_project(project)
@@ -347,7 +373,7 @@ def test_an_anchor_numbered_by_older_rules_is_found_by_its_text(project: Path) -
     `---` holds identifiers numbered by the rules of the time. Once the space was trimmed
     during the revision, the anchor named another paragraph, and a paragraph nobody touched
     passed as revised."""
-    from manuscript_guard.roundtrip import identified
+    from manuscript_guard.roundtrip import _OLD_FRONT, identified
 
     path = project / "manuscript" / "main.md"
     whole = path.read_text(encoding="utf-8")
@@ -356,7 +382,7 @@ def test_an_anchor_numbered_by_older_rules_is_found_by_its_text(project: Path) -
     raw = path.read_text(encoding="utf-8")
     known = {
         name: (path, text, at)
-        for name, text, at in identified(raw, "main.md", old_front_matter=True)
+        for name, text, at in identified(raw, "main.md", front=_OLD_FRONT)
     }
     tidied = whole + "\n\nAn unrelated addition.\n"
     later = {name: text for name, text, _at in identified(tidied, "main.md")}

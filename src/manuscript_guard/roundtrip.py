@@ -34,6 +34,7 @@ import itertools
 import re
 import unicodedata
 import zipfile
+from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,14 +57,28 @@ _CUSTOM = "docProps/custom.xml"
 #: long as every change to them remembered to bump it, and each review of that found
 #: another change that had not.
 #:
+#: Text alone cannot tell apart two paragraphs that read the same, and papers repeat
+#: "Not applicable." under one declaration after another: with one more added above them,
+#: the first one's identifier named the new one, read the same, and took a co-author's
+#: ethics approval. So each paragraph's record also hashes the block before it.
+#:
 #: Split over several properties, each short of 255 characters, which Word may cut a text
 #: property to when it saves.
 PARAGRAPHS_PROPERTY = "manuscript-guard-paragraphs"
 _CHUNK = 240
 
-#: Where releases up to 0.2.12 took the front matter to end. Kept for documents built
-#: before paragraphs were recorded: whether they still name the right paragraphs.
+#: Where releases up to 0.2.12 took the front matter to end, and where releases from 0.2.13
+#: until 0.2.47 did. Kept for documents built before paragraphs were recorded: whether they
+#: still name the right paragraphs.
 _OLD_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
+_MID_FRONT = re.compile(
+    r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n", re.DOTALL
+)
+_PAST_FRONTS = (_OLD_FRONT, _MID_FRONT)
+
+#: A paragraph that is only a placeholder. Releases before 0.2.49 gave none an identifier,
+#: and since then one that is only a value has one.
+_LONE = re.compile(r"\{\{[^}]*\}\}")
 
 _CUSTOM_XML = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
@@ -109,18 +124,24 @@ _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 _BUILD_INPUTS = ("bibliography", "csl")
 
 
-def _paragraph_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+def _recorded_as(text: str, before: str) -> str:
+    """What the record keeps of one paragraph: `<hash of its text>.<hash of the block
+    before it>`."""
+    ours = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+    return f"{ours}.{hashlib.sha256(before.encode('utf-8')).hexdigest()[:6]}"
+
+
+_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6})")
 
 
 def _encoded(paragraphs: dict[str, str]) -> list[str]:
-    """The paragraph map as property values, `<slug>:<index>.<hash>,...`, each value one
-    file's and shorter than `_CHUNK`. Always at least one, so that an empty map still says
-    it was recorded."""
+    """The paragraph record as property values, `<slug>:<index>.<text>.<before>,...`, each
+    value one file's and shorter than `_CHUNK`, in the order given. Always at least one, so
+    that an empty record still says it was recorded."""
     by_slug: dict[str, list[str]] = {}
-    for name, text in paragraphs.items():
+    for name, recorded in paragraphs.items():
         slug, _, index = name.removeprefix("mg-p-").rpartition("-")
-        by_slug.setdefault(slug, []).append(f"{index}.{_paragraph_hash(text)}")
+        by_slug.setdefault(slug, []).append(f"{index}.{recorded}")
     chunks: list[str] = []
     for slug, entries in by_slug.items():
         current: list[str] = []
@@ -175,7 +196,8 @@ def stamp_into(
     document: Path, digest: str, paragraphs: dict[str, str] | None = None
 ) -> None:
     """Record the source digest inside the .docx itself, and what each paragraph
-    identifier named, `{identifier: source text}`, when `paragraphs` is given.
+    identifier named when `paragraphs` is given: `paragraph_record`, restricted to the
+    paragraphs this document carries and in their order.
 
     The sidecar `.source.sha256` tells *this* machine whether its own build is current. It
     cannot survive an email, and a document coming back from a co-author is precisely the
@@ -221,8 +243,9 @@ def stamp_of(document: Path) -> str | None:
 
 
 def paragraphs_of(document: Path) -> dict[str, str] | None:
-    """What each identifier named when the document was built, `{identifier: hash}`, or
-    None when it records nothing: a document built before paragraphs were recorded.
+    """What each identifier named when the document was built, as `paragraph_record` gives
+    it and in the document's order, or None when it records nothing: a document built before
+    paragraphs were recorded.
 
     Whatever cannot be read is left out, so an identifier it would have covered is not
     trusted: a damaged record can refuse a paragraph, never merge into the wrong one.
@@ -245,9 +268,9 @@ def paragraphs_of(document: Path) -> dict[str, str] | None:
         if not separator:
             continue
         for entry in entries.split(","):
-            index, dot, digest = entry.partition(".")
-            if dot and index.isdigit() and re.fullmatch(r"[0-9a-f]{8}", digest):
-                recorded[f"mg-p-{slug}-{index}"] = digest
+            found = _ENTRY.fullmatch(entry)
+            if found:
+                recorded[f"mg-p-{slug}-{found.group(1)}"] = found.group(2)
     return recorded
 
 
@@ -1051,19 +1074,27 @@ def _sources(project) -> list[tuple[Path, str, str]]:
 
 
 def identified(
-    raw: str, relative: str, *, old_front_matter: bool = False
+    raw: str, relative: str, *, front: re.Pattern[str] | None = None
 ) -> list[tuple[str, str, int]]:
     """Each tagged paragraph of one source file: its identifier, its text, and its offset.
 
-    `old_front_matter` numbers them as releases up to 0.2.12 did, for a document built
-    before paragraphs were recorded.
+    `front` numbers them with the front matter taken to end where a past release took it
+    to, one of `_PAST_FRONTS`, for a document built before paragraphs were recorded.
     """
+    return [(name, text, start) for name, text, start, _before in _walk(raw, relative, front)]
+
+
+def _walk(
+    raw: str, relative: str, front: re.Pattern[str] | None = None
+) -> list[tuple[str, str, int, str]]:
+    """`identified`, with the text of the block before each paragraph: a heading, a
+    paragraph, anything but blank lines, or nothing at the top of the file."""
     # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
     # raw source here while the document was tagged from the stripped text put every
     # identifier one block out of step - the two must read the same string or the
     # identifier stops naming anything.
-    if old_front_matter:
-        found = _OLD_FRONT.match(raw)
+    if front is not None:
+        found = front.match(raw)
         text = raw[found.end() :].lstrip("\n") if found else raw
     else:
         from manuscript_guard.build.assemble import strip_front_matter
@@ -1073,31 +1104,47 @@ def identified(
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
     cursor = len(raw) - len(text)
-    out: list[tuple[str, str, int]] = []
+    out: list[tuple[str, str, int, str]] = []
+    before = ""
     for index, para, marked in _blocks(text):
         stripped = para.strip()
         start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
         cursor += len(para)
         if marked:
-            out.append((_TAG.format(slug=slug, index=index), stripped, start))
+            out.append((_TAG.format(slug=slug, index=index), stripped, start, before))
+        if stripped:
+            before = stripped
     return out
 
 
-def renumbered(project) -> dict[str, str]:
-    """The source files whose paragraphs releases up to 0.2.12 numbered differently from
-    this one, as their identifier slug and their path within `manuscript/`.
-
-    A document that records no paragraphs was numbered either by those releases or, if
-    built by a later one from before paragraphs were recorded, as now. Where the two agree
-    it does not matter which, and it is read as it always was; only these files are a
-    question.
-    """
+def paragraph_record(project) -> dict[str, str]:
+    """What the build records of each paragraph, `{identifier: <text>.<before>}`: a hash of
+    its text and one of the block before it. See `PARAGRAPHS_PROPERTY`."""
     return {
-        paragraph_slug(relative): relative
+        name: _recorded_as(text, before)
         for _path, relative, raw in _sources(project)
-        if [entry[:2] for entry in identified(raw, relative, old_front_matter=True)]
-        != [entry[:2] for entry in identified(raw, relative)]
+        for name, text, _start, before in _walk(raw, relative)
     }
+
+
+def renumbered(project) -> dict[str, str]:
+    """The source files whose paragraphs a past release numbered differently from this one,
+    as their identifier slug and their path within `manuscript/`.
+
+    A document that records no paragraphs was numbered by one of the releases whose front
+    matter rule is in `_PAST_FRONTS`, or, if built by a later one before paragraphs were
+    recorded, as now. Where they all agree it does not matter which, and it is read as it
+    always was; only these files are a question.
+    """
+    changed = {}
+    for _path, relative, raw in _sources(project):
+        now = [entry[:2] for entry in identified(raw, relative)]
+        if any(
+            [entry[:2] for entry in identified(raw, relative, front=rule)] != now
+            for rule in _PAST_FRONTS
+        ):
+            changed[paragraph_slug(relative)] = relative
+    return changed
 
 
 def _slug_of(identifier: str) -> str:
@@ -1114,6 +1161,40 @@ class Numbering:
     #: The identifiers that name, in the source on disk, the paragraph they named when the
     #: document was built. Only these are compared, moved or anchored.
     trusted: frozenset[str] = frozenset()
+    #: Whether the document records its paragraphs.
+    recorded: bool = False
+    #: Every identifier it was built with, in its order, when it records them. One that is
+    #: not trusted and did not come back was deleted or joined in Word, and is named.
+    sent: tuple[str, ...] = ()
+    #: For one that records nothing: identifiers given now to a paragraph that is only a
+    #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
+    #: document may never have carried them; one it does carry is trusted after all.
+    unsure: frozenset[str] = frozenset()
+
+
+def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
+    """The identifiers whose paragraph reads now as it read at the build.
+
+    Its text must be the same. So must the block before it, unless its text is found once
+    in its file both then and now: a paragraph reading like another could be that other.
+    Asked of every paragraph, it would refuse one whenever the paragraph above it changed.
+    """
+
+    def counted(record: dict[str, str]) -> Counter:
+        return Counter((_slug_of(name), value.partition(".")[0]) for name, value in record.items())
+
+    then, since = counted(recorded), counted(now)
+    trusted = set()
+    for name, value in now.items():
+        was = recorded.get(name)
+        if was is None:
+            continue
+        ours, _, before = value.partition(".")
+        ours_then, _, before_then = was.partition(".")
+        once = then[(_slug_of(name), ours)] == 1 and since[(_slug_of(name), ours)] == 1
+        if ours == ours_then and (before == before_then or once):
+            trusted.add(name)
+    return frozenset(trusted)
 
 
 def numbering(project, document: Path, *, stale: bool) -> Numbering:
@@ -1130,11 +1211,9 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     recorded = paragraphs_of(document)
     if recorded is not None:
         return Numbering(
-            trusted=frozenset(
-                name
-                for name, (_path, text, _start) in known.items()
-                if recorded.get(name) == _paragraph_hash(text)
-            )
+            trusted=_trusted(recorded, paragraph_record(project)),
+            recorded=True,
+            sent=tuple(recorded),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.
@@ -1161,7 +1240,8 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
             f"when that was not recorded, so the version that built it may have numbered its "
             f"paragraphs differently"
         )
-    return Numbering(trusted=frozenset(known))
+    unsure = frozenset(name for name, (_p, text, _s) in known.items() if _LONE.fullmatch(text))
+    return Numbering(trusted=frozenset(known) - unsure, unsure=unsure)
 
 
 def numbering_refusal(name: str, problem: str) -> str:

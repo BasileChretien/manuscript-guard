@@ -189,18 +189,22 @@ Comments are printed, never stored. Recording them is the reader's job:
   applying changes the source the comments point at. See
   [reviewer-response](../reviewer-response/SKILL.md).
 
-A built document records what each of its paragraphs said in the source. `import` merges
-an edit only into a paragraph that still reads that way; any other is listed as `were not
-compared`, because its identifier now names other text, and has to be carried over by hand.
-That happens where the source changed since the build, and across an upgrade that numbers
-paragraphs differently.
+A built document records what each of its paragraphs said in the source, and what came
+before it. `import` merges an edit only into a paragraph that still reads that way; any
+other is listed as `were not compared`, because its identifier now names other text, and
+has to be carried over by hand, and one of those deleted in Word is listed as `did not come
+back`. That happens where the source changed since the build, and across an upgrade that
+numbers or tags paragraphs differently. A paragraph that reads word for word like another
+in its file, such as "Not applicable." under two declarations, is also listed once the block
+before it changed.
 
 When several people edited copies of the same build, dry-run every copy before applying any.
 Apply one, then `--force` the others: each merges only into paragraphs the earlier imports
-left alone, and lists the ones they changed as not compared, for you to port by hand.
-`--force` never writes an edit into a paragraph that changed since the build, but every hunk
+left alone, and lists the ones they changed as not compared, for you to port by hand. An
+edit beside one of those is refused if the two may have been joined in Word. Every hunk
 still has to be read: a changed result changes what a paragraph displays without changing
-its source.
+its source, and a paragraph moved past one that was not compared may not be reported as
+moved. DESIGN.md's Known gaps lists what the record cannot tell apart.
 
 A document built before paragraphs were recorded in it is refused, `--force` included, and
 so is `respond --open --from` on it, when anything it was built from has changed since the

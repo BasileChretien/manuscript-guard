@@ -29,6 +29,7 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.review import file_digests
+from manuscript_guard.roundtrip import _INLINE_HTML
 
 GATE = "G13"
 REVISION_DIR = "revision"
@@ -227,8 +228,14 @@ def _anchor_unchanged(
 
 
 #: A line that ends one run of a paragraph's lines and starts another wherever it stands: a
-#: code fence or div marker, or a line that is a whole HTML tag.
-_MARKER = re.compile(r"^[ ]{0,3}(?::::|```|~~~)|^[ \t]*</?[A-Za-z][^>]*>[ \t]*$")
+#: code fence or div marker, or a line that is a whole HTML tag - one pandoc reads as a block.
+#: A `<span>` or `<br>` alone on a line is inside the paragraph, and taken for a boundary it
+#: left the old text standing as one half of a revised paragraph.
+_MARKER = re.compile(
+    rf"^[ ]{{0,3}}(?::::|```|~~~)"
+    rf"|^[ \t]*</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][^>]*>[ \t]*$",
+    re.IGNORECASE,
+)
 #: A heading, which pandoc reads only where a paragraph could start: first in a block, or
 #: straight after a marker. Anywhere else a `#` line is part of the paragraph.
 _ATX = re.compile(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)")
@@ -263,17 +270,16 @@ def _passages(project: Project) -> set[str]:
         text, _title = strip_front_matter(path.read_text(encoding="utf-8"))
         for block in re.split(r"\n\s*\n", text):
             keep(block.split("\n"))
+            # A run starts where a heading could: the block's first line, or straight after a
+            # marker or another heading.
             run: list[str] = []
-            # Whether the run in hand started where a heading could: the block's first line,
-            # or straight after a marker or another heading.
-            clean = True
             for line in block.split("\n"):
                 if _COMMENT_LINE.match(line):
                     continue
-                if _MARKER.match(line) or (clean and not run and _ATX.match(line)):
+                if _MARKER.match(line) or (not run and _ATX.match(line)):
                     keep(run)
-                    run, clean = [], True
-                elif clean and len(run) == 1 and _UNDERLINE.match(line):
+                    run = []
+                elif len(run) == 1 and _UNDERLINE.match(line):
                     run = []  # a setext heading: its title and its underline
                 else:
                     run.append(line)

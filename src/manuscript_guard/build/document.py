@@ -342,13 +342,16 @@ def build_document(
         # "is my build current"; this answers "which text were these edits made against",
         # which is the question the moment a co-author sends the document back.
         # With what each paragraph identifier names, so an import can tell an identifier
-        # that still names its paragraph from one that has come to name another.
+        # that still names its paragraph from one that has come to name another. Only the
+        # paragraphs this document carries, in its order: one of them that is missing when
+        # the document comes back was deleted in Word, and a supplement's are elsewhere.
         with contextlib.suppress(Exception):
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import stamp_into, tagged_paragraphs
+            from manuscript_guard.roundtrip import paragraph_order, paragraph_record, stamp_into
 
+            record = paragraph_record(project)
             paragraphs = {
-                name: text for name, (_path, text, _start) in tagged_paragraphs(project).items()
+                name: record[name] for name in paragraph_order(output) if name in record
             }
             stamp_into(output, document_digest(project), paragraphs)
     return BuildResult(output=output, mode=mode, report=report)

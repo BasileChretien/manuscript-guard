@@ -1291,24 +1291,37 @@ document forced in after a paragraph was added to the source above the one a co-
 edited: `--force` said to check every hunk, and the plan showed what each edit became,
 never which paragraph it replaced.
 
-So the document now records what each identifier named: a short hash of every paragraph's
-source text, beside the source digest (`roundtrip.PARAGRAPHS_PROPERTY`, split across
-properties short of the 255 characters Word may cut one to). `import` compares, moves and
-merges only the paragraphs whose identifier still names text that reads as it did at the
-build, and names the rest as not compared; `respond --open` keeps a comment's anchor only
-on such a paragraph. It does not matter why an identifier came to name other text, a source
-edited since, a release that numbers or tags paragraphs by other rules: each is caught the
-same way, one paragraph at a time, and `--force` is safe to use for the rest. A number for
-the rules was tried first and had to be bumped by every change to them; three reviews each
-found a change that would not have.
+So the document now records what each identifier named: for each of its paragraphs, in its
+order, a short hash of the source text and one of the block before it, beside the source
+digest (`roundtrip.PARAGRAPHS_PROPERTY`, split across properties short of the 255
+characters Word may cut one to). The block before is there because text alone cannot tell
+two paragraphs apart that read the same, and a paper repeats "Not applicable." under one
+declaration after another: with one more added above them since the build, the first one's
+identifier named the new one, read the same, and a co-author's ethics approval went under
+"Consent to participate". A paragraph whose text is found once in its file, then and now,
+needs only its text to match; one that repeats needs the block before it to match too.
+
+`import` compares, moves and merges only the paragraphs whose identifier passes that test,
+and names the rest as not compared, whether they came back or not; `respond --open` keeps a
+comment's anchor only on such a paragraph. It does not matter why an identifier came to name
+other text, a source edited since, a release that numbers or tags paragraphs by other rules:
+each is caught the same way, one paragraph at a time. What is left out still counts for what
+is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
+is one whose next paragraph as sent is left out and did not come back, which a join retyped
+across the boundary looks like: merged as a rewording, either put the other paragraph's
+words in the source twice. A number for the rules was tried first and had to be bumped by
+every change to them; three reviews each found a change that would not have.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
 changed since, it is refused, whatever is passed. If not, it is refused when a file it
-carries numbers differently under the front-matter rule of releases up to 0.2.12. A release
-that only tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations,
-kept every other block's number, and the identifiers an older document carries on them are
-named as not compared.
+carries numbers differently under the front-matter rule of releases up to 0.2.12, or of
+those from 0.2.13 until 0.2.47, which stripped a header pandoc prints. A release that only
+tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations, kept
+every other block's number, and the identifiers an older document carries on them are named
+as not compared. One that tags more does: 0.2.49 gave a paragraph that is only a value an
+identifier, which an older document may or may not carry. Such a paragraph is compared if
+the document carries it, and named if not.
 
 A review round needs nothing of the kind, because G13 no longer compares by identifier. The
 round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
@@ -2598,22 +2611,39 @@ Closed since, and why each mattered:
   "low"` prints “3.84 and”low”, the space inside the quote gone. No word or number changes.
   Carrying Word's straight quotes would mean escaping every one, which a co-author who
   types them meaning curly ones does not want either.
-- **A document from before paragraphs were recorded is judged by one rule only.** Whether
-  it still names the right paragraphs is worked out from the front-matter change of 0.2.13,
-  the one change to numbering there has been. A later change to how paragraphs are numbered
-  or tagged cannot be detected for such a document, so after one, rebuild every document
-  still out from before this release.
+- **A document from before paragraphs were recorded is judged by the front-matter rules
+  only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
+  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
+  Any other change to how paragraphs are numbered cannot be detected for such a document.
+  One is known: builds from before front matter was stripped at all (0.1.0, before #7)
+  counted the header as a block, so every identifier is two higher than now, and such a
+  document, returned against an unchanged source, would be merged into the wrong
+  paragraphs. Rebuild any document that old rather than import it.
 - **Such a document can also be refused needlessly.** It is refused whenever anything it
   was built from has changed since, `--force` or not, because its numbering can only be
-  checked against the text it was built from; a re-run analysis alone is enough. And one
-  built by a release from 0.2.13 until this one numbered paragraphs under the current rules
-  but is judged like one built before: it is refused when a file it carries has a blank line
-  after the opening `---`, a `...` closer or a trailing space on the opening `---`. `init`
-  writes none of these. Either way, the refusal's own advice is the way through: rebuild and
+  checked against the text it was built from; a re-run analysis alone is enough. And it is
+  refused when a file it carries has a header some past release read differently from this
+  one, whichever release built it: a blank line after the opening `---`, a `...` closer, a
+  trailing space on the opening `---`, or a header pandoc prints rather than keeps, a list
+  or a sentence. `init` writes none of these. Returned untouched, one from before 0.2.49
+  also exits 1 over each paragraph that is only a value, named as not come back, which it
+  never carried. Either way, the refusal's own advice is the way through: rebuild and
   resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
-  left, to be carried over by hand, even when it would have merged cleanly.
+  left, to be carried over by hand, even when it would have merged cleanly. So is an edit to
+  a paragraph that reads word for word like another in its file once the block before it
+  changed, and to the paragraph before one that is left out of the comparison and did not
+  come back, which may be a join.
+- **Two paragraphs that read the same after blocks that read the same are told apart by
+  position alone.** The record hashes each paragraph's text and the block before it, so
+  "None." under a "# Funding" heading repeated in two places, with a copy of both added
+  above them since the build, would pass for the paragraph the co-author edited, and the
+  edit would land in the copy.
+- **A paragraph moved in Word past one left out of the comparison may not be reported as
+  moved.** Moves are worked out among the paragraphs compared, and passing one that is not
+  changes nothing in their order. The import names the paragraphs left out and exits 1, and
+  says this of them; the move is not applied.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still

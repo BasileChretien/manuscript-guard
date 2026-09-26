@@ -146,9 +146,10 @@ All five warn during the revision and fail at submission. `respond` ignores `sta
 revising somewhere else in the file really was the right answer, say so in `rebutted`.
 
 The paragraph a point is attached to is found by its text, not by where it sits. Adding,
-removing or moving paragraphs around it, a heading written above it, a div or a comment put
-round it does not change the answer: it counts as revised once its source text differs,
-which a re-wrapped line with the same words also does. The `where` in the
+removing or moving paragraphs around it, a heading written above it, a div put round it or
+a comment on a line of its own above or below it does not change the answer: it counts as
+revised once its source text differs, which a re-wrapped line with the same words, or a
+comment opened above it and closed below, also does. The `where` in the
 round file still names a position, though, so after restructuring a section it may point a
 person reading the file at another paragraph. And a word-for-word copy of the paragraph left
 elsewhere keeps it reading as unrevised.

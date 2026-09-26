@@ -30,7 +30,14 @@ manuscript-guard build --offline
 - **Send the `--offline` build, without `--csl`.** The returned document is compared against
   an offline build in the default citation style, so a document built with a journal style
   comes back with every cited paragraph refused. A live Zotero build probably does the same.
-- Send `build/manuscript.docx`. `supplementary.docx` cannot be imported.
+- Send `build/manuscript.docx`, and `build/supplementary.docx` if the supplement needs
+  reading too. Each comes back as its own file and is imported on its own: `import` reads
+  from the paragraph identifiers which of the two it is, and compares it with a fresh build
+  of that one. Text pasted from one document into the other is not applied: one paragraph
+  comes back as new text without an identifier, listed but not applied, and several are
+  refused. Move text between them in the .md. In a project with a supplement, a document
+  that has lost every identifier is refused, and so is a supplement of only headings,
+  tables and figures, which holds nothing to compare.
 - Do not send `manuscript.annotated.docx` to anyone who will edit it. It carries no source
   stamp and no paragraph identifiers, so nothing in it can come back. It is for someone who
   needs to see where each number came from.

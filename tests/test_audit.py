@@ -117,15 +117,27 @@ def test_a_join_stops_at_a_table(tmp_path: Path) -> None:
     assert lines == ["-0.5", "|", "0.3", "1"]
 
 
-def test_a_joined_line_in_a_table_cell_is_still_a_cell(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("cell", "line", "is_heading"),
+    [
+        (gone("-0.5") + para("1"), "-0.51", False),
+        (gone("Table") + heading("References"), "TableReferences", True),
+        (gone("References", "Heading1") + para("Table"), "ReferencesTable", False),
+    ],
+    ids=["text", "text-then-heading", "heading-then-text"],
+)
+def test_a_joined_line_in_a_table_cell_is_still_a_cell(
+    tmp_path: Path, cell: str, line: str, is_heading: bool
+) -> None:
     """A cell's line is marked, because "References" there is a column header. The mark goes
-    at the start of the joined line, not in the middle of it."""
-    cell = f"<w:tc>{gone('-0.5')}{para('1')}</w:tc>"
-    table = f"<w:tbl><w:tr>{cell}</w:tr></w:tbl>"
+    at the start of the joined line, not in the middle of it, and after the heading mark
+    when the last paragraph is a heading."""
+    table = f"<w:tbl><w:tr><w:tc>{cell}</w:tc></w:tr></w:tbl>"
     document = read_docx_text(make_docx(tmp_path / "c.docx", table))
     lines = document.body.split("\n")
-    assert lines[-1] == "-0.51", lines
+    assert lines[-1] == line, lines
     assert len(lines) - 1 in document.cells
+    assert (len(lines) - 1 in document.headings) == is_heading
 
 
 def text_box(inside: str, *, fallback: bool) -> str:

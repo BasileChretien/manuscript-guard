@@ -1039,6 +1039,143 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------------------- what the build prints
+# The build strips every file's front matter and writes the header from paper.yaml. Text
+# the gates read there and the build drops is checked, then left out of the document.
+
+SENTINEL = "Zebrafish marmalade sentinel phrase."
+
+
+@pytest.mark.parametrize(
+    "abstract",
+    [
+        f"abstract: |\n  {SENTINEL}\n",
+        "abstract: >-\n  Zebrafish marmalade\n  sentinel phrase.\n",
+        f"abstract: {SENTINEL}\n",
+        f'"abstract": {SENTINEL}\n',
+    ],
+)
+def test_an_abstract_in_the_front_matter_is_refused(project: Path, abstract: str, capsys) -> None:
+    """G2 read an `abstract:` in the front matter, because pandoc prints one, and the build
+    stripped the block and wrote a header from paper.yaml, which has no abstract. The
+    abstract was checked and then left out of the document without a word, and the word
+    count, which follows the build, gave a journal's abstract limit 0 words to pass on.
+    `check` refuses it now, and the build refuses it even when told to skip the checks."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\n" + abstract, 1), encoding="utf-8")
+
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    failing = [(f["code"], f["line"]) for f in findings if f["severity"] == "fail"]
+    assert failing == [("front-matter-abstract", 2)]
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "under a `# Abstract` heading" in capsys.readouterr().out
+    # Any name: a build that skipped failing checks writes `manuscript.UNCHECKED.*`.
+    assert list((project / "build").glob("manuscript*")) == []
+
+
+def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
+    """The build strips a supplement's front matter as it strips the paper's."""
+    from manuscript_guard.build.assemble import assemble
+
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text(f"---\nabstract: {SENTINEL}\n---\n\n# Appendix\n\nText.\n", "utf-8")
+
+    def refused(report) -> list[tuple[str, str, int | None]]:
+        found = [f for f in report.failures if f.code == "front-matter-abstract"]
+        return [(f.gate, f.path.name, f.line) for f in found]
+
+    assert refused(gate_report(project)) == [("G2", "appendix.md", 2)]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
+
+
+def _abstract_line(front: str) -> int | None:
+    from manuscript_guard.text.masking import front_matter_abstract
+
+    found = front_matter_abstract(f"---\n{front}---\n\nBody.\n")
+    return None if found is None else found[0]
+
+
+@pytest.mark.parametrize(
+    ("front", "line"),
+    [
+        (f"abstract: {SENTINEL}\n", 2),
+        (f"'abstract': {SENTINEL}\n", 2),
+        (f'abstract: "\n  {SENTINEL}"\n', 2),
+        (f"abstract: '\n  {SENTINEL}'\n", 2),
+        (f"{{title: T, abstract: {SENTINEL}}}\n", 2),
+        (f"title: T\nabstract:\n\n  {SENTINEL}\n", 3),
+        ("abstract: 0\n", 2),
+        # Blocks pandoc reads and PyYAML could not turn into Python values, or not scan.
+        (f'date: 2024-02-30\n"abstract": {SENTINEL}\n', 3),
+        (f"created: !r Sys.Date()\n'abstract': {SENTINEL}\n", 3),
+        (f'subtitle:\tS\n"abstract": {SENTINEL}\n', 3),
+        # Pandoc expands a tab to the next multiple of four columns, so this is one block.
+        ('"abstract": |\n  Zebrafish marmalade\n\tsentinel phrase.\n', 2),
+        (f'title:\tT\n"abstract":\t{SENTINEL}\n', 3),
+        # Pandoc takes a merge key's mapping into the one holding it, and knows a merge key
+        # by its text, `<<`, however it is quoted or tagged.
+        (f"base: &b {{abstract: {SENTINEL}}}\n<<: *b\n", 2),
+        (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
+        (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
+        (f"!!merge abstract: {SENTINEL}\n", 2),
+        # PyYAML counts U+2028 as a line break, and the file does not.
+        (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
+        # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
+        (f"abstract: !!null {SENTINEL}\n", 2),
+        ('abstract: "null"\n', 2),
+    ],
+)
+def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: int) -> None:
+    """G2 finds a front-matter value by its key line, and YAML has spellings that line
+    misses: a quoted key, a quoted value opened on the key's line and continued below it, a
+    flow mapping, a merge key. Pandoc prints each as the abstract, so the refusal reads the
+    block as YAML, the way pandoc reads it, and names the line of the key."""
+    assert _abstract_line(front) == line
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        'abstract: ""\n',
+        "abstract:\n",
+        "abstract: |\n",
+        "abstract: >-\n",
+        "abstract: |2\n",
+        "abstract: null\n",
+        "abstract: # written last\n",
+        'abstract: "" # none\n',
+        f"meta:\n  abstract: {SENTINEL}\n",
+        # The first of two merge keys wins, quoted or not, and its abstract is empty.
+        f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
+    ],
+)
+def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:
+    """Nothing is lost by stripping an abstract pandoc reads as empty, or a key named
+    `abstract` inside another mapping, which pandoc does not take for the abstract."""
+    assert _abstract_line(front) is None
+
+
+def test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check() -> None:
+    """A mapping merging the one before it twice doubles, with each line, the work of
+    anything that expands merge keys: 22 lines, 614 bytes, held `check` for 38 seconds when
+    the block was built into Python values. The search for a merged abstract has the same
+    shape, so it visits each mapping once; this one is found only after all of `a21`."""
+    merges = [f"a{i}: &a{i} {{<<: [*a{i - 1}, *a{i - 1}]}}" for i in range(1, 22)]
+    lines = ["a0: &a0 {k: v}", *merges, f"z: &z {{abstract: {SENTINEL}}}", "<<: [*a21, *z]"]
+    started = time.perf_counter()
+    line = _abstract_line("\n".join(lines) + "\n")
+    assert time.perf_counter() - started < 5
+    assert line == 24
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never

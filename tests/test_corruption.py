@@ -1634,6 +1634,31 @@ def test_a_placeholder_against_letters_is_read_as_its_value(written: str, built:
             "# Results\n\nThe rate was {{results.rate}}.\n\nThe excess (p < 0.001).\n",
             "# Results\n\nThe rate was 4.\n\n# Discussion\n\nThe excess (p < 0.001).\n",
         ),
+        # Found by the ninth: a heading in a list stood in for one the gates misread, a
+        # `# Methods` straight under a line of text that pandoc prints as text. The gates
+        # read no heading in a list, so one there is never theirs.
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "- # Methods\n",
+            None,
+        ),
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "1. # Methods\n",
+            None,
+        ),
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "Aside\n:   # Methods\n",
+            None,
+        ),
+        # A commented-out footnote holding YAML pandoc cannot read: copied into the titles'
+        # own document, it made that run fail, and the check gave up on every heading.
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "<!--\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n-->\n",
+            None,
+        ),
     ],
 )
 def test_the_build_refuses_what_its_reading_used_to_let_through(
@@ -1793,6 +1818,22 @@ def test_submit_refuses_a_pack_missing_its_document_or_its_supplement(
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
+def test_submit_does_not_delete_a_document_inside_the_pack(project: Path) -> None:
+    """Found by the ninth review: the pack's directory is emptied before the document is
+    copied into it, so `--document build/submission/manuscript.docx` deleted the document,
+    perhaps a co-author's edited copy, and exited 0 with a pack that lacked it."""
+    from manuscript_guard.cli import main
+
+    assert main(["submit", str(project), "--offline"]) == 0
+    inside = project / "build" / "submission" / "manuscript.docx"
+    written = inside.read_bytes()
+    assert main(["submit", str(project), "--document", str(inside), "--skip-checks"]) == 2
+    assert inside.read_bytes() == written
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
 def test_the_build_reads_a_binding_in_a_heading_as_its_value(project: Path) -> None:
     """The gates read `{{results.cohort.n}}` where pandoc reads the number: not a
     difference, and neither are emphasis or an identifier."""
@@ -1910,6 +1951,10 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n<area> ---\ntitle: Evil\n...\n",
         "## Note\n<frameset> ---\ntitle: Evil\n...\n",
         "## Note\n<isindex> ---\ntitle: Evil\n...\n",
+        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc,
+        # and a footnote's marker only with a colon after it.
+        "## Note\n\\newpage[^1]---\ntitle: Evil\n...\n",
+        "## Note\n\\vspace{1em}[^x] ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:

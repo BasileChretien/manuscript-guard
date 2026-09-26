@@ -11,15 +11,16 @@ nobody has listed are caught here too, because nothing here lists shapes.
 
 The gates read each source as it is on disk, placeholders and all, and the build reads the
 same file with its values put in; each heading the gates read is paired with the one at
-its place in the built text, and a file whose headings change when its values go in is a
-misreading of its own. Titles are compared as built, in pandoc's words: each is read by
+the same index in the built text, and a file whose headings change in number or level when
+its values go in is a misreading of its own. Titles are compared as built, in pandoc's
+words: each is read by
 pandoc as a numbered paragraph of its own, so `HbA~1c~`, `$\\beta_{1}$` or `&amp;` split
 into words as pandoc splits them. A title pandoc makes no paragraph of, block HTML in it,
 is compared in its own words: giving up on it gave up on every heading. Raw markup and
 footnotes print no words in a heading, and a heading in a quotation, a note or a figure is
 left out on both sides: the gates read none there, by design (see
 `test_a_quoted_heading_is_deliberately_not_a_section`). A heading in a list, a definition
-or a table is the document's, and the gates reading its section as text is a misreading.
+or a table is the document's, and matches none the gates read, since they read none there.
 It takes three runs of pandoc's reader a document, one of them on the header alone and
 kept for the next document with the same header.
 """
@@ -35,10 +36,14 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from manuscript_guard.text.sections import heading_index
+from manuscript_guard.text.sections import heading_index, scannable
 
 # Containers whose headings are quoted or set apart, not the document's own.
 _NESTED = frozenset({"BlockQuote", "Note", "Figure"})
+# Containers whose headings are the document's, and which the gates never read as one: a
+# heading there matches none of theirs. Matched by its title, it stood in for a heading the
+# gates misread elsewhere, and the claim between passed under the wrong one.
+_LISTED = frozenset({"BulletList", "OrderedList", "DefinitionList", "Table"})
 # Inlines that print no words: raw markup, an HTML comment among them, and a footnote.
 _SILENT = frozenset({"RawInline", "Note"})
 # Inlines read whole, and not inside.
@@ -118,15 +123,36 @@ def _words(text: str) -> str:
     return " ".join(_WORDS.findall(text.lower()))
 
 
-def _headers(blocks: list) -> list[tuple[int, str, str]]:
-    """Each heading pandoc makes, outside quotations, notes and figures: its level, its
-    words, and its text for a message."""
-    found: list[tuple[int, str, str]] = []
-    for node in _nodes(blocks, lambda node: node.get("t") not in _NESTED | {"Header"}):
-        if node.get("t") == "Header":
-            level, _attributes, inlines = node["c"]
-            text = _plain(inlines)
-            found.append((level, _words(text), " ".join(text.split())))
+@dataclass(frozen=True)
+class _Printed:
+    """A heading pandoc makes: its level, its words, its text for a message, and whether it
+    stands in a list, a definition or a table, where the gates read no heading."""
+
+    level: int
+    words: str
+    text: str
+    listed: bool
+
+
+def _headers(blocks: list) -> list[_Printed]:
+    """Each heading pandoc makes, outside quotations, notes and figures. Walked with a
+    stack, not by recursion, carrying whether a list, a definition or a table holds it."""
+    found: list[_Printed] = []
+    stack: list[tuple[object, bool]] = [(blocks, False)]
+    while stack:
+        item, listed = stack.pop()
+        if isinstance(item, list):
+            stack.extend((child, listed) for child in reversed(item))
+        elif isinstance(item, dict):
+            kind = item.get("t")
+            if kind in _NESTED:
+                continue
+            if kind == "Header":
+                level, _attributes, inlines = item["c"]
+                text = _plain(inlines)
+                found.append(_Printed(level, _words(text), " ".join(text.split()), listed))
+                continue
+            stack.append((item.get("c"), listed or kind in _LISTED))
     return found
 
 
@@ -173,7 +199,11 @@ def _titles(
     paragraphs: list[str] = []
     definitions: list[str] = []
     for (name, written), made in zip(sources, built, strict=True):
-        definitions += (match.group() for match in _DEFINITION.finditer(made))
+        # From the text pandoc reads, not from code or a comment: a commented-out footnote
+        # holding YAML pandoc cannot read, copied, made the titles' own run fail.
+        definitions += (
+            made[match.start() : match.end()] for match in _DEFINITION.finditer(scannable(made))
+        )
         written_at, built_at = heading_index(written), heading_index(made)
         changed = _changed(name, written, written_at, built_at)
         if changed is not None:
@@ -210,13 +240,17 @@ def _numbered(blocks: list, lead: str) -> dict[int, str]:
     return {number: text for number, text in found.items() if number not in twice}
 
 
-def _first_difference(read: list[_Read], printed: list[tuple[int, str, str]]) -> str | None:
+def _first_difference(read: list[_Read], printed: list[_Printed]) -> str | None:
     """The first heading, in document order, that one side reads and the other does not,
     the two lists aligned so that one extra heading names itself and not the next pair."""
     rows, columns = len(read), len(printed)
 
     def same(i: int, j: int) -> bool:
-        return read[i].level == printed[j][0] and read[i].words == printed[j][1]
+        return (
+            not printed[j].listed
+            and read[i].level == printed[j].level
+            and read[i].words == printed[j].words
+        )
 
     common = [[0] * (columns + 1) for _ in range(rows + 1)]
     for i in range(rows - 1, -1, -1):
@@ -234,19 +268,21 @@ def _first_difference(read: list[_Read], printed: list[tuple[int, str, str]]) ->
         )
 
     def only_printed(j: int) -> str:
-        level, _words_of, text = printed[j]
-        return f"a level-{level} heading {text!r} that the gates read as text"
+        where = " in a list, a definition or a table," if printed[j].listed else ""
+        return (
+            f"a level-{printed[j].level} heading {printed[j].text!r}{where} that the gates "
+            "read as text"
+        )
 
     i = j = 0
     while i < rows and j < columns:
         if same(i, j):
             i, j = i + 1, j + 1
             continue
-        if common[i + 1][j + 1] == common[i][j]:
-            level, _words_of, text = printed[j]
+        if common[i + 1][j + 1] == common[i][j] and not printed[j].listed:
             return (
-                f"the heading {text!r} (level {level}) where the gates read "
-                f"{read[i].title!r} (level {read[i].level}) at {read[i].where}"
+                f"the heading {printed[j].text!r} (level {printed[j].level}) where the gates "
+                f"read {read[i].title!r} (level {read[i].level}) at {read[i].where}"
             )
         return only_read(i) if common[i + 1][j] >= common[i][j + 1] else only_printed(j)
     if i < rows:
@@ -297,10 +333,17 @@ def _compared(
         return titled
     found, titles = titled
     whole = _json(source, pandoc, cwd)
+    if whole is None:
+        return None
     meta = _header_meta(header, pandoc)
     alone = _json(f"{titles}\n", pandoc, cwd) if found else {"blocks": []}
-    if whole is None or meta is None or alone is None:
-        return None
+    if meta is None or alone is None:
+        # The document reads, and what it is compared with does not: passed, the check was
+        # off for every heading of a document holding a misread one.
+        return (
+            "the document, but not the build's header or the gates' titles set out on their "
+            "own, so their reading cannot be compared with the gates'"
+        )
     set_by_header = json.loads(meta)
     set_by_text = sorted(
         key

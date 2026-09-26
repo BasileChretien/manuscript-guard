@@ -349,6 +349,13 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     directory = project.path("build") / "submission"
+    # The pack is made afresh, and a document inside it, a co-author's edited copy passed as
+    # `--document build/submission/manuscript.docx`, was deleted before it was copied.
+    if document.resolve().is_relative_to(directory.resolve()):
+        raise SubmissionError(
+            f"{document} is inside {directory}, which every pack replaces; move it "
+            "elsewhere and pass that path"
+        )
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)

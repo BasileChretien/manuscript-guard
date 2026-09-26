@@ -446,7 +446,10 @@ seventh reviews). The eighth found four more of pandoc's block tags (`applet`, `
 numeral that was a letter too, a comment running on across later ones, a TeX command's
 name stopping at any letter, and an optional argument that was a footnote's marker, so a
 line of a few hundred markers took minutes. Each now reads a line one way, and the dashes
-are split off from the end of the line before the rest is matched.
+are split off from the end of the line before the rest is matched. The eighth round's fix
+took every `[^` after a command for a footnote's marker, and the ninth found pandoc taking
+`\newpage[^1]` whole, the YAML under it read: a bracket after a command is its argument
+unless a colon follows, and `[^1]:` there is a footnote's marker.
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -456,9 +459,10 @@ reads it with pandoc (`build/reading.py`) and refuses (`MisreadError`, exit 1) w
 metadata of the whole text differs from that of the build's header alone, or when the
 headings pandoc makes differ from those the gates read in the sources. Nothing there lists
 shapes, so most shapes nobody has found yet are caught too. Each heading the gates read is
-paired with the one at its place in the same file with its values put in, and compared by
-that title, so `{{results.dose}}mg` reads as `50mg`; a file whose headings change when its
-values go in is refused. A placeholder used to match any text instead, and the eighth review
+paired with the one at the same index in the same file with its values put in, and
+compared by that title, so `{{results.dose}}mg` reads as `50mg`; a file whose headings
+change in number or level when its values go in is refused (see Known gaps for values
+that move one). A placeholder used to match any text instead, and the eighth review
 found a title that was only a placeholder matching whatever heading pandoc made at its
 level, so two misreads that cancelled passed. The titles are read by pandoc as well, each a
 numbered paragraph of its own behind a lead made new each build: compared as written,
@@ -469,10 +473,16 @@ the check off for every heading of the document. Raw markup and footnotes print 
 a heading. A heading in a quotation, a note or a figure is left out on both sides, the
 gates reading none there by design; one in a list, a definition or a table is the
 document's, and the seventh round's leaving those out too passed `1. # Results` with a
-claim under it, which the gates read under the heading before (the eighth). The header's
-metadata is read on its own: read with the titles and the definitions they refer to, a
-footnote's definition holding a YAML block set a title there too, and the whole text
-matched it (the eighth). The lists are aligned, so a refusal names the heading, with the
+claim under it, which the gates read under the heading before (the eighth). Such a heading
+matches none the gates read, and always refuses: the ninth review found `- # Methods`
+standing in for a `# Methods` the gates misread straight under a line of text, the claim
+between passing under the wrong heading. The header's metadata is read on its own: read
+with the titles and the definitions they refer to, a footnote's definition holding a YAML
+block set a title there too, and the whole text matched it (the eighth). The definitions
+are copied from the text pandoc reads, not from code or a comment, and when the header or
+the titles cannot be read on their own while the document can, the build refuses: the
+ninth review found a commented-out footnote holding broken YAML failing that run, which
+switched the check off. The lists are aligned, so a refusal names the heading, with the
 file and line of one the gates read. Pandoc's reading is walked without recursion, and a
 document nested too deep for Python's JSON reader, two thousand divs, is refused.
 
@@ -482,7 +492,9 @@ build refuses can still pass `check`, and a number a misread hides from G2 witho
 metadata or headings is not compared. A refused build removes the document the last one
 left in build/, which is not this source's, so that it is not sent or packed; a refused
 supplement fails `build` and `submit` like the paper, and `submit --document` refuses a pack
-missing either, taking the supplement beside the document, or else the one in build/. Two
+missing either, taking the supplement beside the document, or else the one in build/. It
+refuses a document inside build/submission/ too, which the new pack replaces: the ninth
+review found `--document build/submission/manuscript.docx` deleted before it was copied. Two
 builds go without asking: `import`'s, since the document it rebuilds has already been sent,
 and refusing there stranded it with the co-author holding it; and the annotated copy, marked
 up for the author to read, whose marks change how a subscript or a code span reads.
@@ -2390,15 +2402,35 @@ Closed since, and why each mattered:
   pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
   a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line
   straight under a line of text, `We also saw it.` over `# Sensitivity`, a heading to the
-  gates and text to pandoc (#38's walk reads it as pandoc does). Where the result is
-  metadata in the text or a heading the gates read otherwise, the build refuses; `check`
-  passes it. A number such a shape hides from G2, with neither, is caught by nothing.
+  gates and text to pandoc (#38's walk reads it as pandoc does). So does a block-level tag
+  or a TeX command partway along a line of text before three dashes, `The dose was halved
+  <div>---` or `Some text \include{x}---`, where pandoc ends the paragraph and reads YAML
+  under the dashes; the refusal reads such a tag only at the start of a line (the ninth
+  review). Where the result is metadata in the text or a heading the gates read otherwise,
+  the build refuses; `check` passes it. A number such a shape hides from G2, with neither,
+  is caught by nothing.
 - **Two misreads that cancel pass the build's comparison.** Headings are compared in order,
   not by where they stand, since pandoc's reading says nothing of where. A heading the gates
   read in one place and not in another, `# Methods` straight under a line of text early on
   and a real `# Methods` hidden by a misread comment later, lines up with pandoc's list, and
   a claim between the two passes G2 under the wrong heading. It takes two misreads, each of
-  a shape above, of headings with the same title.
+  a shape above, of headings with the same title. A heading pandoc makes in a list, a
+  definition or a table never lines up, since the gates read none there.
+- **Values that move a heading pass the build's comparison.** A file's headings as written
+  and as built, values in, are paired by index, and refused only when their number or
+  levels differ. Values whose text holds markup can move one while both stay the same: the
+  ninth review emitted three strings with `label=True`, one holding a line break and a
+  `# Results` line, one a `<!--` and one a `-->` around the real heading, and the claim
+  between Methods and the moved heading printed under Results while `check` filed it under
+  Methods. It takes an analysis emitting markup as a value; a value with a line break or a
+  comment's mark is not a number, and mapping each heading through the substitutions,
+  which would close this, is not done.
+- **Two headings the build refuses that print as the gates read them.** An unlabelled
+  `(@)` example list item before `(@good)`: pandoc numbers `(@good)` 2 in the document and
+  1 in the titles set out on their own, so `## As in example (@good)` is refused. And a
+  setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
+  drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
+  are refused, not passed.
 - **A fence after a form feed on the same line is code to the gates and prose to pandoc.**
   The fence reader splits lines where Python does, at a form feed, a vertical tab, U+0085
   and a few other separators as well as at a newline; pandoc splits at the newline alone. So

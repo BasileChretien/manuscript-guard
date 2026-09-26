@@ -17,7 +17,8 @@ the new. Reading it raw gives numbers that were deleted and numbers that were in
 together, so the audit reports corrections as errors and misses the text that will actually
 be published. Insertions are kept and deletions dropped, which is what the reader will see,
 and so is text moved away: the reader sees it where it was moved to. A deleted line break
-or tab is dropped with the text, not read as a space.
+or tab is dropped with the text, not read as a space, and a paragraph whose mark was deleted
+or moved away runs on into the next with nothing between them, as Word joins them.
 
 **The body and the notes are kept apart**, and the body says which of its lines are
 headings. Both are for finding the reference list: the audit drops it, and used to drop
@@ -34,6 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from manuscript_guard.docxtext import runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -79,13 +81,23 @@ def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
     return False
 
 
-#: What Word no longer shows at this place once every tracked change is accepted: deleted
-#: text, and text moved away, which it shows where it was moved to.
-_GONE = (W + "del", W + "moveFrom")
+#: What Word does not show at this place once every tracked change is accepted: deleted
+#: text, and text moved away, which it shows where it was moved to. And a paragraph's
+#: properties, where a tab *stop* is a `w:tab` too: read as a typed tab, it put a space
+#: between two paragraphs joined by a deleted mark, and "-0.5" and "1" were read apart.
+_UNSEEN = {W + "del", W + "moveFrom", W + "pPr"}
 
 
-def _in_deletion(node: ET.Element, parents: dict) -> bool:
-    return any(_inside(node, parents, tag) for tag in _GONE)
+def _placed(node: ET.Element, parents: dict) -> tuple[ET.Element | None, bool]:
+    """The paragraph `node` belongs to, and whether it is on the page there."""
+    paragraph, seen = None, True
+    current = parents.get(node)
+    while current is not None:
+        if paragraph is None and current.tag == W + "p":
+            paragraph = current
+        seen = seen and current.tag not in _UNSEEN
+        current = parents.get(current)
+    return paragraph, seen
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -149,28 +161,84 @@ _CHARACTERS = {
 }
 
 
+_SHOWN = {W + "t", *_SPACES, *_CHARACTERS}
+
+
+def _shown(node: ET.Element) -> str:
+    """What one element puts on the page: its text, a space, or a character."""
+    if node.tag == W + "t":
+        return node.text or ""
+    if node.tag in _SPACES:
+        return " "
+    return _CHARACTERS[node.tag](node)
+
+
+def _joins(root: ET.Element, parents: dict) -> dict[ET.Element, ET.Element]:
+    """Each paragraph whose mark was deleted or moved away, and the one it runs on into.
+
+    Only its next sibling: a text box's paragraphs sit inside the paragraph that holds it,
+    and nothing runs on into those. An empty element between the two - a bookmark, a
+    comment's range, the end of a move - leaves them adjacent. A table, a content control,
+    anything with content of its own, parts them, although Word 16 runs a paragraph on into
+    the first cell of a table after it (DESIGN.md, Known gaps).
+    """
+    joins: dict[ET.Element, ET.Element] = {}
+    # Only a parent of a paragraph that runs on can hold a join; most documents have none.
+    holders = dict.fromkeys(parents[p] for p in root.iter(W + "p") if p in parents and runs_on(p))
+    for parent in holders:
+        before = None
+        for child in parent:
+            if child.tag == W + "p":
+                if before is not None:
+                    joins[before] = child
+                before = child if runs_on(child) else None
+            elif len(child):
+                before = None
+    return joins
+
+
+def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset) -> str:
+    """The break and the marks a paragraph's line starts with.
+
+    A joined line has the last paragraph's style, because its mark is the one left: Word 16
+    keeps it on accepting the change, and when Word deletes a mark itself it first copies
+    the first paragraph's style onto the second. A heading style ends a reference list.
+    """
+    last = paragraph
+    while last in joins:
+        last = joins[last]
+    heading = _HEADING_MARK if _is_heading(last, headings) else ""
+    cell = _CELL_MARK if _inside(paragraph, parents, W + "tc") else ""
+    return "\n" + heading + cell
+
+
 def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
-    pieces: list[str] = []
+    joins = _joins(root, parents)
+    # Each paragraph's line, shared with the paragraph it runs on into. A text box's
+    # paragraphs get lines of their own, after the line of the paragraph holding it: read
+    # where the box is anchored, they split that paragraph in two.
+    lines: dict[ET.Element, list[str]] = {}
+    pieces: list[str | list[str]] = []
 
     for node in root.iter():
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")
-        elif node.tag == W + "p":
-            heading = _HEADING_MARK if _is_heading(node, headings) else ""
-            cell = _CELL_MARK if _inside(node, parents, W + "tc") else ""
-            pieces.append("\n" + heading + cell)
         elif node.tag == W + "tr":
             pieces.append("\n")
-        elif node.tag in _SPACES and not _in_deletion(node, parents):
-            pieces.append(" ")
-        elif node.tag in _CHARACTERS and not _in_deletion(node, parents):
-            pieces.append(_CHARACTERS[node.tag](node))
-        elif node.tag == W + "t" and node.text and not _in_deletion(node, parents):
-            pieces.append(node.text)
+        elif node.tag == W + "p":
+            if node not in lines:
+                lines[node] = [_line_start(node, joins, parents, headings)]
+                pieces.append(lines[node])
+            if node in joins:
+                lines[joins[node]] = lines[node]
+        elif node.tag in _SHOWN:
+            owner, seen = _placed(node, parents)
+            if seen:
+                (lines[owner] if owner is not None else pieces).append(_shown(node))
 
-    return "".join(pieces)
+    return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
 
 def _tidy(text: str) -> str:

@@ -231,6 +231,18 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     )
 
 
+def runs_on(paragraph: ET.Element) -> bool:
+    """Whether a paragraph's mark was deleted, or moved away, as a tracked change.
+
+    Once the change is accepted the paragraph runs on into the next one, with nothing
+    between them: Word joins "-0.5" and "1" into "-0.51". The audit's reader uses this too.
+    """
+    mark = paragraph.find(f"{W}pPr/{W}rPr")
+    return mark is not None and (
+        mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
+    )
+
+
 def _removes(element: ET.Element) -> bool:
     """It deleted or moved away text it was sent with: a deletion inside text that arrived
     is an edit to the arrival, and the paragraph mark's own change is in its properties."""
@@ -274,8 +286,8 @@ def _paragraph(element: ET.Element, *, table: bool, moves: tuple[str, ...]) -> _
         ),
         "",
     )
-    runs_on = mark in ("moveFrom", "del")
-    retracted = runs_on and properties is not None and any(
+    joined = runs_on(element)
+    retracted = joined and properties is not None and any(
         properties.find(W + kind) is not None for kind in ("ins", "moveTo")
     )
     # Enter at the end of a paragraph marks its mark inserted too, and one retyped whole has
@@ -291,7 +303,7 @@ def _paragraph(element: ET.Element, *, table: bool, moves: tuple[str, ...]) -> _
         tuple(names),
         text,
         tuple(comments),
-        runs_on,
+        joined,
         table,
         picture,
         tokens,

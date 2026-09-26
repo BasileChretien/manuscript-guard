@@ -913,7 +913,14 @@ predecessor:
 - **Tracked changes resolved.** A document under review holds both the old text and the new;
   reading it raw reports corrections as errors and misses what will be published. Text moved
   away goes with the deletions, and so does a deleted line break or tab: read as a space, it
-  parted a minus from its number.
+  parted a minus from its number. A paragraph whose mark was deleted or moved away runs on
+  into the next one; read as two lines, "-0.5" and "1" matched two outputs where the paper
+  prints -0.51. The joined line takes the last paragraph's style, and so ends a reference
+  list only if that one is a heading. That is what Word 16 shows once the change is
+  accepted: when it deletes a mark itself it first copies the first paragraph's style onto
+  the second, keeping the old one in `w:pPrChange` (verified 2026-09-24). A text box is
+  read after the paragraph holding it, not where it is anchored, which split that paragraph
+  in two.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -2518,13 +2525,11 @@ Closed since, and why each mattered:
 - **A .docx without heading styles gives its reference list no end.** The cut then runs to
   the end of the body, as it always did, but the report names the lines, and footnotes and
   endnotes are read regardless. Bold text that looks like a heading is not one.
-- **The audit reads a deleted paragraph mark as a paragraph break.** Once the change is
-  accepted Word joins the two paragraphs, and it does the same for a mark moved away; the
-  audit reads them as two lines, so the numbers either side of the join are read apart:
-  "−", a deleted mark, then "0.30" matches an output of +0.30, and "-0.5", a deleted mark,
-  then "1" matches -0.5 and 1 where the paper prints -0.51. The import's reader
-  (`docxtext.py`) joins them. The audit's does not yet, because a joined paragraph has to
-  take one of two styles, and a heading style is what ends a reference list.
+- **A paragraph run on into a table is read apart from it.** Word 16 runs a paragraph whose
+  mark was deleted into the first cell of a table after it. The audit joins a paragraph only
+  to the next paragraph beside it, so a table, or a content control, ends the line, and a
+  number split across the two is read in two pieces. Joining into the cell would mean
+  moving the row and cell separators the reader writes before the cell's text.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing

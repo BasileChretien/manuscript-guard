@@ -212,6 +212,190 @@ def test_revising_the_anchored_paragraph_satisfies_it(project: Path) -> None:
     assert "claimed-change-missed-the-point" not in codes(project)
 
 
+def _anchored_round(project: Path, known: dict, anchor: str) -> None:
+    round_with(
+        project,
+        {
+            "id": "1.6",
+            "comment": "This paragraph is unclear.",
+            "where": anchor,
+            "response": "We have revised the Methods.",
+            "changed": [{"kind": "manuscript", "name": "main.md"}],
+        },
+        submitted_paragraphs={
+            name: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for name, (_path, text, _at) in known.items()
+        },
+    )
+
+
+@needs_pandoc
+def test_an_anchor_is_found_by_its_text_when_a_paragraph_is_added_above_it(
+    project: Path,
+) -> None:
+    """An identifier is positional. A paragraph added near the top during the revision moved
+    every identifier after it on by one, the anchor named its neighbour, whose text differed,
+    and the paragraph the reviewer commented on passed as revised without being touched."""
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+
+    def shifted(name: str) -> str:
+        prefix, _, index = name.rpartition("-")
+        return f"{prefix}-{int(index) - 2}"
+
+    # One whose identifier, once everything moves on a block, lands on another paragraph
+    # rather than a heading, so a comparison by identifier compares two different texts.
+    anchor = next(name for name in list(known)[1:] if shifted(name) in known)
+    _anchored_round(project, known, anchor)
+
+    path = project / "manuscript" / "main.md"
+    first = known[next(iter(known))][1]
+    whole = path.read_text(encoding="utf-8")
+    path.write_text(whole.replace(first, "An added paragraph.\n\n" + first, 1), "utf-8")
+
+    assert "claimed-change-missed-the-point" in codes(project)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "change",
+    [
+        "heading glued above",
+        "div around it",
+        "blank line gone",
+        "setext heading above",
+        "comment above",
+        "html tag around it",
+    ],
+)
+def test_an_anchor_is_found_by_its_text_inside_another_block(project: Path, change: str) -> None:
+    """Looked for among tagged paragraphs only, the reviewed paragraph was missed once the
+    revision wrote a heading straight above it, put a div round it, or dropped the blank
+    line under its heading: still there, printed the same, and passed as revised."""
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    by_text = {text: name for name, (_path, text, _at) in known.items()}
+    blocks = whole.split("\n\n")
+    # A paragraph straight under a heading, so every change below has something to act on.
+    index = next(
+        i for i in range(1, len(blocks))
+        if blocks[i - 1].startswith("#") and blocks[i].strip() in by_text
+    )
+    heading, paragraph = blocks[index - 1], blocks[index]
+    _anchored_round(project, known, by_text[paragraph.strip()])
+
+    replaced = {
+        "heading glued above": (paragraph, "## Case definition\n" + paragraph),
+        "div around it": (paragraph, '::: {custom-style="Note"}\n' + paragraph + "\n:::"),
+        "blank line gone": (heading + "\n\n" + paragraph, heading + "\n" + paragraph),
+        "setext heading above": (paragraph, "Aside\n=====\n" + paragraph),
+        "comment above": (paragraph, "<!-- reviewer 2 asked about this -->\n" + paragraph),
+        "html tag around it": (paragraph, '<div class="note">\n' + paragraph + "\n</div>"),
+    }[change]
+    path.write_text(whole.replace(*replaced, 1), encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" in codes(project)
+
+
+@needs_pandoc
+def test_a_line_starting_with_a_hash_inside_a_paragraph_revises_it(project: Path) -> None:
+    """Pandoc needs a blank line above a `#` heading, so a hard-wrapped line starting with
+    `#` is part of its paragraph. Read as a heading, it split the revised paragraph, the old
+    text turned up as one half, and a real revision was reported as unchanged."""
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    anchor, (_path, paragraph, _start) = next(iter(known.items()))
+    _anchored_round(project, known, anchor)
+
+    added = paragraph + "\n#1 among the reasons was the cohort's size."
+    path.write_text(whole.replace(paragraph, added, 1), encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" not in codes(project)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "added",
+    [
+        '\n<span class="added">\nIt is examined here for the first time.\n</span>',
+        "\n<br>\nAnd more.",
+    ],
+)
+def test_a_line_holding_an_inline_tag_inside_a_paragraph_revises_it(
+    project: Path, added: str
+) -> None:
+    """A tag pandoc reads inline, alone on a line, is part of its paragraph. Taken for a
+    block boundary, it split the revised paragraph, the old text turned up as one half, and
+    the revision was reported as unchanged."""
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    anchor, (_path, paragraph, _start) = next(iter(known.items()))
+    _anchored_round(project, known, anchor)
+
+    path.write_text(whole.replace(paragraph, paragraph + added, 1), encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" not in codes(project)
+
+
+def test_an_anchor_the_round_did_not_record_is_reported(project: Path) -> None:
+    """Skipped because the baseline did not hold it, the point's revision passed unchecked."""
+    projekt, _ = load_project(project)
+    known = tagged_paragraphs(projekt)
+    round_with(
+        project,
+        {
+            "id": "1.7",
+            "comment": "This paragraph is unclear.",
+            "where": "mg-p-nowhere-999",
+            "response": "We have revised the Methods.",
+            "changed": [{"kind": "manuscript", "name": "main.md"}],
+        },
+        submitted_paragraphs={
+            name: hashlib.sha256(text.encode("utf-8")).hexdigest()
+            for name, (_path, text, _at) in known.items()
+        },
+    )
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nAn addition.\n", "utf-8")
+
+    assert "anchor-unrecorded" in codes(project)
+
+
+@needs_pandoc
+def test_an_anchor_numbered_by_older_rules_is_found_by_its_text(project: Path) -> None:
+    """A round opened before 0.2.13 on a source whose front matter opens with a trailing-space
+    `---` holds identifiers numbered by the rules of the time. Once the space was trimmed
+    during the revision, the anchor named another paragraph, and a paragraph nobody touched
+    passed as revised."""
+    from manuscript_guard.roundtrip import _OLD_FRONT, identified
+
+    path = project / "manuscript" / "main.md"
+    whole = path.read_text(encoding="utf-8")
+    assert whole.startswith("---\n")
+    path.write_text("--- \n" + whole[4:], encoding="utf-8")
+    raw = path.read_text(encoding="utf-8")
+    known = {
+        name: (path, text, at)
+        for name, text, at in identified(raw, "main.md", front=_OLD_FRONT)
+    }
+    tidied = whole + "\n\nAn unrelated addition.\n"
+    later = {name: text for name, text, _at in identified(tidied, "main.md")}
+    # One whose identifier names another paragraph once the space is gone, rather than
+    # nothing, so a comparison by identifier compares two different texts.
+    anchor = next(n for n, entry in known.items() if n in later and later[n] != entry[1])
+    _anchored_round(project, known, anchor)
+
+    path.write_text(tidied, encoding="utf-8")
+
+    assert "claimed-change-missed-the-point" in codes(project)
+
+
 # ---------------------------------------------------------------- 6: reviewer slugs
 
 
@@ -232,7 +416,7 @@ def test_two_spellings_of_one_reviewer_do_not_split_into_two(tmp_path: Path) -> 
     saved = rt.comments_in
     rt.comments_in = fake
     try:
-        reviewers = _seeded(tmp_path / "unused.docx")
+        reviewers = _seeded(tmp_path / "unused.docx", frozenset())
     finally:
         rt.comments_in = saved
 

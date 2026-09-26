@@ -43,8 +43,9 @@ manuscript-guard build --offline
   needs to see where each number came from.
 - While the document is out, change nothing it was built from: the manuscript, the
   results, the ledger or `references.bib`. Any change makes `import` refuse the returned
-  copy, and forcing it would offer to undo your change. Keep new wording aside and apply it
-  after the import.
+  copy without `--force`, and with it every paragraph you changed, and every one below a
+  paragraph you added or removed, is listed as not compared, its co-author edit to port by
+  hand. Keep new wording aside and apply it after the import.
 
 Tell the co-author, in these words or better ones:
 
@@ -84,12 +85,14 @@ It changes nothing and reports each paragraph:
 | `paragraph(s) without an identifier … came back different` | a heading, list item, quotation, caption, paragraph with display maths or with a fence under it, or new paragraph was edited (`-` the old text, `+` the new), deleted or added. Not applied; make the edit in the `.md`. A paragraph moved past one of these may not be reported as moved, so compare the documents as text (below) |
 | `… came back in a different order` | headings, list items or quotations came back unchanged but reordered (`~`). Not applied; reorder them in the `.md` |
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes, paragraphs with display maths or with a fence under them, and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
+| `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers or tags paragraphs differently (a list tagged by a version before 0.2.45, for one). Not applied; carry any edit in it over by hand (step 6) |
+| `… did not come back` | such a paragraph was deleted or joined in Word; or, in a document built before 0.2.60, a paragraph that is only a value was never in it. Not applied; delete or join it in the `.md` if that was intended |
 
-Anything refused, joined, deleted or moved between sections or files, any move held back
-for a paragraph it would leave without an identifier, any heading, table, figure or
-equation that was moved or could not be found, and any paragraph without an identifier
-that came back different or in a different order, makes the command exit 1, with or
-without `--apply`; the safe changes are still applied.
+Anything refused, joined, deleted, not compared or moved between sections or files, any
+move held back for a paragraph it would leave without an identifier, any heading, table,
+figure or equation that was moved or could not be found, and any paragraph without an
+identifier that came back different or in a different order, makes the command exit 1,
+with or without `--apply`; the safe changes are still applied.
 
 A `would merge` line shows the Markdown that will be written, bindings included; a `NOT
 merged` line shows what came back from Word. The stamp check refuses a document built from
@@ -223,13 +226,30 @@ Comments are printed, never stored. Recording them is the reader's job:
   applying changes the source the comments point at. See
   [reviewer-response](../reviewer-response/SKILL.md).
 
-When several people edited copies of the same build, dry-run every copy before applying any.
-Apply one, and port the others by hand. `--force` on the second copy compares it against the
-source as it now stands, so it offers to revert everything the first co-author changed.
+A built document records what each of its paragraphs said in the source, and what came
+before it. `import` merges an edit only into a paragraph that still reads that way; any
+other is listed as `were not compared`, because its identifier now names other text, and
+has to be carried over by hand. One of those deleted in Word usually leaves its identifier
+on the paragraph after it and is listed there; deleted as a tracked change, cut, or joined
+by retyping across the break, it is listed as `did not come back`. That happens where the
+source changed since the build, below any paragraph added or removed there since, and
+across an upgrade that numbers or tags paragraphs differently. A paragraph that reads word for word like another
+in its file, such as "Not applicable." under two declarations, is also listed once the block
+before it changed.
 
-`--force` is reasonable only when nothing since the build added, removed, reordered or split
-a paragraph, or changed what a compared paragraph displays, and even then every hunk has to
-be read.
+When several people edited copies of the same build, dry-run every copy before applying any.
+Apply one, then `--force` the others: each merges only into paragraphs the earlier imports
+left alone, and lists the ones they changed as not compared, for you to port by hand. An
+edit beside one of those is refused if the two may have been joined in Word. Every hunk
+still has to be read: a changed result changes what a paragraph displays without changing
+its source, and a paragraph moved past one that was not compared may not be reported as
+moved. DESIGN.md's Known gaps lists what the record cannot tell apart.
+
+A document built before paragraphs were recorded in it is refused, `--force` included, and
+so is `respond --open --from` on it, when anything it was built from has changed since the
+build, the results included. Otherwise it is refused only when a file it carries has front
+matter that is now read differently. Rebuild, send the new document, and carry over by hand
+anything already written in the old one.
 
 ## If you are a model doing this
 

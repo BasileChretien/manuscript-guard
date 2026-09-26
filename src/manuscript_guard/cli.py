@@ -59,7 +59,7 @@ from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -568,6 +568,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.unidentified
         or plan.vanished
         or plan.reordered
+        or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either.
     return 1 if outstanding or strangers or unaccounted else 0
@@ -677,6 +678,22 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "    Not applied: each goes where the .md puts it. Move the heading or other text, "
             "the table's or figure's placeholder, or the equation, in the .md yourself; a "
             "caption goes with its table or figure."
+        )
+
+    if plan.held_back:
+        print(
+            f"{len(plan.held_back)} paragraph(s) were moved where a paragraph would reach the "
+            "next build without its identifier:"
+        )
+        for name, lost in plan.held_back:
+            print(f"    {opening(name)}")
+            if lost != name:
+                print(f"      (it would leave behind: {opening(lost)})")
+        print(
+            "    Not applied, nor any other move in that section. With what would be around it, "
+            "pandoc would read that paragraph as something other than itself - a definition, a "
+            "heading, part of a comment: no identifier, so a later edit to it could not come "
+            "back. Move them in the .md yourself."
         )
 
     if plan.lost:
@@ -1141,9 +1158,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # when a finding surprises them. Its answer was the input to deciding whether to add a
     # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
     headings = heading_index(text)
+    notes = footnote_index(text)
     rows = []
     for atom in find_atoms(text, mask(text)):
-        verdict = classifier.classify(atom, chain_at(headings, atom.start))
+        verdict = classifier.classify_under(atom, chains_at(headings, notes, atom.start))
         rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
     if not rows:
         print("no numeric atoms outside masked regions")

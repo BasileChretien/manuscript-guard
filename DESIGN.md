@@ -913,7 +913,14 @@ predecessor:
   accepted: when it deletes a mark itself it first copies the first paragraph's style onto
   the second, keeping the old one in `w:pPrChange` (verified 2026-09-24). A text box is
   read after the paragraph holding it, not where it is anchored, which split that paragraph
-  in two.
+  in two. It is read once: Word writes every text box twice, as DrawingML and again as VML
+  in an `mc:AlternateContent` fallback (verified 2026-09-24, Word 16), and reading both
+  reported each number in it twice. The fallback is skipped, as the import's reader skips
+  it. What Word puts only in a fallback is read from the choice instead: an emoji inserted
+  in Word can be a `w16se:symEx` there (pandoc issue 11113; set as text through Word's COM
+  interface, one was saved as plain text), and without it "12", the emoji and "34" read as
+  1234. The paragraphs of a text box deleted or moved away start no lines: left empty, one
+  styled as a heading used to end the reference list it sat in.
 - **The bibliography dropped.** Recognised by heading where there is one and by entry shape
   where there is not (author-year, or the numbered styles' `2019;393:100`), because citeproc
   appends a reference list with no heading to cut at. It ends at the next heading, so an
@@ -1193,6 +1200,27 @@ the failure `methods_only` was built to close, reintroduced through the chain ra
 through the heading text. A Methods-like heading now counts only while no ancestor is a
 section that reports what happened.
 
+**A footnote is read where it stands and where it is referenced.** Pandoc prints a footnote
+at its reference, and G2 read its text under the section its definition line sits in only,
+so a finding referenced from Results and defined under Methods, `p < 0.001`, passed as the
+alpha chosen in advance, while the document printed it as a footnote to a Results sentence
+(found reviewing #65). `sections.footnote_index` finds each definition's text and its
+references, and a number in it must pass under the section where it stands and under the
+section of every reference (`chains_at`, `Classifier.classify_under`): a note referenced
+from Results fails there, and one referenced from Methods and from Results must pass in
+both. `explain`, `bind` and the annotated copy read it the same way. A number is judged in
+no fewer places than before, so nothing that failed passes. The first version judged it at
+the references alone, and review of #77 found five ways the gates took text for a note's
+that pandoc prints where it stands: a `[^n]:` line pandoc reads as the paragraph above's,
+paragraphs a list item or a comment holds, a line of no-break spaces taken for blank, a
+note nested in another's, and a note referenced from another file. Each let a Results
+claim pass at a Methods reference. Judged where it stands as well, each fails as it did.
+The note's text is the definition's line, the lines under it up to a blank one or one that
+may start a block, then each block after blank lines indented four spaces or a tab; where
+that misreads pandoc, it only adds a section to pass in. Each note's reference chains are
+found once, so a note referenced a thousand times costs no more than one referenced from
+every section.
+
 **And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
 RECORD-PE is for routinely collected health data and the example is a spontaneous-report
 disproportionality study, so the guideline that applies is READUS-PV. It declared neither in
@@ -1445,6 +1473,18 @@ moved missed a paragraph dragged to just below the next heading, which keeps its
 the paragraphs, and blamed a neighbour when the diff preferred it. The file-level check
 before that reported the single paragraph of a one-paragraph file as moved into another
 file when nothing had moved at all.
+
+A slot's text is not all that decides whether its paragraph can be found again: `tag` reads
+what surrounds a block too. A footnote is marked, and prints as text, when an indented block
+below it would run into it; swapped in Word with the paragraph above it, it landed over a
+plain paragraph, became a note again, and the next build printed nothing of it in the body,
+while `import` said it had reordered a paragraph. A `-->` typed into a paragraph can close
+a `<!--` left open above it, and pandoc then reads both, and all between, as one comment. So
+before anything is written, each file is worked out as it would be written and read the way
+`tag` reads it, and a paragraph that would not come out marked - at the place the splice
+put it, with the text written - is withdrawn, one kind of cause at a time: its rewording is
+refused, or the moves in its section are held (see "Closed since").
+
 
 Some paragraphs of source are more, or less, than the paragraph Word shows, and no move may
 refill their slots. An HTML comment with a blank line in it is two paragraphs of source: the
@@ -2520,6 +2560,12 @@ Closed since, and why each mattered:
   to the next paragraph beside it, so a table, or a content control, ends the line, and a
   number split across the two is read in two pieces. Joining into the cell would mean
   moving the row and cell separators the reader writes before the cell's text.
+- **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
+  Word does the same for everything it writes, since it writes a choice only where it
+  understands it. Text that sits only in a fallback, behind a choice the reader does not
+  know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
+  does know, and would for any other such element it adds. A second choice, which the
+  format allows and Word does not write, would be read as well as the first.
 - **A `References` line in code that is not fenced can start a reference list.** In
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
@@ -2595,6 +2641,20 @@ Closed since, and why each mattered:
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
   - a YAML block in the middle of the body, which pandoc also reads.
+- **A Methods footnote defined outside Methods is read as a finding.** A number in a note
+  must pass where the definition stands as well as at each reference, so a note referenced
+  from Methods and defined at the end of the paper, as authors gather them, has its alpha
+  (`p < 0.05`) reported as unbound in the last section, as it always was. Judging it at the
+  references alone fixed that and let five misread shapes pass in Results (review of #77);
+  a number is never judged in fewer places than before. Moving the definition into Methods,
+  or binding the value, clears it.
+- **The end of a footnote's text is read short of pandoc's in places.** A lazy line pandoc
+  keeps in a note after one that may start a block (`# Heading` straight under the
+  definition, which pandoc prints as note text), or an unindented line continuing an
+  indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
+  note defined under Methods and referenced from Results, still passes as the alpha, as on
+  `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
+  section a number must pass in.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and
@@ -3184,12 +3244,13 @@ Closed since, and why each mattered:
     them. And a code fence wrapped onto a note's second line, left alone or not, is still
     paired with the next fence below, so what lies between goes unmarked, or a marker lands
     inside a real code block. Both are so on `main`.
-  - *A note marked only for what is below it can become a definition.* A note over a blank
-    line and then a line indented four columns would take that line in, so it is marked,
-    and prints as text. Moved in Word to a place with a plain paragraph below it, it is a
-    definition to the next build and prints nothing, while `import` reported the move as
-    applied. The text stays in the source. Nothing yet refuses a change after which a
-    paragraph `import` wrote would carry no identifier.
+  - *A note marked only for what is below it would become a definition if moved.* A note
+    over a blank line and then a line indented four columns would take that line in, so it
+    is marked, and prints as text. Moved in Word to a place with a plain paragraph below
+    it, it would be a definition to the next build and print nothing; `import` applied such
+    a move and exited 0. It now refuses it, and no move in that section is applied (next
+    entry). Typed into a definition's shape in Word, a paragraph was never at risk: the
+    merge escapes the bracket, `\[x]: …`, and it prints.
   - *A definition between two paragraphs is no section boundary.* It renders nothing in the
     body and pandoc reads it wherever it stands, so a move across it is applied: the
     paragraphs change places, and the definition stays where it was written. As untagged
@@ -3200,8 +3261,39 @@ Closed since, and why each mattered:
     not something between two. And a line pandoc does not take for blank - one holding only
     a no-break space - is a boundary wherever it stands between the two, above a definition
     or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
-    across a definition can also carry a note marked for what is below it to where it
-    becomes a definition (above).
+    across a definition that would carry a note marked for what is below it to where it
+    becomes a definition is refused (next entry).
+- **`import` refuses a write the next build would not find again, by `tag`'s reading.**
+  Before anything is written, each file is worked out as `apply_plan` would write it and
+  read through `marked_blocks`, the reading `tag` and `tagged_paragraphs` share. A
+  paragraph written must be a marked block at the offset the splice put it, with the text
+  written; one not written must keep its mark and its text. What fails is withdrawn one
+  kind of cause at a time, and everything checked again after each. First a reworded
+  paragraph that fails has its rewording refused, since that may be what does it. Then one
+  that fails where the moves put it holds back every move in its section, and each move the
+  co-author made is reported with the paragraph it would have left without an identifier.
+  Holding back its own move alone pushed the paragraphs around it into other slots, so a
+  paragraph nobody moved was refused, and the file came out in an order neither the source
+  nor Word had; and acting on every failing paragraph at once held back moves that a
+  rewording's `-->` had spoilt, not the moves themselves. Rewordings in a held section still
+  land, in place, and are checked there too: back in place, a `-->` typed into one closed a
+  `<!--` above it that it had not closed where it was moved, and it was merged. What that
+  leaves:
+  - *It is only as right as `tag`.* Where `tag` marks a block pandoc reads otherwise, the
+    check takes `tag`'s word for it; the gaps in the entries above are its gaps too.
+  - *A move is held back by section.* A co-author's other moves in the same section are not
+    applied either, though nothing was wrong with them; they are named.
+  - *A paragraph that loses its identifier to a write beside it holds back its file's
+    rewordings.* `_blocks` reads across blocks - a comment or a fence opened in one runs on
+    into the next - so one write can cost another paragraph its identifier, and which write
+    did it cannot be told. The rewordings in that file are refused, and if that is not it,
+    the moves are held after.
+  - *A `<!--` typed in Word opens a comment to `tag`, though not to pandoc.* The merge
+    escapes it, `\<!--`, and pandoc prints it, but `_blocks` does not read the backslash:
+    where a `-->` follows further down the file, it takes all between for a comment and
+    leaves it unmarked, so the check refuses that rewording, which was safe to make.
+  - *A paragraph that never reached the document is not checked.* One inside an HTML
+    comment has an identifier in the source and none in Word, and nothing writes it.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

@@ -2643,6 +2643,76 @@ def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined:
     assert shown == {"-0.51"}, shown
 
 
+def test_audit_reports_a_number_in_a_text_box_once(tmp_path: Path) -> None:
+    """Word writes every text box twice: as DrawingML, and again in VML inside an
+    AlternateContent fallback for readers that predate it. Both copies were read, so a wrong
+    number in a text box was reported twice, on two lines, and took two of the forty findings
+    listed for its file; a right one was counted twice as found."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    content = f"<w:txbxContent>{_p('Cases: 412 of 8393.')}</w:txbxContent>"
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    vml = 'xmlns:v="urn:schemas-microsoft-com:vml"'
+    box = (
+        f"<w:r><mc:AlternateContent {mc}>"
+        f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+        f"<mc:Fallback><w:pict><v:shape {vml}><v:textbox>{content}</v:textbox></v:shape>"
+        "</w:pict></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    paper = _docx(tmp_path / "paper.docx", f"<w:p><w:r><w:t>See the box.</w:t></w:r>{box}</w:p>")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["8393"], report.unmatched
+    assert [c.text for c in report.matched] == ["412"], report.matched
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "1 found in the outputs, 1 not found." in shown, shown
+
+
+def test_audit_reads_an_emoji_word_writes_only_as_a_choice(tmp_path: Path) -> None:
+    """Word writes an emoji it inserts as `w16se:symEx` in an AlternateContent choice, and the
+    character itself only in the fallback. With the fallback unread and the choice not
+    understood, the numbers either side ran together: "12", an emoji and "34" read as 1234,
+    which matched an output the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1234}')
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>Scored 12</w:t></w:r>{emoji}<w:r><w:t>34.</w:t></w:r></w:p>"
+    report = audit([_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert report.matched == [], report.matched
+    assert [c.text.rstrip(".") for c in report.unmatched] == [f"12{chr(0x1F642)}34"]
+
+
+def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Path) -> None:
+    """A deleted text box's text was dropped, but its paragraphs still started lines. One
+    styled as a heading was an empty heading, which ended the reference list there, and the
+    entries after it were reported as numbers missing from the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    box = (
+        '<w:del w:id="2" w:author="a"><w:r><w:drawing><w:txbxContent>'
+        f"{_p('Old panel', 'Heading1')}</w:txbxContent></w:drawing></w:r></w:del>"
+    )
+    entry = f"<w:p><w:r><w:t>Smith J. Lancet. 2019;393:1-2.</w:t></w:r>{box}</w:p>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + entry
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
 def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
     """A paragraph run on into a heading takes the heading's style, which is what Word shows
     once the change is accepted. Taking the first paragraph's instead read the appendix as
@@ -2709,3 +2779,139 @@ def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Pa
     assert "{{results.ror.point}}" not in built
     value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
     assert f"The reporting odds ratio was {value}." in built
+
+
+# A sentence in the example's Results, one in its Methods, and its last line.
+_IN_RESULTS = "are shown in Table 2."
+_IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
+_AT_END = "None declared.\n"
+
+
+def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, note: str) -> None:
+    """The example with `[^n]` after each sentence in `referenced`, and `note`, its
+    definition, in a paragraph of its own after the sentence `defined`."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    for sentence in referenced:
+        assert text.count(sentence) == 1, sentence
+        text = text.replace(sentence, sentence + "[^n]")
+    anchor = defined + "[^n]" if defined in referenced else defined
+    assert text.count(anchor) == 1, anchor
+    text = text.replace(anchor, anchor.rstrip("\n") + "\n\n" + note, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # The review's reproduction: referenced from Results, defined under Methods.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        # Its first paragraph runs on over lines, and later ones are indented.
+        ((_IN_RESULTS,), _IN_METHODS, "[^n]: The excess\nwas significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n    The excess was significant (p < 0.001).\n",
+        ),
+        # Referenced from Methods and from Results, it prints in both, and must pass in both.
+        (
+            (_IN_METHODS, _IN_RESULTS),
+            _AT_END,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+    ],
+)
+def test_a_footnote_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    """Pandoc prints a footnote where it is referenced. G2 filed its text under the section
+    its definition sits in, so a finding referenced from Results and defined under Methods,
+    `p < 0.001`, passed as the alpha chosen in advance, and the document printed it as a
+    footnote to a Results sentence."""
+    _with_footnote(project, referenced, defined, note)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+_CLAIM = "The excess was significant (p < 0.001)."
+
+
+@pytest.mark.parametrize(
+    "after_results",
+    [
+        # Found by review: text the gates took for a note's, which pandoc prints where it
+        # stands, under Results. Judged at the Methods reference alone, each passed.
+        # A `[^n]:` line under a paragraph's last line is that paragraph's to pandoc.
+        f"\n[^n]: {_CLAIM}\n",
+        # A list item holds the definition, and the four-space paragraph after it.
+        f"\n\n- Serious cases were reviewed.\n\n  [^n]: By two assessors.\n\n    {_CLAIM}\n",
+        # A line of no-break spaces is not blank to pandoc, and a comment ends the note.
+        f"\n\n[^n]: By two assessors.\n\n{chr(0xA0)}\n    {_CLAIM}\n",
+        f"\n\n[^n]: By two assessors.\n\n<!-- check wording -->\n\n    {_CLAIM}\n",
+    ],
+)
+def test_a_claim_taken_for_a_note_s_text_is_judged_where_it_stands(
+    project: Path, after_results: str
+) -> None:
+    """A number in a note is judged where it stands as well as at its references, so a claim
+    the gates misread as a Methods note's text still fails in Results, as it did on main."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + after_results, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_nested_in_another_is_judged_where_it_stands(project: Path) -> None:
+    """A definition in another note's indented block is a note of its own to pandoc,
+    printed at its own reference in Results; the gates read it as the Methods note's."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    nested = f"[^m]\n\n[^n]: By two assessors.\n\n    [^m]: {_CLAIM}\n"
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + nested, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None:
+    """The build joins the main text's files, so a note is printed at references in other
+    files too; each file is indexed apart, and a note referenced from a Methods-like section
+    of its own file was judged there alone."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(_IN_RESULTS, _IN_RESULTS + "[^n]", 1), encoding="utf-8")
+    (project / "manuscript" / "appendix.md").write_text(
+        "# Statistical analysis\n\nThe threshold was fixed in advance.[^n]\n\n"
+        f"# Notes\n\n[^n]: {_CLAIM}\n",
+        encoding="utf-8",
+    )
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # Past its end the text is its own section's: a paragraph at the margin after a
+        # blank line, or indented three spaces, is not the note's.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\nSignificance was set at p < 0.05.\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n   Significance was set at p < 0.05.\n",
+        ),
+    ],
+)
+def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    _with_footnote(project, referenced, defined, note)
+    assert not gate_report(project).failures, codes(gate_report(project))

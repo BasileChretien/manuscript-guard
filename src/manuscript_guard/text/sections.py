@@ -380,15 +380,18 @@ _BLOCK_TAGS = (
 # instruction; a TeX command, starred or not, with its groups three deep. The alternatives
 # read any text one way only: a roman numeral has two letters or more, since one is a
 # letter's; a comment ends at its first `-->`; a command's name takes every letter, as TeX
-# reads it; and `[^` after a command is a footnote's marker, not an optional argument.
-# Where one line could be read two ways, a line of a few hundred items took minutes.
+# reads it; and `[^1]:` after a command is a footnote's marker, where `[^1]` with no colon
+# after it is the command's optional argument, as pandoc reads it, and `[x]:` an argument
+# before a definition's colon. Where one line could be read two ways, a line of a few
+# hundred items took minutes.
 _GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
+_ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
 _OPENER_ITEM = (
     r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
     r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
     r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
-    r"(?:[ \t]*(?:" + _GROUP + r"|\[(?!\^)[^\]\n]*\]))*[ \t]*)"
+    r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*)"
 )
 _OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)
 

@@ -30,35 +30,9 @@ from bisect import bisect_right
 from dataclasses import dataclass, replace
 
 from manuscript_guard.text.attributes import strip_attributes
-from manuscript_guard.text.fences import blank_fences, fenced_spans
-from manuscript_guard.text.masking import front_matter_end
+from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.masking import blank, fenced_blocks, front_matter_end, html_comments
 from manuscript_guard.text.placeholders import PLACEHOLDER
-
-
-def _comments(text: str) -> list[tuple[int, int]]:
-    """Every `<!-- ... -->`, as offsets. `<!--.*?-->` read to the end of the text for each
-    opener that never closed, which is quadratic in them; once one never closes, none after
-    it can, so the scan stops there."""
-    found = []
-    position = 0
-    while (opening := text.find("<!--", position)) != -1:
-        closing = text.find("-->", opening + 4)
-        if closing == -1:
-            break
-        found.append((opening, closing + 3))
-        position = closing + 3
-    return found
-
-
-def _blank_out(text: str, spans: list[tuple[int, int]]) -> str:
-    pieces = []
-    position = 0
-    for start, end in spans:
-        pieces.append(text[position:start])
-        pieces.append("".join("\n" if ch == "\n" else " " for ch in text[start:end]))
-        position = end
-    pieces.append(text[position:])
-    return "".join(pieces)
 
 
 def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
@@ -66,15 +40,18 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
-    # headed a body the build printed without it.
-    skip = front_matter_end(text)
-    body = blank_fences(text[skip:])
-    comments = _comments(body)
-    head = _blank_out(text[:skip], [(0, skip)])
-    return head + _blank_out(body, comments), [(skip + a, skip + b) for a, b in comments]
+    # text as written, as the build and `mask` find it. Blanked first, a comment on the
+    # YAML's first line read as a blank line after the opening `---`, which is not front
+    # matter, so a `# Methods` in the YAML headed a body the build printed without it.
+    #
+    # Fences and comments are found in the text as written too, the comments as `mask`
+    # finds them (text/comments.py): a `<!--` in inline code opens none, and blanking the
+    # comments first made "```<!-- TODO -->" a bare closing fence.
+    head = front_matter_end(text)
+    fences = fenced_blocks(text)
+    comments = html_comments(text, fences)
+    spans = [(0, head), *((fence.start, fence.end) for fence in fences), *comments]
+    return blank(text, spans), comments
 
 
 def scannable(text: str) -> str:

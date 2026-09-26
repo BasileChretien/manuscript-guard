@@ -830,14 +830,16 @@ def only_definitions_between(text: str) -> bool:
     body.
 
     `merge` asks it where a section ends, by the same test `_blocks` marks by: a definition
-    is no boundary, because pandoc reads it wherever it stands. One beside a line pandoc
-    does not take for blank is not a definition to this test, and stays a boundary.
+    is no boundary, because pandoc reads it wherever it stands. A line pandoc does not take
+    for blank - one holding only a no-break space - is a boundary, as `_blocks` has it: it
+    leaves the blocks on both sides unmarked, whatever they are, and pandoc prints the line.
     """
     pieces = _BREAK.split(text)
     return all(
-        not piece.strip() or _definitions(piece, *_around(pieces, index))
+        re.search(r"[^ \t\n]", piece) is None
+        if index % 2
+        else not piece.strip() or _definitions(piece, *_around(pieces, index))
         for index, piece in enumerate(pieces)
-        if index % 2 == 0
     )
 
 

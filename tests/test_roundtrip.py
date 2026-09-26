@@ -4935,6 +4935,31 @@ def test_a_paragraph_moved_across_a_definition_is_moved(
     assert resolved in _docx_part(built(project), part)
 
 
+@needs_pandoc
+def test_a_definition_beside_a_line_pandoc_prints_leaves_an_edit_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round four: a definition over a line holding only a no-break space still counted as
+    a definition between two paragraphs, though `_blocks` leaves it unmarked for that line,
+    and pandoc prints the line as a block of its own. So the gap made no new section, the
+    section held an untagged block, and an edit to the paragraph above was refused as one
+    that reaches Word as more than one paragraph. On #54 alone the edit merges."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Alpha comes first.",
+        f"[reg]: {REGISTRY}\n{chr(0xA0)}",
+        f"[other]: {REGISTRY}/o",
+        "Omega sees [the registry][reg] and [o][other].",
+    )
+    edits = {"Alpha comes first.": "Alpha now comes first."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "Alpha now comes first.\n\n" in text
+
+
 def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
     project: Path,
 ) -> None:
@@ -4947,6 +4972,11 @@ def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
 
     assert only_definitions_between(f"\n\n[late]: {REGISTRY}/late\n\n")
     assert not only_definitions_between(f"\n\n{chr(0xA0)}\n[late]: {REGISTRY}/late\n\n")
+    # Over such a line, or under one with an empty line between, as `_blocks` leaves it.
+    for between in (f"\n{chr(0xA0)}\n\n", f"\n\n{chr(0xA0)}\n\n", f"\n\n{chr(0x3000)}\n\n"):
+        assert not only_definitions_between(
+            f"\n\n[a]: {REGISTRY}/a{between}[b]: {REGISTRY}/b\n\n"
+        )
     pieces = [
         "Alpha.",
         f"[reg]: {REGISTRY}",

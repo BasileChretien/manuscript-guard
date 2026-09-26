@@ -2626,8 +2626,9 @@ Closed since, and why each mattered:
     heading, a table or a figure. `merge` asks `only_definitions_between`, by the test
     `_blocks` marks by, so a line in a definition's shape that is marked - in a shape pandoc
     could read otherwise, or a note that would run on into what is below - is a paragraph,
-    not something between two. So is one beside a line pandoc does not take for blank,
-    which `_blocks` leaves unmarked on its own account: that text stays a boundary. A move
+    not something between two. And a line pandoc does not take for blank - one holding only
+    a no-break space - is a boundary wherever it stands between the two, above a definition
+    or below one: pandoc prints it, and `_blocks` leaves whatever is beside it unmarked. A move
     across a definition can also carry a note marked for what is below it to where it
     becomes a definition (above).
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged

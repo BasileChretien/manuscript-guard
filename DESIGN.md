@@ -424,6 +424,36 @@ preferring raster or PDF over SVG because Word's SVG support is uneven and a jou
 production system is worse. The caption stays in the manuscript as ordinary prose, so it is
 checked like prose and can carry bindings.
 
+**The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
+build strips every source file's YAML block and writes a header of its own with the title,
+short title and keywords from `paper.yaml`. A `title:` in the manuscript is compared with
+that one and a disagreement warned about (`two-titles`). An `abstract:` there is refused,
+by G2 and by the build alike (`front-matter-abstract`), as a block pandoc cannot read is
+(`front-matter-unreadable`). G2 reads it, because pandoc prints one, and until 2026-09-26
+the build dropped it without a word: the abstract was checked, then left out of the
+document, and the word count, which follows the build, let a journal's abstract limit pass
+on 0 words. It is refused rather than printed because everything else here already finds
+an abstract by its heading: the word count, G4's structured-abstract headings, and the
+paragraph identifiers the Word import maps edits back with. Printed from the header, each
+would have needed a second place to look, and a co-author's edit to it in Word would have
+had no source paragraph to go back to.
+
+The abstract is found by reading the block as pandoc does, with the loader that decides
+the block is front matter, and not with G2's reader, which finds a value by its key line.
+Read G2's way, a quoted key (`"abstract":`), a quoted value opened on the key's line and
+continued below it, or a flow mapping passed `check` and was dropped by the build, though
+pandoc prints each of them; and `abstract: null` or `abstract: # to do` was refused,
+though pandoc prints nothing for either. Merge keys are followed, because pandoc honours
+them: an abstract merged in with `<<: *base` prints. A key is known by its text, as pandoc
+knows it, so `"<<": *base` merges too, although PyYAML tags only a plain `<<` as a merge.
+Each mapping is visited once, since a chain of mappings each merging the one before it
+twice doubles the work of expanding them with each line, and 614 bytes of such front
+matter once held `check` for 38 seconds. An abstract pandoc reads as empty is let through,
+and so is a key named `abstract` inside another mapping, which pandoc does not take for
+the abstract. Any other value, a number or `yes`, is refused rather than guessed about.
+PyYAML's composer and pandoc 3.9 were compared on each of these spellings, and on a
+duplicated key, where both keep the last.
+
 ## Zotero is never on the critical path
 
 Two budgets: a gate waits 20 seconds, an explicit `sync-bib` waits 300. Zotero indexing a
@@ -603,7 +633,8 @@ The YAML front matter that opens a file is not counted, rendered keys included. 
 strips every file's block and prints the title from `paper.yaml`, so none of it is in the document a limit is
 about, and a journal counts a title and an abstract against limits of their own anyway. An
 abstract counts when it is written under an Abstract heading, which is where the build
-prints one. Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
+prints one. One written in the front matter is refused rather than counted as 0 words (see
+the build). Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
 text before the first heading, the closing `---` lost the newline the front-matter pattern
 needs, and the example's title line took its main text from 557 words to 573. G4 had a second
 route to the same mistake. It reads the main text as one string joined from every file, so
@@ -1855,11 +1886,20 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a fresh vector — which is how the wrong figure actually reaches a journal. There is no
   `verify` equivalent for figures, because re-rendering is not reproducible across
   plotting-library versions.
-- **A front-matter `abstract:` is read by G2 and printed by nothing.** The build strips the
-  manuscript's block and writes its own from `paper.yaml`, which has no abstract, so an
-  abstract written there is checked and then left out of the document without a word. It is
-  not counted either, so a journal's abstract limit passes on an abstract of 0 words; a
-  profile asking for abstract headings does report it missing.
+- **The other rendered keys in a manuscript's front matter are read by G2 and printed by
+  nothing.** `subtitle`, `summary`, `keywords`, `short_title` and `running_title` are read
+  because pandoc can print them, and the build strips the block and takes its header from
+  `paper.yaml`. A number in one is checked and never printed, which is the safe direction,
+  but the text itself is dropped without a word. Only the abstract is refused
+  (`front-matter-abstract`), and only the title is compared with `paper.yaml`
+  (`two-titles`).
+- **A front matter is composed twice, at 15 to 20 seconds a megabyte each time.** PyYAML's
+  pure-Python composer is linear but slow: once to decide the block is front matter, once
+  to look for an abstract in it, each cached for the rest of the process. With half a
+  megabyte of front matter, which only a deliberately hostile manuscript has, `check` on
+  the example took 30 seconds against the 20-second budget of `test_robustness.py`, and
+  24 without the second reading. The C composer is 40 times faster and overflows its stack
+  on deep nesting, which is why the pure-Python one is used.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:
@@ -1876,12 +1916,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `-->` or fence, where the build, reading `main.md` first, may print them. A project with
   one main-text file, which is what `init` writes, is unaffected.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
-  `<!--` inside inline code, a stray fence line inside a comment, or a fence directly under
-  prose that is tilde or indented a space or more hides what follows from the statement and
-  abstract-heading searches while pandoc prints it, so a statement there is reported
-  missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
-  passes its text into the document. An indented code block is not blanked, so a pattern
-  written for a phrase can be met by a line of code; one anchored on a heading cannot.
+  stray fence line inside a comment, or a fence directly under prose that is tilde or
+  indented a space or more, hides what follows from the statement and abstract-heading
+  searches while pandoc prints it, so a statement there is reported missing: a false alarm.
+  A raw block, ```` ```{=openxml} ````, is blanked although pandoc passes its text into the
+  document. An indented code block is not blanked, so a pattern written for a phrase can be
+  met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 
@@ -2436,11 +2476,17 @@ Closed since, and why each mattered:
   know quotes or block scalars, and nesting too deep to compose, about 500 levels by
   indentation, is refused the same way. Either is left in the
   body, where pandoc hides it, and is not reported even when it is not YAML.
-- **`<!--` inside inline code opens an HTML comment for the reader.** Pandoc prints
-  `` `<!--` `` as code; the masking and the heading scan take it for a comment and hide
-  everything up to the next `-->`, from G2 and the audit alike. One `<!--` in backticks is
-  enough, since any later real comment supplies the `-->`, and a draft often has one. The
-  comment scanner would have to know code spans.
+- **The comment scanner knows code spans, fences and the front matter, and no other
+  Markdown.** `text/comments.py` keeps `` `<!--` `` as code and ends a comment where pandoc
+  does, but it ends a code span only at a blank line or a front-matter value's edge, where
+  pandoc also ends one at the edge of a list item, a blockquote or a heading.
+  And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
+  or TeX maths as its own, where pandoc reads the enclosing construct first. So
+  ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
+  prints, as a stray backtick in one list item does when it pairs with the one opening
+  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
+  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints it as code. The old regex did all of this and more.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they
@@ -2458,20 +2504,44 @@ Closed since, and why each mattered:
     one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
     paired across the front matter's edge, too, and a backtick inside a `~~~` block with
     one in the prose after it, which pandoc never does. This needs a reader that knows code
-    spans as pandoc does, the one the comment scanner needs.
+    spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
+    knows escapes, fences and the front matter's edge, but it still ends a code span only at
+    a blank line and misreads backticks in maths, links and indented code.
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, but each of these can still hide a number pandoc prints, all on contrived
-  input:
-  - a `<!--` or a fence opened in one YAML value and closed in another;
+  in the body, and a comment stays inside the value it was opened in, but each of these can
+  still hide a number pandoc prints, all on contrived input:
+  - a fence opened in one YAML value and closed in another;
+  - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
+    a quoted title, which a `# -->` YAML comment after it closes;
   - a URL at the end of a value swallowing the next value's first word;
   - a code block in an abstract indented four spaces, which is not found;
-  - a YAML block in the middle of the body;
-  - a `<!--` inside a body code block, which opens a comment for G2's binding reader,
-    though not for the masking.
-
-  Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
+  - a YAML block in the middle of the body, which pandoc also reads.
+- **Fences are found without knowing what a comment or a code span swallowed.**
+  `text/fences.py` reads the file for fences before anything else. So a fence line that
+  pandoc reads as part of a comment or of an open code span is still an opener there, and
+  it pairs with the next fence line below. The prose between is read as a listing: G2 runs
+  the listing checker over it, and the heading scan blanks any heading in it, so `<!--
+  draft`, a fence line, `-->` and then `## Results` loses Results. The comment scanner drops
+  such a fence for itself, but it does not look for the fences pandoc finds after it, and it
+  does not know every place pandoc ends a code span. So a comment is hidden only where the
+  old rule hid it too, from `<!--` to the first `-->` with the fences blanked, and the
+  scanner can hide less than the regex did but never more. The price is noise: a comment
+  pandoc drops is read if it opens or closes inside what the toolkit takes for a listing.
+  Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
+  interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
+  code spans and comments together would close all of these.
+- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
+  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
+  mentions both markers hides everything between them.
+- **The other masked patterns match greedily, and can cover a number printed beside them.**
+  A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
+  is masked along with the address. A footnote label, a pandoc attribute and a placeholder
+  do the same inside their brackets, and so does each of them when its first character is
+  escaped. Where the old comment rule hid the start of such a match, text read again now
+  meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
+  rule left readable. The patterns are to be fixed separately.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

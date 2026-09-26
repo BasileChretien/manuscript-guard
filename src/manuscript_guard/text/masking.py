@@ -201,6 +201,100 @@ class _FrontMatter:
 FRONTMATTER = _FrontMatter()
 
 
+def front_matter_abstract(text: str) -> tuple[int, str] | None:
+    """The line of the file where its front matter's abstract is, and the abstract's words;
+    None when there is no abstract, or pandoc would print nothing for it.
+
+    The build strips the block and writes a header of its own from paper.yaml, which has no
+    abstract, so one written here was checked by G2 and then left out of the document
+    without a word. The gates and the build refuse it instead (`front-matter-abstract`).
+    Found by reading the block as pandoc does, not by G2's key-line reader, which misses a
+    quoted key, a quoted value continued on the next line, a flow mapping and a merge key,
+    and cannot tell `null` or a comment from text.
+    """
+    opening = FRONTMATTER.match(text)
+    if opening is None:
+        return None
+    found = _abstract_in(opening.group("yaml"))
+    if found is None:
+        return None
+    line, words = found
+    return text.count("\n", 0, opening.start("yaml")) + 1 + line, words
+
+
+@lru_cache(maxsize=256)
+def _abstract_in(yaml_text: str) -> tuple[int, str] | None:
+    """The abstract pandoc would print from this front matter: its line inside the YAML,
+    counted from 0, and its words.
+
+    Composed as `_read_yaml` composes it, which has already succeeded when FRONTMATTER
+    matched. Never constructed: constructing expands `<<` merge keys, doubling the work with
+    each line of a merge bomb, and nothing here needs the values.
+    """
+    import yaml
+
+    wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
+    documents = list(yaml.compose_all(wrapped, Loader=_loader()))
+    if not documents or not isinstance(documents[0], yaml.MappingNode):
+        return None
+    found = _abstract_entry(documents[0])
+    if found is None or not _prints(found[1]):
+        return None
+    key, value = found
+    # Counted at `\n` from the key's position, as the file's lines are; line 0 of the
+    # wrapped text is the `---` put in front of the YAML.
+    line = wrapped.count("\n", 0, key.start_mark.index) - 1
+    words = " ".join(value.value.split()) if isinstance(value, yaml.ScalarNode) else ""
+    return line, words
+
+
+_MERGE = "tag:yaml.org,2002:merge"
+_NULL = "tag:yaml.org,2002:null"
+_NULLS = ("~", "null", "Null", "NULL")
+
+
+def _abstract_entry(root):
+    """The `abstract` key and value of a mapping node, its own or merged in with `<<`.
+
+    Pandoc honours merge keys: `<<: *base` takes the abstract `base` holds. A mapping's own
+    key wins over a merged one, and an earlier merged mapping over a later one, searched
+    depth first. Each mapping is visited once, however many aliases reach it.
+    """
+    import yaml
+
+    seen: set[int] = set()
+    pending = [root]
+    while pending:
+        mapping = pending.pop()
+        if not isinstance(mapping, yaml.MappingNode) or id(mapping) in seen:
+            continue
+        seen.add(id(mapping))
+        scalar_keys = [(k, v) for k, v in mapping.value if isinstance(k, yaml.ScalarNode)]
+        own = [(k, v) for k, v in scalar_keys if k.value == "abstract" and k.tag != _MERGE]
+        if own:
+            return own[-1]  # pandoc, like PyYAML, keeps the last of a duplicated key
+        merged = []
+        for key, value in scalar_keys:
+            if key.tag == _MERGE:
+                merged += value.value if isinstance(value, yaml.SequenceNode) else [value]
+        pending += reversed(merged)
+    return None
+
+
+def _prints(node) -> bool:
+    """Whether pandoc prints anything for an abstract composed as `node`."""
+    import yaml
+
+    if isinstance(node, yaml.ScalarNode):
+        # The tag and the spelling both: pandoc prints `!!null Some text` as the text, and a
+        # quoted "null" is the word.
+        if node.tag == _NULL and node.value in _NULLS:
+            return False
+        return bool(node.value.strip())
+    # A list or a mapping: empty prints nothing, and anything in it is refused, not guessed at.
+    return bool(node.value)
+
+
 def front_matter_end(text: str) -> int:
     """Where the body begins: just past the front matter, or 0 when there is none.
 

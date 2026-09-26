@@ -405,6 +405,34 @@ preferring raster or PDF over SVG because Word's SVG support is uneven and a jou
 production system is worse. The caption stays in the manuscript as ordinary prose, so it is
 checked like prose and can carry bindings.
 
+**The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
+build strips every source file's YAML block and writes a header of its own with the title,
+short title and keywords from `paper.yaml`. A `title:` in the manuscript is compared with
+that one and a disagreement warned about (`two-titles`). An `abstract:` there is refused,
+by G2 and by the build alike (`front-matter-abstract`), as a block pandoc cannot read is
+(`front-matter-unreadable`). G2 reads it, because pandoc prints one, and until 2026-09-26
+the build dropped it without a word: the abstract was checked, then left out of the
+document, and the word count, which follows the build, let a journal's abstract limit pass
+on 0 words. It is refused rather than printed because everything else here already finds
+an abstract by its heading: the word count, G4's structured-abstract headings, and the
+paragraph identifiers the Word import maps edits back with. Printed from the header, each
+would have needed a second place to look, and a co-author's edit to it in Word would have
+had no source paragraph to go back to.
+
+The abstract is found by reading the block as pandoc does, with the loader that decides
+the block is front matter, and not with G2's reader, which finds a value by its key line.
+Read G2's way, a quoted key (`"abstract":`), a quoted value opened on the key's line and
+continued below it, or a flow mapping passed `check` and was dropped by the build, though
+pandoc prints each of them; and `abstract: null` or `abstract: # to do` was refused, though
+pandoc prints nothing for either. Merge keys are followed, because pandoc honours them: an
+abstract merged in with `<<: *base` prints. Each mapping is visited once, since a chain of
+mappings each merging the one before it twice doubles the work of expanding them with each
+line, and 614 bytes of such front matter once held `check` for 38 seconds. An abstract
+pandoc reads as empty is let through, and so is a key named `abstract` inside another
+mapping, which pandoc does not take for the abstract. Any other value, a number or `yes`,
+is refused rather than guessed about. PyYAML's composer and pandoc 3.9 were compared on
+each of these spellings, and on a duplicated key, where both keep the last.
+
 ## Zotero is never on the critical path
 
 Two budgets: a gate waits 20 seconds, an explicit `sync-bib` waits 300. Zotero indexing a
@@ -575,7 +603,8 @@ The YAML front matter that opens a file is not counted, rendered keys included. 
 strips every file's block and prints the title from `paper.yaml`, so none of it is in the document a limit is
 about, and a journal counts a title and an abstract against limits of their own anyway. An
 abstract counts when it is written under an Abstract heading, which is where the build
-prints one. Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
+prints one. One written in the front matter is refused rather than counted as 0 words (see
+the build). Until 2026-09-24 the block counted as main text: `split_sections` trimmed the
 text before the first heading, the closing `---` lost the newline the front-matter pattern
 needs, and the example's title line took its main text from 557 words to 573. G4 had a second
 route to the same mistake. It reads the main text as one string joined from every file, so
@@ -1816,11 +1845,19 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   a fresh vector — which is how the wrong figure actually reaches a journal. There is no
   `verify` equivalent for figures, because re-rendering is not reproducible across
   plotting-library versions.
-- **A front-matter `abstract:` is read by G2 and printed by nothing.** The build strips the
-  manuscript's block and writes its own from `paper.yaml`, which has no abstract, so an
-  abstract written there is checked and then left out of the document without a word. It is
-  not counted either, so a journal's abstract limit passes on an abstract of 0 words; a
-  profile asking for abstract headings does report it missing.
+- **The other rendered keys in a manuscript's front matter are read by G2 and printed by
+  nothing.** `subtitle`, `summary`, `keywords`, `short_title` and `running_title` are read
+  because pandoc can print them, and the build strips the block and takes its header from
+  `paper.yaml`. A number in one is checked and never printed, which is the safe direction,
+  but the text itself is dropped without a word. Only the abstract is refused
+  (`front-matter-abstract`), and only the title is compared with `paper.yaml`
+  (`two-titles`).
+- **A front matter is composed twice, at about 15 seconds a megabyte each time.** PyYAML's
+  pure-Python composer is linear but slow: once to decide the block is front matter, once
+  to look for an abstract in it, each cached for the rest of the process. A front matter of
+  about a megabyte, which only a deliberately hostile manuscript has, takes `check` past
+  the 20-second budget of `test_robustness.py`. The C composer is 40 times faster and
+  overflows its stack on deep nesting, which is why the pure-Python one is used.
 - **A YAML block later in a file is read as prose.** Pandoc takes any `---` block that
   follows a blank line and holds a YAML mapping for metadata, wherever it sits, and prints
   none of it. The gates recognise only the block that opens a file, so a later one is read:

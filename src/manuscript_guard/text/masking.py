@@ -13,12 +13,218 @@ dangerous direction, so anything questionable is left unmasked and allowed to fa
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from functools import lru_cache
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import Fence, fenced_spans
 
 NUL = "\x00"
 
-FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n(?:---|\.\.\.)\r?\n", re.DOTALL)
+# Where the front matter ends, as pandoc reads it, for the gates and the build alike. The
+# opening `---` must not be followed by a blank line: one that is, is a horizontal rule,
+# and the prose after it prints. Either delimiter may carry trailing spaces, `...` closes
+# the block as well as `---`, and the closing line may be the file's last or the opening's
+# next: an empty header closes there, where it ran on to the next rule and took the text
+# between with it. A byte-order mark and blank lines before the opening `---` are skipped,
+# as pandoc skips them: taken for the start of the body, they left the header in it, its
+# title unchecked against paper.yaml. The build had a copy of its own that differed on each
+# of these, and where the two disagreed a heading could be read by G2 and stripped by the
+# build: `p < 0.001` under it passed as the alpha chosen in advance and printed without it.
+_FRONT_MATTER_BLOCK = re.compile(
+    r"\A\N{ZERO WIDTH NO-BREAK SPACE}?(?:[ \t]*\r?\n)*---[ \t]*\r?\n(?![ \t]*\r?\n)"
+    r"(?P<yaml>.*?)(?<=\n)(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)",
+    re.DOTALL,
+)
+# Nesting deeper than this is nobody's metadata. Composing thousands of levels of brackets
+# took seconds before the pure-Python loader hit the recursion limit. The count is rough: it
+# does not know quotes or block scalars, and does not see nesting made by indentation.
+_YAML_DEPTH = 100
+_SEQUENCE_ITEMS = re.compile(r"(?:[ \t]*-(?:[ \t]+|$))+")
+
+
+def _nesting(yaml_text: str) -> int:
+    """How deep YAML's flow brackets or block sequences nest, read without parsing."""
+    depth = deepest = 0
+    for char in yaml_text:
+        if char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth = max(depth - 1, 0)
+    for line in yaml_text.split("\n"):
+        items = _SEQUENCE_ITEMS.match(line)
+        if items:
+            deepest = max(deepest, items.group(0).count("-"))
+    return deepest
+
+
+@lru_cache(maxsize=1)
+def _loader():
+    """PyYAML's safe loader, composing anchors as pandoc's YAML library does.
+
+    An anchor carries into the documents after it, exists only once its node is finished,
+    and may be defined again, the later definition winning. PyYAML forgets anchors between
+    documents, lets a node refer to itself, and refuses a second definition: pandoc builds
+    `title: &x T` with `--- *x` under it, refuses `a: &x [*x]`, and reads `a: &x 1` with
+    `b: &x 2`.
+    """
+    import yaml
+    from yaml.composer import ComposerError
+
+    class PandocLoader(yaml.SafeLoader):
+        def compose_document(self):
+            self.get_event()
+            node = self.compose_node(None, None)
+            self.get_event()
+            return node
+
+        def compose_node(self, parent, index):
+            if self.check_event(yaml.AliasEvent):
+                event = self.get_event()
+                if event.anchor not in self.anchors:
+                    raise ComposerError(
+                        None, None, f"found undefined alias {event.anchor!r}", event.start_mark
+                    )
+                return self.anchors[event.anchor]
+            anchor = self.peek_event().anchor
+            self.descend_resolver(parent, index)
+            if self.check_event(yaml.ScalarEvent):
+                node = self.compose_scalar_node(None)
+            elif self.check_event(yaml.SequenceStartEvent):
+                node = self.compose_sequence_node(None)
+            else:
+                node = self.compose_mapping_node(None)
+            self.ascend_resolver()
+            if anchor is not None:
+                self.anchors[anchor] = node
+            return node
+
+    return PandocLoader
+
+
+@lru_cache(maxsize=256)
+def _read_yaml(yaml_text: str) -> tuple[bool, str, int]:
+    """Whether pandoc keeps this YAML as metadata, and why and where it cannot read it.
+
+    Read as pandoc reads it: between a `---` and a `...` of its own, so a `---` line inside
+    starts another document, and every document is read. It is metadata when the first
+    document is a mapping, or when there is nothing: no document, or one that is empty, a
+    comment or a null. The reason is empty unless the text is not YAML, which pandoc
+    refuses to build, and the line is where the reading failed, counted from 0 inside the
+    YAML. Composed, not loaded: constructing values raises on YAML pandoc accepts, such as
+    `date: 2026-02-30`, and nothing here needs the values. With the pure-Python loader, as
+    the C one overflowed its stack on deep nesting. Tabs are expanded first, every four
+    columns, as pandoc expands them before it reads the YAML: PyYAML refuses
+    `title:<tab>A study`, which pandoc reads.
+    """
+    import yaml
+
+    if _nesting(yaml_text) > _YAML_DEPTH:
+        return False, "", 0
+    wrapped = "---\n" + yaml_text.expandtabs(4) + "...\n"
+    try:
+        documents = list(yaml.compose_all(wrapped, Loader=_loader()))
+    except yaml.MarkedYAMLError as exc:
+        return (False, *_failed_at(exc, wrapped))
+    except yaml.reader.ReaderError as exc:
+        where = wrapped.count("\n", 0, exc.position) - 1
+        # PyYAML keeps the character as its code point, an int.
+        code = exc.character if isinstance(exc.character, int) else ord(exc.character)
+        return False, f"unacceptable character #x{code:04x}: {exc.reason}", max(where, 0)
+    except RecursionError:
+        # Too deep to compose, like the nesting refused above; see Known gaps.
+        return False, "", 0
+    if not documents:
+        return True, "", 0
+    first = documents[0]
+    if isinstance(first, yaml.MappingNode):
+        return True, "", 0
+    empty = isinstance(first, yaml.ScalarNode) and first.tag == "tag:yaml.org,2002:null"
+    return empty and len(documents) == 1, "", 0
+
+
+def _failed_at(exc, wrapped: str) -> tuple[str, int]:
+    """The reason and the line inside the YAML for a composing error. One found at the end,
+    such as a quote never closed, is placed where the construct it was reading opened.
+
+    Lines are counted at `\\n` from the mark's position, as the file's are. PyYAML's own
+    line count also breaks at NEL, LS, PS and a lone CR, and put the error past the closer.
+    """
+    mark = exc.problem_mark or exc.context_mark
+    closer = len(wrapped) - len("...\n")
+    if exc.context_mark is not None and mark is not None and mark.index >= closer:
+        mark = exc.context_mark
+    reason = ", ".join(part for part in (exc.context, exc.problem) if part)
+    # Line 0 of the wrapped text is the `---` put in front of the YAML.
+    line = wrapped.count("\n", 0, mark.index) - 1 if mark else 0
+    return reason or type(exc).__name__, max(line, 0)
+
+
+def front_matter_problem(text: str) -> tuple[str, int] | None:
+    """Why pandoc cannot read the YAML block that opens `text`, and the line of the file
+    where the reading failed; None when it can, or when nothing there looks like one.
+
+    Such a block is not front matter, and pandoc refuses to build the file. Left in the body
+    for pandoc to refuse, it never was: the identifier in front of its first paragraph made
+    it prose, the build printed the YAML as text, and the gates read a `# Methods` in it as a
+    heading. So the gates and the build report it instead, and stop.
+    """
+    found = _FRONT_MATTER_BLOCK.match(text)
+    if found is None:
+        return None
+    _metadata, reason, line = _read_yaml(found.group("yaml"))
+    if not reason:
+        return None
+    return reason, text.count("\n", 0, found.start("yaml")) + 1 + line
+
+
+class _FrontMatter:
+    """`FRONTMATTER.match(text)`: the YAML block that opens `text`, or None.
+
+    Pandoc reads from the opening `---` to the first `---` or `...` line and keeps what is
+    between as metadata only when it is a mapping, or nothing. Anything else it prints: a
+    list becomes a table, a sentence a paragraph. And a header that is never closed is read
+    to the next rule, where the text between is not YAML, and pandoc refuses the file. The
+    pattern alone took all of these for front matter, and the build stripped them: with a
+    rule further down, an Introduction under an unclosed header vanished from the document
+    with no warning. What pandoc prints is left in the body; what it refuses is reported by
+    `front_matter_problem`.
+    """
+
+    def match(self, text: str) -> re.Match[str] | None:
+        found = _FRONT_MATTER_BLOCK.match(text)
+        if found is None or not _read_yaml(found.group("yaml"))[0]:
+            return None
+        return found
+
+
+FRONTMATTER = _FrontMatter()
+
+
+def front_matter_end(text: str) -> int:
+    """Where the body begins: just past the front matter, or 0 when there is none.
+
+    Nothing opened on one side of it closes on the other. Pandoc reads the YAML apart from
+    the body, and each value apart from the rest, so a `<!--` in a title or a fence opener in
+    an abstract ends with its value. Read as one text, a title's comment ran on to the next
+    `-->` in the body, and everything between was hidden from G2 and the audit while pandoc
+    printed it.
+    """
+    opening = FRONTMATTER.match(text)
+    return opening.end() if opening else 0
+
+
+def without_front_matter(text: str) -> str:
+    """`text` after its front matter: the part of a source file the build prints."""
+    return text[front_matter_end(text) :]
+
+
+def fenced_blocks(text: str) -> list[Fence]:
+    """The fenced blocks of the front matter and of the body, none opening in one and
+    closing in the other. A code block in an abstract is still code: looked for in the body
+    alone, its `<!--` opened a comment that hid the abstract's prose."""
+    head = front_matter_end(text)
+    return [*fenced_spans(text[:head]), *fenced_spans(text, head)]
 
 # Front-matter keys whose value pandoc renders into the document. Masking the whole block
 # put the abstract — the most-read part of a paper — entirely outside the gate: a title of
@@ -37,6 +243,40 @@ RENDERED_KEYS = (
 _KEY_LINE = re.compile(
     r"^(?P<indent>[ \t]*)(?P<key>" + "|".join(RENDERED_KEYS) + r")[ \t]*:[ \t]*(?P<value>.*)$"
 )
+
+_BACKSLASHES = re.compile(r"\\+(?=[<>])")
+# A run of backticks, closed by the next run exactly as long, within a paragraph: pandoc's
+# rule, less its fallbacks. It is not pandoc's reader: a `~~~` block, or a ```` ``` ```` one
+# with a blank line inside, is not seen as code here, nor is code handed over without its
+# fence, a listing's string or a figure script's. And the runs are paired in the text as it
+# stands, so a backtick inside a `~~~` block pairs with one in the prose after it, and a
+# code span there goes unseen. DESIGN.md's Known gaps has the rest.
+_CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+
+
+def comparison_escapes(text: str) -> list[int]:
+    """Where a backslash escapes a `<` or `>`, so that it prints the bare character.
+
+    Pandoc's Markdown writer puts one before every comparison, so a paper converted from
+    Word reads `p \\< 0.05` and `ROR \\> 2`; `import` puts one before a `>` that a `<` earlier
+    in the paragraph could close as a tag. G2 read neither: the threshold rules never
+    matched, and `\\>3` was an atom no rule began at. `mask` blanks these, so `\\>3` is read
+    from its `3`, and the classifier matches its rules without them. Blanked, one also ends
+    the atom before it, where the printed `>` does not: `n\\>3` is read as `n` and `>3`.
+
+    Only a backslash that prints nothing counts: the last of an odd run, since `\\\\>` is a
+    backslash printed before a `>`, and none inside inline code, which prints it as typed.
+    Reading either as an escape let `` `ROR \\> 2` `` pass as the threshold it does not print.
+    """
+    code = [m.span() for m in _CODE_SPAN.finditer(text)]
+    starts = [start for start, _end in code]
+    found = []
+    for run in _BACKSLASHES.finditer(text):
+        inside = bisect_right(starts, run.start()) - 1
+        if len(run.group()) % 2 and not (inside >= 0 and run.start() < code[inside][1]):
+            found.append(run.end() - 1)
+    return found
+
 
 # Ordered: earlier patterns win, because a URL inside a code fence is already gone.
 # Front matter is handled separately, by `_mask_frontmatter`, because it is the one region
@@ -123,22 +363,30 @@ def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
     return [(a, b) for a, b in spans if b > a]
 
 
+def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Match[str]]:
+    """Matches in the front matter and in the body, none running from one into the other."""
+    return [*pattern.finditer(text, 0, head), *pattern.finditer(text, head)]
+
+
 def mask(text: str) -> str:
     """Return `text` with non-claim regions replaced by NUL, preserving length."""
     chars = list(text)
+    head = front_matter_end(text)
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
     # own: three copies of that regex all required the closing fence to be *exactly* the
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
-    for fence in fenced_spans(text):
+    for fence in fenced_blocks(text):
         for index in range(fence.start, fence.end):
             chars[index] = NUL
     for start, end in _frontmatter_spans(text):
         for index in range(start, end):
             chars[index] = NUL
     for _name, pattern in _PATTERNS:
-        for match in pattern.finditer("".join(chars)):
+        for match in _either_side(pattern, "".join(chars), head):
             for index in range(match.start(), match.end()):
                 chars[index] = NUL
+    for index in comparison_escapes(text):
+        chars[index] = NUL
     return "".join(chars)
 
 
@@ -146,7 +394,8 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
     """What each pattern matched. Used by the test suite and by `explain` output."""
     found: dict[str, list[tuple[int, int]]] = {}
     working = text
-    fences = [(f.start, f.end) for f in fenced_spans(text)]
+    head = front_matter_end(text)
+    fences = [(f.start, f.end) for f in fenced_blocks(text)]
     if fences:
         found["fenced-code"] = fences
         chars = list(working)
@@ -163,7 +412,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
                 chars[index] = NUL
         working = "".join(chars)
     for name, pattern in _PATTERNS:
-        spans = [(m.start(), m.end()) for m in pattern.finditer(working)]
+        spans = [(m.start(), m.end()) for m in _either_side(pattern, working, head)]
         if spans:
             found[name] = spans
             chars = list(working)
@@ -171,6 +420,9 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
                 for index in range(start, end):
                     chars[index] = NUL
             working = "".join(chars)
+    escapes = [(index, index + 1) for index in comparison_escapes(text)]
+    if escapes:
+        found["escaped-comparison"] = escapes
     return found
 
 

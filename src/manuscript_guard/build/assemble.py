@@ -12,7 +12,6 @@ that the Zotero filter can turn it into a live field.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,7 +19,8 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Table
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.numbers import source_files, unreadable_header
+from manuscript_guard.text.masking import FRONTMATTER, front_matter_problem
 from manuscript_guard.text.placeholders import parse
 
 GATE = "BUILD"
@@ -74,9 +74,6 @@ def find_figure(project: Project, key: str) -> Path | None:
     return None
 
 
-_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
-
-
 def strip_front_matter(text: str) -> tuple[str, str]:
     """The body without its YAML header, and the title the header declared.
 
@@ -87,22 +84,29 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     the title page and the manifest from `paper.yaml`, so nothing anywhere reports the
     contradiction. It reproduces in the shipped example, where the two happen to match and
     the stray line reads as a harmless duplicate.
+
+    The block is found by the pattern the gates mask it with, so the build and the gates
+    agree on where the front matter ends.
     """
-    found = _FRONT.match(text)
+    found = FRONTMATTER.match(text)
     if not found:
         return text, ""
     declared = ""
-    for line in found.group(1).splitlines():
+    for line in found.group("yaml").splitlines():
         if line.strip().startswith("title:"):
             declared = line.split(":", 1)[1].strip().strip("\"'")
             break
     return text[found.end():].lstrip("\n"), declared
 
 
-def assemble(project: Project, namespace: dict[str, Value], results: Results) -> tuple[
-    list[Assembled], Report
-]:
-    """Substitute every binding in every source file. Nothing is written to disk here."""
+def assemble(
+    project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
+) -> tuple[list[Assembled], Report]:
+    """Substitute every binding in every source file. Nothing is written to disk here.
+
+    `mark` wraps each binding and citation in a bookmark of its own, for the build `import`
+    compares with and for nothing else; see `roundtrip.tag`.
+    """
     report = Report()
     out: list[Assembled] = []
 
@@ -113,7 +117,13 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
         from manuscript_guard.roundtrip import tag
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
-        raw, declared = strip_front_matter(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        # Built anyway, the header printed as text: the identifier in front of it hid it
+        # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
+        problem = front_matter_problem(source)
+        if problem is not None:
+            report = report.with_findings(unreadable_header(path, *problem, GATE))
+        raw, declared = strip_front_matter(source)
         if declared and declared != str(project.paper.get("title", "")):
             report = report.with_findings(
                 Finding(
@@ -127,7 +137,7 @@ def assemble(project: Project, namespace: dict[str, Value], results: Results) ->
                     "delete the title from the manuscript or make them agree",
                 )
             )
-        text = tag(raw, relative)
+        text = tag(raw, relative, mark=mark)
         placeholders, _ = parse(text)
         rendered = text
 

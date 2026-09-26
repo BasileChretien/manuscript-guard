@@ -26,7 +26,9 @@ Both are refused, and named, rather than guessed at.
 from __future__ import annotations
 
 import difflib
+import re
 from collections import Counter, deque
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,9 +63,25 @@ class Plan:
     moved: tuple[tuple[str, int, int], ...] = ()
     #: Moved into a different section or file; not applied.
     misplaced: tuple[str, ...] = ()
-    #: Identifier -> (file, section): the stretch between headings, tables and figures that
-    #: the paragraph belongs to, which is what a move is applied within.
+    #: Identifier -> (file, section): the stretch between headings, tables, figures and
+    #: paragraphs held in place that the paragraph belongs to, which is what a move is applied
+    #: within.
     sections: dict[str, tuple[Path, int]] = field(default_factory=dict)
+    #: The kind of each table, figure or equation of the document as sent that the returned
+    #: one could not be matched with: deleted, pasted twice, or changed while others of its
+    #: kind were added or removed. A move past one of them cannot be seen.
+    lost: tuple[str, ...] = ()
+    #: Headings, tables, figures and equations that came back in another place, as (kind,
+    #: text): kind is "table", "figure", "equation", or "text" for a heading or caption. None
+    #: of them moves in the .md.
+    strayed: tuple[tuple[str, str], ...] = ()
+    #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
+    #: caption, a new paragraph - that the document did not have when it was sent.
+    unidentified: tuple[str, ...] = ()
+    #: Text of such paragraphs of the document as sent that did not come back as they were.
+    vanished: tuple[str, ...] = ()
+    #: Text of such paragraphs that all came back unchanged, but out of their order.
+    reordered: tuple[str, ...] = ()
 
     @property
     def empty(self) -> bool:
@@ -74,6 +92,11 @@ class Plan:
             or self.joined
             or self.moved
             or self.misplaced
+            or self.lost
+            or self.strayed
+            or self.unidentified
+            or self.vanished
+            or self.reordered
         )
 
 
@@ -84,7 +107,36 @@ def _same(a: str, b: str) -> bool:
     return spaced(a).strip() == spaced(b).strip()
 
 
-def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
+_NBSP = chr(0xA0)
+
+
+#: A no-break space an author can write: the character itself, `\ `, or an entity, named or
+#: numbered, which pandoc reads with any number of leading zeros.
+_WRITTEN_NBSP = re.compile(r"\\ |&nbsp;|&NonBreakingSpace;|&#0*160;|&#[xX]0*[aA]0;|" + _NBSP)
+
+
+def _typeset_only(was: str, now: str, source: str) -> bool:
+    """Whether Word's text differs from the text sent only where a no-break space pandoc put
+    in ("e.g." then a space) was taken out again. The next build puts it back, so there is
+    nothing to merge. Decided by the rewording for an ordinary paragraph, it was never asked
+    for a paragraph held in place, which refused the edit instead.
+
+    Only a source with no no-break space of its own, and no binding or citation whose value
+    could hold one, can have had one put in by pandoc. Asked of any source, the question
+    dropped a co-author's change to a no-break space the author had written - "Hy's`\\ `law" -
+    with "nothing came back", and one inside a binding's value.
+    """
+    if _WRITTEN_NBSP.search(source) or "{{" in source or "@" in source:
+        return False
+    was, now = spaced(was).strip(), spaced(now).strip()
+    return len(was) == len(now) and all(
+        a == b or (a == _NBSP and b == " ") for a, b in zip(was, now, strict=True)
+    )
+
+
+def _beside_new_text(
+    sent: list[Block], returned: list[Block], counterparts: dict[int, int] | None = None
+) -> set[str]:
     """Identifiers whose paragraph came back directly beside text the document did not have.
 
     A split leaves the second half as a paragraph with no identifier next to the first, and
@@ -94,6 +146,10 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     Compared by text rather than by position, because a move changes every neighbour and
     creates no text at all. An edited heading is new text too, which costs a refusal of the
     paragraph beside it when both were edited; the alternative is a split that truncates.
+
+    A table, figure or equation the document as sent did not have is new too. The search
+    stopped at any block that was not prose, so a paragraph split around a pasted picture or
+    a new equation was merged as its first half.
     """
     unchanged = Counter(b.text for b in sent if not b.table and not b.names and b.text)
     new: set[int] = set()
@@ -108,7 +164,13 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     def touches(indices: range) -> bool:
         for i in indices:
             block = returned[i]
-            if block.table or block.names:
+            if block.table:
+                if counterparts is None or i not in counterparts:
+                    return counterparts is not None
+                # One that was there before is looked past, as an empty line is: an equation
+                # moved in between the halves of a split paragraph hid the second half.
+                continue
+            if block.names:
                 return False
             if i in new:
                 return True
@@ -125,9 +187,142 @@ def _beside_new_text(sent: list[Block], returned: list[Block]) -> set[str]:
     return found
 
 
-def _sections(known: dict) -> dict[str, tuple[Path, int]]:
+#: A line that opens or closes something Word shows apart from the paragraph above it: a
+#: `:::` or code fence, an HTML block tag, a LaTeX environment, a definition, or the
+#: underline that makes the line above it a heading. Written directly under a paragraph, with
+#: no blank line between, it is part of that paragraph's source but not of its Word text.
+_BLOCK_LINE = re.compile(
+    r"^[ \t]*(?::::|```|~~~|\\(?:begin|end)\s*\{"
+    r"|</?(?:address|article|aside|blockquote|center|details|div|dl|fieldset|figure|footer"
+    r"|form|h[1-6]|header|hr|nav|ol|p|pre|section|table|ul)\b)"
+    r"|^[ \t]{0,3}[:~][ \t]"
+    r"|^[ \t]{0,3}(?:=+|-+)[ \t]*$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+#: What `_bare` sets aside: a backslash escape, a code span, by pandoc's rule that a run of
+#: backticks is closed by a run of the same length, and a comment that closes. Nothing more.
+#: Each escape is taken as a pair, so `\`` opens nothing and `\\` before a backtick leaves it
+#: free to open a span. Taken for an opener, an escaped backtick began a "code span" that ran
+#: to the next real one and swallowed the `$$` or the `<!--` between them; refused after any
+#: backslash, the backtick after `\\` did the same from the other end. Nor may the raw text
+#: before an opener stop it: a backtick there was either an escaped one, as in \``x`, or one
+#: of a run that never closes, whose last backtick pandoc opens a span on, as in ``a'' `b.
+#: Refused, the span's closer was taken for an opener and swallowed what followed.
+_CODE_OR_COMMENT = re.compile(r"\\.|(`+)(?!`).+?(?<!`)\1(?!`)|<!--.*?-->", re.DOTALL)
+_DISPLAY_MATHS = re.compile(r"(?<!\\)\$\$")
+
+
+def _bare(para: str) -> tuple[str, bool]:
+    """A paragraph's source with its code spans and closed comments blanked out, and whether
+    what is left holds display maths, which Word sets apart as a paragraph of its own.
+
+    Searched for as written, `$$` or `<!--` inside backticks held a paragraph that explained
+    them. The rewording's own scan of inline markup was tried next, and it sets aside more
+    than it should for this: taking `` `glmer` from $$..$$ `nlme`{.r} `` for one code span
+    with attributes, or `~~ $$x$$ ~~` for struck-through text, it hid display maths, and a
+    paragraph that was not held had its first part moved without its equation. Setting
+    aside too little only holds a paragraph that could have moved - `$$` in a footnote does.
+    """
+    bare = _CODE_OR_COMMENT.sub(lambda match: " " * len(match.group(0)), para)
+    return bare, _DISPLAY_MATHS.search(bare) is not None
+
+
+def _held_in_place(
+    known: dict, rendered: dict[str, str], in_parts: Collection[str] = ()
+) -> dict[str, str]:
+    """Paragraphs of source whose slot no move may refill, each with why.
+
+    A move rewrites slots, and a slot is only safe to refill when what it holds is the
+    paragraph Word showed, all of it and nothing more. An HTML comment with a blank line in
+    it is two paragraphs of source: the first reaches Word as an empty line, and the second
+    does not reach it at all. As a slot, the first half moved and the second stayed, so a
+    paragraph dragged below the empty line was written inside the comment and vanished from
+    the build. These are held where they are:
+
+    - `hidden`: it never reached Word, because something opened before it holds it.
+    - `runs-on`: it opens that something, or a comment it does not close. Moved, the
+      opening went and the close stayed.
+    - `empty`: it reaches Word as an empty line, like a comment's first line.
+    - `glued`: a line opening or closing a block follows it with no blank line between,
+      and went with it.
+    - `in-parts`: Word shows it as more than one paragraph, and only the first moved. Found
+      by untagged text before the next paragraph of its section, which misses the last
+      paragraph of a section, and by display maths in its source, which does not.
+
+    Each is a section of its own, so a move is never applied across one.
+    """
+    found: dict[str, str] = {}
+    texts: dict[Path, str] = {}
+    before: dict[Path, tuple[str, int]] = {}
+    for name, (path, para, start) in sorted(
+        known.items(), key=lambda item: (str(item[1][0]), item[1][2])
+    ):
+        if path not in texts:
+            texts[path] = path.read_text(encoding="utf-8")
+        if name not in rendered:
+            found[name] = "hidden"
+            if path in before and not texts[path][before[path][1] : start].strip():
+                found.setdefault(before[path][0], "runs-on")
+        elif not rendered[name].strip():
+            found[name] = "empty"
+        elif "<!--" in (bare := _bare(para))[0]:
+            # Found by what it opens, not by what follows it: whatever the comment holds
+            # after the blank line - a heading, a fence - comes before any tagged paragraph.
+            # A closed comment is blanked out of `bare`, so an opening left in it is unclosed.
+            found[name] = "runs-on"
+        elif _BLOCK_LINE.search(para):
+            found[name] = "glued"
+        elif name in in_parts or bare[1]:
+            found[name] = "in-parts"
+        before[path] = (name, start + len(para))
+    return found
+
+
+def _text_counterparts(reference: list[Block], returned: list[Block]) -> dict[int, int]:
+    """Which heading or caption of the document as sent each returned one is, by index.
+
+    Matched as a sequence, so that of two headings reading "Outcome" each is paired with its
+    own. Matched one text at a time, first come first served, renaming or deleting the first
+    made the second stand in for it, and the second was reported as moved. A text of which the
+    sequence leaves exactly one copy over on each side is paired too, which is how a heading
+    dragged elsewhere is still recognised.
+    """
+
+    def texts(blocks: list[Block]) -> list[tuple[int, str]]:
+        return [(i, b.text) for i, b in enumerate(blocks) if not b.names and not b.table and b.text]
+
+    sent, back = texts(reference), texts(returned)
+    matcher = difflib.SequenceMatcher(
+        a=[text for _i, text in sent], b=[text for _j, text in back], autojunk=False
+    )
+    found = {
+        back[b + k][0]: sent[a + k][0]
+        for a, b, size in matcher.get_matching_blocks()
+        for k in range(size)
+    }
+    taken = set(found.values())
+    left_sent: dict[str, list[int]] = {}
+    for i, text in sent:
+        if i not in taken:
+            left_sent.setdefault(text, []).append(i)
+    left_back: dict[str, list[int]] = {}
+    for j, text in back:
+        if j not in found:
+            left_back.setdefault(text, []).append(j)
+    # One copy left over on each side is the same heading, wherever it now is. Paired only
+    # when its text was unique in the whole document, a dragged "Outcome" with another
+    # "Outcome" elsewhere in the paper was paired with nothing, and the drag went unreported.
+    for text, js in left_back.items():
+        if len(js) == 1 and len(left_sent.get(text, ())) == 1:
+            found[js[0]] = left_sent[text][0]
+    return found
+
+
+def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, int]]:
     """Which section of its file each paragraph is in: how many headings, tables or figures
-    come before it there.
+    come before it there, or paragraphs held in place, each of which is a section of its own.
 
     Import fills paragraph slots, and a heading is not a slot: it cannot change how many
     paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
@@ -138,82 +333,172 @@ def _sections(known: dict) -> dict[str, tuple[Path, int]]:
     texts: dict[Path, str] = {}
     section: dict[Path, int] = {}
     end: dict[Path, int] = {}
+    alone: dict[Path, bool] = {}
     for name, (path, para, start) in sorted(
         known.items(), key=lambda item: (str(item[1][0]), item[1][2])
     ):
         if path not in texts:
             texts[path] = path.read_text(encoding="utf-8")
             section[path] = 0
-        elif texts[path][end[path] : start].strip():
+        elif name in held or alone[path] or texts[path][end[path] : start].strip():
             section[path] += 1
         out[name] = (path, section[path])
         end[path] = start + len(para)
+        alone[path] = name in held
     return out
+
+
+def _counterparts(
+    reference: list[Block], returned: list[Block], texts: dict[int, int] | None = None
+) -> tuple[dict[int, int], tuple[str, ...]]:
+    """Which table or figure of the document as sent each returned one is, by index, and
+    the kinds of those sent that could not be found.
+
+    By what it holds first, where that is unique on both sides: a table by its text, a figure
+    by its picture. Word renumbers the relationship a picture hangs on and renames its file
+    when it saves, so neither says which figure it is; the picture's bytes do. What is left is
+    paired by place: by position among its kind within the stretch between the same two
+    headings, captions or matched tables and figures, when that stretch holds as many of the
+    kind in both documents. A table with a corrected cell, or a picture Word stored anew, is
+    the one in that place. Tables and figures used to be paired by position alone, both kinds
+    together, and only while their total was unchanged: a co-author who deleted one table or
+    pasted in one picture turned every one of them off, and a paragraph dragged past a figure
+    went unseen. Paired by position within their kind anywhere in the document, a table
+    deleted from the Results and another pasted into the Funding were taken for one table.
+    """
+    def ident(block: Block) -> tuple[str, str]:
+        return block.kind, block.key
+
+    sent = [i for i, block in enumerate(reference) if block.table]
+    back = [j for j, block in enumerate(returned) if block.table]
+    in_sent = Counter(ident(reference[i]) for i in sent)
+    in_back = Counter(ident(returned[j]) for j in back)
+    where = {ident(reference[i]): i for i in sent}
+    found = {
+        j: where[ident(returned[j])]
+        for j in back
+        if returned[j].key and in_sent[ident(returned[j])] == in_back[ident(returned[j])] == 1
+    }
+
+    if texts is None:
+        texts = _text_counterparts(reference, returned)
+
+    def stretches(
+        blocks: list[Block], matched: dict[int, int], marks: dict[int, int]
+    ) -> dict[tuple, list[int]]:
+        """The unmatched tables and figures, grouped by kind and by the last heading,
+        caption or matched table or figure before them."""
+        out: dict[tuple, list[int]] = {}
+        last: tuple | None = None
+        for index, block in enumerate(blocks):
+            if block.table and index in matched:
+                last = ("block", matched[index])
+            elif block.table:
+                out.setdefault((last, block.kind), []).append(index)
+            elif index in marks:
+                last = ("text", marks[index])
+        return out
+
+    left = stretches(reference, {i: i for i in found.values()}, {i: i for i in texts.values()})
+    right = stretches(returned, found, texts)
+    lost: list[str] = []
+    for (stretch, kind), indices in left.items():
+        there = right.get((stretch, kind), [])
+        if len(there) == len(indices):
+            found.update(zip(there, indices, strict=True))
+        else:
+            lost += [kind] * len(indices)
+    return found, tuple(lost)
 
 
 def _boundaries(reference: list[Block], rank) -> dict[tuple, deque]:
     """The headings, tables and figures of the document as sent, each ranked as the opening
-    of the section after it, keyed by what they say (a table by its position among tables).
+    of the section after it, keyed by their index in the document as sent.
 
     Only what stands between two sections counts. Pandoc can render an untagged paragraph
     inside a section - display maths, say - and ranked as a boundary it would make every
-    untouched document look as if a paragraph had crossed it.
+    untouched document look as if a paragraph had crossed it. Those between the same two
+    sections are ranked in their order, so a figure dragged past the heading after it is seen.
     """
     found: dict[tuple, deque] = {}
     pending: list[tuple] = []
-    tables = 0
     previous: tuple | None = None
-    for block in reference:
+    for index, block in enumerate(reference):
         if block.names and not block.table:
             here = rank(block.names[0])
             if previous is None or previous[:2] != here[:2]:
-                for key in pending:
-                    found.setdefault(key, deque()).append((*here[:2], 0))
+                for place, key in enumerate(pending):
+                    found.setdefault(key, deque()).append((*here[:2], 0, place))
             pending, previous = [], here
         elif block.table:
-            pending.append(("table", tables))
-            tables += 1
+            pending.append(("block", index))
         elif block.text:
-            pending.append(("text", block.text))
-    for key in pending:
-        found.setdefault(key, deque()).append((float("inf"),))
+            pending.append(("text", index))
+    for place, key in enumerate(pending):
+        found.setdefault(key, deque()).append((float("inf"), place))
     return found
 
 
 def _misplaced(
-    reference: list[Block], returned: list[Block], order: list[str], moved: set[str], rank
-) -> list[str]:
-    """Paragraphs that came back outside their own section or file.
+    reference: list[Block],
+    returned: list[Block],
+    order: list[str],
+    moved: set[str],
+    rank,
+    held: Collection[str] = (),
+    counterparts: dict[int, int] | None = None,
+    texts: dict[int, int] | None = None,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Paragraphs that came back outside their own section or file, and the headings, tables
+    and figures that came back somewhere else.
 
     Every paragraph is judged, not only those the order diff calls moved: a paragraph dragged
     from the end of one section to just below the next heading keeps its place among the
     paragraphs, so the diff saw nothing and the move was dropped with "nothing came back".
-    The largest set of paragraphs whose sections read in order - with the headings, tables and
-    figures as sent held fixed - is kept, and whatever falls outside it is out of place. The
-    order diff only breaks ties, so the paragraph that crossed the heading is the one named,
-    not a neighbour the diff happened to prefer. A file holding a single paragraph, which the
-    first version of this check reported as moved when nothing had moved, reads in order.
+    The largest set whose sections read in order is kept, and whatever falls outside it is out
+    of place. The headings, tables and figures as sent outweigh everything else together. A
+    paragraph held in place outweighs one other paragraph but not two, so a paragraph dragged
+    past it is the one named, and so is a held paragraph dragged past several; weighed above
+    all of them together, it had the four paragraphs it passed reported instead. The order
+    diff only breaks ties, so the paragraph that crossed a heading is named rather than a
+    neighbour the diff happened to prefer.
+
+    Whatever falls outside is named. A paragraph held in place took part as an anonymous
+    anchor once, and dragged past a heading it was dropped without a word; a table dragged
+    into another section was the anchor dropped, and said "nothing came back".
     """
     boundaries = _boundaries(reference, rank)
-    same_tables = sum(b.table for b in reference) == sum(b.table for b in returned)
+    if texts is None:
+        texts = _text_counterparts(reference, returned)
+    if counterparts is None:
+        counterparts = _counterparts(reference, returned, texts)[0]
     ordered = set(order)
-    sequence: list[tuple[str | None, tuple]] = []
-    tables = 0
-    for block in returned:
+    # (what, rank, tier): a boundary is ("table" | "figure" | "text", its text), tier 2; a
+    # paragraph is its identifier, tier 1 if held in place and 0 otherwise.
+    sequence: list[tuple[str | tuple[str, str], tuple, int]] = []
+    for index, block in enumerate(returned):
         if block.table:
-            key = ("table", tables)
-            tables += 1
-            if same_tables and boundaries.get(key):
-                sequence.append((None, boundaries[key].popleft()))
+            key = ("block", counterparts.get(index))
+            if boundaries.get(key):
+                sequence.append(((block.kind, ""), boundaries[key].popleft(), 2))
         elif block.names:
-            sequence += [(name, rank(name)) for name in block.names if name in ordered]
-        elif block.text and boundaries.get(("text", block.text)):
-            sequence.append((None, boundaries[("text", block.text)].popleft()))
+            sequence += [
+                (name, rank(name), 1 if name in held else 0)
+                for name in block.names
+                if name in ordered
+            ]
+        elif block.text and boundaries.get(key := ("text", texts.get(index))):
+            sequence.append((("text", block.text), boundaries[key].popleft(), 2))
 
-    # The heaviest subsequence whose ranks never decrease. A heading outweighs every
-    # paragraph together, and a paragraph the diff did not call moved outweighs one it did.
-    anchor = 2 * len(sequence) + 1
-    weight = [anchor if n is None else (1 if n in moved else 2) for n, _r in sequence]
+    # The heaviest subsequence whose ranks never decrease. A paragraph weighs 3 if the diff
+    # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them:
+    # any one paragraph is lighter than a held one, and any two are heavier. At 3 against 1
+    # and 2, and then 5 against 2 and 4, a held paragraph dragged past two paragraphs the diff
+    # called moved outweighed them, and the two were named instead of it.
+    tiers = {0: 0, 1: 5, 2: 5 * len(sequence) + 1}
+    weight = [
+        tiers[tier] or (3 if what in moved else 4) for what, _rank, tier in sequence
+    ]
     best, back = list(weight), [-1] * len(sequence)
     for j in range(len(sequence)):
         for i in range(j):
@@ -224,7 +509,11 @@ def _misplaced(
     while at >= 0:
         kept.add(at)
         at = back[at]
-    return [n for i, (n, _r) in enumerate(sequence) if n is not None and i not in kept]
+    dropped = [what for i, (what, _rank, _tier) in enumerate(sequence) if i not in kept]
+    return (
+        [what for what in dropped if isinstance(what, str)],
+        [what for what in dropped if isinstance(what, tuple)],
+    )
 
 
 def _in_parts(reference: list[Block], sections: dict) -> set[str]:
@@ -239,12 +528,17 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     found: set[str] = set()
     last: str | None = None
     between = False
-    for block in reference:
+    for index, block in enumerate(reference):
         if block.names and not block.table:
             name = block.names[0]
             if last and between and sections.get(last, 0) == sections.get(name, 1):
                 found.add(last)
             last, between = name, False
+            # An equation directly after it is its own, wherever the paragraph stands: the
+            # document as sent says so, where reading the source for `$$` can be fooled.
+            following = reference[index + 1] if index + 1 < len(reference) else None
+            if block.text and following is not None and following.kind == "equation":
+                found.add(name)
         else:
             between = True
     return found
@@ -348,9 +642,38 @@ def _joined_without_bookmark(
     return found
 
 
-def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> Plan:
-    """Compare the document as sent with the document as returned, paragraph by paragraph."""
+def plan_import(
+    known: dict,
+    reference: list[Block],
+    returned: list[Block],
+    marked: list[Block] | None = None,
+    abbreviations: frozenset[str] = frozenset(),
+) -> Plan:
+    """Compare the document as sent with the document as returned, paragraph by paragraph.
+
+    `marked` is the same document built with each binding and citation bookmarked, which is
+    where `align` learns each token's extent. It is trusted only for a paragraph that reads
+    exactly as it does in `reference`: if marking changed a rendering, that paragraph is
+    refused rather than aligned on extents that describe different text. Exactly but for
+    pandoc's no-break space, which it puts after "et al." before a bookmark and not before a
+    citation: one character for one, so the extents still fit, and every edit to "Smith et
+    al. [@key]" was refused without it.
+
+    `abbreviations` are the words pandoc puts that no-break space after, from
+    `build.document.abbreviations`: a rewording writes it back as the space pandoc makes one
+    of again, rather than into the source as a character nobody can see.
+    """
     rendered = {b.names[0]: b.text for b in reference if b.names and not b.table}
+
+    def fits(text: str, name: str) -> bool:
+        sent = rendered.get(name)
+        return sent is not None and sent.replace("\u00a0", " ") == text.replace("\u00a0", " ")
+
+    extents = {
+        b.names[0]: b.tokens
+        for b in marked or ()
+        if b.names and not b.table and fits(b.text, b.names[0])
+    }
     texts, joined, slid = _read_returned(returned, rendered)
     in_join = {name for group in joined for name in group}
     joined += _joined_without_bookmark(rendered, texts, in_join)
@@ -365,9 +688,15 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         if name not in slid and counts[name] == 1
     ]
 
-    sections = _sections(known)
-    in_parts = _in_parts(reference, sections)
-    beside_new = _beside_new_text(reference, returned)
+    # Whether a paragraph reaches Word in parts is judged within the sections the source
+    # has, before paragraphs held in place split them further: one held after it hid the
+    # split, and a rewording of the first part deleted the rest.
+    in_parts = _in_parts(reference, _sections(known))
+    held = _held_in_place(known, rendered, in_parts)
+    sections = _sections(known, held)
+    headings = _text_counterparts(reference, returned)
+    counterparts, lost = _counterparts(reference, returned, headings)
+    beside_new = _beside_new_text(reference, returned, counterparts)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
     missing = +untagged
@@ -382,18 +711,26 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
             refused.append(Refusal(name, now or "", (_TWICE.format(n=counts[name]),)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
-        elif _same(was, now):
+        elif _same(was, now) or (
+            # Only the part that carries the identifier is compared here. With new text
+            # beside it - the part after an equation reworded - skipping it lost that edit.
+            name in held and name not in beside_new and _typeset_only(was, now, source)
+        ):
             continue
         elif not was.strip():
             refused.append(Refusal(name, now, (_HIDDEN,)))
-        elif name in in_parts:
+        elif held.get(name) == "runs-on":
+            refused.append(Refusal(name, now, (_RUNS_ON,)))
+        elif held.get(name) == "glued":
+            refused.append(Refusal(name, now, (_GLUED,)))
+        elif name in in_parts or held.get(name) == "in-parts":
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         else:
-            aligned = align(source, was, now)
+            aligned = align(source, was, now, extents.get(name), abbreviations)
             if aligned.rebuilt == source:
                 # Only pandoc's typesetting was undone in Word - a no-break space it put after
                 # "e.g." taken out again - and the next build puts it back. Nothing to merge.
@@ -411,9 +748,43 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         path, section = sections[name]
         return (files[path], section, 1)
 
-    moved = moves([n for n in rendered if n in set(order)], order)
-    misplaced = _misplaced(reference, returned, order, {m[0] for m in moved}, rank)
-    moved = [entry for entry in moved if entry[0] not in set(misplaced)]
+    diffed = moves([n for n in rendered if n in set(order)], order)
+    misplaced, strayed = _misplaced(
+        reference, returned, order, {m[0] for m in diffed}, rank, held, counterparts, headings
+    )
+    # What moved among the paragraphs that will be reordered. Taken from the diff above, a
+    # paragraph passed by a misplaced one was reported as reordered, and nothing was written.
+    stays = {*misplaced, *held}
+    kept = [n for n in order if n not in stays]
+    moved = moves([n for n in rendered if n in set(kept)], kept)
+
+    # A paragraph without an identifier is never compared, and it is also what bounds a
+    # section: once a quotation or a list item was reworded it no longer marked where its
+    # section began, a paragraph moved past it read as in order, and import said the
+    # document matched the manuscript. What changed is at least said.
+    # In order, not as a bag: list items swapped in Word were all still there, and the
+    # document was said to match.
+    sent_untagged = [b.text for b in reference if not b.names and not b.table and b.text]
+    back_untagged = [b.text for b in returned if not b.names and not b.table and b.text]
+    unchanged = Counter(sent_untagged)
+    unidentified: list[str] = []
+    for text in back_untagged:
+        if unchanged[text]:
+            unchanged[text] -= 1
+        else:
+            unidentified.append(text)
+    left = Counter(missing)
+    vanished: list[str] = []
+    for text in sent_untagged:
+        if left[text]:
+            left[text] -= 1
+            vanished.append(text)
+    reordered: list[str] = []
+    if not (unidentified or vanished) and sent_untagged != back_untagged:
+        matcher = difflib.SequenceMatcher(a=sent_untagged, b=back_untagged, autojunk=False)
+        for kind, _a1, _a2, b1, b2 in matcher.get_opcodes():
+            if kind != "equal":
+                reordered.extend(back_untagged[b1:b2])
     return Plan(
         reached=frozenset(rendered),
         order=tuple(order),
@@ -424,17 +795,34 @@ def plan_import(known: dict, reference: list[Block], returned: list[Block]) -> P
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         sections=sections,
+        lost=lost,
+        strayed=tuple(strayed),
+        unidentified=tuple(unidentified),
+        vanished=tuple(vanished),
+        reordered=tuple(reordered),
     )
 
 
 _SPLIT = (
-    "it came back with a new paragraph beside it: split in two in Word, or new text written "
-    "next to it. Merging it would replace the whole source paragraph with only part of it. "
-    "Make the split or the addition in the .md."
+    "it came back with a new paragraph beside it: split in two in Word, new text written "
+    "next to it, or a heading, list item or quotation beside it reworded. Merging a split "
+    "would replace the whole source paragraph with only part of it. Make the edit in the .md."
 )
 _HIDDEN = (
     "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
     "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+)
+_RUNS_ON = (
+    "an HTML comment or other markup opened in it closes only after a blank line, in the "
+    "next paragraph of the .md. Merging Word's text over it would delete the opening and "
+    "leave the close to print as text. Make the edit in the .md."
+)
+_GLUED = (
+    "in the .md a line that opens or closes something else follows it with no blank line "
+    "between - a `:::` or code fence, an HTML block tag such as `</div>`, `\\begin` or "
+    "`\\end`, a definition, or a heading's underline - and Word shows only the paragraph. "
+    "Merging would delete that line, and whatever it opens, along with it. Make the edit in "
+    "the .md; for a fence, a blank line before it frees the paragraph on the next build."
 )
 _IN_PARTS = (
     "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "
@@ -475,6 +863,12 @@ def why(aligned: Alignment) -> tuple[str, ...]:
             "lined up with its source again. Make the edit in the .md, keeping at least a "
             "space between them.",
         )
+    if aligned.alone:
+        return (
+            f"everything but {aligned.alone} was deleted, and a paragraph that is nothing but "
+            "a table, a figure or a misspelt placeholder gets no identifier at the next "
+            "build: a later edit to it in Word could not come back. Make the edit in the .md.",
+        )
     if aligned.changed:
         lines = []
         for shown, token in aligned.changed:
@@ -488,8 +882,8 @@ def why(aligned: Alignment) -> tuple[str, ...]:
                 )
         return tuple(lines)
     return (
-        "it could not be lined up with its own source, so its numbers, citations and markup "
-        "cannot be told apart from its prose. Make the edit in the .md.",
+        "its numbers, citations and markup could not be told apart from its prose, or its "
+        "numbers and citations from each other where two touch. Make the edit in the .md.",
     )
 
 

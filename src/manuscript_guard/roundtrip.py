@@ -26,16 +26,20 @@ possible: a paragraph can be reworded around its bindings without them being tou
 
 from __future__ import annotations
 
+import bisect
 import difflib
 import html
+import itertools
 import re
 import unicodedata
 import zipfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.docxtext import spaced
+from manuscript_guard.docxtext import TOKEN, spaced
+from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -234,38 +238,697 @@ def paragraph_slug(relative: str) -> str:
     return f"{stem}{hashlib.sha256(relative.encode('utf-8')).hexdigest()[:6]}"
 _TAGGED = re.compile(r"^\[\]\{#(mg-p-[A-Za-z0-9_.-]+)\}")
 
+#: What an identifier numbers: the blocks between blank lines, and the blank runs between
+#: them, so the pieces join back into the text they came from.
+_BREAK = re.compile(r"(\n\s*\n)")
+
 # Blocks that are not paragraphs of prose. A marker in front of a fence turns it into text:
 # `[]{#id}::: {#refs}` printed ":::" in the document, and the reference list it was meant to
 # place never appeared. A marker in front of a code fence would do the same to the code.
 _FENCE = re.compile(r"(:::|```|~~~)")
+# On a later line a fenced div's `:::` counts too: `Inner paragraph.\n:::` closes the div,
+# and a marked block would take the closer with it when `import` spliced the paragraph.
+_FENCE_LINE = re.compile(r" {0,3}(?:`{3,}|~{3,}|:{3,})")
+
+# Four columns of indent: an indented code block, or a list item's continuation.
+_INDENTED = re.compile(r"(?: {4}| {0,3}\t)")
+_BULLET = re.compile(r" {0,3}[-*+](?:[ \t]|$)")
+# `1.` `1)` `(1)` `a.` `(a)` `iv.` `II.` `#.` `(@)` `@label.`, then a space, a tab or nothing.
+_ENUMERATOR = re.compile(
+    r" {0,3}(?P<open>\()?(?P<num>\d+|[A-Za-z]+|#|@[\w-]*)"
+    r"(?(open)\)|(?P<delim>[.)]))(?P<gap>[ \t]+|$)"
+)
+# Pandoc's own reading of a roman numeral, which is lenient about order and strict about
+# letters: `mix.` is 1009 and a list, `dim.` is a word.
+_ROMAN = re.compile(
+    r"m*(?:cm)?d?(?:cd)?c*(?:xc)?l?(?:xl)?x*(?:ix)?v?(?:iv)?i*"
+    r"|M*(?:CM)?D?(?:CD)?C*(?:XC)?L?(?:XL)?X*(?:IX)?V?(?:IV)?I*"
+)
+# A block quote; a line block or a pipe table.
+_QUOTE_OR_BAR = re.compile(r" {0,3}[>|]")
+# A setext underline, a table's ruling, a grid border, `---`. Only these characters, and at
+# least one dash or equals sign among them.
+_RULE = re.compile(r"(?=[^-=\n]*[-=])[ \t]*[-=:|+][-=:|+ \t]*")
+_THEMATIC = re.compile(r" {0,3}([*_])(?:[ \t]*\1){2,}[ \t]*")
+# A definition (`: text` or `~ text`), which also covers a `: caption` under a table.
+_DEFINITION = re.compile(r" {0,3}[:~][ \t]")
+_CAPTION = re.compile(r" {0,3}[Tt]able:")
+# `[^1]: a footnote` or `[label]: https://...`.
+_REFERENCE = re.compile(r" {0,3}\[[^\]\n]+\]:")
+# An image alone in its paragraph, which pandoc makes a figure with a caption. Loosely, from
+# `![` to a closing bracket: captions nest brackets and paths hold parentheses, and a
+# paragraph that opens with an image and ends on a bracket losing its identifier is the
+# safe way to be wrong.
+_FIGURE = re.compile(r"!\[.*[)\]}]", re.DOTALL)
+# A TeX command. `\newpage` alone is a raw block, and marked it became an empty paragraph.
+_TEX = re.compile(r" {0,3}\\[A-Za-z]")
+# Tags pandoc reads as inline, so a paragraph may open with one and stay a paragraph. Any
+# other tag at the start of a line may open a raw HTML block - `<div>`, `<table>`, `<del>` -
+# and is treated as one: leaving a paragraph unmarked costs it its identifier, while marking
+# an HTML block rewrites it.
+_INLINE_HTML = (
+    "a|abbr|b|bdi|bdo|br|cite|code|data|dfn|em|font|i|img|kbd|mark|q|s|samp|small|span|"
+    "strike|strong|sub|sup|time|tt|u|var|wbr"
+)
+_HTML_TAG = re.compile(
+    rf" {{0,3}}</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?=[\s/>]|$)", re.IGNORECASE
+)
+# The same tags, whole, anywhere in a line. Mid-line too `text <div>x</div> more` is three
+# paragraphs to pandoc. Whole, because "values <LOQ were imputed" is a sentence.
+_HTML_BLOCK_TAG = re.compile(
+    rf"</?(?!(?:{_INLINE_HTML})(?![\w-]))[A-Za-z][\w-]*(?:\s[^<>]*)?/?>", re.IGNORECASE
+)
+_TEX_ENVIRONMENT = re.compile(r"\\begin[ \t]*\{")
+# A comment, a declaration, a processing instruction. Opening a block only: inside a
+# paragraph a comment is inline and the paragraph survives.
+_HTML_LEAD = re.compile(r" {0,3}<[!?]")
 
 
-def _untagged(stripped: str) -> bool:
-    """Headings, fences, and a lone placeholder (which becomes a table or a figure)."""
+def _enumerates(line: str) -> bool:
+    """Whether a line starts an ordered list, by pandoc's rules rather than by its look."""
+    found = _ENUMERATOR.match(line)
+    if found is None:
+        return False
+    num, gap = found["num"], found["gap"]
+    if len(num) > 1 and num.isalpha() and _ROMAN.fullmatch(num) is None:
+        return False
+    if found["delim"] == "." and len(num) == 1 and num.isupper() and gap:
+        # "C. difficile was isolated" is a sentence. Pandoc wants two spaces or a tab after
+        # a single capital and a period, so that an initial does not start a list.
+        return gap[:2] == "  " or gap[:1] == "\t"
+    return True
+
+
+def _opens_block(line: str) -> bool:
+    """Whether a block's first line makes it something other than a paragraph."""
     return (
-        not stripped
-        or stripped.startswith("#")
-        or _FENCE.match(stripped) is not None
-        or re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+        _INDENTED.match(line) is not None
+        or _BULLET.match(line) is not None
+        or _enumerates(line)
+        or _QUOTE_OR_BAR.match(line) is not None
+        or _RULE.fullmatch(line) is not None
+        or _THEMATIC.fullmatch(line) is not None
+        or _DEFINITION.match(line) is not None
+        or _CAPTION.match(line) is not None
+        or _REFERENCE.match(line) is not None
+        or _TEX.match(line) is not None
+        or _HTML_LEAD.match(line) is not None
+        or _HTML_TAG.match(line) is not None
     )
 
 
-def tag(text: str, relative: str) -> str:
+def _untagged(block: str) -> bool:
+    """Whether a block is anything other than one ordinary paragraph.
+
+    Only a paragraph can carry the marker. In front of anything else it changes what pandoc
+    reads: `[]{#id}- item one` is no longer a list, and the document printed every list in
+    the manuscript as one run-on paragraph with its dashes in it. The same went for block
+    quotes, numbered lists, line blocks, grid tables, rules, footnote definitions and a lone
+    image, which stopped being a figure.
+
+    Some blocks survive a marker and are still refused one. `[]{#id}| a | b |` is a table
+    with a bookmark in its first cell; `[]{#id}Term\\n: definition` is a definition list with
+    a bookmark on the term; a paragraph followed without a blank line by a code fence or a
+    `<div>` becomes a paragraph and something else. `import` reads the bookmarked Word
+    paragraph and splices its text over the *whole* source block, so a co-author's edit to
+    one cell would have replaced the table with that cell's text. A block qualifies only if
+    pandoc reads the whole of it as one paragraph.
+    """
+    lines = block.split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not lines:
+        return True
+    stripped = block.strip()
+    value = PLACEHOLDER.fullmatch(stripped)
+    if (
+        stripped.startswith("#")
+        # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
+        # it opens, mid-line too, and carries on with a raw block.
+        or _TEX_ENVIRONMENT.search(stripped) is not None
+        or _HTML_BLOCK_TAG.search(stripped) is not None
+        # One paragraph to pandoc's reader and three to its Word writer, which gives display
+        # math a paragraph of its own: the bookmark stayed on the words before the equation,
+        # and `import` spliced them over the equation and everything after it.
+        or "$$" in stripped
+        # A brace group left open runs on across the blank line when it is raw TeX -
+        # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
+        # is the paragraph the bookmark lands in.
+        or stripped.count("{") != stripped.count("}")
+        or _FENCE.match(stripped) is not None
+        # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
+        # paragraph printing a number: skipped, a paragraph cut down to its number in Word
+        # lost its identifier, and its next edit was dropped with "nothing came back".
+        or (
+            re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
+            and not (value and value.group("ns") in VALUE_NAMESPACES)
+        )
+        or _FIGURE.fullmatch(stripped) is not None
+        or _opens_block(lines[0])
+    ):
+        return True
+    # What can end a paragraph without a blank line. At the top level a list, a quote or a
+    # heading cannot - pandoc wants a blank line before those. A definition follows a
+    # one-line term, so only the second line can start one.
+    rest = lines[1:]
+    if (rest != [] and _DEFINITION.match(rest[0]) is not None) or any(
+        _RULE.fullmatch(line) is not None
+        or _FENCE_LINE.match(line) is not None
+        or _HTML_TAG.match(line) is not None
+        for line in rest
+    ):
+        return True
+    # Inside a list item, which is what an indented block is, a nested list, the list's next
+    # item or a definition needs no blank line. `  Matched on:\n  - age\n- Drugs were
+    # mapped.` is a paragraph and two list items, and `import` spliced the items away with
+    # the paragraph.
+    return lines[0][:1] == " " and any(
+        _BULLET.match(line.lstrip()) is not None
+        or _enumerates(line.lstrip())
+        or _DEFINITION.match(line.lstrip()) is not None
+        for line in rest
+    )
+
+
+# Raw content pandoc carries across blank lines without reading it as markdown, wherever it
+# opens: an HTML comment, a LaTeX environment (`\begin {table}` with a space included), and
+# an HTML element whose content is verbatim.
+_VERBATIM = "(?i:pre|script|style|textarea)"
+_RAW_OPEN = re.compile(
+    rf"<!--|\\begin[ \t]*\{{[^{{}}\n]+\}}|<(?P<tag>{_VERBATIM})(?=[\s>]|$)"
+)
+_RAW_CLOSE = re.compile(
+    rf"(?P<comment>-->)|\\(?P<tex>begin|end)[ \t]*\{{(?P<env>[^{{}}\n]+)\}}"
+    rf"|</(?P<tag>{_VERBATIM})(?=[\s>]|$)"
+)
+
+
+class _Closers:
+    """Where each piece of raw content closes, found in one pass over the text.
+
+    Searching from each block to the end of the text for its closer was quadratic: 80,000
+    paragraphs that each left a comment open took 26 seconds, and so did 80,000 LaTeX
+    environments with different names, in code `check` reaches through G13. Every closer is
+    indexed once instead, and a LaTeX environment is matched to its own `\\end` the way
+    pandoc matches it, nested environments of the same name included.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._comments: list[int] = []
+        self._tags: dict[str, list[int]] = {}
+        self._environments: dict[int, int] = {}
+        open_environments: dict[str, list[int]] = {}
+        for found in _RAW_CLOSE.finditer(text):
+            if found["comment"]:
+                self._comments.append(found.end())
+            elif found["tag"]:
+                self._tags.setdefault(found["tag"].lower(), []).append(found.end())
+            elif found["tex"] == "begin":
+                open_environments.setdefault(found["env"], []).append(found.start())
+            elif open_environments.get(found["env"]):
+                self._environments[open_environments[found["env"]].pop()] = found.end()
+
+    def end_of(self, opened: re.Match[str]) -> int:
+        """Where the raw content `opened` starts ends, or -1 if it never closes."""
+        if opened["tag"]:
+            ends = self._tags.get(opened["tag"].lower(), [])
+        elif opened.group(0) == "<!--":
+            ends = self._comments
+        else:
+            return self._environments.get(opened.start(), -1)
+        at = bisect.bisect_right(ends, opened.end())
+        return ends[at] if at < len(ends) else -1
+
+
+def _raw_end(text: str, start: int, end: int, closers: _Closers) -> int:
+    """Where raw content opened in `text[start:end]` ends if it runs past the block, else 0.
+
+    The blocks it swallows are not paragraphs, and a marker in one names a paragraph no
+    document contains. The block that opens it is not a whole paragraph either. An opener
+    that never closes hides nothing: pandoc reads it as text.
+    """
+    position = start
+    while (opened := _RAW_OPEN.search(text, position, end)) is not None:
+        closed = closers.end_of(opened)
+        if closed > end:
+            return closed
+        position = opened.end() if closed < 0 else closed
+    return 0
+
+
+# A multiline table's rows are separated by blank lines, and a YAML block in the body may
+# hold them too: both open on a line of dashes and close on one (or on `...`, for YAML).
+# Any line of dashes ends a table, however short; see `_opens_table` for what opens one.
+_DASH_GROUPS = re.compile(r" {0,3}-+(?:[ \t]+-+)*[ \t]*")
+# A YAML block in the body: pandoc tries every `---` in column 0 with text straight under
+# it, up to the first `---` or `...` in column 0, wherever in a block that falls. Read to
+# the end without a limit: every attempt opens on an exact `---`, which is itself a stop
+# line, so no two attempts read the same text.
+_YAML_OPEN = re.compile(r"---[ \t]*")
+_YAML_STOP = re.compile(r"(?:---|\.\.\.)[ \t]*")
+_MAPPING, _OTHER = "mapping", "other"
+_YAML_DEPTH = 100
+_SEQUENCE_ITEMS = re.compile(r"(?:[ \t]*-(?:[ \t]+|$))+")
+
+
+def _nesting(text: str) -> int:
+    """How deep YAML's flow brackets or block sequences nest, read without parsing."""
+    depth = deepest = 0
+    for char in text:
+        if char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth = max(depth - 1, 0)
+    for line in text.split("\n"):
+        items = _SEQUENCE_ITEMS.match(line)
+        if items:
+            deepest = max(deepest, items.group(0).count("-"))
+    return deepest
+
+
+def _yaml_kind(text: str) -> str:
+    """`_MAPPING` if pandoc keeps this as metadata; `_OTHER` otherwise.
+
+    Composed, not loaded: constructing values raised on YAML pandoc accepts -
+    `date: 2026-02-30` is a ValueError to PyYAML - and nothing here needs the values. With
+    the pure-Python loader, not the C one: thousands of nesting levels overflowed the C
+    stack and took the interpreter down, where Python's recursion limit raises instead.
+    Nothing at all, a comment alone or a null, is empty metadata to pandoc, not something
+    it gives up on.
+    """
+    import yaml
+
+    if _nesting(text) > _YAML_DEPTH:
+        # Composing thousands of levels ran into the recursion limit only after seconds,
+        # once per opener. Too deep to be anyone's metadata; left unmarked all the same.
+        return _OTHER
+    try:
+        node = yaml.compose(text, Loader=yaml.SafeLoader)
+    except Exception:  # noqa: BLE001 - any failure to parse is "not metadata"
+        return _OTHER
+    empty = node is None or (
+        isinstance(node, yaml.ScalarNode) and node.tag == "tag:yaml.org,2002:null"
+    )
+    return _MAPPING if empty or isinstance(node, yaml.MappingNode) else _OTHER
+
+
+def _yaml_stop(pieces: list[str], index: int) -> tuple[int, bool, str] | None:
+    """Where a YAML block tried at `pieces[index]` stops, whether the stop line is the first
+    line of its block, and what it holds.
+
+    Pandoc keeps a mapping as metadata. Anything else it gives up on quietly and reads as a
+    rule, a table or prose - but only while nothing in it breaks the YAML: a marker at the
+    start of a line inside it turns that fallback into a parse error, and the build fails.
+    So whatever pandoc tries as YAML is left unmarked, mapping or not.
+    """
+    lines = pieces[index].split("\n")
+    # A file's first block can open on blank lines, which pandoc skips.
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if not (lines and _YAML_OPEN.fullmatch(lines[0]) and len(lines) > 1 and lines[1].strip()):
+        return None
+    body: list[str] = []
+    for at in range(index, len(pieces)):
+        chunk = lines[1:] if at == index else pieces[at].split("\n")
+        for position, line in enumerate(chunk):
+            if _YAML_STOP.fullmatch(line):
+                # Only a `---` can open anything; a block opening on `...` is prose, and
+                # marked, the marker removed the stop pandoc was reading to.
+                opens = at != index and position == 0 and line.startswith("---")
+                return at, opens, _yaml_kind("\n".join(body))
+            body.append(line)
+    return None
+
+
+def _opens_table(line: str) -> bool:
+    """A line of dashes that can open a multiline table. `-` and `- -` are list items to
+    pandoc, which it tries first; a line with a first run of two dashes, or three dashes in
+    all - a first column one dash wide - is not."""
+    if _DASH_GROUPS.fullmatch(line) is None:
+        return False
+    return len(line.strip().split()[0]) >= 2 or line.count("-") >= 3
+
+
+# Lines after which pandoc starts a new block whatever the next line holds, so a table can
+# open straight under them: a setext `=` underline, a grid table's border, a line opening on
+# `|`, `\end{...}`, a comment's closing `-->` and a YAML block's closing `...`. Fences, pipe
+# rows and whole lines of block-level HTML are tested in `_ends_line`. Under prose, a list
+# item, a quote, a definition, a caption, a TeX command, an image or a one-line reference
+# definition, pandoc 3.9 opens no table: over a line of dashes, most of those are the header
+# of a simple table, whose rows end at the next blank line.
+_ENDS_LINE = re.compile(
+    r" {0,3}(?:=+[ \t]*|\+(?:[-=:]+\+)+[ \t]*|\|.*|\\end[ \t]*\{.*)|\.\.\.[ \t]*"
+    r"|(?:(?!<!--).)*-->[ \t]*"
+)
+# A heading or a whole-line comment ends a block too, but over a single run of dashes pandoc
+# reads it as the text of a setext heading, and no table opens.
+_HEADING_OR_COMMENT = re.compile(r" {0,3}(?:#+(?:[ \t].*)?|<[!?].*>[ \t]*)")
+# A pipe table's separator row. The rows under it end a block without a leading `|` too.
+_PIPE_SEPARATOR = re.compile(r" {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*")
+
+
+def _ends_line(line: str, opener: str, piped: bool) -> bool:
+    """Whether a table can open on `opener`, straight under `line`. `piped` says a pipe
+    table's separator row sits above `line` in the block."""
+    if _HEADING_OR_COMMENT.fullmatch(line):
+        return len(opener.split()) > 1
+    if _ENDS_LINE.fullmatch(line) or _FENCE_LINE.match(line) or (piped and "|" in line):
+        return True
+    return _HTML_TAG.match(line) is not None and line.rstrip().endswith(">")
+
+
+@dataclass(frozen=True)
+class _Row:
+    """One non-blank line of a block, as the table reader sees it."""
+
+    block: int
+    dashes: bool
+    #: A line that can open a table, with text straight under it. A table and a YAML block
+    #: both need that text, so a line of dashes with a blank line under it is only a rule.
+    opens: bool
+    #: The last line of its block, with a blank line under it.
+    ends_block: bool
+    #: The last line of its block, with a line pandoc does not call blank under it.
+    joined: bool
+
+
+class _Ruled:
+    """Tables and YAML blocks that run across blank lines: where each one ends.
+
+    Without this the middle rows of a three-row multiline table were ordinary-looking
+    blocks, and a marker printed into a cell. Asked lazily, by `_blocks`, only of a block
+    that is not already inside code, a comment or an earlier span - an example `---` inside
+    a code fence is not an opener, and treated as one it swallowed the real YAML after it.
+    """
+
+    def __init__(self, pieces: list[str]) -> None:
+        self._pieces = pieces
+        self._rows: list[_Row] = []
+        self._first_row: dict[int, int] = {}
+        # Rows that open a table mid-block, straight under a line that ends a block.
+        self._inner: dict[int, list[int]] = {}
+        for index in range(0, len(pieces), 2):
+            lines = [line for line in pieces[index].split("\n") if line.strip()]
+            if not lines:
+                continue
+            # A "blank" line holding a no-break space straight under the block is text to
+            # pandoc, however the text was split.
+            joined = index + 1 < len(pieces) and (
+                re.match(r"\n[ \t]*[^ \t\n]", pieces[index + 1]) is not None
+            )
+            self._first_row[index] = len(self._rows)
+            for at, line in enumerate(lines):
+                ends_block = at == len(lines) - 1 and not joined
+                dashes = _DASH_GROUPS.fullmatch(line) is not None
+                self._rows.append(
+                    _Row(
+                        block=index,
+                        dashes=dashes,
+                        opens=dashes and not ends_block and _opens_table(line),
+                        ends_block=ends_block,
+                        joined=at == len(lines) - 1 and joined,
+                    )
+                )
+            self._inner[index] = self._inner_openers(lines, self._first_row[index])
+        # Where the table read from each opening row ends, filled in as asked. Tables that
+        # open straight under one another share an end, so each chain is walked once.
+        self._ends: dict[int, int | None] = {}
+        # The next line of dashes after each row, for finding where a table ends.
+        self._next_dashes: list[int | None] = [None] * len(self._rows)
+        following: int | None = None
+        for row in range(len(self._rows) - 1, -1, -1):
+            self._next_dashes[row] = following
+            if self._rows[row].dashes:
+                following = row
+        self._opens = {
+            block
+            for block, row in self._first_row.items()
+            if self._rows[row].opens and not self._closed_in(block, row)
+        }
+
+    def _inner_openers(self, lines: list[str], first: int) -> list[int]:
+        """The rows of one block, after its first, where pandoc may open a table: straight
+        under a line that always ends a block, or under a setext underline of dashes. Only
+        the first line of a block was asked, and a table under a `::: {#tbl-a}` fence or a
+        heading printed a marker into its rows. Wrong here, a table is followed that pandoc
+        does not read, and paragraphs go unmarked, which corrupts nothing."""
+        rows = self._rows
+        found: list[int] = []
+        piped = False
+        for at in range(1, len(lines)):
+            row, above = first + at, lines[at - 1]
+            if rows[row].opens and (
+                _ends_line(above, lines[at], piped)
+                or (at >= 2 and rows[row - 1].dashes and not rows[row - 2].dashes)
+            ):
+                found.append(row)
+            piped = piped or _PIPE_SEPARATOR.fullmatch(above) is not None
+        return found
+
+    def _end_row(self, start: int) -> int | None:
+        """The row where the table pandoc reads from the opening line at row `start` ends.
+
+        Pandoc tries a headed multiline table first. Its header runs down to the next line
+        of dashes, and when there is a header above that line and text straight under it,
+        the rows run on to the line of dashes after. A line holding only a no-break space
+        is a header line too. Otherwise the table is headless and ends on the first line of
+        dashes. Where a line that can open a table follows the end straight away, another
+        table begins there. Ending always on the first line of dashes printed a marker into
+        the rows of a headed table.
+
+        Each row a walk passes is remembered with the walk's end, so a chain is walked once.
+        What is remembered holds for a row however it is reached: a table opening straight
+        under another that never finds its closing line leaves the first table's end,
+        `row - 1`. Only a table asked about directly can find no line of dashes after it and
+        be no table at all, and that is answered before anything is remembered.
+        """
+        if self._next_dashes[start] is None:
+            return None
+        rows = self._rows
+        walked: list[int] = []
+        end = start - 1
+        while start not in self._ends:
+            walked.append(start)
+            first = self._next_dashes[start]
+            if first is None:
+                break
+            headed = first > start + 1 or rows[start].joined
+            under = rows[first].joined or (
+                not rows[first].ends_block
+                and first + 1 < len(rows)
+                and rows[first + 1].block == rows[first].block
+                and not rows[first + 1].dashes
+            )
+            end = first
+            if headed and under and self._next_dashes[first] is not None:
+                end = self._next_dashes[first]
+            after = end + 1
+            if not (
+                after < len(rows)
+                and rows[after].block == rows[end].block
+                and rows[after].opens
+            ):
+                break
+            start = after
+        else:
+            end = self._ends[start]
+        for row in walked:
+            self._ends[row] = end
+        return end
+
+    def _closed_in(self, block: int, row: int) -> bool:
+        """Whether the table read from the block's opening line ends inside the block."""
+        end = self._end_row(row)
+        return end is not None and self._rows[end].block == block
+
+    def _table_end(self, index: int) -> int | None:
+        """The block where the table pandoc reads from the rule opening `index` ends."""
+        end = self._end_row(self._first_row[index])
+        return None if end is None else self._rows[end].block
+
+    def end(self, index: int) -> int | None:
+        """The block a span opened in `index` ends in, or None if it opens none: from the
+        block's first line, or from a table opening further down it."""
+        ends = [self._opened_end(index), self.inner_end(index)]
+        found = [end for end in ends if end is not None]
+        return max(found) if found else None
+
+    def inner_end(self, index: int) -> int | None:
+        """The last block reached by a table opening mid-block in `index`, if past it."""
+        ends = [self._end_row(row) for row in self._inner.get(index, ())]
+        blocks = [self._rows[end].block for end in ends if end is not None]
+        later = [block for block in blocks if block > index]
+        return max(later) if later else None
+
+    def _opened_end(self, index: int) -> int | None:
+        """The block a span opened on the first line of `index` ends in.
+
+        A table runs to a line of dashes: a row that happens to read `...` is a row. A
+        `---` pandoc tries as YAML is hidden up to where the YAML stops; a mapping ends
+        there, and anything else pandoc reads again as a table from the same `---`.
+        """
+        if index not in self._opens:
+            return None
+        rule = self._table_end(index)
+        tried = _yaml_stop(self._pieces, index)
+        if tried is None:
+            return rule
+        stop, opens_block, kind = tried
+        if kind == _MAPPING:
+            return stop if stop != index else None
+        # Given up on, the tried text must stay unbroken up to the stop, and pandoc reads a
+        # table from the same `---` instead. When that table ends on the stop's own `---`, or
+        # past it, the line is part of the table. When it ended earlier, the stop's `---` is
+        # pandoc's next opener to try, and it has to be asked.
+        tried_to = stop - 2 if opens_block and rule is not None and rule < stop else stop
+        ends = [end for end in (tried_to, rule) if end is not None and end > index]
+        return max(ends) if ends else None
+
+
+def _blocks(text: str) -> Iterator[tuple[int, str, bool]]:
+    """Every piece of `text` in order, with its index and whether it gets an identifier.
+
+    `tag` and `tagged_paragraphs` both iterate this rather than splitting for themselves, so
+    the identifier a document carries and the one `import` looks up are computed by the same
+    code and cannot drift apart.
+
+    Most of the decision is `_untagged`, one block at a time. What it cannot see is a block
+    that is inside something opened earlier: the second half of a fenced code block with a
+    blank line in it, or of a comment. A marker there would print inside the code, or name a
+    paragraph that reaches no document.
+    """
+    fences = iter(fenced_spans(text))
+    fence = next(fences, None)
+    closers = _Closers(text)
+    hidden = 0
+    cursor = 0
+    pieces = _BREAK.split(text)
+    # A "blank" line holding a non-breaking space, an em or ideographic space or a form feed
+    # separates blocks for the numbering and not for pandoc, which reads one paragraph
+    # across it. Marked, the first half's bookmark sat on the whole joined paragraph and
+    # `import` spliced it over the first half, writing the second half twice. Both halves go
+    # unmarked instead: renumbering would move every identifier after them.
+    joined = [
+        index % 2 == 1 and re.search(r"[^ \t\n]", piece) is not None
+        for index, piece in enumerate(pieces)
+    ]
+    ruled = _Ruled(pieces)
+    ends = list(itertools.accumulate(len(piece) for piece in pieces))
+    for index, piece in enumerate(pieces):
+        apart = not (joined[max(index - 1, 0)] or joined[min(index + 1, len(pieces) - 1)])
+        origin = cursor
+        start = cursor + len(piece) - len(piece.lstrip())
+        end = cursor + len(piece)
+        cursor = end
+        while fence is not None and fence.end <= start:
+            fence = next(fences, None)
+        inside = fence is not None and fence.start <= start
+        if inside or start < hidden:
+            # What hid this block can end inside it, and raw content opened after that point
+            # swallows the blocks that follow just the same.
+            resume = max(fence.end if inside else 0, hidden)
+            if resume == end == hidden:
+                # The block where a table or YAML span ends: something can open after the
+                # span in it. Read from the block's start, which only hides more, or from
+                # where its code closes; missed, a second table's rows were marked.
+                if not inside:
+                    resume = start
+                elif fence.end < end:
+                    resume = fence.end
+            if resume < end:
+                hidden = max(hidden, _raw_end(text, resume, end, closers))
+                # A table can open in it too and is followed as in any block: on its first
+                # line or further down, or only further down when the block starts inside
+                # code - its first line is code. A span pandoc does not have, from a line
+                # taken for an opener, ran on to a real table's header underline and ended
+                # there; read only further down, the block missed the real table's own top
+                # rule, and its rows were marked. What seems to open inside the span, or in
+                # the code above the close, only hides more.
+                table = ruled.inner_end(index) if inside else ruled.end(index)
+                if table is not None:
+                    hidden = max(hidden, ends[table])
+            yield index, piece, False
+            continue
+        # From the block's own first character, indentation included: `  <pre>` opens a
+        # line, and a search starting at the `<` cannot see that it does.
+        runs_on = _raw_end(text, origin, end, closers)
+        closer = ruled.end(index)
+        if closer is not None:
+            runs_on = max(runs_on, ends[closer])
+        hidden = max(hidden, runs_on)
+        yield index, piece, apart and not (runs_on or _untagged(piece))
+
+
+def tag(text: str, relative: str, *, mark: bool = False) -> str:
     """Give every ordinary paragraph of one source file an invisible identifier.
 
-    Headings are skipped: `[]{#id}# Methods` is not a heading. So are fenced divs and code
-    blocks, and paragraphs that are nothing but a placeholder, because those become a table
-    or a figure rather than a paragraph, and a bookmark would attach to the wrong thing.
+    Headings are skipped: `[]{#id}# Methods` is not a heading. So are lists, quotes, tables,
+    fenced divs, code, and paragraphs that are nothing but a table or figure placeholder,
+    because those become a table or a figure rather than a paragraph. A misspelt
+    placeholder standing alone is skipped with them; `check` refuses it. `_untagged` says
+    why each one.
+
+    With `mark`, every binding and citation in a tagged paragraph gets a Word bookmark
+    around it as well, written as raw OpenXML that pandoc passes through untouched. Only the
+    build `import` compares with is marked, and it is what tells `align` exactly where each
+    token's rendering begins and ends. It was a `[token]{#id}` span first, and a span adds
+    brackets: beside an unbalanced one, pandoc paired them differently, the text still read
+    the same, and the extent lost its first character - so a rewording wrote a `[` twice.
     """
+    slug = paragraph_slug(relative)
     out = []
-    for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
-        stripped = para.strip()
-        if para.strip("\n") == "" or _untagged(stripped):
-            out.append(para)
+    counter = iter(range(1_000_000))
+    for index, piece, marked in _blocks(text):
+        if not marked:
+            out.append(piece)
             continue
-        marker = _TAG.format(slug=paragraph_slug(relative), index=index)
-        out.append(para.replace(stripped, f"[]{{#{marker}}}{stripped}", 1))
+        stripped = piece.strip()
+        marker = _TAG.format(slug=slug, index=index)
+        body = stripped
+        if mark:
+            code = [m.span() for m in _SCAN.finditer(body) if m.lastgroup in ("code", "coded")]
+            spans = [t.span() for t in _tokens(body) if _markable(body, t.start(), code)]
+            bookmarked = [
+                (_APART if body[a - 1 : a] == "`" else "") + _bookmarked(body[a:b], slug, counter)
+                for a, b in spans
+            ]
+            for (a, b), replacement in reversed(list(zip(spans, bookmarked, strict=True))):
+                body = body[:a] + replacement + body[b:]
+        out.append(piece.replace(stripped, f"[]{{#{marker}}}{body}", 1))
     return "".join(out)
+
+
+# A bookmark is raw inline code, and its opening backtick has to open it. Straight after a
+# code span's closing backtick it joined that run instead: pandoc read the code and the
+# bookmark as one raw span and wrote `age<65` into the document as XML, so the marked build
+# was not a readable .docx and `import` stopped for the whole manuscript. An empty comment
+# keeps the two apart, and the Word writer drops it.
+_APART = "<!-- -->"
+
+
+def _markable(body: str, start: int, code: list[tuple[int, int]]) -> bool:
+    """Whether the token at `start` can carry bookmarks.
+
+    Not inside code, where pandoc reads no raw span, and not after an odd run of
+    backslashes, which would escape the bookmark's backtick. Unmarked, the token has no
+    extent, and a rewording of its paragraph is refused, as one whose extents cannot be read
+    is.
+    """
+    if any(a < start < b for a, b in code):
+        return False
+    before = body[:start]
+    return (len(before) - len(before.rstrip("\\"))) % 2 == 0
+
+
+def _bookmarked(token: str, slug: str, counter) -> str:
+    """`token` between a raw bookmark start and end, invisible in the built document."""
+    number = next(counter)
+    # Far above the identifiers pandoc numbers its own bookmarks with.
+    ident = 1_000_000 + number
+    start = f'`<w:bookmarkStart w:id="{ident}" w:name="{TOKEN}{slug}-{number}"/>`{{=openxml}}'
+    end = f'`<w:bookmarkEnd w:id="{ident}"/>`{{=openxml}}'
+    return f"{start}{token}{end}"
 
 
 def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
@@ -296,11 +959,11 @@ def tagged_paragraphs(project) -> dict[str, tuple[Path, str, int]]:
         # Offsets are into the file on disk, not into the stripped copy: the merge splices
         # into the real file, and a paragraph would land one front matter earlier.
         cursor = len(raw) - len(text)
-        for index, para in enumerate(re.split(r"(\n\s*\n)", text)):
+        for index, para, marked in _blocks(text):
             stripped = para.strip()
             start = cursor + (len(para) - len(para.lstrip())) if stripped else cursor
             cursor += len(para)
-            if _untagged(stripped):
+            if not marked:
                 continue
             found[_TAG.format(slug=slug, index=index)] = (path, stripped, start)
     return found
@@ -352,8 +1015,101 @@ def moves(before: list[str], after: list[str]) -> list[tuple[str, int, int]]:
     ]
 
 
-#: A binding or a citation: the parts of a paragraph the author does not own.
-_PROTECTED = re.compile(r"\{\{[^}]*\}\}|\[@[^\]]*\]")
+#: A binding or a citation: the parts of a paragraph the author does not own. Citations
+#: are read in the forms pandoc reads - `[see @key, p. 4]` with its prefix and locator,
+#: `[@key, p. 3 [emphasis added]]` with brackets inside it, and a narrative `@key`, with
+#: its locator in `@key [p. 33]` - because only `[@key]` was protected at first, and a
+#: rewording of a paragraph citing `@smith2020` merged it back as the text "Smith (2020)".
+_BINDING = re.compile(r"\{\{[^}]*\}\}")
+#: A key as pandoc reads one: a letter of any alphabet, a digit or an underscore, then
+#: word characters, each mark of punctuation between them single, or anything but a space
+#: in braces - `@2019who`, `@Élodie2020`, `@{10.1000/xyz}`. Starting it at an ASCII letter
+#: left those in the prose, and `@key::a` is the key `key` to pandoc. A `:` or `/` before a
+#: `/` continues it too, as in a URL: `@key//` is the key `key/`.
+_KEY = r"-?@(?:\{[^{}\s]+\}|\w(?:\w|[:.#$%&+?<>~/-](?=\w)|[:/](?=/))*)"
+#: A key at a bracket group's own level makes the group a citation. A narrative key ends on
+#: a word character, so a full stop after it stays prose; an email address is no key, and
+#: nor is `\@admin`, which is how a co-author's typed `@` is written back. Pandoc reads no
+#: key straight after a full stop either: `cohort.@key`, a space deleted in Word, printed
+#: the key. Nor straight after a dash, which would make `-@key` of it.
+_OWN_KEY = re.compile(rf"(?<![\w@\\.]){_KEY}")
+_NARRATIVE = re.compile(rf"(?<![\w`\[@\\.-]){_KEY}")
+#: Whatever the patterns above miss, a key left in the prose: the paragraph is refused
+#: rather than merged, since Word's text holds the citation's rendering and not the key.
+_LOOSE_KEY = re.compile(r"(?<![\w`@\\.])@[\w{]")
+
+
+def _bracket_groups(text: str) -> list[tuple[int, int]]:
+    """Balanced bracket groups as (start, end), escaped brackets skipped."""
+    groups: list[tuple[int, int]] = []
+    open_: list[int] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == "[":
+            open_.append(index)
+        elif char == "]" and open_:
+            groups.append((open_.pop(), index + 1))
+        index += 1
+    return sorted(groups)
+
+
+#: What may stand between a narrative key and the bracket after it, for pandoc to read the
+#: two as one citation: nothing, spaces, and a line break in a hard-wrapped source.
+_LOCATOR = re.compile(r"[ \t]*(?:\n[ \t]*)?\[")
+#: What makes a bracket group a link or a span rather than a citation or a locator.
+_LINKED = re.compile(r"\(|\{(?!\{)")
+
+
+def _protected_spans(
+    text: str, literal: Sequence[tuple[int, int]] = ()
+) -> list[tuple[int, int]]:
+    """Where the bindings and citations of a source paragraph are, in order.
+
+    A bracketed citation is a balanced bracket group with a key at its own level, not only
+    inside a nested group: "[see [@key]]" cites through its inner group, and
+    "[@key, p. 3 [emphasis added]]" is one citation. Found by balance, because a pattern
+    either stopped at the first inner bracket - and protected nothing - or started at the
+    first `[` of the paragraph, and made the prose "[low, high) were rescaled as in" part of
+    a citation. A narrative key takes the bracket group after it, as pandoc does: `@key
+    [p. 33]` is a key and its locator, and `@a [see @b]` is one citation. A group followed
+    by `(` or `{` is a link or a span, and neither.
+
+    A citation is one token with any binding inside it, `[@key, table {{results.t}}]`:
+    found as a binding first, it dropped the citation, which then stayed in the prose. None
+    is read in code or an autolink, `literal`, where pandoc reads none either.
+    """
+    groups = _bracket_groups(text)
+
+    def within(at: int, spans: Sequence[tuple[int, int]]) -> bool:
+        return any(s <= at < e for s, e in spans)
+
+    groups = [(s, e) for s, e in groups if not _LINKED.match(text, e)]
+    cites: list[tuple[int, int]] = []
+    for start, end in groups:  # in order of start, so a group comes before those inside it
+        if within(start, cites) or within(start, literal):
+            continue
+        inner = [(s, e) for s, e in groups if start < s and e < end]
+        own = list(text[start + 1 : end - 1])
+        for s, e in inner:
+            own[s - start - 1 : e - start - 1] = " " * (e - s)
+        if _OWN_KEY.search("".join(own)):
+            cites.append((start, end))
+    for match in _NARRATIVE.finditer(text):
+        start, end = match.span()
+        if within(start, cites) or within(start, literal):
+            continue
+        locator = _LOCATOR.match(text, end)
+        group = locator and next((g for g in groups if g[0] == locator.end() - 1), None)
+        if group:
+            cites = [(s, e) for s, e in cites if not (group[0] <= s and e <= group[1])]
+            end = group[1]
+        cites.append((start, end))
+    bindings = [m.span() for m in _BINDING.finditer(text) if not within(m.start(), cites)]
+    return sorted(cites + bindings)
 
 
 def paragraph_text(document: Path) -> dict[str, str]:
@@ -442,6 +1198,9 @@ _SCAN = re.compile(
 #: of the paragraph's own tokens: it is printed in a footnote, or dropped with the comment.
 _OPAQUE = frozenset({"raw", "comment", "note", "note_ref", "image", "math", "tex", "html"})
 
+#: Where pandoc reads no citation, though a binding inside is filled in all the same.
+_LITERAL = frozenset({"code", "coded", "autolink"})
+
 #: Kinds whose shown text is itself Markdown, so emphasis inside it is read as emphasis.
 _MARKDOWN_INSIDE = frozenset({"link", "span", "struck", "sup", "sub"})
 
@@ -459,6 +1218,25 @@ _EMPHASIS = (
 #: `**ratio {{results.x}} was**` merged as `**ratio {{results.x}} was`: literal asterisks in
 #: the document, where the author had bold.
 _HALF_SPAN = "one end of an emphasis or code span"
+
+#: Code keeps literal what pandoc typesets in prose: dashes, an ellipsis, quotes. Rebuilt
+#: from Word's text, code is prose, and `--offline` printed as "–offline", `<!--` as "<!–"
+#: and `"exact"` with curly quotes. Escaping them would print Word's text as it is, and
+#: would print a `--` a co-author typed as `--` too, where pandoc makes it the dash they
+#: meant; so an edited stretch holding such code is refused instead.
+_TYPESET_IN_CODE = "code with `--`, `...` or a quote in it"
+_TYPESETS = re.compile(r"--|\.\.\.|['\"]")
+
+
+def _uncarried(names: Sequence[str], edited: str) -> tuple[str, ...]:
+    """What an edited stretch held that Word's text cannot carry back, as `edited` came back.
+
+    Code pandoc would typeset counts only while Word's text still holds something to
+    typeset: an edit that deleted the code was refused, naming code Word no longer showed.
+    """
+    return tuple(
+        name for name in names if name != _TYPESET_IN_CODE or _TYPESETS.search(edited)
+    )
 
 #: Every space but layout, as a character that is neither a space nor a letter, for pairing
 #: emphasis. Pandoc reads a no-break space as text, so a `*` with one just inside it still
@@ -485,13 +1263,43 @@ def _named(match: re.Match[str]) -> str:
     return _INLINE[match.lastgroup or ""][0]
 
 
-def _tokens(paragraph: str) -> list[re.Match[str]]:
-    """The paragraph's own bindings and citations: not those inside a footnote or comment."""
-    opaque = [m.span() for m in _SCAN.finditer(paragraph) if m.lastgroup in _OPAQUE]
+@dataclass(frozen=True)
+class _Token:
+    """One binding or citation found in a paragraph, answering as a regex match would."""
+
+    at: int
+    to: int
+    text: str
+
+    def start(self) -> int:
+        return self.at
+
+    def end(self) -> int:
+        return self.to
+
+    def span(self) -> tuple[int, int]:
+        return (self.at, self.to)
+
+    def group(self, _index: int = 0) -> str:
+        return self.text
+
+
+def _tokens(paragraph: str) -> list[_Token]:
+    """The paragraph's own bindings and citations: not those inside a footnote or comment,
+    and no citation in code, an autolink or a link's address."""
+    scanned = list(_SCAN.finditer(paragraph))
+    opaque = [m.span() for m in scanned if m.lastgroup in _OPAQUE]
+    literal = [m.span() for m in scanned if m.lastgroup in _LITERAL]
+    # A link's address: `(https://mastodon.social/@someone)` holds no citation.
+    literal += [
+        (m.end("link_text") + 1, m.end())
+        for m in scanned
+        if m.lastgroup == "link" and paragraph.startswith("(", m.end("link_text") + 1)
+    ]
     return [
-        m
-        for m in _PROTECTED.finditer(paragraph)
-        if not any(start <= m.start() < end for start, end in opaque)
+        _Token(a, b, paragraph[a:b])
+        for a, b in _protected_spans(paragraph, literal)
+        if not any(start <= a < end for start, end in opaque)
     ]
 
 
@@ -506,6 +1314,45 @@ def segments(paragraph: str) -> tuple[list[str], list[str]]:
     edges = [0] + [edge for m in tokens for edge in m.span()] + [len(paragraph)]
     prose = [paragraph[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
     return prose, [m.group(0) for m in tokens]
+
+
+def _unchanged(was: str, now: str) -> bool:
+    """Whether a stretch came back as it was rendered, spaces kept at the ends.
+
+    Both are Word's text, and Word changes no character nobody typed, so every difference is
+    an edit. Quotes were compared as quotes at first, and a co-author turning ‘em the right
+    way round left a stretch that read as untouched: the correction was dropped, and import
+    said nothing had come back. What is written keeps Word's own quotes too: straightening
+    them for pandoc to curl again turned „ein Signal“ into “ein Signal”.
+    """
+    return _spaced(was) == _spaced(now)
+
+
+#: A straight single quote where pandoc reads it as opening a quotation, and one where it
+#: reads it as closing one. Between two letters, as in "they're", it is neither. At the end
+#: of a stretch a token follows it, so a quote there opens: `'{{results.x}} to one'`.
+_OPENS = re.compile(r"'(?!\s)")
+_CLOSES = re.compile(r"'(?!\w)")
+#: Word's closing quote, where pandoc would read a straight one there as closing.
+_WORD_CLOSES = re.compile("\u2019(?!\\w)")
+
+
+def _left_open(stretch: str, first: bool, was_open: bool) -> bool:
+    """Whether a straight single quote of the source is still open after this stretch.
+
+    Pandoc pairs a straight opening quote with a straight closing one, across a number or a
+    citation if need be. A stretch after a token starts beside it, so a quote at its very
+    start is not opening one.
+    """
+    is_open = was_open
+    for match in re.finditer(r"(?<!\\)'", stretch):
+        at = match.start()
+        after_space = at == 0 and first or at > 0 and not stretch[at - 1].isalnum()
+        if after_space and _OPENS.match(stretch, at):
+            is_open = True
+        elif is_open and _CLOSES.match(stretch, at):
+            is_open = False
+    return is_open
 
 
 def _spaced(text: str) -> str:
@@ -559,9 +1406,12 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
     shows = list(paragraph)  # what each character of the source puts into Word's text
     plain = list(filled_text)  # where emphasis is read: constructs set aside, as digits
     marks: list[tuple[int, int, str]] = []
+    quiet: list[tuple[int, int]] = []  # where an `@` is not a key: code, a footnote, ...
     for m in _SCAN.finditer(filled_text):
         kind = m.lastgroup or ""
         start, end = m.span()
+        if kind in _OPAQUE | _LITERAL:
+            quiet.append((start, end))
         group = _INLINE[kind][2]
         inner = m.span(group) if group else (start, start)
         shows[start:end] = [""] * (end - start)
@@ -579,6 +1429,15 @@ def _read(paragraph: str, renderings: Sequence[str] = ()) -> _Reading:
             ticks = len(m.group(f"{kind}_ticks"))
             closing = m.end(f"{kind}_text")
             marks += [(start, start + ticks, _HALF_SPAN), (closing, closing + ticks, _HALF_SPAN)]
+        elif kind == "code" and _TYPESETS.search(m.group("code_text")):
+            marks.append((start, end, _TYPESET_IN_CODE))
+
+    # A key the token patterns missed: Word's text holds its rendering, not the key.
+    marks += [
+        (m.start(), m.end(), "a citation")
+        for m in _LOOSE_KEY.finditer(paragraph)
+        if not any(s <= m.start() < e for s, e in quiet)
+    ]
 
     for start, end, width in _emphasis("".join(plain).translate(_TEXT_SPACES)):
         shows[start : start + width] = [""] * width
@@ -613,6 +1472,76 @@ _OPENER = re.compile(
     r"|(?P<paren>\()(?:\d+|[a-z]|[ivxlcdm]+)\)(?=\s)"
 )
 
+#: A `<` pandoc can start a tag with: one before a letter of any script, or before the `/`,
+#: `!` or `?` of a closing tag, a comment or a processing instruction. `<1b`, `< b` and `<_b`
+#: print as typed; `<µg` opened a tag when only an ASCII letter was looked for. `[^\W\d_]`
+#: also takes a numeral that is not a digit, `²` or `½`, on which pandoc opens nothing; that
+#: costs a backslash, not a word.
+_TAG_OPEN = r"<(?=[^\W\d_]|[/!?])"
+_TAG_OPENS = re.compile(_TAG_OPEN)
+
+#: Inside a tag, pandoc's whitespace is ASCII's. A no-break space Word's text holds is part of
+#: an attribute's value: `dose=5 mg\>1`, with one in "5 mg", closed the tag when Python's `\s`
+#: was taken for pandoc's. Pandoc's own after "e.g." is written back as a plain space, which
+#: ends the value; it is read here as it came back, which only errs safe.
+_TAG_SPACE = "[ \t\n\r\f]"
+#: An attribute's value about to begin: an `=` and nothing after it but spaces.
+_VALUE = re.compile(rf"={_TAG_SPACE}*\Z")
+#: An unquoted attribute value running up to a `>`: an `=`, any spaces, then no space. Inside
+#: a tag pandoc takes a backslash there for part of the value, so `=\>` and `HR=2.1\>1`
+#: closed the tag the backslash was meant to keep shut.
+_UNQUOTED = re.compile(rf"={_TAG_SPACE}*[^ \t\n\r\f]*\Z")
+#: What a would-be tag can be closed or carried on by.
+_TAG_PUNCTUATION = re.compile("[>'\"]")
+#: A `<` Word typed, set aside where it is escaped and so opens nothing; see `_opens_value`.
+_SET_ASIDE = "\x00"
+
+
+def _opens_value(shown_before: str, bare_before: str | None, text: str, at: int) -> bool:
+    """Whether a straight quote at `at` in Word's `text` would open a quoted attribute
+    value: straight after an `=`, once a `<` of the source's or a value's stands before it.
+
+    `bare_before` is `shown_before` with each `<` Word typed set aside, or None to count
+    every `<` in `shown_before`; those in `text` are Word's and set aside either way. Word's
+    own is escaped and opens nothing, and a quote escaped for it printed
+    straight where pandoc had curled it, `family='binomial'` coming back as `'binomial’`. A
+    kept stretch is read as Word shows it, so a `<` the source escaped counts too: that
+    costs a straight quote, never a word.
+    """
+    where = len(shown_before) + at
+    before = shown_before if bare_before is None else bare_before
+    bare = _TAG_OPENS.search(before + text.replace("<", _SET_ASIDE))
+    if bare is None or bare.start() >= where:
+        return False
+    return _VALUE.search(shown_before + text, 0, where) is not None
+
+
+def _closers(shown_before: str, text: str, bare_before: str | None = None) -> list[str]:
+    """How to write each `>`, `'` and `"` of Word's `text`, read after `shown_before`.
+
+    A `>` is bare where no `<` that can open a tag stands before it. After one it is `\\>`,
+    or `&gt;` at the end of an unquoted attribute value, where a backslash would be read as
+    part of the value: an entity closes no tag anywhere, but G2 reads `\\>` as a threshold's
+    `>` and not `&gt;`. A straight quote straight after an `=` opened a quoted value, which
+    ran on past the paragraph's end, and the tag closed at a `>` in the next one. Escaped
+    where `_opens_value` says it would, it opens nothing, and prints straight.
+    """
+    shown = shown_before + text
+    opens = _TAG_OPENS.search(shown)
+    out = []
+    for found in _TAG_PUNCTUATION.finditer(text):
+        char, at = found.group(), len(shown_before) + found.start()
+        if char != ">":
+            quoted = _opens_value(shown_before, bare_before, text, found.start())
+            out.append("\\" + char if quoted else char)
+        elif opens is None or opens.start() >= at:
+            out.append(">")
+        elif _UNQUOTED.search(shown, 0, at):
+            out.append("&gt;")
+        else:
+            out.append("\\>")
+    return out
+
 #: Every character Markdown can read as the start or end of markup, wherever it stands in
 #: Word's text. Asking this module's own reading which ones mattered was tried first, and
 #: its reading is close to pandoc's, not the same: `<LLOQ in mg/L and >` is a tag to pandoc
@@ -622,7 +1551,7 @@ _OPENER = re.compile(
 #: only `_OPENER` escapes one, where it would open the paragraph as a list.
 _MARKDOWN = re.compile(
     r"[\\`*\[^~{$]"
-    r"|<(?=[A-Za-z/!?])"  # a tag, a comment or an autolink; "p < 0.05" is not one
+    rf"|{_TAG_OPEN}"  # a tag, a comment or an autolink; "p < 0.05" is not one
     r"|(?<![A-Za-z0-9])@"  # a citation; the @ of an e-mail address follows a letter
     r"|&(?=#?\w+;)"  # an entity
     r"|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])"  # emphasis; inside a word it is a letter
@@ -631,7 +1560,12 @@ _MARKDOWN = re.compile(
 
 
 def _escaped(
-    text: str, opening: bool, after_token: bool = False, before_token: bool = False
+    text: str,
+    opening: bool,
+    after_token: bool = False,
+    before_token: bool = False,
+    shown_before: str = "",
+    bare_before: str | None = None,
 ) -> str:
     """Word's text written into Markdown so that it reads as the text it is.
 
@@ -651,9 +1585,27 @@ def _escaped(
     own braces: `\\{{{results.x}}` reads as the binding `{{{results.x}}`, which `check`
     refuses as malformed. The entity is a named one because `&#123;` puts the number 123
     into the prose, and `check` refuses that as a number bound to no source.
+
+    A `>` is escaped once Word's paragraph shows, before it, a `<` that can open a tag: in
+    this text, or in `shown_before`, the text ahead of it (Word's, with each citation as its
+    key, as pandoc reads it; `bare_before` is the same with Word's own `<` set aside, since
+    this escapes it). That `<` need not be Word's:
+    one the source kept bare, or one a binding's value brings, opens a tag that a `>` later in
+    Word's text closes, and `Samples <LLOQ in {{results.unit}} and >ULOQ` printed "Samples
+    ULOQ". Pandoc's tags are looser than `_read`'s, and `_read` fills a binding with digits,
+    so the read-back saw text. A `<` that cannot open one is not counted, so `p < 0.05 and
+    ROR > 2` stays as typed. A `<` in Word's text is escaped itself, above or at a token's
+    edge, so counting one only adds a backslash pandoc does not need; it is counted all the
+    same, in case this escaper and pandoc disagree about it, and G2 reads `\\>` as the `>` it
+    prints. After an `=` the `>` is written `&gt;`, and a straight quote gets a backslash
+    after a `<` of the source's or a value's, not after one Word typed; see `_closers`.
     """
     brace = before_token and text.endswith("{")
+    closers = _closers(shown_before, text, bare_before)
     text = _MARKDOWN.sub(lambda m: "\\" + m.group(0), text)
+    # `_MARKDOWN` neither adds nor removes a `>` or a quote, so they are the ones `closers` read.
+    head, *rest = _TAG_PUNCTUATION.split(text)
+    text = head + "".join(closer + part for closer, part in zip(closers, rest, strict=True))
     if after_token and text.startswith("("):
         text = "\\" + text
     if before_token and text.endswith(("<", "&", "]")):
@@ -666,11 +1618,100 @@ def _escaped(
     return text
 
 
-def _reads_as(rebuilt: str, renderings: Sequence[str], returned: str) -> bool:
-    """Whether the rebuilt source, built, would read as what came back from Word."""
+_NBSP = "\u00a0"
+
+
+def _respaced(text: str, abbreviations: frozenset[str], *, lead: bool, binding_next: bool) -> str:
+    """Word's text as Markdown, the no-break space pandoc puts after an abbreviation written
+    as the plain space pandoc makes one of again.
+
+    Pandoc's smart typesetting turns the space after a word on its list - "e.g.", "al.",
+    "p." - into a no-break space, before anything but a citation, a footnote reference or a
+    line break. Carried back as the character, it went into the .md where nobody can see
+    it: a diff showed the line as changed there, and a search for "et al. 2020" missed it.
+
+    Only where pandoc will put it back, or the document would lose it. The word before it
+    must be whole, as pandoc's reader takes words - letters, digits and single full stops -
+    so `xe.g.` is no abbreviation, and neither is `p\\.`, whose full stop `_escaped` set
+    apart at the opening, nor `desk@p.` (see `_run_on`). What follows must not be a space,
+    and at the end of the stretch it must be a binding, never a citation. A word at the
+    start of a stretch that follows a token is left alone, because the token's value may
+    run into it.
+    """
+    if not abbreviations or _NBSP not in text:
+        return text
+    out = list(text)
+    for at, char in enumerate(text):
+        following = text[at + 1 : at + 2]
+        if char != _NBSP or following.isspace() or not (following or binding_next):
+            continue
+        start = at
+        while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "."):
+            start -= 1
+        if text[start:at] in abbreviations and not _run_on(text, start, lead):
+            out[at] = " "
+    return "".join(out)
+
+
+def _run_on(text: str, start: int, lead: bool) -> bool:
+    """Whether the word that ends at `start` runs on from something pandoc reads with it.
+
+    Pandoc reads a bare `@` and the label after it - letters and digits, joined by `-` or
+    `_` - as an example reference, so the abbreviation in `desk@p.` or `desk@lab-p.` is part
+    of the label, and no no-break space follows it. `_escaped` leaves an `@` bare after a
+    letter or a digit; an escaped `\\@` is a character of its own. Looking only at the
+    character before the word missed `desk@lab-p.`, so the whole word is searched, once:
+    a regular expression over the text before it rescanned a long URL from every place in
+    it. A word reaching back to a token before the stretch runs on from the token's value,
+    which may hold a label of its own. Either way the no-break space is kept, and where
+    pandoc would have made one anyway, that costs nothing that shows.
+    """
+    word = start
+    while word > 0 and not text[word - 1].isspace():
+        word -= 1
+    if word == 0 and not lead:
+        return True
+    backslashes = 0
+    for char in text[word:start]:
+        if char == "@" and backslashes % 2 == 0:
+            return True
+        backslashes = backslashes + 1 if char == "\\" else 0
+    return False
+
+
+def _reads_as(
+    rebuilt: str, protected: Sequence[str], renderings: Sequence[str], returned: str
+) -> bool:
+    """Whether the rebuilt source, built, would read as what came back from Word.
+
+    Its tokens must be the source's, each read as it was and none touching another. Counting
+    them was not enough: an edit that left `[@a][@b]` read as a link, `@a:{{results.x}}` as
+    the key `a:3.84`, and `cohort.@key` as no citation at all, with as many tokens found.
+    A binding is read here as digits, so what its value does beside a key is checked apart:
+    `@a {{results.x}}` with a value of `[pooled]` is a key and its locator.
+    """
     reading = _read(rebuilt, renderings)
-    if len(reading.protected) != len(renderings):
+    if reading.protected != list(protected):
         return False
+    found = _tokens(rebuilt)
+    for index, (first, second) in enumerate(zip(found, found[1:], strict=False)):
+        between = rebuilt[first.end() : second.start()]
+        if not between:
+            return False
+        # A narrative key without its locator. One with it ends at the `]`, so nothing after it
+        # reads on into the key, and pandoc takes no second locator.
+        bare = first.text.lstrip("-").startswith("@") and not first.text.endswith("]")
+        if not bare or not _BINDING.fullmatch(second.text):
+            continue
+        value = renderings[index + 1]
+        # One mark of punctuation reads a key on into a value put straight after it; a key in
+        # braces ends at its `}`.
+        glued = not first.text.endswith("}") and re.fullmatch(r"[:.#$%&+?<>~/-]", between)
+        # Spaces, a tab or one line break make a value that opens with `[` the key's locator,
+        # as they make a bracket in the source one; a no-break space does not.
+        located = _LOCATOR.fullmatch(between + "[") and value.startswith("[")
+        if (glued and re.match(r"\w", value)) or located:
+            return False
     return _untypeset(reading.whole) == _untypeset(returned)
 
 
@@ -679,7 +1720,6 @@ def _reads_as(rebuilt: str, renderings: Sequence[str], returned: str) -> bool:
 #: Word's text, that character stands for a space. Word's text read against Word's text
 #: compares it as itself, so one the co-author typed is an edit.
 _PANDOC_SPACE = {"\u00a0": " "}
-_AS_SOURCE = str.maketrans(_PANDOC_SPACE)
 
 #: Pandoc typesets prose: quotes curl, `--` becomes an en dash. None of that is an edit, and
 #: none of it is something the source holds that Word's text lost.
@@ -716,6 +1756,10 @@ class Alignment:
     misread: bool = False
     #: Everything between two tokens was deleted, so rebuilt they would touch.
     touching: bool = False
+    #: Rebuilt, it would be only this, which `tag` gives no identifier: a table, a figure,
+    #: or a misspelt placeholder, `"{{result.ror.point}}"`. A later edit to it in Word could
+    #: not come back, and would be skipped with "nothing came back".
+    alone: str = ""
 
 
 #: A word for alignment: a number with its decimal and thousands separators, a run of
@@ -729,46 +1773,6 @@ _WORD = re.compile(r"\d+(?:[.,]\d+)*|[^\W\d_]+|\s+|.", re.DOTALL)
 #: the four obvious ones missed the dashes, and `-{{results.ror.point}}` typed through
 #: AutoCorrect merged as a negative ratio.
 _SIGNS = frozenset({"Pd", "Sm"})
-
-
-def _token_spans(flat: list[str], rendered: str) -> list[tuple[int, int]] | None:
-    """Where each protected token sits in the rendered paragraph: the gaps between the prose.
-
-    `flat` is each stretch of prose as Word shows it. Found without knowing how anything
-    renders, which is what makes citations work - their rendering depends on a CSL style
-    this code never sees. A no-break space pandoc added reads as the source's space, one for
-    one, so the spans found are spans of `rendered` itself.
-    """
-    rendered = rendered.translate(_AS_SOURCE)
-    flat = [piece.translate(_AS_SOURCE) for piece in flat]
-    spans: list[tuple[int, int]] = []
-    cursor = 0
-    if flat[0]:
-        at = rendered.find(flat[0])
-        if at < 0:
-            return None
-        cursor = at + len(flat[0])
-    for index in range(1, len(flat)):
-        piece = flat[index]
-        if piece:
-            at = rendered.find(piece, cursor)
-            if at < 0:
-                return None
-            start, end, cursor = cursor, at, at + len(piece)
-        elif index == len(flat) - 1:
-            start, end, cursor = cursor, len(rendered), len(rendered)
-        else:
-            # Two protected tokens with nothing between them: there is no way to say where
-            # one rendering ends and the next begins.
-            return None
-        while start < end and rendered[start].isspace():
-            start += 1
-        while end > start and rendered[end - 1].isspace():
-            end -= 1
-        if start == end:
-            return None
-        spans.append((start, end))
-    return spans
 
 
 def _words(rendered: str, spans: list[tuple[int, int]]) -> tuple[list[str], list[tuple[int, int]]]:
@@ -838,7 +1842,13 @@ def _place(
     return placed, missing
 
 
-def align(source: str, rendered: str, returned: str) -> Alignment:
+def align(
+    source: str,
+    rendered: str,
+    returned: str,
+    tokens: Sequence[tuple[int, int]] | None,
+    abbreviations: frozenset[str] = frozenset(),
+) -> Alignment:
     """Rewrite one source paragraph with a co-author's wording, keeping its bindings.
 
     The paragraph-level merge had to refuse anything carrying a binding, because splicing
@@ -846,9 +1856,11 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     and, in a paper where most paragraphs quote a number, refuses almost everything.
 
     Alignment makes the finer move possible. A source paragraph is prose and protected
-    tokens in alternation. Its prose appears verbatim in the rendered form - rendering only
-    changes the protected parts - so locating the prose segments in `rendered` reveals what
-    each token rendered to, *without needing to know how it renders*.
+    tokens in alternation, and `tokens` says where each token's rendering sits in `rendered`
+    - read from bookmarks around them in a second build, so nothing about how a number or a
+    citation renders is guessed. It used to be: the prose was looked for in the rendered
+    text and the tokens were what lay between, and "(Smith et al. 2020)." ending a paragraph
+    had its citation cut at "al.", merging as `[@smith2020]. 2020).`.
 
     Those rendered forms are then found in the returned text by aligning the two word by
     word. The first version searched for each rendered form as a substring from the start of
@@ -872,13 +1884,15 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     read as what the co-author wrote. That catches what the reading can see - a delimiter
     left without its partner, a span stretched over new words - and not where it and
     pandoc disagree, which is why `_escaped` does not consult it.
+
+    `abbreviations` are the words pandoc puts a no-break space after; see `_respaced`.
     """
     reading = _read(source)
     prose, protected = reading.prose, reading.protected
     if not protected:
-        return _align_plain(source, reading, rendered, returned)
+        return _align_plain(source, reading, rendered, returned, abbreviations)
 
-    spans = _token_spans([shown.strip() for shown in reading.shown], rendered)
+    spans = _checked(tokens, len(protected), len(rendered))
     if spans is None:
         return Alignment(None, unaligned=True)
     tokens = [rendered[start:end] for start, end in spans]
@@ -888,25 +1902,77 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     if missing:
         return Alignment(None, changed=tuple((tokens[i], protected[i]) for i in missing))
 
-    sent, new_prose = _between(before, ranges), _between(after, placed)
+    new_prose = _between(after, placed)
+
+    # Each stretch as the build rendered it, between the same tokens: what a returned piece
+    # is compared with, rendered text against rendered text.
+    edges = [0] + [edge for span in spans for edge in span] + [len(rendered)]
+    was_prose = [rendered[a:b] for a, b in zip(edges[::2], edges[1::2], strict=True)]
+    # What lies ahead of each stretch, for the rules that read a would-be tag; see `_closers`.
+    # A `<` there that can open one, kept from the source or brought by a binding's value, is
+    # bare, and a `>` in the stretch would close it; an `=` can make the `>` end an attribute's
+    # value. Word's text, but a citation as its key: `(Smith 2020)` has a space,
+    # `[@smith2020]` has none, and `HR=[@smith2020]\>1` closed a tag where Word's text said
+    # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
+    ahead = bare = ""
     out: list[str] = []
     lost: list[str] = []
+    unread = False
+    # A straight ' kept from the source that opens a quotation closed in an edited stretch:
+    # Word's closing ’ there is written straight, or pandoc reads the kept one as an
+    # apostrophe and prints "’a ratio of 3.84’". Only that one; the rest stay as typed.
+    quote_open = False
     for index, piece in enumerate(new_prose):
         # Unchanged prose keeps the source's own markdown; only an edited segment is taken
         # from Word, where inline formatting did not survive being read as plain text.
         # Unchanged means it came back as it was sent, which catches a no-break space the
         # co-author typed, or as the source reads, which lets pandoc's own after "e.g." be
         # taken out again in Word without costing the stretch its formatting. See `_undone`.
-        if _spaced(piece) == _spaced(sent[index]) or _undone(
-            piece, reading.shown[index], sent[index]
+        if _unchanged(was_prose[index], piece) or _undone(
+            piece, reading.shown[index], was_prose[index]
         ):
             out.append(prose[index])
+            # Open only if pandoc did open it: it prints the ' of 'Tis or '90s as ’.
+            opened = quote_open or "\u2018" in was_prose[index]
+            quote_open = opened and _left_open(prose[index], index == 0, quote_open)
+            bare += piece
         else:
-            lost += [name for name in reading.lost[index] if name not in lost]
+            lost += [name for name in _uncarried(reading.lost[index], piece) if name not in lost]
+            # What the build printed of the stretch must be what the source reads as, or
+            # part of it is something Word's text does not hold: `[Methods]` is a link to
+            # the heading, and pandoc reads `<LLOQ in mg/L and >` as a tag.
+            unread |= _untypeset(reading.shown[index]) != _untypeset(was_prose[index])
+            if quote_open and _WORD_CLOSES.search(piece):
+                # Straight even where `_closers` will escape it, after an `=`: left curly, it
+                # closed nothing, and a value the source's own `='` had opened ran on into the
+                # next paragraph. Escaped, it prints straight, the source's opener prints as
+                # an apostrophe, and every word prints.
+                piece = _WORD_CLOSES.sub("'", piece, count=1)
+                quote_open = False
             beside = {"after_token": index > 0, "before_token": index < len(protected)}
-            out.append(_escaped(piece, opening=index == 0, **beside))
+            # The paragraph is stripped once rebuilt, so the first stretch is escaped as it
+            # will open it: behind a space, a `#` or `:::` was not seen by `_OPENER`, and
+            # the paragraph merged as a heading.
+            opening = piece.lstrip() if index == 0 else piece
+            binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
+            tag = {"shown_before": ahead, "bare_before": bare}
+            out.append(
+                _respaced(
+                    _escaped(opening, opening=index == 0, **tag, **beside),
+                    abbreviations,
+                    lead=index == 0,
+                    binding_next=bool(binding_next),
+                )
+            )
+            bare += piece.replace("<", _SET_ASIDE)
+        ahead += piece
         if index < len(protected):
             out.append(protected[index])
+            start, end = placed[index]
+            shown = "".join(after[start:end])
+            token = shown if _BINDING.fullmatch(protected[index]) else protected[index]
+            ahead += token
+            bare += token
     if lost:
         return Alignment(None, markup=tuple(lost))
     # With nothing between them there is nothing to escape: a citation's `]` against a value
@@ -915,13 +1981,28 @@ def align(source: str, rendered: str, returned: str) -> Alignment:
     # the markup: a footnote deleted with the words around it is the reason to name.
     if not all(new_prose[1:-1]):
         return Alignment(None, touching=True)
+    if unread:
+        return Alignment(None, unaligned=True)
     rebuilt = "".join(out).strip()
-    if not _reads_as(rebuilt, tokens, returned):
+    # A paragraph cut down to one token is still a paragraph, and keeps its identifier -
+    # unless the token is one `tag` skips: a table, a figure, or a misspelt placeholder.
+    # Merged, that would build without one. Only that shape is refused here, because it is
+    # the one the reason names: `_untagged` skips more than a lone token, and asked of any
+    # rewording it refused `B) the ratio was...` as "everything but it was deleted".
+    if re.fullmatch(r"\{\{[^}]*\}\}", rebuilt) and _untagged(rebuilt):
+        return Alignment(None, alone=rebuilt)
+    if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
 
 
-def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -> Alignment:
+def _align_plain(
+    source: str,
+    reading: _Reading,
+    rendered: str,
+    returned: str,
+    abbreviations: frozenset[str] = frozenset(),
+) -> Alignment:
     """A paragraph with no binding or citation, which Word's text replaces whole.
 
     Unless that would lose something. What `_INLINE` names is refused by name. Anything it
@@ -934,16 +2015,43 @@ def _align_plain(source: str, reading: _Reading, rendered: str, returned: str) -
         returned.strip(), reading.shown[0].strip(), rendered
     ):
         return Alignment(source)
-    if reading.lost[0]:
-        return Alignment(None, markup=reading.lost[0])
+    if lost := _uncarried(reading.lost[0], returned):
+        return Alignment(None, markup=lost)
     if _untypeset(reading.shown[0]) != _untypeset(rendered):
         return Alignment(None, unaligned=True)
-    rebuilt = _escaped(returned.strip(), opening=True)
-    if not _reads_as(rebuilt, (), returned):
+    rebuilt = _respaced(
+        _escaped(returned.strip(), opening=True), abbreviations, lead=True, binding_next=False
+    )
+    if not _reads_as(rebuilt, (), (), returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
 
 
-def realign(source: str, rendered: str, returned: str) -> str | None:
+def _checked(
+    tokens: Sequence[tuple[int, int]] | None, count: int, length: int
+) -> list[tuple[int, int]] | None:
+    """The token extents, if there is one per token and they read in order with a seam.
+
+    Two tokens with nothing between them - `{{results.a}}{{results.b}}` - are known apart in
+    the build, but not in Word's text, where '1' and '2' come back as '12'. Refused here, as
+    what it is, rather than further on as a value that changed when none had.
+    """
+    if tokens is None or len(tokens) != count:
+        return None
+    spans = [(int(start), int(end)) for start, end in tokens]
+    edges = [edge for span in spans for edge in span]
+    if any(start >= end for start, end in spans) or edges != sorted(edges) or edges[-1] > length:
+        return None
+    if any(first[1] == second[0] for first, second in zip(spans, spans[1:], strict=False)):
+        return None
+    return spans
+
+
+def realign(
+    source: str,
+    rendered: str,
+    returned: str,
+    tokens: Sequence[tuple[int, int]] | None,
+) -> str | None:
     """The rebuilt paragraph, or None when it cannot be merged. See `align`."""
-    return align(source, rendered, returned).rebuilt
+    return align(source, rendered, returned, tokens).rebuilt

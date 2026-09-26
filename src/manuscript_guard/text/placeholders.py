@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.masking import front_matter_end
+
 VALUE_NAMESPACES = ("results", "lit")
 BLOCK_NAMESPACES = ("table", "figure")
 NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES
@@ -68,12 +70,15 @@ def _without_comments(text: str) -> str:
     the syntax, and the explanation failed the check it was explaining.
 
     Blanked rather than removed so every offset, line and column still refers to the file
-    the author is looking at.
+    the author is looking at. A comment opened in the front matter ends with it, as pandoc
+    reads it: run on to the next comment in the body, it took every binding between out of
+    G2, and a reversed interval passed.
     """
     if "<!--" not in text:
         return text
     out = list(text)
-    for match in _COMMENT.finditer(text):
+    head = front_matter_end(text)
+    for match in [*_COMMENT.finditer(text, 0, head), *_COMMENT.finditer(text, head)]:
         for index in range(match.start(), match.end()):
             if out[index] != "\n":
                 out[index] = " "

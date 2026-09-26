@@ -295,6 +295,8 @@ class Note:
     start: int
     end: int
     references: tuple[int, ...]
+    # The heading chain of each reference, each once, found when the note is.
+    chains: tuple[tuple[str, ...], ...] = ()
 
 
 # A footnote's marker, as referenced or, at the start of a line and before a colon, defined.
@@ -312,18 +314,21 @@ def footnote_index(text: str) -> list[Note]:
     """Every footnote definition in `text` with the references that print it.
 
     Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
-    section its definition line sits in: a finding referenced from Results and defined under
-    Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is read
-    where it is referenced (`chains_at`).
+    section its definition line sits in only: a finding referenced from Results and defined
+    under Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is
+    also read where it is referenced (`chains_at`).
 
-    Its text runs as pandoc's does, but never further, since a number past its end read at
-    the reference could pass there: the definition's line, the lines under it up to a blank
-    one or one that may start a block of its own, and after blank lines each block indented
-    four spaces or a tab. A reference inside a definition is not counted. Code, comments and
-    the front matter are read as `scannable` leaves them, blank.
+    Its text is the definition's line, the lines under it up to a blank one or one that may
+    start a block of its own, and after blank lines each block indented four spaces or a
+    tab. That is pandoc's reading of a plain note, not of every note: review found a `[^n]:`
+    line pandoc reads as the paragraph above's, and paragraphs a list item or a comment
+    holds, taken for a note's text. Since a number is still judged where it stands, such a
+    misreading only adds a section it must pass in. A reference inside a definition is not
+    counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
     """
     shown = scannable(text)
-    headings = {found.start for found in _headings_in(text)}
+    found_headings = _headings_in(text)
+    headings = {found.start for found in found_headings}
     lines: list[tuple[int, str]] = []
     offset = 0
     for line in shown.split("\n"):
@@ -364,7 +369,12 @@ def footnote_index(text: str) -> list[Note]:
         if _containing(defined, found.start()) is None:
             references.setdefault(found.group("label"), []).append(found.start())
     return [
-        Note(low, high, tuple(references[label]))
+        Note(
+            low,
+            high,
+            tuple(references[label]),
+            tuple(dict.fromkeys(chain_at(found_headings, at) for at in references[label])),
+        )
         for low, high, label in spans
         if label in references
     ]
@@ -379,12 +389,21 @@ def _containing(notes: list[Note], offset: int) -> Note | None:
 def chains_at(
     index: list[_Found], notes: list[Note], offset: int
 ) -> tuple[tuple[str, ...], ...]:
-    """Every heading chain `offset` is printed under: where it stands, or, inside a
-    footnote's definition, where each reference to it stands. A number must pass under each."""
+    """Every heading chain a number at `offset` is judged under, and must pass under each:
+    where it stands, and, inside a footnote's definition, where each reference to it stands.
+
+    Where it stands is kept for a footnote's text too, although pandoc prints it at the
+    references. Judged at the references alone, a claim the gates took for a note's text and
+    pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
+    pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
+    of #77). Judged in both places, a number can only fail more than it did, never pass what
+    it failed before, however the note's end is misread. One chain per heading at most, so a
+    note referenced a thousand times costs no more than one referenced from every section."""
+    here = chain_at(index, offset)
     note = _containing(notes, offset)
-    if note is not None:
-        return tuple(chain_at(index, reference) for reference in note.references)
-    return (chain_at(index, offset),)
+    if note is None:
+        return (here,)
+    return tuple(dict.fromkeys([here, *note.chains]))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:

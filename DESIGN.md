@@ -1115,22 +1115,26 @@ the failure `methods_only` was built to close, reintroduced through the chain ra
 through the heading text. A Methods-like heading now counts only while no ancestor is a
 section that reports what happened.
 
-**A footnote is read where it is referenced.** Pandoc prints a footnote at its reference, and
-G2 read its text under the section its definition line sits in, so a finding referenced from
-Results and defined under Methods, `p < 0.001`, passed as the alpha chosen in advance, while
-the document printed it as a footnote to a Results sentence (found reviewing #65). The other
-way round, a Methods footnote defined at the end of the paper, as authors gather them, had
-its alpha read as a finding in the last section. `sections.footnote_index` finds each
-definition's text and its references, and a number in it is judged under the section of
-every reference (`chains_at`, `Classifier.classify_under`): a note referenced from Methods
-and from Results prints in both, and must pass in both. `explain`, `bind` and the annotated
-copy read it the same way. The text runs as pandoc's does and never further, since a number
-past its end would be judged at the reference: the definition's line and the lines under it
-up to a blank one or one that may start a block of its own, then each block after blank
-lines indented four spaces or a tab. Where the gates stop earlier than pandoc, the rest is
-read in its own section, as before. `tests/test_pandoc_agreement.py` holds fourteen shapes to
-never running past pandoc's note. A note that is never referenced, which pandoc does not
-print, and a reference inside another note's text, are read where they stand.
+**A footnote is read where it stands and where it is referenced.** Pandoc prints a footnote
+at its reference, and G2 read its text under the section its definition line sits in only,
+so a finding referenced from Results and defined under Methods, `p < 0.001`, passed as the
+alpha chosen in advance, while the document printed it as a footnote to a Results sentence
+(found reviewing #65). `sections.footnote_index` finds each definition's text and its
+references, and a number in it must pass under the section where it stands and under the
+section of every reference (`chains_at`, `Classifier.classify_under`): a note referenced
+from Results fails there, and one referenced from Methods and from Results must pass in
+both. `explain`, `bind` and the annotated copy read it the same way. A number is judged in
+no fewer places than before, so nothing that failed passes. The first version judged it at
+the references alone, and review of #77 found five ways the gates took text for a note's
+that pandoc prints where it stands: a `[^n]:` line pandoc reads as the paragraph above's,
+paragraphs a list item or a comment holds, a line of no-break spaces taken for blank, a
+note nested in another's, and a note referenced from another file. Each let a Results
+claim pass at a Methods reference. Judged where it stands as well, each fails as it did.
+The note's text is the definition's line, the lines under it up to a blank one or one that
+may start a block, then each block after blank lines indented four spaces or a tab; where
+that misreads pandoc, it only adds a section to pass in. Each note's reference chains are
+found once, so a note referenced a thousand times costs no more than one referenced from
+every section.
 
 **And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
 RECORD-PE is for routinely collected health data and the example is a spontaneous-report
@@ -2310,14 +2314,20 @@ Closed since, and why each mattered:
     though not for the masking.
 
   Thousands of unclosed `<!--` take quadratic time in the masking and the binding reader.
-- **The end of a footnote's text is read short of pandoc's in places.** G2 reads a note's
-  text at its references only as far as the gates are sure pandoc does, and the rest in the
-  section where it stands, as it always was. So a lazy line pandoc keeps in a note after one
-  that may start a block (`# Heading` straight under the definition, which pandoc prints as
-  note text), or an unindented line continuing an indented paragraph of the note, is judged
-  where it sits: a `p < 0.001` there, in a note defined under Methods and referenced from
-  Results, still passes as the alpha. A marker in inline code, `` `[^n]` ``, counts as a
-  reference, which only adds a section a number must pass in.
+- **A Methods footnote defined outside Methods is read as a finding.** A number in a note
+  must pass where the definition stands as well as at each reference, so a note referenced
+  from Methods and defined at the end of the paper, as authors gather them, has its alpha
+  (`p < 0.05`) reported as unbound in the last section, as it always was. Judging it at the
+  references alone fixed that and let five misread shapes pass in Results (review of #77);
+  a number is never judged in fewer places than before. Moving the definition into Methods,
+  or binding the value, clears it.
+- **The end of a footnote's text is read short of pandoc's in places.** A lazy line pandoc
+  keeps in a note after one that may start a block (`# Heading` straight under the
+  definition, which pandoc prints as note text), or an unindented line continuing an
+  indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
+  note defined under Methods and referenced from Results, still passes as the alpha, as on
+  `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
+  section a number must pass in.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
   indented `  # References`, or a Word paragraph typed as `# References` without a heading
   style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other

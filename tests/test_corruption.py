@@ -1924,12 +1924,66 @@ def test_a_footnote_is_read_where_it_is_referenced(
     assert "unclassified-number" in codes(gate_report(project))
 
 
+_CLAIM = "The excess was significant (p < 0.001)."
+
+
+@pytest.mark.parametrize(
+    "after_results",
+    [
+        # Found by review: text the gates took for a note's, which pandoc prints where it
+        # stands, under Results. Judged at the Methods reference alone, each passed.
+        # A `[^n]:` line under a paragraph's last line is that paragraph's to pandoc.
+        f"\n[^n]: {_CLAIM}\n",
+        # A list item holds the definition, and the four-space paragraph after it.
+        f"\n\n- Serious cases were reviewed.\n\n  [^n]: By two assessors.\n\n    {_CLAIM}\n",
+        # A line of no-break spaces is not blank to pandoc, and a comment ends the note.
+        f"\n\n[^n]: By two assessors.\n\n{chr(0xA0)}\n    {_CLAIM}\n",
+        f"\n\n[^n]: By two assessors.\n\n<!-- check wording -->\n\n    {_CLAIM}\n",
+    ],
+)
+def test_a_claim_taken_for_a_note_s_text_is_judged_where_it_stands(
+    project: Path, after_results: str
+) -> None:
+    """A number in a note is judged where it stands as well as at its references, so a claim
+    the gates misread as a Methods note's text still fails in Results, as it did on main."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + after_results, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_nested_in_another_is_judged_where_it_stands(project: Path) -> None:
+    """A definition in another note's indented block is a note of its own to pandoc,
+    printed at its own reference in Results; the gates read it as the Methods note's."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    nested = f"[^m]\n\n[^n]: By two assessors.\n\n    [^m]: {_CLAIM}\n"
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + nested, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None:
+    """The build joins the main text's files, so a note is printed at references in other
+    files too; each file is indexed apart, and a note referenced from a Methods-like section
+    of its own file was judged there alone."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(_IN_RESULTS, _IN_RESULTS + "[^n]", 1), encoding="utf-8")
+    (project / "manuscript" / "appendix.md").write_text(
+        "# Statistical analysis\n\nThe threshold was fixed in advance.[^n]\n\n"
+        f"# Notes\n\n[^n]: {_CLAIM}\n",
+        encoding="utf-8",
+    )
+    assert "unclassified-number" in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     ("referenced", "defined", "note"),
     [
-        # The other way: a Methods footnote defined at the end of the paper, as authors
-        # gather them, had its alpha read as a finding in the last section.
-        ((_IN_METHODS,), _AT_END, "[^n]: Significance was set at p < 0.05.\n"),
         # Past its end the text is its own section's: a paragraph at the margin after a
         # blank line, or indented three spaces, is not the note's.
         (

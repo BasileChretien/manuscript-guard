@@ -184,9 +184,9 @@ class Classifier:
     def classify_under(
         self, atom: Atom, sections: Sequence[Sequence[str]], scan: Scan | None = None
     ) -> Verdict:
-        """Judge an atom printed under each of `sections`, as a footnote is printed at each
-        of its references (`sections.chains_at`): unclassified if it is anywhere it
-        prints, and otherwise judged where it prints first."""
+        """Judge an atom under each of `sections`, as a footnote's number is judged where it
+        stands and at each of its references (`sections.chains_at`): unclassified if it is
+        under any, and otherwise judged under the first, where it stands."""
         verdicts = [self.classify(atom, section, scan) for section in sections]
         return next((v for v in verdicts if v.kind == UNCLASSIFIED), verdicts[0])
 

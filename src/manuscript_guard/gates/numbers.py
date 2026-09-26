@@ -150,8 +150,8 @@ def check_numbers(
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
-            # A footnote's text is judged where it is referenced, which is where pandoc
-            # prints it, and under every reference to it.
+            # A footnote's text is judged where it stands and at every reference to it,
+            # where pandoc prints it.
             verdict = classifier.classify_under(
                 atom, chains_at(headings, notes, atom.start), scan
             )

@@ -1094,9 +1094,10 @@ def _note_words(node, inside: bool, out: set[str]) -> None:
 
 @pytest.mark.parametrize("name", list(FOOTNOTE_CASES))
 def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
-    """G2 reads a footnote's text where it is referenced, so a number past its end would be
-    read there too, and could pass: every word the gates take for a note's must be in
-    pandoc's note. Where the gates stop early, the rest stays in its own section, as before."""
+    """For plain notes, at the margin after a blank line, the gates' reading of a note's
+    text stays inside pandoc's note. Where the gates misread one it matters less than it
+    did: a number is judged where it stands as well as at each reference, so reading past
+    the note only adds a section it must pass in (see `chains_at`)."""
     from manuscript_guard.text.sections import footnote_index
 
     text = FOOTNOTE_CASES[name]

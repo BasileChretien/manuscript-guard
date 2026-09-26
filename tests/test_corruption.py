@@ -1249,6 +1249,143 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------------------- what the build prints
+# The build strips every file's front matter and writes the header from paper.yaml. Text
+# the gates read there and the build drops is checked, then left out of the document.
+
+SENTINEL = "Zebrafish marmalade sentinel phrase."
+
+
+@pytest.mark.parametrize(
+    "abstract",
+    [
+        f"abstract: |\n  {SENTINEL}\n",
+        "abstract: >-\n  Zebrafish marmalade\n  sentinel phrase.\n",
+        f"abstract: {SENTINEL}\n",
+        f'"abstract": {SENTINEL}\n',
+    ],
+)
+def test_an_abstract_in_the_front_matter_is_refused(project: Path, abstract: str, capsys) -> None:
+    """G2 read an `abstract:` in the front matter, because pandoc prints one, and the build
+    stripped the block and wrote a header from paper.yaml, which has no abstract. The
+    abstract was checked and then left out of the document without a word, and the word
+    count, which follows the build, gave a journal's abstract limit 0 words to pass on.
+    `check` refuses it now, and the build refuses it even when told to skip the checks."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\n" + abstract, 1), encoding="utf-8")
+
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    failing = [(f["code"], f["line"]) for f in findings if f["severity"] == "fail"]
+    assert failing == [("front-matter-abstract", 2)]
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "under a `# Abstract` heading" in capsys.readouterr().out
+    # Any name: a build that skipped failing checks writes `manuscript.UNCHECKED.*`.
+    assert list((project / "build").glob("manuscript*")) == []
+
+
+def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
+    """The build strips a supplement's front matter as it strips the paper's."""
+    from manuscript_guard.build.assemble import assemble
+
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text(f"---\nabstract: {SENTINEL}\n---\n\n# Appendix\n\nText.\n", "utf-8")
+
+    def refused(report) -> list[tuple[str, str, int | None]]:
+        found = [f for f in report.failures if f.code == "front-matter-abstract"]
+        return [(f.gate, f.path.name, f.line) for f in found]
+
+    assert refused(gate_report(project)) == [("G2", "appendix.md", 2)]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
+
+
+def _abstract_line(front: str) -> int | None:
+    from manuscript_guard.text.masking import front_matter_abstract
+
+    found = front_matter_abstract(f"---\n{front}---\n\nBody.\n")
+    return None if found is None else found[0]
+
+
+@pytest.mark.parametrize(
+    ("front", "line"),
+    [
+        (f"abstract: {SENTINEL}\n", 2),
+        (f"'abstract': {SENTINEL}\n", 2),
+        (f'abstract: "\n  {SENTINEL}"\n', 2),
+        (f"abstract: '\n  {SENTINEL}'\n", 2),
+        (f"{{title: T, abstract: {SENTINEL}}}\n", 2),
+        (f"title: T\nabstract:\n\n  {SENTINEL}\n", 3),
+        ("abstract: 0\n", 2),
+        # Blocks pandoc reads and PyYAML could not turn into Python values, or not scan.
+        (f'date: 2024-02-30\n"abstract": {SENTINEL}\n', 3),
+        (f"created: !r Sys.Date()\n'abstract': {SENTINEL}\n", 3),
+        (f'subtitle:\tS\n"abstract": {SENTINEL}\n', 3),
+        # Pandoc expands a tab to the next multiple of four columns, so this is one block.
+        ('"abstract": |\n  Zebrafish marmalade\n\tsentinel phrase.\n', 2),
+        (f'title:\tT\n"abstract":\t{SENTINEL}\n', 3),
+        # Pandoc takes a merge key's mapping into the one holding it, and knows a merge key
+        # by its text, `<<`, however it is quoted or tagged.
+        (f"base: &b {{abstract: {SENTINEL}}}\n<<: *b\n", 2),
+        (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
+        (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
+        (f"!!merge abstract: {SENTINEL}\n", 2),
+        # PyYAML counts U+2028 as a line break, and the file does not.
+        (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
+        # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
+        (f"abstract: !!null {SENTINEL}\n", 2),
+        ('abstract: "null"\n', 2),
+    ],
+)
+def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: int) -> None:
+    """G2 finds a front-matter value by its key line, and YAML has spellings that line
+    misses: a quoted key, a quoted value opened on the key's line and continued below it, a
+    flow mapping, a merge key. Pandoc prints each as the abstract, so the refusal reads the
+    block as YAML, the way pandoc reads it, and names the line of the key."""
+    assert _abstract_line(front) == line
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        'abstract: ""\n',
+        "abstract:\n",
+        "abstract: |\n",
+        "abstract: >-\n",
+        "abstract: |2\n",
+        "abstract: null\n",
+        "abstract: # written last\n",
+        'abstract: "" # none\n',
+        f"meta:\n  abstract: {SENTINEL}\n",
+        # The first of two merge keys wins, quoted or not, and its abstract is empty.
+        f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
+    ],
+)
+def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:
+    """Nothing is lost by stripping an abstract pandoc reads as empty, or a key named
+    `abstract` inside another mapping, which pandoc does not take for the abstract."""
+    assert _abstract_line(front) is None
+
+
+def test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check() -> None:
+    """A mapping merging the one before it twice doubles, with each line, the work of
+    anything that expands merge keys: 22 lines, 614 bytes, held `check` for 38 seconds when
+    the block was built into Python values. The search for a merged abstract has the same
+    shape, so it visits each mapping once; this one is found only after all of `a21`."""
+    merges = [f"a{i}: &a{i} {{<<: [*a{i - 1}, *a{i - 1}]}}" for i in range(1, 22)]
+    lines = ["a0: &a0 {k: v}", *merges, f"z: &z {{abstract: {SENTINEL}}}", "<<: [*a21, *z]"]
+    started = time.perf_counter()
+    line = _abstract_line("\n".join(lines) + "\n")
+    assert time.perf_counter() - started < 5
+    assert line == 24
+
+
 # ------------------------------------------------------------------------------ audit
 # `audit` is the weak check, set membership against the outputs, and says so. These are the
 # ways it was weaker than it said: a wrong number that matched, and wrong numbers it never
@@ -2357,6 +2494,127 @@ def test_audit_does_not_read_text_moved_away(tmp_path: Path) -> None:
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["-0.5"]
 
 
+def _gone(change: str, style: str | None = None) -> str:
+    """The properties of a paragraph whose mark was deleted or moved away."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    return f'<w:pPr>{styled}<w:rPr><w:{change} w:id="1" w:author="a"/></w:rPr></w:pPr>'
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+@pytest.mark.parametrize(
+    "between",
+    ["", '<w:bookmarkStart w:id="9" w:name="_Ref1"/><w:bookmarkEnd w:id="9"/>'],
+    ids=["adjacent", "bookmark-between"],
+)
+def test_audit_joins_paragraphs_whose_mark_was_removed(
+    tmp_path: Path, change: str, between: str
+) -> None:
+    """A paragraph whose mark was deleted, or moved away, as a tracked change runs on into
+    the next once the change is accepted, and the audit read the two as separate lines: "−"
+    ending one and "0.30" starting the next matched an output of +0.30, and "-0.5" then "1"
+    matched -0.5 and 1 where the paper prints -0.51. A bookmark between them does not part
+    them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "hi": 0.30}')
+
+    def joined(before: str, after: str) -> str:
+        run = f'<w:r><w:t xml:space="preserve">{before}</w:t></w:r>'
+        return f"<w:p>{_gone(change)}{run}</w:p>{between}{_p(after)}"
+
+    paper = _docx(
+        tmp_path / "paper.docx",
+        joined("The estimate was -0.5", "1.") + joined("Its upper bound was −", "0.30."),
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51", "−0.30"}, shown
+
+
+@pytest.mark.parametrize(("part", "note"), [("footnotes", "footnote"), ("endnotes", "endnote")])
+def test_audit_joins_paragraphs_within_a_note(tmp_path: Path, part: str, note: str) -> None:
+    """Footnotes and endnotes go through the same reader as the body. A deleted mark joins
+    two paragraphs of one note, so "-0.5" and "1" there are -0.51, and the last paragraph
+    of a note does not run on into the next note: "2" and "3" stay two numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "a": 2, "b": 3}')
+    joined = f"<w:p>{_gone('del')}<w:r><w:t>The estimate was -0.5</w:t></w:r></w:p>{_p('1.')}"
+    last = f"<w:p>{_gone('del')}<w:r><w:t>Group 2</w:t></w:r></w:p>"
+    notes = "".join(f"<w:{note}>{body}</w:{note}>" for body in (joined, last, _p("3 more.")))
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("See the notes."),
+        {f"word/{part}.xml": f"<w:{part} {W}>{notes}</w:{part}>"},
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        '<w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs>',
+        '<w:pPrChange w:id="2" w:author="a"><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/>'
+        "</w:tabs></w:pPr></w:pPrChange>",
+    ],
+    ids=["tab-stops", "tab-stops-before-the-change"],
+)
+def test_audit_joins_a_paragraph_that_sets_tab_stops(tmp_path: Path, props: str) -> None:
+    """A tab stop is `w:tab` too, under `w:pPr/w:tabs`, and was read as a typed tab: a
+    space at the start of the paragraph's line, where it did no harm until a join put it
+    between "-0.5" and "1". Word writes the old tab stops into `w:pPrChange` when it copies
+    the first paragraph's formatting onto the second."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    after = f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{after}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize("joined", [False, True])
+def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined: bool) -> None:
+    """A text box's paragraphs were read where its anchor sits, in the middle of the paragraph
+    holding it, so the rest of that paragraph, or the one it runs on into, landed on the text
+    box's line: "-0.5", a text box, then "1" read as -0.5, which matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    box = (
+        '<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml"><v:textbox>'
+        f"<w:txbxContent>{_p('Panel A')}</w:txbxContent></v:textbox></v:shape></w:pict></w:r>"
+    )
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    if joined:
+        body = f"<w:p>{_gone('del')}{before}{box}</w:p>{_p('1.')}"
+    else:
+        body = f"<w:p>{before}{box}<w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
+    """A paragraph run on into a heading takes the heading's style, which is what Word shows
+    once the change is accepted. Taking the first paragraph's instead read the appendix as
+    part of the reference list, and a wrong number in it went unaudited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    entry = "<w:r><w:t>Smith J. T. Lancet. 2019;393:1-2.</w:t></w:r>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Heading1")
+        + f"<w:p>{_gone('del')}{entry}</w:p>"
+        + _p("Supplementary appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+    )
+    assert "4.65" in [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched]
+
+
 @pytest.mark.parametrize(
     ("name", "content"),
     [
@@ -2378,3 +2636,29 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Path) -> None:
+    """A `<!--` in a listing is code to pandoc. The placeholder parser on main read it as a
+    comment that ran on to a later note's `-->`, so the binding between was never
+    substituted, and the document printed `{{results.ror.point}}` while `check` passed.
+    `test_comments.py` holds the parser to it; this holds the build, end to end. A listing
+    of HTML is an ordinary thing to write, so the build must print the value, not refuse."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    ticks = "`" * 3
+    source.write_text(
+        f"{text}\n# Appendix\n\n{ticks}html\n<!-- a comment left open in a listing\n{ticks}\n\n"
+        "The reporting odds ratio was {{results.ror.point}}.\n\n<!-- a later note -->\n",
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+    assert "{{results.ror.point}}" not in built
+    value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
+    assert f"The reporting odds ratio was {value}." in built

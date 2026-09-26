@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import Block, spaced
-from manuscript_guard.roundtrip import Alignment, align, moves
+from manuscript_guard.roundtrip import Alignment, align, moves, only_definitions_between
 
 
 @dataclass(frozen=True)
@@ -328,6 +328,11 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
     paragraphs a section holds. It used to fill slots per file, so a paragraph moved from the
     Discussion to the Introduction pushed one paragraph out of every section in between. A
     section is therefore the unit a move is applied within.
+
+    A link or footnote definition between two paragraphs is no boundary. It renders nothing
+    in the body, and pandoc reads it wherever it stands; counted as untagged text, it made a
+    move across it a move into another section, refused as one past a heading, a table or a
+    figure. The paragraphs change places around it, and it stays where it was written.
     """
     out: dict[str, tuple[Path, int]] = {}
     texts: dict[Path, str] = {}
@@ -340,7 +345,11 @@ def _sections(known: dict, held: Collection[str] = ()) -> dict[str, tuple[Path, 
         if path not in texts:
             texts[path] = path.read_text(encoding="utf-8")
             section[path] = 0
-        elif name in held or alone[path] or texts[path][end[path] : start].strip():
+        elif (
+            name in held
+            or alone[path]
+            or not only_definitions_between(texts[path][end[path] : start])
+        ):
             section[path] += 1
         out[name] = (path, section[path])
         end[path] = start + len(para)
@@ -809,25 +818,24 @@ _SPLIT = (
     "would replace the whole source paragraph with only part of it. Make the edit in the .md."
 )
 _HIDDEN = (
-    "text was typed where this paragraph renders nothing - an HTML comment, or markup that "
-    "prints no text. Merging it would replace what is hidden there. Add the text in the .md."
+    "text was typed where this paragraph renders nothing - a spacer such as `&nbsp;`, or "
+    "markup that prints no text. Merging it would replace what is there. Add the text in "
+    "the .md."
 )
 _RUNS_ON = (
-    "an HTML comment or other markup opened in it closes only after a blank line, in the "
-    "next paragraph of the .md. Merging Word's text over it would delete the opening and "
-    "leave the close to print as text. Make the edit in the .md."
+    "it opens an HTML comment with `<!--` in the .md, which can hide what follows it, so it "
+    "is held where it is. Make the edit in the .md."
 )
 _GLUED = (
-    "in the .md a line that opens or closes something else follows it with no blank line "
-    "between - a `:::` or code fence, an HTML block tag such as `</div>`, `\\begin` or "
-    "`\\end`, a definition, or a heading's underline - and Word shows only the paragraph. "
-    "Merging would delete that line, and whatever it opens, along with it. Make the edit in "
-    "the .md; for a fence, a blank line before it frees the paragraph on the next build."
+    "in the .md a line that opens or closes a block, or looks as if it does, follows it with "
+    "no blank line between - a `:::` or code fence, `\\end{table}`, a line starting `: ` - "
+    "so it is held where it is rather than merged with that line. Make the edit in the .md; "
+    "a blank line before that line frees the paragraph on the next build."
 )
 _IN_PARTS = (
-    "it reaches Word as more than one paragraph - display maths, or markup pandoc sets apart "
-    "- and only its first part carries its identifier. Merging would replace the whole "
-    "paragraph with that part. Make the edit in the .md."
+    "display maths follows it directly in the .md, or Word shows it as more than one "
+    "paragraph, so it is held where it is: merged, its first part could replace the whole. "
+    "Make the edit in the .md."
 )
 _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "

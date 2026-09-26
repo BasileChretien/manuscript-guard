@@ -126,7 +126,8 @@ def _pieces(raw: str, start: int) -> list[tuple[str, int]]:
     return pieces
 
 
-def _trim(text: str, start: int) -> tuple[str, int]:
+def trim(text: str, start: int) -> tuple[str, int]:
+    """`text` without the punctuation around it, and where it now starts."""
     lead = 0
     while lead < len(text) and text[lead] in _LEAD:
         lead += 1
@@ -170,7 +171,7 @@ def _atom(original: str, raw: str, at: int, seen_upto: int, seen_lines: int) -> 
     `seen_lines` is the number of line breaks before `seen_upto`, so only the gap from there
     is counted.
     """
-    text, start = _trim(raw, at)
+    text, start = trim(raw, at)
     if not text or not DIGIT.search(text):
         return None
     line_start = original.rfind("\n", 0, start) + 1

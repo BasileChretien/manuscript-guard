@@ -626,6 +626,44 @@ def test_an_old_supplement_does_not_lack_the_papers_value_paragraph(
     assert "only a value" not in capsys.readouterr().out
 
 
+#: Prose that opens like a link definition, which pandoc prints: #54 gave it an identifier,
+#: and releases before it took every block opening `[label]:` for a definition.
+NOTE_LIKE = "[Note]: patients (all adults) were enrolled."
+
+
+@needs_pandoc
+def test_prose_opening_like_a_link_definition_an_unrecorded_document_never_carried(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A document from before #54 gave no identifier to a paragraph opening `[label]:`, and
+    one returned untouched had it reported deleted in Word, told to delete it from the
+    source, as #33's value paragraphs were."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("# Methods\n", f"{NOTE_LIKE}\n\n# Methods\n", 1),
+        encoding="utf-8",
+    )
+    was = roundtrip._untagged
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            roundtrip,
+            "_untagged",
+            lambda block: was(block) or re.match(r" {0,3}\[[^\]\n]+\]:", block.strip()) is not None,
+        )
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = unrecorded(project / "build" / "manuscript.docx")
+
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
 @needs_pandoc
 def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its_anchor(
     project: Path, tmp_path: Path

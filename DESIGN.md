@@ -1410,8 +1410,10 @@ those from 0.2.13 until 0.2.47, which stripped a header pandoc prints. A release
 tags fewer blocks needs nothing more: 0.2.45 stopped tagging lists and quotations, kept
 every other block's number, and the identifiers an older document carries on them are named
 as not compared. One that tags more does: 0.2.49 gave a paragraph that is only a value an
-identifier, which an older document may or may not carry. Such a paragraph is compared if
-the document carries it, and named if not.
+identifier, which an older document may or may not carry, and the fix for link definitions
+(#54) gave one to prose opening like a definition, `[Note]: patients were enrolled.`, which
+no release had tagged before. Such a paragraph is compared if the document carries it, and
+named if not.
 
 A review round needs nothing of the kind, because G13 no longer compares by identifier. The
 round keeps a hash of the text of every paragraph as submitted, and the paragraph a reviewer
@@ -2932,8 +2934,9 @@ Closed since, and why each mattered:
   types them meaning curly ones does not want either.
 - **A document from before paragraphs were recorded is judged by the front-matter rules
   only.** Whether it still names the right paragraphs is worked out from the rules of 0.2.12
-  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45 and 0.2.49 changed the tagging of.
-  Any other change to how paragraphs are numbered cannot be detected for such a document.
+  and of 0.2.13 until 0.2.47, and from which blocks 0.2.45, 0.2.49 and #54 changed the
+  tagging of. Any other change to how paragraphs are numbered cannot be detected for such a
+  document.
   One is known: builds from before front matter was stripped at all (0.1.0, before #7)
   counted the header as a block, so every identifier is two higher than now, and such a
   document, returned against an unchanged source, would be merged into the wrong

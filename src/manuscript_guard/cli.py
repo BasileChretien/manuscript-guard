@@ -587,8 +587,8 @@ def _not_compared(
     edited: Path, strangers: list[str], unaccounted: list[str], values: list[str]
 ) -> list[str]:
     """What `import` says of the paragraphs whose identifier it could not vouch for:
-    those that came back, those it was built with that did not, and the value paragraphs a
-    document that records nothing may never have carried."""
+    those that came back, those it was built with that did not, and those a document that
+    records nothing may never have carried (`Numbering.unsure`)."""
 
     def shown(names: list[str]) -> str:
         return ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
@@ -611,10 +611,11 @@ def _not_compared(
         )
     if values:
         said.append(
-            f"{len(values)} paragraph(s) that are only a value are not in {edited.name} "
-            f"({shown(values)}): deleted or joined in Word, or never in it, since the release "
-            f"that built it may be one before 0.2.49, which gave them no identifier. Delete or "
-            f"join them in the .md yourself if that was intended."
+            f"{len(values)} paragraph(s) that older releases gave no identifier are not in "
+            f"{edited.name} ({shown(values)}): deleted or joined in Word, or never in it. A "
+            f"paragraph that is only a value had none before 0.2.49, and prose opening like "
+            f"a link definition (`[label]: ...`) none before the release that fixed link "
+            f"definitions. Delete or join them in the .md yourself if that was intended."
         )
     return said
 

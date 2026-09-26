@@ -79,6 +79,9 @@ _PAST_FRONTS = (_OLD_FRONT, _MID_FRONT)
 #: A paragraph that is only a placeholder. Releases before 0.2.49 gave none an identifier,
 #: and since then one that is only a value has one.
 _LONE = re.compile(r"\{\{[^}]*\}\}")
+#: A block opening like a link or footnote definition. Releases before #54 (0.2.55) gave
+#: none an identifier, and since then one that pandoc prints as prose has one.
+_DEFINITION_LIKE = re.compile(r" {0,3}\[[^\]\n]+\]:")
 
 _CUSTOM_XML = (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
@@ -1304,9 +1307,10 @@ class Numbering:
     #: Every identifier it was built with, in its order, when it records them. One that is
     #: not trusted and did not come back was deleted or joined in Word, and is named.
     sent: tuple[str, ...] = ()
-    #: For one that records nothing: identifiers given now to a paragraph that is only a
-    #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
-    #: document may never have carried them; one it does carry is trusted after all.
+    #: For one that records nothing: identifiers given now to a paragraph that older releases
+    #: did not tag - one that is only a value (before 0.2.49), or prose opening like a link
+    #: definition (before #54). Left out of `trusted`, since the document may never have
+    #: carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
     #: Identifiers the document carries that no longer name their paragraph, each mapped to
     #: the one that does now: see `_repointed`. Compared, moved and anchored as the paragraph
@@ -1454,7 +1458,11 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
             f"when that was not recorded, so the version that built it may have numbered its "
             f"paragraphs differently"
         )
-    unsure = frozenset(name for name, (_p, text, _s) in known.items() if _LONE.fullmatch(text))
+    unsure = frozenset(
+        name
+        for name, (_p, text, _s) in known.items()
+        if _LONE.fullmatch(text) or _DEFINITION_LIKE.match(text)
+    )
     return Numbering(trusted=frozenset(known) - unsure, unsure=unsure)
 
 

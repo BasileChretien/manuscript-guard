@@ -86,7 +86,7 @@ It changes nothing and reports each paragraph:
 | `N of M paragraphs … carry no identifier` | headings, table cells, captions, list items, block quotes, paragraphs with display maths or with a fence under them, and new paragraphs. **None of these was compared**; those outside tables that changed are listed by the two rows above, and an edit inside a table is not reported at all |
 | `N paragraph(s) … were not compared` | the paragraph's identifier no longer names the text it was built from: the source changed there since the build, or this version numbers or tags paragraphs differently (a list tagged by a version before 0.2.45, for one). Not applied; carry any edit in it over by hand (step 6) |
 | `… did not come back` | such a paragraph was deleted or joined in Word. Not applied; delete or join it in the `.md` if that was intended |
-| `… that are only a value are not in …` | a document built before 0.2.60, which records nothing, lacks a paragraph that is only a value: deleted or joined in Word, or, if a release before 0.2.49 built it, never in it. Not applied; delete or join it in the `.md` if that was intended |
+| `… that older releases gave no identifier are not in …` | a document built before 0.2.60, which records nothing, lacks a paragraph that is only a value, or prose opening like a link definition (`[label]: ...`): deleted or joined in Word, or never in it if an older release built it (before 0.2.49 for a value, before the link-definition fix for the other). Not applied; delete or join it in the `.md` if that was intended |
 
 Anything refused, joined, deleted, not compared or moved between sections or files, any
 heading, table, figure or equation that was moved or could not be found, and any paragraph

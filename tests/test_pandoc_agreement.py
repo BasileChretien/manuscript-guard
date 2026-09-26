@@ -100,6 +100,70 @@ CONSTRUCTS = {
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
     "no headings at all": "Just a paragraph with 42 in it.\n",
+    # An attribute block is not printed, so it is not part of the title.
+    "atx unnumbered": "# References {-}\n\nProse.\n",
+    "atx identifier and class": "# References {#refs .unnumbered}\n\nProse.\n",
+    "atx key and quoted value": '## Results {#sec-results lang="en-GB"}\n\nProse.\n',
+    "atx attributes after closing hashes": "## Results ## {#sec-results}\n\nProse.\n",
+    "setext with attributes": "Methods {#sec-methods}\n-------\n\nProse.\n",
+    # Braces pandoc prints: not an attribute block, or not the last thing on the line.
+    "atx braces that are not attributes": "# Results {and more}\n\nProse.\n",
+    "atx closing hashes after braces": "# Results {-} ##\n\nProse.\n",
+    "atx two blocks": "# Results {.a} {-}\n\nProse.\n",
+    # A value may hold backslash escapes, as pandoc reads them.
+    "atx escaped quote in a quoted value": (
+        '# Results {#sec-results title="the \\"main\\" results"}\n\nProse.\n'
+    ),
+    "atx escaped quote in a single-quoted value": "# Results {k='a\\'b'}\n\nProse.\n",
+    "atx escaped space in a value": "# Results {k=a\\ b}\n\nProse.\n",
+    "atx escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n\nProse.\n",
+    "atx escaped opening brace in a value": "# Results {k=a\\{b}\n\nProse.\n",
+    # An unquoted value ends at a space, a tab, a line break or `}`, and at no other space.
+    "atx no-break space in a value": "# Results {#sec-results lang=fr\u00a0FR}\n\nProse.\n",
+    "atx thin space in a value": "# Results {#sec-results lang=fr\u2009FR}\n\nProse.\n",
+    "atx form feed in a value": "# Results {#sec-results lang=fr\fFR}\n\nProse.\n",
+    "atx empty quoted value": '# References {title=""}\n\nProse.\n',
+    "atx empty single-quoted value": "# References {title=''}\n\nProse.\n",
+    "atx quoted value ending in a space": '# References {title="Works "}\n\nProse.\n',
+    # Only spaces and tabs may follow a block or closing `#`s; any other space is printed.
+    "atx no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx ideographic space after the block": "# References {-}\N{IDEOGRAPHIC SPACE}\n\nProse.\n",
+    "atx form feed after the block": "# References {-}\f\n\nProse.\n",
+    "atx no-break space after a closing hash": "# References #\N{NO-BREAK SPACE}\n\nProse.\n",
+    "atx no-break space between a hash and the block": (
+        "# References #\N{NO-BREAK SPACE}{-}\n\nProse.\n"
+    ),
+    # A class or a key opens with a letter, and a number that is not a digit is not one.
+    "atx class opening with a superscript": "# References {.\N{SUPERSCRIPT TWO}}\n\nProse.\n",
+    "atx key opening with a roman numeral": (
+        "# References {\N{ROMAN NUMERAL EIGHT}=1}\n\nProse.\n"
+    ),
+    "atx class opening with a titlecase letter": (
+        "# References {.\N{LATIN CAPITAL LETTER D WITH SMALL LETTER Z WITH CARON}}\n\nProse.\n"
+    ),
+    "atx class opening with a modifier letter": (
+        "# References {.\N{MODIFIER LETTER SMALL H}}\n\nProse.\n"
+    ),
+    "atx identifier opening with a superscript": (
+        "# References {#\N{SUPERSCRIPT TWO}}\n\nProse.\n"
+    ),
+    # A quoted value may open with any character pandoc's `isSpace` refuses, which is not
+    # every character Python's `\s` takes.
+    "atx quoted value opening with a next line": (
+        '# Results {title="\N{NEXT LINE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a line separator": (
+        '# Results {title="\N{LINE SEPARATOR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a file separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR FOUR}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a unit separator": (
+        '# Results {title="\N{INFORMATION SEPARATOR ONE}x y"}\n\nProse.\n'
+    ),
+    "atx quoted value opening with a zero-width space": (
+        '# Results {title="\N{ZERO WIDTH SPACE}x y"}\n\nProse.\n'
+    ),
 }
 
 
@@ -110,6 +174,50 @@ def test_the_toolkit_sees_the_headings_pandoc_renders(name: str) -> None:
     assert headings(markdown) == pandoc_headings(markdown), (
         f"{name}: toolkit saw {headings(markdown)}, pandoc renders "
         f"{pandoc_headings(markdown)}"
+    )
+
+
+# Where pandoc prints the braces, it also typesets what is between them, `\}` as `}` and a
+# straight quote as a curly one, and the toolkit does neither to a title. So these are
+# compared on the one thing in question: whether the heading still ends in its braces.
+BRACES = {
+    "escaped closing brace ends no block": "# References {k=\\}\n\nProse.\n",
+    "escaped closing brace after a value": "# Results {k=a\\}\n\nProse.\n",
+    "escaped quote in a quoted value": '# Results {title="the \\"main\\" results"}\n',
+    "escaped closing brace in a value": "# Results {#sec-results note=a\\}b}\n",
+    "escaped backslash before a closing brace": "# Results {k=a\\\\}\n",
+    "escaped quote that leaves a quote open": '# Results {k="a\\"}\n',
+    "escaped opening brace before the block": "# Results \\{-}\n",
+    # A quoted value may not open with a space or a tab.
+    "space after an opening quote": '# References {title=" Works cited"}\n',
+    "space after an opening single quote": "# References {k=' a'}\n",
+    "tab after an opening quote": '# References {title="\tWorks"}\n',
+    "no-break space after an opening quote": '# References {title="\u00a0Works"}\n',
+    # Every space pandoc's `isSpace` takes, after an opening quote.
+    "ideographic space after an opening quote": '# Results {title="\N{IDEOGRAPHIC SPACE}x y"}\n',
+    "ogham space mark after an opening quote": '# Results {title="\N{OGHAM SPACE MARK}x y"}\n',
+    "en quad after an opening quote": '# Results {title="\N{EN QUAD}x y"}\n',
+    "hair space after an opening quote": '# Results {title="\N{HAIR SPACE}x y"}\n',
+    "narrow no-break space after an opening quote": (
+        '# Results {title="\N{NARROW NO-BREAK SPACE}x y"}\n'
+    ),
+    "medium mathematical space after an opening quote": (
+        '# Results {title="\N{MEDIUM MATHEMATICAL SPACE}x y"}\n'
+    ),
+    "vertical tab after an opening quote": '# Results {title="\vx y"}\n',
+    "no-break space after the block": "# References {-}\N{NO-BREAK SPACE}\n",
+    "thin space after the block": "# References {-}\N{THIN SPACE}\n",
+    "class opening with a roman numeral": "# References {.\N{ROMAN NUMERAL EIGHT}}\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(BRACES))
+def test_the_toolkit_takes_off_the_attribute_blocks_pandoc_takes_off(name: str) -> None:
+    markdown = BRACES[name]
+    (toolkit,) = headings(markdown)
+    (printed,) = pandoc_headings(markdown)
+    assert toolkit.endswith("}") == printed.endswith("}"), (
+        f"{name}: toolkit saw {toolkit!r}, pandoc renders {printed!r}"
     )
 
 
@@ -189,6 +297,53 @@ FRONT_MATTER_CASES = {
     "a blank line after the opening": "---\n\ntitle: T\n---\n\nProse 9.99.\n",
     "a line of spaces after the opening": "---\n  \ntitle: T\n---\n\nProse 9.99.\n",
     "a rule, prose, and a rule": "---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots, then a rule": "---\ntitle: T\n...\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "closed by dots on the last line": "---\ntitle: T\n...",
+    "closed by dashes on the last line": "---\ntitle: T\n---",
+    "a list between the delimiters": "---\n- a\n- b\n---\n\nProse 9.99.\n",
+    "a sentence closed by dots": "---\nJust a sentence.\n...\n\nProse 9.99.\n",
+    "never closed": "---\ntitle: T\n\nProse 9.99.\n",
+    "behind a byte-order mark": "\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a blank first line": "\n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "after a line of spaces": "   \n---\ntitle: T\n---\n\nProse 9.99.\n",
+    "a blank first line, then a rule": "\n---\n\nProse 9.99.\n\n---\n\nMore prose.\n",
+    "a tab after a key": "---\ntitle:\tT\n---\n\nProse 9.99.\n",
+    "a tab indenting a value": "---\nabstract: |\n\tA tabbed line.\n---\n\nProse 9.99.\n",
+    # PyYAML refuses both; pandoc lets an anchor be defined again, and reads the first of
+    # two documents.
+    "an anchor defined twice": "---\na: &x 1\nb: &x 2\n---\n\nProse 9.99.\n",
+    "a second document": "---\ntitle: T\n--- # a note\n---\n\nProse 9.99.\n",
+    # Pandoc reads every document, and an anchor in one can be used in the next.
+    "an alias to an anchor in an earlier document": "---\ntitle: &x T\n--- *x\n---\n\nProse.\n",
+}
+# Pandoc keeps a header holding only a comment, or nothing, as empty metadata: nothing in
+# `meta`, and nothing printed either.
+STRIPPED_CASES = {
+    **FRONT_MATTER_CASES,
+    "only a comment": "---\n# a note\n---\n\nProse 9.99.\n",
+    # A line that reads as YAML between the empty header and the rule: run on to the rule,
+    # the header took it as metadata.
+    "empty, closed by dashes, then a rule": (
+        "---\n---\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    "empty, closed by dots, then a rule": (
+        "---\n...\n\nNote: 9.99 in the pilot.\n\n---\n\nMore prose.\n"
+    ),
+    # Metadata only when the first document is a mapping, or there is nothing at all.
+    "a comment document, then a mapping": "---\n--- # a note\n--- {a: 1}\n---\n\nProse.\n",
+    "two documents of comments": "---\n# a note\n--- # another\n---\n\nProse.\n",
+}
+# Headers pandoc refuses to build, and the toolkit must report; and some it reads, which
+# the toolkit must not.
+REFUSED_OR_NOT = {
+    **STRIPPED_CASES,
+    "a comment on its first line": "---\n<!-- a note -->\ntitle: T\n---\n\nProse.\n",
+    "an unquoted colon in a value": "---\ntitle: A study: of things\n---\n\nProse.\n",
+    "never closed before a rule": "---\ntitle: T\n\n# Methods\n\nProse.\n\n---\n\nMore.\n",
+    "prose between two rules": "---\nNote: this draft: not final\n---\n\nProse.\n",
+    # An anchor exists only once its node is finished.
+    "an alias inside its own anchor": "---\na: &x [*x]\n---\n\nProse.\n",
+    "an alias to the whole document": "---\n&t\na: 1\nb: *t\n---\n\nProse.\n",
 }
 
 
@@ -215,6 +370,69 @@ def test_the_toolkit_finds_the_front_matter_pandoc_reads(name: str) -> None:
         f"{name}: pandoc {'reads' if not toolkit else 'does not read'} front matter here; "
         f"the toolkit thinks the opposite"
     )
+
+
+def pandoc_blocks(markdown: str) -> list:
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)["blocks"]
+
+
+@pytest.mark.parametrize("name", sorted(STRIPPED_CASES))
+def test_the_build_strips_only_what_pandoc_does_not_print(name: str) -> None:
+    """The build takes each file's front matter off before pandoc sees it, so what it takes
+    must be exactly what pandoc would not have printed. A list or a sentence between two
+    delimiters is not metadata to pandoc, which prints it; stripped, it vanished."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = STRIPPED_CASES[name]
+    body, _title = strip_front_matter(markdown)
+    assert pandoc_blocks(body) == pandoc_blocks(markdown), f"{name}: stripped {markdown!r}"
+
+
+@pytest.mark.parametrize("name", sorted(REFUSED_OR_NOT))
+def test_a_header_is_reported_exactly_when_pandoc_refuses_it(name: str) -> None:
+    """G2 and the build stop on a header pandoc cannot read. Stopping on one it reads blocks
+    a build for nothing, and PyYAML refuses some pandoc takes: an anchor defined twice, or a
+    second document after the first."""
+    from manuscript_guard.text.masking import front_matter_problem
+
+    markdown = REFUSED_OR_NOT[name]
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    refused = finished.returncode != 0
+    assert (front_matter_problem(markdown) is not None) == refused, (
+        f"{name}: pandoc {'refuses' if refused else 'reads'} it; the toolkit thinks otherwise"
+    )
+
+
+def test_front_matter_pandoc_refuses_is_left_for_pandoc_to_refuse() -> None:
+    """A header that is never closed, with a rule further down, is YAML to pandoc up to the
+    rule; with prose in it, it is not valid YAML, and pandoc refuses the file. Stripped to
+    the rule, the file built, without the Introduction between."""
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    markdown = "---\ntitle: T\n\n# Introduction\n\nProse 9.99.\n\n---\n\nMore prose.\n"
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode != 0, "pandoc read this front matter; the test assumes not"
+    assert strip_front_matter(markdown) == (markdown, "")
 
 
 @pytest.mark.parametrize("name", sorted(FENCE_CASES))

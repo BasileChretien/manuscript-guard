@@ -468,6 +468,15 @@ produces confident failures about a rule that does not exist. A profile over a y
 warns. Switching journals after a rejection means writing a second profile and reading the
 resulting failure list, which is the reformatting job itemised.
 
+**A required statement counts where it prints as one.** A profile's statement patterns, and
+a structured abstract's required headings, are searched with HTML comments and fenced code
+blanked (`scannable`). A comment prints nothing, and a listing prints its lines as code, not
+as a declaration. `# Funding` is a heading in Markdown and a comment in R and Python, and
+inside either it met the funding statement of a paper that had none. A statement written in
+a fenced block therefore does not count, and no journal takes one written as code. The
+blanking is close to what pandoc prints but not the same; where they differ is under Known
+gaps.
+
 **Checklists are transcribed from their official documents, never written from memory.**
 Item text that is approximately right produces confident coverage of the wrong things, and
 approximately-right official wording inside a toolkit whose whole argument is that
@@ -1881,17 +1890,21 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   block of `note: |` over an indented `Methods`, placed under `## Results`, gives G2 a
   Methods heading the document never prints, and `p < 0.001` after it passes as the alpha
   chosen in advance.
-- **A required statement can be met by text that does not print.** G4 matches a journal's
-  statement patterns against the main text with its HTML comments and fenced code still in
-  it, so a `# Funding` line inside a multi-line `<!-- -->` satisfies the funding statement
-  of a paper whose .docx has none. On one line, `<!-- # Funding -->`, it does not satisfy
-  the example's pattern, which is anchored at the start of a line; an unanchored pattern
-  would match it there too.
 - **G4 reads the main-text files in path order, and the build prints them in another.** The
   build puts `main.md` first and sorts the rest by file name, not by path. A section's words
   count where the headings above it put them, so an `abstract.md` beside a `main.md` written
-  in `##` headings makes the whole paper abstract as far as G4 can tell. A project with one
-  main-text file, which is what `init` writes, is unaffected.
+  in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
+  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
+  end of a file G4 reads first hides the next file's headings and statements up to the next
+  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
+  one main-text file, which is what `init` writes, is unaffected.
+- **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
+  `<!--` inside inline code, a stray fence line inside a comment, or a fence directly under
+  prose that is tilde or indented a space or more hides what follows from the statement and
+  abstract-heading searches while pandoc prints it, so a statement there is reported
+  missing: a false alarm. A raw block, ```` ```{=openxml} ````, is blanked although pandoc
+  passes its text into the document. An indented code block is not blanked, so a pattern
+  written for a phrase can be met by a line of code; one anchored on a heading cannot.
 
 Added by the adversarial review, verified and **not** fixed:
 

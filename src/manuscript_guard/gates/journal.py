@@ -22,7 +22,7 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.text.masking import without_front_matter
-from manuscript_guard.text.sections import measure, split_sections
+from manuscript_guard.text.sections import measure, scannable, split_sections
 
 GATE = "G4"
 PROFILE_DIR = SHIPPED_JOURNALS
@@ -223,7 +223,9 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
                 )
             )
         else:
-            body = abstract.enclosed.lower()
+            # Comments and listings blanked, as for the required statements below: a
+            # heading in `<!-- Conclusions: to write -->` is one the abstract does not print.
+            body = scannable(abstract.enclosed).lower()
             missing = [h for h in wanted if h.lower() not in body]
             if missing:
                 report = report.with_findings(
@@ -239,9 +241,14 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
 
 
 def _check_statements(document: dict, text: str, path: Path) -> Report:
+    # Read where a statement can be: HTML comments and fenced code blanked, as the heading
+    # scan blanks them. `# Funding` is a heading in Markdown and a comment in R and Python,
+    # so inside `<!-- -->` it met the funding statement and printed nothing, and inside a
+    # listing it printed as a line of code. A statement is prose an editor reads.
+    printed = scannable(text)
     report = Report()
     for statement in document.get("required_statements", []):
-        if not re.search(statement["pattern"], text, re.IGNORECASE | re.MULTILINE):
+        if not re.search(statement["pattern"], printed, re.IGNORECASE | re.MULTILINE):
             report = report.with_findings(
                 Finding(
                     gate=GATE,

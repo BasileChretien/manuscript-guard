@@ -1831,6 +1831,70 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     assert "code-block-text-number" not in {f.code for f in report.findings}
 
 
+def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
+    """A code block in a front-matter value is a listing too, and a number in its string is
+    a claim. Looked for in the body alone, `_fenced_code` missed it while `mask` hid it, and
+    the number was read by nothing; no test held the two to the same fences."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+    from manuscript_guard.text.masking import fenced_blocks, masked_spans
+
+    text = (
+        '---\ntitle: T\nsubtitle: |\n  ```python\n  print("ROR 9.99")\n  ```\n---\n\n'
+        "# Results\n\nText.\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" in {f.code for f in report.findings}
+    assert masked_spans(text)["fenced-code"] == [(f.start, f.end) for f in fenced_blocks(text)]
+
+
+def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
+    """A URL is masked to the next space, and the key of the next YAML line is masked too,
+    so one ending a title ran through that key into the next value: 9.99, which pandoc
+    prints in the abstract, was read by nothing."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    paper = (
+        "---\ntitle: Data at https://example.org/data\nabstract: 9.99 was the ROR.\n---\n\n"
+        "# Results\n\nThe cohort held n = 1 report.\n"
+    )
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == {"9.99"}
+    assert "9.99" in mask(paper)
+
+
+def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
+    """Pandoc reads a YAML block anywhere in the body as metadata and prints none of it, so a
+    `# Methods` line in one is a YAML comment. Read as a heading, it gave the paragraph under
+    the block the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha
+    chosen in advance."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    assert anchor in text
+    block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_raw_block_in_the_front_matter_is_not_reported(project: Path) -> None:
+    """The build strips the manuscript's front matter, so a raw LaTeX block under
+    `header-includes` never reaches the document; G2 failed it as a `raw-block` written
+    straight into the build."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    header = (
+        f"---\n{title}\nheader-includes: |\n  ```{{=latex}}\n  \\usepackage{{setspace}}\n"
+        "  ```\n---\n"
+    )
+    path.write_text(header + text[text.index("\n---\n") + len("\n---\n") :], encoding="utf-8")
+    assert "raw-block" not in codes(gate_report(project))
+
+
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
     """In a .docx only a paragraph's style makes it a heading. A code listing pasted in as
     plain paragraphs, with `# References` among its comments, cut everything after it."""

@@ -1561,7 +1561,25 @@ HEADED = [
     pytest.param("  \n# Methods\nPatients.", "Patients.", id="blank-first-line"),
     # `#` that opens no heading: a paragraph to pandoc, marked like one.
     pytest.param("#Methods\nPatients.", "#Methods\nPatients.", id="hash-no-space"),
-    pytest.param(" # Methods\nPatients.", "# Methods\nPatients.", id="hash-indented"),
+    # Indented, `#` opens a paragraph at the top level and a heading inside a list item, which
+    # a marker would print; and moved to the first column by `import`, it became a heading.
+    # Left alone, as on main (round four).
+    pytest.param(" # Methods\nPatients.", None, id="hash-indented"),
+    pytest.param("   ## Methods\nPatients.", None, id="hash-indented-three"),
+    # A heading whose code span, comment or TeX environment runs onto the next line: pandoc
+    # reads the two lines as one heading, and a marker would print inside it (round four).
+    pytest.param("# The `lm function\nWe used `glm()` here.", None, id="heading-open-code"),
+    pytest.param("The `lm\n===\nWe used `glm()` here.", None, id="setext-open-code"),
+    pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
+    pytest.param("# Notes \\begin{x}\ny \\end{x} Patients.", None, id="heading-open-tex"),
+    pytest.param("# The `lm` function\nWe used it.", "We used it.", id="heading-closed-code"),
+    # Under a link and a heading, a definition the strict rule does not take is left alone,
+    # as under a heading alone: #54 left the block alone for its underline (round four).
+    pytest.param(
+        f"[reg]: {REGISTRY}\nResults\n-------\n[Note]: see the registry",
+        None,
+        id="definition-heading-loose-definition",
+    ),
 ]
 
 
@@ -1583,6 +1601,36 @@ def test_the_paragraph_under_a_heading_carries_the_identifier(
     assert tagged.startswith(f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}")
     if not mark:
         assert tagged == f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}{paragraph}"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("- Item one.\n\n  # Heading\n\n  Para text.\n", id="bullet"),
+        pytest.param("1. Item one.\n\n   ## Heading\n   Para text.\n", id="numbered-joined"),
+    ],
+)
+def test_a_heading_inside_a_list_item_stays_a_heading(text: str) -> None:
+    """Round four: indented one to three spaces, `#` was taken for a paragraph, which it is
+    only at the top level. Inside a list item it opens a heading, and the marker in front of
+    it printed "# Heading" as text."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert '"Header"' in json.dumps(json.loads(read.stdout)["blocks"])
+    # A `#` printed as text is a Str that opens with it.
+    assert '"c":"#' not in read.stdout.replace(" ", "")
 
 
 @needs_pandoc

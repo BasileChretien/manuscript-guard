@@ -2643,20 +2643,31 @@ Closed since, and why each mattered:
     of it would print it and break every link to it. So it is left as the whole block
     always was, and prose that opens with `[label]:` under a heading is not compared.
   - *Under a link's definition, what is not one paragraph goes unmarked with it*, as it
-    would on its own: a list, code, a table. The definition works.
-  - *A heading is read from its first line.* One whose text runs onto the next line inside
-    a code span is read otherwise by pandoc, and the marker can land inside what pandoc
-    makes of it. A `<div>` line over an underline is taken for a setext title; pandoc reads
-    a div around what follows, and the paragraph there keeps its identifier inside it.
-  - *A setext heading no longer carries an identifier.* It did, because it does not start
-    with `#`: the bookmark sat in the heading, and an edit to the heading in Word was
-    refused. Like an ATX heading it is now not compared, and it is counted among the
-    paragraphs without an identifier. A revision round opened before this change, with a
-    point anchored to a paragraph under a setext heading, reads that paragraph as revised;
-    so does one anchored to a paragraph under a link's definition, whose identifier covered
-    the definition too.
-  - *`#` opens no heading unless pandoc says so.* `#Methods`, `#1 priority` and ` # Methods`
-    are paragraphs to pandoc, and are marked like any other.
+    would on its own: a list, code, a table. The definition works. A definition the strict
+    rule does not take, under a strict one, is the paragraph there, and is marked, and
+    prints as on #54 - unless a heading was passed over too, when it is left alone as under
+    a heading.
+  - *A heading whose line leaves something open is not passed over.* A code span, a
+    comment or a TeX environment opened in it may close on the next line: pandoc then reads
+    both lines into an ATX heading, or reads a setext title and all under it as one
+    paragraph, and a marker between would print inside it. Such a block stays unmarked, as
+    it was, though a lone backtick that closes nothing costs the paragraph under it its
+    identifier too. A `<div>` line over an underline is taken for a setext title; pandoc
+    reads a div around what follows, and the paragraph there keeps its identifier inside
+    it.
+  - *A reworded paragraph can take the link above it along.* One that comes back from Word
+    opening with `(`, `"` or `'` could be the title of a link's definition written straight
+    above it, so the next build marks the whole block, as #54 does, and the definition
+    prints as text.
+  - *Setext headings are not compared, as before.* On `main` since #25 a block holding an
+    underline is left unmarked whole, so the paragraph under a setext heading had no
+    identifier either; it has one now, and the heading still none. A revision round opened
+    on #54 and before this change, with a point anchored to a paragraph under a link's
+    definition, reads that paragraph as revised: its identifier covered the definition too.
+  - *`#` opens no heading unless pandoc says so.* `#Methods` and `#1 priority` are
+    paragraphs to pandoc, and are marked like any other. Indented one to three spaces,
+    ` # Methods` is a paragraph at the top level and a heading inside a list item, where a
+    marker would print it; it is left alone, as on `main`, and the paragraph is not compared.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

@@ -326,11 +326,16 @@ _INDENT = re.compile(r"[ \t]*")
 # Pandoc tries a setext heading first: any line, at any indent, over an underline of `=` or
 # `-` in the first column - unless the line is a bullet or a fence, which it reads before
 # headings. An ATX heading is hashes in the first column, then a space, a tab or the end of
-# the line: `#Methods` and ` # Methods` are text to it. A link's definition is a
-# `_LINK_LINE`; a note's is never passed over, because the line under a note is more of it.
+# the line: `#Methods` is text to it. Indented, ` # Methods` is text at the top level and a
+# heading inside a list item, so it is left alone (`_ATX_OPENS`) and never passed over. A
+# link's definition is a `_LINK_LINE`; a note's is never passed over, because the line under
+# a note is more of it.
 _SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
-_ATX_OPENS = re.compile(r"(?:[ \t]*\n)*#+(?:[ \t\n]|\Z)")
+_ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
+# A code span opened in a heading's line and closed on a later one: pandoc reads the lines
+# into one heading, or one paragraph, and a marker between them would print in its code.
+_CODE_RUN = re.compile(r"`+")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # The line under a link's definition that may hold its title or attributes: pandoc reads
 # `[reg]: url` over `(which is public) and more` as one paragraph, and a marker between them
@@ -940,22 +945,40 @@ def _around(pieces: list[str], index: int) -> tuple[str, str]:
     return above, below
 
 
-def _lead_end(block: str, above: str) -> int:
-    """How far into `block` the headings and link definitions it opens with run: 0 when it
-    opens with neither, or under a line pandoc does not take for blank."""
+def _runs_on(line: str) -> bool:
+    """Whether something opened in `line` may close only on a later one: a code span, or
+    raw content - a comment, a TeX environment, a verbatim HTML element."""
+    if _RAW_OPEN.search(line):
+        return True
+    opened = None
+    for run in _CODE_RUN.findall(line):
+        opened = None if run == opened else opened or run
+    return opened is not None
+
+
+def _lead_end(block: str, above: str) -> tuple[int, bool]:
+    """How far into `block` the headings and link definitions it opens with run - 0 when it
+    opens with neither, or under a line pandoc does not take for blank - and whether a
+    heading is among them. A heading whose line leaves something open is not passed over:
+    pandoc reads the next line into an ATX heading, and a setext title's code span running
+    past its underline makes the whole block a paragraph."""
     if not _blank_above(above):
-        return 0
+        return 0, False
     at = start = _BLANK_LINES.match(block).end()
+    headed = False
     while at < len(block):
-        if heading := _SETEXT.match(block, at) or _ATX.match(block, at):
-            at = heading.end()
+        heading = _SETEXT.match(block, at) or _ATX.match(block, at)
+        if heading and not _runs_on(heading.group()):
+            at, headed = heading.end(), True
             continue
+        if heading:
+            break
         end = block.find("\n", at)
         end = len(block) if end < 0 else end
         if not _LINK_LINE.fullmatch(block, at, end) or _TITLE_NEXT.match(block, end + 1):
             break
         at = min(end + 1, len(block))
-    return at if at > start else 0
+    return (at, headed) if at > start else (0, False)
 
 
 def _marker_at(block: str, above: str, below: str) -> int | None:
@@ -963,17 +986,16 @@ def _marker_at(block: str, above: str, below: str) -> int | None:
     first character, or in front of the paragraph under the headings and link definitions
     it opens with, when what follows them is one paragraph by `_untagged`'s reading.
 
-    Under a heading a line that may open a definition gets none, nor does anything that is
-    not one paragraph, as a block opening with a heading never did. Under a link's
-    definition, what is not one paragraph goes unmarked with it, as it would on its own."""
-    head = _lead_end(block, above)
+    Under a heading - at the top of the block or after a link - a line that may open a
+    definition gets none, nor does anything that is not one paragraph, as a block holding a
+    heading never did. Under a link's definition alone, what is not one paragraph goes
+    unmarked with it, as it would on its own."""
+    head, headed = _lead_end(block, above)
     if head:
         rest = block[head:]
         if not rest.strip() or _definitions(rest, "", below):
             return None
-        opening = _BLANK_LINES.match(block).end()
-        heading = _SETEXT.match(block, opening) or _ATX.match(block, opening)
-        if (heading and _DEFINITION_OPENS.match(rest)) or _untagged(rest):
+        if (headed and _DEFINITION_OPENS.match(rest)) or _untagged(rest):
             return None
         return head + len(rest) - len(rest.lstrip(" \t"))
     if _untagged(block) or _definitions(block, above, below):

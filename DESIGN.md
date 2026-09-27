@@ -1521,6 +1521,19 @@ identifier named the new one, read the same, and a co-author's ethics approval w
 "Consent to participate". A paragraph whose text is found once in its file, then and now,
 needs only its text to match; one that repeats needs the block before it to match too.
 
+The record also hashes each paragraph's own block whole and the block after it
+(`roundtrip.Numbering.beside_changed`). A heading run into a paragraph in Word is recognised
+by the heading beside the paragraph having vanished while its text turned up in it, and the
+heading looked at is the one in the source now. When the source changed beside the
+paragraph since the build, that is not the heading the co-author ran in: one renamed or
+removed, or written straight above the paragraph with no blank line, which shares its block
+and sits outside the text hash. The run-in then merged, "MethodsPapa..." under a heading the
+file no longer has. So a rewording is not merged into a paragraph whose block before, own
+block or block after changed since the build. Nor, in a document built from other inputs
+than are on disk, into one beside a heading or caption missing from the returned document:
+its source can be unchanged and its text not, a value or a citation in it, and "Results in
+4000 reports" run in was typed into prose where a binding now prints 4100.
+
 `import` compares, moves and merges only the paragraphs whose identifier passes that test,
 and names the rest as not compared, whether they came back or not; `respond --open` keeps a
 comment's anchor only on such a paragraph. It does not matter why an identifier came to name
@@ -3408,6 +3421,17 @@ Closed since, and why each mattered:
   deleting the second from the `.md` as told, without carrying the first's Word text over
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
+- **A document built before the record held the blocks beside each paragraph is read as
+  it was.** Its record hashes only each paragraph's text and the block before it. So a
+  heading written straight above a paragraph, or the block after it, removed from the `.md`
+  since the build goes unseen, and a heading the co-author ran into the paragraph merges, as
+  before. A renamed one is still caught when the document is imported with `--force`, as a
+  heading missing from the returned document.
+- **An edit beside a changed block is refused in a forced import.** A rewording of a
+  paragraph whose neighbouring block changed in the `.md` since the build, or, in a document
+  built from other inputs, whose neighbouring heading the co-author deleted in Word or which
+  prints otherwise now, is named and left to carry over by hand, though most such edits
+  would have merged cleanly.
 - **Two paragraphs that read the same after blocks that read the same are told apart by
   position alone.** The record hashes each paragraph's text and the block before it, so
   "None." under a "# Funding" heading repeated in two places, with a copy of both added

@@ -2577,11 +2577,18 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
     assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
 
 
-def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+def _sent_back(
+    project: Path,
+    tmp_path: Path,
+    change,
+    *,
+    recorded: bool = True,
+    document: str = "manuscript.docx",
+) -> Path:
     """The built document as a co-author returns it, `change` applied to its body's XML;
     without its record of paragraphs unless `recorded`, as releases before 0.2.60 built it."""
     returned = tmp_path / "back.docx"
-    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+    with zipfile.ZipFile(project / "build" / document) as zin, zipfile.ZipFile(
         returned, "w"
     ) as zout:
         for item in zin.infolist():
@@ -3749,3 +3756,184 @@ def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
 ) -> None:
     _with_footnote(project, referenced, defined, note)
     assert not gate_report(project).failures, codes(gate_report(project))
+
+
+# ------------------------------------------- a heading run into a paragraph, beside a change
+
+_ALPHA = "Alpha paragraph talks about the cohort of patients."
+_PAPA = "Papa paragraph reports that twelve reports were excluded for missing dates."
+_ROMEO = "Romeo paragraph explains how duplicates were removed before the analysis."
+_BRAVO = "Bravo paragraph describes the exposure window."
+#: A paper cut down to a few paragraphs fails the gates; built past them, the document is
+#: named for it.
+_UNCHECKED = "manuscript.UNCHECKED.docx"
+
+
+def _paper(project: Path, *blocks: str) -> Path:
+    """The example with its main text replaced by `blocks`, its title kept."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    front = text[: text.index("\n---\n") + len("\n---\n")]
+    path.write_text(front + "\n" + "\n\n".join(blocks) + "\n", encoding="utf-8")
+    return path
+
+
+def _shown(paragraph: str) -> str:
+    """A Word paragraph's visible text."""
+    return "".join(re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", paragraph, re.DOTALL))
+
+
+def _run_into_papa(heading: str, *, below: bool):
+    """The change Word makes when the heading reading `heading` is run into the Papa
+    paragraph: Delete at the end of the paragraph above, or Backspace at the start of the one
+    below. One paragraph, carrying Papa's identifier, reading "MethodsPapa..." or
+    "...dates.Results"."""
+
+    def change(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        found = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == heading)
+        papa = _word_paragraph(xml, "Papa paragraph")
+        runs = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", found, flags=re.DOTALL)
+        runs = re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", runs[: -len("</w:p>")])
+        if below:
+            joined = papa[: -len("</w:p>")] + runs + "</w:p>"
+        else:
+            opening = re.match(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", papa, re.DOTALL)
+            joined = opening.group(0) + runs + papa[opening.end() :]
+        return xml.replace(found, "", 1).replace(papa, joined, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("built", "now", "heading", "below"),
+    [
+        (
+            ("# Intro", _ALPHA, _PAPA, "## Results\n" + _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, "## Findings\n" + _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, "## Study design\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods", _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, "## Methods", "## Sub\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            # One block added above, one removed: Papa keeps its identifier.
+            ("# Intro", _ALPHA, "## Methods", _PAPA, _ROMEO, _BRAVO),
+            ("# Intro", "A paragraph added since the build.", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+    ],
+    ids=[
+        "glued below, renamed",
+        "glued above, removed",
+        "glued above, renamed",
+        "glued above, added",
+        "above, removed",
+        "below, removed",
+    ],
+)
+def test_a_heading_run_into_a_paragraph_beside_a_changed_one_is_not_merged(
+    project: Path,
+    tmp_path: Path,
+    built: tuple[str, ...],
+    now: tuple[str, ...],
+    heading: str,
+    below: bool,
+) -> None:
+    """A heading run into the paragraph beside it in Word is refused: its text would be in
+    the source twice. It is recognised by the heading beside the paragraph having vanished
+    while its text turned up in the paragraph, and the heading looked at is the one in the
+    source now. One changed in the `.md` since the build, renamed, removed, or written straight
+    above a paragraph with no blank line, is not the one the co-author ran in, and the run-in
+    merged: "MethodsPapa paragraph..." under a heading the file no longer has. The record held
+    nothing of a heading written straight above a paragraph."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project, tmp_path, _run_into_papa(heading, below=below), document=_UNCHECKED
+    )
+    _paper(project, *now)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rewording_beside_headings_that_did_not_change_still_merges(
+    project: Path, tmp_path: Path
+) -> None:
+    """Only a paragraph beside a changed block is refused: with the source changed elsewhere
+    since the build, the co-author's rewording of one between two headings merges."""
+    from manuscript_guard.cli import main
+
+    blocks = ("# Intro", _ALPHA, "## Methods", _PAPA, "## Data", _ROMEO, _BRAVO)
+    path = _paper(project, *blocks)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def reworded(xml: str) -> str:
+        return xml.replace("were excluded for missing dates", "were dropped for missing dates", 1)
+
+    returned = _sent_back(project, tmp_path, reworded, document=_UNCHECKED)
+    _paper(project, *blocks[:-1], "Bravo paragraph, reworded by the author since.")
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source.replace(
+        "were excluded for missing dates", "were dropped for missing dates", 1
+    )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_heading_run_into_a_paragraph_is_not_merged_where_it_prints_otherwise_now(
+    project: Path, tmp_path: Path
+) -> None:
+    """Its source is unchanged, but a value in it is not: the heading looked at printed
+    "Results in 4100 reports", the co-author ran in "Results in 4000 reports", and the
+    run-in merged, 4000 typed into the paragraph as a number no binding prints."""
+    from manuscript_guard.cli import main
+
+    heading = "## Results in {{results.cohort.n_reports}} reports"
+    path = _paper(project, "# Intro", _ALPHA, _PAPA, heading, _ROMEO, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project,
+        tmp_path,
+        _run_into_papa("Results in 4000 reports", below=True),
+        document=_UNCHECKED,
+    )
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_reports"].update(value=4100, display="4100")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"

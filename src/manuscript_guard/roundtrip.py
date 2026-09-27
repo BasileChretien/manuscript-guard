@@ -62,6 +62,12 @@ _CUSTOM = "docProps/custom.xml"
 #: the first one's identifier named the new one, read the same, and took a co-author's
 #: ethics approval. So each paragraph's record also hashes the block before it.
 #:
+#: And its own block whole, with the block after it. `import` recognises a heading run into
+#: a paragraph in Word by the heading beside it in the source now, which is the one the
+#: co-author had only if nothing beside the paragraph changed since the build. A heading
+#: written straight above a paragraph, with no blank line, shares its block, and the text
+#: hash starts after it; renamed or removed since, it was in no hash, and the run-in merged.
+#:
 #: Split over several properties, each short of 255 characters, which Word may cut a text
 #: property to when it saves.
 PARAGRAPHS_PROPERTY = "manuscript-guard-paragraphs"
@@ -124,14 +130,19 @@ _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 _BUILD_INPUTS = ("bibliography", "csl")
 
 
-def _recorded_as(text: str, before: str) -> str:
+def _recorded_as(text: str, before: str, beside: str | None = None) -> str:
     """What the record keeps of one paragraph: `<hash of its text>.<hash of the block
-    before it>`."""
-    ours = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
-    return f"{ours}.{hashlib.sha256(before.encode('utf-8')).hexdigest()[:6]}"
+    before it>.<hash of its block whole and the block after it>`, the last left out when
+    `beside` is None, as releases before it wrote it."""
+
+    def hashed(what: str, length: int) -> str:
+        return hashlib.sha256(what.encode("utf-8")).hexdigest()[:length]
+
+    recorded = f"{hashed(text, 8)}.{hashed(before, 6)}"
+    return recorded if beside is None else f"{recorded}.{hashed(beside, 6)}"
 
 
-_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6})")
+_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6}(?:\.[0-9a-f]{6})?)")
 
 
 def _encoded(paragraphs: dict[str, str]) -> list[str]:
@@ -1461,14 +1472,16 @@ def identified(
     `front` numbers them with the front matter taken to end where a past release took it
     to, one of `_PAST_FRONTS`, for a document built before paragraphs were recorded.
     """
-    return [(name, text, start) for name, text, start, _before in _walk(raw, relative, front)]
+    return [(name, text, start) for name, text, start, *_beside in _walk(raw, relative, front)]
 
 
 def _walk(
     raw: str, relative: str, front: re.Pattern[str] | None = None
-) -> list[tuple[str, str, int, str]]:
+) -> list[tuple[str, str, int, str, str]]:
     """`identified`, with the text of the block before each paragraph: a heading, a
-    paragraph, anything but blank lines, or nothing at the top of the file."""
+    paragraph, anything but blank lines, or nothing at the top of the file. And with its
+    own block whole, any heading written straight above it included, and the block after
+    it, or nothing at the end of the file."""
     # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
     # raw source here while the document was tagged from the stripped text put every
     # identifier one block out of step - the two must read the same string or the
@@ -1484,13 +1497,21 @@ def _walk(
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
     cursor = len(raw) - len(text)
-    out: list[tuple[str, str, int, str]] = []
+    out: list[tuple[str, str, int, str, str]] = []
     before = ""
-    for index, para, at in _blocks(text):
+    pieces = list(_blocks(text))
+    # The block after each piece, read from the end.
+    following, after = [""] * len(pieces), ""
+    for position in range(len(pieces) - 1, -1, -1):
+        following[position] = after
+        if pieces[position][1].strip():
+            after = pieces[position][1].strip()
+    for position, (index, para, at) in enumerate(pieces):
         if at is not None:
             # The paragraph alone, under any headings: `import` splices exactly this.
             name = _TAG.format(slug=slug, index=index)
-            out.append((name, para[at:].rstrip(), cursor + at, before))
+            beside = f"{para.strip()}\n\n{following[position]}"
+            out.append((name, para[at:].rstrip(), cursor + at, before, beside))
         cursor += len(para)
         if para.strip():
             before = para.strip()
@@ -1498,12 +1519,13 @@ def _walk(
 
 
 def paragraph_record(project) -> dict[str, str]:
-    """What the build records of each paragraph, `{identifier: <text>.<before>}`: a hash of
-    its text and one of the block before it. See `PARAGRAPHS_PROPERTY`."""
+    """What the build records of each paragraph, `{identifier: <text>.<before>.<beside>}`:
+    a hash of its text, one of the block before it, and one of its own block with the block
+    after it. See `PARAGRAPHS_PROPERTY`."""
     return {
-        name: _recorded_as(text, before)
+        name: _recorded_as(text, before, beside)
         for _path, relative, raw in _sources(project)
-        for name, text, _start, before in _walk(raw, relative)
+        for name, text, _start, before, beside in _walk(raw, relative)
     }
 
 
@@ -1550,6 +1572,12 @@ class Numbering:
     #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
     #: document may never have carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
+    #: Trusted identifiers whose paragraph stands among other blocks than at the build: the
+    #: block before it, its own block (a heading written straight above it included) or the
+    #: block after it changed since. A heading run into one in Word cannot be recognised by
+    #: the heading beside it now, so no rewording is merged into it. Known only of a document
+    #: that records its own block and the next, as releases from this one do.
+    beside_changed: frozenset[str] = frozenset()
 
 
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
@@ -1569,12 +1597,25 @@ def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
         was = recorded.get(name)
         if was is None:
             continue
-        ours, _, before = value.partition(".")
-        ours_then, _, before_then = was.partition(".")
+        ours, before = value.split(".")[:2]
+        ours_then, before_then = was.split(".")[:2]
         once = then[(_slug_of(name), ours)] == 1 and since[(_slug_of(name), ours)] == 1
         if ours == ours_then and (before == before_then or once):
             trusted.add(name)
     return frozenset(trusted)
+
+
+def _beside_changed(
+    recorded: dict[str, str], now: dict[str, str], trusted: frozenset[str]
+) -> frozenset[str]:
+    """Those of `trusted` whose block before, own block or block after changed since the
+    build (`Numbering.beside_changed`), of a document that records all three."""
+    changed = set()
+    for name in trusted:
+        then = recorded[name].split(".")
+        if len(then) == 3 and then[1:] != now[name].split(".")[1:]:
+            changed.add(name)
+    return frozenset(changed)
 
 
 def numbering(project, document: Path, *, stale: bool) -> Numbering:
@@ -1590,10 +1631,13 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     known = tagged_paragraphs(project)
     recorded = paragraphs_of(document)
     if recorded is not None:
+        now = paragraph_record(project)
+        trusted = _trusted(recorded, now)
         return Numbering(
-            trusted=_trusted(recorded, paragraph_record(project)),
+            trusted=trusted,
             recorded=True,
             sent=tuple(recorded),
+            beside_changed=_beside_changed(recorded, now, trusted),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.
@@ -1645,7 +1689,7 @@ def marked_blocks(raw: str) -> list[tuple[int, str, int]]:
     """
     return [
         (int(name.rsplit("-", 1)[1]), text, start)
-        for name, text, start, _before in _walk(raw, "")
+        for name, text, start, *_beside in _walk(raw, "")
     ]
 
 

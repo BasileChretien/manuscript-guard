@@ -324,6 +324,53 @@ def test_a_built_document_records_what_each_identifier_names(project: Path) -> N
     assert len(values) > 1 and all(len(value) < 255 for value in values)
 
 
+def test_a_record_holds_the_blocks_beside_each_paragraph() -> None:
+    """A heading written straight above a paragraph shares its block, outside the text hash,
+    and the heading below it is the next block: each is in the third hash, so a change to
+    either shows, and a change elsewhere does not."""
+    from manuscript_guard.roundtrip import _beside_changed, _recorded_as, _walk
+
+    def record(raw: str) -> dict[str, str]:
+        return {
+            name: _recorded_as(text, before, beside)
+            for name, text, _start, before, beside in _walk(raw, "main.md")
+        }
+
+    built = "# Intro\n\nAlpha.\n\n## Methods\nPapa.\n\n## Data\n\nRomeo.\n"
+    then = record(built)
+    papa = next(name for name in then if name.endswith("-4"))
+    assert all(value.count(".") == 2 for value in then.values())
+    for changed in (
+        built.replace("## Methods\n", ""),
+        built.replace("## Methods", "## Study design"),
+        built.replace("## Data", "## Sources"),
+    ):
+        now = record(changed)
+        assert now[papa].partition(".")[0] == then[papa].partition(".")[0], changed
+        assert papa in _beside_changed(then, now, frozenset({papa})), changed
+    elsewhere = record(built.replace("Romeo.", "Romeo, reworded."))
+    assert not _beside_changed(then, elsewhere, frozenset({papa}))
+
+
+def test_a_record_without_the_blocks_beside_is_still_read(tmp_path: Path) -> None:
+    """Documents built before the record held the blocks beside each paragraph are read as
+    they were: trusted by text and block before, and nothing is said of what is beside."""
+    from manuscript_guard.roundtrip import _beside_changed, _trusted, paragraphs_of
+
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    stamp_into(document, "a" * 64, {"mg-p-main-2": "0123abcd.456789"})
+    recorded = paragraphs_of(document)
+    assert recorded == {"mg-p-main-2": "0123abcd.456789"}
+    now = {"mg-p-main-2": "0123abcd.456789.fedcba"}
+    trusted = _trusted(recorded, now)
+    assert trusted == {"mg-p-main-2"}
+    assert not _beside_changed(recorded, now, trusted)
+
+
 def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
     from manuscript_guard.roundtrip import paragraphs_of
 

@@ -48,9 +48,9 @@ class _Next:
 def bracketed(text: str) -> Iterator[re.Match[str]]:
     """Every citation group in `text`: what `BRACKETED.finditer(text)` finds, in one pass.
 
-    The search tried a group at every `[` and read to the end of the line before it knew
-    there was no `@`, so a run of brackets took time in its square: three seconds a call for
-    5,000. A group's body takes neither `]` nor a line break before a blank line, so a `[`
+    The search tried a group at every `[` and read on to the next `]` or blank line before it
+    knew there was no `@`, so a run of brackets took time in its square: three seconds a call
+    for 5,000. A group's body takes neither `]` nor a line break before a blank line, so a `[`
     opens one exactly when the next `]` comes before the next such break, and an `@` lies
     between them. Those three are found once each as the reading moves on, and the pattern
     is matched only where they say it holds, which it then does at once."""

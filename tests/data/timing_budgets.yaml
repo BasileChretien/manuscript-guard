@@ -167,7 +167,8 @@ reads:
       over one scan cannot see. At these sizes the heaviest linear input already reads ten,
       so it cannot tell a quadratic that adds a few seconds: that is `assert_linear`'s job.
     headroom: >-
-      1.1 to 10.0 against 30, over five rounds with thirteen other suites running. The
+      0.7 to 10.0 against 30, over five rounds with thirteen other suites running and review's
+      own. The
       heaviest input, one long run of backticks, read up to 10.0: 3x. Nested brackets read
       12.3 while `BRACKETED` was quadratic, and 1.4 once it read in one pass.
 

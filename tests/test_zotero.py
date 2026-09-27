@@ -272,14 +272,31 @@ def run_of_brackets(count: int) -> str:
 
 
 def test_a_run_of_brackets_is_read_in_linear_time(assert_linear) -> None:
-    """`BRACKETED.finditer` opened a group at every `[` and read to the end of the line before
-    it found no `@` there: 5,000 brackets took three seconds a call, and `check` makes two on
-    each file, one in G7 and one in the writing gate."""
+    """`BRACKETED.finditer` opened a group at every `[` and read on to the next `]` or blank
+    line before it found no `@` there: 5,000 brackets took three seconds a call, and `check`
+    makes two on each file, one in G7 and one in the writing gate."""
 
     def cite(text: str) -> None:
         find_citations(text, Path("m.md"))
 
     assert_linear(run_of_brackets, cite, 250, "citations in a run of brackets")
+
+
+def brackets_over_a_blank_line(count: int) -> str:
+    """Opening brackets, a blank line, and only then an `@` and a `]`."""
+    return "[" * count + "\n\n@k]\n"
+
+
+def test_brackets_over_a_blank_line_are_read_in_linear_time(assert_linear) -> None:
+    """A blank line ends a group, so none of these brackets opens one, though an `@` and a
+    `]` come after them. Only the stop at the blank line tells them apart from brackets
+    that do: read without it, each is tried against the pattern, which reads back to the
+    blank line and fails, and the run takes time in its square again."""
+
+    def cite(text: str) -> None:
+        find_citations(text, Path("m.md"))
+
+    assert_linear(brackets_over_a_blank_line, cite, 500, "brackets over a blank line")
 
 
 def citing_lines(count: int) -> str:

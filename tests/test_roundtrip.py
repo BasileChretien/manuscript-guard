@@ -7229,6 +7229,88 @@ def test_a_paragraph_cut_beside_a_changed_heading_is_not_written_twice(
     assert source.read_text(encoding="utf-8").lower().count(words) == 1, out
 
 
+_DATA_REWORDED = (
+    "All of the synthetic dataset, the code that generates it and the analysis that reads it "
+    "are in this repository. No real patient data were used, so no ethical approval was "
+    "required."
+)
+_DATA_APPENDED = (
+    " Likewise, the synthetic dataset, the code that generates it and the analysis that reads "
+    "it are all in this repository. No real patient data were used, and no ethical approval "
+    "was required."
+)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("changed", "what"),
+    [
+        (changed, what)
+        for changed in ("heading-before-retitled", "comment-added-after", "result-changed")
+        for what in ("deleted", "moved-reworded", "appended")
+        if (changed, what) != ("result-changed", "appended")
+    ],
+)
+def test_a_paragraph_cut_onto_an_unchanged_heading_is_still_reported_deleted_or_moved(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], changed: str, what: str
+) -> None:
+    """A paragraph cut without Track Changes leaves its identifier on the heading after it,
+    and that heading is unchanged: what changed since the build is on the paragraph's other
+    side - the heading before it retitled in the .md, a comment added after it, or the
+    heading before it retitled in a document forced in after a result changed. The refusal
+    for a changed heading beside it is for an identifier taken off by the heading's style;
+    one taken off by its exact text sits on a heading as it was sent, where no join can be.
+    Refused for it, the paragraph lost its report of being deleted or moved in Word, and
+    with it the warning not to retype Word's copy."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    if changed == "result-changed":
+        cut, words = "This work received no funding.", "received no funding"
+        reworded = "This work received no funding at all."
+    else:
+        cut, words = "The synthetic dataset", "the code that generates it"
+        reworded = _DATA_REWORDED
+
+    def edit(xml: str) -> str:
+        (paragraph,) = [p for p in tagged_xml(xml) if f">{cut}" in p]
+        xml = _word_delete(xml, paragraph)
+        if changed == "result-changed":
+            xml = xml.replace(">Funding</w:t>", ">Funding sources</w:t>", 1)
+        if what == "moved-reworded":
+            (after,) = [p for p in tagged_xml(xml) if ">Disproportionality is not incidence" in p]
+            new = f'<w:p><w:r><w:t xml:space="preserve">{reworded}</w:t></w:r></w:p>'
+            xml = xml.replace(after, after + new, 1)
+        elif what == "appended":
+            xml = _appended(xml, "Hepatic injury is the single event term", _DATA_APPENDED)
+        return xml
+
+    returned = rewrite(document, tmp_path / "slid.docx", edit)
+    if changed == "result-changed":
+        import json
+
+        from manuscript_guard.emit import write_digest
+
+        fragment = project / "results" / "01_disproportionality.json"
+        data = json.loads(fragment.read_text(encoding="utf-8"))
+        data["values"]["cohort.n_reports"].update(value=4100, display="4100")
+        fragment.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    else:
+        text = source.read_text(encoding="utf-8")
+        if changed == "heading-before-retitled":
+            text = text.replace("# Data availability", "# Data and code availability", 1)
+        else:
+            text = text.replace("\n# Funding", "\n<!-- check the licence -->\n\n# Funding", 1)
+        source.write_text(text, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    out = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8").count(words) == 1, out
+    assert re.search(rf"(deleted|moved) in Word, left in place here: {re.escape(cut)}", out), out
+
+
 @needs_pandoc
 @pytest.mark.parametrize("reworded", [False, True], ids=["joined", "joined-and-reworded"])
 def test_a_heading_joined_with_track_changes_on_is_not_reported_deleted(

@@ -226,8 +226,8 @@ def _given_back(
             continue
         text = _squashed(out[after].text)
         theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
-        # Not to a line with no text: one holding only a symbol read as the empty line an
-        # HTML comment renders as, and took that comment's identifier.
+        # Not to a line with no text: one holding only a symbol read as the empty line a
+        # `&nbsp;` spacer renders as, and took that spacer's identifier.
         if not text or len(theirs) != 1 or expected[text]:
             continue
         # Only the one it matched: another identifier on the line - the note an HTML comment
@@ -521,6 +521,8 @@ def _beside_new_text(
         return block.text, block.unread
 
     unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
+    # Paragraphs sent empty: a `&nbsp;` or `<br>` spacer. Nothing was split around one.
+    spacers = {n for b in sent if b.names and not b.table and not any(content(b)) for n in b.names}
     new: set[int] = set()
     for index, block in enumerate(returned):
         if block.table or block.names or not any(content(block)):
@@ -537,8 +539,12 @@ def _beside_new_text(
             # stood where the second half of a split had, and the split merged as the whole.
             # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
             # text, it was looked past as an empty line, and vouched for the split again. Only
-            # a line with neither text nor an identifier, Enter pressed, is looked past.
-            if block.arrived and (any(content(block)) or block.names):
+            # a line with neither text nor an identifier, Enter pressed, is looked past, and
+            # a spacer Enter was pressed on is a neighbour like any other: it read as arrived,
+            # and the rewording beside it was refused.
+            if block.arrived and (
+                any(content(block)) or any(n not in spacers for n in block.names)
+            ):
                 return True
             if block.table:
                 if counterparts is None or i not in counterparts:

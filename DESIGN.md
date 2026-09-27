@@ -2283,8 +2283,8 @@ Word, left in place here", with Word's copy shown and the advice to move it in t
 never retype it - and the skill asks co-authors to keep Track Changes on. Two exact rules
 stayed: an identifier left on an empty line goes back to the next paragraph when that has
 text and reads exactly as the identified one was sent (Enter without Track Changes; a line
-holding only a symbol read as the empty line an HTML comment renders as, and took the
-comment's identifier), and an identifier on a block reading exactly as a heading or caption
+holding only a symbol read as the empty line a `&nbsp;` spacer renders as, and took the
+spacer's identifier), and an identifier on a block reading exactly as a heading or caption
 is taken off it (the last paragraph of a section, deleted without Track Changes, used to
 merge the heading's text into itself when it named the heading, on `main` too).
 
@@ -2296,7 +2296,9 @@ The checks that came out of the review rounds guard the tracked path as well:
   vouches for nothing whatever it still holds: with its moved text deleted, or replaced by a
   symbol with no text, it was looked past as an empty line is, and the split merged as its
   first half. Only an arrived line with neither text nor an identifier - Enter pressed - is
-  looked past.
+  looked past, and a `&nbsp;` or `<br>` spacer Enter was pressed on, which reads as arrived,
+  is a neighbour like any other: it was sent empty, and nothing was split around it. A
+  spacer moved in between the halves of a split vouches for them as it did before.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -3125,9 +3127,9 @@ Closed since, and why each mattered:
   write such parts; the audit, which cannot refuse, reads only the fonts a run names itself,
   and reads without the document's own heading styles, taking only Word's built-in ones as
   headings. A part zipfile cannot decompress - Deflate64, which some zip tools write when
-  a document is zipped again, or an encrypted one - is such a part. It used to crash the
-  reader that read it: the body or the build's record crashed the import, the body or the
-  styles the audit.
+  a document is zipped again, or an encrypted one - is such a part, and so is one declaring
+  an encoding the XML parser cannot read. Each used to crash the reader that read it: the
+  body or the build's record crashed the import, the body or the styles the audit.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

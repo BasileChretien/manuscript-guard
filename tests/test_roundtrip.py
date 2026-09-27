@@ -10442,6 +10442,18 @@ def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path
     assert f"Mean 3.2 {PLUS_MINUS} 0.4" in read_docx(document)
 
 
+def _declare_encoding(document: Path, part: str, encoding: str) -> None:
+    """Give one part of `document` an XML declaration naming `encoding`."""
+    with zipfile.ZipFile(document) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    declared = f'<?xml version="1.0" encoding="{encoding}"?>'.encode("ascii")
+    members[part] = declared + members[part]
+    with zipfile.ZipFile(document, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+
+
+@pytest.mark.parametrize("damage", ["Deflate64", "shift_jis", "no-such-encoding"])
 @pytest.mark.parametrize(
     ("part", "reader"),
     [
@@ -10451,14 +10463,17 @@ def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path
         ("word/styles.xml", "read_docx"),
     ],
 )
-def test_a_part_that_cannot_be_decompressed_is_refused_not_a_crash(
-    tmp_path: Path, part: str, reader: str
+def test_a_part_that_cannot_be_read_is_refused_not_a_crash(
+    tmp_path: Path, part: str, reader: str, damage: str
 ) -> None:
     """A part zipfile cannot decompress - Deflate64, which other zip tools write, or an
     encrypted one - raised NotImplementedError or RuntimeError out of whichever reader read
     it: the body out of the import and the audit, the comments out of the import, the styles
-    out of the audit. Each is refused as a part that cannot be read safely is, and the audit
-    reads on without the heading styles, as it does without the fonts."""
+    out of the audit. So did a part declaring an encoding the XML parser cannot read: a
+    multi-byte one raised ValueError, an unknown name LookupError. Word writes UTF-8, but the
+    font parts were refused and the rest crashed. Each is refused as a part that cannot be
+    read safely is, and the audit reads on without the heading styles, as it does without
+    the fonts."""
     from manuscript_guard.docxtext import DocumentUnreadable, blocks, comment_texts
     from manuscript_guard.text.docx import NotADocx, read_docx
 
@@ -10468,7 +10483,10 @@ def test_a_part_that_cannot_be_decompressed_is_refused_not_a_crash(
     comments = f'<w:comments xmlns:w="{WORD_MAIN}">{comment}</w:comments>'
     with zipfile.ZipFile(document, "a") as archive:
         archive.writestr("word/comments.xml", comments)
-    _unsupported_compression(document, part)
+    if damage == "Deflate64":
+        _unsupported_compression(document, part)
+    else:
+        _declare_encoding(document, part, damage)
     read = {"blocks": blocks, "comment_texts": comment_texts, "read_docx": read_docx}[reader]
     if part == "word/styles.xml":
         assert "We found 77 cases." in read(document)
@@ -10579,31 +10597,77 @@ def test_a_moved_paragraph_left_empty_does_not_vouch_for_a_split(
     assert path.read_text(encoding="utf-8") == text
 
 
-@pytest.mark.parametrize("left", ["typed", "inserted"])
-def test_a_symbol_on_a_new_line_below_a_comment_is_new_text(tmp_path: Path, left: str) -> None:
-    """An HTML comment reaches Word as an empty line, whose identifier is given back to the
-    text below only when that text reads as the comment did. A new line holding only a smiley
-    read as no text, as the comment does, so it took the comment's identifier: the smiley was
-    reported as an edit to the comment, "NOT merged", rather than listed as new text."""
+#: A line the .md leaves empty on purpose, as the build writes it: carrying an identifier,
+#: `&nbsp;` holding a no-break space and `<br>` nothing.
+_SPACERS = {"&nbsp;": f"<w:r><w:t>{chr(0xA0)}</w:t></w:r>", "<br>": ""}
+
+
+_ALPHA, _BRAVO = "Alpha opens it.", "Bravo follows it."
+
+
+def _spaced_out(tmp_path: Path, spacer: str) -> dict:
+    """The .md of a section of two paragraphs with `spacer` between them, and the
+    identifiers it knows: "a", "s" for the spacer, and "b"."""
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{_ALPHA}\n\n{spacer}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = (("a", _ALPHA), ("s", spacer), ("b", _BRAVO))
+    return {f"mg-p-{n}-0": (path, line, text.index(line)) for n, line in lines}
+
+
+def _section(a: str, spacer: str, b: str) -> str:
+    """The body of such a section: `spacer` is the XML between the two paragraphs."""
+    return _HEADING + _tagged("mg-p-a-0", text_run(a)) + spacer + _tagged("mg-p-b-0", text_run(b))
+
+
+def _import(tmp_path: Path, known: dict, sent: str, back: str):
     from manuscript_guard.docxtext import blocks
     from manuscript_guard.merge import plan_import
 
-    a, note, b = "Alpha opens it.", "<!-- note -->", "Bravo follows it."
-    path = tmp_path / "main.md"
-    text = f"# Methods\n\n{a}\n\n{note}\n\n{b}\n"
-    path.write_text(text, encoding="utf-8")
-    known = {f"mg-p-{n}-0": (path, w, text.index(w)) for n, w in (("a", a), ("c", note), ("b", b))}
-    opening = _HEADING + _tagged("mg-p-a-0", text_run(a)) + _tagged("mg-p-c-0", "")
-    sent = opening + _tagged("mg-p-b-0", text_run(b))
-    smiley = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}[left]
-    back = opening + f"<w:p>{smiley}</w:p>" + _tagged("mg-p-b-0", text_run(b))
-    plan = plan_import(
+    return plan_import(
         known,
         blocks(word_document(tmp_path / "sent.docx", sent)),
         blocks(word_document(tmp_path / "back.docx", back)),
     )
+
+
+@pytest.mark.parametrize("left", ["typed", "inserted"])
+def test_a_symbol_on_a_new_line_below_a_spacer_is_new_text(tmp_path: Path, left: str) -> None:
+    """A `&nbsp;` spacer reaches Word as an empty line carrying an identifier, which is given
+    back to the text below only when that text reads as the spacer did. A new line holding
+    only a smiley read as no text, as the spacer does, so it took the spacer's identifier:
+    the smiley was reported as an edit to the spacer, "NOT merged", rather than listed as new
+    text."""
+    known = _spaced_out(tmp_path, "&nbsp;")
+    spacer = _tagged("mg-p-s-0", _SPACERS["&nbsp;"])
+    smiley = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}[left]
+    sent = _section(_ALPHA, spacer, _BRAVO)
+    plan = _import(tmp_path, known, sent, _section(_ALPHA, spacer + f"<w:p>{smiley}</w:p>", _BRAVO))
     assert not plan.refused, plan.refused
     assert plan.unidentified == (f"[{SMILEY}]",), plan.unidentified
+
+
+@pytest.mark.parametrize("above", [True, False], ids=["reworded above", "reworded below"])
+@pytest.mark.parametrize("spacer", list(_SPACERS))
+def test_a_rewording_beside_a_spacer_enter_was_pressed_on_merges(
+    tmp_path: Path, spacer: str, above: bool
+) -> None:
+    """Enter pressed at the end of a spacer line with Track Changes on marks its paragraph
+    mark inserted, and with no text kept it read as a paragraph that arrived. One of those
+    vouches for nothing beside it, so the rewording of the paragraph above or below was
+    refused as a split, where `main` merged it. A spacer was sent empty: nothing was split
+    around it, and it vouches as any paragraph does."""
+    known = _spaced_out(tmp_path, spacer)
+    runs = _SPACERS[spacer]
+    mark = f'<w:pPr><w:rPr><w:ins w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr></w:pPr>'
+    entered = f'<w:p>{mark}<w:bookmarkStart w:id="{next(_WORD_IDS)}" w:name="mg-p-s-0"/>'
+    entered += f"{runs}</w:p><w:p></w:p>"
+    reworded = "It changed here."
+    a, b = (reworded, _BRAVO) if above else (_ALPHA, reworded)
+    sent = _section(_ALPHA, _tagged("mg-p-s-0", runs), _BRAVO)
+    plan = _import(tmp_path, known, sent, _section(a, entered, b))
+    assert not plan.refused, plan.refused
+    assert plan.merged["mg-p-a-0" if above else "mg-p-b-0"] == reworded, plan.merged
 
 
 @needs_pandoc

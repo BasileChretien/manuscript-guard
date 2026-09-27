@@ -49,7 +49,10 @@ def parse_xml(data: bytes, *, what: str = "XML") -> ET.Element:
         )
     try:
         return ET.fromstring(data)
-    except ET.ParseError as exc:
+    except (ET.ParseError, ValueError, LookupError) as exc:
+        # An XML declaration naming an encoding the parser cannot read raises ValueError
+        # for a multi-byte one, LookupError for an unknown name: not ParseError, and each
+        # crashed the reader. A part in either is malformed as far as this reader goes.
         raise UnsafeDocument(f"{what} is malformed: {exc}") from exc
 
 

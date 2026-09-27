@@ -3333,7 +3333,9 @@ Closed since, and why each mattered:
     it prints nothing of either. No real address has several words, so such a line is
     marked, and prints as it was written, as it did before `_blocks` took it for a
     definition. With one word after the colon, `[Note]: none.`, the line is a definition
-    to both, and prints nothing.
+    to both, and prints nothing. A marked line cut down to that shape in Word, such as
+    `[Note]: @smith2020 says X.` to its label and citation, is refused by `import`: the next
+    build would give it no identifier.
   - *Beside a line pandoc does not take for blank, nothing is marked.* A line holding only
     a no-break or full-width space, or a form feed, separates blocks here and not for
     pandoc, and `_blocks` leaves the blocks on both sides of it unmarked. A definition under
@@ -3352,9 +3354,14 @@ Closed since, and why each mattered:
     written on the line under it, with no empty line between, is never asked whether it
     runs on. Under a line holding only a no-break space, the paragraph below goes into the
     footnote, and is not compared. An empty line before the note avoids it.
-  - *Only a note left alone is read by itself.* Pandoc reads a note's text apart from the
-    body. A note that runs on into the block below, or is marked for a line the rule
-    refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
+  - *Only a note left alone, or a label made a term, is read by itself.* Pandoc reads a
+    note's text apart from the body. Under a label, a definition's `: ` or `~ ` with its text
+    makes a term and its definition instead, and pandoc reads each of those by itself too, so
+    `_blocks` follows no raw content out of that block either (`_term_under_a_note`).
+    Followed, a `<!--` in the label hid the paragraphs after it up to the next `-->`, while
+    pandoc printed them. A table's rule in it is still followed, which can only leave more
+    unmarked. A note that runs on into the block below, or is marked for an underline or a
+    table's rule, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
     `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
     them. And a code fence wrapped onto a note's second line, left alone or not, is still
     paired with the next fence below, so what lies between goes unmarked, or a marker lands

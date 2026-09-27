@@ -1945,6 +1945,31 @@ def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) 
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_import_does_not_cut_a_paragraph_down_to_a_link_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """A paragraph opening `[Note]:` with a narrative citation after it is prose. Cut down
+    in Word to the label and the citation, it is a link's definition, which pandoc prints
+    nothing of: merged, the paragraph vanished from the next build (#72's round-4 review)."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    paragraph = "[Note]: @fictionalClassSignal2019 says the ratio was high.\n\n"
+    anchor = "# Data availability"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(
+        project, tmp_path, lambda xml: xml.replace("says the ratio was high.", "", 1)
+    )
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "cut down to a link definition"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
     project: Path, tmp_path: Path
 ) -> None:

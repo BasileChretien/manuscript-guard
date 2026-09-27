@@ -1139,6 +1139,26 @@ def _continues_a_note(line: str, under_label: bool) -> bool:
     )
 
 
+def _term_under_a_note(block: str, above: str) -> bool:
+    """Whether a block is a note's label with a definition directly under it, `: text` or
+    `~ text`, which pandoc reads as a definition list: the label its term, the rest its
+    definition. `above` is what `_around` gives.
+
+    Neither part is a note, but each is read by itself all the same, the term as one line of
+    inline text and the definition as blocks of its own, so a `<!--` or a `<pre>` in either
+    opens nothing beyond them. Followed on, a comment opened in the label hid the paragraphs
+    below up to the next `-->`, while pandoc printed them. A bare marker under the label
+    makes a term too, but `_continues_a_note` takes it into the note, so that block is a
+    definition already."""
+    lines = block.strip("\n").split("\n")
+    return (
+        _blank_above(above)
+        and len(lines) > 1
+        and _NOTE_LINE.fullmatch(lines[0]) is not None
+        and _DEFINITION.match(lines[1]) is not None
+    )
+
+
 def _blank_below(below: str) -> bool:
     """Whether the next block starts afresh after a note. `below` is what separates them
     and the next block's first line, empty at the end of the text.
@@ -1293,9 +1313,10 @@ def _blocks(text: str) -> Iterator[tuple[int, str, int | None]]:
         # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
         # note up to the next `-->`, while pandoc printed them all.
         definitions = apart and _definitions(piece, *_around(pieces, index))
+        term = apart and _term_under_a_note(piece, _around(pieces, index)[0])
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
-        runs_on = 0 if definitions else _raw_end(text, origin, end, closers)
+        runs_on = 0 if definitions or term else _raw_end(text, origin, end, closers)
         closer = None if definitions else ruled.end(index)
         if closer is not None:
             runs_on = max(runs_on, ends[closer])

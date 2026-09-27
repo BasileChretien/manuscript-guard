@@ -2590,11 +2590,32 @@ Added by the adversarial review, verified and **not** fixed:
   the pandoc it installs and pins, 3.9.0.2. Where the patterns are unsure they leave a block
   unmarked, which costs a comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
-  (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
-  inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
-  Raw TeX other than an environment is not followed across a blank line. When the blank line
-  falls inside braces, the blocks either side are refused by the brace
-  count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
+  (pandoc's abbreviation rule, not reproduced), and a paragraph whose unescaped braces do
+  not pair. And the scan for raw content does not know where pandoc reads a `<!--`, a
+  verbatim tag such as `<pre>`, or a `\begin{x}` inside something it closes first. Found
+  so far: inline code, inline or display maths, `\verb|...|`, an indented code block, a
+  fence written under a line of its block rather than after a blank one, a fence opening
+  a list item on its marker's line, a fence in a block quote or indented four columns or
+  more, a link's destination or title, an image's destination or title, an autolink, the
+  attributes of a tag, a span, a heading, a div, a link, an image or a code span, a table
+  cell, a list item, a block quote, a line block, a definition, a YAML block in the body
+  and any value in the front matter. `<pre>`
+  and `\begin` are misread in link text, an image's alt text, an inline note and a
+  citation's locator too, and `<!--` and `<pre>` in a TeX command's argument. There the
+  opener is taken for real. The paragraphs from the one holding it to the one holding its
+  closer go unmarked, though pandoc prints them: the closer is the next `-->`, the tag's
+  own end tag (`</pre>`, `</script>`), or the `\end{x}` matching it by name. With no closer
+  later in the file, nothing is hidden. The document looks right; an edit made to one of
+  those paragraphs in Word comes back listed as not compared, to be carried over by hand.
+  For a `<!--` anywhere but inline code, a fence and the front matter, `check`'s comment
+  scanner hides the text from the opener to the closer as well, and G2 reads no number
+  there (see "The comment scanner knows code spans, fences and the front matter"). No way
+  around it is given here: each tried, a fenced block, an empty comment after the opener,
+  an escape, `%3C` or `&lt;`, fails or changes the printed words somewhere the others
+  work, and the reviews of #97 list where. Raw TeX other than an environment is not
+  followed across a blank line. When the blank line falls inside braces, the blocks either
+  side are refused by the brace count, since `\footnote{One.\n\nTwo.}` is one paragraph
+  to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
   marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which
   `import` already tolerates. When it falls inside an optional argument,

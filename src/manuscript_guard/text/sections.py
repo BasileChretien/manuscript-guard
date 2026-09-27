@@ -154,13 +154,7 @@ class HeadingIndex(list):
             # text took it off the other chain as well, and left both saying Methods.
             both = type(found.title) is not Unprinted or rules_out_methods(found.title)
             for stack in (every, printed) if both else (every,):
-                level = (
-                    1
-                    if stack is printed
-                    and _hash_over_rule(found)
-                    and (text is None or text.startswith("#", found.start))
-                    else found.level
-                )
+                level = _printed_level(found, text) if stack is printed else found.level
                 while stack and stack[-1][0] >= level:
                     stack.pop()
                 stack.append((level, found.title))
@@ -169,14 +163,35 @@ class HeadingIndex(list):
             )
 
 
+# Where the scan before the walk read an ATX heading: its `^#{1,6}\s+` at the margin, where
+# `\s` is a no-break space too. At a setext title the underline is always there for the rest
+# of that pattern to take.
+_OLD_SCAN_ATX_LEVEL = re.compile(r"(#{1,6})\s")
+
+
+def _printed_level(found: Heading, text: str | None) -> int:
+    """A heading's level on the printed chain.
+
+    A setext title that is an ATX line at the margin, `## Outcomes` over `===` say, is a
+    heading pandoc prints at the underline's level, which is how the walk places it, and the
+    scan before the walk read it at its hash count. Where the walk wrongly placed a heading,
+    under a stray `</script>` say, the two readings nest differently: pandoc's level-1
+    "## Outcomes" closed a Results that `main`'s level 2 kept open. So the printed chain takes
+    the hash count, and both readings must say Methods. Only a `#` at the margin is
+    counted, which is all the old scan read: taken for an indented ` # Y`, or one after a
+    comment, the count popped a Results the printed chain still held. Without the text, only
+    a `# X` over a `-` rule is known to be one, and it takes level 1."""
+    if not found.setext:
+        return found.level
+    if text is None:
+        return 1 if _hash_over_rule(found) else found.level
+    old = _OLD_SCAN_ATX_LEVEL.match(text, found.start)
+    return len(old.group(1)) if old else found.level
+
+
 def _hash_over_rule(found: Heading) -> bool:
-    """A `# X` line over a `-` rule. Pandoc prints a level-2 heading titled "# X", which is
-    how the walk places it, and the scan before the walk read a level-1 heading "X". Where
-    the walk wrongly placed a `# Methods` above it, under a stray `</script>` say, the level-2
-    reading nested under that Methods, and the level-1 one closes it. So the printed chain
-    takes level 1, and both readings must say Methods: `HeadingIndex` does so only for a `#`
-    at the margin, which is all the old scan read. Taken for an indented ` # Y`, or one after
-    a comment, level 1 popped a Results the printed chain still held."""
+    """A `# X` line over a `-` rule: a level-2 heading titled "# X" to pandoc, which the scan
+    before the walk read as a level-1 heading "X" (`_printed_level`)."""
     return (
         found.setext
         and found.level == 2
@@ -231,10 +246,15 @@ def footnote_index(text: str) -> list[Note]:
     holds, taken for a note's text. Since a number is still judged where it stands, such a
     misreading only adds a section it must pass in. A reference inside a definition is not
     counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
+    A heading the walk found but pandoc prints as text (`Unprinted`) neither refuses a
+    definition nor ends a note's text: an empty `##` takes the line under it as its title,
+    and that line can be a `[^n]:` definition.
     """
     shown = scannable(text)
     found_headings = heading_index(text)
-    headings = {found.start for found in found_headings}
+    headings = {
+        found.start for found in found_headings if type(found.title) is not Unprinted
+    }
     lines: list[tuple[int, str]] = []
     offset = 0
     for line in shown.split("\n"):

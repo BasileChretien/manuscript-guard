@@ -646,6 +646,21 @@ RESULTS_READ_AS_METHODS = {
         "# Res<!-- -->ults\n\n## Statistical analysis\n\nText\n###\nResults\n\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    # Found by the ninth review. A setext title `main` read as an ATX heading kept its place
+    # on the printed chain, but at pandoc's level rather than at `main`'s hash count.
+    "two hashes over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n## Outcomes\n===\n\n## Statistical analysis\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "three hashes over a rule under a level-two results": (
+        "## Results\n\nText\n</script>\n### Y\n---\n\n### Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # `main`'s `#{1,6}\s+` took a no-break space after the hash too.
+    "a hash and a no-break space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0xA0) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 
@@ -3123,6 +3138,20 @@ def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, not
             _AT_END,
             "[^n]: The excess was significant (p < 0.001).\n",
         ),
+        # Found by the ninth review: a heading the walk found but pandoc prints as text
+        # neither refuses a definition nor ends a note. An empty heading takes the line under
+        # it as its title, and a lazy line of the note is shaped like a title `main` refused.
+        ((_IN_RESULTS,), _IN_METHODS, "##\n[^n]: The excess was significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "######\n\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note\n    > The excess was significant (p < 0.001).\n---\n",
+        ),
     ],
 )
 def test_a_footnote_is_read_where_it_is_referenced(
@@ -3134,6 +3163,15 @@ def test_a_footnote_is_read_where_it_is_referenced(
     footnote to a Results sentence."""
     _with_footnote(project, referenced, defined, note)
     assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced(project: Path) -> None:
+    """Found by the ninth review. A lazy line of a note, shaped like a setext title starting
+    `|` that the walk found and pandoc prints as the note's text, ended the note above it;
+    its `p < 0.001` passed as the alpha, where `main` reports it as a table row."""
+    note = "[^n]: A note\n    | The excess was significant (p < 0.001).\n-\n"
+    _with_footnote(project, (_IN_RESULTS,), _IN_METHODS, note)
+    assert "hand-authored-table" in codes(gate_report(project))
 
 
 _CLAIM = "The excess was significant (p < 0.001)."

@@ -2663,7 +2663,8 @@ Closed since, and why each mattered:
   indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
   note defined under Methods and referenced from Results, still passes as the alpha, as on
   `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
-  section a number must pass in.
+  section a number must pass in. A heading the walk finds but pandoc prints as text, which
+  `main` never found, neither refuses a definition nor ends a note's text.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and
@@ -2763,9 +2764,11 @@ Closed since, and why each mattered:
   like a printed heading. A lone `##` over a line of text, an empty heading and a paragraph
   to pandoc, ends the section there, titled with that line, whether the walk places the
   `##` or not; a `#` line under it, which the scan before the walk took for its title, never
-  opens Methods. A `# X` line over a `-` rule, the `#` at the margin, is a level-2 heading
-  titled "# X" to pandoc and the walk, and a level-1 heading "X" to the scan before it; for
-  G2 a section is Methods only if both readings say so. The audit's reference list starts
+  opens Methods. A setext title that is an ATX line at the margin, `## Outcomes` over `===`
+  or `# X` over `-`, is a heading at the underline's level titled "## Outcomes" to pandoc
+  and the walk, and a heading "Outcomes" at its hash count to the scan before it, which took
+  a no-break space after the hashes too; for G2 a section is Methods only if both readings
+  say so. The audit's reference list starts
   only at a heading G2 would call printed, so none of these starts one.
 - **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
   line under a table for a row when it holds a pipe outside code, math and a backslash

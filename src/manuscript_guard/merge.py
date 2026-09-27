@@ -448,7 +448,7 @@ def _unsettled(
     shown: Counter,
     suspects: set[str],
     misplaced: set[str],
-) -> tuple[set, list[str]]:
+) -> tuple[set, list[tuple[str, frozenset]]]:
     """Sections whose paragraphs cannot be placed with certainty.
 
     One gained text the document as sent did not have - a split's second half, a paragraph
@@ -458,14 +458,15 @@ def _unsettled(
     them it belongs to is not written anywhere; and a paragraph moved in from another
     section standing beside the new text says nothing about which section that is, so the
     search goes past it, to the first paragraph that is where it belongs. Returns the
-    sections, and the new text that unsettled them, for the report.
+    sections, and each new text with the sections it unsettled, for the report: quoted for a
+    move in another section, it pointed the author at the wrong place.
 
     Text is compared as `_listed` shows it, against `shown`, the document as sent shown the
     same way: by its text alone, a heading that gained a symbol with no text read as
     unchanged, and the moves beside it were applied.
     """
     found = {sections[name] for name in suspects if name in sections}
-    because: list[str] = []
+    because: list[tuple[str, frozenset]] = []
     unchanged = Counter(shown)
     for index, block in enumerate(returned):
         if block.table or block.names or not (block.text or block.unread):
@@ -474,18 +475,34 @@ def _unsettled(
         if unchanged[key]:
             unchanged[key] -= 1
             continue
-        because.append(_listed(block))
+        these: set = set()
         for step in (-1, 1):
             i = index + step
+            passed = False
             while 0 <= i < len(returned) and returned[i].kind not in ("table", "figure"):
-                names = [n for n in returned[i].names if n in sections]
-                found.update(sections[n] for n in names)
+                here = returned[i]
+                # Once past a paragraph moved in, a heading or caption as it was sent ends
+                # the search: the one moved in stood at the edge of its own section, and the
+                # search went on into the next and held a clear move there. Not text that
+                # arrived itself - a list item moved in beside a split's second half.
+                if (
+                    passed
+                    and not here.names
+                    and not here.arrived
+                    and shown[_squashed(_listed(here))]
+                ):
+                    break
+                names = [n for n in here.names if n in sections]
+                these.update(sections[n] for n in names)
                 # Past a paragraph moved in, named misplaced or not: across a boundary Word
                 # does not show - an HTML comment - one moved in is not named, and it hid the
                 # section of a split's new half beside it.
-                if names and not set(names) <= misplaced and not returned[i].arrived:
+                if names and not set(names) <= misplaced and not here.arrived:
                     break
+                passed = passed or (here.arrived and bool(names))
                 i += step
+        found |= these
+        because.append((_listed(block), frozenset(these)))
     return found, because
 
 
@@ -1448,7 +1465,10 @@ def plan_import(
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         withheld=tuple(withheld),
-        held_by=tuple(because) if withheld else (),
+        # Only the new text in the withheld moves' own sections.
+        held_by=tuple(
+            text for text, where in because if where & {sections[n] for n in withheld}
+        ),
         sections=sections,
         lost=lost,
         strayed=tuple(strayed),

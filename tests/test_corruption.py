@@ -2451,6 +2451,52 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
             {},
         ),
         ("As shown [@a2020, p. 3][@b2021, p. 5].", {"3", "5"}, {}),
+        # Found by the extra round: an escaped range, split by its inner backslash; and a
+        # bracket before a citation, or before a label nothing defines, which pandoc reads
+        # as text. In prose, and in a table or a list, where the first version unmarked
+        # the whole block.
+        ("Costs ranged from \\$10-\\$50 per dose.", {"\\$10-\\$50"}, {}),
+        ("Costs ranged from \\$1,000-\\$2,000 per dose.", {"\\$1,000-\\$2,000"}, {}),
+        # An escaped dollar after the digits stays outside the mark, with its backslash.
+        ("It cost 5\\$ and then 10\\$, over 3 days.", {"5", "10", "3"}, {}),
+        (
+            "| Drug | Cost |\n|------|------|\n| A | \\$10-\\$50 |\n| B | \\$5 |",
+            {"\\$10-\\$50", "\\$5"},
+            {},
+        ),
+        ("- Drug A cost \\$10-\\$50.\n- Drug B cost \\$5 for 3 visits.", {"\\$10-\\$50", "3"}, {}),
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][@smith2021] in 40 patients.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        ("The rate was [4.5 per 100][see @smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        ("The rate was [4.5 per 100][-@smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        # The finder reads `12][13` as one number, as on main, whose mark escapes the
+        # brackets.
+        ("Counts were [12][13] in all 40 sites.", {"12][13", "40"}, {}),
+        # A mark straight after a `]` reads as a reference: that number goes unmarked, and
+        # its paragraph keeps the rest.
+        ("Fees [B]7 in 3 sites.", {"3"}, {"B]7": "IN_MARKUP"}),
+        (
+            "It was [95% CI 1.2-3.4]1.2-3.4[12] in 40 sites.",
+            {"95%", "40"},
+            {"1.2-3.4[12": "IN_MARKUP"},
+        ),
+        (
+            "| Odds ratio | CI |\n|----|----|\n| 2.1 | [1.2-3.4][@smith2021] |",
+            {"2.1", "1.2-3.4"},
+            {},
+        ),
+        ("- 2.1 [95% CI 1.2-3.4][@smith2021]\n- 40 patients", {"95%", "1.2-3.4", "40"}, {}),
+        # A reference link the file defines is a link: its number stays unmarked. (The
+        # definition holds no digit: a number in a definition is marked, which is recorded
+        # in Known gaps.)
+        (
+            "Of 120 reports, as shown in [Table 2][tbl].\n\n[tbl]: #results-table",
+            {"120"},
+            {"2": "IN_LINK"},
+        ),
         # A dollar sign in inline code opens no equation.
         ("Age (`df$age`) was split into 3 groups and sex (`df$sex`) into 2.", {"3", "2"}, {}),
         # A link to an anchor: only the number in its text goes unmarked.
@@ -2480,3 +2526,27 @@ def test_the_annotated_copy_marks_what_main_marked(
     assert marked <= {s for s, reason in shown.items() if not reason}, shown
     for number, reason in unmarked.items():
         assert shown.get(number) == getattr(module, reason), shown
+
+
+@pytest.mark.parametrize(
+    ("text", "links"),
+    [
+        # Pandoc matches a label ignoring case and runs of white space, and an empty
+        # bracket takes the text as the label.
+        ("See [Table 2][].\n\n[table  2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][T].\n\n[t]: #t\n", ["[Table 2]"]),
+        ("See [Table 2](#t).\n", ["[Table 2]"]),
+        # Nothing defines these, so pandoc reads text: a footnote's marker, a citation,
+        # a label with no definition, and a footnote's definition, which is no link's.
+        ("See [Table 2][^1].\n\n[^1]: A note.\n", []),
+        ("See [Table 2][@smith2021].\n", []),
+        ("See [Table 2][t].\n", []),
+        ("See [Table 2][].\n\n[^table 2]: A note.\n", []),
+    ],
+)
+def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(
+    text: str, links: list[str]
+) -> None:
+    from manuscript_guard.text.inline import link_text_spans
+
+    assert [text[start:end] for start, end in link_text_spans(text)] == links

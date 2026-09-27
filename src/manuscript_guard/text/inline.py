@@ -30,21 +30,46 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
     markup, and pandoc read none. So the mark goes around the one run free of markup that
     holds a digit, inside the subscript or the span, where pandoc reads a mark as well as
     anywhere; and around the whole of what was found when several runs hold digits,
-    `10^-3^`, only if every sub- and superscript in it opens and closes there.
+    `10^-3^`, only if every sub- and superscript in it opens and closes there. Brackets
+    there are escaped in the mark and read as the text they were, `[12][13]`; a link's text
+    is found apart (`link_text_spans`). An escaped dollar sign is text, so `\\$10-\\$50` is
+    one run, not two split at a backslash. No mark opens straight after a `]`: pandoc read
+    the two brackets, `[B][[7](…)]{…}`, as a reference, and the paragraph otherwise.
     """
-    found = text[start:end]
+    found = _escaped_dollars_as_text(text[start:end])
     runs = [
         (start + run.start(), start + run.end())
         for run in _PLAIN_RUN.finditer(found)
         if any(character.isdigit() for character in run.group())
     ]
     if len(runs) == 1:
-        return _settled(text, *runs[0])
-    if not runs or any(character in found for character in "`*_<>[]{}\\|"):
+        core = _settled(text, *runs[0])
+    elif (
+        not runs
+        or any(character in found for character in "`*_<>{}\\|")
+        or found.count("~") % 2
+        or found.count("^") % 2
+    ):
         return None
-    if found.count("~") % 2 or found.count("^") % 2:
-        return None
-    return _settled(text, start, end)
+    else:
+        core = _settled(text, start, end)
+    return None if core[0] > 0 and text[core[0] - 1] == "]" else core
+
+
+def _escaped_dollars_as_text(found: str) -> str:
+    """`found` with each backslash that escapes a dollar sign read as a dollar sign too, so
+    neither counts as markup; the length is kept, and with it every offset. A backslash
+    escaped by another is left as it is."""
+    out: list[str] = []
+    at = 0
+    while at < len(found):
+        if found[at] == "\\" and at + 1 < len(found):
+            out.append("$$" if found[at + 1] == "$" else found[at : at + 2])
+            at += 2
+            continue
+        out.append(found[at])
+        at += 1
+    return "".join(out)
 
 
 def _settled(text: str, start: int, end: int) -> tuple[int, int]:
@@ -52,11 +77,17 @@ def _settled(text: str, start: int, end: int) -> tuple[int, int]:
     dollar signs it ends with. A backslash escapes what follows it, and outside the mark it
     escaped the mark's own bracket: `\\$5` lost its mark, and its paragraph with it. A dollar
     sign after a number, `5$ … 10$`, faced the next one across the marks between, which
-    pandoc read as an equation; one before a number is a currency's, and stays with it."""
+    pandoc read as an equation; one before a number is a currency's, and stays with it. An
+    escaped one, `5\\$`, is left out with its backslash, which inside the mark escaped the
+    mark's closing bracket."""
     while start > 0 and text[start - 1] == "\\":
         start -= 1
     while end - start > 1 and text[end - 1] == "$":
         end -= 1
+        slashes = 0
+        while end - slashes > start and text[end - slashes - 1] == "\\":
+            slashes += 1
+        end -= slashes % 2
     return start, end
 
 
@@ -122,12 +153,27 @@ def equation_spans(masked: str, code: list[tuple[int, int]]) -> list[tuple[int, 
 # A link's text, brackets one deep inside it, before its target or its reference, and not
 # an image's. A mark there nested a link in a link, and pandoc read the paragraph
 # differently: every mark in it was then taken out, where only this one needs to be. A
-# footnote's marker after a bracket, `[95% CI 1.2-3.4][^2]`, is no reference, and a bracket
-# holding `@` is a citation, not a link's text: read as links, their numbers went unmarked.
-_LINK_TEXT = re.compile(r"(?<!!)\[(?:[^\[\]\n@]|\[[^\[\]\n]*\])*\](?=\(|\[(?!\^))")
+# bracket holding `@` is a citation, not a link's text. A bracket after it is a reference
+# only when the file defines its label, `[tbl]: #tbl-2`, or, empty, the text's own: pandoc
+# reads `[95% CI 1.2-3.4][^2]`, `[…][@smith2021]` and `[12][13]` as text, and read as
+# links, their numbers went unmarked.
+_LINK_TEXT = re.compile(
+    r"(?<!!)\[((?:[^\[\]\n@]|\[[^\[\]\n]*\])*)\](?=(\()|\[([^\[\]\n]*)\])"
+)
+_DEFINITION = re.compile(r"^ {0,3}\[(?!\^)([^\[\]\n]+)\]:", re.MULTILINE)
+
+
+def _label(text: str) -> str:
+    """A reference's label as pandoc matches it: case and runs of white space ignored."""
+    return " ".join(text.split()).casefold()
 
 
 def link_text_spans(text: str) -> list[tuple[int, int]]:
     """Link texts in `text` as written: masked, a target that is not a URL, `(#tbl-2)`, is
     blanked, and its text was not found."""
-    return [found.span() for found in _LINK_TEXT.finditer(text)]
+    defined = {_label(found.group(1)) for found in _DEFINITION.finditer(text)}
+    return [
+        found.span()
+        for found in _LINK_TEXT.finditer(text)
+        if found.group(2) or _label(found.group(3) or found.group(1)) in defined
+    ]

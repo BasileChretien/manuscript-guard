@@ -1263,13 +1263,20 @@ inside the span, where the link printed as text. So the annotator places each ma
   span's (review of #76). A dollar sign before a number is a currency's, not markup, and
   `US$5` is marked whole; one after a number stays outside the mark, where `5$ … 10$`
   faced each other across the marks between, and a backslash before a number goes
-  inside it, where it escaped the mark's own bracket (the fix-only review of #76). A link's text, the target a URL or an anchor, can't hold a mark,
-  which is itself a link. A binding there is put in as its value, unmarked.
+  inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
+  escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
+  A link's text, the target a URL or an anchor, can't hold a mark, which is itself a
+  link. A bracket before another is a link's text only when the file defines the second
+  one's label, or, empty, the first one's: pandoc reads `[95% CI 1.2-3.4][@smith2021]`,
+  `[…][^2]` and `[12][13]` as text, and their numbers are marked (the extra round of #76).
+  A binding in a link's text is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc
   reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
   digits, `10^-3^`, it goes around the whole of what was found, if every sub- and
-  superscript in it opens and closes there. Otherwise the number is left unmarked.
+  superscript in it opens and closes there; brackets in it are escaped in the mark and
+  read as text, `12][13`. No mark opens straight after a `]`, where pandoc read the two
+  brackets as a reference. Otherwise the number is left unmarked.
 
 That rule is a model of pandoc's inline reader, and models of pandoc's readers have been
 found wrong round after round in this repository. So the build then asks pandoc: each file
@@ -3189,7 +3196,18 @@ Closed since, and why each mattered:
   colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
   pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
   read as an escape, and a backtick left unpaired in one list item that pairs with one in
-  the next.
+  the next. The extra round of #76 left these, each rare or no worse than on `main`:
+  - a link's text across a line break is not found, so its paragraph loses every mark,
+    as `main`'s copy misreads it;
+  - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
+    paragraph, which `main`'s copy also misreads;
+  - a number in a reference definition, `[tbl]: #tbl-2` or `[Table 2]: #t`, is marked, which
+    breaks the definition and costs the paragraphs that use it their marks;
+  - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
+    `from $5 to 7\$` both numbers go unmarked as "in an equation";
+  - a number the finder reads with a `]` before its digits, `Fees [B]7`, is left unmarked,
+    where `main` marks `B]7`;
+  - a range with an escaped superscript, `10\^3`, is left unmarked.
 - **The annotated copy prints a manuscript file's own front matter.** The annotated build
   re-reads each source whole, where the build strips its YAML block, so whatever pandoc
   prints from that block prints in the annotated copy and not in the manuscript, its

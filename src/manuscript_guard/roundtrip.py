@@ -1520,18 +1520,23 @@ def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
 
     Across files, because the main text's files are one document and the supplement's
     another, so the heading opening the next file stands directly under the last paragraph
-    of this one in Word. Only what has no identifier: a paragraph reworded beside it could
-    not have been a heading the co-author ran into it.
+    of this one in Word; in the order the build prints them (`printed_order`). Only what has
+    no identifier: a paragraph reworded beside it could not have been a heading the
+    co-author ran into it.
     """
-    from manuscript_guard.gates.numbers import SUPPLEMENTARY
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, printed_order
 
     around: dict[str, str] = {}
     for supplement in (False, True):
+        files = {
+            path: (relative, raw)
+            for path, relative, raw in sources
+            if relative.startswith(f"{SUPPLEMENTARY}/") == supplement
+        }
         names: list[str] = []
         runs: list[list[str]] = [[]]
-        for _path, relative, raw in sources:
-            if relative.startswith(f"{SUPPLEMENTARY}/") != supplement:
-                continue
+        for path in printed_order(list(files), supplementary=supplement):
+            relative, raw = files[path]
             slug = paragraph_slug(relative)
             for index, para, at in _blocks(_body(raw)):
                 shown = (para if at is None else para[:at]).strip()

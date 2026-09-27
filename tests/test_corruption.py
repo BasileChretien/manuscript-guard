@@ -3934,27 +3934,42 @@ def test_a_heading_run_into_a_paragraph_beside_a_changed_one_is_not_merged(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
-def test_a_heading_opening_the_next_file_run_into_a_paragraph_is_not_merged(
-    project: Path, tmp_path: Path
+@pytest.mark.parametrize(
+    ("name", "below"),
+    [("results.md", True), ("1_methods.md", True), ("1_methods.md", False)],
+    ids=["after main.md, below", "before main.md by path, below", "before main.md, above"],
+)
+def test_a_heading_across_a_file_boundary_run_into_a_paragraph_is_not_merged(
+    project: Path, tmp_path: Path, name: str, below: bool
 ) -> None:
     """The files of the main text are one document, so the heading opening the next file
-    stands directly under the last paragraph of this one in Word. Removed from the `.md`
-    since the build, it was in nothing either paragraph's record held, and its run-in
-    merged."""
+    stands directly under the last paragraph of this one in Word, and one closing this file
+    directly above the first paragraph of the next. Removed from the `.md` since the build,
+    it was in nothing either paragraph's record held, and its run-in merged. The build
+    prints `main.md` first and the rest by file name, whatever their paths sort as: read in
+    path order, `1_methods.md` came before `main.md`, and its heading was beside nothing."""
     from manuscript_guard.cli import main
 
-    path = _paper(project, "# Intro", _ALPHA, _PAPA)
-    results = path.parent / "results.md"
-    results.write_text(f"# Results\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    other = main_md(project).parent / name
+    if below:
+        path = _paper(project, "# Intro", _ALPHA, _PAPA)
+        other.write_text(f"# Methods\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    else:
+        path = _paper(project, "# Intro", _ALPHA, "## Methods")
+        other.write_text(f"{_PAPA}\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
     returned = _sent_back(
-        project, tmp_path, _run_into_papa("Results", below=True), document=_UNCHECKED
+        project, tmp_path, _run_into_papa("Methods", below=below), document=_UNCHECKED
     )
-    results.write_text(f"{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
-    source = path.read_text(encoding="utf-8")
+    if below:
+        other.write_text(f"{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    else:
+        _paper(project, "# Intro", _ALPHA)
+    sources = path.read_text(encoding="utf-8"), other.read_text(encoding="utf-8")
 
     main(["import", str(returned), str(project), "--apply", "--force"])
-    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+    now = path.read_text(encoding="utf-8"), other.read_text(encoding="utf-8")
+    assert now == sources, "a run-in heading was merged"
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

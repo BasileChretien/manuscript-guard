@@ -1525,8 +1525,9 @@ The record also hashes the blocks without an identifier around each paragraph, u
 paragraphs on either side (`roundtrip._beside_of`, `Numbering.beside_changed`). That covers
 headings, captions, tables, comments and link definitions, and a heading written straight
 above the paragraph with no blank line, which shares its block and sits outside the text
-hash. It reaches across files, since the main text's files are one document: the heading
-opening the next file stands directly under the last paragraph of this one in Word.
+hash. It reaches across files, in the order the build prints them (`printed_order`), since
+the main text's files are one document: the heading opening the next file stands directly
+under the last paragraph of this one in Word.
 
 A heading run into a paragraph in Word is recognised by the heading beside the paragraph
 having vanished while its text turned up in it, and the heading looked at is the one in the
@@ -3498,10 +3499,13 @@ Closed since, and why each mattered:
 - **An edit beside a changed block is refused in a forced import.** A rewording is named
   and left to carry over by hand, though most such edits would have merged cleanly, in two
   cases:
-  - a heading, caption, table or other block without an identifier around the paragraph
-    changed in the `.md` since the build;
-  - in a document built from other inputs, a heading beside it was deleted by the co-author
-    in Word, or prints otherwise now.
+  - the run of blocks without an identifier around the paragraph, up to the paragraphs on
+    either side, changed in the `.md` since the build. That includes a paragraph added or
+    removed at the far end of the run, which joins it to the next run or splits it, while
+    the block beside the paragraph stays as it was;
+  - in a document built from other inputs, a block without an identifier beside it, other
+    than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
+    a caption, a list item, a quotation, an entry of the reference list.
 - **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
   looks only at the block directly beside a paragraph as the source has it. A co-author who
   deletes `### Design` and runs `## Methods`, above it, into the paragraph writes

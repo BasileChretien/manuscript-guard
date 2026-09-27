@@ -2574,16 +2574,25 @@ Added by the adversarial review, verified and **not** fixed:
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
   (pandoc's abbreviation rule, not reproduced), and a paragraph whose unescaped braces do
   not pair. And the scan for raw content does not know where pandoc reads a `<!--`, a
-  `<pre>` or a `\begin{...}` as code, maths or part of a link or a tag. That covers inline
-  code, a code span of two backticks, inline or display maths, an indented code block (in
-  a list item too), a link's destination, an autolink, an HTML attribute, and
-  `\verb|...|`. There the opener is taken for real, and every paragraph after it goes
-  unmarked up to the next `-->`, `</pre>` or `\end{...}`, though pandoc prints them. The
-  document looks right; an edit made to one of them in Word comes back listed as not
-  compared, to be carried over by hand. Each of these avoids it: code in a fenced block,
-  the comment closed in the same paragraph (`` `<!--` `` and then `` `-->` ``), `%3C` for
-  the `<` in a URL, and `&lt;` in an attribute.
-  Raw TeX other than an environment is not followed across a blank line. When the blank line
+  verbatim tag such as `<pre>`, or a `\begin{x}` inside something it closes first. Found
+  so far: inline code, inline or display maths, `\verb|...|`, an indented code block, a
+  fence written under a line of its block rather than after a blank one, a fence in a
+  block quote, a link's destination or title, an autolink, the attributes of a tag, a
+  span, a heading or a div, a table cell, a list item, a block quote, a line block, a
+  definition and a YAML block in the body. `<pre>` and `\begin` are misread in link text,
+  an image's alt text, an inline note and a citation's locator too, and `<!--` and `<pre>`
+  in a TeX command's argument. There the opener is taken for real. The paragraphs from the
+  one holding it to the one holding its closer go unmarked, though pandoc prints them: the
+  closer is the next `-->` or `</pre>`, or the `\end{x}` matching it by name. With no closer
+  later in the file, nothing is hidden. The document looks right; an edit made to one of
+  those paragraphs in Word comes back listed as not compared, to be carried over by hand.
+  For a `<!--` anywhere but inline code and a fence, `check`'s comment scanner hides the
+  same paragraphs, and G2 reads no number in them (see "The comment scanner knows code
+  spans, fences and the front matter"). Each of these avoids it: code in a fenced block
+  with a blank line above it, outside a block quote; an empty comment after the opener in
+  the same paragraph, which prints nothing (`<!-- -->`, or `<!-- </pre> -->` and
+  `<!-- \end{x} -->` for the others); `%3C` for the `<` in a link's destination; and
+  `&lt;` in an attribute. Raw TeX other than an environment is not followed across a blank line. When the blank line
   falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a

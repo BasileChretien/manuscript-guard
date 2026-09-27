@@ -2733,14 +2733,20 @@ Closed since, and why each mattered:
 
   A project convention written to match a literal `\>` no longer matches.
 - **The front-matter boundary still has edges.** Nothing opened in the front matter closes
-  in the body, and a comment stays inside the value it was opened in, but each of these can
-  still hide a number pandoc prints, all on contrived input:
+  in the body, a comment stays inside the value it was opened in, and a URL ends at the
+  value's end. But each of these can still hide a number pandoc prints, all on contrived
+  input:
   - a fence opened in one YAML value and closed in another;
   - a `<!--` in one item of a keyword list, which runs through the next to a `-->`, or one in
     a quoted title, which a `# -->` YAML comment after it closes;
-  - a URL at the end of a value swallowing the next value's first word;
-  - a code block in an abstract indented four spaces, which is not found;
-  - a YAML block in the middle of the body, which pandoc also reads.
+  - a code block in an abstract indented four spaces, which is not found.
+  The build strips the manuscript's front matter, so these matter to `audit`, which reads
+  papers another tool built, more than to G2. Reading each YAML value on its own, from
+  where PyYAML places it, and un-indenting a block scalar before looking for code in it,
+  would close all three. A YAML block in the middle of the body heads nothing, as in
+  pandoc (`masking.metadata_blocks`), but its values are read as any text is: the build
+  passes it to pandoc, which prints some of them, so masking it hid printed numbers. A
+  fence opened in one can still pair with a fence in the body below it.
 - **A Methods footnote defined outside Methods is read as a finding.** A number in a note
   must pass where the definition stands as well as at each reference, so a note referenced
   from Methods and defined at the end of the paper, as authors gather them, has its alpha

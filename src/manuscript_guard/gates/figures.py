@@ -150,6 +150,8 @@ def check_figures(project: Project, results: Results) -> Report:
         inspected += 1
         declared = _sidecar_allowlist(path)
         atoms = find_atoms(text, text)
+        # One text element per line, not Markdown: every line starts a block of its own.
+        scan = classifier.scan(text, lines_are_blocks=True)
         if atoms:
             numeric_output.add(path.stem)
         elif not text.strip():
@@ -178,7 +180,7 @@ def check_figures(project: Project, results: Results) -> Report:
                 continue
             if atom.text in declared:
                 continue
-            if classifier.classify(atom).kind != UNCLASSIFIED:
+            if classifier.classify(atom, None, scan).kind != UNCLASSIFIED:
                 continue
             report = report.with_findings(
                 Finding(

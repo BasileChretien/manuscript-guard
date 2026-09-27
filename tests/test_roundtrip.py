@@ -9444,6 +9444,68 @@ def test_a_brace_pair_split_across_a_value_merges_bare(returned: str, expected: 
     assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
 
 
+def test_a_brace_typed_beside_a_kept_pair_merges_as_main_wrote_it() -> None:
+    """The round-1 review of #90: a co-author's own `{` beside the pair went bare with the
+    rest, the count was off again, and the rewording was refused - 301 of 314 that `main`
+    before #72 had merged. A `}` written bare alone comes first, as `main` wrote it."""
+    merged = realign(
+        "Set {x, {{results.ror.point}}, y} was used.",
+        "Set {x, 3.84, y} was used.",
+        "Set {x, 3.84, { y} was used.",
+    )
+    assert merged == r"Set {x, {{results.ror.point}}, \{ y} was used."
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+@pytest.mark.parametrize("typed", ["{}", "{.x}", "{#i}", "{k=v}", "{-}", "{.x .y}"])
+def test_a_brace_typed_flush_after_a_value_stays_escaped(typed: str) -> None:
+    """The round-1 review of #90: written bare straight after a value, `{...}` is an
+    attribute block to pandoc. After a value that prints `[pooled]` the paragraph printed
+    "pooled", the brackets and the braces gone, and `check` passed. Escaped, the pair split
+    across the value does not pair, and the rewording is refused."""
+    aligned = align(
+        "Set {x {{results.lab}} y} was used.",
+        "Set {x [pooled] y} was used.",
+        f"Set {{x [pooled]{typed} y}} was used.",
+    )
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+
+
+@pytest.mark.parametrize(
+    ("source", "rendered", "returned", "named"),
+    [
+        pytest.param(
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
+            "Set {x, 3.84, y} } was used.",
+            "pairs with nothing",
+            id="extra-brace",
+        ),
+        pytest.param(
+            "The pair { {{results.ror.point}} } was tight.",
+            "The pair { 3.84 } was tight.",
+            "The pair {3.84 } was tight.",
+            "straight before",
+            id="brace-against-a-value",
+        ),
+    ],
+)
+def test_the_other_unpaired_braces_are_named(
+    source: str, rendered: str, returned: str, named: str
+) -> None:
+    """The round-1 review of #90: the reason named a deleted partner or one typed where the
+    .md has none, and the commonest refusals were neither - a brace typed beside the pair,
+    and a `{` typed straight before a value, which is written `&lbrace;` so that it cannot
+    open a binding."""
+    from manuscript_guard.merge import why
+
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+    assert named in why(aligned)[0]
+
+
 def test_braces_in_code_split_across_a_value_merge() -> None:
     """Braces inside code count as the rest do, and pandoc pairs neither: the rewording
     merged on `main` and was refused, as a split pair, after #72."""

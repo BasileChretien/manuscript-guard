@@ -1715,7 +1715,8 @@ paragraph and `tag` names it, read alone, under a paragraph and under a table - 
 is refused, and says why. That is a property of what the writer writes, not of every merge: a
 stretch kept from the source can take a shape of its own once the stretch before it is
 reworded, as a lone `:` on a paragraph's third line does when the first two are joined. That
-is caught by #69's check, which rebuilds the file and asks `tag`. The tagger, for its
+is caught by #69's check, which works the file out as `apply_plan` would write it and reads
+it as `tag` does. The tagger, for its
 part, took any HTML tag it did not know for a block and counted an escaped brace. Pandoc
 reads a tag it does not know as inline and `\{` as a brace, so "Concentrations <LLOQ and
 >ULOQ were excluded." lost its identifier when the tagger learned pandoc's blocks. Its block
@@ -1725,12 +1726,16 @@ held HTML's list alone, measured rather than read from pandoc's source, and mark
 row under a line holding `<example>`. And `import` escapes a `}` as well as a `{`, so the
 braces a co-author types never look like half of a TeX group. Only unescaped braces count,
 so a pair split across a binding - one brace kept from the source bare, its partner edited
-in Word and written escaped - no longer pairs. Where the source's own stretch has a brace
-bare, the edited stretch is written with its braces bare too, as `main` wrote a `}` before
-#72, and the pair is whole again; #72 at first refused all of these, 212 in a differential
-of 4,174 brace-heavy rewordings that `main` had merged correctly. A brace whose partner was
-deleted in Word pairs with nothing either way, and that rewording is refused rather than
-merged into a paragraph the next build could not name.
+in Word and written escaped - no longer pairs. #72 at first refused all of these, 212 in a
+differential of 4,174 brace-heavy rewordings that `main` had merged correctly. Where the
+source's own stretch has a brace bare, the edited stretch's `}` is now written bare, as
+`main` wrote it before #72, which leaves a `{` the co-author typed beside the pair escaped,
+pairing with nothing; failing that, its `{` too, for a pair whose `{` was the one edited.
+Main never wrote a `{` bare, and one straight after a number or citation is an attribute
+block to pandoc - `{{results.x}}{.y}` printed a value shown as `[pooled]` as "pooled" - so
+that is never done. Whatever is written must pair and read as Word's text. A brace whose
+partner was deleted in Word pairs with nothing either way, and that rewording is refused
+rather than merged into a paragraph the next build could not name.
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
@@ -2233,8 +2238,8 @@ Added by the adversarial review, verified and **not** fixed:
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
   and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI runs against
-  the pandoc it installs and pins, 3.9.0.2. Where the patterns are unsure they leave a block unmarked, which costs a
-  comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
+  the pandoc it installs and pins, 3.9.0.2. Where the patterns are unsure they leave a block
+  unmarked, which costs a comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
   (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
   inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
@@ -2269,12 +2274,21 @@ Added by the adversarial review, verified and **not** fixed:
   to it in Word is reported as not compared and not applied, so it can be edited only in
   the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
 - **A brace kept from the source can still lose its partner.** Where a rewording leaves a
-  bare brace from the `.md` on one side of a number or citation, the braces of an edited
-  stretch are written bare when the source's stretch had one bare, and the pair is whole.
-  Anything else is refused and named: a partner deleted in Word, and one moved in Word into
-  a stretch where the source has no brace, which is written escaped. Braces inside code are
-  counted and written bare by the same rule, though pandoc pairs none there, so they merge
-  where the source's stretch has one. The edit is then made in the `.md`.
+  bare brace from the `.md` on one side of a number or citation, an edited stretch's `}` is
+  written bare when the source's stretch had a brace bare, and failing that its `{` too, so
+  the pair is whole. Anything else is refused and named: a partner deleted in Word, or moved
+  into a stretch where the source has no brace; a brace typed in Word that pairs with
+  nothing, such as a second `}`; a `{` that would stand bare straight after a number or
+  citation, where pandoc takes `{...}` for attributes; and a `{` typed straight before one,
+  which is written `&lbrace;` so that it cannot open a binding, and so closes no pair. Braces
+  inside code are counted and written bare by the same rule, though pandoc pairs none there,
+  so they merge where the source's stretch has one. The edit is then made in the `.md`.
+- **A bare `}` can close a TeX group left open above.** A `}` written bare by the rule above,
+  or kept from the `.md`, closes a group that a raw TeX command opened in an earlier
+  paragraph and never closed there, `See \foo{In one analysis.` over a blank line; pandoc
+  then reads everything between as raw TeX and drops it from the .docx, the identifier
+  with it. `main` could write such a `}` before #72 too, and the tagger, which counts each
+  block's braces alone, does not see the group.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the

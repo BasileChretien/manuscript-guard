@@ -1268,12 +1268,9 @@ def _grouped(piece: str) -> bool:
     return depth == 0
 
 
-def _vouched(
-    text: str, pieces: list[str], joined: list[bool], spans: list[Fence], first: int
-) -> bool:
+def _vouched(text: str, pieces: list[str], joined: list[bool], spans: list[Fence]) -> bool:
     """Whether `spans`, fenced code as read with the notes' fence lines left out, can be
-    trusted: every fence it opens from `first`, the first of those lines, on is one pandoc
-    opens too.
+    trusted: every fence it opens is one pandoc opens too.
 
     A note's fence line taken out of the pairing changes how every fence below it pairs.
     Where a line below is shaped like a fence and pandoc reads it as none - in raw content,
@@ -1282,7 +1279,10 @@ def _vouched(
     instead, it hid the paragraph between. Each review of a list of such places found one
     more, so this asks what makes a line a fence: opening unindented on the first line of a
     block, after a line pandoc takes for blank, and not under a note's label alone on its
-    line. Its closer is then real too. Above `first` both readings pair alike.
+    line. Its closer is then real too. A fence above the notes pairs alike in both readings,
+    and is asked all the same: one that is none, in a code span, paired with one pandoc
+    opens, was covered on `main` by the note's own fence paired further down, and the note
+    reading took the cover away.
 
     And the text outside code must hold nothing pandoc reads across blank lines that `tag`
     does not follow: a tag, a comment, a declaration or an autolink, raw TeX or verbatim
@@ -1300,8 +1300,6 @@ def _vouched(
         if not _grouped(seen) or (_TOP_RULE.fullmatch(head) and rest.strip()):
             return False
     for span in spans:
-        if span.start < first:
-            continue
         index = bisect.bisect_right(starts, span.start) - 1
         above = pieces[index - 2].rstrip("\n").rpartition("\n")[2] if index >= 2 else ""
         if (
@@ -1409,7 +1407,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, int | None]]:
     ]
     notes = _note_fences(pieces, joined)
     spans = fenced_spans(text, inert=notes) if notes else []
-    if not notes or not _vouched(text, pieces, joined, spans, min(notes)):
+    if not notes or not _vouched(text, pieces, joined, spans):
         spans = fenced_spans(text)
     fences = iter(spans)
     fence = next(fences, None)

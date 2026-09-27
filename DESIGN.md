@@ -3365,10 +3365,11 @@ Closed since, and why each mattered:
     with the note's on `main` and did no harm; paired with the next real fence instead, it
     hid the paragraph between. Three reviews each found a place a list of such places
     missed, so `_vouched` asks instead what makes a line a fence. What is left:
-    - *The note reading is used only where every fence it opens is plainly one.* From the
-      first note's fence line on, each fence must open unindented on the first line of a
-      block, after a line pandoc takes for blank, and not under a note's label alone on its
-      line. The text outside code must hold no tag, comment, declaration or autolink, no
+    - *The note reading is used only where every fence it opens is plainly one.* Each fence
+      in the document must open unindented on the first line of a block, after a line
+      pandoc takes for blank, and not under a note's label alone on its line - those above
+      the notes too, whose pairing a note's fence paired further down could hide on `main`.
+      The text outside code must hold no tag, comment, declaration or autolink, no
       raw TeX or verbatim HTML, no brace left open at a blank line, and no YAML block or
       multiline table. Otherwise the whole document is read as on `main`, and a fence in a
       note pairs with the next fence below. That takes in a backtick fence written straight

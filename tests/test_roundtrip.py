@@ -1245,6 +1245,14 @@ ROUND_THREE = {
     "autolink": _under_a_note("Text <http://x.org/a\n```\nb> more."),
     "setext-underline": _under_a_note("```\n==="),
     "paragraph-then-fence": _under_a_note("Doses were given\n```"),
+    # Found by round three's fuzz: a line in a code span above the note, paired with the fence
+    # under the quote, which pandoc opens. `main` hid the rest under the note's `~~~` paired
+    # with a later one, as pandoc's code does; taken out, the note left it to be marked.
+    "a-span-above-the-note": (
+        "Alpha.\n\nText `` a\n```\nb `` more.\n\n> A quote\n```\n\n[^c]: A note\n~~~\n\n"
+        "# Heading\nParagraph under it.\n\nProse paragraph.\n\n> Another quote\n```\n\n"
+        "Doses were given\n~~~\n\nOmega.\n"
+    ),
 }
 #: Those where `main` prints "Gamma is prose." marked and puts no marker in code.
 READ_WELL_ON_MAIN = [

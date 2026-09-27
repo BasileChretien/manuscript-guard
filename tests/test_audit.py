@@ -170,6 +170,123 @@ def test_a_text_box_is_read_once_although_word_writes_it_twice(
     assert twice == once, twice.body
 
 
+def tracked(change: str, text: str, style: str = "", runs: str = "") -> str:
+    """A paragraph whose mark and text were deleted, inserted or moved as a tracked change,
+    with any further `runs` inside the same change."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    kind = "delText" if change == "del" else "t"
+    return (
+        f'<w:p><w:pPr>{styled}<w:rPr><w:{change} w:id="2" w:author="a"/></w:rPr></w:pPr>'
+        f'<w:{change} w:id="3" w:author="a"><w:r><w:{kind}>{text}</w:{kind}></w:r>{runs}'
+        f"</w:{change}></w:p>"
+    )
+
+
+def tracked_row(change: str, *cells: str, style: str = "") -> str:
+    """A table row inserted, deleted or moved away as a tracked change, as Word 16 writes
+    one: each cell paragraph's mark and text marked with the change, and the row marked in
+    its properties when it was inserted or deleted. A row moved away is not marked as one."""
+    inner = "".join(f"<w:tc>{tracked(change, c, style)}</w:tc>" for c in cells)
+    props = f'<w:trPr><w:{change} w:id="1" w:author="a"/></w:trPr>' if change != "moveFrom" else ""
+    return f"<w:tr>{props}{inner}</w:tr>"
+
+
+# A row moved away holding a text box: Word 16 marks no paragraph of the box, in either
+# copy, since its anchor went with the text around it (verified 2026-09-25).
+BOXED = tracked("moveFrom", "b", runs=text_box(para("Box 9"), fallback=True))
+# A row moved away holding a table: Word 16 moves that table's paragraph marks too.
+NESTED = f"{tracked('moveFrom', 'b')}<w:tbl>{tracked_row('moveFrom', '9')}</w:tbl>"
+# The same, but with the nested table's paragraph left in place: the row stays.
+AROUND = f"{tracked('moveFrom', 'b')}<w:tbl>{row('9')}</w:tbl>{tracked('moveFrom', '')}"
+
+
+@pytest.mark.parametrize(
+    ("tracked_table", "plain"),
+    [
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('del', 'b', '22', style='Heading1')}"
+            f"{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{tracked_row('del', 'a', '11')}{tracked_row('del', 'b', '22')}</w:tbl>",
+            "",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('moveFrom', 'b', '22', style='Heading1')}"
+            f"{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}<w:tr><w:tc>{BOXED}</w:tc></w:tr>{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}<w:tr><w:tc>{NESTED}{tracked('moveFrom', '')}</w:tc></w:tr>"
+            "</w:tbl>",
+            f"<w:tbl>{row('a', '11')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('ins', 'c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl><w:tr><w:tc>{tracked('moveFrom', 'b')}{para('22')}</w:tc></w:tr></w:tbl>",
+            f"<w:tbl>{row('22')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl><w:tr><w:tc>{AROUND}</w:tc></w:tr></w:tbl>",
+            f"<w:tbl><w:tr><w:tc><w:p/><w:tbl>{row('9')}</w:tbl><w:p/></w:tc></w:tr></w:tbl>",
+        ),
+    ],
+    ids=[
+        "deleted-row",
+        "deleted-table",
+        "moved-row",
+        "moved-row-with-text-box",
+        "moved-row-with-table",
+        "inserted-row",
+        "moved-from-cell",
+        "moved-around-a-kept-table",
+    ],
+)
+def test_a_table_row_gone_is_read_as_absent_and_an_inserted_one_as_present(
+    tmp_path: Path, tracked_table: str, plain: str
+) -> None:
+    """A deleted row's text was dropped, but the row and its cells still broke lines, and a
+    cell styled as a heading was recorded as an empty heading - which ended the reference
+    list it stood in. A deleted table is every row deleted, and a row moved away has every
+    paragraph mark in it moved, a nested table's too, though not a text box's. The document
+    reads as it will once the changes are accepted, as if the row had never been there, or
+    always had. A paragraph moved out of a cell leaves the row, which keeps the mark of the
+    cell's last paragraph, and so does a row whose nested table stays."""
+
+    def read(name: str, table: str) -> DocxText:
+        body = para("Intro") + table + para("End")
+        return read_docx_text(make_docx(tmp_path / f"{name}.docx", body))
+
+    assert read("tracked", tracked_table) == read("plain", plain)
+
+
+@pytest.mark.parametrize(
+    ("table", "lines"),
+    [
+        (f"<w:tbl>{tracked_row('del', '7')}{tracked_row('del', '8')}</w:tbl>", ["-0.51"]),
+        (f"<w:tbl>{tracked_row('moveFrom', '7')}{tracked_row('moveFrom', '8')}</w:tbl>", ["-0.51"]),
+        (f"<w:tbl>{tracked_row('del', '7')}{row('8')}</w:tbl>", ["-0.5", "|", "8", "1"]),
+    ],
+    ids=["deleted", "moved", "one-row-kept"],
+)
+def test_a_join_runs_past_a_table_word_drops_whole(
+    tmp_path: Path, table: str, lines: list[str]
+) -> None:
+    """A table whose every row was deleted or moved away is not there once the changes are
+    accepted, and Word 16 joins the paragraphs either side of it: "-0.5" and "1" read apart
+    matched two outputs where Word shows -0.51. A table with a row left still parts them."""
+    text = read_docx(make_docx(tmp_path / "t.docx", gone("-0.5") + table + para("1")))
+    assert [line.strip() for line in text.split("\n") if line.strip()] == lines
+
+
 @pytest.mark.parametrize(
     ("code", "shown"),
     [("1F642", chr(0x1F642)), ("zz", " "), ("1E", " "), ("D800", " "), ("110000", " ")],
@@ -1017,20 +1134,29 @@ def attribute_blocks(n: int) -> list[str]:
         "# References {" + "#a" * n + " !}",
         "# References {" + ".a" * n + "!}",
         "# References {" + "a" * 2 * n + "}",
-        '# References {k="' + "a" * 2 * n + " !}",
         "# References {" + " " * 2 * n + "!}",
         "# References {" + "-" * 2 * n + "!}",
         "# References " + "{" * 2 * n + "}",
         "# References " + "{}" * n,
         "# References " + "{-} " * (n // 2),
+        "# References " + "\\{" * n + "}",
+        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
+        '# References {k=" ' + "a" * 2 * n + '"}',
+    ]
+
+
+def attribute_values(n: int) -> list[str]:
+    """More of them, each a `k=` value whose reading costs more per character past a size
+    that falls between the two a ratio compares: from 400 to 3,200 characters, or 1,600 to
+    12,800, they read 10 to 21 times the time while linear. So a budget holds them, and the
+    ratio does not."""
+    return [
+        '# References {k="' + "a" * 2 * n + " !}",
         '# References {k="' + '\\"' * n + " !}",
         "# References {k='" + "\\'" * n + " !}",
         "# References {k=" + "\\}" * n + " !}",
         "# References {k=" + "\\" * (2 * n + 1) + "}",
-        "# References " + "\\{" * n + "}",
-        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
         "# References {k=" + "\u00a0" * 2 * n + " !}",
-        '# References {k=" ' + "a" * 2 * n + '"}',
     ]
 
 
@@ -1043,18 +1169,22 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
     # 20,000 characters each. A linear reading of all eighteen took 300 to 400 ms on a loaded
     # machine, which the old 0.5 s budget barely covered; a quadratic one takes tens of
     # seconds (`_escaped` scanning back from the start of the line: 35 s). The run of 999
-    # backslashes is as long whatever `n` is, which is why it is timed here and not below.
+    # backslashes is as long whatever `n` is, and the `k=` values cost more per character
+    # past a size, which is why they are timed here and not below.
+    fixed = "# References " + ("\\" * 999 + "{") * 20 + "}"
     started = time.perf_counter()
-    for line in (*attribute_blocks(10000), "# References " + ("\\" * 999 + "{") * 20 + "}"):
+    for line in (*attribute_blocks(10000), *attribute_values(10000), fixed):
         assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 5.0
 
 
 def test_the_heading_check_reads_an_attribute_block_in_linear_time(assert_linear) -> None:
-    """The blocks above that grow, timed as they grow. Timed with the run of 999 backslashes
-    among them, `_escaped` scanning back from the start of the line passed: that one line took
-    over the 20 ms floor by itself, so the input never grew, and the ratio compared two times
-    made mostly of the same constant. Without it, the same rescan reads 64 times the time."""
+    """The blocks that grow smoothly, timed as they grow. Timed with the run of 999
+    backslashes among them, `_escaped` scanning back from the start of the line passed: that
+    one line took over the 20 ms floor by itself, so the input never grew, and the ratio
+    compared two times made mostly of the same constant. Without it, the same rescan reads 80
+    times the time. The `k=` values are left to the budget above: with them, correct code
+    read over 16 in 4 of 24 runs."""
     from manuscript_guard.audit import is_bibliography_heading
 
     def read(lines: list[str]) -> None:

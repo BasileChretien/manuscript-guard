@@ -27,12 +27,15 @@ reads:
     kind: budget
     budget: 5.0
     why: >-
-      Eighteen fixed lines: seventeen of 20,000 characters, also timed as they grow by
-      `test_the_heading_check_reads_an_attribute_block_in_linear_time`, and a run of 999
-      backslashes that is as long at any size, which only a budget can hold. Timed among the
-      growing lines, that one took the ratio's 20 ms floor by itself under `_escaped` scanning
-      back from the start of the line, so the input never grew and the ratio passed. That
-      rescan takes 35 s here, which this budget fails.
+      Eighteen fixed lines: seventeen of 20,000 characters and a run of 999 backslashes that
+      is as long at any size, which only a budget can hold. Timed among the growing lines,
+      that one took the ratio's 20 ms floor by itself under `_escaped` scanning back from the
+      start of the line, so the input never grew and the ratio passed. Eleven of the seventeen
+      are also timed as they grow, by
+      `test_the_heading_check_reads_an_attribute_block_in_linear_time`; the other six are `k=`
+      values whose cost per character steps up between the two sizes a ratio compares, which
+      read 10 to 21 times the time while linear. The rescan takes 24 to 35 s here, which this
+      budget fails.
     headroom: 297 to 398 ms against 5 s, about 13x. At its old budget of 0.5 s it had 1.3x.
 
   - where: tests/test_audit.py::test_a_long_chain_of_numbers_does_not_stall_the_interval_split
@@ -109,16 +112,32 @@ reads:
 
   - where: tests/test_robustness.py::timed_check
     kind: budget
-    budget: 20.0
-    constant: BUDGET_SECONDS
+    budget: 30.0
+    constant: CHECK_OVERHEAD
     why: >-
-      A whole `check` run on a hostile project, for eleven tests: the pathological prose
-      cases, an enormous source stamp and a FIFO. It guards against a hang or a blow-up
-      anywhere in the gates, which a ratio over one scan cannot see.
+      A whole `check` on a hostile project, for fourteen tests (twelve kinds of pathological
+      prose, an enormous source stamp and a FIFO), as a multiple of a plain `check` on the
+      same project. A ratio, so it holds on a runner of any speed, and of CPU time, so it
+      leaves out G7's wait for Zotero to refuse its ping (2 s on Windows, none on Linux) and
+      every other process. It guards against a blow-up anywhere in the gates, which a ratio
+      over one scan cannot see. At these sizes the heaviest linear input already reads ten,
+      so it cannot tell a quadratic that adds a few seconds: that is `assert_linear`'s job.
     headroom: >-
-      5.7 to 10.9 s against 20 s, 1.8 to 3.5x, and one run took 20.9 s under heavy load.
-      Most of that is `check` itself, not the hostile input; a follow-up task is to budget
-      what the input adds over a plain `check`.
+      0.97 to 12.3 against 30, three rounds with thirteen other suites running. The heaviest
+      linear input, one long run of backticks, read up to 10.0: 3x. Nested brackets read up
+      to 12.3, because `BRACKETED` is quadratic on main: 2.4x.
+
+  - where: tests/test_robustness.py::check_overhead
+    kind: budget
+    budget: 60.0
+    constant: HANG_SECONDS
+    why: >-
+      The wall-clock backstop for the same tests. A `check` that waits instead of working, on
+      a read that blocks or a call that takes its time, spends no CPU time and would pass the
+      ratio; a gate made to wait 70 s on the hostile file fails this.
+    headroom: >-
+      The first check on a hostile project and the timed one after it took at most 21 s
+      together, with thirteen other suites running: about 3x.
 
   - where: tests/test_corruption.py::test_modified_analysis_script_is_caught
     kind: timestamp

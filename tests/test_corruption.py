@@ -1658,8 +1658,8 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
-_CLAIM = "The excess was significant (p < 0.001).\n"
-_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+_CLAIM_LINE = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM_LINE
 
 
 @pytest.mark.parametrize(
@@ -1669,8 +1669,8 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
-        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM_LINE}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM_LINE}', []),
     ],
 )
 def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:
@@ -2122,6 +2122,111 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     )
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" not in {f.code for f in report.findings}
+
+
+def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
+    """A code block in a front-matter value is a listing too, and a number in its string is
+    a claim. Looked for in the body alone, `_fenced_code` missed it while `mask` hid it, and
+    the number was read by nothing; no test held the two to the same fences."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+    from manuscript_guard.text.masking import NUL, fenced_blocks, mask
+
+    text = (
+        '---\ntitle: T\nsubtitle: |\n  ```python\n  print("ROR 9.99")\n  ```\n---\n\n'
+        "# Results\n\nText.\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" in {f.code for f in report.findings}
+    masked = mask(text)
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
+
+
+def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
+    """A URL is masked to the next space, and the key of the next YAML line is masked too,
+    so one ending a title ran through that key into the next value: 9.99, which pandoc
+    prints in the abstract, was read by nothing."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    paper = (
+        "---\ntitle: Data at https://example.org/data\nabstract: 9.99 was the ROR.\n---\n\n"
+        "# Results\n\nThe cohort held n = 1 report.\n"
+    )
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == {"9.99"}
+    assert "9.99" in mask(paper)
+
+
+def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
+    """Pandoc reads a YAML block anywhere in the body as metadata, so a `# Methods` line in
+    one is a YAML comment. Read as a heading, it gave the paragraph under
+    the block the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha
+    chosen in advance."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    assert anchor in text
+    block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        # The build passes a body block to pandoc, which prints its author, date and
+        # abstract, a wrapped value included.
+        (
+            "Para.\n\n---\nauthor: The 12 investigators\ndate: Revised after 9.94\n"
+            "abstract: The ROR was\n  9.91 in the cohort.\n---\n\nAfter.\n",
+            ("12", "9.94", "9.91"),
+        ),
+        # Under a caption, pandoc reads the block as a table and prints it.
+        ("Table: Cohort sizes.\n\n---\nCases: 120\nControls: 480\n---\n", ("120", "480")),
+        # In the body a URL still runs to the next space: stopped at a comment, the link
+        # target after it started inside the old URL and ran on.
+        ("See https://x.org/a<!--c-->](b ROR 8.88) here.\n", ("8.88",)),
+    ],
+    ids=["printed values", "table", "url in the body"],
+)
+def test_masking_hides_nothing_a_body_yaml_block_prints(text: str, shown: tuple[str, ...]) -> None:
+    """Masked as a whole, a YAML block in the body hid values the build prints: pandoc
+    prints a body block's author, date and abstract, and a block under a caption is a
+    table. A body block is only kept from heading anything."""
+    from manuscript_guard.text.masking import mask
+
+    masked = mask(text)
+    assert all(number in masked for number in shown)
+
+
+def test_a_yaml_block_inside_a_comment_brings_back_no_heading(project: Path) -> None:
+    """Pandoc reads a YAML block inside an HTML comment as part of the comment. Masked, the
+    block stopped the comment scanner, so a `# Methods` further down the comment headed the
+    paragraph after it, and its `p < 0.001` passed as the alpha."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    comment = "\n<!--\n\n---\nnote: x\n---\n\n# Methods\n\n-->\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + comment, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_raw_block_in_the_front_matter_is_not_reported(project: Path) -> None:
+    """The build strips the manuscript's front matter, so a raw LaTeX block under
+    `header-includes` never reaches the document; G2 failed it as a `raw-block` written
+    straight into the build."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    header = (
+        f"---\n{title}\nheader-includes: |\n  ```{{=latex}}\n  \\usepackage{{setspace}}\n"
+        "  ```\n---\n"
+    )
+    path.write_text(header + text[text.index("\n---\n") + len("\n---\n") :], encoding="utf-8")
+    assert "raw-block" not in codes(gate_report(project))
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
@@ -2711,6 +2816,80 @@ def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Pat
     report = audit([paper], [outputs])
     assert report.unmatched == [], report.unmatched
     assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+#: A text box as Word writes one, twice over. In a row moved away Word 16 marks none of its
+#: paragraphs, in either copy: the box goes with the text it is anchored in.
+_BOX = (
+    '<w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/'
+    '2006"><mc:Choice Requires="wps"><w:drawing><w:txbxContent>'
+    f"{_p('Panel 9')}</w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict>"
+    f"<w:txbxContent>{_p('Panel 9')}</w:txbxContent></w:pict></mc:Fallback>"
+    "</mc:AlternateContent></w:r>"
+)
+
+
+@pytest.mark.parametrize(
+    ("row_mark", "mark", "text", "inside"),
+    [
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "", "del", ""),
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "del", "del", ""),
+        ("", "moveFrom", "moveFrom", ""),
+        ("", "moveFrom", "moveFrom", _BOX),
+    ],
+    ids=["deleted-row", "deleted-row-and-mark", "moved-row", "moved-row-with-text-box"],
+)
+def test_audit_reads_past_a_table_row_gone_from_the_reference_list(
+    tmp_path: Path, row_mark: str, mark: str, text: str, inside: str
+) -> None:
+    """Word marks a deleted table row in the row's own properties, not by wrapping it, and a
+    row moved away not at all: it moves the mark of every paragraph in the row instead. The
+    row's text was dropped, but its row and cell still started lines, and a cell styled as a
+    heading was an empty heading, which ended the reference list there: the entries after
+    it were reported as numbers missing from the outputs. A text box in a moved row has no
+    mark moved, and read as one left in place it kept the row."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    gone = f'<w:rPr><w:{mark} w:id="5" w:author="a"/></w:rPr>' if mark else ""
+    kind = "delText" if text == "del" else "t"
+    cell = (
+        f'<w:p><w:pPr><w:pStyle w:val="Heading1"/>{gone}</w:pPr><w:{text} w:id="4" '
+        f'w:author="a"><w:r><w:{kind}>Old</w:{kind}></w:r>{inside}</w:{text}></w:p>'
+    )
+    row = f"<w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + _p("Smith J. Lancet. 2019;393:1-2.")
+        + f"<w:tbl>{row}</w:tbl>"
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+def test_audit_joins_a_paragraph_across_a_table_word_drops(tmp_path: Path, change: str) -> None:
+    """A paragraph whose mark was deleted runs on past a table whose every row was deleted or
+    moved away: Word 16 shows "-0.5", such a table, and "1" as -0.51. The table ended the
+    line, so the two pieces were read apart and matched two outputs the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    row_mark = '<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>' if change == "del" else ""
+    kind = "delText" if change == "del" else "t"
+    cell = (
+        f'<w:p>{_gone(change)}<w:{change} w:id="4" w:author="a"><w:r><w:{kind}>7</w:{kind}>'
+        f"</w:r></w:{change}></w:p>"
+    )
+    table = f"<w:tbl><w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr></w:tbl>"
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{table}{_p('1.')}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
 
 
 def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:

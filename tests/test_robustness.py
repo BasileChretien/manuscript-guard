@@ -22,6 +22,7 @@ seconds from them. That is `assert_linear`'s job, one scan at a time.
 
 from __future__ import annotations
 
+import functools
 import gc
 import os
 import shutil
@@ -35,61 +36,71 @@ import pytest
 BUDGET_SECONDS = 20.0
 
 #: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
-#: same project, both in CPU time. The heaviest linear input here reads 9.6 (one long run of
-#: backticks) and the quadratic one known on main 10.5 (nested brackets, `BRACKETED`). A
-#: ratio, so the same bound holds on a runner of any speed.
+#: same project, both in CPU time. The heaviest linear input here read up to 10.0 (one long
+#: run of backticks), and the quadratic one known on main up to 12.3 (nested brackets,
+#: `BRACKETED`). A ratio, so the same bound holds on a runner of any speed.
 CHECK_OVERHEAD = 30.0
 #: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
-#: on a read that blocks or a network call that takes its time. Its first run on a hostile
-#: project took up to 13 s on a loaded laptop.
+#: on a read that blocks or a network call that takes its time. The first check on a hostile
+#: project and the timed one after it took at most 21 s together, on a loaded laptop.
 HANG_SECONDS = 60.0
 #: A ratio over the bound is measured again this many times before it fails, in alternation
 #: with a plain check, each keeping its best, as `check_linear` does.
 CONFIRM = 3
 
 
+def run_check(project: Path) -> None:
+    """One `check` on `project`, untimed."""
+    from manuscript_guard.cli import _run_gates
+
+    _run_gates(project, stage="drafting")
+
+
 def timed_check(project: Path) -> float:
     """The CPU time of one `check` on `project`, with the garbage collector off as
     `check_linear` has it. CPU time is `check`'s own work: not G7 waiting for Zotero to refuse
     its ping, 2 s on Windows and none on Linux, nor another process's."""
-    from manuscript_guard.cli import _run_gates
-
     collecting = gc.isenabled()
     gc.disable()
     try:
         started = time.process_time()
-        _run_gates(project, stage="drafting")
+        run_check(project)
         return time.process_time() - started
     finally:
         if collecting:
             gc.enable()
 
 
+@functools.cache
+def plain_baseline(plain: Path) -> float:
+    """The best of three checks on a plain copy of the example, once for each copy."""
+    run_check(plain)  # imports, compiled patterns and first opens, off the clock
+    return min(timed_check(plain) for _ in range(3))
+
+
 @pytest.fixture(scope="module")
-def plain_check(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> tuple:
-    """A plain copy of the example, and the best of three checks on it: once for the module."""
+def plain_project(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A plain copy of the example, for the module's hostile checks to be measured against."""
     root = tmp_path_factory.mktemp("plain") / "paper"
     shutil.copytree(built_example, root, ignore=shutil.ignore_patterns("build", "__pycache__"))
-    timed_check(root)  # imports, compiled patterns and first opens, off the clock
-    return root, min(timed_check(root) for _ in range(3))
+    return root
 
 
-def check_overhead(project: Path, plain: tuple) -> float:
+def check_overhead(project: Path, plain: Path) -> float:
     """How many times a plain `check`'s CPU time `check` takes on `project`.
 
     The first run opens every file of a fresh copy for the first time, which costs Windows
     seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
     run decides a ratio under the bound. One over it is measured again, in alternation with
     the plain project, before it stands: a slow spell falls on both."""
-    root, baseline = plain
     started = time.perf_counter()
-    timed_check(project)
+    run_check(project)
     waited = time.perf_counter() - started
     assert waited < HANG_SECONDS, f"check took {waited:.0f} s by the wall clock"
-    overhead = timed_check(project) / baseline
+    overhead = timed_check(project) / plain_baseline(plain)
     if overhead < CHECK_OVERHEAD:
         return overhead
-    pairs = [(timed_check(root), timed_check(project)) for _ in range(CONFIRM)]
+    pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
     return min(second for _, second in pairs) / min(first for first, _ in pairs)
 
 
@@ -121,11 +132,11 @@ def check_overhead(project: Path, plain: tuple) -> float:
     ids=lambda value: value if isinstance(value, str) and len(value) < 60 else "",
 )
 def test_check_finishes_on_pathological_prose(
-    project: Path, name: str, body: str, plain_check: tuple
+    project: Path, name: str, body: str, plain_project: Path
 ) -> None:
     """A scan that blows up on prose someone might write, or a wait that never ends."""
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
-    overhead = check_overhead(project, plain_check)
+    overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"
 
 
@@ -214,6 +225,20 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
     started = time.perf_counter()
     tag(block, "main.md")
     assert time.perf_counter() - started < 2.0
+
+
+def test_definitions_over_a_paragraph_are_passed_over_in_linear_time(assert_linear) -> None:
+    """Each definition passed over looked at the rest of the block for a title on the next
+    line by copying it: 40,000 definitions over a paragraph took 42 seconds, where the
+    definitions alone took a fifth of one."""
+    from manuscript_guard.roundtrip import tag
+
+    assert_linear(
+        lambda count: "[x]: u\n" * count + "Prose.",
+        lambda text: tag(text, "main.md"),
+        5000,
+        "passing over definitions above a paragraph",
+    )
 
 
 @pytest.mark.parametrize(
@@ -452,7 +477,7 @@ def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: 
 # ---------------------------------------------------------------- hostile files
 
 
-def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_check: tuple) -> None:
+def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_project: Path) -> None:
     """`build/*.docx.source.sha256` is read by G1 and had no size cap.
 
     A digest line is 80 bytes. Anything larger is not a digest, and reading it whole is a
@@ -465,7 +490,7 @@ def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_check: 
     (build / "manuscript.docx").write_bytes(b"PK\x03\x04not really a docx")
     (build / f"manuscript.docx{SOURCE_STAMP}").write_text("0" * (8 * 1024 * 1024), encoding="utf-8")
 
-    overhead = check_overhead(project, plain_check)
+    overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 
@@ -493,14 +518,14 @@ def test_a_figure_stem_with_glob_characters_still_finds_its_siblings(project: Pa
 
 @pytest.mark.skipif(os.name == "nt", reason="FIFOs do not exist on Windows")
 def test_a_fifo_in_the_figures_directory_does_not_hang_check(
-    project: Path, plain_check: tuple
+    project: Path, plain_project: Path
 ) -> None:
     """Nothing bounds wall-clock time in the gate runner, so a blocking read is forever.
 
     CI runs Ubuntu and macOS, where an unprivileged `mkfifo` in `figures/` was enough.
     """
     os.mkfifo(project / "figures" / "trap.svg")
-    overhead = check_overhead(project, plain_check)
+    overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 

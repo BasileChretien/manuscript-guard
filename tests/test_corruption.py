@@ -1658,8 +1658,8 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
-_CLAIM = "The excess was significant (p < 0.001).\n"
-_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+_CLAIM_LINE = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM_LINE
 
 
 @pytest.mark.parametrize(
@@ -1669,8 +1669,8 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
-        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM_LINE}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM_LINE}', []),
     ],
 )
 def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:

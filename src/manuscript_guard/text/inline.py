@@ -62,8 +62,9 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
 
 def _escapable(character: str) -> bool:
     """Is `character`, after a backslash, text? Pandoc's `all_symbols_escapable` makes text
-    of anything that is not a letter, a digit or a space; the brackets, which `_wrap`
-    escapes again, and the backslash itself are left out."""
+    of anything that is not a letter or a digit. Left out here: a space, which pandoc turns
+    into a no-break space or a line break and the finder splits a number at; the brackets,
+    which `_wrap` escapes again; and the backslash itself."""
     return not (character.isalnum() or character.isspace() or character in "[]\\")
 
 

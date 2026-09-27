@@ -1306,8 +1306,8 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         epilogue=appendix(marks) + figure_sheet(project, results),
         # Marked up for the author to read, not the document sent, which the plain build
         # checks from the same sources. The marks are checked where they are made:
-        # `annotate` has pandoc read each file with them and without, and takes out those
-        # that change how a paragraph reads.
+        # `annotate` has pandoc read each file with them and without, and takes out every
+        # mark of a paragraph that reads otherwise.
         verify_reading=False,
     )
     added = finish(result.output, marks)

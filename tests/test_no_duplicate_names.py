@@ -8,7 +8,8 @@ run with #77's string once a use of it moved into a function body. A merge of ma
 reintroduces one fails here.
 
 A later assignment that reads the name itself (`X = X + ...`) builds it up in steps and is
-allowed. Bindings inside an `if` or `try` at module level (import fallbacks) are not read.
+allowed, as are `@overload` stubs. Bindings inside an `if` or `try` at module level (import
+fallbacks) are not read.
 """
 
 from __future__ import annotations
@@ -20,7 +21,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _is_overload(node: ast.stmt) -> bool:
+    """`@overload` stubs are meant to share a name with the function they describe."""
+    return any(
+        (isinstance(d, ast.Name) and d.id == "overload")
+        or (isinstance(d, ast.Attribute) and d.attr == "overload")
+        for d in getattr(node, "decorator_list", [])
+    )
+
+
 def _bound(node: ast.stmt) -> list[str]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_overload(node):
+        return []
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return [node.name]
     if isinstance(node, ast.Assign):
@@ -60,6 +72,16 @@ def test_the_scan_catches_a_second_binding() -> None:
 
 def test_the_scan_allows_a_name_built_up_in_steps() -> None:
     source = "PARTS = ['a']\nPARTS = PARTS + ['b']\nNAMES: list[str] = []\n"
+    assert duplicate_names(source) == {}
+
+
+def test_the_scan_allows_overload_stubs() -> None:
+    source = (
+        "import typing\nfrom typing import overload\n\n"
+        "@overload\ndef read(x: int) -> int: ...\n\n"
+        "@typing.overload\ndef read(x: str) -> str: ...\n\n"
+        "def read(x):\n    return x\n"
+    )
     assert duplicate_names(source) == {}
 
 

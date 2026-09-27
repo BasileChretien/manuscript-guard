@@ -89,8 +89,8 @@ class Plan:
     lost: tuple[str, ...] = ()
     #: Headings, tables, figures and equations that came back in another place, as (kind,
     #: text): kind is "table", "figure", "equation", or "text" for a heading, caption, list
-    #: item, quotation or any other paragraph without an identifier. None of them moves in
-    #: the .md.
+    #: item, quotation or any other paragraph without an identifier, whose text is as
+    #: `reordered` lists it, with what in it has no text named. None of them moves in the .md.
     strayed: tuple[tuple[str, str], ...] = ()
     #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
     #: caption, a new paragraph - that the document did not have when it was sent.
@@ -256,7 +256,9 @@ def _given_back(
             continue
         text = _squashed(out[after].text)
         theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
-        if len(theirs) != 1 or expected[text]:
+        # Not to a line with no text: one holding only a symbol read as the empty line an
+        # HTML comment renders as, and took that comment's identifier.
+        if not text or len(theirs) != 1 or expected[text]:
             continue
         # Only the one it matched: another identifier on the line - the note an HTML comment
         # renders as, say - is that line's, and taken with it was reported deleted.
@@ -566,7 +568,10 @@ def _beside_new_text(
             block = returned[i]
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
             # stood where the second half of a split had, and the split merged as the whole.
-            if block.arrived and block.text:
+            # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
+            # text, it was looked past as an empty line, and vouched for the split again. Only
+            # a line with neither text nor an identifier, Enter pressed, is looked past.
+            if block.arrived and (any(content(block)) or block.names):
                 return True
             if block.table:
                 if counterparts is None or i not in counterparts:
@@ -903,7 +908,9 @@ def _misplaced(
                 if name in ordered
             ]
         elif block.text and boundaries.get(key := ("text", texts.get(index))):
-            sequence.append((("text", block.text), boundaries[key].popleft(), 2))
+            # As the untagged texts are listed, so that the report folds it in with them: by
+            # its text alone, a heading holding a symbol with no text was named twice.
+            sequence.append((("text", _listed(block)), boundaries[key].popleft(), 2))
 
     # The heaviest subsequence whose ranks never decrease. A paragraph weighs 3 if the diff
     # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them:

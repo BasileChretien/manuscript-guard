@@ -2034,7 +2034,9 @@ the paragraph held already was merged. The author chose refusing over reading th
 nothing or as a space, on 2026-09-25. A paragraph without an identifier, only listed when it
 changed, is compared the same way and listed with each such thing named, "Funding
 [Wingdings character F04A]": by its text alone, a heading that gained a smiley typed in
-Wingdings read as unchanged, and import said the document matched the manuscript.
+Wingdings read as unchanged, and import said the document matched the manuscript. A heading
+holding one that came back in another place is named the same way, or the report named it
+twice, once as out of place and once in the new order.
 
 ## An exemption has to prove itself
 
@@ -2279,10 +2281,12 @@ one fewer piece of new text for the split check to see. After the third round th
 by text was taken out. A move Word did not record is refused and named as a move - "moved in
 Word, left in place here", with Word's copy shown and the advice to move it in the .md and
 never retype it - and the skill asks co-authors to keep Track Changes on. Two exact rules
-stayed: an identifier left on an empty line goes back to the next paragraph when that reads
-exactly as the identified one was sent (Enter without Track Changes), and an identifier on a
-heading, a caption or a reference entry is taken off it (the last paragraph of a section,
-deleted without Track Changes, used to merge the heading's text into itself, on `main` too).
+stayed: an identifier left on an empty line goes back to the next paragraph when that has
+text and reads exactly as the identified one was sent (Enter without Track Changes; a line
+holding only a symbol read as the empty line an HTML comment renders as, and took the
+comment's identifier), and an identifier on a heading, a caption or a reference entry is
+taken off it (the last paragraph of a section, deleted without Track Changes, used to merge
+the heading's text into itself, on `main` too).
 Recognised by its text at first, a heading retitled in the same round was still merged -
 "Study design", as Word's own saved file showed - so a paragraph's role is now read from its
 style: a heading by its outline level, a caption or a reference entry by its style's name,
@@ -2299,7 +2303,11 @@ The checks that came out of the review rounds guard the tracked path as well:
 
 - A paragraph that arrived with Track Changes on vouches for nothing beside it. The split
   check looks for new text beside a changed paragraph, and a moved paragraph pasted between
-  the halves of a split, carrying its identifier, stood where the second half had.
+  the halves of a split, carrying its identifier, stood where the second half had. It
+  vouches for nothing whatever it still holds: with its moved text deleted, or replaced by a
+  symbol with no text, it was looked past as an empty line is, and the split merged as its
+  first half. Only an arrived line with neither text nor an identifier - Enter pressed - is
+  looked past.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -3125,7 +3133,12 @@ Closed since, and why each mattered:
   draws in the body font as before.
 - **The import refuses a document whose styles, theme, font table or document relationships
   it cannot read safely.** Without them it cannot tell which font a run is in. Word does not
-  write such parts; the audit, which cannot refuse, reads only the fonts a run names itself.
+  write such parts; the audit, which cannot refuse, reads only the fonts a run names itself,
+  and reads without the document's own heading styles, taking only Word's built-in ones as
+  headings. A part zipfile cannot decompress - Deflate64, which some zip tools write when
+  a document is zipped again, or an encrypted one - is such a part. It used to crash the
+  reader that read it: the body or the build's record crashed the import, the body or the
+  styles the audit.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its
@@ -4289,9 +4302,12 @@ Closed since, and why each mattered:
     one form after another - a code span, a comment, a TeX environment, a citation's
     locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
     off from its citation), a citation group, maths, a link's destination, a tag's
-    attributes, emphasis, a backslash inside code. So a heading is passed over only when
-    its lines hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute
-    block ending the line (`{#sec-methods}`, which cross-references need). Any other
+    attributes, a backslash inside code. So a heading is passed over only when its lines
+    hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute block
+    ending the line (`{#sec-methods}`, which cross-references need). The emphasis marks
+    among them, `*`, `_`, `~` and `^`, run on to no later line: pandoc 3.9 closes none of
+    them past a heading, ATX or setext. They stay out all the same, because the allow-list
+    is what ended review's search, and an exception to it would start one again. Any other
     heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
     compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
     over an underline.

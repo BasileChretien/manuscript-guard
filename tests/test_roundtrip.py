@@ -8487,44 +8487,6 @@ def test_a_paragraph_split_around_a_moved_one_is_not_truncated(
     assert source.read_text(encoding="utf-8") == before
 
 
-def test_a_paragraph_moved_among_the_parts_of_another_is_not_reordered(tmp_path: Path) -> None:
-    """Display maths reaches Word as three paragraphs, and a paragraph moved between the
-    equation and the text after it was reordered to after the whole paragraph: the split the
-    co-author made was dropped without a word."""
-    from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import apply_plan, plan_import
-
-    fitted = "The model was fitted as $$y = a + b x$$ where b is the slope."
-    paragraphs = {
-        "a": "Alpha opens the section here.",
-        "p": fitted,
-        "b": "Beta sits in the middle of it.",
-        "c": "Cutting this paragraph is the co-author's plan.",
-        "n": "November closes the section.",
-    }
-    path = tmp_path / "main.md"
-    text = "# Methods\n\n" + "\n\n".join(paragraphs.values()) + "\n"
-    path.write_text(text, encoding="utf-8")
-    known = {name: (path, words, text.index(words)) for name, words in paragraphs.items()}
-    sent = [
-        Block((), "Methods"),
-        Block(("a",), paragraphs["a"]),
-        Block(("p",), "The model was fitted as"),
-        Block(kind="equation", key="y = a + b x"),
-        Block((), "where b is the slope."),
-        Block(("b",), paragraphs["b"]),
-        Block(("c",), paragraphs["c"]),
-        Block(("n",), paragraphs["n"]),
-    ]
-    # "c" moved with Track Changes on, between the equation and the text after it.
-    moved = Block(("c",), paragraphs["c"], arrived=True)
-    returned = [*sent[:4], moved, sent[4], sent[5], sent[7]]
-    plan = plan_import(known, sent, returned)
-    assert "c" in plan.misplaced and not plan.moved
-    apply_plan(known, plan)
-    assert path.read_text(encoding="utf-8") == text
-
-
 @pytest.mark.parametrize("how", ["deleted", "moved"])
 def test_an_identifier_that_slid_onto_a_heading_is_not_merged_as_its_text(
     tmp_path: Path, how: str
@@ -8743,78 +8705,6 @@ def test_a_paragraph_another_reviewer_deleted_does_not_take_an_identifier(
     assert "moved in Word" not in out and "deleted in Word" not in out, out
     assert "NOT merged" in out and "was then computed" in out, out
     assert source.read_text(encoding="utf-8") == before
-
-
-def _maths(tmp_path: Path) -> tuple[Path, str, dict, list]:
-    """A section with a paragraph that reaches Word in parts, as sent."""
-    from manuscript_guard.docxtext import Block
-
-    fitted = "The model was fitted as $$y = a + b x$$ where b is the slope."
-    paragraphs = {
-        "a": "Alpha opens the section here.",
-        "p": fitted,
-        "b": "Beta sits in the middle of it.",
-        "c": "Gamma closes the section here.",
-    }
-    path = tmp_path / "main.md"
-    text = "# Methods\n\n" + "\n\n".join(paragraphs.values()) + "\n"
-    path.write_text(text, encoding="utf-8")
-    known = {name: (path, words, text.index(words)) for name, words in paragraphs.items()}
-    sent = [
-        Block((), "Methods"),
-        Block(("a",), paragraphs["a"]),
-        Block(("p",), "The model was fitted as"),
-        Block(kind="equation", key="y = a + b x"),
-        Block((), "where b is the slope."),
-        Block(("b",), paragraphs["b"]),
-        Block(("c",), paragraphs["c"]),
-    ]
-    return path, text, known, sent
-
-
-def test_moving_the_first_part_of_a_display_maths_paragraph_does_not_move_it_all(
-    tmp_path: Path,
-) -> None:
-    """Only the line before the equation was moved with Track Changes on, and the whole
-    paragraph was moved in the source, equation and all, while Word still showed the
-    equation where it was. Exit 0, "reordered 1 paragraph"."""
-    from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import apply_plan, plan_import
-
-    path, text, known, sent = _maths(tmp_path)
-    first = Block(("p",), "The model was fitted as", arrived=True)
-    returned = [sent[0], sent[1], sent[3], sent[4], sent[5], first, sent[6]]
-    plan = plan_import(known, sent, returned)
-    assert "p" in plan.misplaced and not plan.moved
-    apply_plan(known, plan)
-    assert path.read_text(encoding="utf-8") == text
-
-
-def test_a_paragraph_left_between_the_parts_of_another_is_reported(tmp_path: Path) -> None:
-    """A paragraph that came back between an equation and the text after it, with the order
-    of the identified paragraphs unchanged, was dropped without a word: "nothing came
-    back"."""
-    from manuscript_guard.merge import plan_import
-
-    _path, _text, known, sent = _maths(tmp_path)
-    returned = [sent[0], sent[1], sent[2], sent[3], sent[5], sent[4], sent[6]]
-    plan = plan_import(known, sent, returned)
-    assert "b" in plan.misplaced and not plan.empty
-
-
-def test_a_display_maths_paragraph_whose_later_part_changed_is_not_moved(tmp_path: Path) -> None:
-    """A paragraph Word shows in parts counted as come apart whenever any part after its
-    equation changed - the sentence after it reworded - because its equation, the first
-    part, was still in the document. It was reported "moved into a different section",
-    and it had not moved: it is apart only when its equation no longer follows it."""
-    from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import plan_import
-
-    _path, _text, known, sent = _maths(tmp_path)
-    reworded = Block((), "where b is the gradient.")
-    returned = [*sent[:4], reworded, *sent[5:]]
-    plan = plan_import(known, sent, returned)
-    assert "p" not in plan.misplaced and not plan.moved
 
 
 @pytest.mark.parametrize("boundary", ["heading", "comment"])

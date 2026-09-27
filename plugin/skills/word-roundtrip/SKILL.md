@@ -146,7 +146,8 @@ handled, and each has a test:
   So is a heading joined into the paragraph under it.
 - A paragraph deleted just before a heading, a table caption or the reference list is
   reported deleted, even when that heading was retitled or that caption edited in the same
-  round; it used to be merged as the new title.
+  round; it used to be merged as the new title. Not when the new title or caption takes in
+  most of the deleted paragraph's words: that still merges into the paragraph's slot.
 - A tab or other Word layout in a paragraph no longer leaks XML into the merge.
 - A digit added to a number (`3.84` to `13.84`), or a sign or dash glued in front of it
   (`–3.84`, `<3.84`), is refused as a changed number. A sign separated by a space, or a unit

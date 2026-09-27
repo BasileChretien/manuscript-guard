@@ -170,7 +170,10 @@ def _untagged_counts(reference: list[Block]) -> Counter:
 
 
 def _off_headings(
-    rendered: dict[str, str], returned: list[Block], expected: Counter
+    rendered: dict[str, str],
+    returned: list[Block],
+    expected: Counter,
+    sent_roles: dict[str, str],
 ) -> list[Block]:
     """Identifiers taken off a heading, caption or reference entry they slid onto.
 
@@ -182,18 +185,25 @@ def _off_headings(
     recognised by its style as well, and an identifier on it names a paragraph that is no
     longer there.
 
-    Unless the block is plainly that paragraph: one restyled as a heading in Word, its words
-    mostly its own, is still the paragraph, and reported deleted it would invite deleting it.
+    Unless the block is plainly that paragraph, and reported deleted it would invite deleting
+    it: one restyled as a heading in Word, its words mostly its own; one holding the whole of
+    its own text, as a heading joined into the paragraph under it does, keeping the heading's
+    style - "None declared." is too little of "Competing interestsNone declared." to be most
+    of it, and the join is refused as one; or one sent with the role it has, such as a note
+    the source styles as a caption. `sent_roles` is each identifier's role as sent.
     """
     out = []
     for block in returned:
         text = _squashed(block.text)
         own = [rendered.get(name, "") for name in block.names]
-        restyled = any(was.strip() and _alike(was, block.text) for was in own)
+        restyled = any(
+            was.strip() and (_alike(was, block.text) or _squashed(was) in text) for was in own
+        )
+        sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
         if (
             block.names
             and not block.table
-            and (expected[text] or (block.role and not restyled))
+            and (expected[text] or (block.role and not restyled and not sent_so))
             and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())
@@ -248,7 +258,9 @@ def _recovered(
     """The returned document with identifiers put back where only exact text can say.
     `docxtext` has already put them back where the tracked changes say."""
     expected = _untagged_counts(reference)
-    return _given_back(rendered, _off_headings(rendered, returned, expected), expected)
+    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
+    off = _off_headings(rendered, returned, expected, sent_roles)
+    return _given_back(rendered, off, expected)
 
 
 def _signature(block: Block) -> tuple[str, str]:
@@ -454,7 +466,9 @@ def _kept_in_place(
     return out
 
 
-#: Most of the words, in order: a judgement, used only to choose the words of a refusal.
+#: Most of the words, in order: a judgement. It chooses the words of a refusal, and one more
+#: thing: whether a paragraph restyled as a heading or caption keeps its identifier, and so
+#: whether its rewording can merge (see `_off_headings`).
 _ALIKE = 0.6
 
 

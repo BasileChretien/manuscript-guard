@@ -5738,9 +5738,10 @@ def test_a_shortcut_link_and_its_definition_take_no_mark(text: str) -> None:
         ("See [Table 2][^1].\n\n[table 2]: #t\n\n[^1]: A note.\n", ["[Table 2]"]),
         ("See [Table 2][t].\n\n[table 2]: #t\n", []),
         ("See [Table 2]{.smallcaps} here.\n\n[table 2]: #t\n", []),
-        # A heading's title is a label, case aside.
+        # A heading's title is a label, case aside; a line pandoc prints as text is none.
         ("# Methods\n\nSee [the 3 steps][Methods].\n", ["[the 3 steps]"]),
         ("# Methods\n\nSee [methods] here.\n", ["[methods]"]),
+        ("Text.\n# Methods\n\nSee [the 3 steps][Methods].\n", []),
         # A definition under a paragraph's line, in a listing or in a comment is none; in a
         # quotation it is.
         ("Text\n[t]: #x\n\nSee [Table 2][t].\n", []),

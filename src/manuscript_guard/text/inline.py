@@ -231,10 +231,16 @@ def definition_spans(text: str) -> list[tuple[int, int]]:
 
 def _labels(text: str) -> set[str]:
     """The labels `text` defines, as pandoc reads them: each link definition's, and each
-    heading's title, which pandoc takes for a label as well."""
+    printed heading's title, which pandoc takes for a label as well; a line shaped like a
+    heading that pandoc prints as text (`Unprinted`) is none."""
+    from manuscript_guard.text.blocks import Unprinted
     from manuscript_guard.text.sections import heading_index
 
-    labels = {_label(found.title) for found in heading_index(text)}
+    labels = {
+        _label(found.title)
+        for found in heading_index(text)
+        if type(found.title) is not Unprinted
+    }
     return labels | {_label(label) for _start, _end, label in _definitions(text)}
 
 

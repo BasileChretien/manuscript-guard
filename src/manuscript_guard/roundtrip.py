@@ -2738,59 +2738,50 @@ def align(
     # A stretch kept from the source keeps its braces bare, and one written from Word has
     # them escaped, so a pair with one half on each side of a token no longer pairs. The
     # paragraph would build without an identifier, and its next edit could not come back.
-    # Written bare where the source's own stretch has a brace bare, the pair is whole again;
-    # one whose partner was deleted is not, and is refused.
+    # With its `}` written bare where the source's own stretch has a brace bare, the pair is
+    # whole again; one whose partner was deleted, or whose `{` was edited, is not, and is
+    # refused.
     if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
-        rebuilt = next(
-            (
-                bare
-                for bare in _braces_bare(out, edited, prose)
-                if not _brace_group_runs_on(bare)
-                and _reads_as(bare, protected, tokens, returned)
-            ),
-            "",
-        )
-        if not rebuilt:
+        bare = _braces_bare(out, edited, prose)
+        if (
+            bare is None
+            or _brace_group_runs_on(bare)
+            or not _reads_as(bare, protected, tokens, returned)
+        ):
             return Alignment(None, unpaired=True)
+        rebuilt = bare
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
 
 
-# The backslash `_escaped` puts before a brace: one, after an even run, which is the
-# co-author's own backslashes, escaped. A `}` alone, and either brace.
+# The backslash `_escaped` puts before a `}`: one, after an even run, which is the
+# co-author's own backslashes, escaped.
 _WRITTEN_CLOSE = re.compile(r"(?<!\\)((?:\\\\)*)\\(\})")
-_WRITTEN_BRACE = re.compile(r"(?<!\\)((?:\\\\)*)\\([{}])")
 
 
-def _braces_bare(
-    out: list[str], edited: list[tuple[int, int]], prose: list[str]
-) -> Iterator[str]:
-    """The rebuilt paragraph with braces written from Word left bare, in each stretch whose
-    source has a brace bare, in the order to try them: each `}` alone, then every brace.
+def _braces_bare(out: list[str], edited: list[tuple[int, int]], prose: list[str]) -> str | None:
+    """The rebuilt paragraph with each `}` written from Word left bare, in each stretch
+    whose source has a brace bare; None when that changes nothing.
 
     A brace a co-author types is escaped, so that it prints as typed and pairs with nothing.
     Beside a brace the source keeps bare it must pair after all: `Set {x, {{results.x}}, y}
     was chosen.`, with ", y} was chosen." edited, merged as `y\\}` and the kept `{` was left
-    open. A `}` bare alone is how `main` wrote Word's braces before #72, and it leaves a `{`
-    the co-author typed beside the pair escaped, pairing with nothing, as it should; bare
-    too, that `{` threw the count off again. Every brace comes second, for a pair whose `{`
-    is the one edited. Not where a `{` would stand bare straight after a token: there it is
-    an attribute block to pandoc, and `{{results.x}}{.y}` printed the value's `[pooled]` as
-    "pooled", the braces gone. The caller asks of each whether the braces pair, and
+    open. A `}` bare is how `main` wrote Word's braces before #72, and it leaves a `{` the
+    co-author typed beside the pair escaped, pairing with nothing, as it should.
+
+    Never a `{`. Written bare, one opens what pandoc reads as attributes: straight after a
+    value, `{{results.x}}{.y}` printed a value shown as `[pooled]` as "pooled", and after a
+    `]` closing a `[` kept from the source, `[Table [2] set ...]{.c}` printed without its
+    brackets and braces, while `_reads_as`, which pairs nested brackets otherwise, saw
+    nothing wrong. Two review rounds each found such a shape, so a pair whose `{` was the one
+    edited is refused, as `main` refuses it. The caller asks whether the braces now pair, and
     `_reads_as` whether the paragraph still reads as Word's text."""
-    kept = [
-        (position, index)
-        for position, index in edited
-        if _UNESCAPED_OPEN.search(prose[index]) or _UNESCAPED_CLOSE.search(prose[index])
-    ]
-    for written in (_WRITTEN_CLOSE, _WRITTEN_BRACE):
-        bare = list(out)
-        for position, _index in kept:
-            bare[position] = written.sub(r"\1\2", out[position])
-        flush = any(index > 0 and bare[position].startswith("{") for position, index in kept)
-        if bare != out and not flush:
-            yield "".join(bare).strip()
+    bare = list(out)
+    for position, index in edited:
+        if _UNESCAPED_OPEN.search(prose[index]) or _UNESCAPED_CLOSE.search(prose[index]):
+            bare[position] = _WRITTEN_CLOSE.sub(r"\1\2", out[position])
+    return "".join(bare).strip() if bare != out else None
 
 
 def _align_plain(

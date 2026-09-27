@@ -9671,32 +9671,56 @@ def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
     assert _merged("E. coli gave 3.84 overall.") == "E. coli gave {{results.ror.point}} overall."
 
 
+def test_a_brace_pair_split_across_a_value_merges_bare() -> None:
+    """A brace kept from the source and its partner written from Word, escaped, no longer
+    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` would build with no identifier.
+    #72 refused it, where `main` had merged it, with its `}` bare, correctly. The round-3
+    review of #72 counted 212 such rewordings in 4,174. Where the source's own stretch has a
+    brace bare, the edited stretch's `}` is written bare too, and that merges again."""
+    merged = realign(
+        "Set {x, {{results.ror.point}}, y} was used.",
+        "Set {x, 3.84, y} was used.",
+        "Set {x, 3.84, y} was chosen.",
+    )
+    assert merged == "Set {x, {{results.ror.point}}, y} was chosen."
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
 @pytest.mark.parametrize(
-    ("returned", "expected"),
+    ("source", "rendered", "returned"),
     [
         pytest.param(
-            "Set {x, 3.84, y} was chosen.",
-            "Set {x, {{results.ror.point}}, y} was chosen.",
-            id="close-brace-edited",
+            "See [Table [2] set {a, {{results.a}}, b} was used.",
+            "See [Table [2] set {a, 3.84, b} was used.",
+            "See [Table [2] set {a, 3.84, b}]{.c} was used.",
+            id="span-over-nested-brackets",
         ),
         pytest.param(
+            "Set [a [b] {x, {{results.a}}, y} end.",
+            "Set [a [b] {x, 3.84, y} end.",
+            "Set [a [b] {x, 3.84, y}]{} end.",
+            id="empty-attributes",
+        ),
+        pytest.param(
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
             "Sets {x, 3.84, y} was used.",
-            "Sets {x, {{results.ror.point}}, y} was used.",
             id="open-brace-edited",
         ),
     ],
 )
-def test_a_brace_pair_split_across_a_value_merges_bare(returned: str, expected: str) -> None:
-    """A brace kept from the source and its partner written from Word, escaped, no longer
-    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` would build with no identifier.
-    #72 refused it, where `main` had merged it, with its brace bare, correctly. The round-3
-    review of #72 counted 212 such rewordings in 4,174. Where the source's own stretch has a
-    brace bare, the edited one is written with its braces bare too, and that merges again."""
-    merged = realign(
-        "Set {x, {{results.ror.point}}, y} was used.", "Set {x, 3.84, y} was used.", returned
-    )
-    assert merged == expected
-    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+def test_an_opening_brace_from_word_is_never_written_bare(
+    source: str, rendered: str, returned: str
+) -> None:
+    """The round-2 review of #90: written bare, a `{` typed in Word straight after a `]`
+    typed there too closed a `[` kept from the source into a span with attributes. Pandoc
+    printed "See Table [2] set {a, 3.84, b} was used.", the brackets and braces gone, and
+    `check` passed; `_reads_as` pairs nested brackets otherwise. Round 1 had found the same
+    after a value. Only a `}` is ever written bare now, as `main` wrote it before #72, so a
+    pair whose `{` was edited in Word is refused, as `main` refuses it."""
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
 
 
 def test_a_brace_typed_beside_a_kept_pair_merges_as_main_wrote_it() -> None:
@@ -9741,7 +9765,7 @@ def test_a_brace_typed_flush_after_a_value_stays_escaped(typed: str) -> None:
             "The pair { {{results.ror.point}} } was tight.",
             "The pair { 3.84 } was tight.",
             "The pair {3.84 } was tight.",
-            "straight before",
+            "typed or edited",
             id="brace-against-a-value",
         ),
     ],

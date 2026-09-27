@@ -2278,6 +2278,16 @@ def test_tagged_paragraphs_names_what_tag_marks_at_the_right_offsets(project: Pa
         assert raw[start : start + len(text)] == text, "an offset names the wrong text"
 
 
+def test_a_setext_heading_is_not_tagged() -> None:
+    """Only a paragraph starting with `#` counted as a heading. `[]{#id}Methods` over an
+    underline is still a heading to pandoc, with the paragraph's identifier inside it."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag("Methods\n-------\n\nSome prose here.\n", "main")
+    assert tagged.startswith("Methods\n-------")
+    assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
+
+
 #: (block, the paragraph under its headings that carries the identifier, or None) - read off
 #: pandoc 3.9. Pandoc needs no blank line after a heading, and the paragraph is always last.
 HEADED = [

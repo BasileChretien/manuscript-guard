@@ -195,6 +195,18 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     )
 
 
+def runs_on(paragraph: ET.Element) -> bool:
+    """Whether a paragraph's mark was deleted, or moved away, as a tracked change.
+
+    Once the change is accepted the paragraph runs on into the next one, with nothing
+    between them: Word joins "-0.5" and "1" into "-0.51". The audit's reader uses this too.
+    """
+    mark = paragraph.find(f"{W}pPr/{W}rPr")
+    return mark is not None and (
+        mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
+    )
+
+
 def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -215,10 +227,6 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         for node in seen
         if (rid := node.get(_R + "embed") or (node.tag == _VML_IMAGE and node.get(_R + "id")))
     )
-    mark = element.find(f"{W}pPr/{W}rPr")
-    runs_on = mark is not None and (
-        mark.find(W + "del") is not None or mark.find(W + "moveFrom") is not None
-    )
     text, tokens = _read(element)
     maths = None
     if any(node.tag == _M + "oMath" for node in seen):
@@ -226,7 +234,15 @@ def _paragraph(element: ET.Element, *, table: bool) -> _Paragraph:
         # around nothing: an equation with no text left is gone.
         maths = "".join(node.text or "" for node in seen if node.tag == _M + "t") or None
     return _Paragraph(
-        tuple(names), text, tuple(comments), runs_on, table, picture, tokens, embeds, maths
+        tuple(names),
+        text,
+        tuple(comments),
+        runs_on(element),
+        table,
+        picture,
+        tokens,
+        embeds,
+        maths,
     )
 
 

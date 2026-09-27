@@ -50,7 +50,7 @@ from manuscript_guard.text.inline import (
 )
 from manuscript_guard.text.masking import front_matter_end, mask
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 TRACED = "traced"
@@ -300,10 +300,13 @@ def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
 def _number_pieces(text, masked, classifier, counter, unmarkable) -> list[_Piece]:
     """Each number the gates read, classified, marked on the part a mark can go around."""
     headings = heading_index(text)
+    notes = footnote_index(text)
     scan = classifier.scan(text)
     pieces = []
     for atom in find_atoms(text, masked):
-        verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
+        verdict = classifier.classify_under(
+            atom, chains_at(headings, notes, atom.start), scan
+        )
         counter[0] += 1
         anchor = _ANCHOR.format(n=counter[0])
         core = markable_core(text, atom.start, atom.end)

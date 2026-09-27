@@ -2268,7 +2268,8 @@ rewording made after the move is merged like any other. A paragraph whose mark a
 arrived, and which deleted nothing it was sent with, was not in the document as sent, so an
 identifier at its start goes back to the paragraph after it: past a paragraph that arrived
 and was deleted again, not past one deleted whole, and onto an empty line only for a
-recorded move (text typed on the line an HTML comment renders as stays refused as such).
+recorded move (text typed on the empty line a spacer such as `&nbsp;` renders as stays
+refused as such).
 
 What Word does not record is not guessed at. The first version of this change also recovered
 moves made with Track Changes off, by matching whole paragraphs word for word. Three rounds

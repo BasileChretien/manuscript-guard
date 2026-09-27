@@ -282,8 +282,8 @@ def _given_back(
         # `&nbsp;` spacer renders as, and took that spacer's identifier.
         if not text or len(theirs) != 1 or expected[text]:
             continue
-        # Only the one it matched: another identifier on the line - the note an HTML comment
-        # renders as, say - is that line's, and taken with it was reported deleted.
+        # Only the one it matched: another identifier on the line - a `&nbsp;` spacer's, say -
+        # is that line's, and taken with it was reported deleted.
         out[after] = replace(out[after], names=(theirs[0],))
         out[index] = replace(block, names=tuple(n for n in block.names if n != theirs[0]))
     return out

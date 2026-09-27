@@ -8877,18 +8877,18 @@ def test_a_rewording_that_took_in_a_vanished_paragraph_is_not_merged(tmp_path: P
 
 
 def test_an_empty_line_gives_back_only_the_identifier_that_matched(tmp_path: Path) -> None:
-    """A paragraph cut without Track Changes left its identifier on the line an HTML comment
+    """A paragraph cut without Track Changes left its identifier on the empty line a spacer
     renders as, and was pasted just below it. Both identifiers went to the pasted text, and
-    the comment was reported "deleted in Word" - an invitation to delete the author's note."""
+    the spacer was reported "deleted in Word" - an invitation to delete the author's spacer."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import plan_import
 
     path = tmp_path / "main.md"
-    text = "Sierra is a paragraph.\n\n<!-- a note -->\n\nTango follows.\n"
+    text = "Sierra is a paragraph.\n\n&nbsp;\n\nTango follows.\n"
     path.write_text(text, encoding="utf-8")
     known = {
         "s": (path, "Sierra is a paragraph.", 0),
-        "h": (path, "<!-- a note -->", text.index("<!--")),
+        "h": (path, "&nbsp;", text.index("&nbsp;")),
         "t": (path, "Tango follows.", text.index("Tango")),
     }
     sent = [Block(("s",), "Sierra is a paragraph."), Block(("h",), ""),

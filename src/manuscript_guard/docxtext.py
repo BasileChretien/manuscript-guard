@@ -529,8 +529,8 @@ def _settled(paragraphs: list[_Paragraph]) -> list[_Paragraph]:
       landing at the start of a paragraph, and Enter pressed there. It goes past a paragraph
       that arrived and was deleted again, and no further: a paragraph deleted whole takes
       its own identifier back and is reported deleted. Only a recorded move gives one to an
-      empty line; text typed on the empty line an HTML comment renders as is text typed
-      where that paragraph renders nothing, and is refused as such.
+      empty line; text typed on the empty line a spacer such as `&nbsp;` renders as is text
+      typed where that paragraph renders nothing, and is refused as such.
 
     Moves come first, so that an identifier a move carries is not then taken for one that
     slid.

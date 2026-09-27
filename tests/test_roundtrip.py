@@ -10396,6 +10396,170 @@ def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path
     assert f"Mean 3.2 {PLUS_MINUS} 0.4" in read_docx(document)
 
 
+@pytest.mark.parametrize(
+    ("part", "reader"),
+    [
+        ("word/document.xml", "blocks"),
+        ("word/document.xml", "read_docx"),
+        ("word/comments.xml", "comment_texts"),
+        ("word/styles.xml", "read_docx"),
+    ],
+)
+def test_a_part_that_cannot_be_decompressed_is_refused_not_a_crash(
+    tmp_path: Path, part: str, reader: str
+) -> None:
+    """A part zipfile cannot decompress - Deflate64, which other zip tools write, or an
+    encrypted one - raised NotImplementedError or RuntimeError out of whichever reader read
+    it: the body out of the import and the audit, the comments out of the import, the styles
+    out of the audit. Each is refused as a part that cannot be read safely is, and the audit
+    reads on without the heading styles, as it does without the fonts."""
+    from manuscript_guard.docxtext import DocumentUnreadable, blocks, comment_texts
+    from manuscript_guard.text.docx import NotADocx, read_docx
+
+    heading = '<w:style w:type="paragraph" w:styleId="Titre1"><w:name w:val="heading 1"/></w:style>'
+    document = symbol_document(tmp_path, text_run("We found 77 cases."), styles=heading)
+    comment = f'<w:comment w:id="0" w:author="A"><w:p>{text_run("Check this.")}</w:p></w:comment>'
+    comments = f'<w:comments xmlns:w="{WORD_MAIN}">{comment}</w:comments>'
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/comments.xml", comments)
+    _unsupported_compression(document, part)
+    read = {"blocks": blocks, "comment_texts": comment_texts, "read_docx": read_docx}[reader]
+    if part == "word/styles.xml":
+        assert "We found 77 cases." in read(document)
+    else:
+        with pytest.raises(NotADocx if reader == "read_docx" else DocumentUnreadable):
+            read(document)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("which", ["the build record", "every part"])
+def test_a_returned_document_that_cannot_be_decompressed_is_refused_not_a_crash(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], which: str
+) -> None:
+    """Import reads the record the build left in the document before its body, and read
+    there a part zipfile cannot decompress raised NotImplementedError: a document zipped
+    again with Deflate64 crashed the import before anything was compared. It is refused,
+    as a document that cannot be read is."""
+    from manuscript_guard.cli import main
+
+    document = tmp_path / "back.docx"
+    document.write_bytes(built(project).read_bytes())
+    with zipfile.ZipFile(document) as archive:
+        every = [name for name in archive.namelist() if not name.endswith("/")]
+    for part in every if which == "every part" else ["docProps/custom.xml"]:
+        _unsupported_compression(document, part)
+    capsys.readouterr()
+    assert main(["import", str(document), str(project)]) == 2
+    assert "is not a readable .docx: cannot read" in capsys.readouterr().err
+
+
+def test_a_heading_holding_a_symbol_out_of_place_is_listed_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A heading out of place among texts that all came back, only reordered, is named once,
+    with them. One holding a smiley typed in Wingdings was named twice: out of place as
+    "Funding", and in the new order as "Funding [Wingdings character F04A]", which the report
+    took for another paragraph."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import plan_import
+
+    words = {"a": "Alpha opens it.", "b": "Bravo is here.", "c": "Charlie closes it."}
+    _path, known = source_of(tmp_path, words)
+    a, b, c = (Block((name,), w) for name, w in words.items())
+    methods, results = Block((), "Methods"), Block((), "Results")
+    funding = Block((), "Funding", unread=(SMILEY,))
+    sent = [methods, a, results, b, funding, c]
+    plan = plan_import(known, sent, [funding, a, results, b, methods, c])
+    assert ("text", f"Funding [{SMILEY}]") in plan.strayed, plan.strayed
+    _report_plan(None, known, plan, applying=False)
+    out = capsys.readouterr().out
+    assert out.count("~ Funding") == 1, out
+
+
+def _tagged(name: str, runs: str) -> str:
+    """A paragraph carrying the identifier `name`, as the build writes one."""
+    return f'<w:p><w:bookmarkStart w:id="{next(_WORD_IDS)}" w:name="{name}"/>{runs}</w:p>'
+
+
+_HEADING = f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>{text_run("Methods")}</w:p>'
+
+
+@pytest.mark.parametrize("left", ["typed", "inserted", "nothing"])
+def test_a_moved_paragraph_left_empty_does_not_vouch_for_a_split(
+    tmp_path: Path, left: str
+) -> None:
+    """A paragraph split in Word leaves its second half without an identifier, and the first
+    half is merged only where what stands beside it vouches that nothing there is new. A
+    paragraph moved in between the halves with Track Changes on vouched for nothing while it
+    held text. Once its moved text was deleted - replaced by a smiley typed in Wingdings, one
+    inserted as a symbol, or nothing - it vouched for the split, and `--apply` wrote the
+    paragraph as its first half."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    y, x, z = "Yankee one is here. Yankee two is there.", "Xray text is here.", "Zulu closes it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{x}\n\n{z}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {f"mg-p-{w[0].lower()}-0": (path, w, text.index(w)) for w in (y, x, z)}
+    sent = _HEADING + "".join(_tagged(name, text_run(w)) for name, (_p, w, _a) in known.items())
+    typed = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}
+    at = [next(_WORD_IDS) for _ in range(8)]
+    moved_to = (
+        f'<w:p><w:pPr><w:rPr><w:moveTo w:id="{at[0]}" {_BY}/></w:rPr></w:pPr>'
+        f'<w:moveToRangeStart w:id="{at[1]}" {_BY} w:name="move1"/>'
+        f'<w:moveTo w:id="{at[2]}" {_BY}><w:del w:id="{at[3]}" {_BY}><w:r>'
+        f"<w:delText>{x}</w:delText></w:r></w:del></w:moveTo>"
+        + (f'<w:ins w:id="{at[4]}" {_BY}>{typed[left]}</w:ins>' if left in typed else "")
+        + f'<w:moveToRangeEnd w:id="{at[1]}"/></w:p>'
+    )
+    moved_from = (
+        f'<w:p><w:pPr><w:rPr><w:moveFrom w:id="{at[5]}" {_BY}/></w:rPr></w:pPr>'
+        f'<w:bookmarkStart w:id="{at[6]}" w:name="mg-p-x-0"/>'
+        f'<w:moveFromRangeStart w:id="{at[7]}" {_BY} w:name="move1"/>'
+        f'<w:moveFrom w:id="{next(_WORD_IDS)}" {_BY}><w:r><w:t>{x}</w:t></w:r></w:moveFrom>'
+        f'<w:moveFromRangeEnd w:id="{at[7]}"/></w:p>'
+    )
+    back = _HEADING + _tagged("mg-p-y-0", text_run("Yankee one is here.")) + moved_to
+    back += f"<w:p>{text_run('Yankee two is there.')}</w:p>" + moved_from
+    back += _tagged("mg-p-z-0", text_run(z))
+    plan = plan_import(
+        known,
+        blocks(word_document(tmp_path / "sent.docx", sent)),
+        blocks(word_document(tmp_path / "back.docx", back)),
+    )
+    assert "mg-p-y-0" in [refusal.name for refusal in plan.refused], plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize("left", ["typed", "inserted"])
+def test_a_symbol_on_a_new_line_below_a_comment_is_new_text(tmp_path: Path, left: str) -> None:
+    """An HTML comment reaches Word as an empty line, whose identifier is given back to the
+    text below only when that text reads as the comment did. A new line holding only a smiley
+    read as no text, as the comment does, so it took the comment's identifier: the smiley was
+    reported as an edit to the comment, "NOT merged", rather than listed as new text."""
+    from manuscript_guard.docxtext import blocks
+    from manuscript_guard.merge import plan_import
+
+    a, note, b = "Alpha opens it.", "<!-- note -->", "Bravo follows it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{a}\n\n{note}\n\n{b}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {f"mg-p-{n}-0": (path, w, text.index(w)) for n, w in (("a", a), ("c", note), ("b", b))}
+    opening = _HEADING + _tagged("mg-p-a-0", text_run(a)) + _tagged("mg-p-c-0", "")
+    sent = opening + _tagged("mg-p-b-0", text_run(b))
+    smiley = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}[left]
+    back = opening + f"<w:p>{smiley}</w:p>" + _tagged("mg-p-b-0", text_run(b))
+    plan = plan_import(
+        known,
+        blocks(word_document(tmp_path / "sent.docx", sent)),
+        blocks(word_document(tmp_path / "back.docx", back)),
+    )
+    assert not plan.refused, plan.refused
+    assert plan.unidentified == (f"[{SMILEY}]",), plan.unidentified
+
+
 @needs_pandoc
 @pytest.mark.parametrize("returned", CUT_DOWN)
 def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:

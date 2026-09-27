@@ -1150,17 +1150,19 @@ def _term_under_a_note(block: str, above: str) -> bool:
     opens nothing beyond them. Followed on, a comment opened in the label hid the paragraphs
     below up to the next `-->`, while pandoc printed them.
 
-    Not when a later line is a fence or a block-level tag: pandoc can end the definition
-    there - a code fence, a `:::` or `</div>` closing a div around the block - and what
-    follows it in the block is at the top level, where a comment opened hides what is below
-    it. Taken for a term's by itself, those paragraphs were marked inside the comment."""
+    Only the two lines, the label and the definition's, with nothing after them in the
+    block. A lazy line of the definition ends where pandoc starts something else - a code
+    fence, a list's first item, the close of a div or of any tag it takes for a block around
+    the block - and what follows it is at the top level, where a comment opened hides what
+    is below it. Two review rounds each found another such line that a list of them had
+    missed, and taken for a term's by itself, the paragraphs in the comment were marked. A
+    longer block is followed as any is."""
     lines = block.strip("\n").split("\n")
     return (
         _blank_above(above)
-        and len(lines) > 1
+        and len(lines) == 2
         and _NOTE_LINE.fullmatch(lines[0]) is not None
         and _DEFINITION.match(lines[1]) is not None
-        and not any(_FENCE_LINE.match(line) or _HTML_LINE.match(line) for line in lines[2:])
     )
 
 

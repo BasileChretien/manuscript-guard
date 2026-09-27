@@ -3359,27 +3359,27 @@ Closed since, and why each mattered:
     with text, a space or a tab, or alone, indented up to three spaces - makes a term and its
     definition instead, and pandoc reads each of those by itself too, so `_blocks` follows no
     raw content out of that block either (`_term_under_a_note`). Followed, a `<!--` in the
-    label hid the paragraphs after it up to the next `-->`, while pandoc printed them. Not
-    when a later line of the block is a fence or a block-level tag: pandoc can end the
-    definition there, at a code fence or at a `:::` or `</div>` closing a div around it, and
-    what follows is at the top level. Taken for a term's by itself, a comment opened after
-    such a line was not followed and the paragraphs inside it were marked; the block is
-    followed again, as on `main`. A table's rule in it is still followed, which can only
-    leave more unmarked. What is still followed, as on `main`, and leaves paragraphs pandoc
-    prints unmarked: a term that is no note's label (`Capped <!-- check` over `: as agreed`),
-    a label with nothing after `]:`, a definition after a blank line, a label on the block's
-    second line or later, and a definition's indented continuation. A note that runs on into
-    the block below, or is marked for an underline or a table's rule, is still read for raw
-    content as a paragraph is: a `<!--`, `<pre>` or `\begin{...}` in its text leaves the
-    paragraphs after it unmarked, and pandoc prints them. The other way round, a note left
-    alone takes a `:::` in, which ends it inside a fenced div, and a comment opened after
-    that line is then not followed: `::: box` over `[^cap]: Capped`, `:::` and a `<!--` has
-    the paragraphs after it, up to the one holding the `-->`, marked inside the comment, on
-    `main` too. Following from the
-    closing line on would fix it; following the whole note again would hide what #54's
-    eleventh round found hidden. And a code fence wrapped onto a note's second line, left alone or not, is still
-    paired with the next fence below, so what lies between goes unmarked, or a marker lands
-    inside a real code block. Both are so on `main`.
+    label hid the paragraphs after it up to the next `-->`, while pandoc printed them. Only
+    a block of those two lines is taken so. With a line after them, pandoc can end the
+    definition inside the block - at a code fence, a list's first item, or the close of a
+    div or of any tag it takes for a block around it - and what follows is at the top level.
+    Taken for a term's by itself, a comment opened there was not followed and the paragraphs
+    inside it were marked; two review rounds each found another such line a list had
+    missed, so a longer block is followed as on `main`. What is still followed, as on
+    `main`, and leaves paragraphs pandoc prints unmarked: such a longer block, a term that
+    is no note's label (`Capped <!-- check` over `: as agreed`), a label with nothing after
+    `]:`, a definition after a blank line, a label on the block's second line or later, and
+    a definition's indented continuation. A note that runs on into the block below, or is
+    marked for an underline or a table's rule, is still read for raw content as a paragraph
+    is: a `<!--`, `<pre>` or `\begin{...}` in its text leaves the paragraphs after it
+    unmarked, and pandoc prints them. The other way round, a note left alone takes a `:::`
+    in, which ends it inside a fenced div, and a comment opened after that line is then not
+    followed: `::: box` over `[^cap]: Capped`, `:::` and a `<!--` has the paragraphs after
+    it, up to the one holding the `-->`, marked inside the comment, on `main` too. Following
+    from the closing line on would fix it; following the whole note again would hide what
+    #54's eleventh round found hidden. And a code fence wrapped onto a note's second line,
+    left alone or not, is still paired with the next fence below, so what lies between goes
+    unmarked, or a marker lands inside a real code block. Both are so on `main`.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below

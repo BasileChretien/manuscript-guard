@@ -1073,6 +1073,24 @@ TAGGING = {
         "<div>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</div>\n<!-- check the dose\n\n"
         "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
     ),
+    # And at a list's start, or at the close of any tag pandoc takes for a block: a lazy
+    # line of a definition ends at each, and the block after it is at the top level.
+    "a comment after a list item made a heading under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n1. item\n---\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a list item under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n- item\nlazy text\n: z "
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after an ins closed under a note's term": (
+        "<ins>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</ins>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a video closed under a note's term": (
+        "<video>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</video>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
 }
 
 
@@ -1179,7 +1197,8 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
     definitions = "\n\n".join(
         re.split(r"\n(?= {0,3}-+(?:[ \t]+-+)*[ \t]*(?:\n|$))", p)[0]
         for p in pieces
-        if re.match(r" {0,3}\[[^\]]+\]:", p) and not re.match(r"[^\n]*\n {0,3}[:~](?:[ \t]|$)", p)
+        if re.match(r" {0,3}\[[^\]]+\]:", p)
+        and not re.match(r"[^\n]*\n {0,3}[:~](?:[ \t]|\n|$)", p)
     )
     for index, piece in enumerate(pieces):
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)

@@ -1658,8 +1658,8 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
-_CLAIM = "The excess was significant (p < 0.001).\n"
-_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+_CLAIM_LINE = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM_LINE
 
 
 @pytest.mark.parametrize(
@@ -1669,8 +1669,8 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
-        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM_LINE}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM_LINE}', []),
     ],
 )
 def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:
@@ -2711,6 +2711,80 @@ def test_audit_reads_past_a_deleted_text_box_in_the_reference_list(tmp_path: Pat
     report = audit([paper], [outputs])
     assert report.unmatched == [], report.unmatched
     assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+#: A text box as Word writes one, twice over. In a row moved away Word 16 marks none of its
+#: paragraphs, in either copy: the box goes with the text it is anchored in.
+_BOX = (
+    '<w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/'
+    '2006"><mc:Choice Requires="wps"><w:drawing><w:txbxContent>'
+    f"{_p('Panel 9')}</w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict>"
+    f"<w:txbxContent>{_p('Panel 9')}</w:txbxContent></w:pict></mc:Fallback>"
+    "</mc:AlternateContent></w:r>"
+)
+
+
+@pytest.mark.parametrize(
+    ("row_mark", "mark", "text", "inside"),
+    [
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "", "del", ""),
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "del", "del", ""),
+        ("", "moveFrom", "moveFrom", ""),
+        ("", "moveFrom", "moveFrom", _BOX),
+    ],
+    ids=["deleted-row", "deleted-row-and-mark", "moved-row", "moved-row-with-text-box"],
+)
+def test_audit_reads_past_a_table_row_gone_from_the_reference_list(
+    tmp_path: Path, row_mark: str, mark: str, text: str, inside: str
+) -> None:
+    """Word marks a deleted table row in the row's own properties, not by wrapping it, and a
+    row moved away not at all: it moves the mark of every paragraph in the row instead. The
+    row's text was dropped, but its row and cell still started lines, and a cell styled as a
+    heading was an empty heading, which ended the reference list there: the entries after
+    it were reported as numbers missing from the outputs. A text box in a moved row has no
+    mark moved, and read as one left in place it kept the row."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    gone = f'<w:rPr><w:{mark} w:id="5" w:author="a"/></w:rPr>' if mark else ""
+    kind = "delText" if text == "del" else "t"
+    cell = (
+        f'<w:p><w:pPr><w:pStyle w:val="Heading1"/>{gone}</w:pPr><w:{text} w:id="4" '
+        f'w:author="a"><w:r><w:{kind}>Old</w:{kind}></w:r>{inside}</w:{text}></w:p>'
+    )
+    row = f"<w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + _p("Smith J. Lancet. 2019;393:1-2.")
+        + f"<w:tbl>{row}</w:tbl>"
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+def test_audit_joins_a_paragraph_across_a_table_word_drops(tmp_path: Path, change: str) -> None:
+    """A paragraph whose mark was deleted runs on past a table whose every row was deleted or
+    moved away: Word 16 shows "-0.5", such a table, and "1" as -0.51. The table ended the
+    line, so the two pieces were read apart and matched two outputs the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    row_mark = '<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>' if change == "del" else ""
+    kind = "delText" if change == "del" else "t"
+    cell = (
+        f'<w:p>{_gone(change)}<w:{change} w:id="4" w:author="a"><w:r><w:{kind}>7</w:{kind}>'
+        f"</w:r></w:{change}></w:p>"
+    )
+    table = f"<w:tbl><w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr></w:tbl>"
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{table}{_p('1.')}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
 
 
 def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:

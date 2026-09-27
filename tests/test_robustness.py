@@ -573,33 +573,38 @@ def test_an_interrupted_stamp_does_not_leave_an_empty_one(tmp_path: Path) -> Non
     assert "os.replace(pending, stamp)" in source
 
 
-def test_footnotes_are_indexed_in_linear_time() -> None:
+def notes_each_referenced_once(count: int) -> str:
+    """`count` paragraphs, each referencing a note of its own, and the notes' definitions."""
+    return "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
+        f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
+    )
+
+
+def test_footnotes_are_indexed_in_linear_time(assert_linear) -> None:
     """Each footnote's references, and each number's note, are found by bisection: read
-    against every definition in turn, a paper of many notes took time in their square."""
+    against every definition in turn, a paper of many notes took time in their square. From
+    500 notes that reading fails in seconds; from 2,000, where it was once timed once per
+    size, it takes two and a half minutes."""
     from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
-    def measure(count: int) -> float:
-        text = "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
-            f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
-        )
-        started = time.perf_counter()
+    def index(text: str) -> None:
         notes = footnote_index(text)
         headings = heading_index(text)
-        for note in notes[:: max(1, count // 100)]:
+        for note in notes[:: max(1, len(notes) // 100)]:
             chains_at(headings, notes, note.start)
-        return time.perf_counter() - started
 
-    small = max(measure(2000), 1e-4)
-    large = measure(8000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(notes_each_referenced_once, index, 500, "indexing footnotes")
 
 
-def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
+def test_a_note_referenced_many_times_is_judged_in_linear_time(assert_linear) -> None:
     """A number in a note was judged once per reference: a note with a thousand references
-    and a thousand numbers took two minutes. Its sections are judged once each now."""
+    and a thousand numbers took two minutes. Its sections are judged once each now. The note
+    is indexed off the clock, and only judging its numbers is timed. From 100 numbers the
+    old judging fails in seconds; from 500, where it was once timed once per size, it takes
+    six minutes."""
     from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
-    def measure(count: int) -> float:
+    def one_note(count: int) -> tuple[list, list, range]:
         paragraphs = "Text.[^n]\n\n" * (count // 10)
         text = (
             "".join(f"# S{i}\n\n{paragraphs}" for i in range(10))
@@ -609,11 +614,12 @@ def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
         )
         notes, headings = footnote_index(text), heading_index(text)
         note = notes[0]
-        started = time.perf_counter()
-        for offset in range(note.start, note.end, max(1, (note.end - note.start) // count)):
-            chains_at(headings, notes, offset)
-        return time.perf_counter() - started
+        step = max(1, (note.end - note.start) // count)
+        return headings, notes, range(note.start, note.end, step)
 
-    small = max(measure(500), 1e-4)
-    large = measure(2000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    def judge(given: tuple[list, list, range]) -> None:
+        headings, notes, offsets = given
+        for offset in offsets:
+            chains_at(headings, notes, offset)
+
+    assert_linear(one_note, judge, 100, "judging a note referenced many times")

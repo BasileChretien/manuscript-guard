@@ -1147,9 +1147,9 @@ def attribute_blocks(n: int) -> list[str]:
 
 def attribute_values(n: int) -> list[str]:
     """More of them, each a `k=` value whose reading costs more per character past a size
-    that falls between the two a ratio compares: from 400 to 3,200 characters, or 1,600 to
-    12,800, they read 10 to 21 times the time while linear. So a budget holds them, and the
-    ratio does not."""
+    that falls between the two a ratio compares: from n = 400 to 3,200, or 1,600 to 12,800,
+    they read 5 to 90 times the time while linear, often past a quadratic's 64. So a budget
+    holds them, and the ratio does not."""
     return [
         '# References {k="' + "a" * 2 * n + " !}",
         '# References {k="' + '\\"' * n + " !}",

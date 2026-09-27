@@ -34,8 +34,8 @@ reads:
       are also timed as they grow, by
       `test_the_heading_check_reads_an_attribute_block_in_linear_time`; the other six are `k=`
       values whose cost per character steps up between the two sizes a ratio compares, which
-      read 10 to 21 times the time while linear. The rescan takes 24 to 35 s here, which this
-      budget fails.
+      read 5 to 90 times the time while linear, often past a quadratic's 64. The rescan takes
+      24 to 35 s here, which this budget fails.
     headroom: 297 to 398 ms against 5 s, about 13x. At its old budget of 0.5 s it had 1.3x.
 
   - where: tests/test_audit.py::test_a_long_chain_of_numbers_does_not_stall_the_interval_split

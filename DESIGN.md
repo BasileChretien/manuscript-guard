@@ -3551,23 +3551,29 @@ Closed since, and why each mattered:
   budget on a fixed input, saying why a ratio would not do and how much headroom it was
   measured to have, or as a timestamp that times nothing. Like the exemption inventory it
   runs both ways, and it checks that each listed budget is the number the test holds its
-  timing to. It reads that from comparisons with the timing on one side, through names the
-  timing is assigned to, annotated or added to; a helper's timing through every function
-  that calls it by name, and a caller it cannot read so is named rather than passed. A
-  constant shadowed inside the test is not seen. It does not see a clock read any other way: `datetime.now()`, `os.times()`, a
-  clock fetched with `getattr` or `importlib`, a module bound to a second name (`clock =
-  time`), one in `src/` that a test calls, or a timing a subprocess reports. It judges each
-  top-level function whole, so a second timing added to a listed test is excused with the
-  first. And a ratio has a blind spot that a budget does not: a part of the input that does
-  not grow. If that part alone reaches the 20 ms floor, the input is never grown, and the
-  ratio compares two times made mostly of the same constant. The attribute-block lines hid
-  `_escaped` scanning back from the start of the line that way, behind the one line of
-  eighteen whose run of backslashes is as long at any size. So eleven of the seventeen that
-  grow are timed by `check_linear`, and all eighteen keep a 5 s budget. The other six are
-  `k=` values whose cost per character steps up at a size between the two a ratio compares,
-  so they read 10 to 21 times the time while linear, and failed correct code one run in six. The headroom was measured on
-  one laptop under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is
-  thin, and most of what they time is `check` itself rather than the hostile input.
+  timing to. It reads that from comparisons with the timing on either side, through names
+  the timing is assigned to, annotated or added to, and a helper's timing through every
+  function in its module that calls it by name. What it cannot read fails rather than
+  passes: a caller that holds the timing to nothing it reads, a helper whose timing is used
+  from another test module, and a listed constant bound more than once. It reads the
+  comparison, not what is done with it, so one in an `if` that only warns, or asserted
+  beside an `or`, counts as held. A test defined under a module-level `if`, a method of a
+  nested class and a helper passed as a value are not read. It does not see a clock read
+  any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
+  `importlib`, a module bound to a second name (`clock = time`), one in `src/` that a test
+  calls, or a timing a subprocess reports. It judges each top-level function whole, so a
+  second timing added to a listed test is excused with the first. And a ratio has a blind
+  spot that a budget does not: a part of the input that does not grow. If that part alone
+  reaches the 20 ms floor, the input is never grown, and the ratio compares two times made
+  mostly of the same constant. The attribute-block lines hid `_escaped` scanning back from
+  the start of the line that way, behind the one line of eighteen whose run of backslashes
+  is as long at any size. So eleven of the seventeen that grow are timed by `check_linear`,
+  and all eighteen keep a 5 s budget. The other six are `k=` values whose cost per
+  character steps up at a size between the two a ratio compares, so they read 5 to 90 times
+  the time while linear, often past a quadratic's 64, and failed correct code one run in
+  six. The headroom was measured on one laptop under load. The budgets on a whole `check`
+  run have 1.8 to 3.5 times, which is thin, and most of what they time is `check` itself
+  rather than the hostile input.
 
 ## Still open
 

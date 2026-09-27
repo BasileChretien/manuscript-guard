@@ -16,7 +16,7 @@ is not a read, and one reached through an alias is.
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -168,10 +168,12 @@ def _callers(tree: ast.Module) -> list[tuple[str, ast.AST]]:
     return found
 
 
-def budgets_compared(source: str, name: str) -> tuple[list[float | str], list[str]] | None:
+def budgets_compared(
+    source: str, name: str
+) -> tuple[list[float | str], list[str], set[str]] | None:
     """What the timing the function `name` in `source` reads is held to, each a number or the
-    name of a constant, and the callers that hold it to nothing the check can read. None if
-    there is no such function.
+    name of a constant; the callers that hold it to nothing the check can read; and the
+    functions it passes through, `name` among them. None if there is no such function.
 
     Only its own clock reads count: a timing it gets from another helper answers to that
     helper's entry. One it returns, like `timed_check`, answers for what every caller holds
@@ -189,7 +191,9 @@ def budgets_compared(source: str, name: str) -> tuple[list[float | str], list[st
     callers = _callers(tree)
     held, returned = _held(functions[name], clock_reader(tree))
     silent: list[str] = []
-    passed_on, seen = [name] if returned else [], {name}
+    # Each caller is read against every helper it calls: one that divides a timing by a
+    # baseline passed on from the same helper holds both.
+    passed_on, queued = [name] if returned else [], {name}
     while passed_on:
         helper = passed_on.pop(0)
 
@@ -202,29 +206,104 @@ def budgets_compared(source: str, name: str) -> tuple[list[float | str], list[st
 
         called = False
         for caller, function in callers:
-            if caller in seen or not any(calls(node) for node in ast.walk(function)):
+            if caller == helper or not any(calls(node) for node in ast.walk(function)):
                 continue
-            seen.add(caller)
             called = True
             found, returns = _held(function, calls)
             held += found
             if returns and caller in functions:
-                passed_on.append(caller)
+                if caller not in queued:
+                    queued.add(caller)
+                    passed_on.append(caller)
             elif not found:
                 silent.append(caller)
         if not called and helper != name:
             silent.append(helper)
-    return held, silent
+    return held, silent, queued
 
 
-def budget_mismatch(entry: dict, source: str) -> str | None:
+def _module_level(tree: ast.Module) -> Iterator[ast.AST]:
+    """Every node of `tree` outside a function or class body: the module's own statements,
+    however deep in an `if`, a loop, a `with` or a `try`."""
+    stack: list[ast.AST] = list(tree.body)
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def _bound_to(tree: ast.Module, name: str) -> list[object]:
+    """What `name` is bound to at module level, once for each binding: a plain number, or None
+    for anything else. Any name stored there counts, and so does an import, a function or
+    class of that name, or a function that declares it `global`."""
+    numbers: dict[int, object] = {}
+    for node in _module_level(tree):
+        value = getattr(node, "value", None)
+        if (
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, (int, float))
+        ):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            numbers |= {id(target): value.value for target in targets}
+    bound: list[object] = []
+    for node in _module_level(tree):
+        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+            bound.append(numbers.get(id(node)))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            bound += [None for alias in node.names if (alias.asname or alias.name) == name]
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and (
+            node.name == name
+            or any(
+                isinstance(inner, ast.Global) and name in inner.names for inner in ast.walk(node)
+            )
+        ):
+            bound.append(None)
+    return bound
+
+
+def _used_elsewhere(names: set[str], path: str, root: Path) -> list[str]:
+    """The test modules under `root`, other than `path`, that import any of `names` from it,
+    by name or through the module."""
+    stem = Path(path).stem
+    used: list[str] = []
+    for other in sorted((root / "tests").rglob("*.py")):
+        relative = other.relative_to(root).as_posix()
+        if relative == path:
+            continue
+        tree = ast.parse(other.read_text(encoding="utf-8"))
+        aliases: set[str] = set()
+        found = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[-1] == stem:
+                found = found or any(a.name in names or a.name == "*" for a in node.names)
+            elif isinstance(node, ast.Import):
+                aliases |= {
+                    a.asname or a.name for a in node.names if a.name.split(".")[-1] == stem
+                }
+        found = found or any(
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in aliases
+            and node.attr in names
+            for node in ast.walk(tree)
+        )
+        if found:
+            used.append(relative)
+    return used
+
+
+def budget_mismatch(entry: dict, source: str, root: Path | None = None) -> str | None:
     """Why the budget `entry` lists is not the one its test asserts, or None if it is. A
-    listed `constant` must be what the timing is compared against, and hold the budget."""
-    name = entry["where"].partition("::")[2]
+    listed `constant` must be what the timing is compared against, bound once, to the
+    budget. Given the repository's `root`, a timing used from another test module fails:
+    the check reads only the module the entry names."""
+    path, _, name = entry["where"].partition("::")
     found = budgets_compared(source, name)
     if found is None:
         return "no such function"
-    compared, silent = found
+    compared, silent, chain = found
     if silent:
         return f"{silent[0]} holds its timing to nothing the check can read"
     if not compared:
@@ -233,15 +312,13 @@ def budget_mismatch(entry: dict, source: str) -> str | None:
     if any(value != expected for value in compared):
         return f"compares its timing against {compared}, listed as {expected!r}"
     if "constant" in entry:
-        values = [
-            node.value.value
-            for node in ast.parse(source).body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == entry["constant"] for t in node.targets)
-            and isinstance(node.value, ast.Constant)
-        ]
-        if values != [entry["budget"]]:
-            return f"{entry['constant']} is {values}, listed as {entry['budget']}"
+        bound = _bound_to(ast.parse(source), entry["constant"])
+        if len(bound) != 1:
+            return f"{entry['constant']} is bound {len(bound)} times, not once"
+        if bound != [entry["budget"]]:
+            return f"{entry['constant']} is {bound}, listed as {entry['budget']}"
+    if root is not None and (used := _used_elsewhere(chain, path, root)):
+        return f"its timing is used in {', '.join(used)}, which the check does not read"
     return None
 
 
@@ -297,7 +374,7 @@ def test_a_listed_budget_is_the_one_its_test_asserts(entry: dict) -> None:
     the test holds its timing to: raised or lowered there, the stated headroom would be about
     another number."""
     path = entry["where"].partition("::")[0]
-    mismatch = budget_mismatch(entry, (REPO / path).read_text(encoding="utf-8"))
+    mismatch = budget_mismatch(entry, (REPO / path).read_text(encoding="utf-8"), REPO)
     assert mismatch is None, f"{entry['where']}: {mismatch}"
 
 
@@ -434,6 +511,91 @@ PASSED_ON = (
     "def test_b():\n"
     "    assert overhead() < {b}\n"
 )
+# A function that calls both a helper and another that passes the helper's timing on, the
+# way a ratio divides a timed run by a baseline timed with the same helper.
+BASELINED = (
+    "import time\n"
+    "BOUND = 30.0\n"
+    "def timed():\n"
+    "    started = time.process_time()\n"
+    "    return time.process_time() - started\n"
+    "def baseline():\n"
+    "    return min(timed() for _ in range(3))\n"
+    "def overhead():\n"
+    "    ratio = timed() / baseline()\n"
+    "    assert ratio < BOUND\n"
+    "    return ratio\n"
+    "def test_a():\n"
+    "    assert overhead() < {b}\n"
+)
+# The listed constant bound once, and a caller holding the timing to it.
+CONSTANT = (
+    "import time\n"
+    "BUDGET = 20.0\n"
+    "{rebound}"
+    "def test_x():\n"
+    "    started = time.perf_counter()\n"
+    "    assert time.perf_counter() - started < BUDGET\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("rebound", "mismatch"),
+    [
+        pytest.param("", None, id="bound-once"),
+        pytest.param("BUDGET = 60.0\n", "BUDGET is bound 2 times, not once", id="bound-again"),
+        pytest.param(
+            "import sys\nif sys.platform == 'darwin':\n    BUDGET = 60.0\n",
+            "BUDGET is bound 2 times, not once",
+            id="bound-again-under-an-if",
+        ),
+        pytest.param("BUDGET *= 3\n", "BUDGET is bound 2 times, not once", id="multiplied"),
+        pytest.param(
+            "def loosen():\n    global BUDGET\n    BUDGET = 60.0\n",
+            "BUDGET is bound 2 times, not once",
+            id="rebound-from-a-function",
+        ),
+    ],
+)
+def test_a_listed_constant_is_bound_once_to_its_number(rebound: str, mismatch: str | None) -> None:
+    """The third review rebound the constant under a module-level `if` and multiplied it, and
+    the check still read the first number. It reads one binding, so any other fails."""
+    entry = {"where": "t.py::test_x", "budget": 20.0, "constant": "BUDGET"}
+    assert budget_mismatch(entry, CONSTANT.format(rebound=rebound)) == mismatch
+
+
+@pytest.mark.parametrize(
+    "elsewhere",
+    [
+        pytest.param(
+            "from test_timed import timed\n\ndef test_b():\n    assert timed() < 60\n",
+            id="imported-by-name",
+        ),
+        pytest.param(
+            "import test_timed\n\ndef test_b():\n    assert test_timed.timed() < 60\n",
+            id="through-the-module",
+        ),
+        pytest.param(
+            "def test_b():\n    from test_timed import overhead\n\n    assert overhead() < 60\n",
+            id="what-it-passes-on-to",
+        ),
+    ],
+)
+def test_a_helper_used_from_another_module_fails(tmp_path: Path, elsewhere: str) -> None:
+    """The third review held `timed_check` to 60 from another test module, which the check
+    never reads. A helper whose timing is used outside its module fails instead, and so does
+    anything it passes the timing on to."""
+    (tmp_path / "tests").mkdir()
+    source = PASSED_ON.format(b="BOUND")
+    (tmp_path / "tests" / "test_timed.py").write_text(source, encoding="utf-8")
+    (tmp_path / "tests" / "test_other.py").write_text(elsewhere, encoding="utf-8")
+    entry = {"where": "tests/test_timed.py::timed", "budget": 30.0, "constant": "BOUND"}
+    assert budget_mismatch(entry, source) is None
+    assert budget_mismatch(entry, source, tmp_path) == (
+        "its timing is used in tests/test_other.py, which the check does not read"
+    )
+
+
 # One caller holds the helper's timing to the budget; the case adds a second.
 HELD_BY_ONE = (
     "import time\n"
@@ -545,6 +707,18 @@ def test_every_caller_holds_a_helpers_timing_to_the_budget(caller: str, mismatch
             PASSED_ON.format(b="BOUND"),
             None,
             id="a-function-answers-for-its-own-clock-only",
+        ),
+        pytest.param(
+            {"where": "t.py::timed", "budget": 30.0, "constant": "BOUND"},
+            BASELINED.format(b="BOUND"),
+            None,
+            id="a-caller-of-a-helper-and-of-what-passes-it-on",
+        ),
+        pytest.param(
+            {"where": "t.py::timed", "budget": 30.0, "constant": "BOUND"},
+            BASELINED.format(b=60),
+            "compares its timing against ['BOUND', 'BOUND', 60], listed as 'BOUND'",
+            id="and-a-test-past-them-held-to-another-number",
         ),
         pytest.param(
             {"where": "t.py::test_x", "budget": 2.0},

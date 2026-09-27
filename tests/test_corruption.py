@@ -3764,6 +3764,11 @@ _ALPHA = "Alpha paragraph talks about the cohort of patients."
 _PAPA = "Papa paragraph reports that twelve reports were excluded for missing dates."
 _ROMEO = "Romeo paragraph explains how duplicates were removed before the analysis."
 _BRAVO = "Bravo paragraph describes the exposure window."
+#: Blocks Word does not show, or shows elsewhere: a heading past one of them stands directly
+#: beside the paragraph in Word, and pandoc prints a table's caption above the table.
+_NOTE = "<!-- a note to self: check the counts -->"
+_LINK = "[registry]: https://example.org/registry"
+_TABLE = "| Drug | Reports |\n|------|---------|\n| A | 12 |\n| B | 30 |"
 #: A paper cut down to a few paragraphs fails the gates; built past them, the document is
 #: named for it.
 _UNCHECKED = "manuscript.UNCHECKED.docx"
@@ -3846,6 +3851,30 @@ def _run_into_papa(heading: str, *, below: bool):
             "Results",
             True,
         ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _NOTE, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _NOTE, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _LINK, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _LINK, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", "## Methods", _NOTE, _PAPA, _ROMEO, _BRAVO),
+            ("# Intro", "A paragraph added since the build.", _NOTE, _PAPA, _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _TABLE, ": Counts by drug", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _TABLE, _ROMEO, _BRAVO),
+            "Counts by drug",
+            True,
+        ),
     ],
     ids=[
         "glued below, renamed",
@@ -3854,6 +3883,10 @@ def _run_into_papa(heading: str, *, below: bool):
         "glued above, added",
         "above, removed",
         "below, removed",
+        "below past a comment, removed",
+        "below past a link definition, removed",
+        "above past a comment, removed",
+        "caption after its table, removed",
     ],
 )
 def test_a_heading_run_into_a_paragraph_beside_a_changed_one_is_not_merged(
@@ -3886,14 +3919,49 @@ def test_a_heading_run_into_a_paragraph_beside_a_changed_one_is_not_merged(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
-def test_a_rewording_beside_headings_that_did_not_change_still_merges(
+def test_a_heading_opening_the_next_file_run_into_a_paragraph_is_not_merged(
     project: Path, tmp_path: Path
 ) -> None:
-    """Only a paragraph beside a changed block is refused: with the source changed elsewhere
-    since the build, the co-author's rewording of one between two headings merges."""
+    """The files of the main text are one document, so the heading opening the next file
+    stands directly under the last paragraph of this one in Word. Removed from the `.md`
+    since the build, it was in nothing either paragraph's record held, and its run-in
+    merged."""
     from manuscript_guard.cli import main
 
-    blocks = ("# Intro", _ALPHA, "## Methods", _PAPA, "## Data", _ROMEO, _BRAVO)
+    path = _paper(project, "# Intro", _ALPHA, _PAPA)
+    results = path.parent / "results.md"
+    results.write_text(f"# Results\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project, tmp_path, _run_into_papa("Results", below=True), document=_UNCHECKED
+    )
+    results.write_text(f"{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "changed",
+    [
+        (_ALPHA, "Alpha paragraph talks about the cohort of adult patients."),
+        (_ROMEO, "Romeo paragraph explains how duplicates were removed first."),
+        (_BRAVO, "Bravo paragraph, reworded by the author since."),
+    ],
+    ids=["the paragraph above", "the paragraph below", "one further off"],
+)
+def test_a_rewording_beside_headings_that_did_not_change_still_merges(
+    project: Path, tmp_path: Path, changed: tuple[str, str]
+) -> None:
+    """Only a paragraph beside a changed heading or other block without an identifier is
+    refused. With another paragraph reworded in the `.md` since the build, next to it or
+    not, no heading could have stood where that paragraph stands, and the co-author's
+    rewording merges as on main."""
+    from manuscript_guard.cli import main
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, "## Data", _BRAVO)
     path = _paper(project, *blocks)
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
 
@@ -3901,7 +3969,7 @@ def test_a_rewording_beside_headings_that_did_not_change_still_merges(
         return xml.replace("were excluded for missing dates", "were dropped for missing dates", 1)
 
     returned = _sent_back(project, tmp_path, reworded, document=_UNCHECKED)
-    _paper(project, *blocks[:-1], "Bravo paragraph, reworded by the author since.")
+    _paper(project, *(changed[1] if block == changed[0] else block for block in blocks))
     source = path.read_text(encoding="utf-8")
 
     main(["import", str(returned), str(project), "--apply", "--force"])

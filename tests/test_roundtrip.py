@@ -325,31 +325,42 @@ def test_a_built_document_records_what_each_identifier_names(project: Path) -> N
 
 
 def test_a_record_holds_the_blocks_beside_each_paragraph() -> None:
-    """A heading written straight above a paragraph shares its block, outside the text hash,
-    and the heading below it is the next block: each is in the third hash, so a change to
-    either shows, and a change elsewhere does not."""
-    from manuscript_guard.roundtrip import _beside_changed, _recorded_as, _walk
+    """The third hash holds the blocks without an identifier around a paragraph, up to the
+    paragraphs on either side: a heading written straight above it, which shares its block,
+    one past a comment Word does not show, and one opening the next file of the document. A
+    change to any of them shows; a paragraph reworded beside it does not, as no heading can
+    have stood there."""
+    from manuscript_guard.roundtrip import _beside_changed, _beside_of, _recorded_as, _walk
 
-    def record(raw: str) -> dict[str, str]:
+    def record(main: str, results: str) -> dict[str, str]:
+        sources = [(Path("main.md"), "main.md", main), (Path("r.md"), "results.md", results)]
+        around = _beside_of(sources)
         return {
-            name: _recorded_as(text, before, beside)
-            for name, text, _start, before, beside in _walk(raw, "main.md")
+            name: _recorded_as(text, before, around[name])
+            for _path, relative, raw in sources
+            for name, text, _start, before in _walk(raw, relative)
         }
 
-    built = "# Intro\n\nAlpha.\n\n## Methods\nPapa.\n\n## Data\n\nRomeo.\n"
-    then = record(built)
-    papa = next(name for name in then if name.endswith("-4"))
+    main = "# Intro\n\nAlpha.\n\n## Methods\nPapa.\n\n<!-- note -->\n\n## Data\n\nRomeo.\n"
+    results = "# Results\n\nBravo.\n"
+    then = record(main, results)
+    named = {text: name for name, text, _start, _before in _walk(main, "main.md")}
+    papa, romeo = named["Papa."], named["Romeo."]
     assert all(value.count(".") == 2 for value in then.values())
-    for changed in (
-        built.replace("## Methods\n", ""),
-        built.replace("## Methods", "## Study design"),
-        built.replace("## Data", "## Sources"),
+    for changed, name in (
+        ((main.replace("## Methods\n", ""), results), papa),
+        ((main.replace("## Methods", "## Study design"), results), papa),
+        ((main.replace("## Data", "## Sources"), results), papa),
+        ((main, results.replace("# Results\n\n", "")), romeo),
     ):
-        now = record(changed)
-        assert now[papa].partition(".")[0] == then[papa].partition(".")[0], changed
-        assert papa in _beside_changed(then, now, frozenset({papa})), changed
-    elsewhere = record(built.replace("Romeo.", "Romeo, reworded."))
-    assert not _beside_changed(then, elsewhere, frozenset({papa}))
+        now = record(*changed)
+        assert now[name].partition(".")[0] == then[name].partition(".")[0], changed
+        assert name in _beside_changed(then, now, frozenset({name})), changed
+    for changed in (
+        (main.replace("Alpha.", "Alpha, reworded."), results),
+        (main.replace("Romeo.", "Romeo, reworded."), results),
+    ):
+        assert not _beside_changed(then, record(*changed), frozenset({papa})), changed
 
 
 def test_a_record_without_the_blocks_beside_is_still_read(tmp_path: Path) -> None:

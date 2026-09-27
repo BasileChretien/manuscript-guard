@@ -62,11 +62,13 @@ _CUSTOM = "docProps/custom.xml"
 #: the first one's identifier named the new one, read the same, and took a co-author's
 #: ethics approval. So each paragraph's record also hashes the block before it.
 #:
-#: And its own block whole, with the block after it. `import` recognises a heading run into
-#: a paragraph in Word by the heading beside it in the source now, which is the one the
-#: co-author had only if nothing beside the paragraph changed since the build. A heading
-#: written straight above a paragraph, with no blank line, shares its block, and the text
-#: hash starts after it; renamed or removed since, it was in no hash, and the run-in merged.
+#: And the blocks without an identifier around it, up to the paragraphs on either side
+#: (`_beside_of`). `import` recognises a heading run into a paragraph in Word by the heading
+#: beside it in the source now, which is the one the co-author had only if none of those
+#: changed since the build. A heading written straight above a paragraph, with no blank
+#: line, shares its block and the text hash starts after it, and one past a comment or at
+#: the top of the next file is beside it in Word though not in the file: renamed or removed
+#: since, each was in no hash, and the run-in merged.
 #:
 #: Split over several properties, each short of 255 characters, which Word may cut a text
 #: property to when it saves.
@@ -132,8 +134,8 @@ _BUILD_INPUTS = ("bibliography", "csl")
 
 def _recorded_as(text: str, before: str, beside: str | None = None) -> str:
     """What the record keeps of one paragraph: `<hash of its text>.<hash of the block
-    before it>.<hash of its block whole and the block after it>`, the last left out when
-    `beside` is None, as releases before it wrote it."""
+    before it>.<hash of the blocks without an identifier around it>` (`_beside_of`), the last
+    left out when `beside` is None, as releases before it wrote it."""
 
     def hashed(what: str, length: int) -> str:
         return hashlib.sha256(what.encode("utf-8")).hexdigest()[:length]
@@ -1472,60 +1474,87 @@ def identified(
     `front` numbers them with the front matter taken to end where a past release took it
     to, one of `_PAST_FRONTS`, for a document built before paragraphs were recorded.
     """
-    return [(name, text, start) for name, text, start, *_beside in _walk(raw, relative, front)]
+    return [(name, text, start) for name, text, start, _before in _walk(raw, relative, front)]
+
+
+def _body(raw: str, front: re.Pattern[str] | None = None) -> str:
+    """The text of a source file that is tagged: without its front matter, stripped exactly
+    as `assemble` strips it before tagging. Indexing the raw source while the document was
+    tagged from the stripped text put every identifier one block out of step - the two must
+    read the same string or the identifier stops naming anything."""
+    if front is not None:
+        found = front.match(raw)
+        return raw[found.end() :].lstrip("\n") if found else raw
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    return strip_front_matter(raw)[0]
 
 
 def _walk(
     raw: str, relative: str, front: re.Pattern[str] | None = None
-) -> list[tuple[str, str, int, str, str]]:
+) -> list[tuple[str, str, int, str]]:
     """`identified`, with the text of the block before each paragraph: a heading, a
-    paragraph, anything but blank lines, or nothing at the top of the file. And with its
-    own block whole, any heading written straight above it included, and the block after
-    it, or nothing at the end of the file."""
-    # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
-    # raw source here while the document was tagged from the stripped text put every
-    # identifier one block out of step - the two must read the same string or the
-    # identifier stops naming anything.
-    if front is not None:
-        found = front.match(raw)
-        text = raw[found.end() :].lstrip("\n") if found else raw
-    else:
-        from manuscript_guard.build.assemble import strip_front_matter
-
-        text, _title = strip_front_matter(raw)
+    paragraph, anything but blank lines, or nothing at the top of the file."""
+    text = _body(raw, front)
     slug = paragraph_slug(relative)
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
     cursor = len(raw) - len(text)
-    out: list[tuple[str, str, int, str, str]] = []
+    out: list[tuple[str, str, int, str]] = []
     before = ""
-    pieces = list(_blocks(text))
-    # The block after each piece, read from the end.
-    following, after = [""] * len(pieces), ""
-    for position in range(len(pieces) - 1, -1, -1):
-        following[position] = after
-        if pieces[position][1].strip():
-            after = pieces[position][1].strip()
-    for position, (index, para, at) in enumerate(pieces):
+    for index, para, at in _blocks(text):
         if at is not None:
             # The paragraph alone, under any headings: `import` splices exactly this.
             name = _TAG.format(slug=slug, index=index)
-            beside = f"{para.strip()}\n\n{following[position]}"
-            out.append((name, para[at:].rstrip(), cursor + at, before, beside))
+            out.append((name, para[at:].rstrip(), cursor + at, before))
         cursor += len(para)
         if para.strip():
             before = para.strip()
     return out
 
 
+def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
+    """For each paragraph, the blocks without an identifier on either side of it, up to the
+    paragraphs before and after it in its document: headings, captions, tables, comments,
+    link definitions, a heading written straight above a paragraph with no blank line.
+
+    Across files, because the main text's files are one document and the supplement's
+    another, so the heading opening the next file stands directly under the last paragraph
+    of this one in Word. Only what has no identifier: a paragraph reworded beside it could
+    not have been a heading the co-author ran into it.
+    """
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY
+
+    around: dict[str, str] = {}
+    for supplement in (False, True):
+        names: list[str] = []
+        runs: list[list[str]] = [[]]
+        for _path, relative, raw in sources:
+            if relative.startswith(f"{SUPPLEMENTARY}/") != supplement:
+                continue
+            slug = paragraph_slug(relative)
+            for index, para, at in _blocks(_body(raw)):
+                shown = (para if at is None else para[:at]).strip()
+                if shown:
+                    runs[-1].append(shown)
+                if at is not None:
+                    names.append(_TAG.format(slug=slug, index=index))
+                    runs.append([])
+        for position, name in enumerate(names):
+            around[name] = repr((runs[position], runs[position + 1]))
+    return around
+
+
 def paragraph_record(project) -> dict[str, str]:
-    """What the build records of each paragraph, `{identifier: <text>.<before>.<beside>}`:
-    a hash of its text, one of the block before it, and one of its own block with the block
-    after it. See `PARAGRAPHS_PROPERTY`."""
+    """What the build records of each paragraph, `{identifier: <text>.<before>.<around>}`:
+    a hash of its text, one of the block before it, and one of the blocks without an
+    identifier around it (`_beside_of`). See `PARAGRAPHS_PROPERTY`."""
+    sources = _sources(project)
+    around = _beside_of(sources)
     return {
-        name: _recorded_as(text, before, beside)
-        for _path, relative, raw in _sources(project)
-        for name, text, _start, before, beside in _walk(raw, relative)
+        name: _recorded_as(text, before, around[name])
+        for _path, relative, raw in sources
+        for name, text, _start, before in _walk(raw, relative)
     }
 
 
@@ -1572,11 +1601,11 @@ class Numbering:
     #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
     #: document may never have carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
-    #: Trusted identifiers whose paragraph stands among other blocks than at the build: the
-    #: block before it, its own block (a heading written straight above it included) or the
-    #: block after it changed since. A heading run into one in Word cannot be recognised by
-    #: the heading beside it now, so no rewording is merged into it. Known only of a document
-    #: that records its own block and the next, as releases from this one do.
+    #: Trusted identifiers whose paragraph stands among other blocks without an identifier
+    #: than at the build (`_beside_of`): a heading, caption, table or comment beside it changed
+    #: since. A heading run into one in Word cannot be recognised by the heading beside it
+    #: now, so no rewording is merged into it. Known only of a document that records them,
+    #: as releases from this one do.
     beside_changed: frozenset[str] = frozenset()
 
 
@@ -1608,12 +1637,12 @@ def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
 def _beside_changed(
     recorded: dict[str, str], now: dict[str, str], trusted: frozenset[str]
 ) -> frozenset[str]:
-    """Those of `trusted` whose block before, own block or block after changed since the
-    build (`Numbering.beside_changed`), of a document that records all three."""
+    """Those of `trusted` with other blocks without an identifier around them than at the
+    build (`Numbering.beside_changed`), of a document that records them."""
     changed = set()
     for name in trusted:
         then = recorded[name].split(".")
-        if len(then) == 3 and then[1:] != now[name].split(".")[1:]:
+        if len(then) == 3 and then[2] != now[name].split(".")[2]:
             changed.add(name)
     return frozenset(changed)
 
@@ -1689,7 +1718,7 @@ def marked_blocks(raw: str) -> list[tuple[int, str, int]]:
     """
     return [
         (int(name.rsplit("-", 1)[1]), text, start)
-        for name, text, start, *_beside in _walk(raw, "")
+        for name, text, start, _before in _walk(raw, "")
     ]
 
 

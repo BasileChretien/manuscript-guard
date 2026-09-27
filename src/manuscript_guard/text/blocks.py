@@ -540,6 +540,13 @@ class _Walk:
         self.open = None
         return self._block(index)
 
+    def _rule(self, index: int) -> bool:
+        """A thematic break as written: `* * * <!-- c -->` is not one, though with the comment
+        blanked it reads as `* * *`. Pandoc reads it as a list item, and read as a rule shown
+        but not written it was neither: no list was kept, and the line under it was code."""
+        line = self.lines[index]
+        return bool(_THEMATIC_BREAK.match(line.shown) and _THEMATIC_BREAK.match(line.raw))
+
     def _item(self, index: int) -> bool:
         """Record a list item if this line starts one, and where its content starts.
 
@@ -548,7 +555,7 @@ class _Walk:
         item: at a block's start it is a rule, and under an item it is text of the item."""
         shown = self.lines[index].shown
         item = _LIST_ITEM.match(shown)
-        if item is None or _THEMATIC_BREAK.match(shown):
+        if item is None or self._rule(index):
             return False
         marker = item.group("marker")
         gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
@@ -645,7 +652,7 @@ class _Walk:
         indented less than the inner item's text and still in the list."""
         shown = self.lines[index].shown
         indent = _indent(shown)
-        marker = _LIST_ITEM.match(shown) is not None and not _THEMATIC_BREAK.match(shown)
+        marker = _LIST_ITEM.match(shown) is not None and not self._rule(index)
         if indent == 0:
             if marker:
                 self.items_off = False
@@ -783,8 +790,7 @@ class _Walk:
             while end < len(self.lines) and self._indented_code(end):
                 end += 1
             return end
-        # A rule as written: `--- <!-- revised -->` is text, not a rule with a comment.
-        if _THEMATIC_BREAK.match(shown) and _THEMATIC_BREAK.match(self.lines[index].raw):
+        if self._rule(index):
             return index + 1
         if self._item(index):
             self.open = _ITEM

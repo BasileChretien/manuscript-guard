@@ -712,6 +712,12 @@ UNDER_A_LIST = {
     "a dashed rule at the margin over raw HTML": "1. Item\n\n- - -\n <hr>\n\tMore\n",
     "a wide rule over an indented dashed rule": "- First\n\n*  *  *\n  - - -\n",
     "a fullwidth number over raw HTML": "- Item\n\n" + chr(0xFF11) + ". Note\n\n <hr>\n\tMore\n",
+    # Found by the sixth review. With the comment blanked, a rule shaped like a marker read as
+    # a rule, and was neither a rule as written nor an item: no list was kept, and the line
+    # under it was read as code.
+    "a spaced rule with a comment in it": "* * * <!-- c -->\n\n    More\n",
+    "a wide rule with a comment in it under a list": "- Item\n\n*   * * <!-- c -->\n\n      More\n",
+    "a dashed rule with a comment in it": "-   - - <!-- revised -->\n\n      More\n",
 }
 
 

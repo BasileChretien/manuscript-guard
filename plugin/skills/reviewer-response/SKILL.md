@@ -1,6 +1,6 @@
 ---
 name: reviewer-response
-description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen or claimed-change-missed-the-point, or before resubmitting.
+description: Answer a journal's reviewers point by point, with every claimed revision checked against the manuscript as it was sent. Use when a decision letter with reviewer comments arrives, before revising anything, when check reports point-unanswered, response-claims-nothing, claimed-change-did-not-happen, claimed-change-missed-the-point or anchor-unrecorded, or before resubmitting.
 ---
 
 # Answering the reviewers
@@ -43,9 +43,13 @@ manuscript-guard respond --open --from reviewed.docx
 Each comment becomes a point, grouped by comment author. A comment attached to a paragraph
 records which one in `where`, and the round keeps a per-paragraph baseline so that point can
 be checked more tightly (step 4). The command refuses a document built from an older version
-of the source. `--force` overrides that, and then every anchor needs checking by hand. A
-document the toolkit did not build, which includes anything the journal produced, cannot
-seed a round even with `--force`.
+of the source. `--force` overrides that, and a comment then keeps its paragraph only where
+that paragraph still reads in the source as it did at the build; the others are recorded
+without `where`, the command says how many, and each such point needs its paragraph named in
+its own words. A document built before paragraphs were recorded is refused even with
+`--force` when anything it was built from has changed since: rebuild and have the comments
+made on the new document. A document the toolkit did not build, which includes anything the
+journal produced, cannot seed a round even with `--force`.
 
 Seeded point ids follow the alphabetical order of the reviewers' names, not the journal's
 numbering. Renumber them to match the decision letter.
@@ -134,16 +138,21 @@ manuscript-guard respond --submission    # the same findings, as failures
 | `point-unanswered` | the response is blank; a `rebutted` alone does not count |
 | `response-claims-nothing` | a response with neither `changed` nor `rebutted` |
 | `claimed-change-did-not-happen` | the named file is byte-identical to the baseline, or the key or path does not exist |
-| `claimed-change-missed-the-point` | the paragraph the reviewer commented on is unchanged, though the response says the manuscript was revised |
+| `claimed-change-missed-the-point` | the paragraph the reviewer commented on is unchanged, though the response says the manuscript was revised. It is found by its text, so moving it or adding paragraphs above it does not count as revising it |
+| `anchor-unrecorded` | the point names a paragraph (`where`) the round's baseline does not hold, which only a round written by hand or by an older version has. Check the paragraph yourself, then delete `where` |
 
-All four warn during the revision and fail at submission. `respond` ignores `stage:` in
-`paper.yaml`, so pass `--submission` yourself. For the last one, if revising somewhere else
-in the file really was the right answer, say so in `rebutted`.
+All five warn during the revision and fail at submission. `respond` ignores `stage:` in
+`paper.yaml`, so pass `--submission` yourself. For `claimed-change-missed-the-point`, if
+revising somewhere else in the file really was the right answer, say so in `rebutted`.
 
-Paragraph anchors are positional. Adding or removing a paragraph above an anchored one in
-the same file moves the anchor onto a different paragraph, so the paragraph check can pass
-or fail for the wrong reason. After restructuring a section, read each anchored point
-against the text yourself.
+The paragraph a point is attached to is found by its text, not by where it sits. Adding,
+removing or moving paragraphs around it, a heading written above it, a div put round it or
+a comment on a line of its own above or below it does not change the answer: it counts as
+revised once its source text differs, which a re-wrapped line with the same words, or a
+comment opened above it and closed below, also does. The `where` in the
+round file still names a position, though, so after restructuring a section it may point a
+person reading the file at another paragraph. And a word-for-word copy of the paragraph left
+elsewhere keeps it reading as unrevised.
 
 The letter is `build/response-to-reviewers.md`, regenerated every time and covering every
 round. Do not edit it; the wording lives in the round file, and the plugin refuses writes to

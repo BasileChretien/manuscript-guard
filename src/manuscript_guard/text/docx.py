@@ -39,6 +39,8 @@ from manuscript_guard.docxtext import runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+W16SE = "{http://schemas.microsoft.com/office/word/2015/wordml/symex}"
 
 PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml")
 BODY, NOTES = PARTS[0], PARTS[1:]
@@ -61,7 +63,8 @@ class DocxText:
 
     body: str
     notes: str
-    #: 0-based indexes of the lines of `body` whose paragraph is styled as a heading.
+    #: 0-based indexes of the lines of `body` styled as a heading: a line's paragraph, or for
+    #: paragraphs joined by a mark deleted or moved away, the last of them.
     headings: frozenset[int]
     #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
     #: column header rather than the start of a bibliography.
@@ -85,7 +88,10 @@ def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
 #: text, and text moved away, which it shows where it was moved to. And a paragraph's
 #: properties, where a tab *stop* is a `w:tab` too: read as a typed tab, it put a space
 #: between two paragraphs joined by a deleted mark, and "-0.5" and "1" were read apart.
-_UNSEEN = {W + "del", W + "moveFrom", W + "pPr"}
+#: And an AlternateContent fallback, which repeats its choice for readers that predate it:
+#: Word writes every text box twice, as DrawingML and again as VML, and read twice, each
+#: number in a text box was reported twice.
+_UNSEEN = {W + "del", W + "moveFrom", W + "pPr", MC + "Fallback"}
 
 
 def _placed(node: ET.Element, parents: dict) -> tuple[ET.Element | None, bool]:
@@ -98,6 +104,11 @@ def _placed(node: ET.Element, parents: dict) -> tuple[ET.Element | None, bool]:
         seen = seen and current.tag not in _UNSEEN
         current = parents.get(current)
     return paragraph, seen
+
+
+def _seen(node: ET.Element, parents: dict) -> bool:
+    """Whether `node` is on the page: nothing it sits in is `_UNSEEN`."""
+    return _placed(node, parents)[1]
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -151,17 +162,36 @@ def _symbol(node: ET.Element) -> str:
     return _SYMBOL_FONT.get(code - 0xF000 if code >= 0xF000 else code, " ")
 
 
+def _symbol_extended(node: ET.Element) -> str:
+    """A `w16se:symEx` character: an emoji Word inserts itself, by its code point.
+
+    Only a character that document text could hold. A control character would pass for the
+    mark put on a heading's line, and a lone surrogate cannot be printed in the report.
+    """
+    try:
+        code = int(node.get(W16SE + "char", ""), 16)
+    except ValueError:
+        return " "
+    text = 0x20 <= code < 0xD800 or 0xE000 <= code <= 0xFFFD or 0x10000 <= code <= 0x10FFFF
+    return chr(code) if text else " "
+
+
 #: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
 #: hyphen (Ctrl+Shift+-, used to keep a minus on its number) or a Symbol-font minus left
-#: "-0.30" as 0.30, and a flipped bound matched.
+#: "-0.30" as 0.30, and a flipped bound matched. An emoji Word inserts is one too, in an
+#: AlternateContent choice, with the character as text only in the fallback, which is not
+#: read: "12", an emoji and "34" read as 1234.
 _CHARACTERS = {
     W + "noBreakHyphen": lambda node: "-",
     W + "softHyphen": lambda node: "",
     W + "sym": _symbol,
+    W16SE + "symEx": _symbol_extended,
 }
 
 
 _SHOWN = {W + "t", *_SPACES, *_CHARACTERS}
+#: What starts a line or a cell.
+_BREAKS = {W + "p", W + "tr", W + "tc"}
 
 
 def _shown(node: ET.Element) -> str:
@@ -222,6 +252,11 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     pieces: list[str | list[str]] = []
 
     for node in root.iter():
+        if node.tag in _BREAKS and not _seen(node, parents):
+            # Its text is not read, so it starts no line either: the fallback copy of a text
+            # box gave each of its lines twice, and a deleted one left empty lines, where a
+            # heading's ended the reference list it was in.
+            continue
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")

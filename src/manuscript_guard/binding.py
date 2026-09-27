@@ -31,7 +31,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.gates.numbers import _hint_for, source_files
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -69,9 +69,11 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
     for path in source_files(project.path("manuscript")):
         text = path.read_text(encoding="utf-8")
         headings = heading_index(text)
+        notes = footnote_index(text)
         scan = classifier.scan(text)
         for atom in find_atoms(text, mask(text)):
-            if classifier.classify(atom, chain_at(headings, atom.start), scan).kind != UNCLASSIFIED:
+            chains = chains_at(headings, notes, atom.start)
+            if classifier.classify_under(atom, chains, scan).kind != UNCLASSIFIED:
                 continue
             plain = atom.text.replace(",", "").replace(" ", "")
             candidates = sorted({*by_display.get(atom.text, ()), *by_display.get(plain, ())})

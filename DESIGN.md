@@ -1741,12 +1741,13 @@ and be refused as "a number or a citation changed".
 No text box is read, and no AlternateContent fallback, which repeats its choice. So a
 character Word writes only in a fallback is read from the choice: an emoji inserted in Word
 can be a `w16se:symEx` in the choice, with the character as text only in the fallback. The
-document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that way. Read as nothing, an emoji the author inserted never came
-back ("nothing came back: the document matches the manuscript on disk"), and one already in
-the source read as deleted: `--apply` took it out and reported a reworded paragraph. Word 16
-did not write that form for an emoji set as text or typed through its COM interface, nor on
-saving a built document holding one, untouched or edited beside it (verified 2026-09-25), so
-which way of inserting one produces it is not known here.
+document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that
+way. Read as nothing, an emoji the author inserted never came back ("nothing came back: the
+document matches the manuscript on disk"), and one already in the source read as deleted:
+`--apply` took it out and reported a reworded paragraph. Word 16 did not write that form for
+an emoji set as text or typed through its COM interface, nor on saving a built document
+holding one, untouched or edited beside it (verified 2026-09-25), so which way of inserting
+one produces it is not known here.
 
 ## An exemption has to prove itself
 

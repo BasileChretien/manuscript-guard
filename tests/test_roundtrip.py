@@ -614,6 +614,27 @@ def test_a_fence_line_inside_a_note_opens_no_code_block(note: str) -> None:
         # Under a line holding only a no-break space, which pandoc does not take for blank:
         # the label continues the paragraph above.
         pytest.param(f"Gamma says\n{chr(0xA0)}\n[^w]: A note\n```", id="under-a-no-break-space"),
+        # Inside a fenced div, a `:::` line closes the div, and the note with it.
+        pytest.param("::: box\n\n[^w]: A note\n:::\n```", id="after-a-div-closes"),
+        # No note at all: the label is inside raw content opened in a block above, and what
+        # closes it is in the label's block. The fence after the closer is the body's.
+        pytest.param("<!-- old\n\n[^w]: A note\n-->\n```", id="in-a-comment"),
+        pytest.param("<!-- old\n\n[^w]: A note -->\n```", id="in-a-comment-closed-on-it"),
+        pytest.param("<pre>\n\n[^w]: A note\n</pre>\n```", id="in-pre"),
+        pytest.param("<script>\n\n[^w]: A note\n</script>\n```", id="in-script"),
+        pytest.param(
+            "\\begin{comment}\n\n[^w]: A note\n\\end{comment}\n```", id="in-a-tex-environment"
+        ),
+        pytest.param("Text \\footnote{First.\n\n[^w]: A note}\n```", id="in-a-tex-group"),
+        pytest.param("<div>\n\n- item\n\n  [^w]: A note\n</div>\n```", id="in-a-list-in-a-div"),
+        # Nor where a table takes the label's line for a row.
+        pytest.param("[^w]: a | b\n--|--\n```", id="pipe-table"),
+        pytest.param("[^w]: a | b\n:--|--:\n```", id="pipe-table-aligned"),
+        pytest.param("[^w]: a | b\n|---|---|\n```", id="pipe-table-edged"),
+        pytest.param(
+            "-------  ------\nRow one  x\n\n[^w]: y  z\n-------  ------\n```",
+            id="multiline-table",
+        ),
     ],
 )
 def test_a_fence_line_where_pandoc_opens_code_still_opens_it(note: str) -> None:
@@ -625,6 +646,28 @@ def test_a_fence_line_where_pandoc_opens_code_still_opens_it(note: str) -> None:
     assert any("Beta cites it" in block for block in code)
     assert not any("mg-p-" in block for block in code)
     assert "mg-p-" in paragraphs[-1] and "Omega" in paragraphs[-1]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "opened",
+    [
+        pytest.param("```\nzero\n\n[^w]: A note\n```\n```\nmid\n\nmore\n```", id="reopened"),
+        pytest.param(
+            "~~~\nzero\n\n[^w]: A note\n```\n~~~\n```\nmid\n\nmore\n```", id="tildes-around"
+        ),
+        pytest.param(
+            "````\nzero\n\n[^w]: A note\n```\n````\n```\nmid\n\nmore\n```", id="wide-around"
+        ),
+    ],
+)
+def test_a_note_label_inside_code_is_code(opened: str) -> None:
+    """A block that starts inside a code block is code, whatever its first line: a note's
+    label there opens no note, and the fence closing the code, or one after it, is the
+    body's. Taken for the note's lines, the reopened code swallowed the paragraph below."""
+    paragraphs, code = _printed(f"Alpha comes first.\n\n{opened}\n\n{FENCED_BELOW}")
+    assert any('"Beta"' in p and "mg-p-" in p for p in paragraphs), paragraphs
+    assert not any("mg-p-" in block for block in code)
 
 
 #: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc

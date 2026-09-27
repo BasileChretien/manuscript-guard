@@ -946,7 +946,7 @@ def _in_a_note(block: str) -> list[int]:
         at += 1
     while at < len(lines) and _LINK_LINE.fullmatch(lines[at]):
         at += 1
-    if at == len(lines) or not _NOTE_STARTS.match(lines[at]):
+    if at == len(lines) or not _NOTE_STARTS.match(lines[at]) or _maybe_no_note(lines):
         return []
     found = []
     label = True
@@ -963,6 +963,26 @@ def _in_a_note(block: str) -> list[int]:
         label = False
         found.append(start)
     return found
+
+
+def _maybe_no_note(lines: list[str]) -> bool:
+    """Whether a line of a block opening with a note's label says pandoc may read no note
+    there: one that closes raw content (`-->`, `</pre>`) or holds a LaTeX `\\begin{...}` or
+    `\\end{...}`, a `}` closing a group opened above the block, a line opening with a
+    block-level HTML tag, or a table's rule. Pandoc reads no note inside raw content opened
+    in an earlier block, nor in a line a table takes for a row, and a fence after the closer
+    or the table is the body's.
+
+    Then the block is read as on `main`, every fence line in it opening code. Stopping the
+    note's lines at that line instead would leave a fence above it inert and one below it
+    live, which pairs the live one with the next fence below the block: worse than `main`
+    wherever the two were a pair in a real note."""
+    depth = 0
+    for line in lines:
+        depth += line.count("{") - line.count("}")
+        if depth < 0 or _RAW_CLOSE.search(line) or _HTML_TAG.match(line) or _RULE.fullmatch(line):
+            return True
+    return False
 
 
 def _note_fences(pieces: list[str], joined: list[bool]) -> dict[int, int]:

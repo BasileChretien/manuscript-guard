@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from xml.etree import ElementTree as ET
 
-from manuscript_guard.safexml import UnsafeDocument, read_part
+from manuscript_guard.safexml import read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
@@ -157,22 +157,6 @@ def symbol(node: ET.Element) -> tuple[str | None, str]:
     return symbol_character(code), name
 
 
-def _part(archive: zipfile.ZipFile, name: str, *, what: str) -> ET.Element:
-    """`read_part`, with a part that cannot be decompressed also `UnsafeDocument`.
-
-    Each decompressor fails in its own way - `NotImplementedError` for a method zipfile
-    lacks, `RuntimeError` for an encrypted part, `zlib.error` - and read here, a font part
-    the body did not need crashed both readers, where the audit reads on without it and the
-    import refuses the document, as for any part it cannot read safely.
-    """
-    try:
-        return read_part(archive, name, what=what)
-    except UnsafeDocument:
-        raise
-    except Exception as exc:
-        raise UnsafeDocument(f"{what}: cannot read ({exc})") from exc
-
-
 @dataclass(frozen=True)
 class _Style:
     based_on: str | None
@@ -282,7 +266,7 @@ class Fonts:
         names = set(archive.namelist())
         symbol_fonts = set(_SYMBOL_FONTS)
         if "word/fontTable.xml" in names:
-            table = _part(archive, "word/fontTable.xml", what=f"{what}:word/fontTable.xml")
+            table = read_part(archive, "word/fontTable.xml", what=f"{what}:word/fontTable.xml")
             for font in table.iter(W + "font"):
                 charset = font.find(W + "charset")
                 if charset is not None and charset.get(W + "val", "").upper() == "02":
@@ -291,7 +275,7 @@ class Fonts:
         default_paragraph = None
         defaults: dict[str, str] = {}
         if "word/styles.xml" in names:
-            root = _part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
+            root = read_part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
             for style in root.iter(W + "style"):
                 ident = style.get(W + "styleId", "")
                 based = style.find(W + "basedOn")
@@ -362,13 +346,13 @@ def _theme(archive: zipfile.ZipFile, names: set[str], what: str) -> dict[str, st
     part = None
     if "word/_rels/document.xml.rels" in names:
         part_name = "word/_rels/document.xml.rels"
-        rels = _part(archive, part_name, what=f"{what}:{part_name}")
+        rels = read_part(archive, part_name, what=f"{what}:{part_name}")
         for relation in rels.iter(_RELS):
             if relation.get("Type", "").endswith("/theme"):
                 part = posixpath.normpath(posixpath.join("word", relation.get("Target", "")))
     if part is None or part not in names:
         return {}
-    root = _part(archive, part, what=f"{what}:{part}")
+    root = read_part(archive, part, what=f"{what}:{part}")
     fonts: dict[str, str] = {}
     for scheme in ("major", "minor"):
         found = root.find(f".//{_A}{scheme}Font")

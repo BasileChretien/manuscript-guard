@@ -24,6 +24,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.text.blocks import Unprinted, read_blocks
 from manuscript_guard.text.masking import comparison_escapes
 from manuscript_guard.text.tokens import Atom
 
@@ -55,6 +56,13 @@ class Rule:
     # invariant. The rule cannot tell them apart by their text, because they have the same
     # text; it can tell them apart by where they are.
     methods_only: bool = False
+    # A rule about headings, which holds only where a match starts a line pandoc prints as
+    # one. A `#` line is a heading at the start of a block and text inside a paragraph, and
+    # no pattern can see the line above it.
+    heading_only: bool = False
+    # The same for list numbering: a list cannot interrupt a paragraph either, so "412." that
+    # a hard wrap put at the start of a line is prose, and a hand-typed count there passed.
+    list_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,6 +86,8 @@ def _load_rules(filename: str, section: str, kind: str) -> tuple[Rule, ...]:
             kind=kind,
             audit_only=bool(item.get("audit_only", False)),
             methods_only=bool(item.get("methods_only", False)),
+            heading_only=bool(item.get("heading_only", False)),
+            list_only=bool(item.get("list_only", False)),
         )
         for item in document[section]
     )
@@ -149,9 +159,18 @@ class Classifier:
         merged_terms = tuple(sorted({*terms, *project_terms}, key=len, reverse=True))
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def scan(self, text: str) -> Scan:
-        """Find every rule's matches in one document, so `classify` is a lookup."""
-        return _scan((*self.structural, *self.conventions), text)
+    def scan(self, text: str, *, lines_are_blocks: bool = False) -> Scan:
+        """Find every rule's matches in one document, so `classify` is a lookup.
+
+        `text` is read as Markdown, where a heading or a list item starts only where pandoc
+        would start one. `lines_are_blocks` is for text that is not Markdown and has no
+        paragraphs spanning lines: a .docx read one Word paragraph per line, or a figure's
+        text one element per line. Read as Markdown, every line after the first would be a
+        wrapped line of one long paragraph, and typed numbering there would stop counting.
+        Every line then starts a list item where one is typed, and none is a heading.
+        """
+        rules = (*self.structural, *self.conventions)
+        return _scan(rules, text, lines_are_blocks=lines_are_blocks)
 
     def classify(
         self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
@@ -242,12 +261,71 @@ def is_methods(section: Sequence[str] | None) -> bool:
     A Methods-like heading counts only while no ancestor is a section that reports what
     happened. "Methods > Sensitivity analyses" is Methods; "Results > Sensitivity analyses"
     is not, and the difference is the whole point of the rule.
+
+    A title pandoc prints as text (`Unprinted`) can say Results, and never Methods: the line
+    ends the section above it either way, but a reader of the document sees no heading there.
+    A chain that knows its printed headings (`sections.Chain`) must say Methods both ways, so
+    such a line can take Methods away and never grant them.
+
+    Results is recognised through the marks a printed title can keep: `# Results` over a rule
+    is a heading pandoc prints as "# Results", `- Results` over one is a list item holding a
+    heading, and `{#sec-results}` is an identifier. Methods is not, so a mark never opens it.
     """
     if not section:
         return False
-    if any(NOT_METHODS_SECTIONS.match(title) for title in section):
+    printed = getattr(section, "printed", None)
+    if printed is not None and not is_methods(printed):
         return False
-    return any(METHODS_SECTIONS.match(title) for title in section)
+    if any(rules_out_methods(title) for title in section):
+        return False
+    return any(
+        METHODS_SECTIONS.match(title) for title in section if not isinstance(title, Unprinted)
+    )
+
+
+def rules_out_methods(title: str) -> bool:
+    """True when a heading's title names a section that is not Methods, Results say, read
+    through the marks and raw markup it may keep."""
+    return bool(NOT_METHODS_SECTIONS.match(_unmarked(title)))
+
+
+_MARKS = re.compile(r"^[\s#>*+_-]+")
+#: What a title can hold that the page does not show: an HTML tag or comment, and raw TeX
+#: such as `\label{sec:results}`. No alternative can start again inside what another failed
+#: on, so a long title is read in one pass.
+_RAW = re.compile(r"<!--.*?(?:-->|$)|</?[A-Za-z][^<>\n]*>|\\[A-Za-z]+\*?(?:\{[^{}]*\})*")
+
+
+def _unmarked(title: str) -> str:
+    """A heading's title without the marks it may keep: leading hashes, quote and list
+    marks, emphasis around it (`**Results**`), trailing attributes, and raw HTML or TeX,
+    which a reader of the built document does not see (`# <del>Results</del>`).
+
+    The attribute block goes first. Stripped after raw markup, an unclosed `<!--` in
+    `{title="<!--"}` took the `}` with it, and "Results" was no longer read."""
+    return _without_emphasis_end(_MARKS.sub("", _RAW.sub("", _without_attributes(title))))
+
+
+def _without_attributes(title: str) -> str:
+    """`title` without a closing `{...}` holding no brace, and the spaces around it. Worked
+    out from the last `{`: as `\\s*\\{[^{}]*\\}\\s*$` it was tried from every character of a
+    run of spaces, and `is_methods` reads every title for every number."""
+    body = title.rstrip()
+    if not body.endswith("}"):
+        return title
+    opening = body.rfind("{")
+    if opening == -1 or "}" in body[opening + 1 : -1]:
+        return title
+    return body[:opening].rstrip()
+
+
+def _without_emphasis_end(title: str) -> str:
+    """`title` without the spaces, `*` and `_` it ends with. `[\\s*_]+$` was tried from
+    every character of such a run: 1,000 ` *_` over five numbers took G2 36 s."""
+    end = len(title)
+    while end and (title[end - 1].isspace() or title[end - 1] in "*_"):
+        end -= 1
+    return title[:end]
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
@@ -307,18 +385,32 @@ def _printed(text: str) -> tuple[str, list[int] | None]:
     return "".join(text[index] for index in origin[:-1]), origin
 
 
-def _scan(rules: Iterable[Rule], text: str) -> Scan:
+def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -> Scan:
     printed, origin = _printed(text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
+    blocks: tuple[frozenset[int], frozenset[int]] | None = None
     for rule in rules:
         at: list[int] = []
         upto: list[int] = []
         furthest = -1
+        # Text whose lines are blocks (a .docx, a figure) has no Markdown headings: Word's
+        # carry a style, not a `#`, so a heading rule holds nowhere in it.
+        if rule.heading_only and lines_are_blocks:
+            continue
         for match in rule.pattern.finditer(printed):
             start, end = match.span()
             if origin is not None:
                 start, end = origin[start], origin[end - 1] + 1 if end > start else origin[start]
+            if (rule.heading_only or rule.list_only) and not lines_are_blocks:
+                if blocks is None:
+                    found = read_blocks(text)
+                    blocks = (
+                        frozenset(heading.start for heading in found.headings),
+                        frozenset(found.items),
+                    )
+                if start not in blocks[0 if rule.heading_only else 1]:
+                    continue
             at.append(start)
             furthest = max(furthest, end)
             upto.append(furthest)

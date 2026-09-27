@@ -89,8 +89,8 @@ class Plan:
     lost: tuple[str, ...] = ()
     #: Headings, tables, figures and equations that came back in another place, as (kind,
     #: text): kind is "table", "figure", "equation", or "text" for a heading, caption, list
-    #: item, quotation or any other paragraph without an identifier. None of them moves in
-    #: the .md.
+    #: item, quotation or any other paragraph without an identifier, whose text is as
+    #: `reordered` lists it, with what in it has no text named. None of them moves in the .md.
     strayed: tuple[tuple[str, str], ...] = ()
     #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
     #: caption, a new paragraph - that the document did not have when it was sent.
@@ -169,25 +169,55 @@ def _untagged_counts(reference: list[Block]) -> Counter:
     return Counter(_squashed(b.text) for b in reference if not b.names and not b.table and b.text)
 
 
+def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
+    """Text without an identifier that the document as sent held and the returned one does
+    not - a heading, a caption - by text, as many times as it went."""
+    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
+    return +untagged
+
+
 def _off_headings(
-    rendered: dict[str, str], returned: list[Block], expected: Counter
+    rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
-    """Identifiers taken off a heading or caption they slid onto.
+    """Identifiers taken off a heading, caption or reference entry they slid onto.
 
     Deleted or cut without Track Changes, the last paragraph of a section leaves its
-    identifier on the heading after it. Read as the paragraph's text, the heading was merged
-    into it wherever the paragraph named the heading - "Methods", bindings intact. A block
-    that reads exactly as a heading or caption of the document as sent is that heading, and
-    an identifier on it names a paragraph that is no longer there.
+    identifier on the heading after it - above a table, on its caption; after the last
+    paragraph of all, on the first entry of the reference list. Read as the paragraph's text,
+    the heading was merged into it: "Methods", bindings intact. Recognised by its text alone,
+    a heading retitled in the same round was merged too - "Study design" - so it is
+    recognised by its style as well, and an identifier on it names a paragraph that is no
+    longer there.
+
+    Unless the block is plainly that paragraph, and reported deleted it would invite deleting
+    it: one restyled as a heading in Word, its words mostly its own; one the heading before it
+    was joined into, which keeps the heading's style and is refused as a join; or one sent
+    with the role it has, such as a note the source styles as a caption. The join is read as
+    `_took_in` reads it, by the heading gone from before the paragraph and its text turned up
+    here: whether the paragraph's own text survived whole did not say, since a paragraph
+    reworded in the same round - or made the heading's run-in text - was reported deleted.
+    Only the heading before: one after it, retitled around its old title, is the heading an
+    identifier slid onto.
     """
+    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
+    missing = _untagged_missing(reference, returned)
     out = []
     for block in returned:
         text = _squashed(block.text)
+        own = [rendered.get(name, "") for name in block.names]
+        joined = any(
+            name in rendered
+            and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
+            for name in block.names
+        )
+        restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
+        sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
         if (
             block.names
             and not block.table
-            and expected[text]
-            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+            and (expected[text] or (block.role and not restyled and not sent_so))
+            and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())
         out.append(block)
@@ -226,7 +256,9 @@ def _given_back(
             continue
         text = _squashed(out[after].text)
         theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
-        if len(theirs) != 1 or expected[text]:
+        # Not to a line with no text: one holding only a symbol read as the empty line an
+        # HTML comment renders as, and took that comment's identifier.
+        if not text or len(theirs) != 1 or expected[text]:
             continue
         # Only the one it matched: another identifier on the line - the note an HTML comment
         # renders as, say - is that line's, and taken with it was reported deleted.
@@ -241,7 +273,8 @@ def _recovered(
     """The returned document with identifiers put back where only exact text can say.
     `docxtext` has already put them back where the tracked changes say."""
     expected = _untagged_counts(reference)
-    return _given_back(rendered, _off_headings(rendered, returned, expected), expected)
+    off = _off_headings(rendered, reference, returned, expected)
+    return _given_back(rendered, off, expected)
 
 
 def _signature(block: Block) -> tuple[str, str]:
@@ -447,7 +480,9 @@ def _kept_in_place(
     return out
 
 
-#: Most of the words, in order: a judgement, used only to choose the words of a refusal.
+#: Most of the words, in order: a judgement. It chooses the words of a refusal, and one more
+#: thing: whether a paragraph restyled as a heading or caption keeps its identifier, and so
+#: whether its rewording can merge (see `_off_headings`).
 _ALIKE = 0.6
 
 
@@ -533,7 +568,10 @@ def _beside_new_text(
             block = returned[i]
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
             # stood where the second half of a split had, and the split merged as the whole.
-            if block.arrived and block.text:
+            # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
+            # text, it was looked past as an empty line, and vouched for the split again. Only
+            # a line with neither text nor an identifier, Enter pressed, is looked past.
+            if block.arrived and (any(content(block)) or block.names):
                 return True
             if block.table:
                 if counterparts is None or i not in counterparts:
@@ -870,7 +908,9 @@ def _misplaced(
                 if name in ordered
             ]
         elif block.text and boundaries.get(key := ("text", texts.get(index))):
-            sequence.append((("text", block.text), boundaries[key].popleft(), 2))
+            # As the untagged texts are listed, so that the report folds it in with them: by
+            # its text alone, a heading holding a symbol with no text was named twice.
+            sequence.append((("text", _listed(block)), boundaries[key].popleft(), 2))
 
     # The heaviest subsequence whose ranks never decrease. A paragraph weighs 3 if the diff
     # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them:
@@ -927,7 +967,14 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     return found
 
 
-def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
+def _took_in(
+    name: str,
+    now: str,
+    was: str,
+    reference: list[Block],
+    missing: Counter,
+    steps: tuple[int, ...] = (-1, 1),
+) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
@@ -938,20 +985,43 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
     analysis used..."), and requiring the text to be new let that join through as
     "Statistical analysisStatistical analysis used...".
     """
-    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
-    for step in (-1, 1):
+    for block in _headings_beside(name, reference, steps):
+        text = " ".join(block.text.split())
+        if missing[block.text] and squashed_now.count(text) > squashed_was.count(text):
+            return block.text
+    return ""
+
+
+def _headings_beside(
+    name: str, reference: list[Block], steps: tuple[int, ...] = (-1, 1)
+) -> list[Block]:
+    """The blocks without an identifier directly above and below this paragraph - only
+    above, with `steps` of (-1,) - past empty ones: a heading, a caption, anything a
+    run-in could take. A paragraph or a table there takes nothing in."""
+    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
+    found = []
+    for step in steps:
         i = at + step
         while 0 <= i < len(reference) and not (
             reference[i].names or reference[i].table or reference[i].text
         ):
             i += step
-        if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
-            continue
-        text = " ".join(reference[i].text.split())
-        if missing[reference[i].text] and squashed_now.count(text) > squashed_was.count(text):
-            return reference[i].text
-    return ""
+        if 0 <= i < len(reference) and not (reference[i].names or reference[i].table):
+            found.append(reference[i])
+    return found
+
+
+def _printed_otherwise(name: str, reference: list[Block], missing: Counter) -> bool:
+    """Whether a heading or caption beside this paragraph is missing from the returned
+    document, asked of one built from other inputs than are on disk.
+
+    Its source can be as it was and its text not: a value in it changed, or a citation, or
+    a number pandoc gives it. What it printed at the build is not known, so `_took_in`
+    looked for the wrong text, and a heading run into the paragraph in Word merged, "Results
+    in 4000 reports" typed into prose where a binding now prints 4100.
+    """
+    return any(missing[block.text] for block in _headings_beside(name, reference))
 
 
 def _read_returned(
@@ -1085,6 +1155,8 @@ def plan_import(
     every: dict | None = None,
     built: Sequence[str] = (),
     unsure: frozenset[str] = frozenset(),
+    beside_changed: frozenset[str] = frozenset(),
+    stale: bool = False,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -1107,6 +1179,13 @@ def plan_import(
     that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
     in one that does, those its record does not hold. Missing from it, each is still weighed
     as a join into the paragraph before it.
+
+    `reference` is built from the source as it is now, and when the document was built from
+    other inputs (`stale`) the blocks beside a paragraph there may not be the ones the
+    co-author had: a heading run into the paragraph in Word is then looked for under the
+    wrong text. A rewording is not merged into a paragraph whose record says a block beside
+    it changed since (`beside_changed`, from `roundtrip.Numbering`), nor, when `stale`, into
+    one beside a heading or caption missing from the returned document.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1116,7 +1195,10 @@ def plan_import(
         for b in reference
         if b.names and not b.table and b.names[0] in known
     }
+    carried_by = {n: b.text for b in returned if not b.table for n in b.names}
     returned = _recovered(rendered, reference, returned)
+    # Identifiers taken off a heading or caption they slid onto: see the refusal below.
+    taken_off = set(carried_by) - {n for b in returned if not b.table for n in b.names}
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
@@ -1168,9 +1250,7 @@ def plan_import(
     beside_new = _beside_new_text(reference, returned, counterparts)
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
-    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
-    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
-    missing = +untagged
+    missing = _untagged_missing(reference, returned)
     gone_from_place = [
         name
         for name in rendered
@@ -1196,6 +1276,22 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
+        elif (
+            now is None
+            and name in taken_off
+            and not expected[_squashed(carried_by[name])]
+            and (name in beside_changed or (stale and _printed_otherwise(name, reference, missing)))
+        ):
+            # Its identifier came back on a heading beside it and was taken off by that
+            # heading's style, and that heading is not the one the document was sent with, so
+            # a heading joined into the paragraph could not be told from one it slid onto.
+            # Not one taken off by its exact text: that heading reads as it was sent, no join
+            # can be in it, and the paragraph is deleted or moved as on main.
+            # Reported deleted, beside Word's heading listed as changed, it read as advice to
+            # delete the paragraph and retype Word's copy. Kept on the heading instead, it
+            # gave the paragraph text again, and a paragraph it was pasted onto merged
+            # holding its words. Refused, as main refuses it; still missing, for the rest.
+            refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now) or (
@@ -1214,6 +1310,8 @@ def plan_import(
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
+        elif name in beside_changed or (stale and _printed_otherwise(name, reference, missing)):
+            refused.append(Refusal(name, now, (_BESIDE_CHANGED,)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
@@ -1363,6 +1461,12 @@ _TOOK_IN = (
     "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
     "make the edit in the .md."
 )
+_BESIDE_CHANGED = (
+    "a heading or other block beside it is not the one the document was sent with: changed "
+    "in the .md since the build, or printing otherwise now. A heading run into this paragraph "
+    "in Word could not be told from a rewording, and merged, its text would be in the source "
+    "twice. Make the edit in the .md."
+)
 _NOT_ITS_OWN = (
     "the paragraph opening '{opening}' came back with its identifier on other text (shown): "
     "text pasted or typed in front of it took the identifier, and its own text came back "
@@ -1469,10 +1573,13 @@ def why(aligned: Alignment) -> tuple[str, ...]:
         )
     if aligned.unpaired:
         return (
-            "the edit splits a pair of braces: one kept from the .md, the other written back "
-            "from Word, where a brace is escaped so it prints as typed, and the two no longer "
-            "pair. The next build would give the paragraph no identifier, and a later edit to "
-            "it in Word could not come back. Make the edit in the .md.",
+            "the braces would not pair: a brace kept from the .md would be left without its "
+            "partner, which was edited, moved or deleted in Word, or a brace typed in Word "
+            "pairs with nothing. A brace from Word is written escaped, so that it prints as "
+            "typed: written bare, it can complete what pandoc reads as attributes and drop "
+            "text. Braces inside code count too, though pandoc pairs none there. The next "
+            "build would give the paragraph no identifier, and a later edit to it in Word "
+            "could not come back. Make the edit in the .md.",
         )
     if aligned.changed:
         lines = []

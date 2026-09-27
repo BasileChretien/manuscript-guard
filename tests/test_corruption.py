@@ -421,6 +421,429 @@ def test_an_escaped_comparison_does_not_launder_a_number(project: Path, written:
     assert "unclassified-number" in codes(gate_report(project))
 
 
+@pytest.mark.parametrize(
+    ("tail", "number"),
+    [
+        ("# Results\n\nThe excess was significant\n# Methods\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe excess was significant\nMethods\n=======\n\n(p < 0.001).\n", "0.001"),
+        ("# Results\n\nThe reporting odds ratio was\n## 3.84 times the background.\n", "3.84"),
+        ("# Results\n\n#\n3.84 times the background rate was reported.\n", "3.84"),
+    ],
+    ids=["atx", "setext", "numbered atx", "lone hash"],
+)
+def test_a_heading_pandoc_prints_as_prose_does_not_excuse_a_number(
+    project: Path, tail: str, number: str
+) -> None:
+    """Pandoc does not let a heading interrupt a paragraph, so a `# Methods` line directly
+    under Results prose is printed as part of that prose. G2 took it for a heading, and the
+    `p < 0.001` under it passed as the alpha chosen in advance. The same line starting with a
+    number was taken for heading numbering, and so was a number on the line after a lone `#`,
+    which pandoc prints as an empty heading above an ordinary paragraph."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and repr(number) in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        # Pandoc reads a table between lines of dashes, and prints the heading under it. The
+        # walk does not model such a table, so it read the rows as a paragraph and the
+        # heading as part of it.
+        "# Methods\n\nAlpha was set in advance.\n\n-----------  -----------\n"
+        "Age          Years\n-----------  -----------\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+        # Pandoc prints a level-7 heading; the walk stopped at six hashes.
+        "# Methods\n\nAlpha was set in advance.\n\n####### Note\n# Results\n\n"
+        "The excess was significant (p < 0.001).\n",
+    ],
+    ids=["dash table", "seven hashes"],
+)
+def test_a_heading_line_the_walk_does_not_place_still_ends_methods(
+    project: Path, tail: str
+) -> None:
+    """Whatever the walk misses, it reads as paragraph text, and a paragraph swallowed the
+    real `# Results` below it: the Methods section ran on, and the p-value passed as the
+    alpha. A line shaped like a heading now ends the section it is in whether or not the walk
+    places it; only a heading the walk does place can open Methods."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
+RESULTS_READ_AS_METHODS = {
+    # Pandoc prints a level-2 heading reading "# Results". Its literal title matched no
+    # Results pattern, so it nested under Methods and kept the Methods rules. `main` read the
+    # line as an ATX "Results", and reported the number.
+    "a hashed title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hashed title over a rule under prose": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n# Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a bulleted title over a rule": (
+        "# Methods\n\nAlpha was set in advance.\n\n- Results\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A wrapped "# of reports" ended the Results for the gates, and the subsection under it
+    # read as Methods. Pandoc prints the line as text, inside the Results.
+    "a wrapped hash over a methods-like subsection": (
+        "# Results\n\nReporting rose over the period, and the\n# of reports naming the drug "
+        "doubled.\n\n## Sensitivity analyses\n\nThe estimate was unchanged (p < 0.001).\n"
+    ),
+    # A `<del>` closed mid-line was counted open for the rest of the file, so a later line
+    # ending in `</del>` ended its paragraph and the `# Methods` under it became a heading.
+    "a deletion closed mid-line": (
+        "# Results\n\n<del>The excess was not\nsignificant.</del> It was.\n\n"
+        "The reporting odds ratio was <del>not</del>\n# Methods\n(p < 0.001).\n"
+    ),
+    # Indented, a comment is inline: it starts a paragraph, which the `#` line continues.
+    "an indented comment": (
+        "# Results\n\n <!-- TODO: check -->\n# Methods\n\nThe excess was significant "
+        "(p < 0.001).\n"
+    ),
+    # A no-break space after the hash: pandoc prints the line as text. `main`'s `\s` ended
+    # the Methods there; the fallback did not.
+    "a hash and a no-break space": (
+        "# Methods\n\nAlpha was set in advance.\n\nProse ran on\n#" + chr(0xA0) + "Results\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the fifth review. An underline or a rule written after a comment is text:
+    # blanked, the comment left a line the walk read as `===`, or as a rule.
+    "an underline after a comment": (
+        "# Results\n\nMethods\n<!-- -->===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a rule with a comment after it": (
+        "# Results\n\nThe excess was clear.\n\n--- <!-- revised -->\n<!-- TODO --># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Pandoc reads the rest of a tag's line over an underline as a setext title, "# Methods",
+    # not as a `#` heading.
+    "a tag and a hash over an underline": (
+        "# Results\n\n<div># Methods\n-\n\nThe excess was significant (p < 0.001).\n\n</div>\n"
+    ),
+    # A `#` heading after a tag or a comment on its line, which `main` never read, opened
+    # Methods wherever the walk wrongly started a block.
+    "a hash after a tag under a stray closing tag": (
+        "# Results\n\nSome text\n</script>\n<ins># Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash after a comment under a raw tag and an indented line": (
+        "# Results\n\n<del>\n    Old sentence.\n<!-- moved --># Methods\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A pipe that is escaped, or in code, is text: the table ended above it, and the
+    # heading under it was skipped by the net as a table row.
+    "an escaped pipe under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results \\| x\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a pipe in code under a table": (
+        "# Methods\n\nAlpha was set in advance.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        "Results `a|b`\n===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A lone `##` is an empty heading, and "Results" under it a paragraph. The page shows
+    # "Results" over the number; `main` read it as the heading's title.
+    "a lone hash over a results line": (
+        "# Methods\n\nAlpha was set in advance.\n\n##\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the sixth review. The walk ends a tag at its first `>`, and pandoc does not:
+    # with a quote left open there is no tag, and the heading reads `<div class="a>Methods`.
+    # Only a line starting with the tag was marked as text, not one after a comment.
+    "a tag after a comment over an underline": (
+        '# Results\n\n<!-- c --><div class="a>Methods\n===\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment inside a code span": (
+        "# Results\n\nUse the `x\n<!-- c --><div>Methods\n===\n`\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a tag after a comment under a table": (
+        '# Results\n\n| a | b |\n|---|---|\n| 1 | 2 |\n<!-- c --><div>Methods {k="$ | $"}\n'
+        "===\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A Results title with raw HTML or TeX in it, which the page does not show, did not read
+    # as Results; a seven-hash Methods under it, which `main` never read, opened Methods.
+    "a seven-hash methods under a struck-through results": (
+        "# <del>Results</del>\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods with attributes under a results anchor": (
+        '# Results <a id="r"></a>\n\n####### Methods {-}\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a seven-hash methods under a results label": (
+        "# Results \\label{sec:results}\n\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A Results heading after a comment is marked as text, so it was never on the printed
+    # chain; a `#` line pandoc prints as text then took it off the other one.
+    "a results after a comment ended by a line printed as text": (
+        "# Methods\n\n<!-- x --># Results\n\nProse ran on\n# Outcomes\n\n# Results\n-\n\n"
+        "Statistical analysis\n-\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # Found by the seventh review. An unclosed comment in an attribute block took the `}`
+    # with it when raw markup was stripped first, and the title no longer read as Results.
+    "a comment in a results attribute block": (
+        "# Methods\n\n-----  -----\na      b\n-----  -----\n"
+        '# Results {title="<!--"}\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Seven hashes, which `main` never read, opened Methods wherever the walk wrongly placed
+    # one, or under a Results title the gates do not read.
+    "seven hashes under a stray closing tag": (
+        "# Outcomes\n\nText\n</script>\n####### Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "seven hashes under a results span": (
+        "# [Results]{.underline}\n\n####### Methods\n\nThe excess was significant (p < 0.001).\n"
+    ),
+    # A `#` line over a rule is a setext heading, "# Outcomes", at level 2, and it nested under
+    # a Methods the walk placed in error. `main` read it at level 1, which closes them.
+    "a hash line over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a dash table": (
+        "# Results\n\n-----  -----\nText\n---\n# Methods\n# Outcomes\n---\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the eighth review. The level-1 reading of a `# X` line over a rule is `main`'s,
+    # and `main` read only a `#` at the margin: an indented ` # Y`, or one after a comment,
+    # took level 1 too, and the printed chain lost the Results it still held.
+    "an indented hash line over a rule after a comment-led one": (
+        "# Results\n\nText\n<!-- c --># Outcomes\n\n # Y\n-\n\n## Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "an indented hash line over a rule after an unclosed quote": (
+        '# Results\n\n<div class="a># Outcomes\n\n # Y\n-\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a comment-led hash line over a rule after a quote over an underline": (
+        "# Results\n\nText\n> Outcomes\n===\n\n<!-- c --># Y\n-\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A setext title `main` refused, starting `>` or `|`, opened a section wherever the walk
+    # placed one wrongly, under a stray `</script>`.
+    "a quote title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n> Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a pipe title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n| Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # An empty `###` in a paragraph, which `main` read with the line below it as its title.
+    "an empty heading in a paragraph over a results line": (
+        "# Res<!-- -->ults\n\n## Statistical analysis\n\nText\n###\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the ninth review. A setext title `main` read as an ATX heading kept its place
+    # on the printed chain, but at pandoc's level rather than at `main`'s hash count.
+    "two hashes over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n## Outcomes\n===\n\n## Statistical analysis\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "three hashes over a rule under a level-two results": (
+        "## Results\n\nText\n</script>\n### Y\n---\n\n### Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # `main`'s `#{1,6}\s+` took a no-break space after the hash too.
+    "a hash and a no-break space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0xA0) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash and an em space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0x2003) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the tenth review. The same title, when the walk marks it as text and it does
+    # not say Results, stays off the printed chain, and on the other it took the underline's
+    # level: it nested under a wrongly placed Methods that `main`'s level 1 closed.
+    "a hash and a no-break space over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n\n#" + chr(0xA0) + "Outcomes\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a misplaced methods paragraph": (
+        "# Results\n\nText\n</script>\n# Methods\nText\n# Y\n-\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(RESULTS_READ_AS_METHODS))
+def test_results_are_not_read_as_methods(project: Path, name: str) -> None:
+    """Found by the fourth review of #38. Each let a Results p-value pass as the alpha."""
+    path = main_md(project)
+    tail = RESULTS_READ_AS_METHODS[name]
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'0.001'" in f.message for f in report.failures
+    )
+
+
+def test_a_count_opening_a_heading_is_not_its_numbering(project: Path) -> None:
+    """`numbered-heading` took the number opening any setext title for section numbering, so
+    "412 serious reports" over dashes passed G2. Pandoc prints the count as the heading's
+    text."""
+    path = main_md(project)
+    tail = "# Results\n\n412 serious reports\n-------------------\n\nOf these, most were hepatic.\n"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "# Results\n\nThe number of reports was\n412. Of these, most were hepatic.\n",
+        "# Results\n\nThe number of reports was\n412) of them hepatic.\n",
+    ],
+    ids=["full stop", "bracket"],
+)
+def test_a_count_at_a_wrap_point_is_not_list_numbering(project: Path, tail: str) -> None:
+    """`ordered-list-marker` took any number starting a line and followed by ". " for list
+    numbering. A list cannot interrupt a paragraph, so where a hard wrap put a count at the
+    start of a line pandoc prints it as prose, and a hand-typed count passed G2."""
+    path = main_md(project)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "'412'" in f.message for f in report.failures
+    )
+
+
+@pytest.mark.parametrize(
+    "nested",
+    [
+        "- Inclusion criteria:\n\t7. Age 18 or over\n\t8. Confirmed diagnosis\n",
+        "1. Adults\n\t7. aged over 65 years\n2. Children\n",
+        "1. Adults\n\n\t7. aged over 65 years\n\n2. Children\n",
+    ],
+    ids=["under a bullet", "under a numbered item", "after a blank line"],
+)
+def test_a_nested_number_indented_with_a_tab_is_list_numbering(
+    project: Path, nested: str
+) -> None:
+    """Found by the seventh review. Pandoc reads each `7.` here as a nested list's numbering,
+    and `main` passed it. The walk read a marker only up to three spaces from the margin, so
+    it recorded no item under a tab, and the list-only rule reported the number."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert text.count("\n# Discussion") == 1
+    path.write_text(text.replace("\n# Discussion", "\n" + nested + "\n# Discussion"), "utf-8")
+    report = gate_report(project)
+    assert not any(
+        f.code == "unclassified-number" and "'7'" in f.message for f in report.failures
+    ), codes(report)
+
+
+@pytest.mark.parametrize("cell", ["412.", "412)"])
+def test_a_count_ending_a_table_cell_is_not_list_numbering(project: Path, cell: str) -> None:
+    """Each cell of a results table is classified as a text of its own. List numbering's
+    pattern ended in `$`, which holds at the end of a text, so a cell reading "412." passed
+    as list numbering where a trailing space had been needed before."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    key = next(iter(document["tables"]))
+    document["tables"][key]["rows"][0][2] = cell
+    document["tables"][key]["composed"] = [
+        entry
+        for entry in document["tables"][key].get("composed", [])
+        if not (entry.get("row") == 0 and entry.get("column") == 2)
+    ]
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+    codes = {f.code for f in gate_report(project).findings}
+    assert "unemitted-table-number" in codes
+
+
+@pytest.mark.parametrize("value", ["412.", "412)"])
+def test_a_string_value_ending_in_a_count_is_refused(value: str) -> None:
+    """The same `$`: an emitted string holding only "412." passed as a list number."""
+    from manuscript_guard.contracts.values import DisplayError, check_string_value
+
+    with pytest.raises(DisplayError, match="no gate can trace"):
+        check_string_value("n", value, label=False)
+
+
+# Found by the fourth review of #47. Each is text to pandoc, under a line the walk ended the
+# list at, where pandoc does or not, and then read as a block of its own.
+UNDER_A_LIST = {
+    "a line in the outer item of a nested list": "1. Next\n   - next\n\n    More\n",
+    "an indented comment over a rule": "1. Item\n\n <!-- c -->\n  ***\n",
+    "an indented line block": "1. Item\n\n | line\n",
+    "raw HTML over an indented line": "1. Item\n\n <hr>\n\tMore\n",
+    "raw HTML over an indented line, no blank": "1. Item\n <hr>\n\tMore\n",
+    "a definition over an indented line block": "1. Item\n : def\n\n | line\n",
+    "a rule at the margin over an indented line block": "  - Item\n\n- - -\n | a |\n",
+    # Found by the fifth review. A rule shaped like a marker, or a marker in digits other than
+    # ASCII, at the margin ended the list for headings, where #38 kept it.
+    "a spaced rule at the margin over raw HTML": "- Item\n\n* * *\n <hr>\n\tMore\n",
+    "a dashed rule at the margin over raw HTML": "1. Item\n\n- - -\n <hr>\n\tMore\n",
+    "a wide rule over an indented dashed rule": "- First\n\n*  *  *\n  - - -\n",
+    "a fullwidth number over raw HTML": "- Item\n\n" + chr(0xFF11) + ". Note\n\n <hr>\n\tMore\n",
+    # Found by the sixth review. With the comment blanked, a rule shaped like a marker read as
+    # a rule, and was neither a rule as written nor an item: no list was kept, and the line
+    # under it was read as code.
+    "a spaced rule with a comment in it": "* * * <!-- c -->\n\n    More\n",
+    "a wide rule with a comment in it under a list": "- Item\n\n*   * * <!-- c -->\n\n      More\n",
+    "a dashed rule with a comment in it": "-   - - <!-- revised -->\n\n      More\n",
+}
+
+
+@pytest.mark.parametrize(
+    ("heading", "number"),
+    [("## 12 Patients\n\n", "'12'"), ("# Methods\n\nThe threshold was p < 0.05.\n\n", "'0.05'")],
+    ids=["numbered", "methods"],
+)
+@pytest.mark.parametrize("name", sorted(UNDER_A_LIST))
+def test_a_heading_line_under_a_list_is_text(
+    project: Path, name: str, heading: str, number: str
+) -> None:
+    """#38 kept every indented line under a list as the list's, and pandoc prints each `#`
+    line here as text. Ending the list where pandoc does, the walk read the lines after it
+    as blocks, and misread several indented one to three spaces."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = UNDER_A_LIST[name] + heading
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and number in f.message for f in report.failures)
+
+
+@pytest.mark.parametrize("above", ["", "* * *\n"], ids=["under the item", "under a spaced rule"])
+def test_a_title_under_an_indented_rule_after_a_list_is_not_methods(
+    project: Path, above: str
+) -> None:
+    """Pandoc reads a rule, a title and a line of dashes after a list as a table with no
+    header. The walk read a rule and a setext Methods."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    snippet = (
+        f"# Safety\n\n1. Item\n\n{above} ---\nMethods\n-------\n\nThe threshold was p < 0.05.\n\n"
+    )
+    path.write_text(text.replace("\n# Discussion", "\n" + snippet + "# Discussion", 1), "utf-8")
+    report = gate_report(project)
+    assert any(f.code == "unclassified-number" and "'0.05'" in f.message for f in report.failures)
+
+
 # ------------------------------------- the table rule, applied to the file rather than the API
 
 
@@ -2662,11 +3085,18 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
     assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
 
 
-def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+def _sent_back(
+    project: Path,
+    tmp_path: Path,
+    change,
+    *,
+    recorded: bool = True,
+    document: str = "manuscript.docx",
+) -> Path:
     """The built document as a co-author returns it, `change` applied to its body's XML;
     without its record of paragraphs unless `recorded`, as releases before 0.2.60 built it."""
     returned = tmp_path / "back.docx"
-    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+    with zipfile.ZipFile(project / "build" / document) as zin, zipfile.ZipFile(
         returned, "w"
     ) as zout:
         for item in zin.infolist():
@@ -3610,6 +4040,114 @@ def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Pa
     assert report.not_audited == []
 
 
+def test_audit_compares_a_count_at_a_wrap_point(tmp_path: Path) -> None:
+    """A Markdown paper is read as pandoc reads it: a count a hard wrap put at the start of
+    a line is prose, not list numbering, and was never compared with the outputs."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The number of reports was\n412. Of these, most were hepatic.\n", encoding="utf-8"
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["412"]
+
+
+def test_audit_still_reads_typed_numbering_in_word_as_numbering(tmp_path: Path) -> None:
+    """A .docx is one Word paragraph per line, with no blank line between, so read as
+    Markdown every line after the first would be a wrapped line of one long paragraph.
+    Each paragraph starts a block, and "2. The second criterion." typed in Word is list
+    numbering, as it was before the Markdown rule changed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Criteria were applied in turn.")
+        + _p("2. The second criterion.")
+        + _p("3. The third, on 9.99 of them."),
+    )
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
+def test_audit_reads_a_hash_typed_in_word_as_text_not_heading_numbering(
+    tmp_path: Path,
+) -> None:
+    """Taking each Word paragraph for a block switched off the heading check as well, so a
+    paragraph typed "# 3 sites were excluded" counted its 3 as heading numbering. Word's
+    headings carry a style, not a `#`, and the paragraph is text."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("Sites were screened in turn.")
+        + _p("# 3 sites were excluded after the audit.")
+        + _p("The pooled ROR was 9.99."),
+    )
+    assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["3", "9.99"]
+
+
+def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path) -> None:
+    """`# References` directly under a line of prose is printed as part of that paragraph,
+    not as a heading. It cut everything after it, so the number below was never compared."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        "The sources are listed below\n# References\n\nThe pooled ROR was 9.99.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
+    assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["####### References", "<!-- c --># References", " # References\n---"],
+    ids=["seven hashes", "after a comment", "indented over a rule"],
+)
+def test_audit_does_not_start_a_reference_list_at_a_heading_the_walk_misplaces(
+    tmp_path: Path, heading: str
+) -> None:
+    """Found by the eighth review of #38. Under a stray `</script>` the walk can place a
+    heading pandoc prints as text; G2 marks such a heading so that it opens no Methods, but
+    the audit took it as the reference list's heading, and cut the prose after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"ror": 1.23}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"# Introduction\n\nThe ROR was 1.23.\n\nText\n</script>\n{heading}\n"
+        "The final ROR was 9.87.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert "9.87" in [c.text.rstrip(".") for c in report.unmatched]
+
+
+def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(
+    tmp_path: Path,
+) -> None:
+    """The other side of the test above. `# Appendix` directly under a reference entry is
+    printed as part of it, and pandoc gives the appendix no heading. Ending the cut only at
+    headings pandoc prints would hide the appendix as more references. An early end costs a
+    false alarm; a late one hides numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    for appendix in ("# Appendix\n", "Appendix\n--------\n"):
+        paper = tmp_path / "paper.md"
+        paper.write_text(
+            "We saw 77 cases.\n\n# References\n\nSmith J. T. Lancet. 2019;393:1-2.\n"
+            f"{appendix}\nThe estimate was 9.99.\n",
+            encoding="utf-8",
+        )
+        assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
+
+
 def test_audit_reads_every_reference_list_and_what_lies_between(tmp_path: Path) -> None:
     """Only the first heading was used, so a second reference list (an appendix's own) was
     read as prose, and the first list's shape detection was off for the whole file."""
@@ -4404,6 +4942,25 @@ def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, not
             _AT_END,
             "[^n]: The excess was significant (p < 0.001).\n",
         ),
+        # Found by the ninth review: a heading the walk found but pandoc prints as text
+        # neither refuses a definition nor ends a note. An empty heading takes the line under
+        # it as its title, and a lazy line of the note is shaped like a title `main` refused.
+        ((_IN_RESULTS,), _IN_METHODS, "##\n[^n]: The excess was significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "######\n\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note\n    > The excess was significant (p < 0.001).\n---\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "#######\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
     ],
 )
 def test_a_footnote_is_read_where_it_is_referenced(
@@ -4414,6 +4971,34 @@ def test_a_footnote_is_read_where_it_is_referenced(
     `p < 0.001`, passed as the alpha chosen in advance, and the document printed it as a
     footnote to a Results sentence."""
     _with_footnote(project, referenced, defined, note)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced(project: Path) -> None:
+    """Found by the ninth review. A lazy line of a note, shaped like a setext title starting
+    `|` that the walk found and pandoc prints as the note's text, ended the note above it;
+    its `p < 0.001` passed as the alpha, where `main` reports it as a table row."""
+    note = "[^n]: A note\n    | The excess was significant (p < 0.001).\n-\n"
+    _with_footnote(project, (_IN_RESULTS,), _IN_METHODS, note)
+    assert "hand-authored-table" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        "Text\n[^a]: As reported.[^n]\n---\n",
+        "Text\n[^a]: A note\nAs reported.[^n]\n---\n",
+    ],
+    ids=["on the definition line", "on a lazy line"],
+)
+def test_a_reference_under_a_misread_definition_still_counts(project: Path, results: str) -> None:
+    """Found by the tenth review. A `[^a]:` line over an underline is paragraph text to
+    pandoc and a setext title to `main`, which refused it as a definition, so the `[^n]` on
+    it counted as a reference in the Results. Taken for a definition, it swallowed that
+    reference, and note n, defined under Methods, was judged there alone."""
+    path = main_md(project)
+    tail = f"# Methods\n\nText.\n\n[^n]: {_CLAIM}\n\n# Results\n\n{results}"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
 
 
@@ -4496,6 +5081,325 @@ def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
 ) -> None:
     _with_footnote(project, referenced, defined, note)
     assert not gate_report(project).failures, codes(gate_report(project))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_import_does_not_bring_a_lone_colon_up_into_a_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """A hard-wrapped paragraph whose last line is a lone `:`, reworded in its first stretch:
+    the merge joined the first two lines, the `:` came up to line 2, and the next build
+    printed a definition list with no identifier (#72's round-3 review)."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
+    anchor = "# Data availability"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(
+        project, tmp_path, lambda xml: xml.replace("We enrolled", "We recruited", 1)
+    )
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "a lone colon became a definition"
+
+
+# ------------------------------------------- a heading run into a paragraph, beside a change
+
+_ALPHA = "Alpha paragraph talks about the cohort of patients."
+_PAPA = "Papa paragraph reports that twelve reports were excluded for missing dates."
+_ROMEO = "Romeo paragraph explains how duplicates were removed before the analysis."
+_BRAVO = "Bravo paragraph describes the exposure window."
+#: Blocks Word does not show, or shows elsewhere: a heading past one of them stands directly
+#: beside the paragraph in Word, and pandoc prints a table's caption above the table.
+_NOTE = "<!-- a note to self: check the counts -->"
+_LINK = "[registry]: https://example.org/registry"
+_TABLE = "| Drug | Reports |\n|------|---------|\n| A | 12 |\n| B | 30 |"
+#: A paper cut down to a few paragraphs fails the gates; built past them, the document is
+#: named for it.
+_UNCHECKED = "manuscript.UNCHECKED.docx"
+
+
+def _paper(project: Path, *blocks: str) -> Path:
+    """The example with its main text replaced by `blocks`, its title kept."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    front = text[: text.index("\n---\n") + len("\n---\n")]
+    path.write_text(front + "\n" + "\n\n".join(blocks) + "\n", encoding="utf-8")
+    return path
+
+
+def _shown(paragraph: str) -> str:
+    """A Word paragraph's visible text."""
+    return "".join(re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", paragraph, re.DOTALL))
+
+
+def _run_into_papa(heading: str, *, below: bool):
+    """The change Word makes when the heading reading `heading` is run into the Papa
+    paragraph: Delete at the end of the paragraph above, or Backspace at the start of the one
+    below. One paragraph, carrying Papa's identifier, reading "MethodsPapa..." or
+    "...dates.Results"."""
+
+    def change(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        found = next(p for p in paragraphs if "mg-p-" not in p and _shown(p) == heading)
+        papa = _word_paragraph(xml, "Papa paragraph")
+        runs = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", found, flags=re.DOTALL)
+        runs = re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", runs[: -len("</w:p>")])
+        if below:
+            joined = papa[: -len("</w:p>")] + runs + "</w:p>"
+        else:
+            opening = re.match(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", papa, re.DOTALL)
+            joined = opening.group(0) + runs + papa[opening.end() :]
+        return xml.replace(found, "", 1).replace(papa, joined, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("built", "now", "heading", "below"),
+    [
+        (
+            ("# Intro", _ALPHA, _PAPA, "## Results\n" + _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, "## Findings\n" + _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, "## Study design\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, "## Methods", _PAPA, "## Data", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, "## Methods", "## Sub\n" + _PAPA, "## Data", _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            # One block added above, one removed: Papa keeps its identifier.
+            ("# Intro", _ALPHA, "## Methods", _PAPA, _ROMEO, _BRAVO),
+            ("# Intro", "A paragraph added since the build.", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _NOTE, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _NOTE, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _LINK, "## Results", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _LINK, _ROMEO, _BRAVO),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", "## Methods", _NOTE, _PAPA, _ROMEO, _BRAVO),
+            ("# Intro", "A paragraph added since the build.", _NOTE, _PAPA, _ROMEO, _BRAVO),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", _ALPHA, _PAPA, _TABLE, ": Counts by drug", _ROMEO, _BRAVO),
+            ("# Intro", _ALPHA, _PAPA, _TABLE, _ROMEO, _BRAVO),
+            "Counts by drug",
+            True,
+        ),
+    ],
+    ids=[
+        "glued below, renamed",
+        "glued above, removed",
+        "glued above, renamed",
+        "glued above, added",
+        "above, removed",
+        "below, removed",
+        "below past a comment, removed",
+        "below past a link definition, removed",
+        "above past a comment, removed",
+        "caption after its table, removed",
+    ],
+)
+def test_a_heading_run_into_a_paragraph_beside_a_changed_one_is_not_merged(
+    project: Path,
+    tmp_path: Path,
+    built: tuple[str, ...],
+    now: tuple[str, ...],
+    heading: str,
+    below: bool,
+) -> None:
+    """A heading run into the paragraph beside it in Word is refused: its text would be in
+    the source twice. It is recognised by the heading beside the paragraph having vanished
+    while its text turned up in the paragraph, and the heading looked at is the one in the
+    source now. One changed in the `.md` since the build, renamed, removed, or written straight
+    above a paragraph with no blank line, is not the one the co-author ran in, and the run-in
+    merged: "MethodsPapa paragraph..." under a heading the file no longer has. The record held
+    nothing of a heading written straight above a paragraph."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project, tmp_path, _run_into_papa(heading, below=below), document=_UNCHECKED
+    )
+    _paper(project, *now)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("name", "below"),
+    [("results.md", True), ("1_methods.md", True), ("1_methods.md", False)],
+    ids=["after main.md, below", "before main.md by path, below", "before main.md, above"],
+)
+def test_a_heading_across_a_file_boundary_run_into_a_paragraph_is_not_merged(
+    project: Path, tmp_path: Path, name: str, below: bool
+) -> None:
+    """The files of the main text are one document, so the heading opening the next file
+    stands directly under the last paragraph of this one in Word, and one closing this file
+    directly above the first paragraph of the next. Removed from the `.md` since the build,
+    it was in nothing either paragraph's record held, and its run-in merged. The build
+    prints `main.md` first and the rest by file name, whatever their paths sort as: read in
+    path order, `1_methods.md` came before `main.md`, and its heading was beside nothing."""
+    from manuscript_guard.cli import main
+
+    other = main_md(project).parent / name
+    if below:
+        path = _paper(project, "# Intro", _ALPHA, _PAPA)
+        other.write_text(f"# Methods\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    else:
+        path = _paper(project, "# Intro", _ALPHA, "## Methods")
+        other.write_text(f"{_PAPA}\n\n{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project, tmp_path, _run_into_papa("Methods", below=below), document=_UNCHECKED
+    )
+    if below:
+        other.write_text(f"{_ROMEO}\n\n{_BRAVO}\n", encoding="utf-8")
+    else:
+        _paper(project, "# Intro", _ALPHA)
+    sources = path.read_text(encoding="utf-8"), other.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    now = path.read_text(encoding="utf-8"), other.read_text(encoding="utf-8")
+    assert now == sources, "a run-in heading was merged"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "changed",
+    [
+        (_ALPHA, "Alpha paragraph talks about the cohort of adult patients."),
+        (_ROMEO, "Romeo paragraph explains how duplicates were removed first."),
+        (_BRAVO, "Bravo paragraph, reworded by the author since."),
+    ],
+    ids=["the paragraph above", "the paragraph below", "one further off"],
+)
+def test_a_rewording_beside_headings_that_did_not_change_still_merges(
+    project: Path, tmp_path: Path, changed: tuple[str, str]
+) -> None:
+    """Only a paragraph beside a changed heading or other block without an identifier is
+    refused. With another paragraph reworded in the `.md` since the build, next to it or
+    not, no heading could have stood where that paragraph stands, and the co-author's
+    rewording merges as on main."""
+    from manuscript_guard.cli import main
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, "## Data", _BRAVO)
+    path = _paper(project, *blocks)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def reworded(xml: str) -> str:
+        return xml.replace("were excluded for missing dates", "were dropped for missing dates", 1)
+
+    returned = _sent_back(project, tmp_path, reworded, document=_UNCHECKED)
+    _paper(project, *(changed[1] if block == changed[0] else block for block in blocks))
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source.replace(
+        "were excluded for missing dates", "were dropped for missing dates", 1
+    )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_heading_run_into_a_paragraph_is_not_merged_where_it_prints_otherwise_now(
+    project: Path, tmp_path: Path
+) -> None:
+    """Its source is unchanged, but a value in it is not: the heading looked at printed
+    "Results in 4100 reports", the co-author ran in "Results in 4000 reports", and the
+    run-in merged, 4000 typed into the paragraph as a number no binding prints."""
+    from manuscript_guard.cli import main
+
+    heading = "## Results in {{results.cohort.n_reports}} reports"
+    path = _paper(project, "# Intro", _ALPHA, _PAPA, heading, _ROMEO, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(
+        project,
+        tmp_path,
+        _run_into_papa("Results in 4000 reports", below=True),
+        document=_UNCHECKED,
+    )
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_reports"].update(value=4100, display="4100")
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+@pytest.mark.parametrize("left", [(), ("Wingdings character F04A",)], ids=["nothing", "symbol"])
+def test_a_split_beside_a_moved_paragraph_left_empty_is_not_merged(
+    tmp_path: Path, left: tuple[str, ...]
+) -> None:
+    """A paragraph split in Word leaves its second half without an identifier, and only the
+    paragraphs beside the first half can vouch that nothing there is new. One moved in with
+    Track Changes on, its moved text then deleted - left with nothing, or with a smiley that
+    has no text - vouched for it, and import wrote the paragraph as its first half."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    y, x, z = "Yankee one is here. Yankee two is there.", "Xray text is here.", "Zulu closes it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{x}\n\n{z}\n"
+    path.write_text(text, encoding="utf-8")
+    pairs = zip("yxz", (y, x, z), strict=True)
+    known = {name: (path, words, text.index(words)) for name, words in pairs}
+    sent = [Block((), "Methods"), Block(("y",), y), Block(("x",), x), Block(("z",), z)]
+    returned = [
+        sent[0],
+        Block(("y",), "Yankee one is here."),
+        Block(("x",), "", arrived=True, unread=left),
+        Block((), "Yankee two is there."),
+        Block((), ""),
+        sent[3],
+    ]
+    apply_plan(known, plan_import(known, sent, returned))
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
 def _unmarked(node):

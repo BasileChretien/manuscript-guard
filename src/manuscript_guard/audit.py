@@ -34,9 +34,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import heading_index, scannable, strip_attributes
+from manuscript_guard.text.sections import strip_attributes
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -454,7 +455,15 @@ def looks_like_reference(line: str) -> bool:
 
 
 def _markdown_heading_lines(text: str) -> frozenset[int]:
-    return frozenset(text.count("\n", 0, found.start) for found in heading_index(text))
+    # The headings pandoc prints: a line it prints as text starts no reference list. The ones
+    # G2 calls printed, not every heading the walk places: under a stray `</script>` the walk
+    # can place `####### References`, which pandoc prints as text, and the cut after it hid
+    # every number below from the comparison.
+    return frozenset(
+        text.count("\n", 0, found.start)
+        for found in section_breaks(text)
+        if type(found.title) is not Unprinted
+    )
 
 
 def bibliography_spans(
@@ -482,6 +491,14 @@ def bibliography_spans(
         headings = _markdown_heading_lines(text)
         # Blanked in place, so the lines still count the same.
         lines = scannable(text).split("\n")
+        # A heading continuing a paragraph is printed as text, so it starts no list. It
+        # still ends one: `# Appendix`, or `Appendix` underlined, directly under the last
+        # entry has no heading in the printed paper, and running the cut on past it would
+        # hide the appendix as more references. An early end costs a false alarm; a late
+        # one hides numbers.
+        ends = headings | heading_shaped(lines)
+    else:
+        ends = headings
     # A final newline ends the last line; it does not start another.
     last = len(lines) - text.endswith("\n")
     spans: list[tuple[int, int]] = []
@@ -494,7 +511,7 @@ def bibliography_spans(
             continue
         after = (
             i
-            for i in sorted(headings)
+            for i in sorted(ends)
             if i > start
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )
@@ -636,18 +653,20 @@ def audit(
     values, used, skipped = load_backing(backing)
     report = AuditReport(backing_values=values, backing_files=tuple(used), skipped=skipped)
 
-    # Each source, and whether a line may be taken for a reference entry by its shape. Only
-    # where no heading said where the reference list is: once one has, the shape can only
-    # ever be wrong, and in Markdown a line is a physical line, so a wrapped paragraph can
-    # open on anything.
-    sources: list[tuple[Path, str, bool]] = []
+    # Each source, whether a line may be taken for a reference entry by its shape, and
+    # whether each of its lines is a block of its own. The shape only counts where no
+    # heading said where the reference list is: once one has, the shape can only ever be
+    # wrong, and in Markdown a line is a physical line, so a wrapped paragraph can open on
+    # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
+    # and plain text are read as pandoc reads them.
+    sources: list[tuple[Path, str, bool, bool]] = []
     for path in papers:
         try:
             text, spans = read_paper(path)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
-        sources.append((path, text, not spans))
+        sources.append((path, text, not spans, is_docx(path)))
         report.not_audited += [
             f"{path.name}: lines {start + 1}-{end}, read as the reference list"
             for start, end in spans
@@ -667,9 +686,9 @@ def audit(
                 f"as outlines look like this (matplotlib: rcParams['svg.fonttype'] = 'none')"
             )
             continue
-        sources.append((path, text, False))
+        sources.append((path, text, False, True))
 
-    report.papers = tuple(path for path, _text, _shape in sources)
+    report.papers = tuple(path for path, _text, _shape, _lines in sources)
     rendered_only = {
         rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
     }
@@ -682,18 +701,22 @@ def audit(
         _memo={},
     )
 
-    for path, text, by_shape in sources:
+    for path, text, by_shape, lines_are_blocks in sources:
+        scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
+        source_scan = None
         intervals = _intervals(text)
         starts = [start for start, _end in intervals]
         pieces = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
         for atom, read_apart in pieces:
             if not _within(intervals, starts, atom):
-                verdict = classifier.classify(atom)
+                verdict = classifier.classify(atom, None, scan)
                 # A number read apart from its marker may be a label, `Table 2[3]`, but not
                 # part of a citation, bar a year: the author-year rule took the `9.99` of
                 # `(2019; 95% CI 1.20, 9.99)[12]` for one.
                 if read_apart and verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text):
-                    verdict = source_rules.classify(atom)
+                    if source_scan is None:
+                        source_scan = source_rules.scan(text, lines_are_blocks=lines_are_blocks)
+                    verdict = source_rules.classify(atom, None, source_scan)
                 if verdict.kind != UNCLASSIFIED:
                     report.classified += 1
                     continue

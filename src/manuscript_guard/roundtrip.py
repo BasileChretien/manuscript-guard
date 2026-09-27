@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
+from manuscript_guard.safexml import UnsafeDocument, read_member
 from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
@@ -61,6 +62,14 @@ _CUSTOM = "docProps/custom.xml"
 #: "Not applicable." under one declaration after another: with one more added above them,
 #: the first one's identifier named the new one, read the same, and took a co-author's
 #: ethics approval. So each paragraph's record also hashes the block before it.
+#:
+#: And the blocks without an identifier around it, up to the paragraphs on either side
+#: (`_beside_of`). `import` recognises a heading run into a paragraph in Word by the heading
+#: beside it in the source now, which is the one the co-author had only if none of those
+#: changed since the build. A heading written straight above a paragraph, with no blank
+#: line, shares its block and the text hash starts after it, and one past a comment or at
+#: the top of the next file is beside it in Word though not in the file: renamed or removed
+#: since, each was in no hash, and the run-in merged.
 #:
 #: Split over several properties, each short of 255 characters, which Word may cut a text
 #: property to when it saves.
@@ -124,14 +133,19 @@ _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 _BUILD_INPUTS = ("bibliography", "csl")
 
 
-def _recorded_as(text: str, before: str) -> str:
+def _recorded_as(text: str, before: str, beside: str | None = None) -> str:
     """What the record keeps of one paragraph: `<hash of its text>.<hash of the block
-    before it>`."""
-    ours = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
-    return f"{ours}.{hashlib.sha256(before.encode('utf-8')).hexdigest()[:6]}"
+    before it>.<hash of the blocks without an identifier around it>` (`_beside_of`), the last
+    left out when `beside` is None, as releases before it wrote it."""
+
+    def hashed(what: str, length: int) -> str:
+        return hashlib.sha256(what.encode("utf-8")).hexdigest()[:length]
+
+    recorded = f"{hashed(text, 8)}.{hashed(before, 6)}"
+    return recorded if beside is None else f"{recorded}.{hashed(beside, 6)}"
 
 
-_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6})")
+_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6}(?:\.[0-9a-f]{6})?)")
 
 
 def _encoded(paragraphs: dict[str, str]) -> list[str]:
@@ -247,8 +261,8 @@ def records_moves(document: Path) -> bool:
         with zipfile.ZipFile(document) as archive:
             if "word/settings.xml" not in archive.namelist():
                 return True
-            settings = archive.read("word/settings.xml").decode("utf-8", "replace")
-    except (OSError, zipfile.BadZipFile):
+            settings = read_member(archive, "word/settings.xml").decode("utf-8", "replace")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument):
         return True
     return _NO_MOVES.search(settings) is None
 
@@ -259,8 +273,8 @@ def stamp_of(document: Path) -> str | None:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
                 return None
-            xml = archive.read(_CUSTOM).decode("utf-8")
-    except (OSError, zipfile.BadZipFile) as exc:
+            xml = read_member(archive, _CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
     # By name: the part now holds other properties too, and the first 64-hex value in it
     # need not be ours.
@@ -280,8 +294,8 @@ def paragraphs_of(document: Path) -> dict[str, str] | None:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
                 return None
-            xml = archive.read(_CUSTOM).decode("utf-8")
-    except (OSError, zipfile.BadZipFile) as exc:
+            xml = read_member(archive, _CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
     values = re.findall(
         rf'name="{PARAGRAPHS_PROPERTY}-\d+"[^>]*>\s*<vt:lpwstr>([^<]*)</vt:lpwstr>', xml
@@ -488,9 +502,12 @@ _ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
 # Pandoc reads the next line into an ATX heading, or a setext title and all under it into
 # one paragraph, whenever something opened in the heading's line closes on a later one - a
 # code span, a comment, a TeX environment, a citation's locator, maths, a link's
-# destination, a tag's attributes, emphasis. Each list of those that review was given, it
-# found one more; so anything but plain text keeps the block as it was, unmarked. A closed
-# attribute block may end the line, `{#sec-methods}`, since cross-references need one.
+# destination, a tag's attributes. Each list of those that review was given, it found one
+# more; so anything but plain text keeps the block as it was, unmarked. Emphasis marks,
+# `*`, `_`, `~` and `^`, are kept out too, though pandoc closes none of them on the next
+# line: the allow-list is what ended the search, and an exception to it would start one
+# again. A closed attribute block may end the line, `{#sec-methods}`, since
+# cross-references need one.
 _PLAIN_LINE = re.compile(r"[^`@$\[\]<>\\*_~^{}&]*(?:\{[#.\w\- =:]*\}[ \t]*)?")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # The line under a link's definition that may hold its title or attributes: pandoc reads
@@ -1492,22 +1509,25 @@ def identified(
     return [(name, text, start) for name, text, start, _before in _walk(raw, relative, front)]
 
 
+def _body(raw: str, front: re.Pattern[str] | None = None) -> str:
+    """The text of a source file that is tagged: without its front matter, stripped exactly
+    as `assemble` strips it before tagging. Indexing the raw source while the document was
+    tagged from the stripped text put every identifier one block out of step - the two must
+    read the same string or the identifier stops naming anything."""
+    if front is not None:
+        found = front.match(raw)
+        return raw[found.end() :].lstrip("\n") if found else raw
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    return strip_front_matter(raw)[0]
+
+
 def _walk(
     raw: str, relative: str, front: re.Pattern[str] | None = None
 ) -> list[tuple[str, str, int, str]]:
     """`identified`, with the text of the block before each paragraph: a heading, a
     paragraph, anything but blank lines, or nothing at the top of the file."""
-    # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
-    # raw source here while the document was tagged from the stripped text put every
-    # identifier one block out of step - the two must read the same string or the
-    # identifier stops naming anything.
-    if front is not None:
-        found = front.match(raw)
-        text = raw[found.end() :].lstrip("\n") if found else raw
-    else:
-        from manuscript_guard.build.assemble import strip_front_matter
-
-        text, _title = strip_front_matter(raw)
+    text = _body(raw, front)
     slug = paragraph_slug(relative)
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
@@ -1525,12 +1545,52 @@ def _walk(
     return out
 
 
+def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
+    """For each paragraph, the blocks without an identifier on either side of it, up to the
+    paragraphs before and after it in its document: headings, captions, tables, comments,
+    link definitions, a heading written straight above a paragraph with no blank line.
+
+    Across files, because the main text's files are one document and the supplement's
+    another, so the heading opening the next file stands directly under the last paragraph
+    of this one in Word; in the order the build prints them (`printed_order`). Only what has
+    no identifier: a paragraph reworded beside it could not have been a heading the
+    co-author ran into it.
+    """
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, printed_order
+
+    around: dict[str, str] = {}
+    for supplement in (False, True):
+        files = {
+            path: (relative, raw)
+            for path, relative, raw in sources
+            if relative.startswith(f"{SUPPLEMENTARY}/") == supplement
+        }
+        names: list[str] = []
+        runs: list[list[str]] = [[]]
+        for path in printed_order(list(files), supplementary=supplement):
+            relative, raw = files[path]
+            slug = paragraph_slug(relative)
+            for index, para, at in _blocks(_body(raw)):
+                shown = (para if at is None else para[:at]).strip()
+                if shown:
+                    runs[-1].append(shown)
+                if at is not None:
+                    names.append(_TAG.format(slug=slug, index=index))
+                    runs.append([])
+        for position, name in enumerate(names):
+            around[name] = repr((runs[position], runs[position + 1]))
+    return around
+
+
 def paragraph_record(project) -> dict[str, str]:
-    """What the build records of each paragraph, `{identifier: <text>.<before>}`: a hash of
-    its text and one of the block before it. See `PARAGRAPHS_PROPERTY`."""
+    """What the build records of each paragraph, `{identifier: <text>.<before>.<around>}`:
+    a hash of its text, one of the block before it, and one of the blocks without an
+    identifier around it (`_beside_of`). See `PARAGRAPHS_PROPERTY`."""
+    sources = _sources(project)
+    around = _beside_of(sources)
     return {
-        name: _recorded_as(text, before)
-        for _path, relative, raw in _sources(project)
+        name: _recorded_as(text, before, around[name])
+        for _path, relative, raw in sources
         for name, text, _start, before in _walk(raw, relative)
     }
 
@@ -1578,6 +1638,12 @@ class Numbering:
     #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
     #: document may never have carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
+    #: Trusted identifiers whose paragraph stands among other blocks without an identifier
+    #: than at the build (`_beside_of`): a heading, caption, table or comment beside it changed
+    #: since. A heading run into one in Word cannot be recognised by the heading beside it
+    #: now, so no rewording is merged into it. Known only of a document that records them,
+    #: as releases from this one do.
+    beside_changed: frozenset[str] = frozenset()
 
 
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
@@ -1597,12 +1663,25 @@ def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
         was = recorded.get(name)
         if was is None:
             continue
-        ours, _, before = value.partition(".")
-        ours_then, _, before_then = was.partition(".")
+        ours, before = value.split(".")[:2]
+        ours_then, before_then = was.split(".")[:2]
         once = then[(_slug_of(name), ours)] == 1 and since[(_slug_of(name), ours)] == 1
         if ours == ours_then and (before == before_then or once):
             trusted.add(name)
     return frozenset(trusted)
+
+
+def _beside_changed(
+    recorded: dict[str, str], now: dict[str, str], trusted: frozenset[str]
+) -> frozenset[str]:
+    """Those of `trusted` with other blocks without an identifier around them than at the
+    build (`Numbering.beside_changed`), of a document that records them."""
+    changed = set()
+    for name in trusted:
+        then = recorded[name].split(".")
+        if len(then) == 3 and then[2] != now[name].split(".")[2]:
+            changed.add(name)
+    return frozenset(changed)
 
 
 def numbering(project, document: Path, *, stale: bool) -> Numbering:
@@ -1618,10 +1697,13 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     known = tagged_paragraphs(project)
     recorded = paragraphs_of(document)
     if recorded is not None:
+        now = paragraph_record(project)
+        trusted = _trusted(recorded, now)
         return Numbering(
-            trusted=_trusted(recorded, paragraph_record(project)),
+            trusted=trusted,
             recorded=True,
             sent=tuple(recorded),
+            beside_changed=_beside_changed(recorded, now, trusted),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.
@@ -2192,6 +2274,9 @@ def _opened(text: str, whole: bool = True) -> str:
     gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
     rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
     `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
+    Only one of these applies, the first that does, so a rule that opens with `|` or a
+    colon is escaped there alone: `|---|` prints as `|—|` and `:---:` as `:—:`, pandoc's
+    usual typesetting of the dashes.
     """
     if block := _OPENER.match(text):
         at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
@@ -2732,6 +2817,10 @@ def align(
     # A stretch kept from the source keeps its braces bare, and one written from Word has
     # them escaped, so a pair with one half on each side of a token no longer pairs. The
     # paragraph would build without an identifier, and its next edit could not come back.
+    # Writing Word's half bare again is not safe: next to a `]`, a `)`, a `>`, a value or a
+    # kept `{`, a bare brace completes what pandoc reads as attributes, and three review
+    # rounds of #90 each found such a shape that printed wrong text and passed `check`
+    # (`[a [b] c]{k={{results.x}}}` printed without its value). So the rewording is refused.
     if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
         return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):

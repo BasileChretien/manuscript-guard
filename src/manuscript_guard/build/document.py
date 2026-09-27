@@ -264,7 +264,7 @@ def build_document(
     there stranded a document a co-author was holding; and the annotated copy, which is for
     the author to read, not to send, and whose marks `annotate` has pandoc check as it
     makes them."""
-    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary, printed_order
 
     build_dir = project.path("build")
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -280,17 +280,15 @@ def build_document(
     manuscript_dir = project.path("manuscript")
     wanted = [a for a in assembled if is_supplementary(manuscript_dir, a.path) == supplementary]
 
-    if supplementary:
-        if not wanted:
-            raise BuildError(f"nothing under manuscript/{SUPPLEMENTARY}/ to build")
-        ordered = sorted(wanted, key=lambda a: a.path.name)
-    else:
-        main = [a for a in wanted if a.path.name == "main.md"]
-        if not main:
-            raise BuildError("no manuscript/main.md to build")
-        ordered = main + sorted(
-            (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
-        )
+    if supplementary and not wanted:
+        raise BuildError(f"nothing under manuscript/{SUPPLEMENTARY}/ to build")
+    if not supplementary and not any(a.path.name == "main.md" for a in wanted):
+        raise BuildError("no manuscript/main.md to build")
+    by_path = {a.path: a for a in wanted}
+    ordered = [
+        by_path[path]
+        for path in printed_order([a.path for a in wanted], supplementary=supplementary)
+    ]
 
     # An empty div between two files, which puts nothing in the document, so each file
     # starts afresh. Joined by blank lines alone, a footnote ending one file took in the next

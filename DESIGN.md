@@ -1828,7 +1828,10 @@ an old document, and dropped from the text, or named after a body font the co-au
 changed, it put its paragraph beyond merging. What the document as sent held already is not
 the co-author's and is not refused; each is counted, not each kind, since a second of a code
 the paragraph held already was merged. The author chose refusing over reading these as
-nothing or as a space, on 2026-09-25.
+nothing or as a space, on 2026-09-25. A paragraph without an identifier, only listed when it
+changed, is compared the same way and listed with each such thing named, "Funding
+[Wingdings character F04A]": by its text alone, a heading that gained a smiley typed in
+Wingdings read as unchanged, and import said the document matched the manuscript.
 
 ## An exemption has to prove itself
 

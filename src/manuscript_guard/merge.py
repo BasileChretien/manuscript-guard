@@ -890,9 +890,13 @@ def plan_import(
     # section began, a paragraph moved past it read as in order, and import said the
     # document matched the manuscript. What changed is at least said.
     # In order, not as a bag: list items swapped in Word were all still there, and the
-    # document was said to match.
-    sent_untagged = [b.text for b in reference if not b.names and not b.table and b.text]
-    back_untagged = [b.text for b in returned if not b.names and not b.table and b.text]
+    # document was said to match. By what each says and what in it has no text, named: by
+    # its text alone, a heading that gained a smiley typed in Wingdings read as unchanged,
+    # and a new paragraph holding only a check box as empty.
+    sent_blocks = [b for b in reference if not b.names and not b.table and (b.text or b.unread)]
+    back_blocks = [b for b in returned if not b.names and not b.table and (b.text or b.unread)]
+    sent_untagged = [_listed(b) for b in sent_blocks]
+    back_untagged = [_listed(b) for b in back_blocks]
     unchanged = Counter(sent_untagged)
     unidentified: list[str] = []
     for text in back_untagged:
@@ -900,12 +904,13 @@ def plan_import(
             unchanged[text] -= 1
         else:
             unidentified.append(text)
+    # Keyed on the text alone, as `missing` is.
     left = Counter(missing)
     vanished: list[str] = []
-    for text in sent_untagged:
-        if left[text]:
-            left[text] -= 1
-            vanished.append(text)
+    for block in sent_blocks:
+        if left[block.text]:
+            left[block.text] -= 1
+            vanished.append(block.text)
     reordered: list[str] = []
     if not (unidentified or vanished) and sent_untagged != back_untagged:
         matcher = difflib.SequenceMatcher(a=sent_untagged, b=back_untagged, autojunk=False)
@@ -978,6 +983,12 @@ _PRIVATE = (
 )
 _STYLED_PREFIX = "Symbol font from "
 _PRIVATE_PREFIX = "private-use character "
+
+
+def _listed(block: Block) -> str:
+    """A paragraph without an identifier as a report lists it: its text, then each thing in
+    it with no text, named - "Funding [Wingdings character F04A]"."""
+    return " ".join([block.text, *(f"[{name}]" for name in block.unread)]).strip()
 
 
 def _unread_why(names: tuple[str, ...]) -> tuple[str, ...]:

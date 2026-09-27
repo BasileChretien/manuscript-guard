@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from manuscript_guard.docxtext import Block
 from manuscript_guard.roundtrip import (
     comments_in,
     segments,
@@ -399,6 +400,32 @@ def test_a_symbol_with_no_text_is_refused_and_named(
     assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
     out = capsys.readouterr().out
     assert "Wingdings character F04A" in out, out
+
+
+@needs_pandoc
+def test_a_symbol_typed_into_a_heading_is_still_reported(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A heading has no identifier, so a change to it is only listed. Read as no text, a
+    smiley typed in Wingdings left the heading reading as it was sent, and import said the
+    document matched the manuscript, where main had listed "Funding J"."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    heading = '<w:t xml:space="preserve">Funding</w:t></w:r>'
+    fonts = '<w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/>'
+    typed = f"<w:r><w:rPr>{fonts}</w:rPr><w:t>J</w:t></w:r>"
+    returned = _edit_part(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        "word/document.xml",
+        heading,
+        f'<w:t xml:space="preserve">Funding </w:t></w:r>{typed}',
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "Funding [Wingdings character F04A]" in out, out
 
 
 @needs_pandoc
@@ -8980,6 +9007,69 @@ def test_what_the_sent_document_could_not_read_either_is_no_edit(tmp_path: Path)
     plan = plan_import(known, sent, returned)
     assert not plan.refused
     assert plan.merged
+
+
+@pytest.mark.parametrize(
+    ("sent_heading", "returned_heading", "listed"),
+    [
+        (
+            Block((), "Funding"),
+            Block((), "Funding", unread=("Wingdings character F04A",)),
+            "Funding [Wingdings character F04A]",
+        ),
+        (None, Block((), "", unread=("Wingdings character F0FC",)), "[Wingdings character F0FC]"),
+    ],
+    ids=["heading", "new-paragraph"],
+)
+def test_a_symbol_without_an_identifier_is_listed(
+    tmp_path: Path, sent_heading: object, returned_heading: object, listed: str
+) -> None:
+    """A paragraph without an identifier is compared by what it says and by what in it has
+    no text: by its text alone, a heading that gained a Wingdings smiley, or a new paragraph
+    holding only a check box, read as unchanged or empty, and was not listed."""
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    body = Block(("a",), "The task is done.")
+    sent = ([sent_heading] if sent_heading is not None else []) + [body]
+    returned = [returned_heading, body]
+    plan = plan_import(known, sent, returned)
+    assert plan.unidentified == (listed,), plan.unidentified
+    assert not plan.empty
+
+
+def _unsupported_compression(document: Path, part: str) -> None:
+    """Mark one part of `document` as stored with Deflate64, which zipfile cannot read."""
+    import struct
+
+    raw = bytearray(document.read_bytes())
+    with zipfile.ZipFile(document) as archive:
+        offset = archive.getinfo(part).header_offset
+    struct.pack_into("<H", raw, offset + 8, 9)
+    at = raw.find(b"PK\x01\x02")
+    while at >= 0:
+        size = struct.unpack_from("<H", raw, at + 28)[0]
+        if bytes(raw[at + 46 : at + 46 + size]) == part.encode():
+            struct.pack_into("<H", raw, at + 10, 9)
+        at = raw.find(b"PK\x01\x02", at + 4)
+    document.write_bytes(bytes(raw))
+
+
+def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path: Path) -> None:
+    """Both readers now read the font table, and a part zipfile cannot decompress raised
+    NotImplementedError out of both, where main read the document. The import refuses it,
+    as for any part it cannot read safely; the audit reads the fonts the runs name."""
+    from manuscript_guard.docxtext import DocumentUnreadable, blocks
+    from manuscript_guard.text.docx import read_docx
+
+    document = symbol_document(tmp_path, text_run("Mean 3.2 ") + symbol("F0B1") + text_run(" 0.4"))
+    table = f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="Symbol"/></w:fonts>'
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/fontTable.xml", table)
+    _unsupported_compression(document, "word/fontTable.xml")
+    with pytest.raises(DocumentUnreadable):
+        blocks(document)
+    assert f"Mean 3.2 {PLUS_MINUS} 0.4" in read_docx(document)
 
 
 @needs_pandoc

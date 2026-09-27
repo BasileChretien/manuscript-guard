@@ -3420,7 +3420,8 @@ Closed since, and why each mattered:
   text, since Word's headings carry a style, so its number is compared. A plain-text paper
   is read as Markdown, so one exported a paragraph per line with no blank lines between
   reads as a single paragraph, and typed numbering after its first line is reported. A
-  numbered item indented four spaces or more is never taken for numbering, and nor is one in
+  numbered item indented four spaces or more is never taken for numbering, though one nested
+  under an item with a tab is, as an editor indents a list level, and nor is one in
   the lines of a definition list (`Term`, then `:   Definition`), where pandoc does start
   lists; both are reported rather than excused. Pandoc folds the digits opening the line
   under a bare LaTeX command, `\newpage`, into the raw block, and the gates follow that at

@@ -724,6 +724,31 @@ def test_a_count_at_a_wrap_point_is_not_list_numbering(project: Path, tail: str)
     )
 
 
+@pytest.mark.parametrize(
+    "nested",
+    [
+        "- Inclusion criteria:\n\t7. Age 18 or over\n\t8. Confirmed diagnosis\n",
+        "1. Adults\n\t7. aged over 65 years\n2. Children\n",
+        "1. Adults\n\n\t7. aged over 65 years\n\n2. Children\n",
+    ],
+    ids=["under a bullet", "under a numbered item", "after a blank line"],
+)
+def test_a_nested_number_indented_with_a_tab_is_list_numbering(
+    project: Path, nested: str
+) -> None:
+    """Found by the seventh review. Pandoc reads each `7.` here as a nested list's numbering,
+    and `main` passed it. The walk read a marker only up to three spaces from the margin, so
+    it recorded no item under a tab, and the list-only rule reported the number."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert text.count("\n# Discussion") == 1
+    path.write_text(text.replace("\n# Discussion", "\n" + nested + "\n# Discussion"), "utf-8")
+    report = gate_report(project)
+    assert not any(
+        f.code == "unclassified-number" and "'7'" in f.message for f in report.failures
+    ), codes(report)
+
+
 @pytest.mark.parametrize("cell", ["412.", "412)"])
 def test_a_count_ending_a_table_cell_is_not_list_numbering(project: Path, cell: str) -> None:
     """Each cell of a results table is classified as a text of its own. List numbering's

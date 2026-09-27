@@ -438,6 +438,9 @@ class _Walk:
         self.open: str | None = None
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
+        #: The content columns of the items open around this line, outermost first. A marker
+        #: is read from the innermost one it reaches, as pandoc reads a nested item.
+        self.columns: list[int] = []
         #: Pandoc has ended the list, and its lines start no item, but they are still the
         #: list's for headings. See `_in_list`.
         self.items_off = False
@@ -567,17 +570,36 @@ class _Walk:
 
         The gap after the marker is counted in columns: a tab reaches the next tab stop, so
         the text of `1.<tab>First` starts at column 4, where pandoc puts it. `* * *` is not an
-        item: at a block's start it is a rule, and under an item it is text of the item."""
-        shown = self.lines[index].shown
-        item = _LIST_ITEM.match(shown)
-        if item is None or self._rule(index):
+        item: at a block's start it is a rule, and under an item it is text of the item.
+
+        A marker is read from the text column of the innermost open item the line reaches
+        (`_marker`), as pandoc reads a nested item."""
+        found = self._marker(index)
+        if found is None or self._rule(index):
             return False
+        base, item = found
         marker = item.group("marker")
         gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
-        self.list_indent = len(marker) + (gap if 0 < gap <= 4 else 1)
+        self.list_indent = base + len(marker) + (gap if 0 < gap <= 4 else 1)
+        self.columns = [*(column for column in self.columns if column <= base), self.list_indent]
         if not self.items_off:
             self.items.append(self.lines[index].start)
         return True
+
+    def _marker(self, index: int) -> tuple[int, re.Match[str]] | None:
+        """A list marker on this line, and the column it is read from: the text column of the
+        innermost open item the line is indented to, or the margin.
+
+        Pandoc reads a nested item's marker from its outer item's text, up to three columns
+        in. So `- Criteria:` over `<tab>1. Age 18 or over` and `<tab>2. Confirmed`, as an
+        editor indents a list level, or `1. Adults` over four spaces and `7.`, are items.
+        Read from the margin, whose three spaces a tab or a fourth space passes, none was,
+        and its number was reported where `main` passed it."""
+        shown = self.lines[index].shown
+        indent = _indent(shown)
+        base = max((column for column in self.columns if column <= indent), default=0)
+        item = _LIST_ITEM.match(shown.expandtabs(4)[base:] if base else shown)
+        return (base, item) if item else None
 
     def _paragraph_line(self, index: int) -> int:
         """After a line of a paragraph or a list item: a block-level tag closing the line ends
@@ -620,6 +642,7 @@ class _Walk:
 
     def _end_list(self) -> None:
         self.list_indent = None
+        self.columns = []
         self.items_off = False
 
     def _continues(self, index: int) -> bool:
@@ -667,7 +690,8 @@ class _Walk:
         indented less than the inner item's text and still in the list."""
         shown = self.lines[index].shown
         indent = _indent(shown)
-        marker = _LIST_ITEM.match(shown) is not None and not self._rule(index)
+        found = None if self._rule(index) else self._marker(index)
+        marker = found is not None
         if indent == 0:
             if marker:
                 self.items_off = False
@@ -678,7 +702,13 @@ class _Walk:
             return False
         if indent < (self.list_indent or 0):
             if marker and not self.items_off:
-                return False
+                if found[0] == 0:
+                    return False
+                # An item of an outer nested list, `<tab>2.` under `- a` / `<tab>1. b`: a
+                # block of its own would read the tab as code.
+                self._item(index)
+                self.open = _ITEM
+                return True
             self.items_off = True
             self.open = _ITEM
             return True

@@ -614,6 +614,20 @@ LIST_CONSTRUCTS = {
     "a numbered list under a block tag": "Prose.<hr>\n1. First\n",
     "a numbered item under a bullet item": "- First\n1. Second\n",
     "a nested numbered item": "1. First\n   1. Inner\n",
+    # Found by the seventh review. A nested item is read from its outer item's text column,
+    # so one indented with a tab, as an editor indents a list level, or four spaces under
+    # `1.`, is an item: the walk read its marker from the margin, and took neither.
+    "a nested numbered item after a tab": (
+        "- Inclusion criteria:\n\t1. Age 18 or over\n\t2. Confirmed diagnosis\n"
+    ),
+    "a nested numbered item after a tab under a numbered item": (
+        "1. Adults\n\t7. aged over 65 years\n2. Children\n"
+    ),
+    "a nested numbered item after a tab and a blank line": (
+        "1. Adults\n\n\t7. aged over 65 years\n\n2. Children\n"
+    ),
+    "a nested numbered item indented four": "1. Adults\n    7. aged over 65 years\n2. Children\n",
+    "a nested bullet after a tab two deep": "- a\n\t- b\n\t\t- c\n",
     "a count wrapped inside a list item": "1. The count was\n412. Of these\n",
     "numbered items apart": "1. First\n\n2. Second\n",
     "an underlined numbered line": "1. Methods\n---\n",

@@ -96,6 +96,18 @@ CONSTRUCTS = {
     "setext many dashes": "Methods\n----------\n\nProse.\n",
     "hash inside a fenced listing": f"## Real\n\n{FENCE}python\n# Fake\n{FENCE}\n\nProse.\n",
     "hash inside an html comment": "## Real\n\n<!--\n## Fake\n-->\n\nProse.\n",
+    "hash after comment markers in code": (
+        "## Real\n\nStrip `<!--` first.\n\n## Also real\n\nThen `-->`.\n"
+    ),
+    "hash after a comment closed in a listing": (
+        f"<!-- draft\n{FENCE}r\nx # -->\n{FENCE}\n\n## Real\n\nProse. <!-- a -->\n"
+    ),
+    "hash after a comment opened in the front matter": (
+        '---\nnote: "<!-- legacy"\n---\n\n## Real\n\nProse. <!-- a -->\n'
+    ),
+    "hash before a fence line that ends in a comment": (
+        f"## Real\n\nWe used\n{FENCE}\n\n## Also real\n\nProse.\n\n{FENCE}<!-- TODO -->\n"
+    ),
     "setext inside a blockquote": "## Real\n\n> Fake\n> ----\n\nProse.\n",
     "front matter closing delimiter": "---\ntitle: T\nlang: en-GB\n---\n\n# Real\n\nProse.\n",
     "thematic break after a paragraph": "# Real\n\nSome prose.\n\n***\n\nMore prose.\n",
@@ -562,6 +574,86 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
     assert refused & wanted, (
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
         f"code block; the toolkit thinks the opposite, and does not refuse the fence"
+    )
+
+
+# ---------------------------------------------------------------- comments
+
+BACKSLASH = "\\"
+COMMENT_CASES = {
+    "comment markers in code": "Strip `<!--` first. The ROR was 9.99. Then `-->`.\n",
+    "double-backtick code": "Strip ``<!--`` first. The ROR was 9.99, and ``-->`` last.\n",
+    "code across a line break": "a `<!--\nb` 9.99 -->\n",
+    "a longer opener gives up one backtick": "a ```<!--`` 9.99 -->\n",
+    "escaped backtick": f"a {BACKSLASH}`x` <!-- 9.99 --> `y`\n",
+    "escaped backslash": f"a {BACKSLASH * 2}`<!--` 9.99 `-->`\n",
+    "escaped angle bracket": f"a {BACKSLASH}<!-- 9.99 --> b\n",
+    "comment after code": "`x` <!-- 9.99 --> y\n",
+    "backticks inside a comment": "<!-- `a` 9.99 `b` -->\n",
+    "stray backtick": "A stray ` then <!-- 9.99 --> hidden.\n",
+    "code does not cross a blank line": "A `x\n\ny` <!-- 9.99 --> z\n",
+    "comment across a blank line": "a <!-- x\n\n9.99 --> b\n",
+    "first --> ends the comment": "<!-- 1.23 `-->` 9.99\n",
+    "<!--> opens nothing": "a <!--> 9.99 --> b\n",
+    "<!---> opens nothing": "a <!---> 9.99 --> b\n",
+    "<!----> is a comment": "a <!----> b <!-- 9.99 ---> c\n",
+    "cut short by -- >": "a <!-- was 9.99 -- > 5 --> b\n",
+    "cut short by --, a newline and >": "<!-- Cut --\n> The pilot ROR was 9.99.\n-->\n",
+    "cut short by --!>": "a <!-- x --!> 9.99 --> b\n",
+    "-- then other text and > is no end": "a <!-- x --x> 9.99 --> b\n",
+    "commented-out blockquote": "<!--\n> quoted 9.99\n-->\n\nafter\n",
+    "opened in a listing": f"{FENCE}html\n<!-- a template\n{FENCE}\n\nROR 9.99. -->\n",
+    "closed in a listing": f"<!-- draft\n{FENCE}r\nx # -->\n{FENCE}\n\nROR 9.99. <!-- a -->\n",
+    "around a listing": f"<!--\n{FENCE}r\nx <- 1\n{FENCE}\n9.99 -->\n",
+    "opened in the title": "---\ntitle: Strip <!-- markers\n---\n\nROR 9.99. <!-- note -->\n",
+    "code across a fence line": f"Set `<!-- ROR 9.99\n{FENCE}\n-->\n{FENCE}\n` in it.\n",
+    "code across a listing": f"a `<!--\n{FENCE}\ncode\n{FENCE}\nb`\n\nROR 9.99. -->\n",
+    "no-break space is not an end": "a <!-- x -- > 9.99 --> b\n",
+}
+
+
+def pandoc_comment_text(markdown: str) -> str:
+    """Every HTML comment pandoc drops from the document, concatenated."""
+    finished = subprocess.run(
+        [PANDOC, "-f", "markdown", "-t", "json"],
+        input=markdown,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    comments: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, dict):
+            if node.get("t") in ("RawInline", "RawBlock"):
+                fmt, raw = node["c"]
+                if fmt == "html" and raw.startswith("<!--"):
+                    comments.append(raw)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(json.loads(finished.stdout)["blocks"])
+    return "\n".join(comments)
+
+
+@pytest.mark.parametrize("name", sorted(COMMENT_CASES))
+def test_a_number_is_in_a_comment_for_both_or_for_neither(name: str) -> None:
+    """`` `<!--` `` is code to pandoc, and the regex this replaced took it for a comment and
+    hid the prose after it up to the next `-->`."""
+    from manuscript_guard.text.masking import masked_spans
+
+    markdown = COMMENT_CASES[name]
+    at = markdown.index("9.99")
+    in_comment_for_pandoc = "9.99" in pandoc_comment_text(markdown)
+    spans = masked_spans(markdown).get("html-comment", [])
+    in_comment_for_toolkit = any(start <= at < end for start, end in spans)
+    assert in_comment_for_toolkit == in_comment_for_pandoc, (
+        f"{name}: pandoc {'drops' if in_comment_for_pandoc else 'prints'} 9.99; the toolkit "
+        f"thinks the opposite"
     )
 
 
@@ -1167,3 +1259,61 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         assert returned.get(marker.group(1)) == written_out[0], (
             f"{name}: the marked Word paragraph holds only part of {piece!r}"
         )
+
+
+# ---------------------------------------------------------------- footnote definitions
+
+# Each word is a token, `wN`, so what lands in pandoc's note can be told from what does not.
+FOOTNOTE_CASES = {
+    "one line": "Text.[^n]\n\n[^n]: w1 w2\n\nw3\n",
+    "lazy lines": "Text.[^n]\n\n[^n]: w1\nw2\nw3\n\nw4\n",
+    "indented paragraph": "Text.[^n]\n\n[^n]: w1\n\n    w2\n\nw3\n",
+    "tabbed paragraph": "Text.[^n]\n\n[^n]: w1\n\n\tw2\n\n   w3\n",
+    "three spaces": "Text.[^n]\n\n[^n]: w1\n\n   w2\n",
+    "two notes": "Text.[^n] and[^m]\n\n[^n]: w1\n[^m]: w2\nw3\n\nw4\n",
+    "heading under": "Text.[^n]\n\n[^n]: w1\n# w2\n\nw3\n",
+    "quote under": "Text.[^n]\n\n[^n]: w1\n> w2\n\nw3\n",
+    "list under": "Text.[^n]\n\n[^n]: w1\n- w2\n\nw3\n",
+    "fence under": "Text.[^n]\n\n[^n]: w1\n```\nw2\n```\n\nw3\n",
+    "indented then margin": "Text.[^n]\n\n[^n]: w1\n\n    w2\nw3\n\nw4\n",
+    "many blank lines": "Text.[^n]\n\n[^n]: w1\n\n\n\n    w2\n\n\nw3\n",
+    "defined first": "[^n]: w1\n\nw2 Text.[^n]\n",
+    "empty then indented": "Text.[^n]\n\n[^n]:\n    w1\n\nw2\n",
+}
+
+
+def _note_words(node, inside: bool, out: set[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _note_words(item, inside, out)
+    elif isinstance(node, dict):
+        if node.get("t") == "Str" and inside:
+            out.update(re.findall(r"w\d+", node["c"]))
+        _note_words(node.get("c"), inside or node.get("t") == "Note", out)
+
+
+@pytest.mark.parametrize("name", list(FOOTNOTE_CASES))
+def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
+    """For plain notes, at the margin after a blank line, the gates' reading of a note's
+    text stays inside pandoc's note. Where the gates misread one it matters less than it
+    did: a number is judged where it stands as well as at each reference, so reading past
+    the note only adds a section it must pass in (see `chains_at`)."""
+    from manuscript_guard.text.sections import footnote_index
+
+    text = FOOTNOTE_CASES[name]
+    read = json.loads(
+        subprocess.run(
+            [PANDOC, "-f", "markdown", "-t", "json"],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    pandoc: set[str] = set()
+    _note_words(read["blocks"], False, pandoc)
+    ours = {
+        word
+        for note in footnote_index(text)
+        for word in re.findall(r"w\d+", text[note.start : note.end])
+    }
+    assert ours <= pandoc, (ours - pandoc, pandoc)

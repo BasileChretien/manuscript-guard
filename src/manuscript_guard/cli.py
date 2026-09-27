@@ -67,7 +67,7 @@ from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
 from manuscript_guard.scaffold import init_project
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -304,8 +304,9 @@ def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
         return ""
     return (
         f"{missed} of {total} paragraphs in {document.name} carry no identifier and were "
-        f"not compared: table cells, headings, captions, list items, block quotes, and "
-        f"anything newly written. "
+        f"not compared: table cells, headings, captions, list items, block quotes, "
+        f"paragraphs with display maths or with a fence under them, and anything newly "
+        f"written. "
         + (
             "Those outside tables that changed are listed above; "
             if listed
@@ -313,6 +314,49 @@ def _unexamined(document: Path, identified: int, listed: bool = False) -> str:
         )
         + "an edit inside a table is not reported at all."
     )
+
+
+def _which_document(project, known: dict, returned, name: str) -> bool | None:
+    """Whether a returned document is the supplement; None when it is not one document.
+
+    `build` writes the supplement as a document of its own, and import compared every
+    returned document with a fresh build of the paper. An edited supplementary.docx reported
+    every paragraph of the paper as deleted in Word, exit 1, and its own edits went nowhere.
+    The paragraph identifiers a document carries say which one it is, because each names its
+    source file; the source stamp cannot, since both documents carry the same one. A document
+    carrying neither kind is refused when the project has a supplement, because it could be
+    either, and compared with the paper when it has none. Whether there is a supplement is
+    read from the source files: read from the identifiers, a supplement of headings and tables,
+    which has none, was taken for no supplement, and compared with the paper.
+    """
+    from manuscript_guard.gates.numbers import is_supplementary, source_files
+
+    manuscript_dir = project.path("manuscript")
+    kinds = {
+        is_supplementary(manuscript_dir, known[identifier][0])
+        for block in returned
+        for identifier in block.names
+        if identifier in known
+    }
+    has_supplement = any(is_supplementary(manuscript_dir, p) for p in source_files(manuscript_dir))
+    if not kinds and has_supplement:
+        print(
+            f"{name} carries no paragraph identifier this manuscript knows, so there is no "
+            f"telling whether it is the manuscript or its supplement, and import compares "
+            f"paragraphs only through those identifiers. Nothing was imported. A supplement of "
+            f"headings, tables and figures carries none, and holds nothing import compares; "
+            f"otherwise, import the document the co-author was sent, edited in place."
+        )
+        return None
+    if kinds == {True, False}:
+        print(
+            f"{name} carries paragraphs of both the manuscript and its supplement. They are "
+            f"built as two documents and imported one at a time, and a paragraph pasted from "
+            f"one into the other is not something import can apply. Nothing was imported: "
+            f"make the move in the .md yourself, and import each document on its own."
+        )
+        return None
+    return kinds == {True}
 
 
 def cmd_import(args: argparse.Namespace) -> int:
@@ -330,6 +374,8 @@ def cmd_import(args: argparse.Namespace) -> int:
     from manuscript_guard.roundtrip import (
         RoundTripError,
         comments_in,
+        numbering,
+        numbering_refusal,
         read_blocks,
         stamp_of,
         tagged_paragraphs,
@@ -354,14 +400,39 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"tool built can be imported."
         )
         return 1
+    # Before the digest, and past --force: under other numbering an edit has no hunk to
+    # check by hand, only a paragraph that is not the one it was made in.
+    try:
+        numbered = numbering(project, edited, stale=carried != document_digest(project))
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if numbered.refusal:
+        print(numbering_refusal(edited.name, numbered.refusal))
+        return 1
     if carried != document_digest(project) and not args.force:
         print(
             f"{edited.name} was built from a different version of the manuscript than the "
             f"one on disk. Merging edits made against text that has since changed is how a "
             f"correction lands on the wrong sentence.\n"
             f"  Resolve it by hand, or re-send the co-author a current build.\n"
-            f"  --force imports anyway, and you will have to check every hunk."
+            f"  --force imports anyway: an edit is merged only where the paragraph it was "
+            f"made in reads as it did at the build, and every hunk still has to be read."
         )
+        return 1
+
+    try:
+        returned = read_blocks(edited)
+        comments = comments_in(edited)
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    known = tagged_paragraphs(project)
+    supplementary = _which_document(project, known, returned, edited.name)
+    if supplementary is None:
+        # The comments need no identifier to be read, and are the most useful thing in the
+        # document: refusing the edits is no reason to drop them.
+        _report_comments(comments)
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
@@ -379,12 +450,15 @@ def cmd_import(args: argparse.Namespace) -> int:
         reference = Path(scratch) / "reference.docx"
         tokens = Path(scratch) / "reference-tokens.docx"
         try:
-            build_document(
-                project, assembled, mode=OFFLINE, output=reference, verify_reading=False
-            )
-            build_document(
-                project, marked_assembly, mode=OFFLINE, output=tokens, verify_reading=False
-            )
+            for assembly, output in ((assembled, reference), (marked_assembly, tokens)):
+                build_document(
+                    project,
+                    assembly,
+                    mode=OFFLINE,
+                    output=output,
+                    supplementary=supplementary,
+                    verify_reading=False,
+                )
             abbreviated = abbreviations()
         except BuildError as exc:
             print(
@@ -409,14 +483,32 @@ def cmd_import(args: argparse.Namespace) -> int:
             )
             marked = None
 
-    try:
-        returned = read_blocks(edited)
-        comments = comments_in(edited)
-    except RoundTripError as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        return 2
-    known = tagged_paragraphs(project)
-    plan = plan_import(known, sent, returned, marked, abbreviated)
+    # Only the identifiers that still name the paragraph they named at the build. The rest
+    # would put an edit into whichever paragraph now sits there. A value paragraph an older
+    # document may never have carried is asked about only in the document it belongs to:
+    # a supplement does not lack the paper's.
+    present = {n for b in returned if not b.table for n in b.names}
+    building = {n for b in sent for n in b.names}
+    unsure = numbered.unsure & building
+    trusted = numbered.trusted | (unsure & present)
+    every = known
+    known = {name: entry for name, entry in every.items() if name in trusted}
+    # And one the document's record does not hold: its block had no identifier when it was
+    # built - a list item made a paragraph since, or a release that tags more kinds of block.
+    # Never compared, it is still weighed as a join into the paragraph above it, as main
+    # weighs every paragraph; left out, the join merged as a rewording and its text was in
+    # the source twice.
+    untagged_then = building - set(numbered.sent) if numbered.recorded else set()
+    plan = plan_import(
+        known,
+        sent,
+        returned,
+        marked,
+        abbreviated,
+        every=every,
+        built=numbered.sent,
+        unsure=unsure | untagged_then,
+    )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table
     # cells, headings, captions, list items, block quotes, the reference list, and anything
@@ -428,9 +520,31 @@ def cmd_import(args: argparse.Namespace) -> int:
         sum(1 for b in returned if b.names and not b.table),
         listed=bool(plan.unidentified or plan.vanished or plan.reordered),
     )
+    # A paragraph whose identifier no longer names the text it was built from: the source
+    # changed there since, or this version numbers or tags paragraphs by other rules. Its
+    # edit belongs to a paragraph that is not there now, so it is not compared; saying so is
+    # the only way it does not vanish. An empty one in a document that records nothing is
+    # what releases before 0.2.45 put under an HTML comment, and nobody wrote in it.
+    strangers = sorted(
+        {
+            n
+            for b in returned
+            if not b.table and (numbered.recorded or b.text.strip())
+            for n in b.names
+            if n not in known
+        }
+    )
+    # And one that did not come back, deleted or joined in Word. Looked for among those that
+    # came back only, its deletion left no trace, and the import said nothing came back.
+    unaccounted = [n for n in numbered.sent if n not in trusted and n not in present]
+    values = sorted(unsure - present)
+    said = _not_compared(edited, strangers, unaccounted, values)
+    unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
+    unaccounted += values
 
-    if plan.empty and not comments:
-        print("nothing came back: the document matches the manuscript on disk.")
+    if plan.empty and not comments and not strangers and not unaccounted:
+        what = "supplement" if supplementary else "manuscript"
+        print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
             print(f"  {unexamined}")
         return 0
@@ -444,13 +558,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         if plan.merged:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
-    for comment in comments:
-        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
-    if comments:
-        print(
-            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
-        )
+    _report_comments(comments)
 
     if unexamined:
         print(f"\n{unexamined}")
@@ -467,31 +575,134 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.gone
         or plan.joined
         or plan.misplaced
+        or plan.lost
+        or plan.strayed
         or plan.unidentified
         or plan.vanished
         or plan.reordered
+        or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
-    return 1 if outstanding else 0
+    # A paragraph not compared is not applied either.
+    return 1 if outstanding or strangers or unaccounted else 0
+
+
+def _not_compared(
+    edited: Path, strangers: list[str], unaccounted: list[str], values: list[str]
+) -> list[str]:
+    """What `import` says of the paragraphs whose identifier it could not vouch for:
+    those that came back, those it was built with that did not, and the value paragraphs a
+    document that records nothing may never have carried."""
+
+    def shown(names: list[str]) -> str:
+        return ", ".join(names[:5]) + (", …" if len(names) > 5 else "")
+
+    said = []
+    if strangers:
+        said.append(
+            f"{len(strangers)} paragraph(s) in {edited.name} were not compared, because their "
+            f"identifier no longer names the paragraph it named when the document was built "
+            f"({shown(strangers)}): the source changed there since, or this version numbers "
+            f"or tags paragraphs differently. Carry any edit in them over by hand. A paragraph "
+            f"moved past one of them in Word may not be reported as moved."
+        )
+    if unaccounted:
+        said.append(
+            f"{len(unaccounted)} paragraph(s) {edited.name} was built with did not come back, "
+            f"deleted or joined in Word, and were not compared, because their identifier no "
+            f"longer names the paragraph it named then ({shown(unaccounted)}). Delete or join "
+            f"them in the .md yourself if that was intended."
+        )
+    if values:
+        said.append(
+            f"{len(values)} paragraph(s) that are only a value are not in {edited.name} "
+            f"({shown(values)}): deleted or joined in Word, or never in it, since the release "
+            f"that built it may be one before 0.2.49, which gave them no identifier. Delete or "
+            f"join them in the .md yourself if that was intended."
+        )
+    return said
+
+
+def _report_comments(comments) -> None:
+    """Each co-author comment, and where to record them so G11 can see they were answered."""
+    for comment in comments:
+        print(f"\ncomment from {comment.author} ({comment.date}): {comment.text[:200]}")
+    if comments:
+        print(
+            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
+            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
+        )
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
-    """Say what the returned document changed and what will, or will not, be applied."""
+    """Say what the returned document changed and what will, or will not, be applied.
+
+    `known` holds the paragraphs compared. A join can take in one that was not, which is
+    named by its identifier: what the source now has under it is another paragraph.
+    """
 
     def where(name: str) -> str:
         return known[name][0].relative_to(project.root).as_posix()
 
     def opening(name: str) -> str:
-        return known[name][1].strip()[:80]
+        if name not in known:
+            return f"({name}, not compared)"
+        # On one line: a held comment's source runs over several.
+        return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
         for name in sorted(plan.misplaced):
             print(f"    {opening(name)}")
         print(
-            "    Not applied. A move past a heading, a table, a figure, a list, a quotation "
-            "or anything else without an identifier, or into another file, changes how many "
-            "paragraphs a section holds, and import only reorders within one; move it in the "
+            "    Not applied: import only reorders paragraphs within a section, and a heading, "
+            "a table, a figure, a list, a quotation or anything else without an identifier, "
+            "another file, or a paragraph it holds in place ends one. An HTML comment or a "
+            "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
+            "Word shows as an empty line, one with a line such as `\\end{table}` directly "
+            "under it in the .md, one with a `<!--` that never closes, and one directly above "
+            "display maths. Move it in the .md yourself."
+        )
+
+    if plan.strayed:
+        print(
+            f"{len(plan.strayed)} heading(s), table(s), figure(s) or equation(s) came back "
+            f"somewhere else:"
+        )
+        for kind, text in plan.strayed:
+            article = "an" if kind == "equation" else "a"
+            print(f"    '{text[:80]}'" if kind == "text" else f"    {article} {kind}")
+        print(
+            "    Not applied: each goes where the .md puts it. Move the heading, the table's or "
+            "figure's placeholder, or the paragraph a caption or equation belongs to, in the "
             ".md yourself."
+        )
+
+    if plan.held_back:
+        print(
+            f"{len(plan.held_back)} paragraph(s) were moved where a paragraph would reach the "
+            "next build without its identifier:"
+        )
+        for name, lost in plan.held_back:
+            print(f"    {opening(name)}")
+            if lost != name:
+                print(f"      (it would leave behind: {opening(lost)})")
+        print(
+            "    Not applied, nor any other move in that section. With what would be around it, "
+            "pandoc would read that paragraph as something other than itself - a definition, a "
+            "heading, part of a comment: no identifier, so a later edit to it could not come "
+            "back. Move them in the .md yourself."
+        )
+
+    if plan.lost:
+        what = " and ".join(f"{plan.lost.count(k)} {k}(s)" for k in sorted(set(plan.lost)))
+        print(
+            f"{what} of the document as sent could not be found in the returned one: deleted, "
+            f"pasted twice, or changed while others were added or removed."
+        )
+        print(
+            "    Nothing about them is applied, and a paragraph moved past one cannot be seen. "
+            "Tables and figures are built from the analysis: change them there, or remove "
+            "the placeholder from the .md. An equation is edited in the .md."
         )
 
     if plan.unidentified or plan.vanished or plan.reordered:
@@ -503,8 +714,9 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         else:
             print(
                 f"\n{max(len(plan.unidentified), len(plan.vanished))} paragraph(s) without "
-                f"an identifier - a heading, a list item, a quotation, a caption or new "
-                f"text - came back different and were not compared:"
+                f"an identifier - a heading, a list item, a quotation, a caption, a "
+                f"paragraph with display maths or with a fence under it, or new text - came "
+                f"back different and were not compared:"
             )
         for text in plan.vanished[:12]:
             print(f"    - {text[:120]}")
@@ -535,7 +747,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {line}")
 
     for group in plan.joined:
-        print(f"\n{len(group)} paragraphs came back joined into one, in {where(group[0])}:")
+        home = next(name for name in group if name in known)
+        print(f"\n{len(group)} paragraphs came back joined into one, in {where(home)}:")
         for name in group:
             print(f"    {opening(name)}")
         print(
@@ -548,8 +761,12 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print("    delete it in the .md yourself if that was intended.")
 
 
-def _seeded(source: Path) -> list[dict]:
+def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
     """Reviewers and their points, read from the comments in a returned document.
+
+    A comment keeps its paragraph only where the identifier is in `trusted`, still naming
+    the text it named at the build. Anywhere else it would anchor the point to whatever
+    paragraph sits there now, and G13 would then check the revision against the wrong one.
 
     A journal usually sends a PDF or an email and the points get typed in, which is where
     a point quietly becomes the easier point next to it. When the reviewer commented in a
@@ -569,7 +786,7 @@ def _seeded(source: Path) -> list[dict]:
                 "id": "",
                 "comment": comment.text,
                 "response": "",
-                **({"where": comment.where} if comment.where else {}),
+                **({"where": comment.where} if comment.where in trusted else {}),
             }
         )
 
@@ -606,7 +823,12 @@ def cmd_respond(args: argparse.Namespace) -> int:
             # two different manuscripts - one command called that dangerous while the other
             # baked it into the revision record without a word.
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import RoundTripError, stamp_of
+            from manuscript_guard.roundtrip import (
+                RoundTripError,
+                numbering,
+                numbering_refusal,
+                stamp_of,
+            )
 
             try:
                 carried = stamp_of(args.source)
@@ -624,6 +846,26 @@ def cmd_respond(args: argparse.Namespace) -> int:
                     f"the points into the round file."
                 )
                 return 1
+            try:
+                numbered = numbering(
+                    project, args.source, stale=carried != document_digest(project)
+                )
+            except RoundTripError as exc:
+                print(f"manuscript-guard: {exc}", file=sys.stderr)
+                return 2
+            if numbered.refusal:
+                print(numbering_refusal(args.source.name, numbered.refusal))
+                return 1
+            trusted = numbered.trusted
+            if numbered.unsure:
+                # As `import` does: one the document carries, it was built with.
+                from manuscript_guard.roundtrip import paragraph_order
+
+                try:
+                    trusted |= numbered.unsure & set(paragraph_order(args.source))
+                except RoundTripError as exc:
+                    print(f"manuscript-guard: {exc}", file=sys.stderr)
+                    return 2
             if carried != document_digest(project) and not args.force:
                 print(
                     f"{args.source.name} was not built from the manuscript as it now stands, "
@@ -641,7 +883,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": _seeded(args.source) if args.source else [
+            "reviewers": _seeded(args.source, trusted) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [
@@ -684,6 +926,15 @@ def cmd_respond(args: argparse.Namespace) -> int:
                 f"  {seeded} point(s) read from {args.source.name}, {anchored} of them "
                 f"knowing which paragraph they are about."
             )
+            from manuscript_guard.roundtrip import comments_in
+
+            loose = sum(1 for c in comments_in(args.source) if c.where and c.where not in trusted)
+            if loose:
+                print(
+                    f"  {loose} comment(s) were attached to a paragraph whose identifier no "
+                    f"longer names the text commented on, so they are recorded without one: "
+                    f"say in each point which paragraph it is about."
+                )
         print(
             "  submitted_files records the manuscript as it stands now, which is what a\n"
             "  claimed revision is checked against. Open the round *before* you start\n"
@@ -901,9 +1152,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     # when a finding surprises them. Its answer was the input to deciding whether to add a
     # `conventions:` exemption, which is the one mechanism that makes G2 vacuous.
     headings = heading_index(text)
+    notes = footnote_index(text)
     rows = []
     for atom in find_atoms(text, mask(text)):
-        verdict = classifier.classify(atom, chain_at(headings, atom.start))
+        verdict = classifier.classify_under(atom, chains_at(headings, notes, atom.start))
         rows.append((atom.line, atom.text, verdict.kind, verdict.rule or "-"))
     if not rows:
         print("no numeric atoms outside masked regions")

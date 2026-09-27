@@ -190,14 +190,13 @@ def response_letter(project: Project) -> str | None:
 
 
 def _counts(project: Project):
-    """What the title page declares to the editor: the main text, not the supplement."""
-    from manuscript_guard.gates.numbers import source_files
+    """What the title page declares to the editor: the main text, not the supplement.
 
-    text = "\n\n".join(
-        p.read_text(encoding="utf-8")
-        for p in source_files(project.path("manuscript"), main_text_only=True)
-    )
-    return measure(text)
+    The same text the journal gate measures, so the count declared is the count checked.
+    """
+    from manuscript_guard.gates.journal import main_text
+
+    return measure(main_text(project))
 
 
 def credit_statement(project: Project) -> str:

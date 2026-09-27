@@ -19,6 +19,7 @@ checked" this repository keeps finding.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -101,16 +102,17 @@ def test_every_abuse_test_passes() -> None:
     )
     assert finished.returncode == 0, finished.stdout[-3000:]
 
-    # A skipped abuse test exits 0 and guards nothing. On a machine without pandoc several
-    # of these skip, and "the exemptions are covered" would be true of a run that checked
-    # none of them - which is the exact shape this file exists to refuse.
     # A skipped abuse test exits 0 and guards nothing, so skips are read rather than
-    # ignored - but a missing external tool is an environment fact, not missing coverage.
-    # CI has no pandoc, and three of these need it; failing there would say the exemptions
-    # are unguarded when what is true is narrower and worth printing instead.
+    # ignored - but a missing external tool is an environment fact, not missing coverage,
+    # and on a machine without pandoc some of these skip. Where pandoc is required, as CI
+    # requires it, a pandoc skip is not an environment fact: it is what the requirement is
+    # there to catch. conftest.py already refuses such a run; this is the backstop, for a
+    # skip that names pandoc for some other reason.
     reasons = re.findall(r"^SKIPPED \[\d+\] ([^\n]+)$", finished.stdout, re.MULTILINE)
+    required = os.environ.get("MANUSCRIPT_GUARD_REQUIRE_PANDOC", "").strip()
     unexplained = [
-        line for line in reasons if not EXTERNAL.search(line)
+        line for line in reasons
+        if not EXTERNAL.search(line) or (required and "pandoc" in line.lower())
     ]
     assert not unexplained, (
         "abuse test(s) skipped for a reason inside our control, so the exemption they "

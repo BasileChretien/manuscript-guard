@@ -123,7 +123,9 @@ structure:
 #
 # Declarations the journal will not process a submission without. Each is found by matching a
 # regular expression against the manuscript, so the pattern should be loose enough to survive
-# ordinary rephrasing and tight enough not to match a passing mention.
+# ordinary rephrasing and tight enough not to match a passing mention. HTML comments and fenced
+# code blocks are left out of the search, since a statement there is not one the journal reads.
+# An indented code block is not left out, so a pattern anchored on a heading is the safer kind.
 #
 # Write the pattern to match a HEADING where the journal expects a section, and a PHRASE where
 # it expects a sentence. Prefer alternation over cleverness: `(?i)^#+\s*(data availability|

@@ -10,6 +10,8 @@ alongside the number rather than left implicit:
 * The abstract and the references are counted separately from the main text, because every
   journal treats them separately.
 * Headings count towards the main text, because they are printed.
+* The YAML front matter does not count, rendered keys included. The build strips it and
+  prints the title from paper.yaml, so none of it is in the document a limit is about.
 
 Where a journal counts differently, the profile can say so. Where it does not say, the
 count is reported with the rule, so a disagreement is visible rather than mysterious.
@@ -17,11 +19,19 @@ count is reported with the rule, so a disagreement is visible rather than myster
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import (
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    mask,
+    without_front_matter,
+)
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -196,9 +206,6 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
@@ -221,20 +228,21 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
     # a level-2 heading conjured out of the document's own delimiter. It is found in the
-    # text as written, as the build and `mask` find it, and fences and comments are looked
-    # for only after it. Blanked first, a comment on the YAML's first line read as a blank
-    # line after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # text as written, as the build and `mask` find it, and fences are looked for only
+    # after it. Blanked first, a comment on the YAML's first line read as a blank line
+    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
     # headed a body the build printed without it.
-    opening = FRONTMATTER.match(text)
-    rest = _HTML_COMMENT.sub(blank, blank_fences(text[opening.end() if opening else 0 :]))
-    return blank(opening) + rest if opening else rest
+    #
+    # Fences and comments are found in the text as written too. Blanking the comments
+    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
+    # earlier opener and blanked the headings between them.
+    head = front_matter_end(text)
+    fences = fenced_blocks(text)
+    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
+    return blank(text, [(0, head), *spans])
 
 
 @dataclass(frozen=True)
@@ -284,6 +292,125 @@ def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
             stack.pop()
         stack.append((found.level, found.title))
     return tuple(title for _level, title in stack)
+
+
+@dataclass(frozen=True)
+class Note:
+    """A footnote's definition: where its text runs in the file, and where it is
+    referenced, which is where pandoc prints it."""
+
+    start: int
+    end: int
+    references: tuple[int, ...]
+    # The heading chain of each reference, each once, found when the note is.
+    chains: tuple[tuple[str, ...], ...] = ()
+
+
+# A footnote's marker, as referenced or, at the start of a line and before a colon, defined.
+# Pandoc's labels hold no space and match case and all.
+_NOTE_MARKER = re.compile(r"\[\^(?P<label>[^\]\s]+)\]")
+_NOTE_DEFINITION = re.compile(r"[ ]{0,3}\[\^(?P<label>[^\]\s]+)\]:")
+# A line that may start a block of its own, which ends a definition's first paragraph here
+# whether or not it would for pandoc: a heading, a quotation, a listing, raw markup, a table,
+# a caption or definition, a rule or a list item, or another footnote.
+_MAY_START_BLOCK = re.compile(r"[ ]{0,3}(?:[#>`~<|:*+=_-]|\d+[.)]|\[\^)")
+_INDENTED = re.compile(r"(?: {4}|\t)")
+
+
+def footnote_index(text: str) -> list[Note]:
+    """Every footnote definition in `text` with the references that print it.
+
+    Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
+    section its definition line sits in only: a finding referenced from Results and defined
+    under Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is
+    also read where it is referenced (`chains_at`).
+
+    Its text is the definition's line, the lines under it up to a blank one or one that may
+    start a block of its own, and after blank lines each block indented four spaces or a
+    tab. That is pandoc's reading of a plain note, not of every note: review found a `[^n]:`
+    line pandoc reads as the paragraph above's, and paragraphs a list item or a comment
+    holds, taken for a note's text. Since a number is still judged where it stands, such a
+    misreading only adds a section it must pass in. A reference inside a definition is not
+    counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
+    """
+    shown = scannable(text)
+    found_headings = _headings_in(text)
+    headings = {found.start for found in found_headings}
+    lines: list[tuple[int, str]] = []
+    offset = 0
+    for line in shown.split("\n"):
+        lines.append((offset, line))
+        offset += len(line) + 1
+    spans: list[tuple[int, int, str]] = []
+    index = 0
+    while index < len(lines):
+        start, line = lines[index]
+        defined = _NOTE_DEFINITION.match(line)
+        if defined is None or start in headings:
+            index += 1
+            continue
+        last = index
+        index += 1
+        while index < len(lines):
+            at, line = lines[index]
+            if not line.strip() or at in headings or _MAY_START_BLOCK.match(line):
+                break
+            last, index = index, index + 1
+        while index < len(lines):
+            ahead = index
+            while ahead < len(lines) and not lines[ahead][1].strip():
+                ahead += 1
+            block = ahead
+            while block < len(lines) and lines[block][1].strip():
+                if not _INDENTED.match(lines[block][1]):
+                    break
+                block += 1
+            if block == ahead or (block < len(lines) and lines[block][1].strip()):
+                break
+            last, index = block - 1, block
+        end = lines[last][0] + len(lines[last][1])
+        spans.append((start, end, defined.group("label")))
+    references: dict[str, list[int]] = {}
+    defined = [Note(low, high, ()) for low, high, _label in spans]
+    for found in _NOTE_MARKER.finditer(shown):
+        if _containing(defined, found.start()) is None:
+            references.setdefault(found.group("label"), []).append(found.start())
+    return [
+        Note(
+            low,
+            high,
+            tuple(references[label]),
+            tuple(dict.fromkeys(chain_at(found_headings, at) for at in references[label])),
+        )
+        for low, high, label in spans
+        if label in references
+    ]
+
+
+def _containing(notes: list[Note], offset: int) -> Note | None:
+    """The note, of those in document order and apart, whose text holds `offset`."""
+    at = bisect.bisect_right(notes, offset, key=lambda note: note.start) - 1
+    return notes[at] if at >= 0 and notes[at].end > offset else None
+
+
+def chains_at(
+    index: list[_Found], notes: list[Note], offset: int
+) -> tuple[tuple[str, ...], ...]:
+    """Every heading chain a number at `offset` is judged under, and must pass under each:
+    where it stands, and, inside a footnote's definition, where each reference to it stands.
+
+    Where it stands is kept for a footnote's text too, although pandoc prints it at the
+    references. Judged at the references alone, a claim the gates took for a note's text and
+    pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
+    pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
+    of #77). Judged in both places, a number can only fail more than it did, never pass what
+    it failed before, however the note's end is misread. One chain per heading at most, so a
+    note referenced a thousand times costs no more than one referenced from every section."""
+    here = chain_at(index, offset)
+    note = _containing(notes, offset)
+    if note is None:
+        return (here,)
+    return tuple(dict.fromkeys([here, *note.chains]))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -462,12 +589,10 @@ def rules_opening_blocks(text: str) -> list[int]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
-    # of it because pandoc renders them, but a journal counts those against their own limits,
-    # not against the body.
-    opening = FRONTMATTER.match(text)
-    stripped = text[opening.end() :] if opening else text
-    stripped = blank_fences(stripped)
+    # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of
+    # it because pandoc renders them, but the build strips the block, and a journal counts a
+    # title and an abstract against limits of their own, not against the body.
+    stripped = blank_fences(without_front_matter(text))
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
@@ -495,7 +620,12 @@ def measure(text: str) -> Counts:
     whatever it resolves to. That is close enough for a limit, and it means the count does
     not change when the analysis is re-run.
     """
-    sections = split_sections(text)
+    # The front matter goes before the split. `split_sections` trims the text before the
+    # first heading, which takes the newline after the closing `---` with it, and without
+    # that newline `count_words` no longer recognised the block: every word of the YAML,
+    # keys included, counted as main text.
+    printed = without_front_matter(text)
+    sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title
     # alone, `## Background` under `# Abstract` was main text, so a structured abstract
@@ -519,6 +649,6 @@ def measure(text: str) -> Counts:
         main_text_words=main,
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
-        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", text)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", text)),
+        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
     )

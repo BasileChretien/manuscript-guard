@@ -23,20 +23,21 @@ It is a triage tool for existing work. For a paper being written, bind the numbe
 
 from __future__ import annotations
 
+import bisect
 import codecs
 import csv
 import io
 import json
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import heading_index, scannable, strip_attributes
-from manuscript_guard.text.tokens import find_atoms
+from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
@@ -549,6 +550,79 @@ def read_figure(path: Path) -> str | None:
     return _extract_text(path)
 
 
+#: A numbered citation marker ending an atom, as the atom has it: its closing `]` trimmed.
+_MARKER_AT_END = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?$")
+
+
+#: The runs the marker rule took whole before its prefix was narrowed: letters, digits and
+#: `.%)`, then the marker, as the atom has it.
+_ONCE_TAKEN = re.compile(r"[\w.%)]*\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]?")
+#: The marker whole, from its `[` in the source: the rule required its `]`, and the atom may
+#: stop before it, at the first number of a spaced list, `[1, 2]`.
+_WHOLE_MARKER = re.compile(r"\[\s*\d{1,3}(?:\s*[,;]\s*\d{1,3}|\s*[-–—]\s*\d{1,3})*\s*\]")
+
+
+def _apart(atom: Atom) -> list[tuple[Atom, bool]]:
+    """An atom with a citation marker glued to a number, as the number and the marker, each
+    with whether it is the number read apart.
+
+    An atom runs to the next space, so `(95% CI 1.20, 9.99)[12]` arrives as `9.99)[12`, and
+    the marker rule, spanning the word before a marker, filed the bound with the citation: it
+    was never compared with the outputs. Read apart, the value is audited like any other and
+    the marker is still a citation. A word before a marker has no digit, and stays whole.
+
+    Only a run the rule took whole is read apart. That rule hid every number in it, so
+    reading one apart can only add to what is compared. A run it did not take was listed
+    whole, and splitting one handed its bracket to the marker rule: in `OR=3[1,20-9,99]` or
+    `(Q1–Q3)[55–72]` an interval's bounds were filed as a citation.
+    """
+    marker = _MARKER_AT_END.search(atom.text)
+    value = atom.text[: marker.start()] if marker else ""
+    if marker is None or not DIGIT.search(value) or not _ONCE_TAKEN.fullmatch(atom.text):
+        return [(atom, False)]
+    if not _WHOLE_MARKER.match(atom.source, atom.start + marker.start()):
+        return [(atom, False)]
+    pieces: list[tuple[Atom, bool]] = []
+    for raw, offset in ((value, 0), (marker.group(0), marker.start())):
+        text, start = trim(raw, atom.start + offset)
+        if text and DIGIT.search(text):
+            end, col = start + len(text), atom.col + start - atom.start
+            pieces.append((replace(atom, text=text, start=start, end=end, col=col), offset == 0))
+    return pieces
+
+
+#: A year on its own, which a number read apart from a marker may be: `(2019)[4]`.
+_YEAR = re.compile(r"(?:19|20)\d{2}[a-z]?")
+
+
+#: A bracketed range or pair of whole numbers after a value, `64 [55-72]` or `7 [4, 12]`.
+_AFTER_A_VALUE = re.compile(
+    r"(?<![\w.,\[])(?P<value>\d+(?:\.\d+)?)%?\s*"
+    r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\]"
+)
+
+
+def _within(spans: list[tuple[int, int]], starts: list[int], atom: Atom) -> bool:
+    """Whether `atom` lies inside one of `spans`, which are sorted and do not overlap."""
+    index = bisect.bisect_right(starts, atom.start) - 1
+    return index >= 0 and atom.end <= spans[index][1]
+
+
+def _intervals(text: str) -> list[tuple[int, int]]:
+    """Where a bracketed run of whole numbers is an interval rather than a citation marker.
+
+    Both are written `[55-72]`, and the marker rule took every one for a citation, so the
+    bounds of a median [IQR] or a range were never audited. An interval encloses the value
+    written before it, `64 [55-72]`; a citation range does not, `12% [4-6]`. A citation that
+    happens to enclose a number before it, `found 2 [1,3]`, is read as an interval and listed.
+    """
+    return [
+        (match.end("value"), match.end())
+        for match in _AFTER_A_VALUE.finditer(text)
+        if int(match["low"]) <= float(match["value"]) <= int(match["high"])
+    ]
+
+
 def audit(
     papers: list[Path],
     backing: list[Path],
@@ -596,12 +670,33 @@ def audit(
         sources.append((path, text, False))
 
     report.papers = tuple(path for path, _text, _shape in sources)
+    rendered_only = {
+        rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
+    }
+    # The same rules less those, for a number read apart from its marker: not part of a
+    # citation, bar a year, but perhaps a page (`(Smith 2019, p. 12)[5]`) or a version.
+    source_rules = replace(
+        classifier,
+        conventions=tuple(r for r in classifier.conventions if not r.audit_only),
+        structural=tuple(r for r in classifier.structural if not r.audit_only),
+        _memo={},
+    )
 
     for path, text, by_shape in sources:
-        for atom in find_atoms(text, mask(text)):
-            if classifier.classify(atom).kind != UNCLASSIFIED:
-                report.classified += 1
-                continue
+        intervals = _intervals(text)
+        starts = [start for start, _end in intervals]
+        pieces = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
+        for atom, read_apart in pieces:
+            if not _within(intervals, starts, atom):
+                verdict = classifier.classify(atom)
+                # A number read apart from its marker may be a label, `Table 2[3]`, but not
+                # part of a citation, bar a year: the author-year rule took the `9.99` of
+                # `(2019; 95% CI 1.20, 9.99)[12]` for one.
+                if read_apart and verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text):
+                    verdict = source_rules.classify(atom)
+                if verdict.kind != UNCLASSIFIED:
+                    report.classified += 1
+                    continue
             candidate = Candidate(
                 text=atom.text,
                 normalised=normalise_number(atom.text),

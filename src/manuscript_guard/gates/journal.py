@@ -21,7 +21,8 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
-from manuscript_guard.text.sections import measure, split_sections
+from manuscript_guard.text.masking import without_front_matter
+from manuscript_guard.text.sections import measure, scannable, split_sections
 
 GATE = "G4"
 PROFILE_DIR = SHIPPED_JOURNALS
@@ -47,6 +48,20 @@ def available_profiles(project: Project) -> list[str]:
         if directory.exists():
             found.update(p.stem for p in directory.glob("*.yaml"))
     return sorted(found - {TEMPLATE})
+
+
+def main_text(project: Project) -> str:
+    """The main text as G4 reads it: every main-text source, less its front matter.
+
+    One string, so a section can run on from one file into the next. Only the first file's
+    front matter is at the top of it, and a later file's block was read as prose: its words
+    counted, and its closing `---`, directly under a YAML line, underlined that line into a
+    heading. `title: Methods of the online appendix` satisfied a required Methods section.
+    The build strips every file's block, so the gate reads none of them, and a `# Funding`
+    comment in the YAML no longer stands in for a funding statement either.
+    """
+    sources = source_files(project.path("manuscript"), main_text_only=True)
+    return "\n\n".join(without_front_matter(p.read_text(encoding="utf-8")) for p in sources)
 
 
 def check_journal(project: Project) -> Report:
@@ -90,8 +105,7 @@ def check_journal(project: Project) -> Report:
     # are about the paper; a supplement counted against them turned a compliant submission
     # into an over-length one, and the author's recourse was to cut material the journal was
     # never going to count in the first place.
-    sources = source_files(project.path("manuscript"), main_text_only=True)
-    text = "\n\n".join(p.read_text(encoding="utf-8") for p in sources)
+    text = main_text(project)
     counts = measure(text)
     report = report.merge(_check_limits(document, counts, path))
     report = report.merge(_check_structure(document, text, path))
@@ -209,7 +223,9 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
                 )
             )
         else:
-            body = abstract.enclosed.lower()
+            # Comments and listings blanked, as for the required statements below: a
+            # heading in `<!-- Conclusions: to write -->` is one the abstract does not print.
+            body = scannable(abstract.enclosed).lower()
             missing = [h for h in wanted if h.lower() not in body]
             if missing:
                 report = report.with_findings(
@@ -225,9 +241,14 @@ def _check_structure(document: dict, text: str, path: Path) -> Report:
 
 
 def _check_statements(document: dict, text: str, path: Path) -> Report:
+    # Read where a statement can be: HTML comments and fenced code blanked, as the heading
+    # scan blanks them. `# Funding` is a heading in Markdown and a comment in R and Python,
+    # so inside `<!-- -->` it met the funding statement and printed nothing, and inside a
+    # listing it printed as a line of code. A statement is prose an editor reads.
+    printed = scannable(text)
     report = Report()
     for statement in document.get("required_statements", []):
-        if not re.search(statement["pattern"], text, re.IGNORECASE | re.MULTILINE):
+        if not re.search(statement["pattern"], printed, re.IGNORECASE | re.MULTILINE):
             report = report.with_findings(
                 Finding(
                     gate=GATE,

@@ -1322,7 +1322,8 @@ so a finding referenced from Results and defined under Methods, `p < 0.001`, pas
 alpha chosen in advance, while the document printed it as a footnote to a Results sentence
 (found reviewing #65). `sections.footnote_index` finds each definition's text and its
 references, and a number in it must pass under the section where it stands and under the
-section of every reference (`chains_at`, `Classifier.classify_under`): a note referenced
+section of every reference in the same file (`chains_at`, `Classifier.classify_under`; see
+Known gaps for another file): a note referenced
 from Results fails there, and one referenced from Methods and from Results must pass in
 both. `explain`, `bind` and the annotated copy read it the same way. A number is judged in
 no fewer places than before, so nothing that failed passes. The first version judged it at
@@ -1334,8 +1335,9 @@ claim pass at a Methods reference. Judged where it stands as well, each fails as
 The note's text is the definition's line, the lines under it up to a blank one or one that
 may start a block, then each block after blank lines indented four spaces or a tab; where
 that misreads pandoc, it only adds a section to pass in. Each note's reference chains are
-found once, so a note referenced a thousand times costs no more than one referenced from
-every section.
+found once, one in Methods and one elsewhere at most, since a verdict reads nothing else
+of a section: judged under every section referencing it, a note of a thousand numbers
+referenced from a thousand sections took two minutes (the fix-only review of #77).
 
 **And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
 RECORD-PE is for routinely collected health data and the example is a spontaneous-report
@@ -3302,6 +3304,19 @@ Closed since, and why each mattered:
   note defined under Methods and referenced from Results, still passes as the alpha, as on
   `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
   section a number must pass in.
+- **A footnote defined in one file and referenced from another is read where it stands.**
+  Notes are indexed a file at a time, and the build joins the files, so a Results sentence
+  in main.md referencing `[^n]`, defined under a Methods heading in `appendix.md`, prints
+  the note's `p < 0.001` under Results while G2 reads it under Methods, as the alpha, as on
+  `main` (the fix-only review of #77). Indexing notes over the joined text would close it.
+- **A note's text the gates misread is judged where it stands, and can fail there.** A
+  number must pass where it stands as well as at each reference, which is what keeps a
+  misread note from passing a Results claim; the other side is an alpha in Methods failing
+  when the gates take it for the text of a note referenced from Results, which pandoc prints
+  where it stands. The fix-only review of #77 found five such shapes, each contrived: an
+  alpha after a note's definition in a list item, after a comment, after a line of no-break
+  spaces, on a lazy `[^n]:` line under a paragraph, and in a note nested in another. Each
+  is reported unbound, not passed.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and

@@ -23,6 +23,7 @@ import bisect
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.classify import is_methods
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import (
     blank,
@@ -308,7 +309,8 @@ class Note:
     start: int
     end: int
     references: tuple[int, ...]
-    # The heading chain of each reference, each once, found when the note is.
+    # A heading chain of the references, found when the note is: the first in Methods and
+    # the first elsewhere, since a verdict turns on its section only through `is_methods`.
     chains: tuple[tuple[str, ...], ...] = ()
 
 
@@ -386,11 +388,24 @@ def footnote_index(text: str) -> list[Note]:
             low,
             high,
             tuple(references[label]),
-            tuple(dict.fromkeys(chain_at(found_headings, at) for at in references[label])),
+            _one_of_each_kind(chain_at(found_headings, at) for at in references[label]),
         )
         for low, high, label in spans
         if label in references
     ]
+
+
+def _one_of_each_kind(chains) -> tuple[tuple[str, ...], ...]:
+    """The first of `chains` in Methods and the first elsewhere. A number's verdict turns on
+    its section only through `classify.is_methods`, so one chain of each kind is judged as
+    all of them would be; a note referenced from a thousand sections, each judged, made a
+    note of a thousand numbers take minutes (the fix-only review of #77)."""
+    kinds: dict[bool, tuple[str, ...]] = {}
+    for chain in chains:
+        kinds.setdefault(is_methods(chain), chain)
+        if len(kinds) == 2:
+            break
+    return tuple(kinds.values())
 
 
 def _containing(notes: list[Note], offset: int) -> Note | None:
@@ -410,13 +425,16 @@ def chains_at(
     pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
     pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
     of #77). Judged in both places, a number can only fail more than it did, never pass what
-    it failed before, however the note's end is misread. One chain per heading at most, so a
-    note referenced a thousand times costs no more than one referenced from every section."""
+    it failed before, however the note's end is misread. A reference's chain is added only
+    when it is of the other kind than where the number stands, Methods or not, since that
+    is all a verdict reads of a section: two chains at most, however often the note is
+    referenced and from however many sections."""
     here = chain_at(index, offset)
     note = _containing(notes, offset)
     if note is None:
         return (here,)
-    return tuple(dict.fromkeys([here, *note.chains]))
+    kind = is_methods(here)
+    return (here, *(chain for chain in note.chains if is_methods(chain) != kind))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:

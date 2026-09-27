@@ -714,3 +714,37 @@ def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
     small = max(measure(500), 1e-4)
     large = measure(2000)
     assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_a_note_referenced_from_many_sections_is_judged_in_linear_time() -> None:
+    """The fix-only review of #77: deduplicated by chain, a note referenced from a thousand
+    sections, holding a thousand numbers, was judged a million times, and took two minutes
+    where main took two seconds. A number's verdict turns on its section only through
+    whether it is Methods, so each note keeps a chain of each kind at most."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+
+    def measure(count: int) -> float:
+        text = (
+            "".join(f"# Results {i}\n\nText.[^n]\n\n" for i in range(count))
+            + "# Methods\n\nText.[^n]\n\n[^n]: "
+            + " ".join(f"{i}.5" for i in range(count))
+            + "\n"
+        )
+        notes, headings = footnote_index(text), heading_index(text)
+        scan = classifier.scan(text)
+        atoms = [
+            atom for atom in find_atoms(text, mask(text)) if notes[0].start <= atom.start
+        ]
+        started = time.perf_counter()
+        for atom in atoms:
+            classifier.classify_under(atom, chains_at(headings, notes, atom.start), scan)
+        return time.perf_counter() - started
+
+    small = max(measure(150), 1e-4)
+    large = measure(600)
+    assert large / small < 10, f"4x the input took {large / small:.1f}x the time; not linear"

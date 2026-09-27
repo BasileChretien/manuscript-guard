@@ -36,7 +36,7 @@ from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
-from manuscript_guard.zotero.citations import BRACKETED, NARRATIVE
+from manuscript_guard.zotero.citations import NARRATIVE, bracketed
 
 GATE = "G6"
 DATA = Path(__file__).parent.parent / "data" / "ai_writing.yaml"
@@ -154,7 +154,7 @@ def _phrases(rules: Rules, path: Path, prose: str, totals: dict) -> Report:
 def _vague(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> Report:
     """Unsupported appeals to authority, judged against where the citations actually are."""
     report = Report()
-    cited = [m.start() for m in BRACKETED.finditer(text)]
+    cited = [m.start() for m in bracketed(text)]
     cited += [m.start() for m in NARRATIVE.finditer(text)]
 
     for rule in rules.vague:

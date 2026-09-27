@@ -264,3 +264,51 @@ def test_a_blank_line_ends_a_citation_group() -> None:
     text = "see [the note\n\nAs @jonesKey2021 showed [@smithKey2020].\n"
     uses = {u.citekey: u.narrative for u in find_citations(text, Path("m.md"))}
     assert uses == {"jonesKey2021": True, "smithKey2020": False}
+
+
+def run_of_brackets(count: int) -> str:
+    """Opening brackets around a number, none holding an `@`."""
+    return "[" * count + "9.99" + "]" * count + "\n"
+
+
+def test_a_run_of_brackets_is_read_in_linear_time(assert_linear) -> None:
+    """`BRACKETED.finditer` opened a group at every `[` and read to the end of the line before
+    it found no `@` there: 5,000 brackets took three seconds a call, and `check` makes two on
+    each file, one in G7 and one in the writing gate."""
+
+    def cite(text: str) -> None:
+        find_citations(text, Path("m.md"))
+
+    assert_linear(run_of_brackets, cite, 250, "citations in a run of brackets")
+
+
+def citing_lines(count: int) -> str:
+    """`count` lines, each with two narrative citations and a group of two."""
+    return "".join(f"As @n{i} found [@b{i}; @c{i}], and so did @m{i}.\n" for i in range(count))
+
+
+def test_many_citations_are_found_in_linear_time(assert_linear) -> None:
+    """Each citation's line was counted from the top of the file, and each narrative one was
+    looked for among every group found before it."""
+
+    def cite(text: str) -> None:
+        find_citations(text, Path("m.md"))
+
+    assert_linear(citing_lines, cite, 100, "many citations")
+
+
+def test_a_group_is_read_as_the_pattern_reads_it() -> None:
+    """What counts as a citation group is `BRACKETED`, as pandoc's syntax is written into it.
+    Read in one pass, every text here gives the groups the pattern's own search gives, at the
+    same places: brackets inside a group, `@` outside one, wrapped and blank lines, carriage
+    returns, and groups left open."""
+    import random
+
+    from manuscript_guard.zotero.citations import BRACKETED, bracketed
+
+    rng = random.Random(20260927)
+    pieces = ["[", "]", "@", "@k", "a", " ", "\t", "\n", "\n\n", "\n \t\n", "\r\n", "\\"]
+    for _ in range(20000):
+        text = "".join(rng.choice(pieces) for _ in range(rng.randint(0, 24)))
+        expected = [(m.span(), m.span("body")) for m in BRACKETED.finditer(text)]
+        assert [(m.span(), m.span("body")) for m in bracketed(text)] == expected, repr(text)

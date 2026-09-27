@@ -4396,11 +4396,8 @@ Closed since, and why each mattered:
   project, in CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on
   Windows, none on Linux) and every other process. A wall clock backs it up at 60 s, for a
   `check` that waits instead of working. At the sizes these inputs are written at, the
-  heaviest linear ones already cost ten times a plain `check`, so a quadratic that adds a
-  few seconds passes among them. One does, on main: `BRACKETED`, the citation pattern,
-  reads to the end of the line from every `[` (5,000 of them cost three seconds a call,
-  three calls a `check`). Seeing it is `check_linear`'s job, one scan at a time, and it is
-  left to a change of its own.
+  heaviest already cost ten times a plain `check`, so a quadratic that adds a few seconds
+  passes among them. Seeing one is `check_linear`'s job, one scan at a time.
 
 ## Still open
 

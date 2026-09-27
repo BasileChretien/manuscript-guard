@@ -1272,11 +1272,14 @@ def plan_import(
         elif (
             now is None
             and name in taken_off
+            and not expected[_squashed(carried_by[name])]
             and (name in beside_changed or (stale and _printed_otherwise(name, reference, missing)))
         ):
-            # Its identifier came back on a heading beside it and was taken off as one that
-            # slid there, but that heading is not the one the document was sent with, so a
-            # heading joined into the paragraph could not be told from one it slid onto.
+            # Its identifier came back on a heading beside it and was taken off by that
+            # heading's style, and that heading is not the one the document was sent with, so
+            # a heading joined into the paragraph could not be told from one it slid onto.
+            # Not one taken off by its exact text: that heading reads as it was sent, no join
+            # can be in it, and the paragraph is deleted or moved as on main.
             # Reported deleted, beside Word's heading listed as changed, it read as advice to
             # delete the paragraph and retype Word's copy. Kept on the heading instead, it
             # gave the paragraph text again, and a paragraph it was pasted onto merged

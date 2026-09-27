@@ -512,6 +512,64 @@ def test_a_built_document_records_what_each_identifier_names(project: Path) -> N
     assert len(values) > 1 and all(len(value) < 255 for value in values)
 
 
+def test_a_record_holds_the_blocks_beside_each_paragraph() -> None:
+    """The third hash holds the blocks without an identifier around a paragraph, up to the
+    paragraphs on either side: a heading written straight above it, which shares its block,
+    one past a comment Word does not show, and one opening the next file of the document. A
+    change to any of them shows; a paragraph reworded beside it does not, as no heading can
+    have stood there."""
+    from manuscript_guard.roundtrip import _beside_changed, _beside_of, _recorded_as, _walk
+
+    def record(main: str, results: str) -> dict[str, str]:
+        sources = [(Path("main.md"), "main.md", main), (Path("r.md"), "results.md", results)]
+        around = _beside_of(sources)
+        return {
+            name: _recorded_as(text, before, around[name])
+            for _path, relative, raw in sources
+            for name, text, _start, before in _walk(raw, relative)
+        }
+
+    main = "# Intro\n\nAlpha.\n\n## Methods\nPapa.\n\n<!-- note -->\n\n## Data\n\nRomeo.\n"
+    results = "# Results\n\nBravo.\n"
+    then = record(main, results)
+    named = {text: name for name, text, _start, _before in _walk(main, "main.md")}
+    papa, romeo = named["Papa."], named["Romeo."]
+    assert all(value.count(".") == 2 for value in then.values())
+    for changed, name in (
+        ((main.replace("## Methods\n", ""), results), papa),
+        ((main.replace("## Methods", "## Study design"), results), papa),
+        ((main.replace("## Data", "## Sources"), results), papa),
+        ((main, results.replace("# Results\n\n", "")), romeo),
+    ):
+        now = record(*changed)
+        assert now[name].partition(".")[0] == then[name].partition(".")[0], changed
+        assert name in _beside_changed(then, now, frozenset({name})), changed
+    for changed in (
+        (main.replace("Alpha.", "Alpha, reworded."), results),
+        (main.replace("Romeo.", "Romeo, reworded."), results),
+    ):
+        assert not _beside_changed(then, record(*changed), frozenset({papa})), changed
+
+
+def test_a_record_without_the_blocks_beside_is_still_read(tmp_path: Path) -> None:
+    """Documents built before the record held the blocks beside each paragraph are read as
+    they were: trusted by text and block before, and nothing is said of what is beside."""
+    from manuscript_guard.roundtrip import _beside_changed, _trusted, paragraphs_of
+
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    stamp_into(document, "a" * 64, {"mg-p-main-2": "0123abcd.456789"})
+    recorded = paragraphs_of(document)
+    assert recorded == {"mg-p-main-2": "0123abcd.456789"}
+    now = {"mg-p-main-2": "0123abcd.456789.fedcba"}
+    trusted = _trusted(recorded, now)
+    assert trusted == {"mg-p-main-2"}
+    assert not _beside_changed(recorded, now, trusted)
+
+
 def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
     from manuscript_guard.roundtrip import paragraphs_of
 

@@ -86,6 +86,18 @@ def is_supplementary(manuscript_dir: Path, path: Path) -> bool:
     return len(parts) > 1 and parts[0] == SUPPLEMENTARY
 
 
+def printed_order(paths: list[Path], *, supplementary: bool) -> list[Path]:
+    """The files of one document in the order the build prints them: the supplement's by
+    file name, the main text's with `main.md` first and the rest by file name, whatever
+    their paths sort as. Shared with the paragraph record, which reads what stands beside a
+    paragraph across the files: read in path order, `1_methods.md` came before `main.md`,
+    and the heading opening it was beside no paragraph it stands beside in Word."""
+    if supplementary:
+        return sorted(paths, key=lambda path: path.name)
+    main = [path for path in paths if path.name == "main.md"]
+    return main + sorted((path for path in paths if path.name != "main.md"), key=lambda p: p.name)
+
+
 def check_numbers(
     project: Project,
     namespace: dict[str, Value],

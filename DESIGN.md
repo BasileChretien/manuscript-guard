@@ -1587,6 +1587,27 @@ identifier named the new one, read the same, and a co-author's ethics approval w
 "Consent to participate". A paragraph whose text is found once in its file, then and now,
 needs only its text to match; one that repeats needs the block before it to match too.
 
+The record also hashes the blocks without an identifier around each paragraph, up to the
+paragraphs on either side (`roundtrip._beside_of`, `Numbering.beside_changed`). That covers
+headings, captions, tables, comments and link definitions, and a heading written straight
+above the paragraph with no blank line, which shares its block and sits outside the text
+hash. It reaches across files, in the order the build prints them (`printed_order`), since
+the main text's files are one document: the heading opening the next file stands directly
+under the last paragraph of this one in Word.
+
+A heading run into a paragraph in Word is recognised by the heading beside the paragraph
+having vanished while its text turned up in it, and the heading looked at is the one in the
+source now. When one of those blocks changed since the build, that is not the heading the
+co-author ran in: one renamed or removed, one past a comment Word does not show, a table's
+caption, which pandoc prints above the table. The run-in then merged, "MethodsPapa..." under
+a heading the file no longer has. So a rewording is not merged into a paragraph with a block
+without an identifier around it changed since the build. A paragraph reworded beside it
+counts for nothing, as no heading can have stood where a paragraph stands. Nor, in a
+document built from other inputs than are on disk, is a rewording merged into a paragraph
+beside a heading or caption missing from the returned document. Its source can be unchanged
+and its text not, with a value or a citation in it: "Results in 4000 reports", run in, was
+typed into prose where a binding now prints 4100.
+
 `import` compares, moves and merges only the paragraphs whose identifier passes that test,
 and names the rest as not compared, whether they came back or not; `respond --open` keeps a
 comment's anchor only on such a paragraph. It does not matter why an identifier came to name
@@ -3821,6 +3842,28 @@ Closed since, and why each mattered:
   deleting the second from the `.md` as told, without carrying the first's Word text over
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
+- **A document built before the record held the blocks around each paragraph is read as
+  it was.** Its record hashes only each paragraph's text and the block before it. So a
+  heading beside a paragraph removed from the `.md` since the build goes unseen, and a
+  heading the co-author ran into the paragraph merges, as before. That covers a heading in
+  its own block above or below the paragraph that keeps its place, one written straight
+  above it, one past a comment, a caption, and the heading opening the next file. A renamed
+  one is still caught when the document is imported with `--force`, as a heading missing
+  from the returned document.
+- **An edit beside a changed block is refused in a forced import.** A rewording is named
+  and left to carry over by hand, though most such edits would have merged cleanly, in two
+  cases:
+  - the run of blocks without an identifier around the paragraph, up to the paragraphs on
+    either side, changed in the `.md` since the build. That includes a paragraph added or
+    removed at the far end of the run, which joins it to the next run or splits it, while
+    the block beside the paragraph stays as it was;
+  - in a document built from other inputs, a block without an identifier beside it, other
+    than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
+    a caption, a list item, a quotation, an entry of the reference list.
+- **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
+  looks only at the block directly beside a paragraph as the source has it. A co-author who
+  deletes `### Design` and runs `## Methods`, above it, into the paragraph writes
+  "MethodsPapa..." even in an import of an unchanged document.
 - **Two paragraphs that read the same after blocks that read the same are told apart by
   position alone.** The record hashes each paragraph's text and the block before it, so
   "None." under a "# Funding" heading repeated in two places, with a copy of both added

@@ -90,6 +90,50 @@ reads:
       0.2 to 345 ms against 2 s across the thirty, with four other suites running. The
       slowest, "A-" repeated for the audit, has 5.8x; the rest 16x or more.
 
+  - where: tests/test_corruption.py::test_opener_lines_are_read_in_linear_time
+    kind: budget
+    budget: 2
+    why: >-
+      Five fixed lines of a few thousand characters, each a shape that a pattern for rules
+      opening blocks could read more ways than one: Roman numerals that were single letters
+      too, a comment's pattern that ran across later comments, a TeX argument that was also
+      a footnote marker, and a command's name that could stop at any letter. Each took
+      minutes, not a slide from linear.
+    headroom: >-
+      1.3 to 142 ms against 2 s each, with seven other suites running. The slowest, comments
+      run together, has 14x; the rest 29x or more.
+
+  - where: tests/test_corruption.py::test_placeholders_in_a_listing_are_matched_in_linear_time
+    kind: budget
+    budget: 20
+    why: >-
+      One fixed listing of placeholders after an 80-line comment, read through pandoc. A
+      pattern joined by `.*?` and tried against every block pandoc made ran past two minutes
+      on it. A ratio would run pandoc on growing inputs for what the budget already fails
+      six times over.
+    headroom: >-
+      0.8 to 1.2 s against 20 s, pandoc included, with seven other suites running: 17x.
+
+  - where: tests/test_robustness.py::test_one_long_line_does_not_stall_the_heading_scan
+    kind: budget
+    budget: 2.0
+    why: >-
+      Three fixed heading-shaped lines. Two patterns backtracked on one line: a heading of
+      2,000 spaces took 67 s, and 1,000 colons 20 s. A stall many times the budget, not a
+      slide from linear.
+    headroom: >-
+      0.2 to 33 ms against 2 s, with seven other suites running: 60x or more.
+
+  - where: tests/test_robustness.py::test_a_long_heading_title_does_not_stall_the_methods_check
+    kind: budget
+    budget: 0.5
+    why: >-
+      Two fixed heading titles ending in a long run of spaces or of ` *_`. The patterns that
+      trimmed a title's emphasis and attribute block backtracked from every character of the
+      run: 36 s of G2 for five numbers under one such heading.
+    headroom: >-
+      0.2 ms against 0.5 s, with seven other suites running: over 2,000x.
+
   - where: tests/test_corruption.py::test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check
     kind: budget
     budget: 5

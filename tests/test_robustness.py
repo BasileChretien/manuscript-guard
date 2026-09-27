@@ -120,20 +120,15 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear)
         )
 
 
-def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
+def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear) -> None:
     """Code spans were found with a pattern that retried from every position inside a run
     of backticks: one line of 20,000 took seven seconds to read for comments."""
     from manuscript_guard.text.fences import unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = "# Results\n\nSee " + "`" * count + " there.\n"
-        started = time.perf_counter()
-        unclear_fence_lines(text)
-        return time.perf_counter() - started
+    def backticks(count: int) -> str:
+        return "# Results\n\nSee " + "`" * count + " there.\n"
 
-    small = max(measure(5000), 1e-4)
-    large = measure(20000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(backticks, unclear_fence_lines, 5000, "a long run of backticks")
 
 
 @pytest.mark.parametrize(
@@ -145,43 +140,36 @@ def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
     ],
     ids=["tags", "environments", "distinct names"],
 )
-def test_marks_inside_a_raw_block_are_read_in_linear_time(block) -> None:
+def test_marks_inside_a_raw_block_are_read_in_linear_time(block, assert_linear) -> None:
     """Inside a raw block, its closer and another of its name were each searched for from
     the last mark to the end of the line, mark by mark: a line of 300,000 characters took
     eighteen seconds. Every mark on a line is now found in one pass."""
     from manuscript_guard.text.fences import unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
-        started = time.perf_counter()
-        unclear_fence_lines(text)
-        return time.perf_counter() - started
+    def raw(count: int) -> str:
+        return "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(raw, unclear_fence_lines, 4000, "marks inside a raw block")
 
 
-def test_narrowing_openers_are_read_in_linear_time() -> None:
+def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
     """A run of openers each one backtick narrower than the last, with no closer: skipping
     only openers at least as wide as one known unclosed, each read to the end of the text,
     and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
     read from the end once."""
     from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 
-    def measure(lines: int) -> float:
-        text = "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
-        started = time.perf_counter()
+    def openers_over(lines: int) -> str:
+        return "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+
+    def read(text: str) -> None:
         fenced_spans(text)
         unclear_fence_lines(text)
-        return time.perf_counter() - started
 
-    small = max(measure(10000), 1e-4)
-    large = measure(40000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
 
 
-def test_unclosed_attributes_are_read_in_linear_time() -> None:
+def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
     backslash before each newline read as an escape, took every opener to the end of the
     text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
@@ -189,21 +177,19 @@ def test_unclosed_attributes_are_read_in_linear_time() -> None:
     more than double the time, and the refusal is read in the same pass."""
     from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = (
+    def attributes(count: int) -> str:
+        return (
             "```{k=a\\\n" * count
             + "```{.r\n"
             + ".x k=v\n" * count
             + "".join(f"```{{k='{i}\n" for i in range(count))
         )
-        started = time.perf_counter()
+
+    def read(text: str) -> None:
         fenced_spans(text)
         unclear_fence_lines(text)
-        return time.perf_counter() - started
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(attributes, read, 4000, "unclosed attributes")
 
 
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
@@ -438,21 +424,16 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         "one line of tags",
     ],
 )
-def test_the_heading_scan_is_linear(line: str) -> None:
+def test_the_heading_scan_is_linear(line: str, assert_linear) -> None:
     """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s
     for 20,000 such lines, and the heading scan runs once per file in G2, `explain` and the
     classifier's heading rules alike."""
     from manuscript_guard.text.blocks import find_headings
 
-    def measure(count: int) -> float:
-        text = line * count
-        started = time.perf_counter()
-        find_headings(text)
-        return time.perf_counter() - started
+    def lines(count: int) -> str:
+        return line * count
 
-    small = max(measure(2000), 1e-3)
-    large = measure(8000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(lines, find_headings, 2000, "the heading scan")
 
 
 @pytest.mark.parametrize(
@@ -472,23 +453,22 @@ def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
-def test_the_section_chain_is_looked_up_not_rebuilt() -> None:
+def test_the_section_chain_is_looked_up_not_rebuilt(assert_linear) -> None:
     """`chain_at` walked every heading before a number, for every number: 4,000 headings and
-    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry."""
+    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry.
+    The index is built off the clock; only the lookups are timed."""
     from manuscript_guard.text.sections import chain_at, heading_index
 
-    def measure(count: int) -> float:
+    def parts(count: int) -> tuple[list, range]:
         text = "".join(f"## Part {i}\n\nValues 1, 2 and 3.\n\n" for i in range(count))
-        index = heading_index(text)
-        step = max(1, len(text) // (3 * count))
-        started = time.perf_counter()
-        for offset in range(0, len(text), step):
-            chain_at(index, offset)
-        return time.perf_counter() - started
+        return heading_index(text), range(0, len(text), max(1, len(text) // (3 * count)))
 
-    small = max(measure(250), 1e-3)
-    large = measure(2000)
-    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+    def look_up(given: tuple[list, range]) -> None:
+        index, offsets = given
+        for offset in offsets:
+            chain_at(index, offset)
+
+    assert_linear(parts, look_up, 250, "the section chain at every offset")
 
 
 @pytest.mark.parametrize(

@@ -9493,7 +9493,7 @@ def _styled_docx(target: Path, styles: str, paragraphs: list[tuple[str, str, str
     return target
 
 
-def _style(style_id: str, name: str, based: str = "", outline: str = "") -> str:
+def _paragraph_style(style_id: str, name: str, based: str = "", outline: str = "") -> str:
     parts = f'<w:name w:val="{name}"/>'
     parts += f'<w:basedOn w:val="{based}"/>' if based else ""
     parts += f'<w:pPr><w:outlineLvl w:val="{outline}"/></w:pPr>' if outline else ""
@@ -9509,14 +9509,14 @@ def test_a_paragraphs_role_is_read_from_its_style_name_not_its_id(tmp_path: Path
 
     styles = "".join(
         [
-            _style("a", "Normal"),
-            _style("1", "heading 1", "a", "0"),
-            _style("custom", "My Section", "1"),
-            _style("af0", "TOC Heading", "1", "9"),
-            _style("ac", "caption", "a"),
-            _style("TableCaption", "Table Caption", "ac"),
-            _style("a9", "Bibliography", "a"),
-            _style("a0", "Body Text", "a"),
+            _paragraph_style("a", "Normal"),
+            _paragraph_style("1", "heading 1", "a", "0"),
+            _paragraph_style("custom", "My Section", "1"),
+            _paragraph_style("af0", "TOC Heading", "1", "9"),
+            _paragraph_style("ac", "caption", "a"),
+            _paragraph_style("TableCaption", "Table Caption", "ac"),
+            _paragraph_style("a9", "Bibliography", "a"),
+            _paragraph_style("a0", "Body Text", "a"),
         ]
     )
     document = _styled_docx(

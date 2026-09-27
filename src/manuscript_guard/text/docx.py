@@ -15,7 +15,11 @@ wrong count in Table 1 survived every check for exactly that reason.
 **Tracked changes must be resolved.** A document under review contains both the old text and
 the new. Reading it raw gives numbers that were deleted and numbers that were inserted, mixed
 together, so the audit reports corrections as errors and misses the text that will actually
-be published. Insertions are kept and deletions dropped, which is what the reader will see.
+be published. Insertions are kept and deletions dropped, which is what the reader will see,
+and so is text moved away: the reader sees it where it was moved to. A deleted line break
+or tab is dropped with the text, not read as a space, and a paragraph whose mark was deleted
+or moved away runs on into the next with nothing between them, as Word joins them. A table
+row deleted or moved away is dropped whole, its cells and lines with its text.
 
 **The body and the notes are kept apart**, and the body says which of its lines are
 headings. Both are for finding the reference list: the audit drops it, and used to drop
@@ -32,9 +36,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from manuscript_guard.docxtext import W16SE, extended_symbol, runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 
 PARTS = ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml")
 BODY, NOTES = PARTS[0], PARTS[1:]
@@ -57,7 +63,8 @@ class DocxText:
 
     body: str
     notes: str
-    #: 0-based indexes of the lines of `body` whose paragraph is styled as a heading.
+    #: 0-based indexes of the lines of `body` styled as a heading: a line's paragraph, or for
+    #: paragraphs joined by a mark deleted or moved away, the last of them.
     headings: frozenset[int]
     #: 0-based indexes of the lines of `body` inside a table cell, where "References" is a
     #: column header rather than the start of a bibliography.
@@ -77,8 +84,70 @@ def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
     return False
 
 
-def _in_deletion(node: ET.Element, parents: dict) -> bool:
-    return _inside(node, parents, W + "del")
+#: What Word does not show at this place once every tracked change is accepted: deleted
+#: text, and text moved away, which it shows where it was moved to. And a paragraph's
+#: properties, where a tab *stop* is a `w:tab` too: read as a typed tab, it put a space
+#: between two paragraphs joined by a deleted mark, and "-0.5" and "1" were read apart.
+#: And an AlternateContent fallback, which repeats its choice for readers that predate it:
+#: Word writes every text box twice, as DrawingML and again as VML, and read twice, each
+#: number in a text box was reported twice.
+_UNSEEN = {W + "del", W + "moveFrom", W + "pPr", MC + "Fallback"}
+
+
+def _paragraphs(element: ET.Element) -> list[ET.Element]:
+    """The paragraphs in `element`, leaving out any inside something `_UNSEEN` there."""
+    found, pending = [], [element]
+    while pending:
+        for child in pending.pop():
+            if child.tag not in _UNSEEN:
+                if child.tag == W + "p":
+                    found.append(child)
+                pending.append(child)
+    return found
+
+
+def _row_gone(row: ET.Element) -> bool:
+    """Whether Word drops a table row on accepting every tracked change.
+
+    A deleted row is marked in its own properties, not by wrapping it, and a row moved away
+    is not marked as a row at all: Word 16 moves the mark of every paragraph in it instead,
+    a nested table's included. Not a text box's, whose anchor was moved with the text around
+    it, so the box goes too. Either way the row's text was dropped while its row and cells
+    still started lines, and a cell styled as a heading was an empty heading, which ended
+    the reference list it stood in. An inserted row is kept, and so is a row not deleted,
+    with any paragraph mark left in place.
+    """
+    if row.find(f"{W}trPr/{W}del") is not None:
+        return True
+    paragraphs = _paragraphs(row)
+    moved = f"{W}pPr/{W}rPr/{W}moveFrom"
+    return bool(paragraphs) and all(p.find(moved) is not None for p in paragraphs)
+
+
+def _hidden(root: ET.Element) -> frozenset[ET.Element]:
+    """The elements Word does not show, nor anything in them, once changes are accepted."""
+    return frozenset(
+        node
+        for node in root.iter()
+        if node.tag in _UNSEEN or (node.tag == W + "tr" and _row_gone(node))
+    )
+
+
+def _placed(node: ET.Element, parents: dict, hidden: frozenset) -> tuple[ET.Element | None, bool]:
+    """The paragraph `node` belongs to, and whether it is on the page there."""
+    paragraph, seen = None, True
+    current = parents.get(node)
+    while current is not None:
+        if paragraph is None and current.tag == W + "p":
+            paragraph = current
+        seen = seen and current not in hidden
+        current = parents.get(current)
+    return paragraph, seen
+
+
+def _seen(node: ET.Element, parents: dict, hidden: frozenset) -> bool:
+    """Whether `node` is on the page: neither it nor anything it sits in is `hidden`."""
+    return node not in hidden and _placed(node, parents, hidden)[1]
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -113,6 +182,8 @@ def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
 
 #: Layout elements that read as a space. A manual line break read as nothing ran the
 #: numbers either side of it together: "-0.51" over "-0.72 to -0.30" became "-0.51-0.72".
+#: A deleted one reads as nothing, as Word shows it: read as a space, it split "-0.51" into
+#: -0.5 and 1, and parted a minus from its number.
 _SPACES = {W + "tab", W + "ptab", W + "br", W + "cr"}
 
 # The Symbol font's characters, by their code in that font, that can stand beside a number.
@@ -132,36 +203,113 @@ def _symbol(node: ET.Element) -> str:
 
 #: Characters Word writes as elements rather than text. Read as nothing, a non-breaking
 #: hyphen (Ctrl+Shift+-, used to keep a minus on its number) or a Symbol-font minus left
-#: "-0.30" as 0.30, and a flipped bound matched.
+#: "-0.30" as 0.30, and a flipped bound matched. An emoji Word inserts is one too, in an
+#: AlternateContent choice, with the character as text only in the fallback, which is not
+#: read: "12", an emoji and "34" read as 1234.
 _CHARACTERS = {
     W + "noBreakHyphen": lambda node: "-",
     W + "softHyphen": lambda node: "",
     W + "sym": _symbol,
+    W16SE + "symEx": extended_symbol,
 }
+
+
+_SHOWN = {W + "t", *_SPACES, *_CHARACTERS}
+#: What starts a line or a cell.
+_BREAKS = {W + "p", W + "tr", W + "tc"}
+
+
+def _shown(node: ET.Element) -> str:
+    """What one element puts on the page: its text, a space, or a character."""
+    if node.tag == W + "t":
+        return node.text or ""
+    if node.tag in _SPACES:
+        return " "
+    return _CHARACTERS[node.tag](node)
+
+
+def _dropped(element: ET.Element, parents: dict, hidden: frozenset) -> bool:
+    """Whether `element` is a table Word drops whole: nothing in it is on the page."""
+    if element.tag != W + "tbl":
+        return False
+    paragraphs = list(element.iter(W + "p"))
+    return bool(paragraphs) and not any(_seen(p, parents, hidden) for p in paragraphs)
+
+
+def _joins(root: ET.Element, parents: dict, hidden: frozenset) -> dict[ET.Element, ET.Element]:
+    """Each paragraph whose mark was deleted or moved away, and the one it runs on into.
+
+    Only its next sibling: a text box's paragraphs sit inside the paragraph that holds it,
+    and nothing runs on into those. An empty element between the two - a bookmark, a
+    comment's range, the end of a move - leaves them adjacent, and so does a table whose
+    every row was deleted or moved away: Word 16 joins "-0.5" and "1" either side of one
+    into -0.51. A table, a content control, anything else with content of its own, parts
+    them, although Word 16 runs a paragraph on into the first cell of a table after it
+    (DESIGN.md, Known gaps).
+    """
+    joins: dict[ET.Element, ET.Element] = {}
+    # Only a parent of a paragraph that runs on can hold a join; most documents have none.
+    holders = dict.fromkeys(parents[p] for p in root.iter(W + "p") if p in parents and runs_on(p))
+    for parent in holders:
+        before = None
+        for child in parent:
+            if child.tag == W + "p":
+                if before is not None:
+                    joins[before] = child
+                before = child if runs_on(child) else None
+            elif len(child) and not _dropped(child, parents, hidden):
+                before = None
+    return joins
+
+
+def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset) -> str:
+    """The break and the marks a paragraph's line starts with.
+
+    A joined line has the last paragraph's style, because its mark is the one left: Word 16
+    keeps it on accepting the change, and when Word deletes a mark itself it first copies
+    the first paragraph's style onto the second. A heading style ends a reference list.
+    """
+    last = paragraph
+    while last in joins:
+        last = joins[last]
+    heading = _HEADING_MARK if _is_heading(last, headings) else ""
+    cell = _CELL_MARK if _inside(paragraph, parents, W + "tc") else ""
+    return "\n" + heading + cell
 
 
 def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
-    pieces: list[str] = []
+    hidden = _hidden(root)
+    joins = _joins(root, parents, hidden)
+    # Each paragraph's line, shared with the paragraph it runs on into. A text box's
+    # paragraphs get lines of their own, after the line of the paragraph holding it: read
+    # where the box is anchored, they split that paragraph in two.
+    lines: dict[ET.Element, list[str]] = {}
+    pieces: list[str | list[str]] = []
 
     for node in root.iter():
+        if node.tag in _BREAKS and not _seen(node, parents, hidden):
+            # Its text is not read, so it starts no line either: the fallback copy of a text
+            # box gave each of its lines twice, and a deleted one, or a table row deleted or
+            # moved away, left empty lines, where a heading's ended the reference list.
+            continue
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
             pieces.append(" | ")
-        elif node.tag == W + "p":
-            heading = _HEADING_MARK if _is_heading(node, headings) else ""
-            cell = _CELL_MARK if _inside(node, parents, W + "tc") else ""
-            pieces.append("\n" + heading + cell)
         elif node.tag == W + "tr":
             pieces.append("\n")
-        elif node.tag in _SPACES:
-            pieces.append(" ")
-        elif node.tag in _CHARACTERS and not _in_deletion(node, parents):
-            pieces.append(_CHARACTERS[node.tag](node))
-        elif node.tag == W + "t" and node.text and not _in_deletion(node, parents):
-            pieces.append(node.text)
+        elif node.tag == W + "p":
+            if node not in lines:
+                lines[node] = [_line_start(node, joins, parents, headings)]
+                pieces.append(lines[node])
+            if node in joins:
+                lines[joins[node]] = lines[node]
+        elif node.tag in _SHOWN:
+            owner, seen = _placed(node, parents, hidden)
+            if seen:
+                (lines[owner] if owner is not None else pieces).append(_shown(node))
 
-    return "".join(pieces)
+    return "".join(piece if isinstance(piece, str) else "".join(piece) for piece in pieces)
 
 
 def _tidy(text: str) -> str:

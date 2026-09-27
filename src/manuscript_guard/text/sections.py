@@ -10,6 +10,8 @@ alongside the number rather than left implicit:
 * The abstract and the references are counted separately from the main text, because every
   journal treats them separately.
 * Headings count towards the main text, because they are printed.
+* The YAML front matter does not count, rendered keys included. The build strips it and
+  prints the title from paper.yaml, so none of it is in the document a limit is about.
 
 Where a journal counts differently, the profile can say so. Where it does not say, the
 count is reported with the rule, so a disagreement is visible rather than mysterious.
@@ -17,11 +19,20 @@ count is reported with the rule, so a disagreement is visible rather than myster
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import FRONTMATTER, mask
+from manuscript_guard.text.masking import (
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    mask,
+    metadata_blocks,
+    without_front_matter,
+)
 
 _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 
@@ -33,7 +44,7 @@ _ATX = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*#*$", re.MULTILINE)
 # The underline is `=+` or `-+`. One dash is enough for pandoc, and requiring three meant a
 # "Results" heading under `--` was invisible — so Results content inherited the enclosing
 # Methods chain and a fabricated `p < 0.001` passed as the pre-specified alpha. `---` closing
-# YAML front matter would read as an underline too, which is why `_scannable` blanks the
+# YAML front matter would read as an underline too, which is why `scannable` blanks the
 # front matter before any of this runs, and a thematic break is excluded because setext
 # needs its title on the line immediately above with no blank between.
 _SETEXT = re.compile(
@@ -44,6 +55,120 @@ _SETEXT = re.compile(
 
 # Kept as the ATX pattern for callers that only ever meant `#` headings.
 HEADING = _ATX
+
+# The spaces pandoc's `isSpace` takes, which is Haskell's: space, tab, the line breaks, form
+# feed, vertical tab, the no-break space and the other space separators (category Zs). Not
+# `\s`, which also takes U+0085, U+2028, U+2029 and U+001C to U+001F: a quoted value opening
+# with one of those is a value to pandoc, and refusing it kept `{title="<U+0085>x y"}` in a
+# Results title.
+_PANDOC_SPACE = (
+    r" \t\n\r\f\v\xa0\N{OGHAM SPACE MARK}\N{EN QUAD}-\N{HAIR SPACE}"
+    r"\N{NARROW NO-BREAK SPACE}\N{MEDIUM MATHEMATICAL SPACE}\N{IDEOGRAPHIC SPACE}"
+)
+
+# One item of a pandoc attribute block, as pandoc 3 reads it: `#id`, `.class`, `key=value`
+# or `-`, which pandoc reads as `.unnumbered`. A class or a key opens with a letter, which
+# `strip_attributes` checks, since `[^\W\d_]` also takes `²` and `Ⅷ`. A value is quoted,
+# and then may not open with one of pandoc's spaces (`title=" Works"` is not one, and pandoc
+# prints the braces), or runs to a space, a tab, a line break or the closing brace. Only
+# those: `\s` would also end it at a no-break space, a thin space or a form feed, which
+# pandoc reads as part of the value, so a heading whose `lang=fr` and `FR` were joined by a
+# no-break space kept its block.
+#
+# A value may hold backslash escapes, `title="the \"main\" one"` or `note=a\}b`, and an
+# escaped `}` ends nothing: `{k=a\}` is not a block, and pandoc prints it. Each escape is one
+# backslash and the character after it, and every other character is one of the rest, so a
+# value can be read only one way. Items need no space between them: `{#a.b}` is one
+# identifier and `{#a#b}` two, because pandoc takes the longest item it can at each point
+# and never goes back. `strip_attributes` does the same, one item at a time. With the items
+# under one quantifier in a single pattern, a run such as `#a.b.c` could be divided between
+# items in more ways than it has characters, and a block that failed at its last character
+# would try every one of them.
+_ATTRIBUTE_ITEM = re.compile(
+    r"#[\w:.-]+"
+    r"|\.(?P<lead>[^\W\d_])[\w:.-]*"
+    r"|(?P<key>[^\W\d_])[\w:.-]*="
+    r"(?:\"(?![" + _PANDOC_SPACE + r"])(?:[^\"\\]|\\.)*\""
+    r"|'(?![" + _PANDOC_SPACE + r"])(?:[^'\\]|\\.)*'"
+    r"|(?:[^ \t\n\r}\\]|\\.)*)"
+    r"|-"
+)
+
+
+def _escaped(text: str, index: int) -> tuple[bool, int]:
+    """Whether the character at `index` is escaped, and where the backslashes before it
+    start. An odd run escapes it: `\\{` is a brace, `\\\\{` a backslash and then a brace."""
+    start = index
+    while start > 0 and text[start - 1] == "\\":
+        start -= 1
+    return (index - start) % 2 == 1, start
+
+
+def strip_attributes(text: str) -> str:
+    """`text` without the pandoc attribute block it ends with, if it ends with one.
+
+    `# References {-}` prints as "References", unnumbered, and `## Results {#sec-results}`
+    as "Results". Kept in the title, the block made it another word: `is_methods` matches a
+    title whole, so `Results {#sec-results}` was not Results, and a subsection under it named
+    like a Methods one made a reported `p < 0.001` the alpha chosen in advance.
+
+    Only what pandoc reads as attributes goes. "Results {and more}" and "Results \\{-}"
+    print as they stand, and so does every block but the last. The block opens at the last
+    brace no backslash escapes, and `{k=a\\{b}` is one block. Nothing else in the title
+    changes: `# **Results**` keeps its asterisks. `text` comes back unchanged when nothing
+    goes, so a caller can tell.
+
+    Only spaces and tabs may follow the block, and only they are taken off what precedes it.
+    `rstrip()` takes every Unicode space, and `# References {-}` with a no-break space after
+    it, which pandoc prints braces and all, lost its block.
+    """
+    body = text.rstrip(" \t")
+    if not body.endswith("}"):
+        return text
+    opening = len(body)
+    while True:
+        opening = body.rfind("{", 0, opening)
+        if opening < 0:
+            return text
+        escaped, before = _escaped(body, opening)
+        if not escaped:
+            break
+        opening = before
+    inner, position = body[opening + 1 : -1], 0
+    while True:
+        while position < len(inner) and inner[position] in " \t":
+            position += 1
+        if position == len(inner):
+            return body[:opening].rstrip(" \t")
+        item = _ATTRIBUTE_ITEM.match(inner, position)
+        if item is None:
+            return text
+        letter = item.group("lead") or item.group("key")
+        if letter and not letter.isalpha():
+            return text
+        position = item.end()
+
+
+def _atx_title(found: re.Match[str]) -> str:
+    """An ATX heading's title, without its attribute block and the closing `#`s before it.
+
+    Pandoc reads the closing `#`s, then spaces, then the attribute block, so
+    `## Results ## {#sec-results}` is "Results". A block before the closing `#`s is text:
+    `# Results {-} ##` is "Results {-}".
+
+    Read to the end of the title's own line. `_ATX` can run on past a blank line to a line
+    of `#`s, and read to the end of the match, `# Results {#sec-results}` above one ended in
+    `#` rather than a block, and kept it. And only spaces and tabs are taken off before the
+    block or the closing `#`s are looked for: any other space after them is printed.
+    """
+    source, end = found.string, found.end()
+    newline = source.find("\n", found.end("title"), end)
+    line = source[found.start("title") : newline if newline >= 0 else end].strip(" \t")
+    printed = strip_attributes(line)
+    if printed == line:
+        return found.group("title").strip()
+    return printed.rstrip("#").strip()
+
 
 _ABSTRACT = re.compile(r"^\s*(?:structured\s+)?abstract\b", re.IGNORECASE)
 _REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
@@ -82,10 +207,7 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
-def _scannable(text: str) -> str:
+def scannable(text: str) -> str:
     """`text` with code fences and HTML comments blanked, offsets preserved.
 
     Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
@@ -107,16 +229,24 @@ def _scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-
-    def blank(match: re.Match[str]) -> str:
-        return "".join("\n" if ch == "\n" else " " for ch in match.group(0))
-
-    out = _HTML_COMMENT.sub(blank, blank_fences(text))
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
-    # a level-2 heading conjured out of the document's own delimiter.
-    opening = FRONTMATTER.match(out)
-    return blank(opening) + out[opening.end() :] if opening else out
+    # a level-2 heading conjured out of the document's own delimiter. It is found in the
+    # text as written, as the build and `mask` find it, and fences are looked for only
+    # after it. Blanked first, a comment on the YAML's first line read as a blank line
+    # after the opening `---`, which is not front matter, so a `# Methods` in the YAML
+    # headed a body the build printed without it.
+    #
+    # Fences and comments are found in the text as written too. Blanking the comments
+    # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
+    # earlier opener and blanked the headings between them.
+    # And every YAML block of the body, which pandoc reads as metadata: a `# Methods` in
+    # one is a YAML comment, and read as a heading it gave the paragraphs after the block
+    # the Methods chain.
+    head = front_matter_end(text)
+    fences = fenced_blocks(text)
+    spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
+    return blank(text, [(0, head), *metadata_blocks(text), *spans])
 
 
 @dataclass(frozen=True)
@@ -127,15 +257,19 @@ class _Found:
 
 
 def _headings_in(text: str) -> list[_Found]:
-    """Every heading, ATX and setext, in document order."""
-    scannable = _scannable(text)
+    """Every heading, ATX and setext, in document order, titled without its attribute block."""
+    rendered = scannable(text)
     found = [
-        _Found(m.start(), len(m.group("hashes")), m.group("title").strip())
-        for m in _ATX.finditer(scannable)
+        _Found(m.start(), len(m.group("hashes")), _atx_title(m))
+        for m in _ATX.finditer(rendered)
     ]
     found += [
-        _Found(m.start(), 1 if m.group("under").startswith("=") else 2, m.group("title").strip())
-        for m in _SETEXT.finditer(scannable)
+        _Found(
+            m.start(),
+            1 if m.group("under").startswith("=") else 2,
+            strip_attributes(m.group("title").strip(" \t")).strip(),
+        )
+        for m in _SETEXT.finditer(rendered)
     ]
     return sorted(found, key=lambda f: f.start)
 
@@ -162,6 +296,125 @@ def chain_at(index: list[_Found], offset: int) -> tuple[str, ...]:
             stack.pop()
         stack.append((found.level, found.title))
     return tuple(title for _level, title in stack)
+
+
+@dataclass(frozen=True)
+class Note:
+    """A footnote's definition: where its text runs in the file, and where it is
+    referenced, which is where pandoc prints it."""
+
+    start: int
+    end: int
+    references: tuple[int, ...]
+    # The heading chain of each reference, each once, found when the note is.
+    chains: tuple[tuple[str, ...], ...] = ()
+
+
+# A footnote's marker, as referenced or, at the start of a line and before a colon, defined.
+# Pandoc's labels hold no space and match case and all.
+_NOTE_MARKER = re.compile(r"\[\^(?P<label>[^\]\s]+)\]")
+_NOTE_DEFINITION = re.compile(r"[ ]{0,3}\[\^(?P<label>[^\]\s]+)\]:")
+# A line that may start a block of its own, which ends a definition's first paragraph here
+# whether or not it would for pandoc: a heading, a quotation, a listing, raw markup, a table,
+# a caption or definition, a rule or a list item, or another footnote.
+_MAY_START_BLOCK = re.compile(r"[ ]{0,3}(?:[#>`~<|:*+=_-]|\d+[.)]|\[\^)")
+_INDENTED = re.compile(r"(?: {4}|\t)")
+
+
+def footnote_index(text: str) -> list[Note]:
+    """Every footnote definition in `text` with the references that print it.
+
+    Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
+    section its definition line sits in only: a finding referenced from Results and defined
+    under Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is
+    also read where it is referenced (`chains_at`).
+
+    Its text is the definition's line, the lines under it up to a blank one or one that may
+    start a block of its own, and after blank lines each block indented four spaces or a
+    tab. That is pandoc's reading of a plain note, not of every note: review found a `[^n]:`
+    line pandoc reads as the paragraph above's, and paragraphs a list item or a comment
+    holds, taken for a note's text. Since a number is still judged where it stands, such a
+    misreading only adds a section it must pass in. A reference inside a definition is not
+    counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
+    """
+    shown = scannable(text)
+    found_headings = _headings_in(text)
+    headings = {found.start for found in found_headings}
+    lines: list[tuple[int, str]] = []
+    offset = 0
+    for line in shown.split("\n"):
+        lines.append((offset, line))
+        offset += len(line) + 1
+    spans: list[tuple[int, int, str]] = []
+    index = 0
+    while index < len(lines):
+        start, line = lines[index]
+        defined = _NOTE_DEFINITION.match(line)
+        if defined is None or start in headings:
+            index += 1
+            continue
+        last = index
+        index += 1
+        while index < len(lines):
+            at, line = lines[index]
+            if not line.strip() or at in headings or _MAY_START_BLOCK.match(line):
+                break
+            last, index = index, index + 1
+        while index < len(lines):
+            ahead = index
+            while ahead < len(lines) and not lines[ahead][1].strip():
+                ahead += 1
+            block = ahead
+            while block < len(lines) and lines[block][1].strip():
+                if not _INDENTED.match(lines[block][1]):
+                    break
+                block += 1
+            if block == ahead or (block < len(lines) and lines[block][1].strip()):
+                break
+            last, index = block - 1, block
+        end = lines[last][0] + len(lines[last][1])
+        spans.append((start, end, defined.group("label")))
+    references: dict[str, list[int]] = {}
+    defined = [Note(low, high, ()) for low, high, _label in spans]
+    for found in _NOTE_MARKER.finditer(shown):
+        if _containing(defined, found.start()) is None:
+            references.setdefault(found.group("label"), []).append(found.start())
+    return [
+        Note(
+            low,
+            high,
+            tuple(references[label]),
+            tuple(dict.fromkeys(chain_at(found_headings, at) for at in references[label])),
+        )
+        for low, high, label in spans
+        if label in references
+    ]
+
+
+def _containing(notes: list[Note], offset: int) -> Note | None:
+    """The note, of those in document order and apart, whose text holds `offset`."""
+    at = bisect.bisect_right(notes, offset, key=lambda note: note.start) - 1
+    return notes[at] if at >= 0 and notes[at].end > offset else None
+
+
+def chains_at(
+    index: list[_Found], notes: list[Note], offset: int
+) -> tuple[tuple[str, ...], ...]:
+    """Every heading chain a number at `offset` is judged under, and must pass under each:
+    where it stands, and, inside a footnote's definition, where each reference to it stands.
+
+    Where it stands is kept for a footnote's text too, although pandoc prints it at the
+    references. Judged at the references alone, a claim the gates took for a note's text and
+    pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
+    pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
+    of #77). Judged in both places, a number can only fail more than it did, never pass what
+    it failed before, however the note's end is misread. One chain per heading at most, so a
+    note referenced a thousand times costs no more than one referenced from every section."""
+    here = chain_at(index, offset)
+    note = _containing(notes, offset)
+    if note is None:
+        return (here,)
+    return tuple(dict.fromkeys([here, *note.chains]))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -238,12 +491,10 @@ def headings(text: str) -> list[str]:
 
 def count_words(text: str) -> int:
     """Words a journal would count: prose, without citations, tables, images or markup."""
-    # Front matter goes whole, for the same reason: G2 now reads the title and abstract out
-    # of it because pandoc renders them, but a journal counts those against their own limits,
-    # not against the body.
-    opening = FRONTMATTER.match(text)
-    stripped = text[opening.end() :] if opening else text
-    stripped = blank_fences(stripped)
+    # Front matter goes whole, rendered keys included. G2 reads the title and abstract out of
+    # it because pandoc renders them, but the build strips the block, and a journal counts a
+    # title and an abstract against limits of their own, not against the body.
+    stripped = blank_fences(without_front_matter(text))
     stripped = _INLINE_CODE.sub(" ", stripped)
     stripped = mask(stripped)  # removes citations, URLs, placeholders
     stripped = stripped.replace("\x00", " ")
@@ -271,7 +522,12 @@ def measure(text: str) -> Counts:
     whatever it resolves to. That is close enough for a limit, and it means the count does
     not change when the analysis is re-run.
     """
-    sections = split_sections(text)
+    # The front matter goes before the split. `split_sections` trims the text before the
+    # first heading, which takes the newline after the closing `---` with it, and without
+    # that newline `count_words` no longer recognised the block: every word of the YAML,
+    # keys included, counted as main text.
+    printed = without_front_matter(text)
+    sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title
     # alone, `## Background` under `# Abstract` was main text, so a structured abstract
@@ -295,6 +551,6 @@ def measure(text: str) -> Counts:
         main_text_words=main,
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
-        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", text)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", text)),
+        tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
     )

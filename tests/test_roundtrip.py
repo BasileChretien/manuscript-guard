@@ -2470,7 +2470,8 @@ HEADED = [
     pytest.param(" # Methods\nPatients.", None, id="hash-indented"),
     pytest.param("   ## Methods\nPatients.", None, id="hash-indented-three"),
     # A heading whose code span or comment runs onto the next line: pandoc reads the two
-    # lines as one heading, and a marker would print inside it (round four). A TeX
+    # lines into one ATX heading, or a setext title and all under it into one paragraph,
+    # and a marker would print inside it (round four). A TeX
     # environment opened in the line and closed on the next makes no heading at all: pandoc
     # reads text, then a raw block, then the paragraph.
     pytest.param("# The `lm function\nWe used `glm()` here.", None, id="heading-open-code"),
@@ -2591,6 +2592,18 @@ def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
         assert blocks[-1]["t"] == "Para"
         assert "mg-p-" in json.dumps(blocks[-1])
         assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+@pytest.mark.parametrize("marker", ["-", "+", "*"])
+@pytest.mark.parametrize("indent", ["", "   ", "    ", "\t"])
+@pytest.mark.parametrize("rule", ["===", "---"])
+def test_a_lone_bullet_marker_is_no_setext_title(marker: str, indent: str, rule: str) -> None:
+    """Asked of `_SETEXT` itself, since `_PLAIN_LINE` keeps `*` out as well and the heading
+    tests could not tell which of the two did. At any indent: indented four, the line is a
+    title at the top level and a list item under a list, and the block cannot tell which."""
+    from manuscript_guard.roundtrip import _SETEXT
+
+    assert _SETEXT.match(f"{indent}{marker}\n{rule}\nAlpha.") is None
 
 
 @needs_pandoc

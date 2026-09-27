@@ -4282,7 +4282,10 @@ Closed since, and why each mattered:
     space or a tab after it, so `-` and `+` were taken for a title, the block was passed
     over, and the marker printed inside the list. Such a block is left unmarked whole again,
     as before this change. An ordered marker alone, `1.` or `a.`, is a title to pandoc, and
-    passed over like one.
+    passed over like one. The exclusion holds at any indent. Indented four columns or more,
+    or by a tab, the lone marker is a title to pandoc at the top level and a nested list
+    item under a list, and `_lead_end` cannot see which. So the paragraph under it is left
+    unmarked and not compared either way, where at the top level it could have been.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

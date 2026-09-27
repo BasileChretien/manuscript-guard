@@ -512,10 +512,11 @@ switched the check off. The lists are aligned, so a refusal names the heading, w
 file and line of one the gates read. Pandoc's reading is walked without recursion, and a
 document nested too deep for Python's JSON reader, two thousand divs, is refused.
 
-It costs two more runs of pandoc's reader a document, and one on the header, kept for the
-next document with the same header. It guards the document, not `check`: a source the
-build refuses can still pass `check`, and a number a misread hides from G2 without touching
-metadata or headings is not compared. A refused build removes the document the last one
+It costs two more runs of pandoc's reader a document, three with listings, and one on the
+header, kept for the next document with the same header. It guards the document, not
+`check`: a source the build refuses can still pass `check`, and a number a misread hides
+from G2 without touching
+metadata, headings or listings is not compared. A refused build removes the document the last one
 left in build/, which is not this source's, so that it is not sent or packed; a refused
 supplement fails `build` and `submit` like the paper, and `submit --document` refuses a pack
 missing either, taking the supplement beside the document, or else the one in build/. It
@@ -523,7 +524,8 @@ refuses a document inside build/submission/ too, which the new pack replaces: th
 review found `--document build/submission/manuscript.docx` deleted before it was copied. Two
 builds go without asking: `import`'s, since the document it rebuilds has already been sent,
 and refusing there stranded it with the co-author holding it; and the annotated copy, marked
-up for the author to read, whose marks change how a subscript or a code span reads.
+up for the author to read, whose marks the annotator has pandoc check as it makes them
+(#76).
 
 **The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
 build strips every source file's YAML block and writes a header of its own with the title,
@@ -1151,7 +1153,25 @@ fix, not of the original code.**
   `## Methods`, and made everything after it — including the Results — read as Methods. A
   fabricated `p < 0.001` in the Results was then accepted as the pre-specified alpha. An
   HTML comment did the same thing while being invisible in the rendered document. Heading
-  detection now runs over text with fences and comments blanked.
+  detection now runs over text with fences and comments blanked. (Later: it still took any
+  `#` line for a heading, and pandoc does not let a heading interrupt a paragraph. `## Methods`
+  directly under a line of Results prose is printed as part of that prose, and the
+  `p < 0.001` below it passed as the alpha chosen in advance. A setext title was the same,
+  `numbered-heading` filed "## 3.84 times higher" in such a line as heading numbering, and
+  `\s+` let a lone `#`, an empty heading, take the next line for its title. A blank line is
+  not the rule either: a heading directly under a table, a fence, a div or another heading
+  needs none. `text/blocks.py` now walks the document a line at a time, knowing what the
+  line above left open, and `test_pandoc_agreement.py` holds it to pandoc construct by
+  construct. The round trip no longer tags a setext heading. The audit no longer starts a
+  reference list at a heading line pandoc prints as prose, and still ends one at any line
+  shaped like a heading. The walk reads a construct it does not model as a paragraph, which
+  swallowed a real `# Results` under a table of dashes and ran the Methods on over it, so
+  for G2 a line shaped like a heading ends the section it stands in whether or not the walk
+  places it. One the walk does not place can say Results and never Methods, and a number is
+  in the Methods only if the printed headings alone say so too, so such a line can take
+  Methods away and never grant them. A title is read as Results through the marks it may
+  keep: pandoc prints `# Results` over a rule as a heading reading "# Results", and taken
+  literally it matched no Results pattern and re-admitted the Methods rules under it.)
 - `p < 0.05` became Methods-only, and the heading test ended in `\b` — a prefix match. So
   a Results subsection called "Protocol deviations" or "Design of the sub-study" re-admitted
   every threshold rule beneath it. Anchored at both ends now. (Later: anchored, a title that
@@ -1396,6 +1416,52 @@ happens immediately. The highlight itself is a character style injected into pan
 reference document, generated at build time rather than committed: a reference `.docx` is a
 binary, and this repository ignores `*.docx` precisely so a build product cannot be mistaken
 for a source.
+
+**A mark never changes how the text reads.** The number finder reads raw text, and takes
+markup in with a number: `HbA~1c` out of `HbA~1c~`, `CO~2` out of `CO~2~`, `span>7</span`
+out of `<span>7</span>`. A mark around what it found left the closing `~` outside, so
+pandoc read no subscript, and a number in a code span, `` `x2` ``, got its mark written
+inside the span, where the link printed as text. So the annotator places each mark first:
+- **Code, equations, a link's text and the front matter take no mark.** Code spans are
+  paired a run of backticks with the next run of the same length in its paragraph, which
+  is pandoc's rule but for two edges (see Known gaps). Equations are pandoc's dollars,
+  looked for outside code: a `$` in `` `df$age` `` opened one that ran to the next code
+  span's (review of #76). A dollar sign before a number is a currency's, not markup, and
+  `US$5` is marked whole; one after a number stays outside the mark, where `5$ … 10$`
+  faced each other across the marks between, and a backslash before a number goes
+  inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
+  escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
+  So is anything else a backslash escapes in a number read across several runs, which
+  for pandoc is any character but a letter or a digit, save a space, a bracket or a
+  backslash: `5\%-10\%`, `\~5-\~7` and `5\°-10\°` are marked whole (the rounds after the
+  extra one). A link's text, the target a URL or an anchor, can't hold a mark,
+  which is itself a link. A bracket before another is taken for a link's text only when
+  the file defines the second one's label, or, the second empty, the first one's: pandoc
+  reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their
+  numbers are marked (the extra round of #76).
+  A binding in a link's text is put in as its value, unmarked.
+- **Inside other markup, the mark goes around the digits.** The mark goes around the one
+  run free of markup that holds a digit, inside the subscript or the span, where pandoc
+  reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
+  digits, `10^-3^`, it goes around the whole of what was found, if every sub- and
+  superscript in it opens and closes there; brackets in it are escaped in the mark and
+  read as text, `12][13`. No mark opens straight after a `]`, where pandoc read the two
+  brackets as a reference. Otherwise the number is left unmarked.
+
+That rule is a model of pandoc's inline reader, and models of pandoc's readers have been
+found wrong round after round in this repository. So the build then asks pandoc: each file
+is read with its marks and without, the marks unwrapped and each block compared, and every
+mark in a block that reads differently is taken out. Which mark did it is not worked out,
+so a paragraph can lose all its marks for one; a number in an HTML tag's attribute,
+`width="300"`, is the example the tests hold. What still reads differently after that loses
+every mark in the file, so the annotated copy never reads otherwise than the manuscript,
+marks aside. Two things are left out of the comparison. A pipe table's column widths: a
+longer row, marks in it, makes pandoc give the table widths, which changes the layout of
+the annotated copy's tables and not their words. And a citation as written, which pandoc
+keeps and citeproc replaces: with a mark on its locator, `p. 33`, it differed, and the
+paragraph lost every mark (review of #76). A number left unmarked is
+still listed in the appendix, with the reason, and the build says how many there are. It
+costs two runs of pandoc's reader a file, and a third where a mark is taken out.
 
 The annotated copy is deliberately **not stamped**. The source stamp is what G1 reads to
 decide whether the document a co-author opens is current, and there must be exactly one such
@@ -2225,6 +2291,111 @@ documents read the same as Word's own saved files, checked block by block. The p
 the one this file keeps finding: the tests simulated what the code assumed an editor does,
 not what the editor does.
 
+## A fence is a line pandoc reads as one
+
+The fence reader split lines with Python's `splitlines`, which also breaks at a vertical
+tab, a form feed, U+001C to U+001E, U+0085, U+2028 and U+2029, and it took a closing
+fence's surroundings off with `str.strip`, which removes every Unicode space. Pandoc breaks
+a line at a newline alone and deletes a carriage return wherever it stands, so `found\rit.`
+prints as `foundit.`. So `We found it.`, a form feed and three backticks opened a listing to
+the gates that pandoc never made, and every gate stopped reading at it. A YAML block in
+there escaped the `rule-opens-a-block` refusal, and its `title:` replaced paper.yaml's.
+
+Asking pandoc about every fence line turned up more of the same. Pandoc closes a fence on up
+to three spaces, the run, and nothing after it but spaces and tabs; a tab or a no-break
+space in front, or a no-break space after, makes a line inside the listing, where the gates
+closed on it and paired their next fence with the one after it, taking the prose between.
+Pandoc opens one on an optional language word and an optional `{attributes}`, then spaces
+and tabs, or a raw `{=format}`. A word ends at Haskell's idea of a space, which takes in
+the no-break space and U+3000 but not U+0085 or U+2028, and holds no backtick or brace. The
+attributes are `#id`, `.class`, `key=value` and `-`, read in that order, the first that
+fits kept; a class and a key start with a letter as `str.isalpha` has it, the Unicode
+categories of Haskell's `isAlpha`, where `\w` would have taken a superscript digit for one.
+
+That much is read. The rest was modelled once and review found it wrong eight ways, the
+worst new: `{r setup}`, an R Markdown chunk header, opens nothing in pandoc, which prints
+the chunk as inline code running to its closer; the gates, rejecting the opener as pandoc
+does, took the closer for an opener and read to the next chunk, hiding the prose between.
+Pandoc also opens a backtick fence under a line of text but not a tilde one or an indented
+one, and reads attributes on over lines while none is blank. So a fence is read only in its
+plain form, a listing opened at the margin under a blank line, the first line or another
+listing's closer, outside any comment or raw block, with its word and attributes on the
+opening line, and closed; any other line starting with three backticks or tildes, behind
+up to three spaces, behind a list marker, or behind whitespace other than spaces or a
+zero-width mark, is refused (`unclear-fence`), by `check` and by the build. The second
+review found why the margin: in a list item pandoc takes the item's indentation off before
+it looks for the closer, and closed a listing the gates read on through the prose after it;
+and why raw blocks: inside a comment, a `<pre>` or a TeX environment a fence is raw text to
+pandoc, which the gates paired with a later one. A comment or raw block is taken as open
+from its opening to its closing mark, outside listings, so an arrow `-->` in a Mermaid
+listing refuses nothing. A listing a comment holds whole, with no `-->` on its lines, so
+that the comment closes after its closer, is the comment's and is not refused: pandoc
+prints none of it where it sees the comment, and the gates mask both. The review of the
+sixth round's fixes found it refused, and a listing commented out while an author decided
+failed `check` and the build, `--skip-checks` too, where #65 built it. The comment is the
+gates' reading, which a stray backtick fools, so such a listing must also be one pandoc
+reads as the gates do if the comment is not there: opened at the margin, and apart from
+the line above, or a backtick fence straight under the `<!--` line, itself apart. Let be in
+a list item, behind a comment only the gates saw, it was code to the gates up to the last
+closer, ended early for pandoc, and the claim after it printed unread (the second round of
+review of those fixes). Let be under any line of text, a backtick fence under a
+footnote's line or a longer list item's was taken into the note or the item by pandoc and
+ended at an indented closer, with the same result (the third round). Past three spaces pandoc
+reads indented code or a list item's listing, and the gates read the lines as text: its
+numbers are read, the safe side, but a `<!--` in it is read as a comment's, and hides the
+prose after it up to the next `-->`, as the sixth review found (see the comment gap in
+Known gaps). Refused on purpose, though pandoc opens them: a fence straight under a
+heading, a list item's text, a `:::` line or a comment, and a line of text that opens with
+backticks. `tests/test_pandoc_agreement.py` asks pandoc about 128 fenced shapes: the old
+reader got 63 wrong; now 120 agree, the 8 that do not are refused, and 65 are refused in
+all.
+
+Raw blocks come in more shapes than a refusal can list (a `\newcommand` group, an HTML
+attribute over blank lines), so the build compares too (`build/reading.py`, beside the
+metadata and the headings): every listing the gates read in the sources must be, where it
+stands, a code block pandoc makes, or a raw block for `{=format}`. A line of its own is put
+first in each listing of the copy pandoc reads, and must come back once, first in its
+block, and each listing is paired in order with the one the gates read in the source files,
+at the same index in the same file with its values put in. Its lines must be the lines as
+written, each placeholder standing for text within its own line: compared built to built
+alone, a value holding a fence ended a listing early and the lines after it printed as
+prose (the sixth review). The third review found why position and not lines: a listing the
+gates read inside a TeX group, masking the claim after it, passed for a copy of its lines
+in an indented block, and a comment holding them did as well, pandoc making every comment a
+raw block. The fourth found why that line is made new each build: fixed, it could be typed,
+and a copy of it in a listing pandoc did make passed for the one it did not. The sixth
+found the line itself changing the reading: a caption over a listing opening with dashes
+is a table to pandoc, and a line put first made it a code block, so the metadata and
+headings after it went unread. The metadata and headings are read from the text without
+the lines, and the reading with them must be that reading once they are taken off. A
+listing `check` lets be because a comment holds it whole may come back inside a comment
+pandoc reads, once, instead of opening a code block: the comment is the gates' reading of
+where comments are, which a stray backtick can fool, and a listing in a comment pandoc does
+not see must still be code. Code pandoc makes that the gates read as prose, an indented
+listing, is not refused.
+
+In `check`, a comment or raw block closes only on its own mark: a `-->` closed a `<pre>`,
+and `\end{center}` a comment. One of the same name opened inside it is counted, as pandoc
+counts it, except a `<script>`, which pandoc does not count; and `<?` followed by a letter,
+`<?php` or `<?xml`, opens raw text to `?>`, where `<? marks a query` is text (the fifth
+review found both refusing listings pandoc makes). Marks in a code span, `<pre-x>`, and
+`<!-->` open nothing, and neither does a `<pre>` or `<?php` behind text on its line, though
+pandoc does open one there when its closer follows (see Known gaps); a backtick behind a
+backslash opens no span, and a line whose backticks do not pair blanks none, its span
+perhaps closing on the next. The scans are linear: the widest closer still to come is read
+from the end once, so an opener with none is passed over at once, where a run of narrowing
+openers each used to read to the end; code spans are paired run by run in one pass, where a
+pattern retried from every backtick of a run, and a line of 20,000 took seven seconds; and
+every mark on a line is found in one pass, where a raw block's closer and another of its
+name were searched for from each mark to the end of the line, and a line of 300,000
+characters inside a `<pre>` took eighteen seconds (the fifth).
+
+The manuscript is read with `read_text`, which makes a lone carriage return a newline
+before the gates or the build see it; the reader agrees with pandoc either way. The front
+matter is split with `splitlines` still, in the masking and in the build's title check, and
+that is right: pandoc's YAML breaks a line at U+0085, U+2028 and U+2029 as well, and
+refuses the document outright over a vertical tab, a form feed or U+001C.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -2463,12 +2634,12 @@ Added by the adversarial review, verified and **not** fixed:
   span, goes unfollowed: a paragraph inside it is marked, and the identifier names nothing
   in the document.
 - **Code fences are paired by `text/fences.py`, not by pandoc.** Where the two pair them
-  differently, a paragraph can be marked inside code, and the marker prints there. Known
-  cases: an opener whose info string pandoc rejects (`python title="x"`,
-  `{code-cell} ipython3`), a `~~~` straight under a paragraph line, since pandoc lets only a
-  backtick fence interrupt a paragraph, and a fence line with no partner inside an HTML
-  comment. The same pairing decides which blocks start inside code, so a table under such a
-  fence can go unfollowed as well.
+  differently, a paragraph can be marked inside code, and the marker prints there, and a
+  table under such a fence can go unfollowed. Every case found so far, an opener whose info
+  string pandoc rejects (`python title="x"`, `{code-cell} ipython3`), a `~~~` straight under
+  a paragraph line, a fence line inside an HTML comment, is refused by `check`
+  (`unclear-fence`) or by the build's comparison of listings, so no document is built from
+  one; the entry stands because `tag` still pairs fences itself.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.
@@ -2933,8 +3104,8 @@ Closed since, and why each mattered:
   Markdown a line in a fenced block, an HTML comment or the front matter never starts one,
   and an unmarked `# References` never does, so an R or Python comment in a fenced listing
   cannot. But a listing that is not fenced is not code as far as the reader can tell. In
-  Markdown, `# References` at the start of a line there is a heading, and pandoc prints it
-  as one. An indented block is not blanked, because `pdftotext -layout` indents real
+  Markdown, `# References` starting a block there is a heading, and pandoc prints it as
+  one. An indented block is not blanked, because `pdftotext -layout` indents real
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
@@ -3023,19 +3194,79 @@ Closed since, and why each mattered:
   from `> ---`, `> title: Evil` and `---`. With a blank line before the rule, pandoc closes
   the quotation first and reads no metadata.
 - **Some shapes only the build catches.** A comment the heading scan misreads, a `<!--` that
-  pandoc prints in indented code (#39 taught it inline code, `\<!--` and `<!-->`), hides
-  every rule up to the next `-->` from the refusal. So does a comment or a fence left
-  open at the end of one file and closed in the next, since the build joins the files and
-  pandoc reads across the join, and a tilde fence, or an indented one, under a line of text,
-  a listing to the gates and text to pandoc (#71 refuses that one). So does a `#` line
-  straight under a line of text, `We also saw it.` over `# Sensitivity`, a heading to the
-  gates and text to pandoc (#38's walk reads it as pandoc does). So does a block-level tag
-  or a TeX command partway along a line of text before three dashes, `The dose was halved
-  <div>---` or `Some text \include{x}---`, where pandoc ends the paragraph and reads YAML
-  under the dashes; the refusal reads such a tag only at the start of a line (the ninth
-  review). Where the result is metadata in the text or a heading the gates read otherwise,
-  the build refuses; `check` passes it. A number such a shape hides from G2, with neither,
-  is caught by nothing.
+  pandoc prints in indented code (#39 taught it inline code, `\<!--`, `<!-->` and
+  `<!--->`), hides every rule up to the next `-->` from the refusal. So does a comment left open at
+  the end of one file and closed in the next, since the build joins the files and pandoc
+  reads across the join; a fence left open that way is refused, an opener with no closer in
+  its own file. So does a `#` line straight under a line of text, `We also saw it.` over
+  `# Sensitivity`, a heading to the gates and text to pandoc (#38's walk reads it as pandoc
+  does). So does a block-level tag or a TeX command partway along a line of text before
+  three dashes, `The dose was halved <div>---` or `Some text \include{x}---`, where pandoc
+  ends the paragraph and reads YAML under the dashes; the refusal reads such a tag only at
+  the start of a line (the ninth review of #65). Where the result is metadata in the text,
+  a heading the gates read otherwise or a listing pandoc does not make, the build refuses;
+  `check` passes it. A number such a shape hides from G2, with none of those, is caught by
+  nothing.
+
+  The comments and raw blocks `check` tracks for the fence refusal are a model too, and the
+  fifth review of #71 found ten ways past it and the sixth two more, each a listing the
+  gates read that pandoc prints as raw text or prose, the build refusing every one:
+  - a `<pre>` or `<?php` behind text on its line, whose closer comes later;
+  - a `<pre>` straight after a comment closed on the same line;
+  - a `</pre>` inside a comment inside a `<pre>`;
+  - a `?>` in quotes in a processing instruction;
+  - an escaped `\\end{center}`, or one after a TeX comment's `%` on its line;
+  - a `</pre>` inside an attribute of the `<pre>` it seems to close, `<pre title="</pre>">`;
+  - code spans the tracker pairs otherwise than pandoc: backticks straddling a comment's
+    close, a backslash escaping one backtick of a run, a span from the line above closing
+    early, and an unpaired backtick opening a false comment that takes in a real `<pre>`.
+- **Some listings pandoc makes are refused.** The same tracker opens a context pandoc does
+  not, and every later listing in the file is refused, the finding on the listing's own
+  lines; save one a false comment holds whole, which `check` lets be and the build finds in
+  pandoc's code. The fifth and sixth reviews of #71 found:
+  - a `<pre>` or `\begin{center}` opened inside one of its name and left unclosed, which
+    pandoc takes for a lone tag, pairing the inner one with the closer, and a nested
+    `\begin{verbatim}`;
+  - a mark with no closer: an unclosed `<!-- TODO`, or a `<script>`, `<?php` or `<pre>`
+    never closed, which pandoc reads as text;
+  - `\begin{center}` named in a line of prose, `<pre/>`, `</pre foo>`, and a `<!--` in
+    indented code;
+  - a line whose backticks do not pair, `` `<!--` `` beside a stray `` ` ``, where a
+    comment's mark is read.
+
+  The hint names an open comment or raw block as a cause, and nothing is read wrongly.
+- **A listing commented out with `-->` on its closing line is refused.** In ```` ``` --> ````
+  or ```` ```--> ````, pandoc reads the whole listing as the comment, and the gates read no
+  closer there: a closer is its fence and spaces only. So the opener is left unpaired, or
+  pairs with a later fence across printed prose. Accepting it would mean ending a listing
+  and a comment on one line, in the fence reader, which reads before any comment is known.
+  So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
+  which is accepted.
+- **Three more listings commented out whole are refused.** A tilde listing straight under
+  the `<!--` line; a listing inside a commented-out list item; and a backtick listing
+  straight under a line of text that opens the comment, `Text <!-- aside`. Pandoc prints
+  nothing of any, and #65's build did. A listing a comment holds is let be only where
+  pandoc would read it as the gates do without the comment: a tilde fence does not open
+  under a line of text, and a list item's listing ends at pandoc's closer, not the gates'.
+  A backtick fence does open under a line of text, but under a footnote's line, or a list
+  item's with more than one, pandoc took it into the note or the item, ended it at an
+  indented closer and printed the claim after it; so one is held only straight under a
+  `<!--` that starts its line, with a blank line, the file's start or a listing's closer
+  above it (the third round of review). A
+  blank line under `<!--`, `<!--` on a line of its own after a blank line, or the listing
+  moved out of the item, is accepted.
+- **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
+  starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
+  14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an
+  older Python a class starting with a letter it does not know opens a fence to pandoc
+  alone, and the line is refused; on 3.14 a letter pandoc does not know opens a fence pandoc
+  prints as text, which the build's comparison of listings then refuses. Nobody names a
+  class in those letters by accident.
+- **A fence in the front matter is read and not refused.** `masking.fenced_blocks` reads
+  fences inside YAML values, and nothing refuses an unclear one there: an R Markdown chunk
+  pair or a tilde fence in `abstract: |` hides the prose between from the gates. The build
+  prints no front-matter value today, so nothing is printed wrongly, but a gate reading the
+  abstract reads less of it than pandoc does.
 - **Two misreads that cancel pass the build's comparison.** Headings are compared in order,
   not by where they stand, since pandoc's reading says nothing of where. A heading the gates
   read in one place and not in another, `# Methods` straight under a line of text early on
@@ -3058,13 +3289,6 @@ Closed since, and why each mattered:
   setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
   drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
   are refused, not passed.
-- **A fence after a form feed on the same line is code to the gates and prose to pandoc.**
-  The fence reader splits lines where Python does, at a form feed, a vertical tab, U+0085
-  and a few other separators as well as at a newline; pandoc splits at the newline alone. So
-  `We found it.` followed by a form feed and three backticks opens a listing to the gates
-  that pandoc never makes, and every gate stops reading what pandoc prints until a second
-  one closes it. A rule in there escapes the refusal, and a `title:` under it replaces
-  paper.yaml's. No editor types either separator in prose; a pasted one would do it.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
@@ -3083,7 +3307,9 @@ Closed since, and why each mattered:
   indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
   note defined under Methods and referenced from Results, still passes as the alpha, as on
   `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
-  section a number must pass in.
+  section a number must pass in. A line shaped like a heading that pandoc prints as text
+  refuses a definition and ends a note's text only where `main` read a heading: a setext
+  title does, and an empty heading's title, or a title starting `#`, `>` or `|`, does not.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and
@@ -3109,11 +3335,14 @@ Closed since, and why each mattered:
   meets them: `` We strip `<!--` see https://x.org/a`-->`9.99 `` hides a 9.99 that the old
   rule left readable. The patterns are to be fixed separately.
 - **An unmarked `#` heading counts as no heading.** `#References` with no space, an
-  indented `  # References`, or a Word paragraph typed as `# References` without a heading
-  style: pandoc or Word prints each as text, so nothing is cut, and a paper with no other
-  reference heading is read as having none. Its lines are then taken for reference entries
-  by their shape, as in any headingless paper, and a sentence with an entry's shape has its
-  unmatched numbers listed apart, where `--strict` does not count them.
+  indented `  # References`, one directly under a line of prose, or a Word paragraph typed
+  as `# References` without a heading style: pandoc or Word prints each as text, so nothing
+  is cut, and a paper with no other reference heading is read as having none. Its lines are
+  then taken for reference entries by their shape, as in any headingless paper, and a
+  sentence with an entry's shape has its unmatched numbers listed apart, where `--strict`
+  does not count them. Such a line still ends a list that a real heading started, so an
+  appendix heading written directly under the last entry stops the cut early rather than
+  hiding the appendix.
 - **A heading loses its attribute block as pandoc reads it, and nothing else.** Three
   differences remain.
   - A `{` inside a value that no backslash escapes, as in `{title="a{b"}` or `{k=a{b}`,
@@ -3130,10 +3359,109 @@ Closed since, and why each mattered:
   A block kept in the title is the strict way to be wrong: G2 does not read that heading
   as Results or Methods, and the audit cuts no reference list at it. The unpaired emphasis
   is the loose way, and is recorded here rather than fixed because reading it right means
-  reading emphasis as pandoc does. Other markup stays in the title, so `# **Results**` is
-  not Results to G2 either, and a subsection under it named like a Methods one admits the
-  Methods-only rules. In a .docx a heading style is what makes a heading, so a styled
-  paragraph typed as `References {-}` starts a list, although Word prints the braces.
+  reading emphasis as pandoc does. Other markup stays in the title, and G2 reads a title
+  as Results through the marks around it, so `# **Results**` is Results; it reads Methods
+  strictly, so `# **Methods**` is not Methods. In a .docx a heading style is what makes a
+  heading, so a styled paragraph typed as `References {-}` starts a list, although Word
+  prints the braces.
+- **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
+  `- Results` over an underline as a list item holding a heading titled "Results". The
+  gates keep the marker in the title, so it ends the section above; "- Results" is read as
+  Results, and "- Methods" never opens Methods. They do not see a heading pandoc finds
+  further into an item: an indented one, one under a later item's own underline, or
+  `- # Results` on the item's own line. The same goes for a definition list. The old scan
+  saw none of these either.
+- **A fence directly under a line of prose is code to the gates and prose to pandoc.**
+  Pandoc lets only a backtick fence at the margin interrupt a paragraph. A tilde fence, or
+  one indented a space or more, is printed as text, until a blank line ends the paragraph,
+  after which a `# Results` still inside the "fence" is a heading. `fenced_spans` does not
+  know about paragraphs and blanks the whole span, so the numbers in it go unread by G2, and
+  that heading is missed. The old scan did the same.
+- **A YAML block in the middle of a document is read as prose.** Pandoc takes `---` after a
+  blank line, a YAML mapping or nothing but comments, and a closing `---` or `...` for
+  metadata anywhere in a document, and prints none of it. The gates read it all. A number in
+  one is reported, which is only noise, but a `#` line in one is taken for a heading:
+  `---`, `# Methods`, `note: x`, `---` under a Results heading re-admits the `methods_only`
+  rules below it. Telling one from a rule, a sentence and a rule, which pandoc prints as a
+  table, needs a YAML parse. A bare `---` over `---` is read as a heading titled "---".
+- **A table written with lines of dashes is read as a paragraph.** A multiline table, or a
+  simple table with no header or under a `Table:` caption, is not modelled. A row reading
+  `# Top`, or a title over its dashes, is taken for a heading, and one pandoc prints under
+  the table is taken for text. A heading the gates miss under such a table still ends the
+  section for G2 and cannot open Methods. A row they take for a heading can: `# Methods`
+  between two lines of spaced dashes is a table cell to pandoc and a Methods heading to the
+  gates. Word counts and the required-section check go by the headings the gates place, and
+  miss the one under the table.
+- **A line shaped like a heading always ends a section for G2.** A `#` line or an underlined
+  title that pandoc prints as text, because it continues a paragraph, a list item or a
+  quotation, or sits in a `<pre>` or a LaTeX environment, still closes the section above it
+  for G2, titled as the line reads, and never opens Methods. A Methods paragraph hard-wrapped
+  so that a line starts "# of reports" therefore reports the thresholds after it. The line
+  prints as text in the paper as well, so it is worth rewrapping, or escaping as `\#`.
+  Rows of a table the walk reads, and `{{table.x}}`, are not such lines: the rule under the
+  last row is a rule. Four kinds of heading pandoc does print are read the same way: a `#`
+  heading after a tag or a comment on its line, a setext title after a tag, at the start of
+  its line or after a comment, a setext title starting `>` or `|` or made only of dashes,
+  and a heading of seven hashes or more. The scan before the walk never read any of them,
+  and where the walk wrongly starts a block, under a stray `</script>` say, or ends a tag at
+  a `>` pandoc reads inside a quote, one would open Methods; so a Methods section headed
+  that way reports its thresholds. Such a line that says Results holds the Results in place
+  like a printed heading. A lone `##` over a line of text, an empty heading and a paragraph
+  to pandoc, ends the section there, titled with that line, whether the walk places the
+  `##` or not; a `#` line under it, which the scan before the walk took for its title, never
+  opens Methods. A setext title that is an ATX line at the margin, `## Outcomes` over `===`
+  or `# X` over `-`, is a heading at the underline's level titled "## Outcomes" to pandoc
+  and the walk, and a heading "Outcomes" at its hash count to the scan before it, which took
+  a no-break space after the hashes too. The printed chain takes the hash count, and so does
+  the other chain where the walk marks the line as text; for G2 a section is Methods only if
+  both readings say so. The audit's reference list starts
+  only at a heading G2 would call printed, so none of these starts one.
+- **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
+  line under a table for a row when it holds a pipe outside code, math and a backslash
+  escape, and reads each of those naively: two dollars are math, a backslash escapes the
+  pipe after it, and two backticks are code. Pandoc does not: `$ | $` is not math, `\\|` is
+  an escaped backslash and a cell edge, an escaped backtick opens no code, and a code span
+  closes only on a run of as many backticks as opened it. The walk ends the table above such a row, and reads the row as
+  whatever it is shaped like, a title over the rule under it say. The scan before the walk
+  read that heading too.
+- **A section is Results only by its title.** `## **Results**`, `- Results` and
+  `# Results` over a rule are read as Results, but a combined title such as "Results and
+  discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
+  old scan did the same. Reading every title that starts with "Results" as Results would
+  also report the thresholds under a Methods subsection called "Summary statistics".
+- **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
+  build writes the caption as a paragraph after the table, and a heading cannot interrupt a
+  paragraph, so the document loses the heading while G2 reads the one the source means. With
+  no caption the table ends at its last row and the two agree. A blank line avoids it, as
+  the example leaves one everywhere. A `{{figure.x}}` line is prose to both: the
+  build writes an image there, and a heading under it is printed as text.
+- **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
+  line of nothing but LaTeX commands is a block unless one of them is on a list of inline
+  commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
+  verbatim (`pre`, `script`, `style`, `textarea`, holding everything to their closing tag)
+  or inline, by list. A paragraph ends at a line starting with a block-level tag, and after
+  one whose last tag is block-level or closes an HTML block counted open around it. Every
+  entry was checked against pandoc 3.9, and a name on no list is read as pandoc reads most
+  unknown ones: a LaTeX command as a block, a tag as inline. A block quote's lazy lines stop
+  at the closing tag of an HTML block counted open around them. Only a tag that starts a
+  block is counted open, so one opened in the middle of a line, inside a paragraph, or
+  inside a table or a LaTeX environment, is not; a closing tag anywhere on a line closes it,
+  one quoted in inline code included, which can end the block early. A stray `</script>`
+  inside a paragraph ends the paragraph, where pandoc reads it inline. A comment at the
+  margin is a block and the rest of its line starts the next one; indented one to three
+  spaces it is inline, except directly under an "either" tag alone on its line, which takes
+  it into its raw block, and inside a list, where the gates still read it as a block. What
+  follows a comment on its line is text, never an underline or a rule. Pandoc also drops
+  the indentation of the line after a raw block, `<hr>` or `\newpage` alone on a line, and
+  prints it as a paragraph; the gates read it as code, so a `## Methods` directly under it,
+  text to pandoc, is a heading to them and opens Methods, as it did for the scan before the
+  walk. Pandoc reads a setext title that is only an HTML comment as an empty heading,
+  where the gates see none. A heading's title keeps its raw HTML and LaTeX, which pandoc's
+  printed title does not show, so `## Methods <span>` is not read as Methods. It is read
+  as Results through them: `# <del>Results</del>` and `# Results \label{sec:results}` end
+  the Methods as the printed "Results" does. In a file
+  with CRLF line endings the gates now see setext headings, which the scan before the walk
+  did not, and with them the list-heading gaps above.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
   and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
@@ -3721,7 +4049,9 @@ Closed since, and why each mattered:
     it prints nothing of either. No real address has several words, so such a line is
     marked, and prints as it was written, as it did before `_blocks` took it for a
     definition. With one word after the colon, `[Note]: none.`, the line is a definition
-    to both, and prints nothing.
+    to both, and prints nothing. A marked line cut down to that shape in Word, such as
+    `[Note]: @smith2020 says X.` to its label and citation, is refused by `import`: the next
+    build would give it no identifier.
   - *Beside a line pandoc does not take for blank, nothing is marked.* A line holding only
     a no-break or full-width space, or a form feed, separates blocks here and not for
     pandoc, and `_blocks` leaves the blocks on both sides of it unmarked. A definition under
@@ -3740,13 +4070,32 @@ Closed since, and why each mattered:
     written on the line under it, with no empty line between, is never asked whether it
     runs on. Under a line holding only a no-break space, the paragraph below goes into the
     footnote, and is not compared. An empty line before the note avoids it.
-  - *Only a note left alone is read by itself.* Pandoc reads a note's text apart from the
-    body. A note that runs on into the block below, or is marked for a line the rule
-    refuses, is still read for raw content as a paragraph is: a `<!--`, `<pre>` or
-    `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
-    them. And a code fence wrapped onto a note's second line, left alone or not, is still
-    paired with the next fence below, so what lies between goes unmarked, or a marker lands
-    inside a real code block. Both are so on `main`.
+  - *Only a note left alone, or a label made a term, is read by itself.* Pandoc reads a
+    note's text apart from the body. Directly under a label, a definition list's `:` or `~` -
+    with text, a space or a tab, or alone, indented up to three spaces - makes a term and its
+    definition instead, and pandoc reads each of those by itself too, so `_blocks` follows no
+    raw content out of that block either (`_term_under_a_note`). Followed, a `<!--` in the
+    label hid the paragraphs after it up to the next `-->`, while pandoc printed them. Only
+    a block of those two lines is taken so. With a line after them, pandoc can end the
+    definition inside the block - at a code fence, a list's first item, or the close of a
+    div or of any tag it takes for a block around it - and what follows is at the top level.
+    Taken for a term's by itself, a comment opened there was not followed and the paragraphs
+    inside it were marked; two review rounds each found another such line a list had
+    missed, so a longer block is followed as on `main`. What is still followed, as on
+    `main`, and leaves paragraphs pandoc prints unmarked: such a longer block, a term that
+    is no note's label (`Capped <!-- check` over `: as agreed`), a label with nothing after
+    `]:`, a definition after a blank line, a label on the block's second line or later, and
+    a definition's indented continuation. A note that runs on into the block below, or is
+    marked for an underline or a table's rule, is still read for raw content as a paragraph
+    is: a `<!--`, `<pre>` or `\begin{...}` in its text leaves the paragraphs after it
+    unmarked, and pandoc prints them. The other way round, a note left alone takes a `:::`
+    in, which ends it inside a fenced div, and a comment opened after that line is then not
+    followed: `::: box` over `[^cap]: Capped`, `:::` and a `<!--` has the paragraphs after
+    it, up to the one holding the `-->`, marked inside the comment, on `main` too. Following
+    from the closing line on would fix it; following the whole note again would hide what
+    #54's eleventh round found hidden. And a code fence wrapped onto a note's second line,
+    left alone or not, is still paired with the next fence below, so what lies between goes
+    unmarked, or a marker lands inside a real code block. Both are so on `main`.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below
@@ -3898,6 +4247,56 @@ Closed since, and why each mattered:
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
   sheet, so a raster sibling is preferred where one exists and the vector is skipped when it
   is not.
+- **Some numbers are listed in the annotated copy's appendix and not marked in its text.**
+  A number in code, an equation, a link's text or the front matter takes no mark, and nor
+  does one inside markup the annotator cannot mark around. Where pandoc reads a paragraph
+  differently with its marks in, every mark in that paragraph comes out, not only the one
+  that did it: a number in an HTML tag's attribute unmarks its whole paragraph, and a
+  hand-written grid or simple table, or a block with attributes, loses every mark in it.
+  Each is in the appendix with the reason, but the reader has to look there for it; its
+  colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
+  pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
+  read as an escape, and a backtick left unpaired in one list item that pairs with one in
+  the next. The extra round of #76 left these, each rare or no worse than on `main`:
+  - a link's text across a line break is not found, so its paragraph loses every mark,
+    as `main`'s copy misreads it;
+  - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
+    paragraph, which `main`'s copy also misreads;
+  - a number in a reference definition, `[tbl]: #tbl-2` or `[Table 2]: #t`, is marked, which
+    breaks the definition and costs the paragraphs that use it their marks;
+  - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
+    `from $5 to 7\$` both numbers go unmarked as "in an equation";
+  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5 times`, or
+    a lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
+    reference two brackets make, and it reaches past them;
+  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked;
+  - so is a number read across several runs with a backslash pandoc keeps, before a letter
+    or a digit: a TeX command, `1.2\pm0.3` or `5\times10^3^`, a path, `data\2021\05`, or
+    `\é5-\é10`; and one before a character Python counts as a digit, even in one run,
+    `12\²`. `main` marks each, and its copy reads the same. Word drops the command, so
+    `1.2\pm0.3` prints "1.2" (the final round of #76);
+  - a mark straight after a TeX command, `\a`, is taken for its argument, and the
+    paragraph loses every mark;
+  - an ordered list loses every mark: its `1.` and `2.` are marked, which breaks the list,
+    as `main`'s copy does.
+
+  And its fix-only round these, each contrived or no worse than on `main`:
+  - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
+    file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
+    prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
+    manuscript" holds file by file;
+  - a link the annotator does not know pandoc reads costs its paragraph every mark: a
+    definition inside a quotation or a list item, an implicit reference to a heading,
+    `[the 3 steps][Methods]`, and `[Table 2][@a]` where only `[table 2]:` is defined, since
+    pandoc falls back to the first bracket's label; `main`'s copy misreads each;
+  - definitions are read in the raw text, so one in a listing or a comment, or straight
+    under a line of a paragraph, where pandoc reads none, takes the number in
+    `[Table 2][t]` for a link's and leaves it unmarked; and labels are matched with
+    `casefold`, which differs from pandoc's lower-casing for ß.
+- **The annotated copy prints a manuscript file's own front matter.** The annotated build
+  re-reads each source whole, where the build strips its YAML block, so whatever pandoc
+  prints from that block prints in the annotated copy and not in the manuscript, its
+  numbers listed as "in the front matter".
 - **An interval is only checked in prose when it was emitted as one.** `em.interval()`
   publishes the estimate and both bounds together, verifies that the bounds bracket the
   estimate, and records which end each bound is — which is what lets G2 refuse

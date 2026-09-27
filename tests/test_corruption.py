@@ -1837,7 +1837,7 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     the number was read by nothing; no test held the two to the same fences."""
     from manuscript_guard.classify import Classifier
     from manuscript_guard.gates.numbers import _fenced_code
-    from manuscript_guard.text.masking import fenced_blocks, masked_spans
+    from manuscript_guard.text.masking import NUL, fenced_blocks, mask
 
     text = (
         '---\ntitle: T\nsubtitle: |\n  ```python\n  print("ROR 9.99")\n  ```\n---\n\n'
@@ -1845,7 +1845,8 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     )
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" in {f.code for f in report.findings}
-    assert masked_spans(text)["fenced-code"] == [(f.start, f.end) for f in fenced_blocks(text)]
+    masked = mask(text)
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
 
 
 def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
@@ -1867,8 +1868,8 @@ def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> 
 
 
 def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
-    """Pandoc reads a YAML block anywhere in the body as metadata and prints none of it, so a
-    `# Methods` line in one is a YAML comment. Read as a heading, it gave the paragraph under
+    """Pandoc reads a YAML block anywhere in the body as metadata, so a `# Methods` line in
+    one is a YAML comment. Read as a heading, it gave the paragraph under
     the block the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha
     chosen in advance."""
     path = main_md(project)
@@ -1877,6 +1878,46 @@ def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
     assert anchor in text
     block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
     path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        # The build passes a body block to pandoc, which prints its author, date and
+        # abstract, a wrapped value included.
+        (
+            "Para.\n\n---\nauthor: The 12 investigators\ndate: Revised after 9.94\n"
+            "abstract: The ROR was\n  9.91 in the cohort.\n---\n\nAfter.\n",
+            ("12", "9.94", "9.91"),
+        ),
+        # Under a caption, pandoc reads the block as a table and prints it.
+        ("Table: Cohort sizes.\n\n---\nCases: 120\nControls: 480\n---\n", ("120", "480")),
+        # In the body a URL still runs to the next space: stopped at a comment, the link
+        # target after it started inside the old URL and ran on.
+        ("See https://x.org/a<!--c-->](b ROR 8.88) here.\n", ("8.88",)),
+    ],
+    ids=["printed values", "table", "url in the body"],
+)
+def test_masking_hides_nothing_a_body_yaml_block_prints(text: str, shown: tuple[str, ...]) -> None:
+    """Masked as a whole, a YAML block in the body hid values the build prints: pandoc
+    prints a body block's author, date and abstract, and a block under a caption is a
+    table. A body block is only kept from heading anything."""
+    from manuscript_guard.text.masking import mask
+
+    masked = mask(text)
+    assert all(number in masked for number in shown)
+
+
+def test_a_yaml_block_inside_a_comment_brings_back_no_heading(project: Path) -> None:
+    """Pandoc reads a YAML block inside an HTML comment as part of the comment. Masked, the
+    block stopped the comment scanner, so a `# Methods` further down the comment headed the
+    paragraph after it, and its `p < 0.001` passed as the alpha."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    comment = "\n<!--\n\n---\nnote: x\n---\n\n# Methods\n\n-->\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + comment, 1), encoding="utf-8")
     assert "unclassified-number" in codes(gate_report(project))
 
 

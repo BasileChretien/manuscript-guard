@@ -239,9 +239,9 @@ def scannable(text: str) -> str:
     # Fences and comments are found in the text as written too. Blanking the comments
     # first made a line like "```<!-- TODO -->" a bare closing fence, which paired with an
     # earlier opener and blanked the headings between them.
-    # And every YAML block of the body, which pandoc reads as metadata and prints none of:
-    # a `# Methods` in one is a YAML comment, and read as a heading it gave the paragraphs
-    # after the block the Methods chain.
+    # And every YAML block of the body, which pandoc reads as metadata: a `# Methods` in
+    # one is a YAML comment, and read as a heading it gave the paragraphs after the block
+    # the Methods chain.
     head = front_matter_end(text)
     fences = fenced_blocks(text)
     spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)

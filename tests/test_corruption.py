@@ -3277,6 +3277,18 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
             {"5\\%-10\\%", "\\~5-\\~7", "40"},
             {},
         ),
+        # Found by the round after the budget: pandoc escapes any character that is not a
+        # letter, a digit or a space, not ASCII punctuation alone.
+        ("Between 5\\°-10\\° of 40 sites.", {"5\\°-10\\°", "40"}, {}),
+        ("Doses of \\±5-\\±10 in 40 sites.", {"\\±5-\\±10", "40"}, {}),
+        ("Values of \\≥5-\\≥10 in 40 sites.", {"\\≥5-\\≥10", "40"}, {}),
+        ("From 5\\‰-10\\‰ and 5\\–10 in 40 sites.", {"5\\‰-10\\‰", "5\\–10", "40"}, {}),
+        (
+            "| Site | Range |\n|------|-------|\n| A | 5\\°-10\\° |\n| B | 2\\*3\\*4 |",
+            {"5\\°-10\\°", "2\\*3\\*4"},
+            {},
+        ),
+        ("It was 12\\° and 12\\% at 40 sites.", {"12", "40"}, {}),
         (
             "| Drug | Cost |\n|------|------|\n| A | \\$10-\\$50 |\n| B | \\$5 |",
             {"\\$10-\\$50", "\\$5"},

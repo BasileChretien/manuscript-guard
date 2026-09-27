@@ -1317,9 +1317,10 @@ inside the span, where the link printed as text. So the annotator places each ma
   faced each other across the marks between, and a backslash before a number goes
   inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
   escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
-  So is any punctuation a backslash escapes in a number read across several runs, but a
-  bracket or a backslash: `5\%-10\%` and `\~5-\~7` are marked whole (the fix-only round
-  after the extra one). A link's text, the target a URL or an anchor, can't hold a mark,
+  So is anything else a backslash escapes in a number read across several runs, which
+  for pandoc is any character but a letter, a digit or a space, save a bracket or a
+  backslash: `5\%-10\%`, `\~5-\~7` and `5\°-10\°` are marked whole (the rounds after the
+  extra one). A link's text, the target a URL or an anchor, can't hold a mark,
   which is itself a link. A bracket before another is taken for a link's text only when
   the file defines the second one's label, or, the second empty, the first one's: pandoc
   reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their

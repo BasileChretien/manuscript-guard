@@ -18,7 +18,8 @@ together, so the audit reports corrections as errors and misses the text that wi
 be published. Insertions are kept and deletions dropped, which is what the reader will see,
 and so is text moved away: the reader sees it where it was moved to. A deleted line break
 or tab is dropped with the text, not read as a space, and a paragraph whose mark was deleted
-or moved away runs on into the next with nothing between them, as Word joins them.
+or moved away runs on into the next with nothing between them, as Word joins them. A table
+row deleted or moved away is dropped whole, its cells and lines with its text.
 
 **The body and the notes are kept apart**, and the body says which of its lines are
 headings. Both are for finding the reference list: the audit drops it, and used to drop
@@ -94,21 +95,60 @@ def _inside(node: ET.Element, parents: dict, tag: str) -> bool:
 _UNSEEN = {W + "del", W + "moveFrom", W + "pPr", MC + "Fallback"}
 
 
-def _placed(node: ET.Element, parents: dict) -> tuple[ET.Element | None, bool]:
+def _paragraphs(element: ET.Element) -> list[ET.Element]:
+    """The paragraphs in `element`, leaving out any inside something `_UNSEEN` there."""
+    found, pending = [], [element]
+    while pending:
+        for child in pending.pop():
+            if child.tag not in _UNSEEN:
+                if child.tag == W + "p":
+                    found.append(child)
+                pending.append(child)
+    return found
+
+
+def _row_gone(row: ET.Element) -> bool:
+    """Whether Word drops a table row on accepting every tracked change.
+
+    A deleted row is marked in its own properties, not by wrapping it, and a row moved away
+    is not marked as a row at all: Word 16 moves the mark of every paragraph in it instead,
+    a nested table's included. Not a text box's, whose anchor was moved with the text around
+    it, so the box goes too. Either way the row's text was dropped while its row and cells
+    still started lines, and a cell styled as a heading was an empty heading, which ended
+    the reference list it stood in. An inserted row is kept, and so is a row not deleted,
+    with any paragraph mark left in place.
+    """
+    if row.find(f"{W}trPr/{W}del") is not None:
+        return True
+    paragraphs = _paragraphs(row)
+    moved = f"{W}pPr/{W}rPr/{W}moveFrom"
+    return bool(paragraphs) and all(p.find(moved) is not None for p in paragraphs)
+
+
+def _hidden(root: ET.Element) -> frozenset[ET.Element]:
+    """The elements Word does not show, nor anything in them, once changes are accepted."""
+    return frozenset(
+        node
+        for node in root.iter()
+        if node.tag in _UNSEEN or (node.tag == W + "tr" and _row_gone(node))
+    )
+
+
+def _placed(node: ET.Element, parents: dict, hidden: frozenset) -> tuple[ET.Element | None, bool]:
     """The paragraph `node` belongs to, and whether it is on the page there."""
     paragraph, seen = None, True
     current = parents.get(node)
     while current is not None:
         if paragraph is None and current.tag == W + "p":
             paragraph = current
-        seen = seen and current.tag not in _UNSEEN
+        seen = seen and current not in hidden
         current = parents.get(current)
     return paragraph, seen
 
 
-def _seen(node: ET.Element, parents: dict) -> bool:
-    """Whether `node` is on the page: nothing it sits in is `_UNSEEN`."""
-    return _placed(node, parents)[1]
+def _seen(node: ET.Element, parents: dict, hidden: frozenset) -> bool:
+    """Whether `node` is on the page: neither it nor anything it sits in is `hidden`."""
+    return node not in hidden and _placed(node, parents, hidden)[1]
 
 
 def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
@@ -203,14 +243,24 @@ def _shown(node: ET.Element) -> str:
     return _CHARACTERS[node.tag](node)
 
 
-def _joins(root: ET.Element, parents: dict) -> dict[ET.Element, ET.Element]:
+def _dropped(element: ET.Element, parents: dict, hidden: frozenset) -> bool:
+    """Whether `element` is a table Word drops whole: nothing in it is on the page."""
+    if element.tag != W + "tbl":
+        return False
+    paragraphs = list(element.iter(W + "p"))
+    return bool(paragraphs) and not any(_seen(p, parents, hidden) for p in paragraphs)
+
+
+def _joins(root: ET.Element, parents: dict, hidden: frozenset) -> dict[ET.Element, ET.Element]:
     """Each paragraph whose mark was deleted or moved away, and the one it runs on into.
 
     Only its next sibling: a text box's paragraphs sit inside the paragraph that holds it,
     and nothing runs on into those. An empty element between the two - a bookmark, a
-    comment's range, the end of a move - leaves them adjacent. A table, a content control,
-    anything with content of its own, parts them, although Word 16 runs a paragraph on into
-    the first cell of a table after it (DESIGN.md, Known gaps).
+    comment's range, the end of a move - leaves them adjacent, and so does a table whose
+    every row was deleted or moved away: Word 16 joins "-0.5" and "1" either side of one
+    into -0.51. A table, a content control, anything else with content of its own, parts
+    them, although Word 16 runs a paragraph on into the first cell of a table after it
+    (DESIGN.md, Known gaps).
     """
     joins: dict[ET.Element, ET.Element] = {}
     # Only a parent of a paragraph that runs on can hold a join; most documents have none.
@@ -222,7 +272,7 @@ def _joins(root: ET.Element, parents: dict) -> dict[ET.Element, ET.Element]:
                 if before is not None:
                     joins[before] = child
                 before = child if runs_on(child) else None
-            elif len(child):
+            elif len(child) and not _dropped(child, parents, hidden):
                 before = None
     return joins
 
@@ -244,7 +294,8 @@ def _line_start(paragraph: ET.Element, joins: dict, parents: dict, headings: fro
 
 def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
-    joins = _joins(root, parents)
+    hidden = _hidden(root)
+    joins = _joins(root, parents, hidden)
     # Each paragraph's line, shared with the paragraph it runs on into. A text box's
     # paragraphs get lines of their own, after the line of the paragraph holding it: read
     # where the box is anchored, they split that paragraph in two.
@@ -252,10 +303,10 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
     pieces: list[str | list[str]] = []
 
     for node in root.iter():
-        if node.tag in _BREAKS and not _seen(node, parents):
+        if node.tag in _BREAKS and not _seen(node, parents, hidden):
             # Its text is not read, so it starts no line either: the fallback copy of a text
-            # box gave each of its lines twice, and a deleted one left empty lines, where a
-            # heading's ended the reference list it was in.
+            # box gave each of its lines twice, and a deleted one, or a table row deleted or
+            # moved away, left empty lines, where a heading's ended the reference list.
             continue
         if node.tag == W + "tc":
             # Cell boundary. Without this, adjacent cells concatenate into one number.
@@ -269,7 +320,7 @@ def _part_text(root: ET.Element, headings: frozenset[str] = frozenset()) -> str:
             if node in joins:
                 lines[joins[node]] = lines[node]
         elif node.tag in _SHOWN:
-            owner, seen = _placed(node, parents)
+            owner, seen = _placed(node, parents, hidden)
             if seen:
                 (lines[owner] if owner is not None else pieces).append(_shown(node))
 

@@ -362,7 +362,6 @@ def test_a_bracket_closed_from_outside_ends_an_atom(text: str, expected: list) -
     assert atoms_of(text) == expected
 
 
-FENCE = "`" * 3
 SPOOFS = {
     "fenced code comment": (
         f"## Methods\n\nAlpha set.\n\n{FENCE}python\n# Methods\nx = 1\n{FENCE}\n\n"

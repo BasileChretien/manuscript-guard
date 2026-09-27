@@ -31,7 +31,13 @@ from dataclasses import dataclass, replace
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.masking import blank, fenced_blocks, front_matter_end, html_comments
+from manuscript_guard.text.masking import (
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    metadata_blocks,
+)
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
 
@@ -47,10 +53,18 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     # Fences and comments are found in the text as written too, the comments as `mask`
     # finds them (text/comments.py): a `<!--` in inline code opens none, and blanking the
     # comments first made "```<!-- TODO -->" a bare closing fence.
+    # And every YAML block of the body, which pandoc reads as metadata: a `# Methods` in
+    # one is a YAML comment, and read as a heading it gave the paragraphs after the block
+    # the Methods chain.
     head = front_matter_end(text)
     fences = fenced_blocks(text)
     comments = html_comments(text, fences)
-    spans = [(0, head), *((fence.start, fence.end) for fence in fences), *comments]
+    spans = [
+        (0, head),
+        *metadata_blocks(text),
+        *((fence.start, fence.end) for fence in fences),
+        *comments,
+    ]
     return blank(text, spans), comments
 
 

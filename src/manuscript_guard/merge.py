@@ -978,20 +978,43 @@ def _took_in(
     analysis used..."), and requiring the text to be new let that join through as
     "Statistical analysisStatistical analysis used...".
     """
-    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
+    for block in _headings_beside(name, reference, steps):
+        text = " ".join(block.text.split())
+        if missing[block.text] and squashed_now.count(text) > squashed_was.count(text):
+            return block.text
+    return ""
+
+
+def _headings_beside(
+    name: str, reference: list[Block], steps: tuple[int, ...] = (-1, 1)
+) -> list[Block]:
+    """The blocks without an identifier directly above and below this paragraph - only
+    above, with `steps` of (-1,) - past empty ones: a heading, a caption, anything a
+    run-in could take. A paragraph or a table there takes nothing in."""
+    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
+    found = []
     for step in steps:
         i = at + step
         while 0 <= i < len(reference) and not (
             reference[i].names or reference[i].table or reference[i].text
         ):
             i += step
-        if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
-            continue
-        text = " ".join(reference[i].text.split())
-        if missing[reference[i].text] and squashed_now.count(text) > squashed_was.count(text):
-            return reference[i].text
-    return ""
+        if 0 <= i < len(reference) and not (reference[i].names or reference[i].table):
+            found.append(reference[i])
+    return found
+
+
+def _printed_otherwise(name: str, reference: list[Block], missing: Counter) -> bool:
+    """Whether a heading or caption beside this paragraph is missing from the returned
+    document, asked of one built from other inputs than are on disk.
+
+    Its source can be as it was and its text not: a value in it changed, or a citation, or
+    a number pandoc gives it. What it printed at the build is not known, so `_took_in`
+    looked for the wrong text, and a heading run into the paragraph in Word merged, "Results
+    in 4000 reports" typed into prose where a binding now prints 4100.
+    """
+    return any(missing[block.text] for block in _headings_beside(name, reference))
 
 
 def _read_returned(
@@ -1125,6 +1148,8 @@ def plan_import(
     every: dict | None = None,
     built: Sequence[str] = (),
     unsure: frozenset[str] = frozenset(),
+    beside_changed: frozenset[str] = frozenset(),
+    stale: bool = False,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -1147,6 +1172,13 @@ def plan_import(
     that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
     in one that does, those its record does not hold. Missing from it, each is still weighed
     as a join into the paragraph before it.
+
+    `reference` is built from the source as it is now, and when the document was built from
+    other inputs (`stale`) the blocks beside a paragraph there may not be the ones the
+    co-author had: a heading run into the paragraph in Word is then looked for under the
+    wrong text. A rewording is not merged into a paragraph whose record says a block beside
+    it changed since (`beside_changed`, from `roundtrip.Numbering`), nor, when `stale`, into
+    one beside a heading or caption missing from the returned document.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1252,6 +1284,8 @@ def plan_import(
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
+        elif name in beside_changed or (stale and _printed_otherwise(name, reference, missing)):
+            refused.append(Refusal(name, now, (_BESIDE_CHANGED,)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
@@ -1400,6 +1434,12 @@ _TOOK_IN = (
     "it came back joined with the heading or caption beside it ('{text}'). Merging it would "
     "copy that text into the paragraph while the heading stays where it is. Undo the join, or "
     "make the edit in the .md."
+)
+_BESIDE_CHANGED = (
+    "a heading or other block beside it is not the one the document was sent with: changed "
+    "in the .md since the build, or printing otherwise now. A heading run into this paragraph "
+    "in Word could not be told from a rewording, and merged, its text would be in the source "
+    "twice. Make the edit in the .md."
 )
 _NOT_ITS_OWN = (
     "the paragraph opening '{opening}' came back with its identifier on other text (shown): "

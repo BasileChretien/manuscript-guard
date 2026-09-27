@@ -326,6 +326,16 @@ def checklist_table(project: Project, completion: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+def supplement_for(project: Project, document: Path) -> Path:
+    """The supplement to pack with `document`: the one beside it, or else the one the build
+    made. A document edited elsewhere, `--document final/manuscript.docx`, has none beside
+    it, and its pack went without one."""
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY
+
+    beside = document.parent / f"{SUPPLEMENTARY}.docx"
+    return beside if beside.exists() else project.path("build") / beside.name
+
+
 def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
@@ -335,9 +345,16 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     later nobody can tell, and the manifest's whole purpose is to be the thing you can tell
     from.
     """
-    from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary, source_files
+    from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     directory = project.path("build") / "submission"
+    # The pack is made afresh, and a document inside it, a co-author's edited copy passed as
+    # `--document build/submission/manuscript.docx`, was deleted before it was copied.
+    if document.resolve().is_relative_to(directory.resolve()):
+        raise SubmissionError(
+            f"{document} is inside {directory}, which every pack replaces; move it "
+            "elsewhere and pass that path"
+        )
     if directory.exists():
         shutil.rmtree(directory)
     directory.mkdir(parents=True)
@@ -372,7 +389,7 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     # Gated on the project still having supplementary sources, not on the file existing: a
     # `supplementary.docx` left in build/ from a layout the author has since abandoned would
     # otherwise be sent to a journal with nothing in the project to check it against.
-    supplement = document.parent / f"{SUPPLEMENTARY}.docx"
+    supplement = supplement_for(project, document)
     has_supplement = any(
         is_supplementary(project.path("manuscript"), p)
         for p in source_files(project.path("manuscript"))

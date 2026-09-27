@@ -2477,9 +2477,10 @@ HEADED = [
         "## Costs ($US)\nCosts were converted to US$ at 2020 rates.", None, id="heading-maths"
     ),
     pytest.param("# Quote \\` and `x\nMore` text.", None, id="heading-escaped-backtick"),
-    # Round six: a link's destination or title, an HTML tag's attributes, emphasis, and a
-    # code span whose backslash is only text all run onto the next line as well. A heading
-    # is passed over only when its line is plain text now.
+    # Round six: a link's destination or title, an HTML tag's attributes, and a code span
+    # whose backslash is only text all run onto the next line as well. A heading is passed
+    # over only when its line is plain text now. Emphasis runs on to no later line, and is
+    # kept out all the same: the allow-list takes no exceptions.
     pytest.param('# See [x](http://x.org\n"Title") here.\nAlpha.', None, id="heading-link"),
     pytest.param('# Zeta <a\nhref="x">link</a> more\nAlpha.', None, id="heading-html-tag"),
     pytest.param(

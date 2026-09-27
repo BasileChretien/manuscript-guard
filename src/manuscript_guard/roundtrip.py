@@ -501,9 +501,12 @@ _ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
 # Pandoc reads the next line into an ATX heading, or a setext title and all under it into
 # one paragraph, whenever something opened in the heading's line closes on a later one - a
 # code span, a comment, a TeX environment, a citation's locator, maths, a link's
-# destination, a tag's attributes, emphasis. Each list of those that review was given, it
-# found one more; so anything but plain text keeps the block as it was, unmarked. A closed
-# attribute block may end the line, `{#sec-methods}`, since cross-references need one.
+# destination, a tag's attributes. Each list of those that review was given, it found one
+# more; so anything but plain text keeps the block as it was, unmarked. Emphasis marks,
+# `*`, `_`, `~` and `^`, are kept out too, though pandoc closes none of them on the next
+# line: the allow-list is what ended the search, and an exception to it would start one
+# again. A closed attribute block may end the line, `{#sec-methods}`, since
+# cross-references need one.
 _PLAIN_LINE = re.compile(r"[^`@$\[\]<>\\*_~^{}&]*(?:\{[#.\w\- =:]*\}[ \t]*)?")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # The line under a link's definition that may hold its title or attributes: pandoc reads

@@ -1658,8 +1658,8 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
-_CLAIM = "The excess was significant (p < 0.001).\n"
-_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+_CLAIM_LINE = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM_LINE
 
 _OPENING_RULES = [
     # YAML metadata below the front matter: pandoc prints none of it, and a `title:` in it
@@ -1688,7 +1688,7 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
 
     source = main_md(project)
     text = source.read_text(encoding="utf-8")
-    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}\n{_CLAIM}", "utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}\n{_CLAIM_LINE}", "utf-8")
     assert main(["check", str(project), "--json"]) == 1
     findings = json.loads(capsys.readouterr().out)["findings"]
     assert "rule-opens-a-block" in {f["code"] for f in findings if f["severity"] == "fail"}
@@ -1741,7 +1741,7 @@ def test_import_takes_back_a_document_built_before_its_source_was_refused(
         ),
         # A title continuing a paragraph over `===`: the gates read a Methods heading pandoc
         # prints as text, and put the claim under it. Named with its file and line.
-        (f"We also saw\nMethods\n=======\n\n{_CLAIM}", "'Methods' at main.md:"),
+        (f"We also saw\nMethods\n=======\n\n{_CLAIM_LINE}", "'Methods' at main.md:"),
     ],
 )
 def test_the_build_refuses_what_pandoc_reads_otherwise(
@@ -2287,8 +2287,8 @@ def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
-        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM_LINE}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM_LINE}', []),
     ],
 )
 def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:
@@ -2742,6 +2742,111 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     )
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" not in {f.code for f in report.findings}
+
+
+def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
+    """A code block in a front-matter value is a listing too, and a number in its string is
+    a claim. Looked for in the body alone, `_fenced_code` missed it while `mask` hid it, and
+    the number was read by nothing; no test held the two to the same fences."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+    from manuscript_guard.text.masking import NUL, fenced_blocks, mask
+
+    text = (
+        '---\ntitle: T\nsubtitle: |\n  ```python\n  print("ROR 9.99")\n  ```\n---\n\n'
+        "# Results\n\nText.\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" in {f.code for f in report.findings}
+    masked = mask(text)
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
+
+
+def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
+    """A URL is masked to the next space, and the key of the next YAML line is masked too,
+    so one ending a title ran through that key into the next value: 9.99, which pandoc
+    prints in the abstract, was read by nothing."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    paper = (
+        "---\ntitle: Data at https://example.org/data\nabstract: 9.99 was the ROR.\n---\n\n"
+        "# Results\n\nThe cohort held n = 1 report.\n"
+    )
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == {"9.99"}
+    assert "9.99" in mask(paper)
+
+
+def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
+    """Pandoc reads a YAML block anywhere in the body as metadata, so a `# Methods` line in
+    one is a YAML comment. Read as a heading, it gave the paragraph under
+    the block the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha
+    chosen in advance."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    assert anchor in text
+    block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        # The build passes a body block to pandoc, which prints its author, date and
+        # abstract, a wrapped value included.
+        (
+            "Para.\n\n---\nauthor: The 12 investigators\ndate: Revised after 9.94\n"
+            "abstract: The ROR was\n  9.91 in the cohort.\n---\n\nAfter.\n",
+            ("12", "9.94", "9.91"),
+        ),
+        # Under a caption, pandoc reads the block as a table and prints it.
+        ("Table: Cohort sizes.\n\n---\nCases: 120\nControls: 480\n---\n", ("120", "480")),
+        # In the body a URL still runs to the next space: stopped at a comment, the link
+        # target after it started inside the old URL and ran on.
+        ("See https://x.org/a<!--c-->](b ROR 8.88) here.\n", ("8.88",)),
+    ],
+    ids=["printed values", "table", "url in the body"],
+)
+def test_masking_hides_nothing_a_body_yaml_block_prints(text: str, shown: tuple[str, ...]) -> None:
+    """Masked as a whole, a YAML block in the body hid values the build prints: pandoc
+    prints a body block's author, date and abstract, and a block under a caption is a
+    table. A body block is only kept from heading anything."""
+    from manuscript_guard.text.masking import mask
+
+    masked = mask(text)
+    assert all(number in masked for number in shown)
+
+
+def test_a_yaml_block_inside_a_comment_brings_back_no_heading(project: Path) -> None:
+    """Pandoc reads a YAML block inside an HTML comment as part of the comment. Masked, the
+    block stopped the comment scanner, so a `# Methods` further down the comment headed the
+    paragraph after it, and its `p < 0.001` passed as the alpha."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    comment = "\n<!--\n\n---\nnote: x\n---\n\n# Methods\n\n-->\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + comment, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_raw_block_in_the_front_matter_is_not_reported(project: Path) -> None:
+    """The build strips the manuscript's front matter, so a raw LaTeX block under
+    `header-includes` never reaches the document; G2 failed it as a `raw-block` written
+    straight into the build."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    header = (
+        f"---\n{title}\nheader-includes: |\n  ```{{=latex}}\n  \\usepackage{{setspace}}\n"
+        "  ```\n---\n"
+    )
+    path.write_text(header + text[text.index("\n---\n") + len("\n---\n") :], encoding="utf-8")
+    assert "raw-block" not in codes(gate_report(project))
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:

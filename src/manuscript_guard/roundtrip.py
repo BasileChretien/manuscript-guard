@@ -594,6 +594,25 @@ def _unescaped(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
     )
 
 
+def splits_a_paragraph(text: str) -> str | None:
+    """What in `text` ends a paragraph, or sets part of it apart in Word, wherever in the
+    paragraph it stands; None if nothing does.
+
+    Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag, mid-line too,
+    and carries on with a raw block, unless it is escaped. Display maths stays in the
+    paragraph for pandoc's reader, and its Word writer gives it a paragraph of its own. A
+    paragraph whose source holds any of them gets no identifier (`_untagged`). A binding's
+    value is substituted after that, so G2 asks the same of every value a paragraph prints.
+    """
+    if _unescaped(_TEX_ENVIRONMENT, text) is not None:
+        return "a LaTeX environment"
+    if _unescaped(_HTML_BLOCK_TAG, text) is not None:
+        return "an HTML block tag"
+    if "$$" in text:
+        return "display maths"
+    return None
+
+
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -659,14 +678,11 @@ def _untagged(block: str) -> bool:
         # A heading, which a marker would unmake. Only as pandoc reads one: `#Methods` and
         # ` # Methods` are paragraphs, and went unmarked when any `#` did.
         _ATX_OPENS.match(block) is not None
-        # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
-        # it opens, mid-line too, and carries on with a raw block - unless it is escaped.
-        or _unescaped(_TEX_ENVIRONMENT, stripped) is not None
-        or _unescaped(_HTML_BLOCK_TAG, stripped) is not None
-        # One paragraph to pandoc's reader and three to its Word writer, which gives display
-        # math a paragraph of its own: the bookmark stayed on the words before the equation,
-        # and `import` spliced them over the equation and everything after it.
-        or "$$" in stripped
+        # A LaTeX environment or a block-level HTML tag, wherever it opens, or display maths:
+        # one paragraph to pandoc's reader and three to its Word writer, which gives the
+        # equation a paragraph of its own. The bookmark stayed on the words before it, and
+        # `import` spliced them over the equation and everything after it.
+        or splits_a_paragraph(stripped) is not None
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
         # is the paragraph the bookmark lands in.

@@ -4369,15 +4369,19 @@ Closed since, and why each mattered:
   `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
   budget on a fixed input, saying why a ratio would not do and how much headroom it was
   measured to have, or as a timestamp that times nothing. Like the exemption inventory it
-  runs both ways, and it checks that each listed budget is the number the test holds its
-  timing to. It reads that from comparisons with the timing on either side, through names
-  the timing is assigned to, annotated or added to, and a helper's timing through every
-  function in its module that calls it by name. What it cannot read fails rather than
-  passes: a caller that holds the timing to nothing it reads, a helper whose timing is used
-  from another test module, and a listed constant bound more than once. It reads the
-  comparison, not what is done with it, so one in an `if` that only warns, or asserted
-  beside an `or`, counts as held. A test defined under a module-level `if`, a method of a
-  nested class and a helper passed as a value are not read. It does not see a clock read
+  runs both ways. It also checks that each listed budget is still the number the test holds
+  its timing to, as a tripwire for a changed number or constant, not a proof: whether a test
+  holds a timing to a number cannot be read completely from its syntax, and four rounds of
+  review each found another way past it. It reads comparisons with the timing on either
+  side, through names the timing is assigned to, annotated or added to, and a helper's
+  timing through every function in its module that calls it by name. Some of what it cannot
+  read fails: a caller that holds the timing to nothing it reads, a helper whose timing is
+  used from another test module, and a listed constant bound more than once at module
+  level. The rest passes unseen: arithmetic done to a timing before it is compared
+  (`elapsed / 3 < BUDGET`), a constant shadowed inside the test, a comparison in an `if`
+  that only warns or asserted beside an `or`, an assertion made only under an `if`, a test
+  defined under a module-level `if`, a method of a nested class, a helper passed as a value,
+  and a module imported as `from tests import test_robustness`. It does not see a clock read
   any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
   `importlib`, a module bound to a second name (`clock = time`), one in `src/` that a test
   calls, or a timing a subprocess reports. It judges each top-level function whole, so a

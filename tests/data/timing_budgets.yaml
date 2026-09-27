@@ -94,7 +94,7 @@ reads:
     kind: budget
     budget: 2
     why: >-
-      Five fixed lines of a few thousand characters, each a shape that a pattern for rules
+      Five fixed lines of 8,000 to 44,000 characters, each a shape that a pattern for rules
       opening blocks could read more ways than one: Roman numerals that were single letters
       too, a comment's pattern that ran across later comments, a TeX argument that was also
       a footnote marker, and a command's name that could stop at any letter. Each took

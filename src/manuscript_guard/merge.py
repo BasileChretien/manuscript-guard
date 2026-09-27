@@ -219,9 +219,29 @@ def _off_headings(
     reworded in the same round - or made the heading's run-in text - was reported deleted.
     Only the heading before: one after it, retitled around its old title, is the heading an
     identifier slid onto.
+
+    Which headings are gone is read as `plan_import` reads it, after the identifiers taken off
+    by exact text. Read before, a heading that still stood but carried an identifier slid onto
+    it counted as gone, a join into the paragraph after it was read, and the next heading,
+    retitled to take in its words ("Funding and competing interests"), merged into the slot
+    of the paragraph deleted under it.
     """
     sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
-    missing = _untagged_missing(reference, returned)
+
+    def by_text(block: Block) -> bool:
+        # It reads exactly as a heading or caption the document was sent with, and not as
+        # its own paragraph.
+        text = _squashed(block.text)
+        return (
+            bool(block.names)
+            and not block.table
+            and bool(expected[text])
+            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+        )
+
+    missing = _untagged_missing(
+        reference, [replace(b, names=()) if by_text(b) else b for b in returned]
+    )
     out = []
     for block in returned:
         text = _squashed(block.text)
@@ -233,10 +253,12 @@ def _off_headings(
         )
         restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
         sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
-        if (
+        if by_text(block) or (
             block.names
             and not block.table
-            and (expected[text] or (block.role and not restyled and not sent_so))
+            and block.role
+            and not restyled
+            and not sent_so
             and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())

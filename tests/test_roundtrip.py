@@ -2346,9 +2346,24 @@ def test_a_setext_heading_is_not_tagged() -> None:
     assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
 
 
+#: A bullet marker alone on its line over an underline, at each indent a list item may have:
+#: an empty list item to pandoc 3.9, and the underline and what follows are its text. Taken
+#: for a setext title since #62, the block was passed over, and the marker printed inside
+#: the list.
+LONE_MARKERS = [
+    pytest.param(f"{' ' * indent}{marker}\n{rule}\nAlpha.", id=f"lone-{name}-{indent}-{kind}")
+    for marker, name in (("-", "dash"), ("+", "plus"), ("*", "star"))
+    for indent in range(4)
+    for rule, kind in (("===", "equals"), ("---", "dashes"))
+]
+
 #: (block, the paragraph under its headings that carries the identifier, or None) - read off
 #: pandoc 3.9. Pandoc needs no blank line after a heading, and the paragraph is always last.
 HEADED = [
+    *(pytest.param(case.values[0], None, id=case.id) for case in LONE_MARKERS),
+    # An ordered marker alone over an underline is a title to pandoc, not a list item.
+    pytest.param("1.\n===\nAlpha.", "Alpha.", id="lone-ordered-marker"),
+    pytest.param("a.\n---\nAlpha.", "Alpha.", id="lone-letter-marker"),
     pytest.param("# Methods\nPatients were enrolled.", "Patients were enrolled.", id="atx"),
     pytest.param("## Methods ##\nPatients.", "Patients.", id="atx-closed"),
     pytest.param("#\tMethods {#sec-methods}\nPatients.", "Patients.", id="atx-attributes"),
@@ -2454,8 +2469,10 @@ HEADED = [
     # Left alone, as on main (round four).
     pytest.param(" # Methods\nPatients.", None, id="hash-indented"),
     pytest.param("   ## Methods\nPatients.", None, id="hash-indented-three"),
-    # A heading whose code span, comment or TeX environment runs onto the next line: pandoc
-    # reads the two lines as one heading, and a marker would print inside it (round four).
+    # A heading whose code span or comment runs onto the next line: pandoc reads the two
+    # lines as one heading, and a marker would print inside it (round four). A TeX
+    # environment opened in the line and closed on the next makes no heading at all: pandoc
+    # reads text, then a raw block, then the paragraph.
     pytest.param("# The `lm function\nWe used `glm()` here.", None, id="heading-open-code"),
     pytest.param("The `lm\n===\nWe used `glm()` here.", None, id="setext-open-code"),
     pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
@@ -2480,7 +2497,7 @@ HEADED = [
     # Round six: a link's destination or title, an HTML tag's attributes, and a code span
     # whose backslash is only text all run onto the next line as well. A heading is passed
     # over only when its line is plain text now. Emphasis runs on to no later line, and is
-    # kept out all the same: the allow-list takes no exceptions.
+    # kept out all the same: the allowlist takes no exceptions.
     pytest.param('# See [x](http://x.org\n"Title") here.\nAlpha.', None, id="heading-link"),
     pytest.param('# Zeta <a\nhref="x">link</a> more\nAlpha.', None, id="heading-html-tag"),
     pytest.param(
@@ -2574,6 +2591,33 @@ def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
         assert blocks[-1]["t"] == "Para"
         assert "mg-p-" in json.dumps(blocks[-1])
         assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+@needs_pandoc
+@pytest.mark.parametrize("block", LONE_MARKERS)
+def test_a_lone_bullet_marker_over_an_underline_is_a_list_left_unmarked(block: str) -> None:
+    """Pandoc reads a bullet marker alone on its line as an empty list item, and the
+    underline under it as the item's text, not as a setext heading. `_SETEXT` excluded a
+    marker only with a space or a tab after it, so the block was passed over as a title
+    and the paragraph marked, and the marker printed inside the list."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    def blocks(text: str) -> list:
+        read = subprocess.run(
+            ["pandoc", "-f", "markdown", "-t", "json"],
+            input=text,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return json.loads(read.stdout)["blocks"]
+
+    assert [b["t"] for b in blocks(block)] == ["BulletList"]
+    assert "mg-p-" not in json.dumps(blocks(tag(block, "main.md")))
 
 
 @BUILDS

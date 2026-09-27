@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, unquoted-result, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
 ---
 
 # Binding the numbers
@@ -143,6 +143,14 @@ There are four ways out, and usually it is the first:
 
    A name that contains digits, such as a gene or a product code, goes under `terms:`.
 
+   If `p < 0.05` is reported although it is in the Methods, look above it for a line that
+   starts with `#`, or sits over a line of `-` or `=`, inside a paragraph, a list item or a
+   quotation. Pandoc prints that line as text, not as a heading, and the gate ends the
+   Methods there. Do not add a convention. If the line is text ("# of reports" moved to the
+   start of a line by a hard wrap), rewrap it or write `\#`. If it was meant as a heading,
+   put a blank line before it. If the `-` line under it was meant as a rule, put the blank
+   line before the rule.
+
    Every run reports how many numbers the project's own rules accounted for. A pattern
    wide enough to cover results is allowed, and it is visible, and it switches the check
    off.
@@ -157,6 +165,7 @@ checked like any other.
 |---|---|
 | `unclassified-number` | bind it, emit it, cite it, or declare the convention |
 | `unresolved-binding` | the key does not exist; the finding suggests the nearest one |
+| `value-splits-paragraph` | the value prints display maths, a LaTeX environment, an HTML block tag or a line break into its sentence, where it can break the paragraph in parts in Word. Write that part in the `.md`, as a block of its own, and bind only the numbers in it |
 | `unquoted-result` | a published value is quoted nowhere: quote it, or emit with `quoted=False` |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `hand-authored-table` | emit the table |

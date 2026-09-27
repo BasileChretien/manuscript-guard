@@ -24,12 +24,15 @@ from manuscript_guard.gates.numbers import (
     source_files,
     unreadable_header,
 )
+from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import (
     FRONTMATTER,
     front_matter_abstract,
+    front_matter_end,
     front_matter_problem,
 )
 from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.sections import rules_opening_blocks
 
 GATE = "BUILD"
 
@@ -107,6 +110,86 @@ def strip_front_matter(text: str) -> tuple[str, str]:
     return text[found.end():].lstrip("\n"), declared
 
 
+def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
+    """A refusal for each line of dashes below the front matter with a line directly above
+    or under it (`sections.rules_opening_blocks`).
+
+    With a line under it, pandoc may read YAML metadata there, merged over the build's
+    header with the later value winning: a `title:` in it replaced paper.yaml's on the
+    title page. Pandoc prints no heading from that, nor from a table, and under a line it
+    reads a heading the gates may not. Refused in the build as well as in `check`, so no
+    document is made from a source the gates misread.
+    """
+    lines = text.split("\n")
+
+    def beside(line: int) -> str:
+        # `line` counts from 1: `lines[line - 2]` is the line above the rule, quoted unless
+        # it is blank, and `lines[line]` the one under it.
+        above = lines[line - 2].strip() if line >= 2 else ""
+        under = lines[line].strip() if line < len(lines) else ""
+        return (above or under)[:120]
+
+    return tuple(
+        Finding(
+            gate=GATE,
+            code="rule-opens-a-block",
+            message=f"{path.name}: a line of dashes with a line directly above or under it, "
+            "which pandoc may read as a heading's underline, YAML metadata or a table",
+            path=path,
+            line=line,
+            context=beside(line),
+            hint="write a heading with `#`, as `## Methods`; put a blank line above and "
+            "under a thematic break; move metadata into paper.yaml; a table is emitted and "
+            "placed with `{{table.key}}`",
+        )
+        for line in rules_opening_blocks(text)
+    )
+
+
+def fence_findings(path: Path, text: str) -> tuple[Finding, ...]:
+    """A refusal for each line of backticks or tildes below the front matter that is not a
+    plain fenced listing's (`fences.unclear_fence_lines`).
+
+    Pandoc may read such a line as text, as inline code running on to a later fence, or
+    as a listing the gates do not see, and the gates then read prose as code or code as
+    prose. An R Markdown chunk header is the common one: pandoc opens no listing on it.
+    """
+    lines = text.split("\n")
+    return tuple(
+        Finding(
+            gate=GATE,
+            code="unclear-fence",
+            message=f"{path.name}: a line of backticks or tildes that is not a plain fenced "
+            "listing, which pandoc may read as text, inline code or a listing the gates "
+            "do not see",
+            path=path,
+            line=line,
+            context=lines[line - 1].strip()[:120],
+            hint="open a listing at the margin, under a blank line, outside any comment or "
+            "raw block, with at most a language word or `{.class}` attributes after the "
+            "fence on the same line, and close it; move a listing out of a list item, "
+            "whose indentation pandoc takes off before it looks for the closer; to comment "
+            "a listing out, put the comment's `-->` on a line of its own after the closer; "
+            "knit R Markdown first, since pandoc prints a `{r ...}` chunk as text",
+        )
+        for line in unclear_fence_lines(text, front_matter_end(text))
+    )
+
+
+def refused_shapes(path: Path, text: str) -> tuple[Finding, ...]:
+    """Every shape the build refuses in a source file: `rule_findings` and
+    `fence_findings`."""
+    return (*rule_findings(path, text), *fence_findings(path, text))
+
+
+def check_shapes(project: Project) -> Report:
+    """`refused_shapes` for every source file, so `check` refuses what the build would."""
+    report = Report()
+    for path in source_files(project.path("manuscript")):
+        report = report.with_findings(*refused_shapes(path, path.read_text(encoding="utf-8")))
+    return report
+
+
 def assemble(
     project: Project, namespace: dict[str, Value], results: Results, *, mark: bool = False
 ) -> tuple[list[Assembled], Report]:
@@ -126,6 +209,7 @@ def assemble(
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
         source = path.read_text(encoding="utf-8")
+        report = report.with_findings(*refused_shapes(path, source))
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
         problem = front_matter_problem(source)

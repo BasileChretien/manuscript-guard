@@ -3998,7 +3998,11 @@ Closed since, and why each mattered:
     as unbound. That is how any number typed in Word arrives, on `main` too.
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
-    reported with the new text and not applied.
+    reported with the new text in that section and not applied. The search for the section
+    goes past a paragraph moved in, and then stops at a heading or caption as it was sent;
+    but new text typed directly against a heading, with no moved paragraph between them,
+    still reaches across it, and a clear move in the section on the other side is held too.
+    Nothing is written either way.
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.

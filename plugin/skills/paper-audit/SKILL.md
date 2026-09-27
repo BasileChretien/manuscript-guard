@@ -58,7 +58,7 @@ manuscript-guard audit manuscript.docx supplement.docx \
 It needs no project and reads no `paper.yaml`. A `.docx` is read with tracked changes
 accepted and table cells kept apart, from the body, footnotes and endnotes; headers,
 footers and comments are not read. Two paragraphs joined by deleting or moving the mark
-between them are read as one, in the second one's style, as Word shows them once the change
+between them are read as one, in the last one's style, as Word shows them once the change
 is accepted. A join is not read across a table or a content control: Word runs a paragraph
 into the first cell of a table after it, and the audit reads the two apart, so check by hand
 the numbers either side of a deleted mark just before either. The

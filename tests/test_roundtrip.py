@@ -2349,16 +2349,20 @@ def test_what_follows_a_div_over_an_underline_is_left_alone(block: str) -> None:
     assert "mg-p-" not in read.stdout
 
 
-def test_a_run_of_spaces_is_read_in_linear_time() -> None:
+def test_a_run_of_spaces_is_read_in_linear_time(assert_linear) -> None:
     """A pattern that split a run of spaces between two quantifiers took 1.4 s for a block
-    opening with 20,000 spaces, and every block pays whatever the heading test costs."""
-    import time
-
+    opening with 20,000 spaces, and every block pays whatever the heading test costs. Put
+    back in front of `_INDENTED`, that split fails here in five seconds, at 71 times; it was
+    a budget of 1 s on 40,000 spaces."""
     from manuscript_guard.roundtrip import tag
 
-    started = time.perf_counter()
-    tag(" " * 40000 + "x\n", "main.md")
-    assert time.perf_counter() - started < 1.0
+    def opening_with_spaces(spaces: int) -> str:
+        return " " * spaces + "x\n"
+
+    def read(text: str) -> None:
+        tag(text, "main.md")
+
+    assert_linear(opening_with_spaces, read, 2000, "tagging a block opening with spaces")
 
 
 @needs_pandoc

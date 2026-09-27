@@ -34,10 +34,13 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
     `10^-3^`, only if every sub- and superscript in it opens and closes there. Brackets
     there are escaped in the mark and read as the text they were, `[12][13]`; a link's text
     is found apart (`link_text_spans`). An escaped dollar sign is text, so `\\$10-\\$50` is
-    one run, not two split at a backslash; and, around the whole, so is anything else a
-    backslash escapes, `5\\%-10\\%`, `\\~5-\\~7` or `5\\°-10\\°`, but a bracket, which the
-    mark escapes again, or a backslash. No mark opens straight after a `]`: pandoc read the
-    two brackets, `[B][[7](…)]{…}`, as a reference, and the paragraph otherwise.
+    one run, not two split at a backslash; and, around the whole, so is a backslash before
+    anything but a space, a bracket or a backslash: pandoc makes text of a symbol after it,
+    `5\\%-10\\%`, `\\~5-\\~7` or `5\\°-10\\°`, and keeps it before a letter or a digit, as text
+    or a TeX command, `1.2\\pm0.3` or `data\\2021\\05`, the same inside the mark as outside.
+    A `@` there, marked, was a citation's. No mark opens straight after a `]`, where pandoc
+    read the two brackets, `[B][[7](…)]{…}`, as a reference, nor after a TeX command, which
+    took the mark for its argument.
     """
     found = _escapes_as_text(text[start:end], lambda escaped: escaped == "$")
     runs = [
@@ -45,27 +48,48 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
         for run in _PLAIN_RUN.finditer(found)
         if any(character.isdigit() for character in run.group())
     ]
-    whole = _escapes_as_text(text[start:end], _escapable)
+    whole = _escapes_as_text(text[start:end], _read_alike)
     if len(runs) == 1:
         core = _settled(text, *runs[0])
     elif (
         not runs
-        or any(character in whole for character in "`*_<>{}\\|")
+        or any(character in whole for character in "`*_<>{}\\|@")
         or whole.count("~") % 2
         or whole.count("^") % 2
     ):
         return None
     else:
         core = _settled(text, start, end)
-    return None if core[0] > 0 and text[core[0] - 1] == "]" else core
+    return None if _takes_a_mark_as_argument(text, core[0]) else core
 
 
-def _escapable(character: str) -> bool:
-    """Is `character`, after a backslash, text? Pandoc's `all_symbols_escapable` makes text
-    of anything that is not a letter or a digit. Left out here: a space, which pandoc turns
-    into a no-break space or a line break and the finder splits a number at; the brackets,
-    which `_wrap` escapes again; and the backslash itself."""
-    return not (character.isalnum() or character.isspace() or character in "[]\\")
+def _read_alike(character: str) -> bool:
+    """Is a backslash before `character` read the same inside a mark as outside it? Pandoc's
+    `all_symbols_escapable` makes text of a symbol after it, and keeps it before a letter or
+    a digit, as text or a TeX command. Left out: a space, which pandoc turns into a no-break
+    space or a line break and the finder splits a number at; the brackets, which `_wrap`
+    escapes again; and the backslash itself."""
+    return not (character.isspace() or character in "[]\\")
+
+
+_TEX_COMMAND_BEFORE = re.compile(r"\\[A-Za-z@]+\*?[ \t]*$")
+# How far back on its line a mark's opening is read: a command or a bracket further back
+# is not found, and `_checked` has pandoc read the paragraph all the same. Read back to the
+# line's start, a line of thousands of numbers was read quadratically.
+_LOOK_BACK = 200
+
+
+def _takes_a_mark_as_argument(text: str, at: int) -> bool:
+    """Whether a mark opening at `at` would be read as what comes before it takes: the
+    label of a bracket closed straight before it, or a TeX command's argument. After a
+    footnote's marker or a lone `]` it would not, but the rule stays whole: letting a mark
+    open there, `[^1]$5 `df$a``, exposed an equation pandoc closes inside a code span,
+    which `equation_spans` does not find (see Known gaps)."""
+    if at > 0 and text[at - 1] == "]":
+        return True
+    window = max(0, at - _LOOK_BACK)
+    line = max(text.rfind("\n", window, at) + 1, window)
+    return _TEX_COMMAND_BEFORE.search(text, line, at) is not None
 
 
 def _escapes_as_text(found: str, escaped: Callable[[str], bool]) -> str:
@@ -162,30 +186,90 @@ def equation_spans(masked: str, code: list[tuple[int, int]]) -> list[tuple[int, 
     return [found.span() for found in _EQUATION.finditer("".join(pieces))]
 
 
-# A link's text, brackets one deep inside it, before its target or its reference, and not
-# an image's. A mark there nested a link in a link, and pandoc read the paragraph
-# differently: every mark in it was then taken out, where only this one needs to be. A
-# bracket holding `@` is a citation, not a link's text. A bracket after it is a reference
-# only when the file defines its label, `[tbl]: #tbl-2`, or, empty, the text's own: pandoc
-# reads `[95% CI 1.2-3.4][^2]`, `[…][@smith2021]` and `[12][13]` as text, and read as
-# links, their numbers went unmarked.
+# A bracket's text, brackets one deep inside it, not an image's, and what follows it: a
+# target, a second bracket or a span's attributes. A mark in a link's text nested a link in
+# a link, and pandoc read the paragraph differently: every mark in it was then taken out,
+# where only this one needs to be. A bracket holding `@` is a citation, not a link's text.
 _LINK_TEXT = re.compile(
-    r"(?<!!)\[((?:[^\[\]\n@]|\[[^\[\]\n]*\])*)\](?=(\()|\[([^\[\]\n]*)\])"
+    r"(?<!!)\[((?:[^\[\]\n@]|\[[^\[\]\n]*\])*)\](?=(\()|\[([^\[\]\n]*)\]|(\{)|)"
 )
-_DEFINITION = re.compile(r"^ {0,3}\[(?!\^)([^\[\]\n]+)\]:", re.MULTILINE)
+# A link's definition, at the margin or in a quotation, which pandoc reads only where a
+# block may start: under a blank line or another definition, not under a paragraph's line.
+_DEFINITION = re.compile(r"(?:[ ]{0,3}>[ ]?)*[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
+_QUOTE_MARKS = re.compile(r"(?:[ ]{0,3}>[ ]?)*")
 
 
 def _label(text: str) -> str:
-    """A reference's label as pandoc matches it: case and runs of white space ignored."""
-    return " ".join(text.split()).casefold()
+    """A reference's label as pandoc matches it: runs of white space as one, and lower
+    case, not folded case: pandoc keeps `ß` apart from `ss`."""
+    return " ".join(text.split()).lower()
+
+
+def _definitions(text: str) -> list[tuple[int, int, str]]:
+    """Each link definition in `text` as pandoc reads one, where a block may start and
+    outside listings and comments: where its line starts and ends, and its label."""
+    from manuscript_guard.text.sections import scannable
+
+    found: list[tuple[int, int, str]] = []
+    starts = True
+    offset = 0
+    for line in scannable(text).split("\n"):
+        defined = _DEFINITION.match(line)
+        if defined is not None and starts:
+            found.append((offset, offset + len(line), defined.group(1)))
+        starts = defined is not None or not line[_QUOTE_MARKS.match(line).end() :].strip()
+        offset += len(line) + 1
+    return found
+
+
+def definition_spans(text: str) -> list[tuple[int, int]]:
+    """The lines of `text` that define a link. A mark in one, around a number in its label
+    or its target, `[tbl]: #tbl-2`, broke the definition, and every paragraph using it lost
+    its marks."""
+    return [(start, end) for start, end, _label_text in _definitions(text)]
+
+
+def _labels(text: str) -> set[str]:
+    """The labels `text` defines, as pandoc reads them: each link definition's, and each
+    heading's title, which pandoc takes for a label as well."""
+    from manuscript_guard.text.sections import heading_index
+
+    labels = {_label(found.title) for found in heading_index(text)}
+    return labels | {_label(label) for _start, _end, label in _definitions(text)}
+
+
+def _is_link(found: re.Match[str], labels: set[str]) -> bool:
+    """Whether pandoc reads the bracket `found` as a link's text. A target makes it one. A
+    second bracket makes it a reference by that label, or, empty, holding a citation or a
+    footnote's marker, by the first one's text, which pandoc falls back to; a label nothing
+    defines leaves both text. Attributes make a span. Alone, it is a link when its text is
+    a label."""
+    text, target, label, attributes = found.group(1, 2, 3, 4)
+    if target:
+        return True
+    if label is not None and label and "@" not in label and not label.startswith("^"):
+        return _label(label) in labels
+    if label is None and attributes:
+        return False
+    return _label(text) in labels
 
 
 def link_text_spans(text: str) -> list[tuple[int, int]]:
     """Link texts in `text` as written: masked, a target that is not a URL, `(#tbl-2)`, is
-    blanked, and its text was not found."""
-    defined = {_label(found.group(1)) for found in _DEFINITION.finditer(text)}
-    return [
-        found.span()
-        for found in _LINK_TEXT.finditer(text)
-        if found.group(2) or _label(found.group(3) or found.group(1)) in defined
-    ]
+    blanked, and its text was not found. Pandoc reads `[95% CI 1.2-3.4][^2]`,
+    `[…][@smith2021]` and `[12][13]` as text, unless the file defines the first one's
+    text, and their numbers are marked."""
+    labels = _labels(text)
+    spans: list[tuple[int, int]] = []
+    label_at = -1
+    for found in _LINK_TEXT.finditer(text):
+        # A bracket that is the label of the one before it, `[t]` in `[Table 2][t]`, or a
+        # definition's own, `[t]: #x`, is no link's text.
+        line = text.rfind("\n", 0, found.start()) + 1
+        defines = text.startswith(":", found.end()) and _QUOTE_MARKS.fullmatch(
+            text, line, found.start()
+        )
+        if found.start() != label_at and not defines and _is_link(found, labels):
+            spans.append(found.span())
+        label_at = found.end() if found.group(3) is not None else -1
+    return spans

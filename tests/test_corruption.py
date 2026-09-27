@@ -4737,6 +4737,24 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
             {"120", "14"},
             {"2": "IN_LINK"},
         ),
+        # The follow-ups of #76. A backslash pandoc keeps, before a letter or a digit, is
+        # text inside the mark as outside it.
+        ("It was 1.2\\pm0.3 at 40 sites.", {"1.2\\pm0.3", "40"}, {}),
+        ("Between 5\\²-10\\² of 40 sites.", {"5\\²-10\\²", "40"}, {}),
+        ("It was 12\\² at 40 sites.", {"12\\²", "40"}, {}),
+        ("Files in data\\2021\\05 for 40 sites.", {"data\\2021\\05", "40"}, {}),
+        # Around a number read across several runs, a `@` is a citation's.
+        ("It was 5$\\5@a in 40 sites.", {"40"}, {"5$\\5@a": "IN_MARKUP"}),
+        # A mark straight after a TeX command is taken for its argument.
+        ("Of 12 patients, \\a 5 were seen.", {"12"}, {"5": "IN_MARKUP"}),
+        # An ordered list's numbers are the list's: marked, they broke it.
+        ("1. First 12 patients\n2. Then 14 more", {"12", "14"}, {"1": "IN_LIST"}),
+        # A heading's title is a label (a link pandoc reads without a second bracket is
+        # tested apart, below).
+        ("As in [the 3 steps][Results] for 40 sites.", {"40"}, {"3": "IN_LINK"}),
+        # Definitions pandoc does not read: under a paragraph's line, or in a listing.
+        ("As in [Table 2][t] for 40 sites.\n\nText\n[t]: #x", {"2", "40"}, {}),
+        ("As in [Table 2][t] for 40 sites.\n\n```\n[t]: #x\n```", {"2", "40"}, {}),
     ],
 )
 def test_the_annotated_copy_marks_what_main_marked(
@@ -4760,6 +4778,40 @@ def test_the_annotated_copy_marks_what_main_marked(
         assert shown.get(number) == getattr(module, reason), shown
 
 
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "text",
+    [
+        "As in [Table 2] for 40 sites.\n\n[table 2]: #t",
+        "As in [Table 2][@smith2021] for 40 sites.\n\n[table 2]: #t",
+    ],
+)
+def test_a_shortcut_link_and_its_definition_take_no_mark(text: str) -> None:
+    """The follow-ups of #76: a bracket pandoc reads as a link with no second bracket, or
+    falling back to its own text over a citation, is a link's text; and a number in a
+    link's definition, marked, broke the definition, and every paragraph using it lost its
+    marks."""
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    assert [(mark.shown, mark.unmarked) for mark in marks] == [
+        ("2", module.IN_LINK),
+        ("40", ""),
+        ("2", module.IN_DEFINITION),
+    ]
+
+
 @pytest.mark.parametrize(
     ("text", "links"),
     [
@@ -4774,6 +4826,25 @@ def test_the_annotated_copy_marks_what_main_marked(
         ("See [Table 2][@smith2021].\n", []),
         ("See [Table 2][t].\n", []),
         ("See [Table 2][].\n\n[^table 2]: A note.\n", []),
+        # The follow-ups of #76, each as pandoc 3.9 reads it. A bracket on its own is a link
+        # when its text is defined, and falls back to that over a citation or a note's
+        # marker, but not over a label nothing defines; not before a span's attributes.
+        ("See [Table 2] here.\n\n[table 2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][@smith2021].\n\n[table 2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][^1].\n\n[table 2]: #t\n\n[^1]: A note.\n", ["[Table 2]"]),
+        ("See [Table 2][t].\n\n[table 2]: #t\n", []),
+        ("See [Table 2]{.smallcaps} here.\n\n[table 2]: #t\n", []),
+        # A heading's title is a label, case aside.
+        ("# Methods\n\nSee [the 3 steps][Methods].\n", ["[the 3 steps]"]),
+        ("# Methods\n\nSee [methods] here.\n", ["[methods]"]),
+        # A definition under a paragraph's line, in a listing or in a comment is none; in a
+        # quotation it is.
+        ("Text\n[t]: #x\n\nSee [Table 2][t].\n", []),
+        ("```\n[t]: #x\n```\n\nSee [Table 2][t].\n", []),
+        ("<!--\n[t]: #x\n-->\n\nSee [Table 2][t].\n", []),
+        ("> [t]: #x\n\nSee [Table 2][t].\n", ["[Table 2]"]),
+        # Pandoc lower-cases a label; it does not fold `ß` into `ss`.
+        ("See [x][Straße].\n\n[STRASSE]: #x\n", []),
     ],
 )
 def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(

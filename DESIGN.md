@@ -1418,22 +1418,28 @@ inside the span, where the link printed as text. So the annotator places each ma
   faced each other across the marks between, and a backslash before a number goes
   inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
   escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
-  So is anything else a backslash escapes in a number read across several runs, which
-  for pandoc is any character but a letter or a digit, save a space, a bracket or a
-  backslash: `5\%-10\%`, `\~5-\~7` and `5\°-10\°` are marked whole (the rounds after the
-  extra one). A link's text, the target a URL or an anchor, can't hold a mark,
-  which is itself a link. A bracket before another is taken for a link's text only when
-  the file defines the second one's label, or, the second empty, the first one's: pandoc
-  reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their
-  numbers are marked (the extra round of #76).
-  A binding in a link's text is put in as its value, unmarked.
+  So is a backslash before anything but a space, a bracket or a backslash, in a number
+  read across several runs: pandoc makes text of a symbol after one, and keeps it before
+  a letter or a digit, as text or a TeX command, the same inside a mark as outside, so
+  `5\%-10\%`, `\~5-\~7`, `5\°-10\°`, `1.2\pm0.3` and `data\2021\05` are marked whole (the
+  rounds after the extra one, and the follow-ups). A link's text, the target a URL or an
+  anchor, can't hold a mark, which is itself a link. A bracket is a link's text when a
+  target follows it; when a second bracket follows, by that one's label, or, the second
+  empty or holding a citation or a footnote's marker, by its own text, which pandoc falls
+  back to; and alone, by its own text. A label is a link's definition, where pandoc reads
+  one, or a heading's title: pandoc reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and
+  `[12][13]` as text, and their numbers are marked (the extra round of #76, and the
+  follow-ups). A number in a link's definition takes no mark, and a binding in a link's
+  text is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc
   reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
   digits, `10^-3^`, it goes around the whole of what was found, if every sub- and
   superscript in it opens and closes there; brackets in it are escaped in the mark and
-  read as text, `12][13`. No mark opens straight after a `]`, where pandoc read the two
-  brackets as a reference. Otherwise the number is left unmarked.
+  read as text, `12][13`, and a `@` makes a citation, so none goes there. No mark opens
+  straight after a `]`, where pandoc read two brackets as a reference, nor after a TeX
+  command, which took it for its argument. An ordered list's own numbers take none: marked, the list was a paragraph.
+  Otherwise the number is left unmarked.
 
 That rule is a model of pandoc's inline reader, and models of pandoc's readers have been
 found wrong round after round in this repository. So the build then asks pandoc: each file
@@ -4135,42 +4141,38 @@ Closed since, and why each mattered:
   colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
   pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
   read as an escape, and a backtick left unpaired in one list item that pairs with one in
-  the next. The extra round of #76 left these, each rare or no worse than on `main`:
+  the next. Rounds of review of #76 left these, each rare or no worse than on `main`:
   - a link's text across a line break is not found, so its paragraph loses every mark,
-    as `main`'s copy misreads it;
+    as `main`'s copy misreads it (the extra round);
   - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
-    paragraph, which `main`'s copy also misreads;
-  - a number in a reference definition, `[tbl]: #tbl-2` or `[Table 2]: #t`, is marked, which
-    breaks the definition and costs the paragraphs that use it their marks;
+    paragraph, which `main`'s copy also misreads (the extra round);
   - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
-    `from $5 to 7\$` both numbers go unmarked as "in an equation";
-  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5 times`, or
-    a lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
-    reference two brackets make, and it reaches past them;
-  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked;
-  - so is a number read across several runs with a backslash pandoc keeps, before a letter
-    or a digit: a TeX command, `1.2\pm0.3` or `5\times10^3^`, a path, `data\2021\05`, or
-    `\é5-\é10`; and one before a character Python counts as a digit, even in one run,
-    `12\²`. `main` marks each, and its copy reads the same. Word drops the command, so
-    `1.2\pm0.3` prints "1.2" (the final round of #76);
-  - a mark straight after a TeX command, `\a`, is taken for its argument, and the
-    paragraph loses every mark;
-  - an ordered list loses every mark: its `1.` and `2.` are marked, which breaks the list,
-    as `main`'s copy does.
-
-  And its fix-only round these, each contrived or no worse than on `main`:
+    `from $5 to 7\$` both numbers go unmarked as "in an equation" (the extra round);
+  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5`, or a
+    lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
+    reference two brackets make, and it reaches past them (the extra round). Narrowed,
+    it let a mark open on `[^1]$5 `df$a``, where pandoc reads an equation from the `$`
+    to one inside the code span, which the annotator does not find: it looks for
+    equations outside code (the follow-ups);
+  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked (the extra
+    round);
+  - a number straight after a TeX command, `\a 5`, is left unmarked: the command took the
+    mark for its argument, and the paragraph lost every mark (the final round);
   - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
     file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
     prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
-    manuscript" holds file by file;
-  - a link the annotator does not know pandoc reads costs its paragraph every mark: a
-    definition inside a quotation or a list item, an implicit reference to a heading,
-    `[the 3 steps][Methods]`, and `[Table 2][@a]` where only `[table 2]:` is defined, since
-    pandoc falls back to the first bracket's label; `main`'s copy misreads each;
-  - definitions are read in the raw text, so one in a listing or a comment, or straight
-    under a line of a paragraph, where pandoc reads none, takes the number in
-    `[Table 2][t]` for a link's and leaves it unmarked; and labels are matched with
-    `casefold`, which differs from pandoc's lower-casing for ß.
+    manuscript" holds file by file (the fix-only round);
+  - a definition on a list item's own line, `- [t]: #x`, which pandoc reads, is not
+    found, and a paragraph using it loses every mark, as `main`'s copy misreads it (the
+    fix-only round).
+
+  The follow-ups of #76 closed the rest: a number in a link's definition takes no mark;
+  definitions are read where pandoc reads one, outside listings and comments, not under a
+  paragraph's line, and in a quotation; a bracket alone is a link when its text is defined,
+  or a heading's title, and falls back to that over a citation or a note's marker; labels
+  are lower-cased as pandoc does, `ß` kept apart from `ss`; a backslash before a letter or
+  a digit, `1.2\pm0.3`, `data\2021\05`, `12\²`, reads the same inside a mark; and an
+  ordered list's own numbers take none, where marked they made the list a paragraph.
 - **The annotated copy prints a manuscript file's own front matter.** The annotated build
   re-reads each source whole, where the build strips its YAML block, so whatever pandoc
   prints from that block prints in the annotated copy and not in the manuscript, its

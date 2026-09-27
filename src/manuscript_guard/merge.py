@@ -169,11 +169,16 @@ def _untagged_counts(reference: list[Block]) -> Counter:
     return Counter(_squashed(b.text) for b in reference if not b.names and not b.table and b.text)
 
 
+def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
+    """Text without an identifier that the document as sent held and the returned one does
+    not - a heading, a caption - by text, as many times as it went."""
+    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
+    return +untagged
+
+
 def _off_headings(
-    rendered: dict[str, str],
-    returned: list[Block],
-    expected: Counter,
-    sent_roles: dict[str, str],
+    rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
     """Identifiers taken off a heading, caption or reference entry they slid onto.
 
@@ -186,19 +191,27 @@ def _off_headings(
     longer there.
 
     Unless the block is plainly that paragraph, and reported deleted it would invite deleting
-    it: one restyled as a heading in Word, its words mostly its own; one holding the whole of
-    its own text, as a heading joined into the paragraph under it does, keeping the heading's
-    style - "None declared." is too little of "Competing interestsNone declared." to be most
-    of it, and the join is refused as one; or one sent with the role it has, such as a note
-    the source styles as a caption. `sent_roles` is each identifier's role as sent.
+    it: one restyled as a heading in Word, its words mostly its own; one the heading before it
+    was joined into, which keeps the heading's style and is refused as a join; or one sent
+    with the role it has, such as a note the source styles as a caption. The join is read as
+    `_took_in` reads it, by the heading gone from before the paragraph and its text turned up
+    here: whether the paragraph's own text survived whole did not say, since a paragraph
+    reworded in the same round - or made the heading's run-in text - was reported deleted.
+    Only the heading before: one after it, retitled around its old title, is the heading an
+    identifier slid onto.
     """
+    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
+    missing = _untagged_missing(reference, returned)
     out = []
     for block in returned:
         text = _squashed(block.text)
         own = [rendered.get(name, "") for name in block.names]
-        restyled = any(
-            was.strip() and (_alike(was, block.text) or _squashed(was) in text) for was in own
+        joined = any(
+            name in rendered
+            and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
+            for name in block.names
         )
+        restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
         sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
         if (
             block.names
@@ -258,8 +271,7 @@ def _recovered(
     """The returned document with identifiers put back where only exact text can say.
     `docxtext` has already put them back where the tracked changes say."""
     expected = _untagged_counts(reference)
-    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
-    off = _off_headings(rendered, returned, expected, sent_roles)
+    off = _off_headings(rendered, reference, returned, expected)
     return _given_back(rendered, off, expected)
 
 
@@ -948,7 +960,14 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     return found
 
 
-def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
+def _took_in(
+    name: str,
+    now: str,
+    was: str,
+    reference: list[Block],
+    missing: Counter,
+    steps: tuple[int, ...] = (-1, 1),
+) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
@@ -961,7 +980,7 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
     """
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
-    for step in (-1, 1):
+    for step in steps:
         i = at + step
         while 0 <= i < len(reference) and not (
             reference[i].names or reference[i].table or reference[i].text
@@ -1189,9 +1208,7 @@ def plan_import(
     beside_new = _beside_new_text(reference, returned, counterparts)
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
-    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
-    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
-    missing = +untagged
+    missing = _untagged_missing(reference, returned)
     gone_from_place = [
         name
         for name in rendered

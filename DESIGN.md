@@ -2189,10 +2189,11 @@ style: a heading by its outline level, a caption or a reference entry by its sty
 never by the id, which Word renames when it saves in another language (a Japanese Word saves
 pandoc's `Heading1` as `1`). Three kinds of block keep their identifier all the same, since
 reported deleted they would invite deleting a paragraph that is there: a paragraph restyled
-as a heading in Word, its words mostly its own; a heading joined into the paragraph under
-it, which keeps the heading's style and holds the whole of the paragraph's text, and is
-refused as a join; and a paragraph sent with the role it has, such as a note the source
-styles as a caption.
+as a heading in Word, its words mostly its own; a paragraph the heading before it was
+joined into, which keeps the heading's style and is refused as a join - known by that
+heading gone from the document and its text turned up in the block, as a join is known
+anywhere, since the paragraph may have been reworded in the same round; and a paragraph
+sent with the role it has, such as a note the source styles as a caption.
 
 The checks that came out of the review rounds guard the tracked path as well:
 
@@ -3538,10 +3539,19 @@ Closed since, and why each mattered:
     larger with no heading style or outline level, is not a heading to Word's navigation
     pane either, and not to `import`: retitled in the same round, it reads as the deleted
     paragraph's new wording, as every heading did on `main`. So does a heading, a caption or
-    a reference entry whose new text shares most of its words with the paragraph deleted
-    before it, or holds all of them, which is read as that paragraph restyled: a caption
-    edited to take in a deleted lead-in merges into the lead-in's slot, as on `main`, and
+    a reference entry whose new text and the paragraph deleted before it share most of
+    their words, in order, which is read as that paragraph restyled: a short caption edited
+    into mostly a deleted lead-in's words merges into the lead-in's slot, as on `main`, and
     the caption in the source stays as it was.
+  - *A heading joined into a short paragraph under it and retitled in the same round* is no
+    longer known as a join once the heading's old title is gone from the block. When the new
+    title and the paragraph still share most of their words ("Ethics approval" with "Not
+    applicable."), the block merges into the paragraph's slot, title and all, and the
+    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted.
+  - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
+    identifier on any caption. Deleted without Track Changes just above a table whose
+    caption was edited, it has the caption's new text written over it, as on `main`.
+    Nothing in the toolkit writes such a div.
   - *A paragraph restyled as a heading and reworded past most of its words* is reported
     deleted, and the heading as new text. One restyled that keeps most of its words merges
     its rewording, and the style change is dropped without a word, as on `main`.

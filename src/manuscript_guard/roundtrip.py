@@ -192,12 +192,19 @@ def _custom_properties(
     return _CUSTOM_XML.format(properties="".join(numbered))
 
 
+#: Pandoc's reference document tells Word not to record a move as a move. With Track Changes
+#: on, a paragraph cut and pasted then came back as a deletion and an unrelated insertion,
+#: without the one piece of markup - a name shared by the two places - that says which
+#: paragraph arrived where. Word records moves by default; the setting only takes that away.
+_NO_MOVES = re.compile(r"<w:doNotTrackMoves\b[^>]*/>")
+
+
 def stamp_into(
     document: Path, digest: str, paragraphs: dict[str, str] | None = None
 ) -> None:
     """Record the source digest inside the .docx itself, and what each paragraph
     identifier named when `paragraphs` is given: `paragraph_record`, restricted to the
-    paragraphs this document carries and in their order.
+    paragraphs this document carries and in their order. And let Word record moves.
 
     The sidecar `.source.sha256` tells *this* machine whether its own build is current. It
     cannot survive an email, and a document coming back from a co-author is precisely the
@@ -222,9 +229,28 @@ def stamp_into(
                     "</Relationships>", _CUSTOM_REL + "</Relationships>"
                 )
                 data = data.encode("utf-8")
+            elif item.filename == "word/settings.xml":
+                data = _NO_MOVES.sub("", data.decode("utf-8")).encode("utf-8")
             zout.writestr(item, data)
         zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs))
     scratch.replace(document)
+
+
+def records_moves(document: Path) -> bool:
+    """Whether Word was free to record a move as a move in this document.
+
+    A document built before the build removed pandoc's setting still asks Word not to, and
+    every paragraph moved in it comes back as a deletion and new text. The document says so
+    itself, which a version number printed nowhere in it could not.
+    """
+    try:
+        with zipfile.ZipFile(document) as archive:
+            if "word/settings.xml" not in archive.namelist():
+                return True
+            settings = archive.read("word/settings.xml").decode("utf-8", "replace")
+    except (OSError, zipfile.BadZipFile):
+        return True
+    return _NO_MOVES.search(settings) is None
 
 
 def stamp_of(document: Path) -> str | None:
@@ -320,11 +346,15 @@ GENERATED = re.compile(r"\{\{|\[@")
 
 #: An invisible per-paragraph identifier, carried into the .docx as a Word bookmark.
 #:
-#: Pandoc emits `[]{#id}` as `w:bookmarkStart`, which is invisible, survives editing, and
-#: travels with a paragraph when somebody cuts and pastes it. That makes "which source
-#: paragraph is this" an exact question rather than a similarity score — and it makes moves
-#: tractable, which similarity matching never could: a moved paragraph and a deleted one
-#: followed by an inserted one look identical to a diff.
+#: Pandoc emits `[]{#id}` as `w:bookmarkStart`, which is invisible and survives editing.
+#: That makes "which source paragraph is this" an exact question rather than a similarity
+#: score for every paragraph left where it was.
+#:
+#: It does *not* travel with a paragraph Word cuts and pastes, which is what this comment
+#: used to promise. The bookmark is empty, and Word leaves an empty bookmark where it was:
+#: in the moved-from copy with Track Changes on, on the next paragraph without. So a move is
+#: read from Word's record of it (`docxtext._settled`), and one Word did not record is
+#: refused as a move rather than guessed at from the text.
 #:
 #: Pandoc does *not* read bookmarks back into markdown, so they are read from
 #: `word/document.xml` directly.
@@ -564,6 +594,25 @@ def _unescaped(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
     )
 
 
+def splits_a_paragraph(text: str) -> str | None:
+    """What in `text` ends a paragraph, or sets part of it apart in Word, wherever in the
+    paragraph it stands; None if nothing does.
+
+    Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag, mid-line too,
+    and carries on with a raw block, unless it is escaped. Display maths stays in the
+    paragraph for pandoc's reader, and its Word writer gives it a paragraph of its own. A
+    paragraph whose source holds any of them gets no identifier (`_untagged`). A binding's
+    value is substituted after that, so G2 asks the same of every value a paragraph prints.
+    """
+    if _unescaped(_TEX_ENVIRONMENT, text) is not None:
+        return "a LaTeX environment"
+    if _unescaped(_HTML_BLOCK_TAG, text) is not None:
+        return "an HTML block tag"
+    if "$$" in text:
+        return "display maths"
+    return None
+
+
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -629,14 +678,11 @@ def _untagged(block: str) -> bool:
         # A heading, which a marker would unmake. Only as pandoc reads one: `#Methods` and
         # ` # Methods` are paragraphs, and went unmarked when any `#` did.
         _ATX_OPENS.match(block) is not None
-        # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
-        # it opens, mid-line too, and carries on with a raw block - unless it is escaped.
-        or _unescaped(_TEX_ENVIRONMENT, stripped) is not None
-        or _unescaped(_HTML_BLOCK_TAG, stripped) is not None
-        # One paragraph to pandoc's reader and three to its Word writer, which gives display
-        # math a paragraph of its own: the bookmark stayed on the words before the equation,
-        # and `import` spliced them over the equation and everything after it.
-        or "$$" in stripped
+        # A LaTeX environment or a block-level HTML tag, wherever it opens, or display maths:
+        # one paragraph to pandoc's reader and three to its Word writer, which gives the
+        # equation a paragraph of its own. The bookmark stayed on the words before it, and
+        # `import` spliced them over the equation and everything after it.
+        or splits_a_paragraph(stripped) is not None
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
         # is the paragraph the bookmark lands in.

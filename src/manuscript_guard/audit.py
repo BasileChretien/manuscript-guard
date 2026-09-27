@@ -34,9 +34,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.sections import heading_index, scannable, strip_attributes
+from manuscript_guard.text.sections import strip_attributes
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
 PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
@@ -454,7 +455,15 @@ def looks_like_reference(line: str) -> bool:
 
 
 def _markdown_heading_lines(text: str) -> frozenset[int]:
-    return frozenset(text.count("\n", 0, found.start) for found in heading_index(text))
+    # The headings pandoc prints: a line it prints as text starts no reference list. The ones
+    # G2 calls printed, not every heading the walk places: under a stray `</script>` the walk
+    # can place `####### References`, which pandoc prints as text, and the cut after it hid
+    # every number below from the comparison.
+    return frozenset(
+        text.count("\n", 0, found.start)
+        for found in section_breaks(text)
+        if type(found.title) is not Unprinted
+    )
 
 
 def bibliography_spans(
@@ -482,6 +491,14 @@ def bibliography_spans(
         headings = _markdown_heading_lines(text)
         # Blanked in place, so the lines still count the same.
         lines = scannable(text).split("\n")
+        # A heading continuing a paragraph is printed as text, so it starts no list. It
+        # still ends one: `# Appendix`, or `Appendix` underlined, directly under the last
+        # entry has no heading in the printed paper, and running the cut on past it would
+        # hide the appendix as more references. An early end costs a false alarm; a late
+        # one hides numbers.
+        ends = headings | heading_shaped(lines)
+    else:
+        ends = headings
     # A final newline ends the last line; it does not start another.
     last = len(lines) - text.endswith("\n")
     spans: list[tuple[int, int]] = []
@@ -494,7 +511,7 @@ def bibliography_spans(
             continue
         after = (
             i
-            for i in sorted(headings)
+            for i in sorted(ends)
             if i > start
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )

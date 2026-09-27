@@ -32,6 +32,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
+from manuscript_guard.wordfonts import Fonts, RunFonts, symbol
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
@@ -119,6 +120,11 @@ class Block:
     #: list), or "" for anything else. See `_roles`.
     role: str = ""
 
+    #: What Word draws in it that is not read as text, or not read exactly, named once for
+    #: each occurrence: a Wingdings character, a piece of a tall bracket, a private-use
+    #: character, Symbol-font text whose font a style sets. See `wordfonts`.
+    unread: tuple[str, ...] = ()
+
     @property
     def table(self) -> bool:
         """A table, a figure or an equation: a block that is not prose, and not compared."""
@@ -152,6 +158,7 @@ class _Paragraph:
     moves: tuple[str, ...] = ()
     #: What its style says it is; see `Block.role`.
     role: str = ""
+    unread: tuple[str, ...] = ()
 
 
 #: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
@@ -217,9 +224,9 @@ def _role(element: ET.Element, roles: dict[str, str]) -> str:
     return "" if found == "heading" else found
 
 
-def _text(element: ET.Element) -> str:
+def _text(element: ET.Element, fonts: Fonts | None = None) -> str:
     """The visible text under `element`, tracked changes accepted."""
-    return _read(element)[0]
+    return _read(element, fonts or Fonts())[0]
 
 
 def _kept(element: ET.Element) -> bool:
@@ -234,16 +241,29 @@ def _kept(element: ET.Element) -> bool:
     return False
 
 
-def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
-    """The visible text under `element`, and where each marked token sits in it."""
+def _read(
+    element: ET.Element, fonts: Fonts
+) -> tuple[str, tuple[tuple[int, int], ...], tuple[str, ...]]:
+    """The visible text under `element`, where each marked token sits in it, and what
+    in it is not read as text, named.
+
+    A character is read as the font it is in draws it: Insert > Symbol writes a `w:sym`,
+    and text typed in the Symbol font is in that font's encoding. See `wordfonts`.
+    """
     out: list[object] = []
     marked: set[str] = set()
+    unread: list[str] = []
+    paragraph = element if element.tag == W + "p" else None
 
-    def walk(node: ET.Element) -> None:
+    def walk(node: ET.Element, run: RunFonts) -> None:
         if node.tag in _UNSEEN:
             return
+        if node.tag == W + "r":
+            run = fonts.run(node, paragraph)
         if node.tag == W + "t" and node.text:
-            out.append(node.text)
+            text, missing = run.read(node.text)
+            out.append(text)
+            unread.extend(missing)
         elif node.tag in _SPACES:
             out.append(" ")
         elif node.tag == W + "noBreakHyphen":
@@ -254,12 +274,23 @@ def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
         elif node.tag == W + "bookmarkEnd" and node.get(W + "id", "") in marked:
             out.append(_CLOSE)
         elif node.tag == W16SE + "symEx":
-            out.append(extended_symbol(node))
+            # In the font it names, as text is in its run's: a symbol or icon font's code too.
+            shown, name = fonts.drawn(extended_symbol(node), node.get(W16SE + "font"))
+            out.append(shown)
+            if name is not None:
+                unread.append(name)
+        elif node.tag == W + "sym":
+            shown, name = symbol(node)
+            if shown is None:
+                unread.append(name)
+            else:
+                out.append(shown)
         for child in node:
-            walk(child)
+            walk(child, run)
 
-    walk(element)
-    return _extents(out)
+    walk(element, fonts.run(None, paragraph))
+    text, tokens = _extents(out)
+    return text, tokens, tuple(unread)
 
 
 def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
@@ -347,7 +378,12 @@ def _removes(element: ET.Element) -> bool:
 
 
 def _paragraph(
-    element: ET.Element, *, table: bool, moves: tuple[str, ...], roles: dict[str, str]
+    element: ET.Element,
+    *,
+    table: bool,
+    moves: tuple[str, ...],
+    fonts: Fonts,
+    roles: dict[str, str],
 ) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -384,7 +420,7 @@ def _paragraph(
     # Enter at the end of a paragraph marks its mark inserted too, and one retyped whole has
     # no text but inserted text: what it does have is the text it deleted.
     arrived = mark in ("moveTo", "ins") and not _kept(element) and not _removes(element)
-    text, tokens = _read(element)
+    text, tokens, unread = _read(element, fonts)
     maths = None
     if any(node.tag == _M + "oMath" for node in seen):
         # Word deletes an equation run by run with Track Changes on, leaving the `m:oMath`
@@ -405,6 +441,7 @@ def _paragraph(
         retracted=retracted,
         moves=moves,
         role=_role(element, roles),
+        unread=unread,
     )
 
 
@@ -422,6 +459,7 @@ def _walk_body(
     moves: dict[int, tuple[str, ...]],
     roles: dict[str, str],
     *,
+    fonts: Fonts,
     table: bool = False,
 ) -> list[_Paragraph]:
     out: list[_Paragraph] = []
@@ -431,12 +469,13 @@ def _walk_body(
             continue
         if child.tag == W + "p":
             found = moves.get(id(child), ())
-            out.append(_paragraph(child, table=table, moves=found, roles=roles))
+            out.append(_paragraph(child, table=table, moves=found, fonts=fonts, roles=roles))
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, moves, roles, table=True))
+            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
-            out.extend(_walk_body(child, moves, roles, table=table or child.tag == W + "tc"))
+            inside = table or child.tag == W + "tc"
+            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=inside))
     return out
 
 
@@ -540,11 +579,13 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
                 return []
             root = read_part(archive, part, what=f"{document.name}:{part}")
             roles = _roles(archive, document.name)
+            # Which font a run is in decides what its text is; see `wordfonts`.
+            fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
-    return _settled(_walk_body(body, _move_names(body), roles))
+    return _settled(_walk_body(body, _move_names(body), roles, fonts=fonts))
 
 
 def blocks(document: Path) -> list[Block]:
@@ -650,16 +691,22 @@ def _digest_of(archive: zipfile.ZipFile, part: str) -> str | None:
 def _fold(run: list[_Paragraph]) -> list[Block]:
     if not run:
         return []
-    kept = [p for p in run if p.text or p is run[-1]]
+    # One holding only a symbol with no text is not an empty line: left out, its identifier
+    # was dropped, and a paragraph joined in Word was reported deleted.
+    kept = [p for p in run if p.text or p.unread or p is run[-1]]
     names = tuple(dict.fromkeys(n for p in kept for n in p.names))
     text = spaced(" ".join(p.text for p in kept if p.text)).strip()
     # Token extents are read from the build import compares with, which has no tracked
     # changes to fold; offsets into a joined paragraph would need shifting, so none are kept.
     tokens = kept[0].tokens if len(kept) == 1 else ()
+    unread = tuple(u for p in run for u in p.unread)
     arrived = all(p.arrived for p in kept)
     # The role of the paragraph the block opens with, which carries its identifier: a
     # paragraph run on into the heading after it is that paragraph, joined, not a heading.
-    return [Block(names=names, text=text, tokens=tokens, arrived=arrived, role=kept[0].role)]
+    role = kept[0].role
+    return [
+        Block(names=names, text=text, tokens=tokens, unread=unread, arrived=arrived, role=role)
+    ]
 
 
 def comment_anchors(document: Path) -> dict[str, str]:
@@ -684,11 +731,12 @@ def comment_texts(document: Path) -> list[tuple[dict[str, str], str]]:
             if "word/comments.xml" not in archive.namelist():
                 return []
             root = read_part(archive, "word/comments.xml", what=f"{document.name}:comments")
+            fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     out = []
     for comment in root.iter(W + "comment"):
         attributes = {key.removeprefix(W): value for key, value in comment.attrib.items()}
-        text = " ".join(_text(p) for p in comment.iter(W + "p"))
+        text = " ".join(_text(p, fonts) for p in comment.iter(W + "p"))
         out.append((attributes, spaced(text).strip()))
     return out

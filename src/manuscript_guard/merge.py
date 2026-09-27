@@ -221,10 +221,13 @@ def _given_back(
     """
     out = list(returned)
     for index, block in enumerate(out):
-        if block.table or not block.names or block.text:
+        # A line holding a symbol with no text is not empty: something was typed there.
+        if block.table or not block.names or block.text or block.unread:
             continue
         after = index + 1
-        while after < len(out) and not (out[after].table or out[after].names or out[after].text):
+        while after < len(out) and not (
+            out[after].table or out[after].names or out[after].text or out[after].unread
+        ):
             after += 1
         if after == len(out) or out[after].table or out[after].names:
             continue
@@ -394,7 +397,7 @@ def _swallowed(name: str, was: str, now: str, rendered: dict[str, str]) -> str:
 def _unsettled(
     returned: list[Block],
     sections: dict,
-    expected: Counter,
+    shown: Counter,
     suspects: set[str],
     misplaced: set[str],
 ) -> tuple[set, list[str]]:
@@ -408,18 +411,22 @@ def _unsettled(
     section standing beside the new text says nothing about which section that is, so the
     search goes past it, to the first paragraph that is where it belongs. Returns the
     sections, and the new text that unsettled them, for the report.
+
+    Text is compared as `_listed` shows it, against `shown`, the document as sent shown the
+    same way: by its text alone, a heading that gained a symbol with no text read as
+    unchanged, and the moves beside it were applied.
     """
     found = {sections[name] for name in suspects if name in sections}
     because: list[str] = []
-    unchanged = Counter(expected)
+    unchanged = Counter(shown)
     for index, block in enumerate(returned):
-        if block.table or block.names or not block.text:
+        if block.table or block.names or not (block.text or block.unread):
             continue
-        key = _squashed(block.text)
+        key = _squashed(_listed(block))
         if unchanged[key]:
             unchanged[key] -= 1
             continue
-        because.append(block.text)
+        because.append(_listed(block))
         for step in (-1, 1):
             i = index + step
             while 0 <= i < len(returned) and returned[i].kind not in ("table", "figure"):
@@ -506,19 +513,25 @@ def _beside_new_text(
     may one touching a paragraph that arrived with Track Changes on, identifier or not.
     Compared by text rather than by position, because a move changes every neighbour and
     creates no text at all. An edited heading is new text too, which costs a refusal of the
-    paragraph beside it when both were edited; the alternative is a split that truncates.
+    paragraph beside it when both were edited; the alternative is a split that truncates. A
+    paragraph holding only a symbol with no text is new text as well: skipped as empty, the
+    rewording beside it merged and the symbol was dropped.
 
     A table, figure or equation the document as sent did not have is new too. The search
     stopped at any block that was not prose, so a paragraph split around a pasted picture or
     a new equation was merged as its first half.
     """
-    unchanged = Counter(b.text for b in sent if not b.table and not b.names and b.text)
+
+    def content(block: Block) -> tuple[str, tuple[str, ...]]:
+        return block.text, block.unread
+
+    unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
     new: set[int] = set()
     for index, block in enumerate(returned):
-        if block.table or block.names or not block.text:
+        if block.table or block.names or not any(content(block)):
             continue
-        if unchanged[block.text]:
-            unchanged[block.text] -= 1
+        if unchanged[content(block)]:
+            unchanged[content(block)] -= 1
         else:
             new.add(index)
 
@@ -539,7 +552,7 @@ def _beside_new_text(
                 return False
             if i in new:
                 return True
-            if block.text:
+            if any(content(block)):
                 return False
         return False
 
@@ -1023,6 +1036,28 @@ def _joined_without_bookmark(
     return found
 
 
+def _unread(
+    reference: list[Block], returned: list[Block], rendered: dict[str, str]
+) -> dict[str, tuple[str, ...]]:
+    """What each paragraph came back holding that is not read as text, and was not sent.
+
+    Pandoc writes no `w:sym` and sets no font on text, so what the document as sent did not
+    hold was put there in Word. What it held already - a private-use character pasted into
+    the source, a reference document that gives a style the Symbol font - is not the
+    co-author's.
+    """
+    sent = {b.names[0]: Counter(b.unread) for b in reference if b.names and not b.table}
+    found: dict[str, tuple[str, ...]] = {}
+    for block in returned:
+        if block.table or not block.unread:
+            continue
+        for name in (n for n in block.names if n in rendered):
+            new = Counter(block.unread) - sent.get(name, Counter())
+            if new:
+                found[name] = tuple(new)
+    return found
+
+
 def _beside_lost(
     rendered: dict[str, str], texts: dict[str, str], built: Sequence[str], present: set[str]
 ) -> set[str]:
@@ -1100,6 +1135,7 @@ def plan_import(
         if b.names and not b.table and fits(b.text, b.names[0])
     }
     texts, joined, slid = _read_returned(returned, rendered)
+    unread = _unread(reference, returned, rendered)
     in_join = {name for group in joined for name in group}
     present = {n for b in returned if not b.table for n in b.names}
     # One the document may never have carried, missing from it, is not compared - and still
@@ -1162,6 +1198,11 @@ def plan_import(
         elif name in not_its_own:
             opening = _squashed(source)[:60]
             refused.append(Refusal(name, now or "", (_NOT_ITS_OWN.format(opening=opening),)))
+        elif now is not None and name in unread:
+            # Before the comparison: with nothing else edited, the paragraph reads as
+            # unchanged, and the co-author's symbol was dropped without a word. And before
+            # a deletion: a paragraph replaced by a symbol alone read as deleted.
+            refused.append(Refusal(name, now, _unread_why(unread[name])))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now) or (
@@ -1229,8 +1270,13 @@ def plan_import(
     stays = {*misplaced, *held}
     kept = [n for n in order if n not in stays]
     moved = moves([n for n in rendered if n in set(kept)], kept)
+    shown = Counter(
+        _squashed(_listed(b))
+        for b in reference
+        if not b.names and not b.table and (b.text or b.unread)
+    )
     unsettled, because = _unsettled(
-        returned, sections, expected, not_its_own | set(inside) | apart, set(misplaced)
+        returned, sections, shown, not_its_own | set(inside) | apart, set(misplaced)
     )
     withheld = [entry[0] for entry in moved if sections[entry[0]] in unsettled]
     moved = [entry for entry in moved if entry[0] not in set(withheld)]
@@ -1242,9 +1288,13 @@ def plan_import(
     # section began, a paragraph moved past it read as in order, and import said the
     # document matched the manuscript. What changed is at least said.
     # In order, not as a bag: list items swapped in Word were all still there, and the
-    # document was said to match.
-    sent_untagged = [b.text for b in reference if not b.names and not b.table and b.text]
-    back_untagged = [b.text for b in returned if not b.names and not b.table and b.text]
+    # document was said to match. By what each says and what in it has no text, named: by
+    # its text alone, a heading that gained a smiley typed in Wingdings read as unchanged,
+    # and a new paragraph holding only a check box as empty.
+    sent_blocks = [b for b in reference if not b.names and not b.table and (b.text or b.unread)]
+    back_blocks = [b for b in returned if not b.names and not b.table and (b.text or b.unread)]
+    sent_untagged = [_listed(b) for b in sent_blocks]
+    back_untagged = [_listed(b) for b in back_blocks]
     unchanged = Counter(sent_untagged)
     unidentified: list[str] = []
     for text in back_untagged:
@@ -1252,12 +1302,13 @@ def plan_import(
             unchanged[text] -= 1
         else:
             unidentified.append(text)
+    # Keyed on the text alone, as `missing` is.
     left = Counter(missing)
     vanished: list[str] = []
-    for text in sent_untagged:
-        if left[text]:
-            left[text] -= 1
-            vanished.append(text)
+    for block in sent_blocks:
+        if left[block.text]:
+            left[block.text] -= 1
+            vanished.append(block.text)
     reordered: list[str] = []
     if not (unidentified or vanished) and sent_untagged != back_untagged:
         matcher = difflib.SequenceMatcher(a=sent_untagged, b=back_untagged, autojunk=False)
@@ -1331,6 +1382,48 @@ _SWALLOWED = (
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
 )
+_UNREAD = (
+    "Word draws something in it that has no text the source can hold: {what}. Merging would "
+    "leave it out. Type the character itself in Word - Ctrl+Z straight after AutoCorrect "
+    "turns ':)' or '-->' into a symbol undoes it - or make the edit in the .md."
+)
+_STYLED = (
+    "part of it is in the Symbol font, set by {where}: read as that font draws it, but a font "
+    "set by a style, the defaults or the theme is not taken as exact. Set the font on the "
+    "text itself in Word, type the characters, or make the edit in the .md."
+)
+_PRIVATE = (
+    "it holds {what}, which only a symbol or icon font draws as Word shows it. The source "
+    "would keep the code, but the build draws it in the body font. Type the character "
+    "itself in Word, or make the edit in the .md."
+)
+_STYLED_PREFIX = "Symbol font from "
+_PRIVATE_PREFIX = "private-use character "
+
+
+def _listed(block: Block) -> str:
+    """A paragraph without an identifier as a report lists it: its text, then each thing in
+    it with no text, named - "Funding [Wingdings character F04A]"."""
+    return " ".join([block.text, *(f"[{name}]" for name in block.unread)]).strip()
+
+
+def _unread_why(names: tuple[str, ...]) -> tuple[str, ...]:
+    """Why a paragraph holding what `wordfonts` names is refused, each kind named once."""
+    names = tuple(dict.fromkeys(names))
+    styled = [n.removeprefix(_STYLED_PREFIX) for n in names if n.startswith(_STYLED_PREFIX)]
+    private = [n for n in names if n.startswith(_PRIVATE_PREFIX)]
+    missing = [n for n in names if n not in private and not n.startswith(_STYLED_PREFIX)]
+    why = []
+    if missing:
+        why.append(_UNREAD.format(what="; ".join(missing)))
+    for name in private:
+        # One sentence each: rarely more than one, and a plural sentence read as one anyway.
+        why.append(_PRIVATE.format(what=f"a {name}"))
+    if styled:
+        why.append(_STYLED.format(where=" and ".join(styled)))
+    return tuple(why)
+
+
 _TWICE = (
     "its identifier appears {n} times in the returned document, so which copy is the "
     "paragraph cannot be told. Make the edit in the .md."

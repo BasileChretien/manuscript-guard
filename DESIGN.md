@@ -1587,6 +1587,27 @@ identifier named the new one, read the same, and a co-author's ethics approval w
 "Consent to participate". A paragraph whose text is found once in its file, then and now,
 needs only its text to match; one that repeats needs the block before it to match too.
 
+The record also hashes the blocks without an identifier around each paragraph, up to the
+paragraphs on either side (`roundtrip._beside_of`, `Numbering.beside_changed`). That covers
+headings, captions, tables, comments and link definitions, and a heading written straight
+above the paragraph with no blank line, which shares its block and sits outside the text
+hash. It reaches across files, in the order the build prints them (`printed_order`), since
+the main text's files are one document: the heading opening the next file stands directly
+under the last paragraph of this one in Word.
+
+A heading run into a paragraph in Word is recognised by the heading beside the paragraph
+having vanished while its text turned up in it, and the heading looked at is the one in the
+source now. When one of those blocks changed since the build, that is not the heading the
+co-author ran in: one renamed or removed, one past a comment Word does not show, a table's
+caption, which pandoc prints above the table. The run-in then merged, "MethodsPapa..." under
+a heading the file no longer has. So a rewording is not merged into a paragraph with a block
+without an identifier around it changed since the build. A paragraph reworded beside it
+counts for nothing, as no heading can have stood where a paragraph stands. Nor, in a
+document built from other inputs than are on disk, is a rewording merged into a paragraph
+beside a heading or caption missing from the returned document. Its source can be unchanged
+and its text not, with a value or a citation in it: "Results in 4000 reports", run in, was
+typed into prose where a binding now prints 4100.
+
 `import` compares, moves and merges only the paragraphs whose identifier passes that test,
 and names the rest as not compared, whether they came back or not; `respond --open` keeps a
 comment's anchor only on such a paragraph. It does not matter why an identifier came to name
@@ -1870,9 +1891,13 @@ The`, `| The` and `Table: The` merged as typed, pandoc made a list, a line block
 of them at the next build, `tag` gave the paragraph no identifier, and its next edit in Word
 was dropped with nothing reported. The writer now asks the tagger's own reading of a
 numbered list and a caption, so "E. coli" stays a sentence and "IV. The" is escaped, and the
-property is tested as it is meant: whatever the merge writes, pandoc reads as one paragraph
-and `tag` names it, read alone, under a paragraph and under a table - or the merge is
-refused, and says why. The tagger, for its
+property is tested as it is meant: whatever the merge writes from Word, pandoc reads as one
+paragraph and `tag` names it, read alone, under a paragraph and under a table - or the merge
+is refused, and says why. That is a property of what the writer writes, not of every merge: a
+stretch kept from the source can take a shape of its own once the stretch before it is
+reworded, as a lone `:` on a paragraph's third line does when the first two are joined. That
+is caught by #69's check, which works the file out as `apply_plan` would write it and reads
+it as `tag` does. The tagger, for its
 part, took any HTML tag it did not know for a block and counted an escaped brace. Pandoc
 reads a tag it does not know as inline and `\{` as a brace, so "Concentrations <LLOQ and
 >ULOQ were excluded." lost its identifier when the tagger learned pandoc's blocks. Its block
@@ -1883,7 +1908,16 @@ row under a line holding `<example>`. And `import` escapes a `}` as well as a `{
 braces a co-author types never look like half of a TeX group. Only unescaped braces count,
 so a pair split across a binding - one brace kept from the source bare, its partner edited
 in Word and written escaped - no longer pairs, and that rewording is refused rather than
-merged into a paragraph the next build could not name.
+merged into a paragraph the next build could not name. `main` before #72 wrote a `}` from
+Word bare and merged many of these; the round-3 review of #72 counted 212 in a differential
+of 4,174 brace-heavy rewordings. #90 tried writing Word's half bare again where the source's
+own stretch had a bare brace, and each of three review rounds found a shape where the bare
+brace completed what pandoc reads as attributes, the paragraph printing wrong while `check`
+passed: `{{results.x}}{.y}` printed a value shown as `[pooled]` as "pooled", `]{.c}`
+closing a `[` kept from the source dropped the brackets and braces, and a `}` closing a
+kept `{` straight after a `]` or a link, `[a [b] c]{k={{results.x}}}`, dropped the value.
+`_reads_as` reads spans, links and values too simply to see any of these, so the half from
+Word stays escaped and the rewording is refused (see Known gaps).
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
@@ -2534,9 +2568,9 @@ Added by the adversarial review, verified and **not** fixed:
 - **Which blocks are paragraphs is decided by pattern, not by pandoc.** `tag` runs where
   pandoc may be absent, so it reproduces pandoc's rules — two spaces after "C." before it is
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
-  and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI skips because
-  CI has no pandoc. Where the patterns are unsure they leave a block unmarked, which costs a
-  comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
+  and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI runs against
+  the pandoc it installs and pins, 3.9.0.2. Where the patterns are unsure they leave a block
+  unmarked, which costs a comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
   (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
   inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
@@ -2556,17 +2590,30 @@ Added by the adversarial review, verified and **not** fixed:
   from its source; a later pandoc that takes another tag for a block marks a paragraph it
   splits, until the agreement test is run against it.
 - **A caption or a definition is told from a paragraph by its opening alone.** A block
-  opening `Table:`, `table:` or a colon is a caption beside a table, and a line that is `: `
-  and text, or a colon or a tilde alone, makes a definition of the line or paragraph above
-  it; otherwise each is a paragraph. The tagger sees one block at a time, so it leaves every
-  block that opens so, or holds such a line, without an identifier. The merge escapes any
-  such opening a co-author types, so an import cannot make one, but a paragraph written that
-  way in the `.md` is never compared.
+  opening `Table:`, `table:` or a colon is a caption beside a table. A line that is `: ` or
+  `~ ` and text, or a colon or a tilde alone, makes a definition of a single line above it,
+  with or without a blank line between; under a paragraph of two lines or more it is more of
+  that paragraph, or a paragraph of its own after a blank line. The tagger sees one block at
+  a time, so it leaves every block that opens so, or holds such a line second, without an
+  identifier. The merge escapes any such opening a co-author types. A rewording that brings
+  a kept `:` or `~` up to a paragraph's second line, by joining the lines above it, is
+  refused by #69's check: the next build would give it no identifier. A paragraph written
+  that way in the `.md` is never compared.
 - **A brace an earlier version wrote back is half a pair now.** Before a `}` was escaped,
   `import` wrote a co-author's `{a, b}` as `\{a, b}`. Only unescaped braces count now, so
   such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
   to it in Word is reported as not compared and not applied, so it can be edited only in
   the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
+- **A rewording that splits a brace pair across a number or citation is refused.** A brace
+  from Word is written escaped, so where a rewording leaves a bare brace from the `.md` on
+  one side of a number or citation and its partner comes back from Word - edited, moved or
+  typed anew - or is deleted there, the braces no longer pair and the paragraph is refused
+  and named. So is a brace typed in Word that pairs with nothing. `main` before #72 wrote a
+  `}` from Word bare and merged many of these correctly, 212 of 4,174 in #72's round-3
+  differential; written bare, a brace can complete what pandoc reads as attributes after a
+  `]`, a link, an autolink or a value, and #90's three review rounds found each (see "The
+  writer and the tagger have to read an opening the same way"). Braces inside code count
+  too, though pandoc pairs none there. The edit is made in the `.md`.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the
@@ -2652,11 +2699,11 @@ Closed since, and why each mattered:
   paragraph alone. An opener, a LaTeX `\begin` or `\end` and a block-level tag now count
   only where no backslash escapes them (`_backslashed`): an odd run makes them text, an
   even one escapes itself. Inside a comment or a verbatim element pandoc reads no escapes,
-  so `\-->` and `\</pre>` still close them. What is left: `_untagged` counts braces as
-  written, since an unmatched `}` can close a TeX group opened in an earlier block. So a
-  lone `{` typed in Word, which comes back as `\{`, leaves its paragraph unmarked. Counting
-  only the unescaped braces instead left `\{\{results.x}}`, a binding typed as text,
-  unmarked.
+  so `\-->` and `\</pre>` still close them. Braces were left to #72, which merged with this:
+  `_untagged` counts only unescaped braces, and `import` escapes a `}` as well as a `{`, so a
+  lone `{` typed in Word, written `\{`, keeps its paragraph's identifier, and so does
+  `\{\{results.x\}\}`, a binding typed as text (see "The writer and the tagger have to read
+  an opening the same way").
 - **Front matter closed by `...` took the body with it.** YAML, and pandoc, close a header
   with `...` as well as `---`, and the build's pattern took only `---`. It ran on to the
   next `---` line in the file, a horizontal rule, and the Introduction above the rule
@@ -3843,6 +3890,28 @@ Closed since, and why each mattered:
   deleting the second from the `.md` as told, without carrying the first's Word text over
   by hand, loses the second's words. Main reports the join, having the first paragraph's
   text to weigh it with.
+- **A document built before the record held the blocks around each paragraph is read as
+  it was.** Its record hashes only each paragraph's text and the block before it. So a
+  heading beside a paragraph removed from the `.md` since the build goes unseen, and a
+  heading the co-author ran into the paragraph merges, as before. That covers a heading in
+  its own block above or below the paragraph that keeps its place, one written straight
+  above it, one past a comment, a caption, and the heading opening the next file. A renamed
+  one is still caught when the document is imported with `--force`, as a heading missing
+  from the returned document.
+- **An edit beside a changed block is refused in a forced import.** A rewording is named
+  and left to carry over by hand, though most such edits would have merged cleanly, in two
+  cases:
+  - the run of blocks without an identifier around the paragraph, up to the paragraphs on
+    either side, changed in the `.md` since the build. That includes a paragraph added or
+    removed at the far end of the run, which joins it to the next run or splits it, while
+    the block beside the paragraph stays as it was;
+  - in a document built from other inputs, a block without an identifier beside it, other
+    than a table, was deleted by the co-author in Word or prints otherwise now: a heading,
+    a caption, a list item, a quotation, an entry of the reference list.
+- **A farther heading run in after the nearer one was deleted in Word is merged.** `import`
+  looks only at the block directly beside a paragraph as the source has it. A co-author who
+  deletes `### Design` and runs `## Methods`, above it, into the paragraph writes
+  "MethodsPapa..." even in an import of an unchanged document.
 - **Two paragraphs that read the same after blocks that read the same are told apart by
   position alone.** The record hashes each paragraph's text and the block before it, so
   "None." under a "# Funding" heading repeated in two places, with a copy of both added

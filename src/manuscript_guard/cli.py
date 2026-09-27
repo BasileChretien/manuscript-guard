@@ -404,15 +404,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
     # Before the digest, and past --force: under other numbering an edit has no hunk to
     # check by hand, only a paragraph that is not the one it was made in.
+    stale = carried != document_digest(project)
     try:
-        numbered = numbering(project, edited, stale=carried != document_digest(project))
+        numbered = numbering(project, edited, stale=stale)
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     if numbered.refusal:
         print(numbering_refusal(edited.name, numbered.refusal))
         return 1
-    if carried != document_digest(project) and not args.force:
+    if stale and not args.force:
         print(
             f"{edited.name} was built from a different version of the manuscript than the "
             f"one on disk. Merging edits made against text that has since changed is how a "
@@ -510,6 +511,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         every=every,
         built=numbered.sent,
         unsure=unsure | untagged_then,
+        beside_changed=numbered.beside_changed,
+        stale=stale,
     )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table

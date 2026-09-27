@@ -512,6 +512,64 @@ def test_a_built_document_records_what_each_identifier_names(project: Path) -> N
     assert len(values) > 1 and all(len(value) < 255 for value in values)
 
 
+def test_a_record_holds_the_blocks_beside_each_paragraph() -> None:
+    """The third hash holds the blocks without an identifier around a paragraph, up to the
+    paragraphs on either side: a heading written straight above it, which shares its block,
+    one past a comment Word does not show, and one opening the next file of the document. A
+    change to any of them shows; a paragraph reworded beside it does not, as no heading can
+    have stood there."""
+    from manuscript_guard.roundtrip import _beside_changed, _beside_of, _recorded_as, _walk
+
+    def record(main: str, results: str) -> dict[str, str]:
+        sources = [(Path("main.md"), "main.md", main), (Path("r.md"), "results.md", results)]
+        around = _beside_of(sources)
+        return {
+            name: _recorded_as(text, before, around[name])
+            for _path, relative, raw in sources
+            for name, text, _start, before in _walk(raw, relative)
+        }
+
+    main = "# Intro\n\nAlpha.\n\n## Methods\nPapa.\n\n<!-- note -->\n\n## Data\n\nRomeo.\n"
+    results = "# Results\n\nBravo.\n"
+    then = record(main, results)
+    named = {text: name for name, text, _start, _before in _walk(main, "main.md")}
+    papa, romeo = named["Papa."], named["Romeo."]
+    assert all(value.count(".") == 2 for value in then.values())
+    for changed, name in (
+        ((main.replace("## Methods\n", ""), results), papa),
+        ((main.replace("## Methods", "## Study design"), results), papa),
+        ((main.replace("## Data", "## Sources"), results), papa),
+        ((main, results.replace("# Results\n\n", "")), romeo),
+    ):
+        now = record(*changed)
+        assert now[name].partition(".")[0] == then[name].partition(".")[0], changed
+        assert name in _beside_changed(then, now, frozenset({name})), changed
+    for changed in (
+        (main.replace("Alpha.", "Alpha, reworded."), results),
+        (main.replace("Romeo.", "Romeo, reworded."), results),
+    ):
+        assert not _beside_changed(then, record(*changed), frozenset({papa})), changed
+
+
+def test_a_record_without_the_blocks_beside_is_still_read(tmp_path: Path) -> None:
+    """Documents built before the record held the blocks beside each paragraph are read as
+    they were: trusted by text and block before, and nothing is said of what is beside."""
+    from manuscript_guard.roundtrip import _beside_changed, _trusted, paragraphs_of
+
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    stamp_into(document, "a" * 64, {"mg-p-main-2": "0123abcd.456789"})
+    recorded = paragraphs_of(document)
+    assert recorded == {"mg-p-main-2": "0123abcd.456789"}
+    now = {"mg-p-main-2": "0123abcd.456789.fedcba"}
+    trusted = _trusted(recorded, now)
+    assert trusted == {"mg-p-main-2"}
+    assert not _beside_changed(recorded, now, trusted)
+
+
 def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
     from manuscript_guard.roundtrip import paragraphs_of
 
@@ -9682,16 +9740,99 @@ def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
 
 
 @pytest.mark.parametrize(
-    "returned",
+    ("source", "rendered", "returned"),
     [
-        pytest.param("Set {x, 3.84, y} was chosen.", id="close-brace-edited"),
-        pytest.param("Sets {x, 3.84, y} was used.", id="open-brace-edited"),
+        pytest.param(
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
+            "Set {x, 3.84, y} was chosen.",
+            id="close-brace-edited",
+        ),
+        pytest.param(
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
+            "Sets {x, 3.84, y} was used.",
+            id="open-brace-edited",
+        ),
+        pytest.param(
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
+            "Set {x, 3.84, { y} was used.",
+            id="brace-typed-beside",
+        ),
+        pytest.param(
+            "Open with `{` then {{results.ror.point}} and close with `}` later.",
+            "Open with { then 3.84 and close with } later.",
+            "Open with { then 3.84 and close with } later, again.",
+            id="braces-in-code",
+        ),
+        # Each merged, with a brace written bare, into what pandoc reads as attributes.
+        pytest.param(
+            "Set {x {{results.lab}} y} was used.",
+            "Set {x [pooled] y} was used.",
+            "Set {x [pooled]{.x} y} was used.",
+            id="attributes-after-a-value",
+        ),
+        pytest.param(
+            "See [Table [2] set {a, {{results.a}}, b} was used.",
+            "See [Table [2] set {a, 3.84, b} was used.",
+            "See [Table [2] set {a, 3.84, b}]{.c} was used.",
+            id="span-over-nested-brackets",
+        ),
+        pytest.param(
+            "See [a [b] c]{k={{results.a}} y} end.",
+            "See [a [b] c]{k=3.84 y} end.",
+            "See [a [b] c]{k=3.84} end.",
+            id="kept-brace-after-a-bracket",
+        ),
+        pytest.param(
+            "See [x](http://e.org){k={{results.a}} y} end.",
+            "See x{k=3.84 y} end.",
+            "See x{k=3.84} end.",
+            id="kept-brace-after-a-link",
+        ),
+        pytest.param(
+            "See <http://e.org>{k={{results.a}} y} end.",
+            "See http://e.org{k=3.84 y} end.",
+            "See http://e.org{k=3.84} end.",
+            id="kept-brace-after-an-autolink",
+        ),
+        pytest.param(
+            "See {{results.lab}}{k={{results.a}} y} end.",
+            "See [pooled]{k=3.84 y} end.",
+            "See [pooled]{k=3.84} end.",
+            id="kept-brace-after-a-value",
+        ),
     ],
 )
-def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -> None:
+def test_a_brace_pair_split_across_a_value_is_refused(
+    source: str, rendered: str, returned: str
+) -> None:
     """A brace kept from the source and its partner written from Word, escaped, no longer
-    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` merged, and the next build gave
-    it no identifier, so its next edit in Word could not come back."""
+    pair: merged, the paragraph would build with no identifier, and it is refused.
+
+    #90 tried writing Word's half bare again, as `main` wrote a `}` before #72, which the
+    round-3 review of #72 counted as 212 rewordings in 4,174. Each of three review rounds
+    found a shape where the bare brace completed what pandoc reads as attributes - after a
+    value, after a `]` closing a kept `[`, before a kept `{` after a link - and the
+    paragraph printed without its brackets, braces or value while `check` passed. So none is
+    written bare, as on `main`, and every such rewording is refused."""
+    aligned = align(source, rendered, returned)
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [
+        pytest.param("Set {x, 3.84, y was chosen.", id="partner-deleted"),
+        pytest.param("Set x, 3.84, y} was used.", id="opening-partner-deleted"),
+        pytest.param("Set {x, 3.84, y} was chosen.", id="partner-edited"),
+    ],
+)
+def test_a_brace_left_without_its_partner_is_named(returned: str) -> None:
+    """The reason used to name only a pair split with one half written from Word; it names
+    a deleted partner too, and why the half from Word is not written bare."""
     from manuscript_guard.merge import why
 
     aligned = align(
@@ -9699,7 +9840,9 @@ def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -
     )
     assert aligned.rebuilt is None
     assert aligned.unpaired
-    assert "brace" in why(aligned)[0]
+    reason = why(aligned)[0]
+    assert "deleted" in reason
+    assert "attributes" in reason
 
 
 def test_a_brace_pair_kept_whole_still_merges() -> None:
@@ -10381,6 +10524,29 @@ def test_a_paragraph_reworded_to_open_like_a_list_can_be_edited_again(
     assert r"B\) the ratio was {{results.ror.point}} in all." in source.read_text(
         encoding="utf-8"
     )
+
+
+@needs_pandoc
+@pytest.mark.parametrize("marker", [":", "~"])
+def test_a_rewording_that_brings_a_lone_marker_to_line_two_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], marker: str
+) -> None:
+    """End to end, from the round-3 review of #72. A hard-wrapped paragraph ends in a line
+    holding only `:`. Reworded in its first stretch, it merged with that stretch's line
+    break gone, the kept `:` came up to line 2, and the next build printed a definition list
+    with no identifier - while `import --apply` exited 0."""
+    from manuscript_guard.cli import main
+
+    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n"
+    with_paragraphs(project, paragraph + marker)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"We enrolled": "We recruited"})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "the next build would give it no identifier" in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before
 
 
 # --------------------------------------------------- a supplement is a document of its own

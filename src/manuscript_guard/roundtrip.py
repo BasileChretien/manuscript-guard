@@ -1230,18 +1230,19 @@ def _maybe_no_note(lines: list[str]) -> bool:
     return any(_RULE.fullmatch(line) for line in lines)
 
 
-# What `_vouched` refuses the note reading over, in the text outside code: a comment or
-# another markup declaration, a processing instruction, raw TeX or verbatim HTML (`_RAW_OPEN`),
-# and a block-level HTML tag opening a line. Pandoc reads each across blank lines, and a
-# fence line inside is none; `fenced_spans` does not know them.
-_DECLARATIONS = re.compile(r"<[!?]")
-# A label anywhere in a line - a list item's, a note's inside a quotation - and a label alone
-# on its line, which pandoc takes the next block into, unindented or not.
-_LABEL = re.compile(r"\[\^[^\]\n]*\]:")
+# What `_vouched` refuses the note reading over, in the text outside code: a tag of any
+# kind, a comment, a markup declaration or instruction, an autolink - `<` and a letter, `/`,
+# `!` or `?` - and raw TeX or verbatim HTML (`_RAW_OPEN`). Pandoc reads a tag's attributes,
+# and each of the others, across lines and blank lines, and a line shaped like a fence
+# inside is none; `fenced_spans` does not know them.
+_TAGS = re.compile(r"<[A-Za-z/!?]")
+# A label alone on its line, which pandoc takes the next block into, unindented or not.
 _BARE_LABEL = re.compile(r" {0,3}\[\^[^\r\n\t ^\[\]]+\]:[ \t\r]*")
 # A block opening with a rule of dashes and running on: a YAML block, or a multiline table,
-# which pandoc reads across blank lines to its closing rule.
-_TOP_RULE = re.compile(r"[ ]{0,3}-{3,}[ \t-]*")
+# which pandoc reads across blank lines to its closing rule. Three dashes, then the rest of
+# the rule: two runs of dashes one after the other backtracked, in time the square of the
+# rule's length.
+_TOP_RULE = re.compile(r"[ ]{0,3}---[ \t-]*")
 
 
 def _outside(text: str, spans: list[Fence]) -> str:
@@ -1267,52 +1268,49 @@ def _grouped(piece: str) -> bool:
     return depth == 0
 
 
-def _vouched(text: str, pieces: list[str], joined: list[bool], spans: list[Fence]) -> bool:
+def _vouched(
+    text: str, pieces: list[str], joined: list[bool], spans: list[Fence], first: int
+) -> bool:
     """Whether `spans`, fenced code as read with the notes' fence lines left out, can be
-    trusted: every fence line it pairs is one `tag` can vouch for as the body's.
+    trusted: every fence it opens from `first`, the first of those lines, on is one pandoc
+    opens too.
 
     A note's fence line taken out of the pairing changes how every fence below it pairs.
-    Where one below is a fence pandoc reads outside the body - in raw content, a table or a
-    YAML block, a list item's note, under a bare label - `main` paired it with the note's
-    and was right, and paired with the next real fence instead it swallowed the paragraph
-    between. No reading of one block at a time can rule that out, so the note reading is
-    kept for the whole document only when:
+    Where a line below is shaped like a fence and pandoc reads it as none - in raw content,
+    a tag's attributes, a list item's paragraph, a lazy line, a code span over two lines -
+    `main` paired it with the note's and did no harm; paired with the next real fence
+    instead, it hid the paragraph between. Each review of a list of such places found one
+    more, so this asks what makes a line a fence: opening unindented on the first line of a
+    block, after a line pandoc takes for blank, and not under a note's label alone on its
+    line. Its closer is then real too. Above `first` both readings pair alike.
 
-    - the text outside code holds nothing pandoc reads across blank lines that `tag` does
-      not follow: raw content, a markup declaration or instruction, a block-level HTML tag,
-      a brace left open at a blank line, a YAML block or a multiline table;
-    - no fence line it pairs is in a block, as pandoc reads blocks, holding a note's label,
-      or under a block ending on a label alone.
+    And the text outside code must hold nothing pandoc reads across blank lines that `tag`
+    does not follow: a tag, a comment, a declaration or an autolink, raw TeX or verbatim
+    HTML, a brace left open at a blank line, a YAML block or a multiline table. Inside one,
+    the note's own line may be none of the note's.
 
     Otherwise the document is read as `main` reads it."""
     prose = _outside(text, spans)
-    if _RAW_OPEN.search(prose) or _DECLARATIONS.search(prose):
-        return False
-    if any(_HTML_TAG.match(line) for line in prose.split("\n")):
+    if _RAW_OPEN.search(prose) or _TAGS.search(prose):
         return False
     starts = list(itertools.accumulate((len(piece) for piece in pieces), initial=0))
-    blocks: list[int] = []
-    labelled: list[bool] = []
-    bare: list[bool] = []
-    for index, piece in enumerate(pieces):
-        if index % 2:
-            blocks.append(len(labelled) - 1)
-            continue
-        if not (index and joined[index - 1]):
-            labelled.append(False)
-            bare.append(False)
-        blocks.append(len(labelled) - 1)
+    for index in range(0, len(pieces), 2):
         seen = prose[starts[index] : starts[index + 1]]
-        first, _, rest = seen.strip("\n").partition("\n")
-        if not _grouped(seen) or (_TOP_RULE.fullmatch(first) and rest.strip()):
+        head, _, rest = seen.strip("\n").partition("\n")
+        if not _grouped(seen) or (_TOP_RULE.fullmatch(head) and rest.strip()):
             return False
-        labelled[-1] = labelled[-1] or _LABEL.search(piece) is not None
-        bare[-1] = _BARE_LABEL.fullmatch(piece.rstrip("\n").rpartition("\n")[2]) is not None
     for span in spans:
-        for line in (span.start, span.body_end):
-            block = blocks[min(bisect.bisect_right(starts, line), len(pieces)) - 1]
-            if labelled[block] or (block and bare[block - 1]):
-                return False
+        if span.start < first:
+            continue
+        index = bisect.bisect_right(starts, span.start) - 1
+        above = pieces[index - 2].rstrip("\n").rpartition("\n")[2] if index >= 2 else ""
+        if (
+            starts[index] != span.start
+            or text[span.start] not in "`~"
+            or (index and joined[index - 1])
+            or _BARE_LABEL.fullmatch(above)
+        ):
+            return False
     return True
 
 
@@ -1411,7 +1409,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, int | None]]:
     ]
     notes = _note_fences(pieces, joined)
     spans = fenced_spans(text, inert=notes) if notes else []
-    if not notes or not _vouched(text, pieces, joined, spans):
+    if not notes or not _vouched(text, pieces, joined, spans, min(notes)):
         spans = fenced_spans(text)
     fences = iter(spans)
     fence = next(fences, None)

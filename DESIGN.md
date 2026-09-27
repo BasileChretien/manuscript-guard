@@ -3360,18 +3360,21 @@ Closed since, and why each mattered:
     fenced div, a `:::` line ends the note, and a fence after it opens code, as pandoc
     reads it. Taking a note's fence out of the pairing changes how every fence below it
     pairs, so the note reading is used for the whole document or not at all (`_vouched`).
-    A fence below that pandoc reads outside the body - in raw content, a table, a list
-    item's note - paired with the note's on `main`, and `main` was right; paired with the
-    next real fence instead, it hid the paragraph between. What is left:
-    - *The note reading is used only in a plain document.* The whole document is read as on
-      `main`, and a fence in a note pairs with the next fence below, wherever the text
-      outside code holds a comment or another markup declaration, raw TeX or verbatim HTML,
-      a line opening with a block-level HTML tag, a brace left open at a blank line, a YAML
-      block or a multiline table. So it is, too, wherever a fence it would pair is in a
-      block holding a note's label, or under a label alone on its line. Among those, pandoc
-      keeps the fence in the note under a label alone, under `- [^w]: ...` as a list item's
-      first line, and in a note over a line holding only a no-break space, and here it
-      still pairs with the next fence below.
+    A line below shaped like a fence that pandoc reads as none - in raw content, a tag's
+    attributes, a list item's paragraph, a lazy line, a code span over two lines - paired
+    with the note's on `main` and did no harm; paired with the next real fence instead, it
+    hid the paragraph between. Three reviews each found a place a list of such places
+    missed, so `_vouched` asks instead what makes a line a fence. What is left:
+    - *The note reading is used only where every fence it opens is plainly one.* From the
+      first note's fence line on, each fence must open unindented on the first line of a
+      block, after a line pandoc takes for blank, and not under a note's label alone on its
+      line. The text outside code must hold no tag, comment, declaration or autolink, no
+      raw TeX or verbatim HTML, no brace left open at a blank line, and no YAML block or
+      multiline table. Otherwise the whole document is read as on `main`, and a fence in a
+      note pairs with the next fence below. That takes in a backtick fence written straight
+      under a paragraph's line, which pandoc does open, and a note pandoc keeps its fence
+      in: under a label alone, `- [^w]: ...` as a list item's first line, a note over a line
+      holding only a no-break space.
     - Outside a fenced div, pandoc takes a `:::` line into the note, and a fence after it is
       still read as opening code here.
     - The gates' view of code (`masking`) still pairs a fence in a note with the next one

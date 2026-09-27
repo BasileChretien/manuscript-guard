@@ -221,6 +221,24 @@ def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "line",
+    ["[^" * 2 + "#", "-" * 3 + "#x"],
+    ids=["a line of note labels over a fence", "a rule of dashes run on"],
+)
+def test_the_note_reading_is_linear_in_a_long_line(assert_linear, line: str) -> None:
+    """`_vouched` reads every block of a document holding a note with a fence line, as
+    `tag` does on every build. Two of its patterns backtracked in round three's review: a
+    line of 40,000 `[^` over a fence took 55 seconds, and 40,000 dashes then a letter 26."""
+    from manuscript_guard.roundtrip import tag
+
+    def document(count: int) -> str:
+        long = line.replace("#", "[^" * count if line.startswith("[") else "-" * count)
+        return f"Alpha.\n\n[^a]: A note\n```\n\n{long}\n\n```\ncode\n```\n\nOmega.\n"
+
+    assert_linear(document, lambda text: tag(text, "main.md"), 1000, "the note reading")
+
+
 # The check itself, on a clock that only the job below moves: that it fails a quadratic,
 # and how it handles noise. Each test catches a change to the check that the real scans
 # above cannot see, because a real machine is neither quadratic nor noisy on cue. A real

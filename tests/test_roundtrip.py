@@ -1096,7 +1096,7 @@ FENCED_BELOW = "Beta cites it.[^w]\n\n```\ncode one\n\ncode two\n```\n\nOmega.\n
         pytest.param("[^w]: A note\nwrapped onto a second line\n```", id="third-line"),
         pytest.param("[^w]: A note\n```\nwith text after it\n```", id="a-pair"),
         # An arrow closes no comment: nothing opened one.
-        pytest.param("[^w]: A note\n```\n10 --> 20\n```", id="a-pair-around-an-arrow"),
+        pytest.param("[^w]: A note\n```\n10 --> 20", id="an-arrow-under-it"),
         pytest.param(f"[reg]: {REGISTRY}\n[^w]: A note\n```", id="under-a-link"),
         pytest.param("[^w]: A note\n[^v]: Another\n```", id="second-note"),
         # A note that runs on into the block below: left alone all the same, since a fence
@@ -1193,6 +1193,81 @@ _TEX = "\\"
 _TWO_NOTES = "Alpha.\n\n[^a]: First note\n```\n\n{second}\n\nBeta cites them.\n\n" + FENCED_BELOW
 
 
+def _under_a_note(middle: str, fence: str = "```") -> str:
+    """`middle` between a note ending on a fence line and a paragraph over real code."""
+    return (
+        f"Alpha comes first.\n\n[^a]: First note\n{fence}\n\n{middle}\n\n"
+        f"Gamma is prose.[^a]\n\n{fence}\ncode one\n\ncode two\n{fence}\n\nOmega.\n"
+    )
+
+
+#: Round three's shapes: a line shaped like a fence, below a note's fence line, that pandoc
+#: reads as no fence - or as one where a paragraph line runs straight into it.
+ROUND_THREE = {
+    "note-lazy-line": _under_a_note("    More of the note.\n```"),
+    "note-indented-then-fence": _under_a_note("    More of the note,\n    and more.\n```"),
+    "note-listing-realistic": (
+        "Alpha comes first.\n\n[^code]: The model was fitted with\n```r\n\n"
+        "    and checked with\n```\n\nGamma is prose.[^code]\n\n```r\nx <- 1\n\ny <- 2\n```\n\n"
+        "Omega.\n"
+    ),
+    "note-listing-with-a-blank-line": (
+        "Alpha comes first.\n\n[^code]: The model was fitted with\n```r\nfit <- glm(y ~ x)\n\n"
+        "    summary(fit)\n```\n\nGamma is prose.[^code]\n\n```r\nx <- 1\n\ny <- 2\n```\n\n"
+        "Omega.\n"
+    ),
+    "note-of-two-paragraphs": (
+        "Alpha comes first.\n\n[^a]: First paragraph ends on a fence\n```\n\n"
+        "    Second paragraph ends on one too\n```\n\nGamma is prose.[^a]\n\n"
+        "```\ncode one\n\ncode two\n```\n\nOmega.\n"
+    ),
+    "tildes-under-a-paragraph": _under_a_note("Doses were given\n~~~", fence="~~~"),
+    "list-lazy": _under_a_note("- An item\n```"),
+    "list-lazy-ordered": _under_a_note("1. An item\n```"),
+    "list-second-paragraph": _under_a_note("- An item\n\n  ```"),
+    "list-second-paragraph-ordered": _under_a_note("1. An item\n\n   ```"),
+    "quote-lazy": _under_a_note("> A quote\n```"),
+    "definition-lazy": _under_a_note("Term\n: Definition\n```"),
+    "definition-second-paragraph": _under_a_note("Term\n\n:   Definition\n\n  ```"),
+    "code-span": _under_a_note("Text `` a\n```\nb `` more."),
+    "display-maths": _under_a_note("Text $$a\n```\nb$$ more."),
+    "inline-maths": _under_a_note("Text $a\n```\nb$ more."),
+    "tex-group": _under_a_note(f"Text {_TEX}emph{{a\n```\nb}} more."),
+    "tag-attribute": _under_a_note('Text <span title="a\n```\nb">x</span> more.'),
+    "tag-attribute-over-blank-lines": _under_a_note('Text <span title="a\n\n```\n\nb">x</span>.'),
+    "image-attribute-over-blank-lines": _under_a_note('Text <img alt="a\n\n```\n\nb"> more.'),
+    "line-block": _under_a_note("| A line\n ```"),
+    "simple-table-row": _under_a_note("Name   Value\n----   -----\na      1\n```"),
+    "link-text": _under_a_note("Text [a\n```\nb](http://x.org) more."),
+    "citation": _under_a_note("Text [@key, p.\n```\n2] more."),
+    "inline-note": _under_a_note("Text ^[a\n```\nb] more."),
+    "emphasis": _under_a_note("Text *a\n```\nb* more."),
+    "autolink": _under_a_note("Text <http://x.org/a\n```\nb> more."),
+    "setext-underline": _under_a_note("```\n==="),
+    "paragraph-then-fence": _under_a_note("Doses were given\n```"),
+}
+#: Those where `main` prints "Gamma is prose." marked and puts no marker in code.
+READ_WELL_ON_MAIN = [
+    "note-lazy-line",
+    "note-indented-then-fence",
+    "note-listing-realistic",
+    "note-listing-with-a-blank-line",
+    "note-of-two-paragraphs",
+    "tildes-under-a-paragraph",
+    "list-second-paragraph",
+    "list-second-paragraph-ordered",
+    "code-span",
+    "display-maths",
+    "inline-maths",
+    "tex-group",
+    "tag-attribute",
+    "tag-attribute-over-blank-lines",
+    "image-attribute-over-blank-lines",
+    "line-block",
+    "simple-table-row",
+]
+
+
 @needs_pandoc
 @pytest.mark.parametrize(
     ("document", "word"),
@@ -1262,6 +1337,7 @@ _TWO_NOTES = "Alpha.\n\n[^a]: First note\n```\n\n{second}\n\nBeta cites them.\n\
         # And where pandoc keeps both notes' fences in the notes, both are the notes' text.
         pytest.param(_TWO_NOTES.format(second="[^b]: Dose went 10 --> 20 mg\n```"), "Beta",
                      id="two-notes"),
+        *(pytest.param(ROUND_THREE[name], "Gamma", id=name) for name in READ_WELL_ON_MAIN),
     ],
 )
 def test_a_fence_the_note_reading_cannot_vouch_for_leaves_pairing_to_main(
@@ -1276,6 +1352,25 @@ def test_a_fence_the_note_reading_cannot_vouch_for_leaves_pairing_to_main(
     paragraphs, code = _printed(document)
     assert any(f'"{word}' in p and "mg-p-" in p for p in paragraphs), paragraphs
     assert not any("mg-p-" in block for block in code)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("name", list(ROUND_THREE))
+def test_the_note_reading_is_never_worse_than_pairing_every_fence(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The note reading's promise, judged by pandoc: no paragraph goes unmarked, and no
+    marker lands in code, that pairing every fence as `main` does would have got right.
+    Round three found a document `_vouched` accepted for each shape here where pandoc reads
+    a line shaped like a fence as none, and the paragraph after it went unmarked."""
+    from manuscript_guard import roundtrip
+
+    paragraphs, code = _printed(ROUND_THREE[name])
+    monkeypatch.setattr(roundtrip, "_note_fences", lambda pieces, joined: {})
+    every_fence, every_code = _printed(ROUND_THREE[name])
+    lost = {p for p in paragraphs if "mg-p-" not in p}
+    assert lost <= {p for p in every_fence if "mg-p-" not in p}, lost
+    assert sum("mg-p-" in block for block in code) <= sum("mg-p-" in b for b in every_code)
 
 
 #: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc

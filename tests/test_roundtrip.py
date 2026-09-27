@@ -6953,9 +6953,14 @@ def test_a_heading_its_paragraph_already_names_is_still_seen_joined(tmp_path: Pa
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    ("heading_text", "opening"),
-    [("Methods", "We analysed"), ("Competing interests", "None declared.")],
-    ids=["long-paragraph", "short-paragraph"],
+    ("heading_text", "opening", "edited"),
+    [
+        ("Methods", "We analysed", ""),
+        ("Competing interests", "None declared.", ""),
+        ("Competing interests", "None declared.", ": none declared."),
+        ("Competing interests", "None declared.", "The authors declare no competing interests."),
+    ],
+    ids=["long-paragraph", "short-paragraph", "made-run-in", "reworded"],
 )
 def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     project: Path,
@@ -6963,13 +6968,16 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     capsys: pytest.CaptureFixture[str],
     heading_text: str,
     opening: str,
+    edited: str,
 ) -> None:
     """Delete at the end of a heading makes a run-in heading: one paragraph reading
     "MethodsWe analysed...", carrying the paragraph's identifier. It merged as prose, and
     `# Methods` stayed in the file above it. Word keeps the heading's style on the joined
     paragraph, so a paragraph short beside its heading - "None declared." - read as an
     identifier slid onto a heading, and was reported deleted: the advice was to delete it
-    and retype Word's copy into the heading."""
+    and retype Word's copy into the heading. Its text still whole in the block did not say
+    it was a join either: edited in the same round - made a run-in heading's text, or
+    reworded - it was reported deleted again."""
     from manuscript_guard.cli import main
 
     document = built(project)
@@ -6988,6 +6996,9 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
         inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
         heading_xml = heading.group(0)[: heading.group(0).index(paragraph)].rstrip()
         joined = heading_xml[: -len("</w:p>")] + inner
+        if edited:
+            assert f">{opening}</w:t>" in joined, "the paragraph's text is one run"
+            joined = joined.replace(f">{opening}</w:t>", f">{edited}</w:t>", 1)
         return xml.replace(heading.group(0), joined, 1)
 
     returned = rewrite(document, tmp_path / "runin.docx", join)
@@ -7000,12 +7011,14 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
 
 
 @needs_pandoc
+@pytest.mark.parametrize("reworded", [False, True], ids=["joined", "joined-and-reworded"])
 def test_a_heading_joined_with_track_changes_on_is_not_reported_deleted(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], reworded: bool
 ) -> None:
     """The same join made with Track Changes on: the heading's paragraph mark tracked as
     deleted, so the heading runs on into the paragraph under it and opens the block, whose
-    role is then the heading's. "Not applicable." under a long heading was reported deleted."""
+    role is then the heading's. "Not applicable." under a long heading was reported deleted,
+    and so it was again once reworded, tracked, in the same round."""
     from manuscript_guard.cli import main
 
     source = project / "manuscript" / "main.md"
@@ -7031,7 +7044,14 @@ def test_a_heading_joined_with_track_changes_on_is_not_reported_deleted(
         assert heading, "the heading is in the document"
         props = heading.group(1)
         at = heading.start(1)
-        return xml[:at] + _tracked_mark(props, "del") + xml[at + len(props) :]
+        xml = xml[:at] + _tracked_mark(props, "del") + xml[at + len(props) :]
+        if reworded:
+            run = re.search(r"<w:r>(?:(?!<w:r>).)*?>Not applicable\.</w:t></w:r>", xml, re.DOTALL)
+            assert run, "the paragraph's text is one run"
+            new = run.group(0).replace("Not applicable.", "Not applicable; no human participants.")
+            tracked = _tracked_runs(run.group(0), "del") + _tracked_runs(new, "ins")
+            xml = xml.replace(run.group(0), tracked, 1)
+        return xml
 
     returned = rewrite(document, tmp_path / "tracked-runin.docx", join)
     capsys.readouterr()

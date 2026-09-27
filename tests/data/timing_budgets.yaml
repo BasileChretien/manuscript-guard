@@ -94,7 +94,7 @@ reads:
     kind: budget
     budget: 2
     why: >-
-      Five fixed lines of a few thousand characters, each a shape that a pattern for rules
+      Five fixed lines of 8,000 to 44,000 characters, each a shape that a pattern for rules
       opening blocks could read more ways than one: Roman numerals that were single letters
       too, a comment's pattern that ran across later comments, a TeX argument that was also
       a footnote marker, and a command's name that could stop at any letter. Each took
@@ -167,10 +167,11 @@ reads:
       over one scan cannot see. At these sizes the heaviest linear input already reads ten,
       so it cannot tell a quadratic that adds a few seconds: that is `assert_linear`'s job.
     headroom: >-
-      0.7 to 10.0 against 30, over five rounds with thirteen other suites running and review's
-      own. The
-      heaviest input, one long run of backticks, read up to 10.0: 3x. Nested brackets read
-      12.3 while `BRACKETED` was quadratic, and 1.4 once it read in one pass.
+      0.7 to 10.0 against 30, over five rounds on Windows with thirteen other suites running,
+      and review's own. The heaviest input, one long run of backticks, read up to 10.0: 3x.
+      Nested brackets read 12.3 while `BRACKETED` was quadratic, and 1.4 once it read in one
+      pass. Review measured a Linux VM on the same host: up to 11 for a linear input, with
+      CPU time there doubling between rounds as the host's load changed.
 
   - where: tests/test_robustness.py::check_overhead
     kind: budget
@@ -178,8 +179,10 @@ reads:
     constant: HANG_SECONDS
     why: >-
       The wall-clock backstop for the same tests. A `check` that waits instead of working, on
-      a read that blocks or a call that takes its time, spends no CPU time and would pass the
-      ratio; a gate made to wait 70 s on the hostile file fails this.
+      a read or a call that takes its time and then returns, spends no CPU time and would
+      pass the ratio; a gate made to wait 70 s on the hostile file fails this. A wait that
+      returns within about a minute passes, where the old 20 s budget failed one of 30 s, and
+      a wait that never returns hangs the suite, as it always did.
     headroom: >-
       The first check on a hostile project and the timed one after it took at most 21 s
       together, with thirteen other suites running: about 3x.

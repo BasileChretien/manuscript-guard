@@ -4369,15 +4369,19 @@ Closed since, and why each mattered:
   `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
   budget on a fixed input, saying why a ratio would not do and how much headroom it was
   measured to have, or as a timestamp that times nothing. Like the exemption inventory it
-  runs both ways, and it checks that each listed budget is the number the test holds its
-  timing to. It reads that from comparisons with the timing on either side, through names
-  the timing is assigned to, annotated or added to, and a helper's timing through every
-  function in its module that calls it by name. What it cannot read fails rather than
-  passes: a caller that holds the timing to nothing it reads, a helper whose timing is used
-  from another test module, and a listed constant bound more than once. It reads the
-  comparison, not what is done with it, so one in an `if` that only warns, or asserted
-  beside an `or`, counts as held. A test defined under a module-level `if`, a method of a
-  nested class and a helper passed as a value are not read. It does not see a clock read
+  runs both ways. It also checks that each listed budget is still the number the test holds
+  its timing to, as a tripwire for a changed number or constant, not a proof: whether a test
+  holds a timing to a number cannot be read completely from its syntax, and four rounds of
+  review each found another way past it. It reads comparisons with the timing on either
+  side, through names the timing is assigned to, annotated or added to, and a helper's
+  timing through every function in its module that calls it by name. Some of what it cannot
+  read fails: a caller that holds the timing to nothing it reads, a helper whose timing is
+  used from another test module, and a listed constant bound more than once at module
+  level. The rest passes unseen: arithmetic done to a timing before it is compared
+  (`elapsed / 3 < BUDGET`), a constant shadowed inside the test, a comparison in an `if`
+  that only warns or asserted beside an `or`, an assertion made only under an `if`, a test
+  defined under a module-level `if`, a method of a nested class, a helper passed as a value,
+  and a module imported as `from tests import test_robustness`. It does not see a clock read
   any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
   `importlib`, a module bound to a second name (`clock = time`), one in `src/` that a test
   calls, or a timing a subprocess reports. It judges each top-level function whole, so a
@@ -4392,12 +4396,17 @@ Closed since, and why each mattered:
   the time while linear, often past a quadratic's 64, and failed correct code one run in
   six. The headroom was measured on one laptop under load.
 - **The whole-`check` tests catch a hang or a blow-up, not a scan gone quadratic.** Each
-  holds what a hostile input adds to `check` to 30 times a plain `check` on the same
-  project, in CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on
-  Windows, none on Linux) and every other process. A wall clock backs it up at 60 s, for a
-  `check` that waits instead of working. At the sizes these inputs are written at, the
-  heaviest already cost ten times a plain `check`, so a quadratic that adds a few seconds
-  passes among them. Seeing one is `check_linear`'s job, one scan at a time.
+  holds `check` on a hostile project to 30 times a plain `check` on the same project, in
+  CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on Windows, none
+  on Linux) and every other process. A wall clock backs it up at 60 s, for a `check` that
+  waits instead of working, so a wait that returns within about a minute passes, where the
+  old 20 s budget failed one of 30 s; one that never returns hangs the suite, as it always
+  did. At the sizes these inputs are written at, the heaviest linear ones already cost ten
+  times a plain `check` (up to eleven in a Linux VM), so a quadratic that adds a few
+  seconds passes among them. Seeing one is `check_linear`'s job, one scan at a time. Two
+  costs fall outside the CPU ratio too: a scan whose result is cached by content runs once,
+  on the untimed first check, and garbage collection is off while timing. Both are left to
+  the wall clock.
 
 ## Still open
 

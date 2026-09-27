@@ -41,11 +41,14 @@ BUDGET_SECONDS = 20.0
 #: speed.
 CHECK_OVERHEAD = 30.0
 #: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
-#: on a read that blocks or a network call that takes its time. The first check on a hostile
-#: project and the timed one after it took at most 21 s together, on a loaded laptop.
+#: on a read or a network call that takes its time and then returns. A wait under about a
+#: minute passes, and one that never ends hangs the suite, as it always did. The first check
+#: on a hostile project and the timed one after it took at most 21 s together, on a loaded
+#: laptop.
 HANG_SECONDS = 60.0
-#: A ratio over the bound is measured again this many times before it fails, in alternation
-#: with a plain check, each keeping its best, as `check_linear` does.
+#: A ratio between the bound and twice it is measured again this many times before it
+#: fails, in alternation with a plain check, each keeping its best, as `check_linear` does.
+#: One at twice the bound or more fails at once: a blow-up, not a slow spell.
 CONFIRM = 3
 
 
@@ -91,14 +94,15 @@ def check_overhead(project: Path, plain: Path) -> float:
 
     The first run opens every file of a fresh copy for the first time, which costs Windows
     seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
-    run decides a ratio under the bound. One over it is measured again, in alternation with
-    the plain project, before it stands: a slow spell falls on both."""
+    run decides a ratio under the bound, and one at twice the bound or more. One between is
+    measured again, in alternation with the plain project, before it stands: a slow spell
+    falls on both."""
     started = time.perf_counter()
     run_check(project)
     waited = time.perf_counter() - started
     assert waited < HANG_SECONDS, f"check took {waited:.0f} s by the wall clock"
     overhead = timed_check(project) / plain_baseline(plain)
-    if overhead < CHECK_OVERHEAD:
+    if overhead < CHECK_OVERHEAD or overhead / 2 >= CHECK_OVERHEAD:
         return overhead
     pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
     return min(second for _, second in pairs) / min(first for first, _ in pairs)
@@ -134,7 +138,7 @@ def check_overhead(project: Path, plain: Path) -> float:
 def test_check_finishes_on_pathological_prose(
     project: Path, name: str, body: str, plain_project: Path
 ) -> None:
-    """A scan that blows up on prose someone might write, or a wait that never ends."""
+    """A scan that blows up on prose someone might write, or a wait of a minute or more."""
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
     overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"

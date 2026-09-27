@@ -4252,9 +4252,12 @@ Closed since, and why each mattered:
     one form after another - a code span, a comment, a TeX environment, a citation's
     locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
     off from its citation), a citation group, maths, a link's destination, a tag's
-    attributes, emphasis, a backslash inside code. So a heading is passed over only when
-    its lines hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute
-    block ending the line (`{#sec-methods}`, which cross-references need). Any other
+    attributes, a backslash inside code. So a heading is passed over only when its lines
+    hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute block
+    ending the line (`{#sec-methods}`, which cross-references need). The emphasis marks
+    among them, `*`, `_`, `~` and `^`, run on to no later line: pandoc 3.9 closes none of
+    them past a heading, ATX or setext. They stay out all the same, because the allow-list
+    is what ended review's search, and an exception to it would start one again. Any other
     heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
     compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
     over an underline.

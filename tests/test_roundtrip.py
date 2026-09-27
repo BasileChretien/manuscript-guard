@@ -9417,16 +9417,56 @@ def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
 
 
 @pytest.mark.parametrize(
-    "returned",
+    ("returned", "expected"),
     [
-        pytest.param("Set {x, 3.84, y} was chosen.", id="close-brace-edited"),
-        pytest.param("Sets {x, 3.84, y} was used.", id="open-brace-edited"),
+        pytest.param(
+            "Set {x, 3.84, y} was chosen.",
+            "Set {x, {{results.ror.point}}, y} was chosen.",
+            id="close-brace-edited",
+        ),
+        pytest.param(
+            "Sets {x, 3.84, y} was used.",
+            "Sets {x, {{results.ror.point}}, y} was used.",
+            id="open-brace-edited",
+        ),
     ],
 )
-def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -> None:
+def test_a_brace_pair_split_across_a_value_merges_bare(returned: str, expected: str) -> None:
     """A brace kept from the source and its partner written from Word, escaped, no longer
-    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` merged, and the next build gave
-    it no identifier, so its next edit in Word could not come back."""
+    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` would build with no identifier.
+    #72 refused it, where `main` had merged it, with its brace bare, correctly. The round-3
+    review of #72 counted 212 such rewordings in 4,174. Where the source's own stretch has a
+    brace bare, the edited one is written with its braces bare too, and that merges again."""
+    merged = realign(
+        "Set {x, {{results.ror.point}}, y} was used.", "Set {x, 3.84, y} was used.", returned
+    )
+    assert merged == expected
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+def test_braces_in_code_split_across_a_value_merge() -> None:
+    """Braces inside code count as the rest do, and pandoc pairs neither: the rewording
+    merged on `main` and was refused, as a split pair, after #72."""
+    merged = realign(
+        "Open with `{` then {{results.ror.point}} and close with `}` later.",
+        "Open with { then 3.84 and close with } later.",
+        "Open with { then 3.84 and close with } later, again.",
+    )
+    assert merged == "Open with `{` then {{results.ror.point}} and close with } later, again."
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [
+        pytest.param("Set {x, 3.84, y was chosen.", id="partner-deleted"),
+        pytest.param("Set x, 3.84, y} was used.", id="opening-partner-deleted"),
+    ],
+)
+def test_a_brace_left_without_its_partner_is_refused_and_named(returned: str) -> None:
+    """A brace whose partner was deleted in Word cannot pair, bare or escaped: merged, the
+    next build gave the paragraph no identifier. The reason names that case as well as a
+    partner written back escaped, which it alone used to name."""
     from manuscript_guard.merge import why
 
     aligned = align(
@@ -9434,7 +9474,7 @@ def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -
     )
     assert aligned.rebuilt is None
     assert aligned.unpaired
-    assert "brace" in why(aligned)[0]
+    assert "deleted" in why(aligned)[0]
 
 
 def test_a_brace_pair_kept_whole_still_merges() -> None:
@@ -9587,6 +9627,29 @@ def test_a_paragraph_reworded_to_open_like_a_list_can_be_edited_again(
     assert r"B\) the ratio was {{results.ror.point}} in all." in source.read_text(
         encoding="utf-8"
     )
+
+
+@needs_pandoc
+@pytest.mark.parametrize("marker", [":", "~"])
+def test_a_rewording_that_brings_a_lone_marker_to_line_two_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], marker: str
+) -> None:
+    """End to end, from the round-3 review of #72. A hard-wrapped paragraph ends in a line
+    holding only `:`. Reworded in its first stretch, it merged with that stretch's line
+    break gone, the kept `:` came up to line 2, and the next build printed a definition list
+    with no identifier - while `import --apply` exited 0."""
+    from manuscript_guard.cli import main
+
+    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n"
+    with_paragraphs(project, paragraph + marker)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"We enrolled": "We recruited"})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "the next build would give it no identifier" in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before
 
 
 # --------------------------------------------------- a supplement is a document of its own

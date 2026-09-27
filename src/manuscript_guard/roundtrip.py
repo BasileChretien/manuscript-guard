@@ -2148,6 +2148,9 @@ def _opened(text: str, whole: bool = True) -> str:
     gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
     rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
     `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
+    Only one of these applies, the first that does, so a rule that opens with `|` or a
+    colon is escaped there alone: `|---|` prints as `|—|` and `:---:` as `:—:`, pandoc's
+    usual typesetting of the dashes.
     """
     if block := _OPENER.match(text):
         at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
@@ -2610,6 +2613,8 @@ def align(
     # it could not. `bare` is the same with each `<` Word typed set aside: the merge escapes it.
     ahead = bare = ""
     out: list[str] = []
+    # Where in `out` each stretch written from Word went, with its index: see `_braces_bare`.
+    edited: list[tuple[int, int]] = []
     lost: list[str] = []
     unread = False
     # A straight ' kept from the source that opens a quotation closed in an edited stretch:
@@ -2650,6 +2655,7 @@ def align(
             opening = piece.lstrip() if index == 0 else piece
             binding_next = index < len(protected) and _BINDING.fullmatch(protected[index])
             tag = {"shown_before": ahead, "bare_before": bare}
+            edited.append((len(out), index))
             out.append(
                 _respaced(
                     _escaped(opening, opening=index == 0, **tag, **beside),
@@ -2688,11 +2694,36 @@ def align(
     # A stretch kept from the source keeps its braces bare, and one written from Word has
     # them escaped, so a pair with one half on each side of a token no longer pairs. The
     # paragraph would build without an identifier, and its next edit could not come back.
+    # Written bare where the source's own stretch has a brace bare, the pair is whole again,
+    # as `main` wrote it before #72; one whose partner was deleted is not, and is refused.
     if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
-        return Alignment(None, unpaired=True)
+        rebuilt = _braces_bare(out, edited, prose)
+        if rebuilt is None or _brace_group_runs_on(rebuilt):
+            return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):
         return Alignment(None, misread=True)
     return Alignment(rebuilt or None)
+
+
+# The backslash `_escaped` puts before a brace: one, after an even run, which is the
+# co-author's own backslashes, escaped.
+_WRITTEN_BRACE = re.compile(r"(?<!\\)((?:\\\\)*)\\([{}])")
+
+
+def _braces_bare(out: list[str], edited: list[tuple[int, int]], prose: list[str]) -> str | None:
+    """The rebuilt paragraph with the braces of each stretch written from Word left bare, in
+    each stretch whose source has a brace bare; None when that changes nothing.
+
+    A brace a co-author types is escaped, so that it prints as typed and pairs with nothing.
+    Beside a brace the source keeps bare it must pair after all: `Set {x, {{results.x}}, y}
+    was chosen.`, with ", y} was chosen." edited, merged as `y\\}` and the kept `{` was left
+    open. The caller asks again whether the braces pair, and `_reads_as` whether the
+    paragraph still reads as Word's text."""
+    bare = list(out)
+    for position, index in edited:
+        if _UNESCAPED_OPEN.search(prose[index]) or _UNESCAPED_CLOSE.search(prose[index]):
+            bare[position] = _WRITTEN_BRACE.sub(r"\1\2", out[position])
+    return "".join(bare).strip() if bare != out else None
 
 
 def _align_plain(

@@ -3094,3 +3094,28 @@ def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
 ) -> None:
     _with_footnote(project, referenced, defined, note)
     assert not gate_report(project).failures, codes(gate_report(project))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_import_does_not_bring_a_lone_colon_up_into_a_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """A hard-wrapped paragraph whose last line is a lone `:`, reworded in its first stretch:
+    the merge joined the first two lines, the `:` came up to line 2, and the next build
+    printed a definition list with no identifier (#72's round-3 review)."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    paragraph = "We enrolled patients over\ntwo years, reaching {{results.ror.point}} of\n:\n\n"
+    anchor = "# Data availability"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(
+        project, tmp_path, lambda xml: xml.replace("We enrolled", "We recruited", 1)
+    )
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "a lone colon became a definition"

@@ -1376,9 +1376,10 @@ def why(aligned: Alignment) -> tuple[str, ...]:
         )
     if aligned.unpaired:
         return (
-            "the edit splits a pair of braces: one kept from the .md, the other written back "
-            "from Word, where a brace is escaped so it prints as typed, and the two no longer "
-            "pair. The next build would give the paragraph no identifier, and a later edit to "
+            "a brace kept from the .md would be left without its partner: the partner was "
+            "deleted in Word, or comes back escaped, so that it prints as typed, where the .md "
+            "has no brace of its own. Braces inside code count too, though pandoc pairs none "
+            "there. The next build would give the paragraph no identifier, and a later edit to "
             "it in Word could not come back. Make the edit in the .md.",
         )
     if aligned.changed:

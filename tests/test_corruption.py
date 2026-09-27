@@ -661,6 +661,21 @@ RESULTS_READ_AS_METHODS = {
         "## Results\n\nText\n</script>\n#" + chr(0xA0) + "Results\n-\nMethods\n---\n\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    "a hash and an em space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0x2003) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the tenth review. The same title, when the walk marks it as text and it does
+    # not say Results, stays off the printed chain, and on the other it took the underline's
+    # level: it nested under a wrongly placed Methods that `main`'s level 1 closed.
+    "a hash and a no-break space over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n\n#" + chr(0xA0) + "Outcomes\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a misplaced methods paragraph": (
+        "# Results\n\nText\n</script>\n# Methods\nText\n# Y\n-\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 
@@ -3331,6 +3346,11 @@ def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, not
             _IN_METHODS,
             "[^n]: A note\n    > The excess was significant (p < 0.001).\n---\n",
         ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "#######\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
     ],
 )
 def test_a_footnote_is_read_where_it_is_referenced(
@@ -3351,6 +3371,25 @@ def test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced(project: Path) -
     note = "[^n]: A note\n    | The excess was significant (p < 0.001).\n-\n"
     _with_footnote(project, (_IN_RESULTS,), _IN_METHODS, note)
     assert "hand-authored-table" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        "Text\n[^a]: As reported.[^n]\n---\n",
+        "Text\n[^a]: A note\nAs reported.[^n]\n---\n",
+    ],
+    ids=["on the definition line", "on a lazy line"],
+)
+def test_a_reference_under_a_misread_definition_still_counts(project: Path, results: str) -> None:
+    """Found by the tenth review. A `[^a]:` line over an underline is paragraph text to
+    pandoc and a setext title to `main`, which refused it as a definition, so the `[^n]` on
+    it counted as a reference in the Results. Taken for a definition, it swallowed that
+    reference, and note n, defined under Methods, was judged there alone."""
+    path = main_md(project)
+    tail = f"# Methods\n\nText.\n\n[^n]: {_CLAIM}\n\n# Results\n\n{results}"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
 
 
 _CLAIM = "The excess was significant (p < 0.001)."

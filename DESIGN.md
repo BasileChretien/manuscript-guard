@@ -2778,8 +2778,9 @@ Closed since, and why each mattered:
   indented paragraph of the note, is judged only where it sits: a `p < 0.001` there, in a
   note defined under Methods and referenced from Results, still passes as the alpha, as on
   `main`. A marker in inline code, `` `[^n]` ``, counts as a reference, which only adds a
-  section a number must pass in. A heading the walk finds but pandoc prints as text, which
-  `main` never found, neither refuses a definition nor ends a note's text.
+  section a number must pass in. A line shaped like a heading that pandoc prints as text
+  refuses a definition and ends a note's text only where `main` read a heading: a setext
+  title does, and an empty heading's title, or a title starting `#`, `>` or `|`, does not.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and
@@ -2882,8 +2883,9 @@ Closed since, and why each mattered:
   opens Methods. A setext title that is an ATX line at the margin, `## Outcomes` over `===`
   or `# X` over `-`, is a heading at the underline's level titled "## Outcomes" to pandoc
   and the walk, and a heading "Outcomes" at its hash count to the scan before it, which took
-  a no-break space after the hashes too; for G2 a section is Methods only if both readings
-  say so. The audit's reference list starts
+  a no-break space after the hashes too. The printed chain takes the hash count, and so does
+  the other chain where the walk marks the line as text; for G2 a section is Methods only if
+  both readings say so. The audit's reference list starts
   only at a heading G2 would call printed, so none of these starts one.
 - **A pipe table's rows are found more simply than pandoc finds them.** The walk takes a
   line under a table for a row when it holds a pipe outside code, math and a backslash

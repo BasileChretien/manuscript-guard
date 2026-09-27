@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import (
+    _OLD_SCAN_SKIPPED,
     Heading,
     Unprinted,
     find_headings,
@@ -148,13 +149,23 @@ class HeadingIndex(list):
         self.chains: list[Chain] = []
         every: list[tuple[int, str]] = []
         printed: list[tuple[int, str]] = []
+        shown = scannable(text) if text is not None else None
         for found in self:
             # A line printed as text stays off the printed chain, unless it says Results:
             # there it can only keep the Results in place. Off it, a later line printed as
             # text took it off the other chain as well, and left both saying Methods.
             both = type(found.title) is not Unprinted or rules_out_methods(found.title)
+            # Printed as text, it takes the old scan's level on the other chain too:
+            # `#<nbsp>Outcomes` over `---`, a paragraph's text under a wrongly placed
+            # `# Methods`, nested under it at the underline's level, where `main` read a
+            # level-1 heading that closed it.
+            unprinted = type(found.title) is Unprinted
             for stack in (every, printed) if both else (every,):
-                level = _printed_level(found, text) if stack is printed else found.level
+                level = (
+                    _printed_level(found, shown)
+                    if stack is printed or unprinted
+                    else found.level
+                )
                 while stack and stack[-1][0] >= level:
                     stack.pop()
                 stack.append((level, found.title))
@@ -169,23 +180,24 @@ class HeadingIndex(list):
 _OLD_SCAN_ATX_LEVEL = re.compile(r"(#{1,6})\s")
 
 
-def _printed_level(found: Heading, text: str | None) -> int:
-    """A heading's level on the printed chain.
+def _printed_level(found: Heading, shown: str | None) -> int:
+    """A heading's level on the printed chain, and a line printed as text's on both.
 
     A setext title that is an ATX line at the margin, `## Outcomes` over `===` say, is a
     heading pandoc prints at the underline's level, which is how the walk places it, and the
     scan before the walk read it at its hash count. Where the walk wrongly placed a heading,
     under a stray `</script>` say, the two readings nest differently: pandoc's level-1
     "## Outcomes" closed a Results that `main`'s level 2 kept open. So the printed chain takes
-    the hash count, and both readings must say Methods. Only a `#` at the margin is
-    counted, which is all the old scan read: taken for an indented ` # Y`, or one after a
-    comment, the count popped a Results the printed chain still held. Without the text, only
-    a `# X` over a `-` rule is known to be one, and it takes level 1."""
+    the hash count, and both readings must say Methods. The count is read in `shown`, the
+    text as `scannable` shows it, where the old scan read it: only a `#` at the margin, so
+    an indented ` # Y`, or one after a comment, which popped a Results the printed chain
+    still held, keeps the underline's level, and a `##` inside a comment is not counted.
+    Without the text, only a `# X` over a `-` rule is known to be one, and it takes level 1."""
     if not found.setext:
         return found.level
-    if text is None:
+    if shown is None:
         return 1 if _hash_over_rule(found) else found.level
-    old = _OLD_SCAN_ATX_LEVEL.match(text, found.start)
+    old = _OLD_SCAN_ATX_LEVEL.match(shown, found.start)
     return len(old.group(1)) if old else found.level
 
 
@@ -231,6 +243,21 @@ _MAY_START_BLOCK = re.compile(r"[ ]{0,3}(?:[#>`~<|:*+=_-]|\d+[.)]|\[\^)")
 _INDENTED = re.compile(r"(?: {4}|\t)")
 
 
+def _ends_a_note(found: Heading, shown: str) -> bool:
+    """Whether a heading refuses a `[^n]:` definition on its line and ends a note's text.
+
+    A heading pandoc prints does, and so does a setext title printed as text that the scan
+    before the walk read: `Text` / `[^a]: As reported.[^n]` / `---` is a paragraph to pandoc,
+    and `main` refused the definition, so the `[^n]` on it counted as a reference. Not a title
+    `main` never read, which it never let end a note: an empty `##` titled with the `[^n]:`
+    line under it, or a lazy line of the note starting `>` or `|` over `---`."""
+    if type(found.title) is not Unprinted:
+        return True
+    end = shown.find("\n", found.start)
+    line = shown[found.start : end if end != -1 else len(shown)]
+    return found.setext and not _OLD_SCAN_SKIPPED.match(line)
+
+
 def footnote_index(text: str) -> list[Note]:
     """Every footnote definition in `text` with the references that print it.
 
@@ -246,15 +273,11 @@ def footnote_index(text: str) -> list[Note]:
     holds, taken for a note's text. Since a number is still judged where it stands, such a
     misreading only adds a section it must pass in. A reference inside a definition is not
     counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
-    A heading the walk found but pandoc prints as text (`Unprinted`) neither refuses a
-    definition nor ends a note's text: an empty `##` takes the line under it as its title,
-    and that line can be a `[^n]:` definition.
+    Headings refuse a definition and end a note's text where `main` read one (`_ends_a_note`).
     """
     shown = scannable(text)
     found_headings = heading_index(text)
-    headings = {
-        found.start for found in found_headings if type(found.title) is not Unprinted
-    }
+    headings = {found.start for found in found_headings if _ends_a_note(found, shown)}
     lines: list[tuple[int, str]] = []
     offset = 0
     for line in shown.split("\n"):

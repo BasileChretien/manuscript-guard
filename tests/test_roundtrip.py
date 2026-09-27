@@ -9179,9 +9179,9 @@ def _localised(document: Path, target: Path, change) -> Path:
 @pytest.mark.parametrize(
     "where",
     [
-        ("heading", 2, ">Methods</w:t>", ">Study design</w:t>", "Whether the signal"),
-        ("caption", 8, "Reports by drug group.", "Reports of each drug group.", "The database"),
-        ("reference", 15, "Hepatic Injury in a", "Liver Injury in a", "None declared."),
+        ("heading", ">Methods</w:t>", ">Study design</w:t>", "Whether the signal"),
+        ("caption", "Reports by drug group.", "Reports of each drug group.", "The database"),
+        ("reference", "Hepatic Injury in a", "Liver Injury in a", "None declared."),
     ],
     ids=lambda where: where[0],
 )
@@ -9195,13 +9195,15 @@ def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
     localised Word saves Heading1 as "1"."""
     from manuscript_guard.cli import main
 
-    _kind, index, was, now, deleted = where
+    _kind, was, now, deleted = where
     document = built(project)
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
 
     def edit(xml: str) -> str:
-        paragraph = tagged_xml(xml)[index]
+        # By its words, not its place among the tagged paragraphs, which changes whenever
+        # the rules for what carries an identifier do.
+        (paragraph,) = [p for p in tagged_xml(xml) if f">{deleted}" in p]
         xml = _word_delete(xml, paragraph)
         assert was in xml
         return xml.replace(was, now, 1)

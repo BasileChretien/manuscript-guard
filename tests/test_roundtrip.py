@@ -1041,6 +1041,8 @@ FENCED_BELOW = "Beta cites it.[^w]\n\n```\ncode one\n\ncode two\n```\n\nOmega.\n
         pytest.param("[^w]: A note\n```r", id="with-a-language"),
         pytest.param("[^w]: A note\nwrapped onto a second line\n```", id="third-line"),
         pytest.param("[^w]: A note\n```\nwith text after it\n```", id="a-pair"),
+        # An arrow closes no comment: nothing opened one.
+        pytest.param("[^w]: A note\n```\n10 --> 20\n```", id="a-pair-around-an-arrow"),
         pytest.param(f"[reg]: {REGISTRY}\n[^w]: A note\n```", id="under-a-link"),
         pytest.param("[^w]: A note\n[^v]: Another\n```", id="second-note"),
         # A note that runs on into the block below: left alone all the same, since a fence
@@ -1130,6 +1132,95 @@ def test_a_note_label_inside_code_is_code(opened: str) -> None:
     body's. Taken for the note's lines, the reopened code swallowed the paragraph below."""
     paragraphs, code = _printed(f"Alpha comes first.\n\n{opened}\n\n{FENCED_BELOW}")
     assert any('"Beta"' in p and "mg-p-" in p for p in paragraphs), paragraphs
+    assert not any("mg-p-" in block for block in code)
+
+
+_TEX = "\\"
+_TWO_NOTES = "Alpha.\n\n[^a]: First note\n```\n\n{second}\n\nBeta cites them.\n\n" + FENCED_BELOW
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("document", "word"),
+    [
+        # A note inside raw content that closes in a later block: no note to pandoc.
+        pytest.param(
+            "Alpha comes first.\n\n<!-- Dropped footnote:\n\n[^old]: An earlier note:\n"
+            "```r\nx <- 1\n\ny <- 2\n```\n-->\n\nGamma is prose.\n\n```\nmore\n\ncode\n```\n\n"
+            "Delta ends it.\n",
+            "Gamma",
+            id="comment-closed-later",
+        ),
+        pytest.param(
+            "Alpha.\n\n<pre>\n\n[^w]: A note\n```\n\n```\n</pre>\n\n" + FENCED_BELOW,
+            "Beta",
+            id="pre-closed-later",
+        ),
+        pytest.param(
+            f"Alpha.\n\n{_TEX}begin{{comment}}\n\n[^w]: A note\n```\n\n```\n"
+            f"{_TEX}end{{comment}}\n\n" + FENCED_BELOW,
+            "Beta",
+            id="tex-closed-later",
+        ),
+        pytest.param(
+            f"Alpha.\n\nText {_TEX}footnote{{First.\n\n[^w]: A note\n```\n\n```\nend.}}\n\n"
+            + FENCED_BELOW,
+            "Beta",
+            id="tex-group-closed-later",
+        ),
+        pytest.param(
+            "Alpha.\n\n-------  ------\nRow one  x\n\n[^w]: y  z\n```\n\n```\n-------  ------\n\n"
+            + FENCED_BELOW,
+            "Beta",
+            id="multiline-table-closed-later",
+        ),
+        # Closed in the label's block by what pandoc ends a YAML block or an instruction at.
+        pytest.param(
+            "Alpha.\n\n---\nabstract: |\n  First.\n\n  [^w]: A note\n...\n```\n\n" + FENCED_BELOW,
+            "Omega",
+            id="yaml-closed-by-dots",
+        ),
+        pytest.param(
+            "Alpha.\n\n<?php\n\n[^w]: A note\n?>\n```\n\n" + FENCED_BELOW,
+            "Omega",
+            id="instruction",
+        ),
+        # A fence pandoc keeps out of the body, below a note whose fence is the note's: on
+        # `main` the two paired with each other.
+        pytest.param(_TWO_NOTES.format(second="[^b]: Second note\nwraps\n- - -\n```"), "Beta",
+                     id="note-over-a-rule"),
+        pytest.param(_TWO_NOTES.format(second="[^b]: Range 1-2} in error\n```"), "Beta",
+                     id="note-with-a-brace"),
+        pytest.param(_TWO_NOTES.format(second=f"[^b]: See {_TEX}begin{{x}} y {_TEX}end{{x}}\n```"),
+                     "Beta", id="note-with-tex"),
+        pytest.param(_TWO_NOTES.format(second="[^b]: Second <!-- aside --> note\n```"), "Beta",
+                     id="note-with-a-comment"),
+        pytest.param(_TWO_NOTES.format(second="- [^b]: Second note\n  ```"), "Beta",
+                     id="note-in-a-list-item"),
+        pytest.param(_TWO_NOTES.format(second="[^b]:\n\n```"), "Beta", id="bare-label"),
+        pytest.param(_TWO_NOTES.format(second="<!-- old\n```\n-->"), "Beta", id="comment"),
+        pytest.param(_TWO_NOTES.format(second="<pre>\n```\n</pre>"), "Beta", id="pre"),
+        pytest.param(
+            _TWO_NOTES.format(second=f"{_TEX}begin{{comment}}\n```\n{_TEX}end{{comment}}"),
+            "Beta",
+            id="tex-environment",
+        ),
+        # And where pandoc keeps both notes' fences in the notes, both are the notes' text.
+        pytest.param(_TWO_NOTES.format(second="[^b]: Dose went 10 --> 20 mg\n```"), "Beta",
+                     id="two-notes"),
+    ],
+)
+def test_a_fence_the_note_reading_cannot_vouch_for_leaves_pairing_to_main(
+    document: str, word: str
+) -> None:
+    """Taking a note's fence line out of the pairing changes how every fence below it
+    pairs. Where a fence below is one pandoc reads outside the body - in raw content, a
+    table, a list item's note, under a bare label - `main` paired it with the note's, and
+    was right; paired with the next real fence instead, it swallowed the paragraph between.
+    So the note reading is used only where every other fence line in the document is one
+    `tag` can vouch for, and the document is read as `main` reads it otherwise."""
+    paragraphs, code = _printed(document)
+    assert any(f'"{word}' in p and "mg-p-" in p for p in paragraphs), paragraphs
     assert not any("mg-p-" in block for block in code)
 
 

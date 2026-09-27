@@ -3237,19 +3237,22 @@ Closed since, and why each mattered:
     are a note's (`_note_fences`), and an opener there opens nothing. A block with a fence
     line under its first line is never marked, so the build keeps the note a note. Inside a
     fenced div, a `:::` line ends the note, and a fence after it opens code, as pandoc
-    reads it. What is left:
+    reads it. Taking a note's fence out of the pairing changes how every fence below it
+    pairs, so the note reading is used for the whole document or not at all (`_vouched`).
+    A fence below that pandoc reads outside the body - in raw content, a table, a list
+    item's note - paired with the note's on `main`, and `main` was right; paired with the
+    next real fence instead, it hid the paragraph between. What is left:
+    - *The note reading is used only in a plain document.* The whole document is read as on
+      `main`, and a fence in a note pairs with the next fence below, wherever the text
+      outside code holds a comment or another markup declaration, raw TeX or verbatim HTML,
+      a line opening with a block-level HTML tag, a brace left open at a blank line, a YAML
+      block or a multiline table. So it is, too, wherever a fence it would pair is in a
+      block holding a note's label, or under a label alone on its line. Among those, pandoc
+      keeps the fence in the note under a label alone, under `- [^w]: ...` as a list item's
+      first line, and in a note over a line holding only a no-break space, and here it
+      still pairs with the next fence below.
     - Outside a fenced div, pandoc takes a `:::` line into the note, and a fence after it is
       still read as opening code here.
-    - A block that may be no note to pandoc is read as before, every fence line in it
-      opening code: one with a line that closes raw content (`-->`, `</pre>`) or holds a
-      LaTeX `\begin{...}` or `\end{...}`, a `}` closing a group opened above it, a line
-      opening with a block-level HTML tag, or a table's rule. Pandoc reads no note inside a
-      comment or an environment opened in an earlier block, nor on a line a table takes for
-      a row, and taking those lines for a note's hid the paragraphs after the closer. A real
-      note holding such a line has its fences paired with the next one below, as before.
-    - Pandoc keeps a fence in the note in three more shapes that are still read as opening
-      code: a note over a line holding only a no-break space, `- [^w]: ...` as a list
-      item's first line, and `[^w]:` alone on its line with an empty line after it.
     - The gates' view of code (`masking`) still pairs a fence in a note with the next one
       below, so a number in the prose between is not checked by G2.
   - *A note marked only for what is below it would become a definition if moved.* A note

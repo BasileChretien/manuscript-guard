@@ -166,6 +166,8 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
         "<pre>\n",
         "---\nkey#: ",
         "--\nT\n--\n--\nT\n",
+        "[^n#]: A note\n```\n",
+        "[^n#]: A note\n```\n\n```\n",
     ],
     ids=[
         "comment",
@@ -174,6 +176,8 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
         "pre",
         "yaml that never closes",
         "tables that each open straight under the last",
+        "notes each holding a fence line",
+        "notes each holding a fence line, between code blocks",
     ],
 )
 def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:

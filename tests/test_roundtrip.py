@@ -9671,35 +9671,14 @@ def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
     assert _merged("E. coli gave 3.84 overall.") == "E. coli gave {{results.ror.point}} overall."
 
 
-def test_a_brace_pair_split_across_a_value_merges_bare() -> None:
-    """A brace kept from the source and its partner written from Word, escaped, no longer
-    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` would build with no identifier.
-    #72 refused it, where `main` had merged it, with its `}` bare, correctly. The round-3
-    review of #72 counted 212 such rewordings in 4,174. Where the source's own stretch has a
-    brace bare, the edited stretch's `}` is written bare too, and that merges again."""
-    merged = realign(
-        "Set {x, {{results.ror.point}}, y} was used.",
-        "Set {x, 3.84, y} was used.",
-        "Set {x, 3.84, y} was chosen.",
-    )
-    assert merged == "Set {x, {{results.ror.point}}, y} was chosen."
-    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
-
-
 @pytest.mark.parametrize(
     ("source", "rendered", "returned"),
     [
         pytest.param(
-            "See [Table [2] set {a, {{results.a}}, b} was used.",
-            "See [Table [2] set {a, 3.84, b} was used.",
-            "See [Table [2] set {a, 3.84, b}]{.c} was used.",
-            id="span-over-nested-brackets",
-        ),
-        pytest.param(
-            "Set [a [b] {x, {{results.a}}, y} end.",
-            "Set [a [b] {x, 3.84, y} end.",
-            "Set [a [b] {x, 3.84, y}]{} end.",
-            id="empty-attributes",
+            "Set {x, {{results.ror.point}}, y} was used.",
+            "Set {x, 3.84, y} was used.",
+            "Set {x, 3.84, y} was chosen.",
+            id="close-brace-edited",
         ),
         pytest.param(
             "Set {x, {{results.ror.point}}, y} was used.",
@@ -9707,94 +9686,72 @@ def test_a_brace_pair_split_across_a_value_merges_bare() -> None:
             "Sets {x, 3.84, y} was used.",
             id="open-brace-edited",
         ),
-    ],
-)
-def test_an_opening_brace_from_word_is_never_written_bare(
-    source: str, rendered: str, returned: str
-) -> None:
-    """The round-2 review of #90: written bare, a `{` typed in Word straight after a `]`
-    typed there too closed a `[` kept from the source into a span with attributes. Pandoc
-    printed "See Table [2] set {a, 3.84, b} was used.", the brackets and braces gone, and
-    `check` passed; `_reads_as` pairs nested brackets otherwise. Round 1 had found the same
-    after a value. Only a `}` is ever written bare now, as `main` wrote it before #72, so a
-    pair whose `{` was edited in Word is refused, as `main` refuses it."""
-    aligned = align(source, rendered, returned)
-    assert aligned.rebuilt is None
-    assert aligned.unpaired
-
-
-def test_a_brace_typed_beside_a_kept_pair_merges_as_main_wrote_it() -> None:
-    """The round-1 review of #90: a co-author's own `{` beside the pair went bare with the
-    rest, the count was off again, and the rewording was refused - 301 of 314 that `main`
-    before #72 had merged. A `}` written bare alone comes first, as `main` wrote it."""
-    merged = realign(
-        "Set {x, {{results.ror.point}}, y} was used.",
-        "Set {x, 3.84, y} was used.",
-        "Set {x, 3.84, { y} was used.",
-    )
-    assert merged == r"Set {x, {{results.ror.point}}, \{ y} was used."
-    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
-
-
-@pytest.mark.parametrize("typed", ["{}", "{.x}", "{#i}", "{k=v}", "{-}", "{.x .y}"])
-def test_a_brace_typed_flush_after_a_value_stays_escaped(typed: str) -> None:
-    """The round-1 review of #90: written bare straight after a value, `{...}` is an
-    attribute block to pandoc. After a value that prints `[pooled]` the paragraph printed
-    "pooled", the brackets and the braces gone, and `check` passed. Escaped, the pair split
-    across the value does not pair, and the rewording is refused."""
-    aligned = align(
-        "Set {x {{results.lab}} y} was used.",
-        "Set {x [pooled] y} was used.",
-        f"Set {{x [pooled]{typed} y}} was used.",
-    )
-    assert aligned.rebuilt is None
-    assert aligned.unpaired
-
-
-@pytest.mark.parametrize(
-    ("source", "rendered", "returned", "named"),
-    [
         pytest.param(
             "Set {x, {{results.ror.point}}, y} was used.",
             "Set {x, 3.84, y} was used.",
-            "Set {x, 3.84, y} } was used.",
-            "pairs with nothing",
-            id="extra-brace",
+            "Set {x, 3.84, { y} was used.",
+            id="brace-typed-beside",
         ),
         pytest.param(
-            "The pair { {{results.ror.point}} } was tight.",
-            "The pair { 3.84 } was tight.",
-            "The pair {3.84 } was tight.",
-            "typed or edited",
-            id="brace-against-a-value",
+            "Open with `{` then {{results.ror.point}} and close with `}` later.",
+            "Open with { then 3.84 and close with } later.",
+            "Open with { then 3.84 and close with } later, again.",
+            id="braces-in-code",
+        ),
+        # Each merged, with a brace written bare, into what pandoc reads as attributes.
+        pytest.param(
+            "Set {x {{results.lab}} y} was used.",
+            "Set {x [pooled] y} was used.",
+            "Set {x [pooled]{.x} y} was used.",
+            id="attributes-after-a-value",
+        ),
+        pytest.param(
+            "See [Table [2] set {a, {{results.a}}, b} was used.",
+            "See [Table [2] set {a, 3.84, b} was used.",
+            "See [Table [2] set {a, 3.84, b}]{.c} was used.",
+            id="span-over-nested-brackets",
+        ),
+        pytest.param(
+            "See [a [b] c]{k={{results.a}} y} end.",
+            "See [a [b] c]{k=3.84 y} end.",
+            "See [a [b] c]{k=3.84} end.",
+            id="kept-brace-after-a-bracket",
+        ),
+        pytest.param(
+            "See [x](http://e.org){k={{results.a}} y} end.",
+            "See x{k=3.84 y} end.",
+            "See x{k=3.84} end.",
+            id="kept-brace-after-a-link",
+        ),
+        pytest.param(
+            "See <http://e.org>{k={{results.a}} y} end.",
+            "See http://e.org{k=3.84 y} end.",
+            "See http://e.org{k=3.84} end.",
+            id="kept-brace-after-an-autolink",
+        ),
+        pytest.param(
+            "See {{results.lab}}{k={{results.a}} y} end.",
+            "See [pooled]{k=3.84 y} end.",
+            "See [pooled]{k=3.84} end.",
+            id="kept-brace-after-a-value",
         ),
     ],
 )
-def test_the_other_unpaired_braces_are_named(
-    source: str, rendered: str, returned: str, named: str
+def test_a_brace_pair_split_across_a_value_is_refused(
+    source: str, rendered: str, returned: str
 ) -> None:
-    """The round-1 review of #90: the reason named a deleted partner or one typed where the
-    .md has none, and the commonest refusals were neither - a brace typed beside the pair,
-    and a `{` typed straight before a value, which is written `&lbrace;` so that it cannot
-    open a binding."""
-    from manuscript_guard.merge import why
+    """A brace kept from the source and its partner written from Word, escaped, no longer
+    pair: merged, the paragraph would build with no identifier, and it is refused.
 
+    #90 tried writing Word's half bare again, as `main` wrote a `}` before #72, which the
+    round-3 review of #72 counted as 212 rewordings in 4,174. Each of three review rounds
+    found a shape where the bare brace completed what pandoc reads as attributes - after a
+    value, after a `]` closing a kept `[`, before a kept `{` after a link - and the
+    paragraph printed without its brackets, braces or value while `check` passed. So none is
+    written bare, as on `main`, and every such rewording is refused."""
     aligned = align(source, rendered, returned)
     assert aligned.rebuilt is None
     assert aligned.unpaired
-    assert named in why(aligned)[0]
-
-
-def test_braces_in_code_split_across_a_value_merge() -> None:
-    """Braces inside code count as the rest do, and pandoc pairs neither: the rewording
-    merged on `main` and was refused, as a split pair, after #72."""
-    merged = realign(
-        "Open with `{` then {{results.ror.point}} and close with `}` later.",
-        "Open with { then 3.84 and close with } later.",
-        "Open with { then 3.84 and close with } later, again.",
-    )
-    assert merged == "Open with `{` then {{results.ror.point}} and close with } later, again."
-    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
 
 
 @pytest.mark.parametrize(
@@ -9802,12 +9759,12 @@ def test_braces_in_code_split_across_a_value_merge() -> None:
     [
         pytest.param("Set {x, 3.84, y was chosen.", id="partner-deleted"),
         pytest.param("Set x, 3.84, y} was used.", id="opening-partner-deleted"),
+        pytest.param("Set {x, 3.84, y} was chosen.", id="partner-edited"),
     ],
 )
-def test_a_brace_left_without_its_partner_is_refused_and_named(returned: str) -> None:
-    """A brace whose partner was deleted in Word cannot pair, bare or escaped: merged, the
-    next build gave the paragraph no identifier. The reason names that case as well as a
-    partner written back escaped, which it alone used to name."""
+def test_a_brace_left_without_its_partner_is_named(returned: str) -> None:
+    """The reason used to name only a pair split with one half written from Word; it names
+    a deleted partner too, and why the half from Word is not written bare."""
     from manuscript_guard.merge import why
 
     aligned = align(
@@ -9815,7 +9772,9 @@ def test_a_brace_left_without_its_partner_is_refused_and_named(returned: str) ->
     )
     assert aligned.rebuilt is None
     assert aligned.unpaired
-    assert "deleted" in why(aligned)[0]
+    reason = why(aligned)[0]
+    assert "deleted" in reason
+    assert "attributes" in reason
 
 
 def test_a_brace_pair_kept_whole_still_merges() -> None:

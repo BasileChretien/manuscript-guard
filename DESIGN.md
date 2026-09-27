@@ -1868,17 +1868,17 @@ held HTML's list alone, measured rather than read from pandoc's source, and mark
 row under a line holding `<example>`. And `import` escapes a `}` as well as a `{`, so the
 braces a co-author types never look like half of a TeX group. Only unescaped braces count,
 so a pair split across a binding - one brace kept from the source bare, its partner edited
-in Word and written escaped - no longer pairs. #72 at first refused all of these, 212 in a
-differential of 4,174 brace-heavy rewordings that `main` had merged correctly. Where the
-source's own stretch has a brace bare, the edited stretch's `}` is now written bare, as
-`main` wrote it before #72, which leaves a `{` the co-author typed beside the pair escaped,
-pairing with nothing. The result must pair and read as Word's text. A `{` is never written
-bare, as `main` never wrote one: bare, it opens what pandoc reads as attributes, and two
-review rounds each found a shape where that printed wrong and passed `check` -
-`{{results.x}}{.y}` printed a value shown as `[pooled]` as "pooled", and `]{.c}` closing a
-`[` kept from the source printed without its brackets and braces. So a pair whose `{` was
-edited in Word, and one whose partner was deleted there, pair with nothing, and that
-rewording is refused rather than merged into a paragraph the next build could not name.
+in Word and written escaped - no longer pairs, and that rewording is refused rather than
+merged into a paragraph the next build could not name. `main` before #72 wrote a `}` from
+Word bare and merged many of these; the round-3 review of #72 counted 212 in a differential
+of 4,174 brace-heavy rewordings. #90 tried writing Word's half bare again where the source's
+own stretch had a bare brace, and each of three review rounds found a shape where the bare
+brace completed what pandoc reads as attributes, the paragraph printing wrong while `check`
+passed: `{{results.x}}{.y}` printed a value shown as `[pooled]` as "pooled", `]{.c}`
+closing a `[` kept from the source dropped the brackets and braces, and a `}` closing a
+kept `{` straight after a `]` or a link, `[a [b] c]{k={{results.x}}}`, dropped the value.
+`_reads_as` reads spans, links and values too simply to see any of these, so the half from
+Word stays escaped and the rewording is refused (see Known gaps).
 
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
@@ -2565,23 +2565,16 @@ Added by the adversarial review, verified and **not** fixed:
   such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
   to it in Word is reported as not compared and not applied, so it can be edited only in
   the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
-- **A brace kept from the source can still lose its partner.** Where a rewording leaves a
-  bare brace from the `.md` on one side of a number or citation, an edited stretch's `}` is
-  written bare when the source's stretch had a brace bare, so the pair is whole. Anything
-  else is refused and named: a pair whose `{` was typed or edited in Word, since no `{` is
-  written bare (a `{` typed straight before a number or citation is written `&lbrace;`, so
-  that it cannot open a binding); a partner deleted in Word, or moved into a stretch where
-  the source has no brace; and a brace typed in Word that pairs with nothing, such as a
-  second `}`. Braces inside code are counted and written bare by the same rule, though
-  pandoc pairs none there, so they merge where the source's stretch has one. A rewording
-  whose `}` pairs but which would then read otherwise than Word's text is reported as not
-  pairing too, as on `main`. The edit is then made in the `.md`.
-- **A bare `}` can close a TeX group left open above.** A `}` written bare by the rule above,
-  or kept from the `.md`, closes a group that a raw TeX command opened in an earlier
-  paragraph and never closed there, `See \foo{In one analysis.` over a blank line; pandoc
-  then reads everything between as raw TeX and drops it from the .docx, the identifier
-  with it. `main` could write such a `}` before #72 too, and the tagger, which counts each
-  block's braces alone, does not see the group.
+- **A rewording that splits a brace pair across a number or citation is refused.** A brace
+  from Word is written escaped, so where a rewording leaves a bare brace from the `.md` on
+  one side of a number or citation and its partner comes back from Word - edited, moved or
+  typed anew - or is deleted there, the braces no longer pair and the paragraph is refused
+  and named. So is a brace typed in Word that pairs with nothing. `main` before #72 wrote a
+  `}` from Word bare and merged many of these correctly, 212 of 4,174 in #72's round-3
+  differential; written bare, a brace can complete what pandoc reads as attributes after a
+  `]`, a link, an autolink or a value, and #90's three review rounds found each (see "The
+  writer and the tagger have to read an opening the same way"). Braces inside code count
+  too, though pandoc pairs none there. The edit is made in the `.md`.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the

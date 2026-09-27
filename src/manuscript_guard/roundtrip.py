@@ -490,24 +490,30 @@ _INDENT = re.compile(r"[ \t]*")
 #
 # Pandoc tries a setext heading first: any line, at any indent, over an underline of `=` or
 # `-` in the first column - unless the line is a bullet or a fence, which it reads before
-# headings. An ATX heading is hashes in the first column, then a space, a tab or the end of
-# the line: `#Methods` is text to it. Indented, ` # Methods` is text at the top level and a
-# heading inside a list item, so it is left alone (`_ATX_OPENS`) and never passed over. A
-# link's definition is a `_LINK_LINE`; a note's is never passed over, because the line under
-# a note is more of it.
-_SETEXT = re.compile(r"(?![ \t]*(?:[-*+][ \t]|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)")
+# headings. A bullet's marker has a space, a tab or the end of the line after it: `-` alone
+# is an empty list item, and the underline under it the item's text. Taken for a title, it
+# had the paragraph under it marked, and the marker printed inside the list. An ordered
+# marker alone, `1.` or `a.`, is a title to pandoc. An ATX heading is hashes in the first
+# column, then a space, a tab or the end of the line: `#Methods` is text to it. Indented,
+# ` # Methods` is text at the top level and a heading inside a list item, so it is left
+# alone (`_ATX_OPENS`) and never passed over. A link's definition is a `_LINK_LINE`; a
+# note's is never passed over, because the line under a note is more of it.
+_SETEXT = re.compile(
+    r"(?![ \t]*(?:[-*+](?:[ \t]|\r?\n)|```|~~~))[ \t]*\S[^\n]*\n(?:=+|-+)[ \t]*(?:\n|\Z)"
+)
 _ATX = re.compile(r"#+(?:[ \t][^\n]*)?(?:\n|\Z)")
 _ATX_OPENS = re.compile(r"(?:[ \t]*\n)*[ \t]*#+(?:[ \t\n]|\Z)")
 # A heading that can be passed over: plain text, with no character that can open markup.
 # Pandoc reads the next line into an ATX heading, or a setext title and all under it into
 # one paragraph, whenever something opened in the heading's line closes on a later one - a
-# code span, a comment, a TeX environment, a citation's locator, maths, a link's
-# destination, a tag's attributes. Each list of those that review was given, it found one
-# more; so anything but plain text keeps the block as it was, unmarked. Emphasis marks,
-# `*`, `_`, `~` and `^`, are kept out too, though pandoc closes none of them on the next
-# line: the allow-list is what ended the search, and an exception to it would start one
-# again. A closed attribute block may end the line, `{#sec-methods}`, since
-# cross-references need one.
+# code span, a comment, a citation's locator, maths, a link's destination, a tag's
+# attributes. A TeX environment opened there and closed later leaves no heading at all:
+# pandoc reads the line up to it as text and the environment as a raw block. Each list of
+# those that review was given, it found one more; so anything but plain text keeps the
+# block as it was, unmarked. Emphasis marks, `*`, `_`, `~` and `^`, are kept out too,
+# though pandoc closes none of them on the next line: the allowlist is what ended the
+# search, and an exception to it would start one again. A closed attribute block may end
+# the line, `{#sec-methods}`, since cross-references need one.
 _PLAIN_LINE = re.compile(r"[^`@$\[\]<>\\*_~^{}&]*(?:\{[#.\w\- =:]*\}[ \t]*)?")
 _BLANK_LINES = re.compile(r"(?:[ \t]*\n)*")
 # The line under a link's definition that may hold its title or attributes: pandoc reads

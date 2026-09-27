@@ -264,12 +264,12 @@ def _between_parts(
 ) -> dict[str, set[str]]:
     """Paragraphs that came back between one paragraph and another part of it.
 
-    Display maths reaches Word as three paragraphs. A paragraph moved between the parts is
-    inside the paragraph, a place the source does not have: reordered to after the whole of
-    it, the split the co-author made was dropped without a word. Only within a section: a
-    heading or caption ends the search. Returns, for each paragraph with something inside it,
-    what is. (A paragraph split in Word leaves new text in its section, and `_unsettled`
-    holds that section's moves.)
+    A paragraph display maths is part of - put there by a binding, say - reaches Word as
+    three paragraphs. A paragraph moved between the parts is inside the paragraph, a place
+    the source does not have: reordered to after the whole of it, the split the co-author
+    made was dropped without a word. Only within a section: a heading or caption ends the
+    search. Returns, for each paragraph with something inside it, what is. (A paragraph split
+    in Word leaves new text in its section, and `_unsettled` holds that section's moves.)
     """
     found: dict[str, set[str]] = {}
     for index, block in enumerate(returned):

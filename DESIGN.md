@@ -2025,10 +2025,11 @@ The checks that came out of the review rounds guard the tracked path as well:
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
   stand cannot be read with certainty. A paragraph moved in from another section standing
   beside the new text does not hide which section that is.
-- Display maths reaches Word in parts. A paragraph that came back between the parts, or one
-  whose first part moved without the rest, is reported as moved into the middle of a
-  paragraph, not reordered: the first version moved the whole paragraph, equation and all,
-  when only the line before the equation had moved, and exited 0.
+- A paragraph can reach Word in parts, as one does when a binding puts display maths in it.
+  A paragraph that came back between the parts, or one whose first part moved without the
+  rest, is reported as moved into the middle of a paragraph, not reordered: the first
+  version moved the whole paragraph, equation and all, when only the line before the
+  equation had moved, and exited 0.
 - A rewording that holds the whole of another paragraph is refused, and so is one that
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
@@ -3222,8 +3223,8 @@ Closed since, and why each mattered:
     as unbound. That is how any number typed in Word arrives, on `main` too.
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
-    reported with the new text and not applied. So is one in a section whose display maths
-    came apart.
+    reported with the new text and not applied. So is one in a section holding a paragraph
+    Word shows in parts whose parts came apart.
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.

@@ -654,7 +654,7 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
             "another file, or a paragraph it holds in place ends one, and a paragraph moved "
-            "between the parts Word shows display maths in is in none. An HTML comment or a "
+            "between the parts of one Word shows in parts is in none. An HTML comment or a "
             "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
             "Word shows as an empty line, one with a line such as `\\end{table}` directly "
             "under it in the .md, one with a `<!--` that never closes, and one Word shows as "
@@ -758,7 +758,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Their section also came back with text the document as sent did not have - a "
             "paragraph split, a new one, a heading or caption edited - or with a paragraph "
-            "whose identifier is on other text, or whose display maths came apart, so where "
+            "whose identifier is on other text, or one Word shows in parts whose parts came "
+            "apart, so where "
             "each of its paragraphs now stands cannot be read with certainty. Move them in "
             "the .md yourself if the moves were intended."
         )

@@ -1140,22 +1140,27 @@ def _continues_a_note(line: str, under_label: bool) -> bool:
 
 
 def _term_under_a_note(block: str, above: str) -> bool:
-    """Whether a block is a note's label with a definition directly under it, `: text` or
-    `~ text`, which pandoc reads as a definition list: the label its term, the rest its
-    definition. `above` is what `_around` gives.
+    """Whether a block is a note's label with a definition list's `:` or `~` directly under
+    it - with text, a space or tab, or alone, indented up to three spaces - which pandoc
+    reads as a definition list: the label its term, the rest its definition. `above` is what
+    `_around` gives.
 
     Neither part is a note, but each is read by itself all the same, the term as one line of
     inline text and the definition as blocks of its own, so a `<!--` or a `<pre>` in either
     opens nothing beyond them. Followed on, a comment opened in the label hid the paragraphs
-    below up to the next `-->`, while pandoc printed them. A bare marker under the label
-    makes a term too, but `_continues_a_note` takes it into the note, so that block is a
-    definition already."""
+    below up to the next `-->`, while pandoc printed them.
+
+    Not when a later line is a fence or a block-level tag: pandoc can end the definition
+    there - a code fence, a `:::` or `</div>` closing a div around the block - and what
+    follows it in the block is at the top level, where a comment opened hides what is below
+    it. Taken for a term's by itself, those paragraphs were marked inside the comment."""
     lines = block.strip("\n").split("\n")
     return (
         _blank_above(above)
         and len(lines) > 1
         and _NOTE_LINE.fullmatch(lines[0]) is not None
         and _DEFINITION.match(lines[1]) is not None
+        and not any(_FENCE_LINE.match(line) or _HTML_LINE.match(line) for line in lines[2:])
     )
 
 

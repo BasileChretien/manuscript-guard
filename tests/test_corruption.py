@@ -3198,8 +3198,23 @@ def test_a_plain_fence_is_not_refused(block: str) -> None:
         "<!--\n~~~r\nx\n~~~\n-->\n",
         f"<!--\n- Fit the model:\n\n  {_TICKS}r\n  x\n  {_TICKS}\n-->\n",
         f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
+        # Found by round 4 of #71: each follows from round 3's rule.
+        f"<!-- An earlier\nmodel:\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"Text.\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"## Note\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\nand then\n{_TICKS}r\ny\n{_TICKS}\n-->\n",
+        f" <!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
     ],
-    ids=["tilde-under-comment", "in-a-list-item", "under-text-opening-it"],
+    ids=[
+        "tilde-under-comment",
+        "in-a-list-item",
+        "under-text-opening-it",
+        "under-wrapped-comment-text",
+        "comment-under-a-paragraph",
+        "comment-under-a-heading",
+        "text-between-two-listings",
+        "comment-indented-a-space",
+    ],
 )
 def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
     """Known gaps: pandoc prints nothing of these, and they are refused. A listing a comment

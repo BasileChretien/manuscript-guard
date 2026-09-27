@@ -3217,10 +3217,13 @@ Closed since, and why each mattered:
   and a comment on one line, in the fence reader, which reads before any comment is known.
   So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
   which is accepted.
-- **Three more listings commented out whole are refused.** A tilde listing straight under
-  the `<!--` line; a listing inside a commented-out list item; and a backtick listing
-  straight under a line of text that opens the comment, `Text <!-- aside`. Pandoc prints
-  nothing of any, and #65's build did. A listing a comment holds is let be only where
+- **More listings commented out whole are refused.** A tilde listing straight under the
+  `<!--` line; a listing inside a commented-out list item; a backtick listing straight
+  under a line of text that opens the comment, `Text <!-- aside`; and, found by the fourth
+  round, one straight under comment text wrapped onto the line above it, one under a
+  `<!--` straight under a paragraph or a heading, a second listing with text between it and
+  the first in one comment, and one under a `<!--` indented a space. Pandoc prints nothing
+  of any, and #65's build did. A listing a comment holds is let be only where
   pandoc would read it as the gates do without the comment: a tilde fence does not open
   under a line of text, and a list item's listing ends at pandoc's closer, not the gates'.
   A backtick fence does open under a line of text, but under a footnote's line, or a list

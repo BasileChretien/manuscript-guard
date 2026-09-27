@@ -389,11 +389,12 @@ def unclear_fence_lines(text: str, begin: int = 0) -> list[int]:
     pandoc makes (`build.reading`).
 
     A listing a comment holds whole, its closer before the comment's `-->`, is the
-    comment's and is not refused either, when it opens at the margin and a tilde fence apart
-    from the line above: pandoc prints none of it where it sees the comment, and the gates
-    mask both. Refused, a listing commented out while an author decided failed `check` and
-    the build. The comment is the gates' reading, which a stray backtick can fool, and where
-    pandoc sees none the listing is read as a plain one is, which the build confirms.
+    comment's and is not refused either, when it opens at the margin, apart from the line
+    above or, a backtick fence, straight under a `<!--` that starts its line and is itself
+    apart: pandoc prints none of it where it sees the comment, and the gates mask both.
+    Refused, a listing commented out while an author decided failed `check` and the build.
+    The comment is the gates' reading, which a stray backtick can fool, and where pandoc
+    sees none the listing is read as a plain one is, which the build confirms.
     """
     bares, inside, _commented = _walk(text, begin)
     above_begin = text.count("\n", 0, begin)

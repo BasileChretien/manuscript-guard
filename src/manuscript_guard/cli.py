@@ -1304,8 +1304,10 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         reference_doc=reference,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
-        # Marked up for the author to read, not the document sent, and the marks change how
-        # a subscript or a code span reads: checked, it was refused as a misread.
+        # Marked up for the author to read, not the document sent, which the plain build
+        # checks from the same sources. The marks are checked where they are made:
+        # `annotate` has pandoc read each file with them and without, and takes out those
+        # that change how a paragraph reads.
         verify_reading=False,
     )
     added = finish(result.output, marks)

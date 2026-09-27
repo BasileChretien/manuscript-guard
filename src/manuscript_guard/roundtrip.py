@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
+from manuscript_guard.safexml import UnsafeDocument, read_member
 from manuscript_guard.text.fences import fenced_spans
 from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES
 
@@ -260,8 +261,8 @@ def records_moves(document: Path) -> bool:
         with zipfile.ZipFile(document) as archive:
             if "word/settings.xml" not in archive.namelist():
                 return True
-            settings = archive.read("word/settings.xml").decode("utf-8", "replace")
-    except (OSError, zipfile.BadZipFile):
+            settings = read_member(archive, "word/settings.xml").decode("utf-8", "replace")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument):
         return True
     return _NO_MOVES.search(settings) is None
 
@@ -272,8 +273,8 @@ def stamp_of(document: Path) -> str | None:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
                 return None
-            xml = archive.read(_CUSTOM).decode("utf-8")
-    except (OSError, zipfile.BadZipFile) as exc:
+            xml = read_member(archive, _CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
     # By name: the part now holds other properties too, and the first 64-hex value in it
     # need not be ours.
@@ -293,8 +294,8 @@ def paragraphs_of(document: Path) -> dict[str, str] | None:
         with zipfile.ZipFile(document) as archive:
             if _CUSTOM not in archive.namelist():
                 return None
-            xml = archive.read(_CUSTOM).decode("utf-8")
-    except (OSError, zipfile.BadZipFile) as exc:
+            xml = read_member(archive, _CUSTOM).decode("utf-8")
+    except (OSError, zipfile.BadZipFile, UnsafeDocument) as exc:
         raise RoundTripError(f"{document.name} is not a readable .docx: {exc}") from exc
     values = re.findall(
         rf'name="{PARAGRAPHS_PROPERTY}-\d+"[^>]*>\s*<vt:lpwstr>([^<]*)</vt:lpwstr>', xml

@@ -5272,6 +5272,36 @@ def test_a_heading_run_into_a_paragraph_is_not_merged_where_it_prints_otherwise_
     assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
 
 
+@pytest.mark.parametrize("left", [(), ("Wingdings character F04A",)], ids=["nothing", "symbol"])
+def test_a_split_beside_a_moved_paragraph_left_empty_is_not_merged(
+    tmp_path: Path, left: tuple[str, ...]
+) -> None:
+    """A paragraph split in Word leaves its second half without an identifier, and only the
+    paragraphs beside the first half can vouch that nothing there is new. One moved in with
+    Track Changes on, its moved text then deleted - left with nothing, or with a smiley that
+    has no text - vouched for it, and import wrote the paragraph as its first half."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    y, x, z = "Yankee one is here. Yankee two is there.", "Xray text is here.", "Zulu closes it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{x}\n\n{z}\n"
+    path.write_text(text, encoding="utf-8")
+    pairs = zip("yxz", (y, x, z), strict=True)
+    known = {name: (path, words, text.index(words)) for name, words in pairs}
+    sent = [Block((), "Methods"), Block(("y",), y), Block(("x",), x), Block(("z",), z)]
+    returned = [
+        sent[0],
+        Block(("y",), "Yankee one is here."),
+        Block(("x",), "", arrived=True, unread=left),
+        Block((), "Yankee two is there."),
+        Block((), ""),
+        sent[3],
+    ]
+    apply_plan(known, plan_import(known, sent, returned))
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
+
+
 def _unmarked(node):
     """Pandoc's reading with every annotation mark, a styled span around a link to an
     `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""

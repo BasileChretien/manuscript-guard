@@ -157,6 +157,20 @@ def test_a_link_definition_is_recognised_quickly(block: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
+def test_definitions_over_a_paragraph_are_passed_over_in_linear_time(assert_linear) -> None:
+    """Each definition passed over looked at the rest of the block for a title on the next
+    line by copying it: 40,000 definitions over a paragraph took 42 seconds, where the
+    definitions alone took a fifth of one."""
+    from manuscript_guard.roundtrip import tag
+
+    assert_linear(
+        lambda count: "[x]: u\n" * count + "Prose.",
+        lambda text: tag(text, "main.md"),
+        5000,
+        "passing over definitions above a paragraph",
+    )
+
+
 @pytest.mark.parametrize(
     "opener",
     [

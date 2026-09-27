@@ -3153,6 +3153,25 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
         ("Costs ranged from \\$1,000-\\$2,000 per dose.", {"\\$1,000-\\$2,000"}, {}),
         # An escaped dollar after the digits stays outside the mark, with its backslash.
         ("It cost 5\\$ and then 10\\$, over 3 days.", {"5", "10", "3"}, {}),
+        # Found by the fix-only round of the extra one: any escaped punctuation in a range
+        # is text, `\%` from LaTeX habit, and `\~`, without which pandoc reads a subscript.
+        ("Between 5\\%-10\\% of 40 sites.", {"5\\%-10\\%", "40"}, {}),
+        (
+            "It was 12\\% (95\\% CI 10\\%-14\\%) in 40 sites.",
+            {"12", "95", "10\\%-14\\%", "40"},
+            {},
+        ),
+        ("About \\~5-\\~7 in 40 sites.", {"\\~5-\\~7", "40"}, {}),
+        (
+            "| Site | Share |\n|------|-------|\n| A | 5\\%-10\\% |\n| B | \\~5-\\~7 |",
+            {"5\\%-10\\%", "\\~5-\\~7"},
+            {},
+        ),
+        (
+            "- Between 5\\%-10\\%.\n- About \\~5-\\~7 in 40 sites.",
+            {"5\\%-10\\%", "\\~5-\\~7", "40"},
+            {},
+        ),
         (
             "| Drug | Cost |\n|------|------|\n| A | \\$10-\\$50 |\n| B | \\$5 |",
             {"\\$10-\\$50", "\\$5"},

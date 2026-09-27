@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import bisect
 import re
+import string
 
 # Characters that open or close inline markup: code, sub- and superscripts, emphasis and
 # struck text, HTML, links and spans, attributes, escapes and table cells. Not `$`: beside
@@ -33,22 +34,25 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
     `10^-3^`, only if every sub- and superscript in it opens and closes there. Brackets
     there are escaped in the mark and read as the text they were, `[12][13]`; a link's text
     is found apart (`link_text_spans`). An escaped dollar sign is text, so `\\$10-\\$50` is
-    one run, not two split at a backslash. No mark opens straight after a `]`: pandoc read
-    the two brackets, `[B][[7](…)]{…}`, as a reference, and the paragraph otherwise.
+    one run, not two split at a backslash; and, around the whole, so is any escaped
+    punctuation, `5\\%-10\\%` or `\\~5-\\~7`, but a bracket, which the mark escapes again, or
+    a backslash. No mark opens straight after a `]`: pandoc read the two brackets,
+    `[B][[7](…)]{…}`, as a reference, and the paragraph otherwise.
     """
-    found = _escaped_dollars_as_text(text[start:end])
+    found = _escapes_as_text(text[start:end], "$")
     runs = [
         (start + run.start(), start + run.end())
         for run in _PLAIN_RUN.finditer(found)
         if any(character.isdigit() for character in run.group())
     ]
+    whole = _escapes_as_text(text[start:end], _ESCAPED)
     if len(runs) == 1:
         core = _settled(text, *runs[0])
     elif (
         not runs
-        or any(character in found for character in "`*_<>{}\\|")
-        or found.count("~") % 2
-        or found.count("^") % 2
+        or any(character in whole for character in "`*_<>{}\\|")
+        or whole.count("~") % 2
+        or whole.count("^") % 2
     ):
         return None
     else:
@@ -56,15 +60,20 @@ def markable_core(text: str, start: int, end: int) -> tuple[int, int] | None:
     return None if core[0] > 0 and text[core[0] - 1] == "]" else core
 
 
-def _escaped_dollars_as_text(found: str) -> str:
-    """`found` with each backslash that escapes a dollar sign read as a dollar sign too, so
-    neither counts as markup; the length is kept, and with it every offset. A backslash
-    escaped by another is left as it is."""
+# The punctuation a backslash makes text, as pandoc's `all_symbols_escapable` has it, but
+# the brackets, which `_wrap` escapes again, and the backslash itself.
+_ESCAPED = "".join(sorted(set(string.punctuation) - set("[]\\")))
+
+
+def _escapes_as_text(found: str, escaped: str) -> str:
+    """`found` with each backslash that escapes one of `escaped` read, with what it
+    escapes, as two dollar signs, which are no markup; the length is kept, and with it
+    every offset. A backslash escaped by another is left as it is."""
     out: list[str] = []
     at = 0
     while at < len(found):
         if found[at] == "\\" and at + 1 < len(found):
-            out.append("$$" if found[at + 1] == "$" else found[at : at + 2])
+            out.append("$$" if found[at + 1] in escaped else found[at : at + 2])
             at += 2
             continue
         out.append(found[at])

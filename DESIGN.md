@@ -1310,10 +1310,13 @@ inside the span, where the link printed as text. So the annotator places each ma
   faced each other across the marks between, and a backslash before a number goes
   inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
   escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
-  A link's text, the target a URL or an anchor, can't hold a mark, which is itself a
-  link. A bracket before another is a link's text only when the file defines the second
-  one's label, or, empty, the first one's: pandoc reads `[95% CI 1.2-3.4][@smith2021]`,
-  `[…][^2]` and `[12][13]` as text, and their numbers are marked (the extra round of #76).
+  So is any punctuation a backslash escapes in a number read across several runs, but a
+  bracket or a backslash: `5\%-10\%` and `\~5-\~7` are marked whole (the fix-only round
+  after the extra one). A link's text, the target a URL or an anchor, can't hold a mark,
+  which is itself a link. A bracket before another is taken for a link's text only when
+  the file defines the second one's label, or, the second empty, the first one's: pandoc
+  reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their
+  numbers are marked (the extra round of #76).
   A binding in a link's text is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc
@@ -3463,9 +3466,24 @@ Closed since, and why each mattered:
     breaks the definition and costs the paragraphs that use it their marks;
   - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
     `from $5 to 7\$` both numbers go unmarked as "in an equation";
-  - a number the finder reads with a `]` before its digits, `Fees [B]7`, is left unmarked,
-    where `main` marks `B]7`;
-  - a range with an escaped superscript, `10\^3`, is left unmarked.
+  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5 times`, or
+    a lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
+    reference two brackets make, and it reaches past them;
+  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked.
+
+  And its fix-only round these, each contrived or no worse than on `main`:
+  - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
+    file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
+    prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
+    manuscript" holds file by file;
+  - a link the annotator does not know pandoc reads costs its paragraph every mark: a
+    definition inside a quotation or a list item, an implicit reference to a heading,
+    `[the 3 steps][Methods]`, and `[Table 2][@a]` where only `[table 2]:` is defined, since
+    pandoc falls back to the first bracket's label; `main`'s copy misreads each;
+  - definitions are read in the raw text, so one in a listing or a comment, or straight
+    under a line of a paragraph, where pandoc reads none, takes the number in
+    `[Table 2][t]` for a link's and leaves it unmarked; and labels are matched with
+    `casefold`, which differs from pandoc's lower-casing for ß.
 - **The annotated copy prints a manuscript file's own front matter.** The annotated build
   re-reads each source whole, where the build strips its YAML block, so whatever pandoc
   prints from that block prints in the annotated copy and not in the manuscript, its

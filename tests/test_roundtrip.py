@@ -7161,6 +7161,74 @@ def test_a_heading_joined_beside_a_changed_heading_is_refused_not_reported_delet
     assert "not the one the document was sent with" in out, out
 
 
+def _appended(xml: str, opening: str, text: str) -> str:
+    """`text` pasted onto the end of the tagged paragraph opening `opening`."""
+    (paragraph,) = [p for p in tagged_xml(xml) if f">{opening}" in p]
+    run = f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+    return xml.replace(paragraph, paragraph[: -len("</w:p>")] + run + "</w:p>", 1)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("paste", [False, True], ids=["cut", "cut-and-pasted"])
+@pytest.mark.parametrize("changed", ["heading-retitled-in-the-md", "result-changed"])
+def test_a_paragraph_cut_beside_a_changed_heading_is_not_written_twice(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], paste: bool, changed: str
+) -> None:
+    """A paragraph cut in Word without Track Changes leaves its identifier on the heading
+    after it, and that heading is not the one the document was sent with: retitled in the
+    .md since the build, or the document forced in after a result changed. Kept on the
+    heading for the refusal of a changed heading, the identifier gave the cut paragraph text
+    again, so it was no longer missing, and the paragraph it was pasted onto merged holding
+    its words: the sentence was in the source twice. Refused, and written once."""
+    import json
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import write_digest
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    if changed == "heading-retitled-in-the-md":
+        cut, words = "Whether the signal", "whether the signal extends"
+        onto = "Drug-induced hepatic injury remains"
+        pasted = (
+            " Moreover, whether the signal extends to example-drug specifically has not been "
+            "examined."
+        )
+    else:
+        cut, words = "The synthetic dataset", "the code that generates it"
+        onto = "Hepatic injury is the single event term"
+        pasted = (
+            " Likewise, the synthetic dataset, the code that generates it and the analysis that "
+            "reads it are all in this repository. No real patient data were used, and no ethical "
+            "approval was required."
+        )
+
+    def edit(xml: str) -> str:
+        (paragraph,) = [p for p in tagged_xml(xml) if f">{cut}" in p]
+        xml = _word_delete(xml, paragraph)
+        if changed == "result-changed":
+            xml = xml.replace(">Data availability</w:t>", ">Availability of data</w:t>", 1)
+            xml = xml.replace(">Funding</w:t>", ">Grants</w:t>", 1)
+        return _appended(xml, onto, pasted) if paste else xml
+
+    returned = rewrite(document, tmp_path / "slid.docx", edit)
+    if changed == "heading-retitled-in-the-md":
+        source.write_text(
+            source.read_text(encoding="utf-8").replace("# Methods", "# Materials and methods", 1),
+            encoding="utf-8",
+        )
+    else:
+        fragment = project / "results" / "01_disproportionality.json"
+        data = json.loads(fragment.read_text(encoding="utf-8"))
+        data["values"]["cohort.n_reports"].update(value=4100, display="4100")
+        fragment.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    out = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8").lower().count(words) == 1, out
+
+
 @needs_pandoc
 @pytest.mark.parametrize("reworded", [False, True], ids=["joined", "joined-and-reworded"])
 def test_a_heading_joined_with_track_changes_on_is_not_reported_deleted(

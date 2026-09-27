@@ -6162,6 +6162,41 @@ def test_a_display_equation_dragged_elsewhere_in_a_real_build_is_reported(
     assert "an equation" in capsys.readouterr().out
 
 
+def test_a_value_that_prints_display_maths_stops_check_and_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the review of #81's case. A value printing `$$y = 2.1 x$$` in the sentence
+    that ends the Introduction reached Word as three paragraphs, and only the first carried
+    the identifier: a co-author who swapped that part with the paragraph above had the whole
+    sentence moved in the .md, equation and all, exit 0. `check` passed it, with a digit in
+    the display not even the prose warning, and the build made the document."""
+    import json
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    formula = "$$y = 2.1 x$$"
+    document["values"]["model.formula"] = {"value": formula, "display": formula, "quoted": True}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    source = project / "manuscript" / "main.md"
+    sentence = "The model {{results.model.formula}} was fitted to every report.\n\n"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("# Methods", sentence + "# Methods", 1), encoding="utf-8")
+    stale = project / "build" / "manuscript.docx"
+    stale.unlink(missing_ok=True)
+
+    capsys.readouterr()
+    assert main(["check", str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "[FAIL] G2" in out and "{{results.model.formula}} prints display maths" in out, out
+    assert main(["build", str(project), "--offline"]) == 1
+    assert "not building" in capsys.readouterr().out
+    assert not stale.exists()
+
+
 @needs_pandoc
 @pytest.mark.parametrize(
     "below",

@@ -7061,6 +7061,21 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     source = project / "manuscript" / "main.md"
     before = source.read_text(encoding="utf-8")
 
+    returned = rewrite(
+        document, tmp_path / "runin.docx", _heading_joined(heading_text, opening, edited)
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    out = capsys.readouterr().out
+    assert "joined with the heading" in out, out
+    assert "deleted in Word" not in out, out
+
+
+def _heading_joined(heading_text: str, opening: str, edited: str = ""):
+    """Delete at the end of a heading, as Word makes it: the heading's `w:p`, style and all,
+    takes the paragraph's bookmark and runs. `edited` replaces the paragraph's text."""
+
     def join(xml: str) -> str:
         (paragraph,) = [p for p in tagged_xml(xml) if f">{opening}" in p]
         heading = re.search(
@@ -7078,13 +7093,72 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
             joined = joined.replace(f">{opening}</w:t>", f">{edited}</w:t>", 1)
         return xml.replace(heading.group(0), joined, 1)
 
-    returned = rewrite(document, tmp_path / "runin.docx", join)
+    return join
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("after_build", "edited"),
+    [("retitled", ""), ("retitled", ": none declared."), ("value-changed", "")],
+    ids=["retitled-in-the-md", "retitled-and-made-run-in", "its-value-changed"],
+)
+def test_a_heading_joined_beside_a_changed_heading_is_refused_not_reported_deleted(
+    project: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    after_build: str,
+    edited: str,
+) -> None:
+    """A heading joined into the short paragraph under it, where the heading is no longer
+    the one the document was sent with: retitled in the .md since the build, or printing
+    another value now. The join is looked for under the heading's text as it prints now, so
+    it was not seen, the identifier came off by the heading's style, and the paragraph was
+    reported deleted before the refusal for a changed block beside it was reached. That
+    report, beside Word's heading listed as changed, is advice to delete the paragraph and
+    retype Word's copy. Refused, as main refuses it."""
+    import json
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import write_digest
+
+    source = project / "manuscript" / "main.md"
+    heading_text = "Competing interests"
+    if after_build == "value-changed":
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "# Competing interests",
+                "# Competing interests in {{results.cohort.n_reports}} reports",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        heading_text = "Competing interests in 4000 reports"
+    document = built(project)
+    returned = rewrite(
+        document,
+        tmp_path / "runin.docx",
+        _heading_joined(heading_text, "None declared.", edited),
+    )
+    if after_build == "retitled":
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "# Competing interests", "# Conflicts of interest", 1
+            ),
+            encoding="utf-8",
+        )
+    else:
+        fragment = project / "results" / "01_disproportionality.json"
+        data = json.loads(fragment.read_text(encoding="utf-8"))
+        data["values"]["cohort.n_reports"].update(value=4100, display="4100")
+        fragment.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    before = source.read_text(encoding="utf-8")
     capsys.readouterr()
-    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
     assert source.read_text(encoding="utf-8") == before
     out = capsys.readouterr().out
-    assert "joined with the heading" in out, out
     assert "deleted in Word" not in out, out
+    assert "not the one the document was sent with" in out, out
 
 
 @needs_pandoc

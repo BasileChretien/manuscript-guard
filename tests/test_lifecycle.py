@@ -88,6 +88,86 @@ def test_front_matter_is_stripped_and_its_title_reported() -> None:
     assert declared == "A paper"
 
 
+_BODY = "# Intro\n\nText.\n\n---\n\nMore.\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "body", "declared"),
+    [
+        (f'---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        # YAML closes with `...` too. Taken for prose, the header ran on to the rule.
+        (f'---\ntitle: "A paper"\n...\n\n{_BODY}', _BODY, "A paper"),
+        (f'---\ntitle: "A paper"\n...   \n\n{_BODY}', _BODY, "A paper"),
+        (
+            '---\r\ntitle: "A paper"\r\n...\r\n\r\n' + _BODY.replace("\n", "\r\n"),
+            "\r\n" + _BODY.replace("\n", "\r\n"),
+            "A paper",
+        ),
+        # Closed on the file's last line, which has no newline after it.
+        ('---\ntitle: "A paper"\n...', "", "A paper"),
+        ('---\ntitle: "A paper"\n---', "", "A paper"),
+        # Pandoc skips a byte-order mark and blank lines before the header.
+        (f'\N{ZERO WIDTH NO-BREAK SPACE}---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        (f'\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        (f'  \n\n---\ntitle: "A paper"\n---\n\n{_BODY}', _BODY, "A paper"),
+        # Pandoc expands tabs before it reads the YAML, which PyYAML refuses after a colon.
+        (f"---\ntitle:\tA paper\n---\n\n{_BODY}", _BODY, "A paper"),
+        # An empty header closes on its own closer, not on the rule further down.
+        (f"---\n---\n\n{_BODY}", _BODY, ""),
+        (f"---\n...\n\n{_BODY}", _BODY, ""),
+        # No front matter: a rule at the top, and a block that never closes.
+        (f"---\n\n{_BODY}", f"---\n\n{_BODY}", ""),
+        ('---\ntitle: "A paper"\n\nText.\n', '---\ntitle: "A paper"\n\nText.\n', ""),
+        (_BODY, _BODY, ""),
+    ],
+    ids=[
+        "closed by dashes",
+        "closed by dots",
+        "closed by dots with trailing spaces",
+        "crlf, closed by dots",
+        "closed by dots on the last line",
+        "closed by dashes on the last line",
+        "behind a byte-order mark",
+        "after a blank first line",
+        "after a line of spaces and a blank line",
+        "a tab after a key",
+        "empty, closed by dashes",
+        "empty, closed by dots",
+        "a rule at the top",
+        "never closed",
+        "no front matter",
+    ],
+)
+def test_front_matter_ends_where_pandoc_ends_it(text: str, body: str, declared: str) -> None:
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    assert strip_front_matter(text) == (body, declared)
+
+
+def test_a_header_pandoc_cannot_read_is_reported_at_the_line_it_fails_on() -> None:
+    """Counted from the file's first line, not from inside the YAML, and without PyYAML's
+    `in "<unicode string>"`: a blank first line and a comment put the error on line 4."""
+    from manuscript_guard.text.masking import front_matter_problem
+
+    problem = front_matter_problem("\n---\n<!-- a note -->\ntitle: A study\n---\n\nText.\n")
+    assert problem is not None
+    message, line = problem
+    assert line == 4
+    assert "unicode string" not in message and "mapping values" in message
+    assert front_matter_problem('---\ntitle: "A study"\n---\n\nText.\n') is None
+    assert front_matter_problem("Text only.\n") is None
+    # A quote left open fails at the end of the YAML; the line to fix is where it opened.
+    unclosed = front_matter_problem('---\na: 1\ntitle: "A study\nb: 2\n---\n\nText.\n')
+    assert unclosed is not None and unclosed[1] == 3, unclosed
+    # Word's Shift+Enter, a vertical tab, is named, not reported as an exception's class.
+    tab = front_matter_problem("---\na: 1\ntitle: A\N{LINE TABULATION}B\n---\n\nText.\n")
+    assert tab is not None and "#x000b" in tab[0] and tab[1] == 3, tab
+    # YAML breaks lines at NEL too, what a cp1252 ellipsis becomes when misread; the file's
+    # lines are still counted at `\n`.
+    nel = front_matter_problem(f"---\ntitle: A{chr(0x85)}B\n---\n\nText.\n")
+    assert nel is not None and nel[1] == 2, nel
+
+
 # ---------------------------------------------------------------- the baseline
 
 

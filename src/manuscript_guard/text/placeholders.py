@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.masking import blank_comments
+
 VALUE_NAMESPACES = ("results", "lit")
 BLOCK_NAMESPACES = ("table", "figure")
 NAMESPACES = VALUE_NAMESPACES + BLOCK_NAMESPACES
@@ -54,9 +56,6 @@ class Placeholder:
         return self.namespace in VALUE_NAMESPACES
 
 
-_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
 def _without_comments(text: str) -> str:
     """The same text with HTML comments blanked, offsets and line breaks intact.
 
@@ -68,16 +67,15 @@ def _without_comments(text: str) -> str:
     the syntax, and the explanation failed the check it was explaining.
 
     Blanked rather than removed so every offset, line and column still refers to the file
-    the author is looking at.
+    the author is looking at. Only what pandoc drops is blanked: `` `<!--` `` is code, and
+    so is a `<!--` in a listing, and a binding after either is printed like any other. A
+    comment opened in the front matter ends with it, as pandoc reads it: run on to the next
+    comment in the body, it took every binding between out of G2, and a reversed interval
+    passed.
     """
     if "<!--" not in text:
         return text
-    out = list(text)
-    for match in _COMMENT.finditer(text):
-        for index in range(match.start(), match.end()):
-            if out[index] != "\n":
-                out[index] = " "
-    return "".join(out)
+    return blank_comments(text)
 
 
 def parse(text: str) -> tuple[list[Placeholder], list[tuple[str, int, int]]]:

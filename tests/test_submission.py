@@ -51,6 +51,19 @@ def test_the_title_page_carries_what_the_manuscript_leaves_out(project: Path) ->
     assert "Word count" in page
 
 
+def test_the_title_page_declares_the_words_the_build_prints(project: Path) -> None:
+    """The count the editor reads included the manuscript's front matter, which the build
+    strips: the example's title page declared 573 words of main text for 557 printed."""
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.sections import measure
+
+    printed, _title = strip_front_matter(
+        (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    )
+    page = title_page(load_project(project)[0])
+    assert f"main text {measure(printed).main_text_words}." in page
+
+
 def test_affiliation_superscripts_follow_the_declared_order(project: Path) -> None:
     page = title_page(load_project(project)[0])
     assert "Ada Example, PharmD, MSc^1^" in page
@@ -297,6 +310,19 @@ def test_a_section_whose_content_is_in_subsections_is_not_empty(project: Path) -
     report = check_design(load_project(project)[0])
     assert "plan-section-empty" not in codes(report)
     assert "plan-complete" in codes(report)
+
+
+def test_a_subsection_titled_only_by_its_attribute_block_still_counts(project: Path) -> None:
+    """Once a title lost its attribute block, `### {#inclusion}` had the empty title the
+    plan's preamble has, and was dropped with it: the Population written under it was "a
+    heading with nothing under it"."""
+    _replace_section(
+        project,
+        "Population and data source",
+        "## Population and data source\n\n### {#inclusion}\n\nAdults aged 18 or over.\n\n",
+    )
+    report = check_design(load_project(project)[0])
+    assert "plan-section-empty" not in codes(report), [f.message for f in report.findings]
 
 
 def test_a_section_with_only_empty_subsections_is_still_empty(project: Path) -> None:

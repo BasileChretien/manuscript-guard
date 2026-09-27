@@ -1778,6 +1778,17 @@ A paragraph's text is its `w:t` elements read with every tracked change accepted
 paragraph deleted with Track Changes on is reported as deleted. It used to come back empty
 and be refused as "a number or a citation changed".
 
+No text box is read, and no AlternateContent fallback, which repeats its choice. So a
+character Word writes only in a fallback is read from the choice: an emoji inserted in Word
+can be a `w16se:symEx` in the choice, with the character as text only in the fallback. The
+document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that
+way. Read as nothing, an emoji the author inserted never came back ("nothing came back: the
+document matches the manuscript on disk"), and one already in the source read as deleted:
+`--apply` took it out and reported a reworded paragraph. Word 16 did not write that form for
+an emoji set as text or typed through its COM interface, nor on saving a built document
+holding one, untouched or edited beside it (verified 2026-09-25), so which way of inserting
+one produces it is not known here.
+
 ## An exemption has to prove itself
 
 The recurring defect of this project is not a wrong regex. It is an escape hatch whose first
@@ -2622,12 +2633,18 @@ Closed since, and why each mattered:
   moving the row and cell separators the reader writes before the cell's text. A table
   whose every row was deleted or moved away is the exception, since nothing of it is left
   to join into: the paragraph runs on past it into the next, as Word 16 shows it.
-- **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
-  Word does the same for everything it writes, since it writes a choice only where it
-  understands it. Text that sits only in a fallback, behind a choice the reader does not
-  know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
-  does know, and would for any other such element it adds. A second choice, which the
-  format allows and Word does not write, would be read as well as the first.
+- **The audit and the import read every `mc:Choice` and no `mc:Fallback`, whatever the
+  choice requires.** Word does the same for everything it writes, since it writes a choice
+  only where it understands it. Text that sits only in a fallback, behind a choice the
+  readers do not know, goes unread: Word does this for an emoji, whose choice
+  (`w16se:symEx`) both readers know, and would for any other such element it adds. In the
+  import that loses the co-author's insertion, and where Word writes text already in the
+  source that way, `--apply` deletes it from the source. A second choice, which the format
+  allows and Word does not write, would be read as well as the first.
+- **The import does not read a Symbol-font character.** Insert > Symbol with the Symbol
+  font writes a `w:sym` element, not text. The audit's reader maps the ones that can stand
+  beside a number (minus, ±, ≤, ≥, ×); the import's reads nothing, so "3.2 ± 0.4" inserted
+  that way comes back as "3.2 0.4" and the co-author's ± is dropped.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

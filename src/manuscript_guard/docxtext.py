@@ -34,6 +34,7 @@ _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _VML_IMAGE = "{urn:schemas-microsoft-com:vml}imagedata"
 _M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 _RELS = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+W16SE = "{http://schemas.microsoft.com/office/word/2015/wordml/symex}"
 
 #: Subtrees whose text is not on the page once every tracked change is accepted, or is not
 #: this paragraph's text at all: a text box holds paragraphs of its own, and an
@@ -148,6 +149,8 @@ def _read(element: ET.Element) -> tuple[str, tuple[tuple[int, int], ...]]:
             out.append(_OPEN)
         elif node.tag == W + "bookmarkEnd" and node.get(W + "id", "") in marked:
             out.append(_CLOSE)
+        elif node.tag == W16SE + "symEx":
+            out.append(extended_symbol(node))
         for child in node:
             walk(child)
 
@@ -193,6 +196,24 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     return text, tuple(
         (max(start - lead, 0), min(end - lead, len(text))) for start, end in spans if start >= 0
     )
+
+
+def extended_symbol(node: ET.Element) -> str:
+    """A `w16se:symEx` character, by its code point: an emoji inserted in Word can be one.
+
+    Word writes it in an AlternateContent choice, with the character as text only in the
+    fallback, which is not read. Read as nothing, an emoji the author inserted never came
+    back, and one already in the source was deleted from it. The audit's reader uses this too.
+
+    Only a character that document text could hold. A control character would pass for the
+    mark the audit's reader puts on a heading's line, and a lone surrogate cannot be printed.
+    """
+    try:
+        code = int(node.get(W16SE + "char", ""), 16)
+    except ValueError:
+        return " "
+    text = 0x20 <= code < 0xD800 or 0xE000 <= code <= 0xFFFD or 0x10000 <= code <= 0x10FFFF
+    return chr(code) if text else " "
 
 
 def runs_on(paragraph: ET.Element) -> bool:

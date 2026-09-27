@@ -212,6 +212,469 @@ def test_an_unstamped_document_is_refused(project: Path, tmp_path: Path) -> None
     assert main(["import", str(plain), str(project)]) == 1
 
 
+# ---------------------------------------------------------------- what an identifier named
+
+
+def with_record(document: Path, change) -> Path:
+    """The document with its record of paragraphs rewritten: `change` takes the property
+    elements holding it, as one string, and returns their replacement."""
+    scratch = document.with_suffix(".p.docx")
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/custom.xml":
+                xml = data.decode("utf-8")
+                ours = re.compile(
+                    r'<property\b[^>]*name="manuscript-guard-paragraphs-\d+"[^>]*>.*?</property>',
+                    re.DOTALL,
+                )
+                found = "".join(ours.findall(xml))
+                xml = ours.sub("", xml)
+                xml = xml.replace("</Properties>", change(found) + "</Properties>")
+                data = xml.encode("utf-8")
+            zout.writestr(item, data)
+    scratch.replace(document)
+    return document
+
+
+def unrecorded(document: Path) -> Path:
+    """The document as a release from before paragraphs were recorded built it."""
+    return with_record(document, lambda found: "")
+
+
+FUNDING = {"This work received no funding.": "This work received no external funding."}
+
+
+@needs_pandoc
+def test_a_built_document_records_what_each_identifier_names(project: Path) -> None:
+    """Its own paragraphs, in its order, and not the supplement's; split over properties
+    short enough that Word does not cut them when it saves."""
+    import hashlib
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import paragraph_order, paragraphs_of, tagged_paragraphs
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = project / "build" / "manuscript.docx"
+    known = tagged_paragraphs(load_project(project)[0])
+    recorded = paragraphs_of(document)
+    assert list(recorded) == [name for name in paragraph_order(document) if name in known]
+    assert len(recorded) < len(known), "the supplement's paragraphs are in its own document"
+    assert all(
+        value.partition(".")[0] == hashlib.sha256(known[name][1].encode()).hexdigest()[:8]
+        for name, value in recorded.items()
+    )
+    xml = zipfile.ZipFile(document).read("docProps/custom.xml").decode("utf-8")
+    values = re.findall(r'name="manuscript-guard-paragraphs-\d+"[^>]*><vt:lpwstr>([^<]*)<', xml)
+    assert len(values) > 1 and all(len(value) < 255 for value in values)
+
+
+def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
+    from manuscript_guard.roundtrip import paragraphs_of
+
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    many = {f"mg-p-main-{2 * i}": f"{i:08x}.abcdef" for i in range(60)}
+    stamp_into(document, "a" * 64, many)
+    stamp_into(document, "b" * 64, {"mg-p-main-2": "0123abcd.456789"})
+    assert set(paragraphs_of(document)) == {"mg-p-main-2"}
+    assert stamp_of(document) == "b" * 64
+
+
+@needs_pandoc
+def test_an_edit_is_not_merged_where_the_identifier_now_names_other_text(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Whatever made an identifier name other text, a source edited since the build or a
+    release that numbers paragraphs by other rules, the edit made under it belongs to a
+    paragraph that is not there now. It is named and left, even with --force."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    funding = next(n for n, text in _texts(project).items() if text.startswith("This work"))
+    index = funding.rpartition("-")[2]
+    ours, _, before = _recorded(returned)[funding].partition(".")
+    # The record says the funding identifier named some other text at the build.
+    with_record(
+        returned,
+        lambda found: re.sub(
+            rf"(?<=[:,]){index}\.{ours}\.{before}(?=[,<])", f"{index}.00000000.{before}", found
+        ),
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    assert "were not compared" in capsys.readouterr().out
+
+
+def _recorded(document: Path) -> dict[str, str]:
+    from manuscript_guard.roundtrip import paragraphs_of
+
+    return paragraphs_of(document) or {}
+
+
+def _texts(project: Path) -> dict[str, str]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    known = tagged_paragraphs(load_project(project)[0])
+    return {name: text for name, (_path, text, _start) in known.items()}
+
+
+@needs_pandoc
+def test_a_paragraph_tagged_now_and_not_at_the_build_is_not_reported_deleted(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release that tags more kinds of block gives the source identifiers the document
+    never carried. Walked as the manuscript's paragraphs, each read as deleted in Word, and
+    the author was told to delete it from the source."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = project / "build" / "manuscript.docx"
+    # From now on a paragraph that is only a table or a figure is tagged; at the build it
+    # was not.
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip,
+        "_untagged",
+        lambda text: was(text) and not re.fullmatch(r"\{\{(?:table|figure)\.[^}]*\}\}", text),
+    )
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_an_unrecorded_document_whose_numbering_did_not_change_still_imports(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built before paragraphs were recorded carries no record. Its source
+    reading the same under the old rules as the new is the ordinary case, and it merges as
+    it did."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+
+
+@needs_pandoc
+def test_an_unrecorded_document_built_from_other_text_is_refused_even_with_force(
+    project: Path, tmp_path: Path
+) -> None:
+    """Whether an unrecorded document was numbered as its source is now can only be asked
+    of the text it was built from. Asked of the source as edited since, a forced import
+    wrote four paragraphs' text over their neighbours; the plan shows what an edit becomes
+    and not what it replaces, so checking every hunk could not have caught it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nA later paragraph.\n", "utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
+
+
+@needs_pandoc
+def test_a_paragraph_whose_identifier_the_manuscript_no_longer_gives_is_named(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A release that tags fewer kinds of block leaves the document carrying an identifier
+    the manuscript no longer gives. The import walks the manuscript's identifiers, so one
+    of these was skipped without a word: an edit in it went nowhere, the import said nothing
+    came back, and it exited 0."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip, "_untagged", lambda text: was(text) or text.startswith("This work received")
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "were not compared" in out
+    assert "nothing came back" not in out
+
+
+@needs_pandoc
+def test_an_unrecorded_document_is_judged_by_the_files_it_carries(
+    project: Path, tmp_path: Path
+) -> None:
+    """An identifier names its file. A supplement whose front matter is read differently now
+    says nothing about the numbering of the main text's document, and refusing it for that
+    blocked every unrecorded main document in a project with such a supplement."""
+    from manuscript_guard.cli import main
+
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        "---\ntitle: S1\n...\n\n" + supplement.read_text(encoding="utf-8"), "utf-8"
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+
+
+@needs_pandoc
+def test_a_comment_on_a_paragraph_whose_identifier_moved_opens_no_anchor(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Anchored to whatever paragraph sits there now, the point's revision was checked
+    against the wrong one, and a paragraph nobody revised could pass."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    # Every identifier the record covers now names other text.
+    with_record(returned, lambda found: re.sub(r"\.[0-9a-f]{8}", ".00000000", found))
+    capsys.readouterr()
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert not any(p.get("where") for r in document["reviewers"] for p in r["points"])
+    assert "recorded without one" in capsys.readouterr().out
+
+
+def _without_paragraph(document: Path, target: Path, identifier: str) -> Path:
+    """The document with the Word paragraph carrying `identifier` deleted outright."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml = data.decode("utf-8")
+                gone = next(
+                    p
+                    for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+                    if f'w:name="{identifier}"' in p
+                )
+                data = xml.replace(gone, "", 1).encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+def test_a_paragraph_the_source_changed_and_word_deleted_is_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the identifiers that came back were asked about, so a paragraph whose identifier
+    was no longer trusted, deleted in Word, left no trace: `import --force` said nothing came
+    back and exited 0. Main reports the deletion."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    whether = next(n for n, text in _texts(project).items() if text.startswith("Whether"))
+    returned = _without_paragraph(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", whether
+    )
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("been examined.", "been examined before.", 1),
+        encoding="utf-8",
+    )
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    out = capsys.readouterr().out
+    assert whether in out
+    assert "nothing came back" not in out
+
+
+@needs_pandoc
+def test_an_empty_paragraph_under_an_identifier_no_longer_given_is_not_reported(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Releases before 0.2.45 put an identifier in front of an HTML comment standing alone,
+    and the document carried an empty paragraph under it. Returned untouched, such a document
+    had it named as not compared, and the import exited 1."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    slug = next(iter(_texts(project))).removeprefix("mg-p-").rpartition("-")[0]
+    empty = (
+        f'<w:p><w:bookmarkStart w:id="990" w:name="mg-p-{slug}-999"/>'
+        f'<w:bookmarkEnd w:id="990"/></w:p>'
+    )
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml = data.decode("utf-8")
+                at = xml.index("</w:p>") + len("</w:p>")
+                data = (xml[:at] + empty + xml[at:]).encode("utf-8")
+            zout.writestr(item, data)
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 0
+    assert "nothing came back" in capsys.readouterr().out
+
+
+#: A paragraph that is only a value, which releases before 0.2.49 gave no identifier.
+LONE_VALUE = "{{results.ror.point}}"
+
+
+def _with_lone_value(project: Path) -> None:
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Methods\n", f"{LONE_VALUE}\n\n# Methods\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+
+@needs_pandoc
+def test_a_value_paragraph_an_unrecorded_document_never_carried_is_not_reported_deleted(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """0.2.49 gave a paragraph that is only a value an identifier. A document built before
+    then never carried it, and returned untouched had it reported deleted in Word."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    was = roundtrip._untagged
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            roundtrip,
+            "_untagged",
+            lambda block: was(block) or re.fullmatch(r"\{\{[^}]*\}\}", block.strip()) is not None,
+        )
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = unrecorded(project / "build" / "manuscript.docx")
+
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_value_paragraph_deleted_in_an_unrecorded_document_is_still_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Built by 0.2.49, an unrecorded document did carry it, and a co-author could delete
+    it. Not knowing which release built it, the import cannot drop the report."""
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    value = next(n for n, text in _texts(project).items() if text == LONE_VALUE)
+    returned = _without_paragraph(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", value
+    )
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    assert "nothing came back" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_an_old_supplement_does_not_lack_the_papers_value_paragraph(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The supplement is imported on its own, and a value paragraph of the paper was never
+    meant to be in it: asked about everywhere, an untouched supplement from before the
+    record named the paper's value paragraph as not in it, and the import exited 1."""
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "supplementary.docx"
+    shutil.copy(project / "build" / "supplementary.docx", returned)
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 0
+    assert "only a value" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its_anchor(
+    project: Path, tmp_path: Path
+) -> None:
+    """`import` compares a paragraph that is only a value when the document carries it;
+    `respond --open` dropped the anchor of a comment on one, saying its identifier no longer
+    named the text commented on."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Abstract\n\n", f"# Abstract\n\n{LONE_VALUE}\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    value = next(n for n, text in _texts(project).items() if text == LONE_VALUE)
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    unrecorded(returned)
+
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [value]
+
+
+def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
+    """Whether a paragraph reached Word in parts was judged by the section of the identified
+    paragraph after it, and one left out of the comparison had none: the rewording of the
+    first part merged, and the rest of the paragraph would have been deleted."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    path.write_text("Alpha text here.\n\nBeta.\n", encoding="utf-8")
+    every = {"a": (path, "Alpha text here.", 0), "b": (path, "Beta.", 18)}
+    sent = [Block(("a",), "Alpha text here."), Block((), "y = z"), Block(("b",), "Beta.")]
+    returned = [Block(("a",), "Alpha text here, reworded."), sent[1], sent[2]]
+
+    plan = plan_import({"a": every["a"]}, sent, returned, every=every)
+    assert not plan.merged
+    assert [refusal.name for refusal in plan.refused] == ["a"]
+
+
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:
     from manuscript_guard.cli import main
 
@@ -6748,6 +7211,261 @@ def test_import_writes_pandocs_no_break_space_back_as_a_space(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------ end to end: a write the next build would not identify
+
+SHAPED = "[x]: https://example.org/xyz"
+NOTE = "[^cap]: Capped at forty."
+#: A block pandoc takes into the note above it: after a blank line, indented four columns,
+#: a zero-width space that shows nothing. The note is marked for it, and prints as text.
+RUNS_INTO = f"    {chr(0x200B)}\nIt was rare."
+
+
+def swapped(first: str, second: str):
+    """A co-author, simulated: the paragraph holding `second` cut and pasted above the one
+    holding `first`."""
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        above = next(p for p in paragraphs if first in p)
+        below = next(p for p in paragraphs if second in p)
+        return xml.replace(below, "", 1).replace(above, below + above, 1)
+
+    return swap
+
+
+@needs_pandoc
+def test_a_move_that_would_make_a_paragraph_a_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end. A note is marked where what is below it would run into it, and prints
+    as text. Swapped in Word with the paragraph above it, it landed over a plain paragraph,
+    where the next build read it as a note again and printed nothing of it in the body -
+    while `import --apply` exited 0 and said it had reordered a paragraph."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Alpha comes first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    assert "Capped at forty." in _docx_part(document, "word/document.xml")
+    returned = rewrite(document, tmp_path / "moved.docx", swapped("Alpha comes", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    dry = capsys.readouterr().out
+    assert "without its identifier" in dry
+    assert "applies the safe changes" not in dry
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "without its identifier" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+    assert "Capped at forty." in _docx_part(built(project), "word/document.xml")
+
+
+@needs_pandoc
+def test_a_move_that_pushes_a_note_into_a_definitions_place_holds_its_section(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review round one: the co-author moved only the first paragraph, below the note, and
+    that pushed the note, which nobody touched, up into a place where it was a definition
+    again. Holding back the note alone refused a paragraph nobody moved and put the others
+    in an order neither side had. No move in the section is applied now, and each is named
+    with the note it would leave behind."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Aaa first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    once = rewrite(document, tmp_path / "once.docx", swapped("Doses were", "Aaa first"))
+    returned = rewrite(once, tmp_path / "moved.docx", swapped("Doses were", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "Doses were capped." in out and "it would leave behind: [^cap]" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_the_other_changes_beside_a_refused_move_are_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Moves are held back in the one section, and a rewording there still lands, in place;
+    a move in another section is applied."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Doses were capped.[^cap]",
+        "Alpha comes first.",
+        NOTE,
+        RUNS_INTO,
+        "## Later",
+        "Beta was second.",
+        "Gamma was third.",
+    )
+    source = project / "manuscript" / "main.md"
+    document = built(project)
+    first = rewrite(document, tmp_path / "one.docx", swapped("Alpha comes", "Capped at"))
+    both = rewrite(first, tmp_path / "two.docx", swapped("Beta was", "Gamma was"))
+    returned = edit_docx(both, tmp_path / "back.docx", {"Alpha comes first.": "Alpha came first."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    text = source.read_text(encoding="utf-8")
+    assert f"Alpha came first.\n\n{NOTE}\n\n{RUNS_INTO}" in text
+    assert "## Later\n\nGamma was third.\n\nBeta was second." in text
+    assert "without its identifier" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
+    project: Path, tmp_path: Path
+) -> None:
+    """The other way a paragraph could take a definition's shape is typed in Word, and that
+    one never lost anything: the merge escapes the bracket, so the paragraph prints as it was
+    typed and keeps its identifier. Kept here beside the move, which has no such escape."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The registry is at https://example.org/xyz for anyone.")
+    edit = {"The registry is at https://example.org/xyz for anyone.": SHAPED}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert f"\n\n\\{SHAPED}\n\n" in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "example.org/xyz" in _docx_part(built(project), "word/document.xml")
+
+
+def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -> None:
+    """The plan itself, without pandoc: no move in the section is applied, the move made -
+    the note's, by the order diff - is named with the note it would strand, none is listed
+    as moved, and applying the plan writes nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    source = tmp_path / "main.md"
+    text = f"Alpha.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "n": (source, NOTE, text.index(NOTE))}
+    sent = [Block((name,), known[name][1]) for name in known]
+
+    plan = plan_import(known, sent, [sent[1], sent[0]])
+    assert plan.held == {"a", "n"}
+    assert dict(plan.held_back) == {"n": "n"}
+    assert not plan.moved and not plan.refused
+    apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_write_that_would_cost_another_paragraph_its_identifier_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write can cost a paragraph beside it its identifier - a comment or a fence opened in
+    one block runs on into the next - and which write did it cannot be told, so every
+    rewording in that file is refused. Simulated: the next build is made to lose `Gamma.`
+    once `Alpha.` is reworded."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    source = tmp_path / "main.md"
+    text = "Alpha.\n\nGamma.\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "g": (source, "Gamma.", 8)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    marked = merge.marked_blocks
+
+    def losing_gamma(raw: str) -> list:
+        return [block for block in marked(raw) if "Alpha now." not in raw or block[1] != "Gamma."]
+
+    monkeypatch.setattr(merge, "marked_blocks", losing_gamma)
+    plan = merge.plan_import(known, sent, [Block(("a",), "Alpha now."), sent[1]])
+    assert not plan.merged
+    assert "another paragraph" in plan.refused[0].why[0]
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def _plan_of(tmp_path: Path, text: str, back) -> tuple:
+    """A source of paragraphs named by their first word, and the plan for what came back:
+    `back` maps those names to the returned blocks, in their returned order."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.roundtrip import marked_blocks
+
+    source = tmp_path / "main.md"
+    source.write_text(text, encoding="utf-8")
+    known = {body.split()[0]: (source, body, start) for _i, body, start in marked_blocks(text)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    return source, known, merge.plan_import(known, sent, back({b.names[0]: b for b in sent}))
+
+
+def test_a_rewording_that_strands_a_paragraph_once_its_section_is_held_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Review round two, HIGH: held, a section's moves go back, and a rewording there lands
+    in place, where it can do what it did not do where it was moved. Beta, reworded with a
+    `-->` and moved above Alpha, closed nothing there; held back under Alpha, it closed
+    Alpha's `<!--`, and pandoc read the two as one comment. The check looked at no held
+    paragraph again, so the rewording was merged, and the next build lost Beta."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = f"Alpha opens <!-- here.\n\nBeta plain.\n\nGamma plain.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [Block(("Beta",), "Beta --> plain."), by["Alpha"], by["[^cap]:"], by["Gamma"]],
+    )
+    assert "Beta" not in plan.merged
+    refusal = next(r for r in plan.refused if r.name == "Beta")
+    assert refusal.text == "Beta --> plain."
+    assert not merge._unidentified(known, plan)
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_hides_moved_paragraphs_does_not_hold_the_moves(
+    tmp_path: Path,
+) -> None:
+    """Review round two, MEDIUM: Rho's `-->` closed the `<!--` above Alpha and Beta, so the
+    two came out without their identifiers, swapped or not. Every lost paragraph was acted
+    on in one round: the rewording was refused and the swap held back too, blamed on a
+    definition or a heading. A rewording is refused first now, and the plan checked again."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = "Opens <!-- here.\n\nAlpha plain.\n\nBeta plain.\n\n## Heading\n\nRho plain.\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [by["Opens"], by["Beta"], by["Alpha"], Block(("Rho",), "Rho --> plain.")],
+    )
+    assert "Rho" in {refusal.name for refusal in plan.refused}
+    assert not plan.held and not plan.held_back
+    assert {entry[0] for entry in plan.moved} & {"Alpha", "Beta"}
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text.replace(
+        "Alpha plain.\n\nBeta plain.", "Beta plain.\n\nAlpha plain."
+    )
+
+
+def test_a_held_section_names_the_moves_made_not_every_paragraph_they_shift(
+    tmp_path: Path,
+) -> None:
+    """Review round two, LOW: one paragraph moved from the top of a section to below a note
+    shifts every paragraph between, and each was named as moved - nine for one move."""
+    paragraphs = [f"P{number} was written here." for number in range(8)]
+    text = "\n\n".join([*paragraphs, NOTE, RUNS_INTO]) + "\n"
+    _source, _known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [block for name, block in by.items() if name != "P0"] + [by["P0"]],
+    )
+    assert [name for name, _left in plan.held_back] == ["P0"]
 
 
 # ------------------------------------ end to end: a paragraph cut down to its number stays named

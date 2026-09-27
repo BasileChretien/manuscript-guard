@@ -10,6 +10,10 @@ schema: manuscript-guard/conventions/1
 #
 # Projects extend this through `conventions:` in paper.yaml, where each addition requires
 # a written justification.
+#
+# Gaps between words are written as in structural.yaml, which says why:
+# `[^\S\n]*(?:\n[^\S\n]*)?` is any spaces and at most one line break, and no two neighbouring
+# pieces of a pattern may take the same character.
 
 conventions:
   - id: significance-threshold
@@ -20,12 +24,12 @@ conventions:
     # claim the analysis never produced walked past the gate. Bind a reported p-value like
     # any other result; `display="<0.001"` is accepted for one too small to state.
     methods_only: true
-    pattern: '(?i)\bp[\s-]*(?:value)?\s*[<≤]\s*0?\.(?:0001|001|01|05)\b'
+    pattern: '(?i)\bp(?:[^\S\n]|-)*(?:\n(?:[^\S\n]|-)*)?(?:value[^\S\n]*(?:\n[^\S\n]*)?)?[<≤][^\S\n]*(?:\n[^\S\n]*)?0?\.(?:0001|001|01|05)\b'
 
   - id: alpha-level
     why: Same as the significance threshold, written as alpha.
     methods_only: true
-    pattern: '(?i)(?:\balpha\b|α)\s*(?:level)?\s*(?:was|of|[=:])\s*0?\.(?:0001|001|01|05)\b'
+    pattern: '(?i)(?:\balpha\b|α)(?:[^\S\n]*(?:\n[^\S\n]*)?level)?[^\S\n]*(?:\n[^\S\n]*)?(?:was|of|[=:])[^\S\n]*(?:\n[^\S\n]*)?0?\.(?:0001|001|01|05)\b'
 
   - id: confidence-level
     why: The confidence level of an interval is conventional; its bounds are results and must be bound.
@@ -49,7 +53,7 @@ conventions:
     why: A conventional target power stated in a sample-size paragraph.
     # A sample-size paragraph is Methods. Observed power reported afterwards is a result.
     methods_only: true
-    pattern: '(?i)\b(?:statistical\s+)?power\s*(?:of|at|=|:)?\s*(?:0\.(?:8|9|80|90)|80|90)\s*%?'
+    pattern: '(?i)\b(?:statistical(?=\s)[^\S\n]*(?:\n[^\S\n]*)?)?power(?:[^\S\n]*(?:\n[^\S\n]*)?(?:of|at|=|:))?[^\S\n]*(?:\n[^\S\n]*)?(?:0\.(?:8|9|80|90)|80|90)[^\S\n]*(?:\n[^\S\n]*)?%?'
 
   - id: percentile-labels
     why: Named distribution points are labels, not measured values.
@@ -82,7 +86,7 @@ conventions:
     # RECORD-PE author to `conventions:` in paper.yaml on their first Methods section - the
     # one mechanism DESIGN calls able to make G2 vacuous.
     methods_only: true
-    pattern: '(?i)\b(?:standardi[sz]ed\s+mean\s+difference|SMD|absolute\s+standardi[sz]ed\s+difference)\s*(?:of|below|under|less\s+than|[<≤]=?)\s*0?\.1\b|\bcaliper\s*(?:of|[=:])?\s*0?\.2\b|\bI\s*[²2]\s*[>≥]=?\s*(?:25|50|75)\s*%|\bmatched\s+1\s*:\s*[1-9]\b'
+    pattern: '(?i)\b(?:standardi[sz]ed(?=\s)[^\S\n]*(?:\n[^\S\n]*)?mean(?=\s)[^\S\n]*(?:\n[^\S\n]*)?difference|SMD|absolute(?=\s)[^\S\n]*(?:\n[^\S\n]*)?standardi[sz]ed(?=\s)[^\S\n]*(?:\n[^\S\n]*)?difference)[^\S\n]*(?:\n[^\S\n]*)?(?:of|below|under|less(?=\s)[^\S\n]*(?:\n[^\S\n]*)?than|[<≤]=?)[^\S\n]*(?:\n[^\S\n]*)?0?\.1\b|\bcaliper(?:[^\S\n]*(?:\n[^\S\n]*)?(?:of|[=:]))?[^\S\n]*(?:\n[^\S\n]*)?0?\.2\b|\bI[^\S\n]*(?:\n[^\S\n]*)?[²2][^\S\n]*(?:\n[^\S\n]*)?[>≥]=?[^\S\n]*(?:\n[^\S\n]*)?(?:25|50|75)[^\S\n]*(?:\n[^\S\n]*)?%|\bmatched(?=\s)[^\S\n]*(?:\n[^\S\n]*)?1[^\S\n]*(?:\n[^\S\n]*)?:[^\S\n]*(?:\n[^\S\n]*)?[1-9]\b'
 
   - id: ratio-null-value
     why: >-

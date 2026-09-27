@@ -474,8 +474,10 @@ name stopping at any letter, and an optional argument that was a footnote's mark
 line of a few hundred markers took minutes. Each now reads a line one way, and the dashes
 are split off from the end of the line before the rest is matched. The eighth round's fix
 took every `[^` after a command for a footnote's marker, and the ninth found pandoc taking
-`\newpage[^1]` whole, the YAML under it read: a bracket after a command is its argument
-unless a colon follows, and `[^1]:` there is a footnote's marker.
+`\newpage[^1]` whole, the YAML under it read. A bracket is a command's argument before its
+groups, colon or not: `\newpage[^1]: ---` is the command and then text, no footnote's
+marker. After a group a bracket is text, and `\vspace{1em}[^x] ---` opens no block; the
+review of #65's fix-only round found it refused, and it passes now.
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -505,8 +507,9 @@ standing in for a `# Methods` the gates misread straight under a line of text, t
 between passing under the wrong heading. The header's metadata is read on its own: read
 with the titles and the definitions they refer to, a footnote's definition holding a YAML
 block set a title there too, and the whole text matched it (the eighth). The definitions
-are copied from the text pandoc reads, not from code or a comment, and when the header or
-the titles cannot be read on their own while the document can, the build refuses: the
+are copied from the text the gates do not take for code or a comment (`scannable`), and
+when the header or the titles cannot be read on their own while the document can, the
+build refuses (see Known gaps for a definition in a `<pre>`): the
 ninth review found a commented-out footnote holding broken YAML failing that run, which
 switched the check off. The lists are aligned, so a refusal names the heading, with the
 file and line of one the gates read. Pandoc's reading is walked without recursion, and a
@@ -3245,7 +3248,9 @@ Closed since, and why each mattered:
   and a real `# Methods` hidden by a misread comment later, lines up with pandoc's list, and
   a claim between the two passes G2 under the wrong heading. It takes two misreads, each of
   a shape above, of headings with the same title. A heading pandoc makes in a list, a
-  definition or a table never lines up, since the gates read none there.
+  definition or a table never lines up. The gates read none there but a setext title in a
+  list item, `- Results` over `===`, which they take marker and all; it is refused as one
+  pandoc reads as text or in a list.
 - **Values that move a heading pass the build's comparison.** A file's headings as written
   and as built, values in, are paired by index, and refused only when their number or
   levels differ. Values whose text holds markup can move one while both stay the same: the
@@ -3261,6 +3266,20 @@ Closed since, and why each mattered:
   setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
   drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
   are refused, not passed.
+- **Some lines of dashes after a TeX command are refused that open nothing.** The refusal
+  takes any command for one pandoc starts a block behind, where pandoc does so only for a
+  block-level command, `\newpage` or `\vspace{1em}`: behind `\foo[x]{1em}`, which it reads
+  inline, the dashes are text. And a colon after a command is read as a definition's
+  marker, where pandoc reads `\newpage[^1]: ---` and `\foo[x]: ---` as the command, then
+  text. Each is refused though it prints as it reads; putting the command on a line of its
+  own clears it. Telling the block-level commands from the rest would mean keeping pandoc's
+  list of them.
+- **A footnote-shaped line in a `<pre>` or a TeX environment is copied to the titles.** The
+  definitions the titles may refer to are taken from the text the gates do not take for
+  code or a comment, and a `<pre>` or `\begin{verbatim}` is neither to them. A line there
+  shaped `[^n1]:` over YAML pandoc cannot read makes the titles' run fail while the document
+  reads, and the build refuses the document, where pandoc reads the block as raw markup and
+  no footnote. Refused, not passed.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares

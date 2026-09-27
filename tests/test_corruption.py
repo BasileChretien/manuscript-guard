@@ -2000,8 +2000,9 @@ def test_the_build_refuses_what_its_reading_used_to_let_through(
 def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
     """Found reviewing #71: six hundred nested divs overflowed the recursive walk of
     pandoc's reading, and the build stopped on a traceback. Where Python's own JSON reader
-    gives up depends on its version, before 600 on 3.10 and past 2000 on 3.13, so either
-    depth may be compared or refused; neither may crash."""
+    gives up depends on its version and system, before 600 on 3.10, at 2000 on 3.13 on
+    Windows and past it on Linux and macOS, so either depth may be compared or refused;
+    neither may crash. The walks themselves are tested apart, below the JSON reader."""
     import shutil
 
     from manuscript_guard.build.reading import misreading
@@ -2021,6 +2022,85 @@ def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
             depth,
             found,
         )
+
+
+def test_the_walks_of_pandoc_s_reading_take_any_depth() -> None:
+    """The review of #65's CI fix: the test above accepts a refusal at any depth, so a walk
+    made recursive again would pass it wherever the JSON reader overflows first. A tree
+    built in Python, twenty thousand divs deep, is walked on every system alike."""
+    from manuscript_guard.build.reading import _headers, _nodes
+
+    depth = 20_000
+    tree: list = [{"t": "Header", "c": [2, ["deep", [], []], [{"t": "Str", "c": "Deep"}]]}]
+    for _ in range(depth):
+        tree = [{"t": "Div", "c": [["", [], []], tree]}]
+    tree = [{"t": "BulletList", "c": [tree]}]
+    assert [(found.level, found.listed) for found in _headers(tree)] == [(2, True)]
+    assert sum(1 for _ in _nodes(tree, lambda node: True)) == depth + 3
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_definition_in_a_comment_is_not_copied_to_the_titles() -> None:
+    """Round nine of #65: a commented-out footnote holding YAML pandoc cannot read, copied
+    to the titles' run, made it fail. The definitions come from the text the gates do not
+    take for code or a comment, so this one is not copied, and the reading agrees."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Results\n\nThe excess was significant.\n\n"
+        "<!--\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n-->\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_titles_that_cannot_be_read_while_the_document_can_are_refused() -> None:
+    """Round nine of #65's other half: when the titles' run fails and the document reads,
+    passing switched the check off for every heading. A footnote-shaped line in a `<pre>`,
+    which pandoc prints as raw HTML and the gates copy, holds broken YAML; the heading the
+    gates misread under a line of text must not pass with it."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Methods\n\nWe also saw it.\n# Results\n\nThe excess was significant.\n\n"
+        "<pre>\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n</pre>\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is not None and found.startswith("the document, but not"), found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_setext_title_in_a_list_item_is_refused_for_what_pandoc_reads() -> None:
+    """Reviewing #65's fixes: the gates read `- Results` over `===` as a heading, marker
+    and all, and pandoc a heading inside the list. The build refused it, saying pandoc read
+    the line as text."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = "# Methods\n\nText.\n\n- Results\n=========\n\nThe excess was 9.87.\n"
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is not None and "in a list" in found, found
 
 
 def test_opener_lines_are_read_in_linear_time() -> None:
@@ -2268,10 +2348,10 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n<area> ---\ntitle: Evil\n...\n",
         "## Note\n<frameset> ---\ntitle: Evil\n...\n",
         "## Note\n<isindex> ---\ntitle: Evil\n...\n",
-        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc,
-        # and a footnote's marker only with a colon after it.
+        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc.
         "## Note\n\\newpage[^1]---\ntitle: Evil\n...\n",
-        "## Note\n\\vspace{1em}[^x] ---\ntitle: Evil\n...\n",
+        "## Note\n\\newpage[^1] ---\ntitle: Evil\n...\n",
+        "## Note\n\\foo[x][y]{1em} ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
@@ -2303,6 +2383,11 @@ def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
         "> Para one.\n>\n> ---\n>\n> Para two.\n",
         # An item that is an en dash: no YAML opens on two dashes.
         "1. a\n2. --\n3. b\n",
+        # Found reviewing #65's fixes: pandoc takes brackets as a command's argument only
+        # before its groups, and the text after them starts no block.
+        "\\vspace{1em}[^x] ---\nnote: v\n...\n",
+        "\\textsuperscript{a}[^9] ---\nnext.\n",
+        "\\foo[x]{1em}[y] ---\nnext.\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:

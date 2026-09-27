@@ -510,21 +510,21 @@ _BLOCK_TAGS = (
 )
 # One thing a line may open with that pandoc starts a block behind: a list, definition or
 # footnote marker, a task's box after it; a block-level tag, a comment or a processing
-# instruction; a TeX command, starred or not, with its groups three deep. The alternatives
-# read any text one way only: a roman numeral has two letters or more, since one is a
-# letter's; a comment ends at its first `-->`; a command's name takes every letter, as TeX
-# reads it; and `[^1]:` after a command is a footnote's marker, where `[^1]` with no colon
-# after it is the command's optional argument, as pandoc reads it, and `[x]:` an argument
-# before a definition's colon. Where one line could be read two ways, a line of a few
-# hundred items took minutes.
+# instruction; a TeX command, starred or not, with its bracketed arguments and then its
+# groups, three deep. The alternatives read any text one way only: a roman numeral has two
+# letters or more, since one is a letter's; a comment ends at its first `-->`; and a
+# command's name takes every letter, as TeX reads it. Pandoc takes brackets as a command's
+# argument only before its groups, `[^1]` included, colon or not: `\newpage[^1]: ---` is the
+# command, then text, and `\vspace{1em}[^x] ---` the command, then text. Where one line could
+# be read two ways, a line of a few hundred items took minutes.
 _GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
-_ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
+_ARGUMENT = r"\[[^\]\n]*\]"
 _OPENER_ITEM = (
     r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
     r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
     r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
-    r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*)"
+    r"(?:[ \t]*" + _ARGUMENT + r")*(?:[ \t]*" + _GROUP + r")*[ \t]*)"
 )
 _OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)
 
@@ -563,8 +563,8 @@ def rules_opening_blocks(text: str) -> list[int]:
     lines, where pandoc reads nothing but a thematic break, and a heading is written with
     `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
     pandoc starts a block behind either. A line in code, a comment or the front matter is
-    not read. A YAML block of the body is: its dashes are what is refused, and blanked with
-    it, as the heading reads blank it (#85), it passed `check`.
+    not read. A YAML block of the body is read: its dashes are what is refused. Blanked as
+    the heading reads blank it (#85), it passed `check`.
     """
     shown = scannable(text, metadata=False).split("\n")
     source = text.split("\n")

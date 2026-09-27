@@ -9910,6 +9910,57 @@ def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
 
 
 @needs_pandoc
+@pytest.mark.parametrize("ids", ["as-built", "localised"])
+@pytest.mark.parametrize("where", ["heading", "caption"])
+def test_a_heading_an_identifier_slid_onto_is_not_read_as_joined_away(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ids: str, where: str
+) -> None:
+    """Two paragraphs deleted in a row without Track Changes: the first leaves its identifier
+    on a heading that still reads as it was sent, the second on the heading or caption after
+    it, which is then edited to take in the first heading's words - "Funding and competing
+    interests". Whether a heading was joined into the second paragraph was read from the
+    headings missing before any identifier was taken off, so the first heading, carrying the
+    first paragraph's identifier, counted as gone, and the edit merged into the second
+    paragraph's slot. It is reported deleted."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    if where == "caption":
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "{{table.baseline}}",
+                "## Baseline characteristics\n\nTable 2 gives the reports by drug group.\n\n"
+                "{{table.baseline}}",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        first, second = "The database contained", "Table 2 gives the reports by drug group."
+        was, now = ">Reports by drug group.", ">Baseline characteristics by drug group."
+    else:
+        first, second = "The synthetic dataset", "This work received no funding."
+        was, now = ">Competing interests</w:t>", ">Funding and competing interests</w:t>"
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        for opening in (first, second):
+            (paragraph,) = [p for p in tagged_xml(xml) if f">{opening}" in p]
+            xml = _word_delete(xml, paragraph)
+        assert was in xml
+        return xml.replace(was, now, 1)
+
+    target = tmp_path / "slid-twice.docx"
+    reader = _localised if ids == "localised" else rewrite
+    returned = reader(document, target, edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before, out
+    assert f"deleted in Word, left in place here: {second}" in out, out
+
+
+@needs_pandoc
 def test_a_paragraph_restyled_as_a_heading_is_not_reported_deleted(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

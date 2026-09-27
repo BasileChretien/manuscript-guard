@@ -2130,6 +2130,113 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
     assert re.search(r"\[\]\{#mg-p-[^}]+\}After\.", tagged), "the prose after them keeps its"
 
 
+def _identified(text: str) -> dict[str, bool]:
+    """For each of the words Alpha to Omega that pandoc prints in the body of `tag(text)`,
+    whether the paragraph holding it carries an identifier. A word inside raw content, which
+    prints nothing, is left out."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    found: dict[str, bool] = {}
+    for block in json.loads(read.stdout)["blocks"]:
+        if block["t"] not in ("Para", "Plain"):
+            continue
+        printed = json.dumps([i for i in block["c"] if i["t"] != "RawInline"])
+        for word in ("Alpha", "Beta", "Gamma", "Omega"):
+            if word in printed:
+                found[word] = "mg-p-" in json.dumps(block)
+    return found
+
+
+BACKSLASH = chr(92)
+RAW_OPENERS = [
+    pytest.param("<!--", "-->", id="comment"),
+    pytest.param(BACKSLASH + "begin{x}", BACKSLASH + "end{x}", id="tex"),
+    pytest.param("<pre>", "</pre>", id="pre"),
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_an_escaped_raw_opener_opens_nothing(opener: str, closer: str, escapes: int) -> None:
+    """After an odd number of backslashes, `<!--`, `\\begin{x}` or `<pre>` is text to pandoc,
+    which prints it; `import` writes a `<!--` typed in Word so. `_blocks` took it for an
+    opener all the same, and its paragraph and every one up to the closer went without an
+    identifier, so a co-author's edit to them was not compared. On main too."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    assert _identified(text) == dict.fromkeys(("Alpha", "Beta", "Gamma", "Omega"), True)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 2])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_a_raw_opener_after_escaped_backslashes_still_opens(
+    opener: str, closer: str, escapes: int
+) -> None:
+    """After an even number, the backslashes escape each other and the opener opens: what
+    pandoc hides is not marked, and what follows the closer is."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+def test_an_escaped_tex_closer_closes_nothing() -> None:
+    """`\\\\end{x}` is a line break and the word "end" to LaTeX, so it closes no environment,
+    and pandoc reads the `\\begin{x}` above it as text. `_blocks` paired the two, and the
+    paragraphs between went without an identifier."""
+    text = (
+        f"Alpha {BACKSLASH}begin{{x}} opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * 2}end{{x}} here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert found["Beta"] and found["Gamma"] and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 1, 2])
+def test_an_escaped_comment_closer_still_closes(escapes: int) -> None:
+    """Inside a comment pandoc reads no escapes: `\\-->` closes it, whatever stands before."""
+    text = (
+        f"Alpha <!-- opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * escapes}--> here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(
+    "markup",
+    ["<div>", '<div class="x">', "</div>", "<table>", BACKSLASH + "begin{x}"],
+    ids=["div", "div-with-class", "div-closer", "table", "tex"],
+)
+def test_an_escaped_block_tag_leaves_its_paragraph_one(markup: str, escapes: int) -> None:
+    """Mid-line, a block-level tag or a LaTeX environment ends a paragraph, so a paragraph
+    holding one is left unmarked. Escaped, it is text, and the paragraph is one: `import`
+    writes a `<div>` typed in Word so, and the paragraph lost its identifier."""
+    text = f"Alpha {BACKSLASH * escapes}{markup} mid-line.\n\nOmega.\n"
+    assert _identified(text) == {"Alpha": True, "Omega": True}
+
+
 def test_tagged_paragraphs_names_what_tag_marks_at_the_right_offsets(project: Path) -> None:
     """`tag` writes the identifiers and `import` splices at the offsets `tagged_paragraphs`
     gives them. Sharing `_blocks` keeps the two lists the same; this pins that down, and
@@ -4716,7 +4823,138 @@ def test_reordered_list_items_are_not_called_a_match(
     assert "order" in out, out
     named = "~ First, the reports." in out or "~ Third, the events." in out
     assert named, "the reordered items are named, not only counted"
+    assert "somewhere else" not in out, "the swap is reported once, not also as a heading"
     assert source.read_text(encoding="utf-8") == before
+
+
+def test_text_that_came_back_out_of_order_is_reported_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A swap of list items was reported twice: as headings that came back somewhere else,
+    and as text that came back in a different order, each naming its own share of the items.
+    Once the untagged texts came back reordered, each out of place is named with them."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    plan = Plan(
+        reached=frozenset(),
+        order=(),
+        strayed=(("text", "First, the reports."), ("table", "")),
+        reordered=("Third, the events.",),
+    )
+    _report_plan(None, {}, plan, applying=False)
+    out = capsys.readouterr().out
+    elsewhere, _, in_order = out.partition("different order")
+    assert "a table" in elsewhere and "First, the reports." not in elsewhere, out
+    assert "~ First, the reports." in in_order and "~ Third, the events." in in_order, out
+
+    alone = Plan(reached=frozenset(), order=(), strayed=(("text", "Results"),))
+    _report_plan(None, {}, alone, applying=False)
+    assert "'Results'" in capsys.readouterr().out, "with nothing reordered it is still named"
+
+
+def test_a_heading_out_of_place_beside_a_long_reorder_is_still_named(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Named with the texts that came back in a different order, a heading out of place was
+    added after them, and that list prints its first twelve: beside a reversed list of
+    thirteen items, the heading dragged past a table was named nowhere. The report named it
+    before the two were put together."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Item {n:02d} of the list." for n in range(13, 0, -1))
+    plan = Plan(
+        reached=frozenset(), order=(), strayed=(("text", "Limitations"),), reordered=items
+    )
+    _report_plan(None, {}, plan, applying=False)
+    out = capsys.readouterr().out
+    assert "~ Limitations" in out, out
+    assert "and 1 more" in out, "a list cut short says so"
+
+
+def test_a_text_kept_in_order_is_not_cut_by_the_folded_ones(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Twelve lines were shared between the texts out of place and the rest, so with twelve
+    or more out of place a heading the ordering kept was cut, where it had been named."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Term {chr(ord('M') - n)} is listed." for n in range(13))
+    plan = Plan(
+        reached=frozenset(),
+        order=(),
+        strayed=tuple(("text", t) for t in items),
+        reordered=("Methods", *items[:-1]),
+    )
+    _report_plan(None, {}, plan, applying=False)
+    assert "~ Methods" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_heading_dragged_above_a_reversed_list_is_still_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: a list of thirteen reversed in Word, and the heading after it dragged
+    above it. The ordering keeps the heading and puts all thirteen items out of place, and
+    the heading was named nowhere."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    items = [f"Term {chr(ord('A') + n)} is listed." for n in range(13)]
+    block = "".join(f"- {t}\n" for t in items) + "\n"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("# Methods", block + "# Methods", 1),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def text(p: str) -> str:
+        return "".join(re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", p))
+
+    def edit(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        found = [next(p for p in paragraphs if text(p) == t) for t in items]
+        for n, p in enumerate(found):
+            xml = xml.replace(p, f"\0{n}\0", 1)
+        for n, p in enumerate(reversed(found)):
+            xml = xml.replace(f"\0{n}\0", p, 1)
+        heading = next(p for p in paragraphs if "Heading" in p and text(p) == "Methods")
+        xml = xml.replace(heading, "", 1)
+        return xml.replace(found[-1], heading + found[-1], 1)
+
+    returned = rewrite(document, tmp_path / "methods.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert re.search(r"^    (~ Methods|'Methods')$", out, re.M), out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_deleted_figure_is_not_followed_by_none_changed(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """After a deleted figure the closing note said "None outside a table changed" beside the
+    report that the figure could not be found: it only looked at paragraphs without an
+    identifier."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+
+    def edit(xml: str) -> str:
+        figure = re.search(r"<w:p>(?:(?!<w:p>).)*?<w:drawing>.*?</w:p>", xml, re.DOTALL)
+        assert figure, "the example has a figure"
+        return xml.replace(figure.group(0), "", 1)
+
+    returned = rewrite(document, tmp_path / "no-figure.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "could not be found" in out, out
+    assert "None outside a table changed" not in out, out
 
 
 @needs_pandoc
@@ -5770,6 +6008,59 @@ def test_a_display_equation_dragged_elsewhere_in_a_real_build_is_reported(
     assert "an equation" in capsys.readouterr().out
 
 
+@needs_pandoc
+@pytest.mark.parametrize(
+    "below",
+    ["$$x = y$$", "- $y = a x$", "> $e = m c$"],
+    ids=["display-maths", "a-list-item-of-maths", "a-quotation-of-maths"],
+)
+def test_a_paragraph_above_an_equation_in_a_real_build_is_reworded_and_moved(
+    project: Path, tmp_path: Path, below: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, because what Word shows as an equation block is pandoc's to decide: each
+    of these reaches Word as one, directly under the paragraph above it, and that paragraph
+    was held. Its rewording was refused with the display-maths reason, and a swap with the
+    paragraph before it was reported as a move into another section, exit 1 both times."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    anchor = "# Data availability"
+    added = f"Omega one opens.\n\nAbove the equation.\n\n{below}\n\n"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace(anchor, added + anchor, 1), encoding="utf-8")
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+
+    def paragraphs(xml: str) -> list[str]:
+        return re.findall(r"<w:p\b(?:(?!<w:p\b).)*?</w:p>", xml, re.DOTALL)
+
+    def reword(xml: str) -> str:
+        found = paragraphs(xml)
+        above = next(p for p in found if "Above the equation." in p)
+        assert "<m:oMath" in found[found.index(above) + 1], "an equation block follows it"
+        return xml.replace("Above the equation.", "Directly above the equation.", 1)
+
+    def swap(xml: str) -> str:
+        found = paragraphs(xml)
+        first = next(p for p in found if "Omega one opens." in p)
+        second = next(p for p in found if "Above the equation." in p)
+        return xml.replace(first, "\0", 1).replace(second, first, 1).replace("\0", second, 1)
+
+    returned = rewrite(document, tmp_path / "reworded.docx", reword)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0, capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before.replace(
+        "Above the equation.", "Directly above the equation.", 1
+    )
+
+    source.write_text(before, encoding="utf-8")
+    returned = rewrite(document, tmp_path / "swapped.docx", swap)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0, capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before.replace(
+        "Omega one opens.\n\nAbove the equation.", "Above the equation.\n\nOmega one opens.", 1
+    )
+
+
 def test_a_dragged_heading_that_shares_its_text_is_still_reported(tmp_path: Path) -> None:
     """Paired as a sequence, a dragged heading drops out of the sequence; paired afterwards
     only when its text was unique, a dragged "Outcome" with another "Outcome" in the paper
@@ -5847,31 +6138,68 @@ def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
     assert _held_in_place(known, {"p": para.split("\n")[0]}).get("p") in ("in-parts", "runs-on")
 
 
-def test_an_equation_after_a_paragraph_in_the_document_as_sent_holds_that_paragraph(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "para",
+    [
+        "Commands are quoted in backticks (\\`); the estimate is $$x = u / w$$ as in `metafor`.",
+        "Models were fitted with `glmer` from\n$$y = X b$$\nusing the `nlme`{.r} package.",
+        "Units ~~ $$x = y$$ ~~ after.",
+        "Display maths goes between `$$` signs.",
+        "The ratio is $$x = y$$",
+    ],
+    ids=[
+        "after-an-escaped-backtick",
+        "after-a-code-span",
+        "inside-strikeout",
+        "inside-code",
+        "at-the-end",
+    ],
+)
+def test_no_paragraph_with_dollars_in_it_carries_an_identifier(para: str) -> None:
+    """What let the rule that an equation directly after a paragraph belongs to it go. The
+    rule was for a paragraph whose `$$` a reading of its source missed, as one after an
+    escaped backtick; no such paragraph is tagged any more, wherever its `$$` stands."""
+    tagged = tag(f"Before.\n\n{para}\n\nAfter.\n", "main.md")
+    assert tagged.count("{#mg-p-") == 2 and para in tagged
+
+
+@pytest.mark.parametrize(
+    "below",
+    ["$$x = y$$", "- $y = a x$", "> $e = m c$"],
+    ids=["display-maths", "a-list-item-of-maths", "a-quotation-of-maths"],
+)
+def test_a_paragraph_above_an_equation_is_reworded_and_moved_like_any_other(
+    tmp_path: Path, below: str
 ) -> None:
-    """Display maths was only found by reading the source, and every reading of Markdown
-    short of pandoc's can miss one: an escaped backtick opened what was taken for a code
-    span, which swallowed the `$$`. The document as sent says it outright: an equation
-    directly after a paragraph is part of that paragraph, even at the end of its section."""
+    """Word shows display maths standing on its own, and a list item or quotation holding only
+    maths, as an equation block. One directly after a paragraph was taken for part of it, so
+    the paragraph was held although no paragraph with `$$` in it carries an identifier: its
+    rewording was refused, and a swap with the paragraph before it was reported as a move
+    into another section."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import apply_plan, plan_import
 
     path = tmp_path / "main.md"
-    text = "# A\n\nFirst paragraph.\n\nSecond, however it is written.\n\n# B\n\nBeta.\n"
+    text = f"# A\n\nFirst paragraph.\n\nSecond paragraph.\n\n{below}\n\n# B\n\nBeta.\n"
     path.write_text(text, encoding="utf-8")
-    words = {"p1": "First paragraph.", "p2": "Second, however it is written.", "b": "Beta."}
+    words = {"p1": "First paragraph.", "p2": "Second paragraph.", "b": "Beta."}
     known = {name: (path, w, text.index(w)) for name, w in words.items()}
     heading_a, heading_b = Block((), "A"), Block((), "B")
-    p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second,")
-    equation, tail = Block(kind="equation", key="x=y"), Block((), "however it is written.")
-    beta = Block(("b",), "Beta.")
-    sent = [heading_a, p1, p2, equation, tail, heading_b, beta]
+    p1, p2, beta = (Block((name,), w) for name, w in words.items())
+    equation = Block(kind="equation", key="x=y")
+    sent = [heading_a, p1, p2, equation, heading_b, beta]
 
-    plan = plan_import(known, sent, [heading_a, p2, p1, equation, tail, heading_b, beta])
-    assert plan.misplaced and not plan.moved
+    reworded = Block(("p2",), "Second paragraph, reworded.")
+    plan = plan_import(known, sent, [heading_a, p1, reworded, equation, heading_b, beta])
+    assert plan.merged == {"p2": "Second paragraph, reworded."} and not plan.refused
+
+    plan = plan_import(known, sent, [heading_a, p2, p1, equation, heading_b, beta])
+    assert plan.moved and not plan.misplaced
     apply_plan(known, plan)
-    assert path.read_text(encoding="utf-8") == text
+    swapped = text.replace(
+        "First paragraph.\n\nSecond paragraph.", "Second paragraph.\n\nFirst paragraph."
+    )
+    assert path.read_text(encoding="utf-8") == swapped
 
 
 def test_pandocs_no_break_space_taken_out_of_a_held_paragraph_is_no_edit(tmp_path: Path) -> None:
@@ -7137,6 +7465,34 @@ def test_import_keeps_an_inline_comment_and_footnote(
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     assert paragraph in text, "the paragraph, comment and footnote included, is untouched"
     assert "an HTML comment and a footnote" in out, out
+
+
+@needs_pandoc
+def test_a_comment_opener_typed_in_word_leaves_every_paragraph_identified(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end. A co-author types `<!--` into a paragraph, and the merge writes it
+    escaped, `\\<!--`, which pandoc prints as typed. The next build took it for a comment
+    opened there and closed by a `-->` further down, and the paragraphs between went without
+    an identifier: a co-author's next edit to them was dropped with "nothing came back"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import paragraph_text
+
+    with_paragraphs(
+        project, "Alpha comes first.", "Beta sits between.", "Gamma shows an arrow --> here."
+    )
+    # Written into document.xml, where Word stores a typed `<` as `&lt;`.
+    edits = {"Alpha comes first.": "Alpha comes first &lt;!-- as typed."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"Alpha comes first {BACKSLASH}<!-- as typed." in source
+    # Pandoc prints the `--` of `<!--` as a dash; the words are what is compared.
+    printed = list(paragraph_text(built(project)).values())
+    assert "Beta sits between." in printed
+    assert any(text.startswith("Gamma shows an arrow") for text in printed)
+    assert any(text.startswith("Alpha comes first <!") for text in printed)
 
 
 @needs_pandoc

@@ -62,6 +62,14 @@ _CUSTOM = "docProps/custom.xml"
 #: the first one's identifier named the new one, read the same, and took a co-author's
 #: ethics approval. So each paragraph's record also hashes the block before it.
 #:
+#: And the blocks without an identifier around it, up to the paragraphs on either side
+#: (`_beside_of`). `import` recognises a heading run into a paragraph in Word by the heading
+#: beside it in the source now, which is the one the co-author had only if none of those
+#: changed since the build. A heading written straight above a paragraph, with no blank
+#: line, shares its block and the text hash starts after it, and one past a comment or at
+#: the top of the next file is beside it in Word though not in the file: renamed or removed
+#: since, each was in no hash, and the run-in merged.
+#:
 #: Split over several properties, each short of 255 characters, which Word may cut a text
 #: property to when it saves.
 PARAGRAPHS_PROPERTY = "manuscript-guard-paragraphs"
@@ -124,14 +132,19 @@ _PROPERTY_ELEMENT = re.compile(r"<property\b[^>]*>.*?</property>", re.DOTALL)
 _BUILD_INPUTS = ("bibliography", "csl")
 
 
-def _recorded_as(text: str, before: str) -> str:
+def _recorded_as(text: str, before: str, beside: str | None = None) -> str:
     """What the record keeps of one paragraph: `<hash of its text>.<hash of the block
-    before it>`."""
-    ours = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
-    return f"{ours}.{hashlib.sha256(before.encode('utf-8')).hexdigest()[:6]}"
+    before it>.<hash of the blocks without an identifier around it>` (`_beside_of`), the last
+    left out when `beside` is None, as releases before it wrote it."""
+
+    def hashed(what: str, length: int) -> str:
+        return hashlib.sha256(what.encode("utf-8")).hexdigest()[:length]
+
+    recorded = f"{hashed(text, 8)}.{hashed(before, 6)}"
+    return recorded if beside is None else f"{recorded}.{hashed(beside, 6)}"
 
 
-_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6})")
+_ENTRY = re.compile(r"(\d+)\.([0-9a-f]{8}\.[0-9a-f]{6}(?:\.[0-9a-f]{6})?)")
 
 
 def _encoded(paragraphs: dict[str, str]) -> list[str]:
@@ -192,12 +205,19 @@ def _custom_properties(
     return _CUSTOM_XML.format(properties="".join(numbered))
 
 
+#: Pandoc's reference document tells Word not to record a move as a move. With Track Changes
+#: on, a paragraph cut and pasted then came back as a deletion and an unrelated insertion,
+#: without the one piece of markup - a name shared by the two places - that says which
+#: paragraph arrived where. Word records moves by default; the setting only takes that away.
+_NO_MOVES = re.compile(r"<w:doNotTrackMoves\b[^>]*/>")
+
+
 def stamp_into(
     document: Path, digest: str, paragraphs: dict[str, str] | None = None
 ) -> None:
     """Record the source digest inside the .docx itself, and what each paragraph
     identifier named when `paragraphs` is given: `paragraph_record`, restricted to the
-    paragraphs this document carries and in their order.
+    paragraphs this document carries and in their order. And let Word record moves.
 
     The sidecar `.source.sha256` tells *this* machine whether its own build is current. It
     cannot survive an email, and a document coming back from a co-author is precisely the
@@ -222,9 +242,28 @@ def stamp_into(
                     "</Relationships>", _CUSTOM_REL + "</Relationships>"
                 )
                 data = data.encode("utf-8")
+            elif item.filename == "word/settings.xml":
+                data = _NO_MOVES.sub("", data.decode("utf-8")).encode("utf-8")
             zout.writestr(item, data)
         zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs))
     scratch.replace(document)
+
+
+def records_moves(document: Path) -> bool:
+    """Whether Word was free to record a move as a move in this document.
+
+    A document built before the build removed pandoc's setting still asks Word not to, and
+    every paragraph moved in it comes back as a deletion and new text. The document says so
+    itself, which a version number printed nowhere in it could not.
+    """
+    try:
+        with zipfile.ZipFile(document) as archive:
+            if "word/settings.xml" not in archive.namelist():
+                return True
+            settings = archive.read("word/settings.xml").decode("utf-8", "replace")
+    except (OSError, zipfile.BadZipFile):
+        return True
+    return _NO_MOVES.search(settings) is None
 
 
 def stamp_of(document: Path) -> str | None:
@@ -320,11 +359,15 @@ GENERATED = re.compile(r"\{\{|\[@")
 
 #: An invisible per-paragraph identifier, carried into the .docx as a Word bookmark.
 #:
-#: Pandoc emits `[]{#id}` as `w:bookmarkStart`, which is invisible, survives editing, and
-#: travels with a paragraph when somebody cuts and pastes it. That makes "which source
-#: paragraph is this" an exact question rather than a similarity score — and it makes moves
-#: tractable, which similarity matching never could: a moved paragraph and a deleted one
-#: followed by an inserted one look identical to a diff.
+#: Pandoc emits `[]{#id}` as `w:bookmarkStart`, which is invisible and survives editing.
+#: That makes "which source paragraph is this" an exact question rather than a similarity
+#: score for every paragraph left where it was.
+#:
+#: It does *not* travel with a paragraph Word cuts and pastes, which is what this comment
+#: used to promise. The bookmark is empty, and Word leaves an empty bookmark where it was:
+#: in the moved-from copy with Track Changes on, on the next paragraph without. So a move is
+#: read from Word's record of it (`docxtext._settled`), and one Word did not record is
+#: refused as a move rather than guessed at from the text.
 #:
 #: Pandoc does *not* read bookmarks back into markdown, so they are read from
 #: `word/document.xml` directly.
@@ -564,6 +607,25 @@ def _unescaped(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
     )
 
 
+def splits_a_paragraph(text: str) -> str | None:
+    """What in `text` ends a paragraph, or sets part of it apart in Word, wherever in the
+    paragraph it stands; None if nothing does.
+
+    Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag, mid-line too,
+    and carries on with a raw block, unless it is escaped. Display maths stays in the
+    paragraph for pandoc's reader, and its Word writer gives it a paragraph of its own. A
+    paragraph whose source holds any of them gets no identifier (`_untagged`). A binding's
+    value is substituted after that, so G2 asks the same of every value a paragraph prints.
+    """
+    if _unescaped(_TEX_ENVIRONMENT, text) is not None:
+        return "a LaTeX environment"
+    if _unescaped(_HTML_BLOCK_TAG, text) is not None:
+        return "an HTML block tag"
+    if "$$" in text:
+        return "display maths"
+    return None
+
+
 # A comment, a declaration, a processing instruction. Opening a block only: inside a
 # paragraph a comment is inline and the paragraph survives.
 _HTML_LEAD = re.compile(r" {0,3}<[!?]")
@@ -629,14 +691,11 @@ def _untagged(block: str) -> bool:
         # A heading, which a marker would unmake. Only as pandoc reads one: `#Methods` and
         # ` # Methods` are paragraphs, and went unmarked when any `#` did.
         _ATX_OPENS.match(block) is not None
-        # Pandoc ends a paragraph at a LaTeX environment or a block-level HTML tag wherever
-        # it opens, mid-line too, and carries on with a raw block - unless it is escaped.
-        or _unescaped(_TEX_ENVIRONMENT, stripped) is not None
-        or _unescaped(_HTML_BLOCK_TAG, stripped) is not None
-        # One paragraph to pandoc's reader and three to its Word writer, which gives display
-        # math a paragraph of its own: the bookmark stayed on the words before the equation,
-        # and `import` spliced them over the equation and everything after it.
-        or "$$" in stripped
+        # A LaTeX environment or a block-level HTML tag, wherever it opens, or display maths:
+        # one paragraph to pandoc's reader and three to its Word writer, which gives the
+        # equation a paragraph of its own. The bookmark stayed on the words before it, and
+        # `import` spliced them over the equation and everything after it.
+        or splits_a_paragraph(stripped) is not None
         # A brace group left open runs on across the blank line when it is raw TeX -
         # `\footnote{In one analysis.\n\nAnd in another.}` is one paragraph - so neither half
         # is the paragraph the bookmark lands in.
@@ -1139,6 +1198,33 @@ def _continues_a_note(line: str, under_label: bool) -> bool:
     )
 
 
+def _term_under_a_note(block: str, above: str) -> bool:
+    """Whether a block is a note's label with a definition list's `:` or `~` directly under
+    it - with text, a space or tab, or alone, indented up to three spaces - which pandoc
+    reads as a definition list: the label its term, the rest its definition. `above` is what
+    `_around` gives.
+
+    Neither part is a note, but each is read by itself all the same, the term as one line of
+    inline text and the definition as blocks of its own, so a `<!--` or a `<pre>` in either
+    opens nothing beyond them. Followed on, a comment opened in the label hid the paragraphs
+    below up to the next `-->`, while pandoc printed them.
+
+    Only the two lines, the label and the definition's, with nothing after them in the
+    block. A lazy line of the definition ends where pandoc starts something else - a code
+    fence, a list's first item, the close of a div or of any tag it takes for a block around
+    the block - and what follows it is at the top level, where a comment opened hides what
+    is below it. Two review rounds each found another such line that a list of them had
+    missed, and taken for a term's by itself, the paragraphs in the comment were marked. A
+    longer block is followed as any is."""
+    lines = block.strip("\n").split("\n")
+    return (
+        _blank_above(above)
+        and len(lines) == 2
+        and _NOTE_LINE.fullmatch(lines[0]) is not None
+        and _DEFINITION.match(lines[1]) is not None
+    )
+
+
 def _blank_below(below: str) -> bool:
     """Whether the next block starts afresh after a note. `below` is what separates them
     and the next block's first line, empty at the end of the text.
@@ -1293,9 +1379,10 @@ def _blocks(text: str) -> Iterator[tuple[int, str, int | None]]:
         # link's title, opens nothing beyond it. Followed on, it hid every paragraph after the
         # note up to the next `-->`, while pandoc printed them all.
         definitions = apart and _definitions(piece, *_around(pieces, index))
+        term = apart and _term_under_a_note(piece, _around(pieces, index)[0])
         # From the block's own first character, indentation included: `  <pre>` opens a
         # line, and a search starting at the `<` cannot see that it does.
-        runs_on = 0 if definitions else _raw_end(text, origin, end, closers)
+        runs_on = 0 if definitions or term else _raw_end(text, origin, end, closers)
         closer = None if definitions else ruled.end(index)
         if closer is not None:
             runs_on = max(runs_on, ends[closer])
@@ -1418,22 +1505,25 @@ def identified(
     return [(name, text, start) for name, text, start, _before in _walk(raw, relative, front)]
 
 
+def _body(raw: str, front: re.Pattern[str] | None = None) -> str:
+    """The text of a source file that is tagged: without its front matter, stripped exactly
+    as `assemble` strips it before tagging. Indexing the raw source while the document was
+    tagged from the stripped text put every identifier one block out of step - the two must
+    read the same string or the identifier stops naming anything."""
+    if front is not None:
+        found = front.match(raw)
+        return raw[found.end() :].lstrip("\n") if found else raw
+    from manuscript_guard.build.assemble import strip_front_matter
+
+    return strip_front_matter(raw)[0]
+
+
 def _walk(
     raw: str, relative: str, front: re.Pattern[str] | None = None
 ) -> list[tuple[str, str, int, str]]:
     """`identified`, with the text of the block before each paragraph: a heading, a
     paragraph, anything but blank lines, or nothing at the top of the file."""
-    # Front matter stripped, exactly as `assemble` strips it before tagging. Indexing the
-    # raw source here while the document was tagged from the stripped text put every
-    # identifier one block out of step - the two must read the same string or the
-    # identifier stops naming anything.
-    if front is not None:
-        found = front.match(raw)
-        text = raw[found.end() :].lstrip("\n") if found else raw
-    else:
-        from manuscript_guard.build.assemble import strip_front_matter
-
-        text, _title = strip_front_matter(raw)
+    text = _body(raw, front)
     slug = paragraph_slug(relative)
     # Offsets are into the file on disk, not into the stripped copy: the merge splices into
     # the real file, and a paragraph would land one front matter earlier.
@@ -1451,12 +1541,52 @@ def _walk(
     return out
 
 
+def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
+    """For each paragraph, the blocks without an identifier on either side of it, up to the
+    paragraphs before and after it in its document: headings, captions, tables, comments,
+    link definitions, a heading written straight above a paragraph with no blank line.
+
+    Across files, because the main text's files are one document and the supplement's
+    another, so the heading opening the next file stands directly under the last paragraph
+    of this one in Word; in the order the build prints them (`printed_order`). Only what has
+    no identifier: a paragraph reworded beside it could not have been a heading the
+    co-author ran into it.
+    """
+    from manuscript_guard.gates.numbers import SUPPLEMENTARY, printed_order
+
+    around: dict[str, str] = {}
+    for supplement in (False, True):
+        files = {
+            path: (relative, raw)
+            for path, relative, raw in sources
+            if relative.startswith(f"{SUPPLEMENTARY}/") == supplement
+        }
+        names: list[str] = []
+        runs: list[list[str]] = [[]]
+        for path in printed_order(list(files), supplementary=supplement):
+            relative, raw = files[path]
+            slug = paragraph_slug(relative)
+            for index, para, at in _blocks(_body(raw)):
+                shown = (para if at is None else para[:at]).strip()
+                if shown:
+                    runs[-1].append(shown)
+                if at is not None:
+                    names.append(_TAG.format(slug=slug, index=index))
+                    runs.append([])
+        for position, name in enumerate(names):
+            around[name] = repr((runs[position], runs[position + 1]))
+    return around
+
+
 def paragraph_record(project) -> dict[str, str]:
-    """What the build records of each paragraph, `{identifier: <text>.<before>}`: a hash of
-    its text and one of the block before it. See `PARAGRAPHS_PROPERTY`."""
+    """What the build records of each paragraph, `{identifier: <text>.<before>.<around>}`:
+    a hash of its text, one of the block before it, and one of the blocks without an
+    identifier around it (`_beside_of`). See `PARAGRAPHS_PROPERTY`."""
+    sources = _sources(project)
+    around = _beside_of(sources)
     return {
-        name: _recorded_as(text, before)
-        for _path, relative, raw in _sources(project)
+        name: _recorded_as(text, before, around[name])
+        for _path, relative, raw in sources
         for name, text, _start, before in _walk(raw, relative)
     }
 
@@ -1504,6 +1634,12 @@ class Numbering:
     #: value, which releases before 0.2.49 did not tag. Left out of `trusted`, since the
     #: document may never have carried them; one it does carry is trusted after all.
     unsure: frozenset[str] = frozenset()
+    #: Trusted identifiers whose paragraph stands among other blocks without an identifier
+    #: than at the build (`_beside_of`): a heading, caption, table or comment beside it changed
+    #: since. A heading run into one in Word cannot be recognised by the heading beside it
+    #: now, so no rewording is merged into it. Known only of a document that records them,
+    #: as releases from this one do.
+    beside_changed: frozenset[str] = frozenset()
 
 
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
@@ -1523,12 +1659,25 @@ def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
         was = recorded.get(name)
         if was is None:
             continue
-        ours, _, before = value.partition(".")
-        ours_then, _, before_then = was.partition(".")
+        ours, before = value.split(".")[:2]
+        ours_then, before_then = was.split(".")[:2]
         once = then[(_slug_of(name), ours)] == 1 and since[(_slug_of(name), ours)] == 1
         if ours == ours_then and (before == before_then or once):
             trusted.add(name)
     return frozenset(trusted)
+
+
+def _beside_changed(
+    recorded: dict[str, str], now: dict[str, str], trusted: frozenset[str]
+) -> frozenset[str]:
+    """Those of `trusted` with other blocks without an identifier around them than at the
+    build (`Numbering.beside_changed`), of a document that records them."""
+    changed = set()
+    for name in trusted:
+        then = recorded[name].split(".")
+        if len(then) == 3 and then[2] != now[name].split(".")[2]:
+            changed.add(name)
+    return frozenset(changed)
 
 
 def numbering(project, document: Path, *, stale: bool) -> Numbering:
@@ -1544,10 +1693,13 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     known = tagged_paragraphs(project)
     recorded = paragraphs_of(document)
     if recorded is not None:
+        now = paragraph_record(project)
+        trusted = _trusted(recorded, now)
         return Numbering(
-            trusted=_trusted(recorded, paragraph_record(project)),
+            trusted=trusted,
             recorded=True,
             sent=tuple(recorded),
+            beside_changed=_beside_changed(recorded, now, trusted),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.
@@ -2118,6 +2270,9 @@ def _opened(text: str, whole: bool = True) -> str:
     gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
     rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
     `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
+    Only one of these applies, the first that does, so a rule that opens with `|` or a
+    colon is escaped there alone: `|---|` prints as `|—|` and `:---:` as `:—:`, pandoc's
+    usual typesetting of the dashes.
     """
     if block := _OPENER.match(text):
         at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
@@ -2658,6 +2813,10 @@ def align(
     # A stretch kept from the source keeps its braces bare, and one written from Word has
     # them escaped, so a pair with one half on each side of a token no longer pairs. The
     # paragraph would build without an identifier, and its next edit could not come back.
+    # Writing Word's half bare again is not safe: next to a `]`, a `)`, a `>`, a value or a
+    # kept `{`, a bare brace completes what pandoc reads as attributes, and three review
+    # rounds of #90 each found such a shape that printed wrong text and passed `check`
+    # (`[a [b] c]{k={{results.x}}}` printed without its value). So the rewording is refused.
     if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
         return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):

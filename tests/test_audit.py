@@ -31,10 +31,13 @@ MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 
-def make_docx(path: Path, body: str) -> Path:
+def make_docx(path: Path, body: str, styles: str = "") -> Path:
     document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+        if styles:
+            part = f"<w:styles {NS}>{styles}</w:styles>"
+            archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), part)
     return path
 
 
@@ -307,6 +310,30 @@ def test_an_emoji_word_inserted_is_read_from_the_choice(
     )
     body = f"<w:p><w:r><w:t>12</w:t></w:r>{emoji}<w:r><w:t>34</w:t></w:r></w:p>"
     assert read_docx(make_docx(tmp_path / "e.docx", body)) == f"\n12{shown}34"
+
+
+GREEK_STYLE = (
+    '<w:style w:type="character" w:styleId="Greek"><w:name w:val="Greek"/>'
+    '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:style>'
+)
+
+
+@pytest.mark.parametrize(
+    ("run", "styles"),
+    [
+        ('<w:r><w:sym w:font="Symbol" w:char="F06D"/></w:r>', ""),
+        ('<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr><w:t>m</w:t></w:r>', ""),
+        (f"<w:r><w:rPr><w:rFonts w:hAnsi=\"Symbol\"/></w:rPr><w:t>{chr(0xF06D)}</w:t></w:r>", ""),
+        ('<w:r><w:rPr><w:rStyle w:val="Greek"/></w:rPr><w:t>m</w:t></w:r>', GREEK_STYLE),
+    ],
+    ids=["inserted", "typed", "typed-private-use", "from-a-style"],
+)
+def test_the_symbol_font_is_read_as_what_it_draws(tmp_path: Path, run: str, styles: str) -> None:
+    """Insert > Symbol writes the μ of the Symbol font as `w:sym`, which the reader knew only
+    for the five characters that stand beside a number, and read as a space otherwise. Typed
+    in that font it is an `m`, or the private-use U+F06D, which Word draws as μ."""
+    body = f'<w:p><w:r><w:t xml:space="preserve">5 </w:t></w:r>{run}<w:r><w:t>g</w:t></w:r></w:p>'
+    assert read_docx(make_docx(tmp_path / "s.docx", body, styles)) == f"\n5 {chr(0x03BC)}g"
 
 
 def test_a_file_that_is_not_a_docx_says_so(tmp_path: Path) -> None:
@@ -1147,9 +1174,9 @@ def attribute_blocks(n: int) -> list[str]:
 
 def attribute_values(n: int) -> list[str]:
     """More of them, each a `k=` value whose reading costs more per character past a size
-    that falls between the two a ratio compares: from 400 to 3,200 characters, or 1,600 to
-    12,800, they read 10 to 21 times the time while linear. So a budget holds them, and the
-    ratio does not."""
+    that falls between the two a ratio compares: from n = 400 to 3,200, or 1,600 to 12,800,
+    they read 5 to 90 times the time while linear, often past a quadratic's 64. So a budget
+    holds them, and the ratio does not."""
     return [
         '# References {k="' + "a" * 2 * n + " !}",
         '# References {k="' + '\\"' * n + " !}",

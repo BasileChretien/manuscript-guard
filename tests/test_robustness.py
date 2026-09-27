@@ -187,6 +187,78 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear)
         )
 
 
+def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear) -> None:
+    """Code spans were found with a pattern that retried from every position inside a run
+    of backticks: one line of 20,000 took seven seconds to read for comments."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def backticks(count: int) -> str:
+        return "# Results\n\nSee " + "`" * count + " there.\n"
+
+    assert_linear(backticks, unclear_fence_lines, 5000, "a long run of backticks")
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        lambda count: "<pre>\n" + "<pre " * count,
+        lambda count: "\\begin{a}\n" + "\\begin{a}" * count,
+        lambda count: "".join(f"\\begin{{e{i}}}\\end{{e{i}}}" for i in range(count)),
+    ],
+    ids=["tags", "environments", "distinct names"],
+)
+def test_marks_inside_a_raw_block_are_read_in_linear_time(block, assert_linear) -> None:
+    """Inside a raw block, its closer and another of its name were each searched for from
+    the last mark to the end of the line, mark by mark: a line of 300,000 characters took
+    eighteen seconds. Every mark on a line is now found in one pass."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def raw(count: int) -> str:
+        return "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
+
+    assert_linear(raw, unclear_fence_lines, 4000, "marks inside a raw block")
+
+
+def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
+    """A run of openers each one backtick narrower than the last, with no closer: skipping
+    only openers at least as wide as one known unclosed, each read to the end of the text,
+    and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
+    read from the end once."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def openers_over(lines: int) -> str:
+        return "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+
+    def read(text: str) -> None:
+        fenced_spans(text)
+        unclear_fence_lines(text)
+
+    assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
+
+
+def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
+    """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
+    backslash before each newline read as an escape, took every opener to the end of the
+    text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
+    attributes on its own line and refuse the rest, so doubling the input must not much
+    more than double the time, and the refusal is read in the same pass."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def attributes(count: int) -> str:
+        return (
+            "```{k=a\\\n" * count
+            + "```{.r\n"
+            + ".x k=v\n" * count
+            + "".join(f"```{{k='{i}\n" for i in range(count))
+        )
+
+    def read(text: str) -> None:
+        fenced_spans(text)
+        unclear_fence_lines(text)
+
+    assert_linear(attributes, read, 4000, "unclosed attributes")
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the
@@ -406,6 +478,81 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         assert gc.isenabled()
     finally:
         gc.enable()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "<!-- never closed\n", "Prose\n## Methods\n", "- item\n> quote\n| row |\n", "<div>\n",
+        "<>" * 25,
+    ],
+    ids=[
+        "unclosed comments", "paragraph and heading", "list quote row", "html divs",
+        "one line of tags",
+    ],
+)
+def test_the_heading_scan_is_linear(line: str, assert_linear) -> None:
+    """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s
+    for 20,000 such lines, and the heading scan runs once per file in G2, `explain` and the
+    classifier's heading rules alike."""
+    from manuscript_guard.text.blocks import find_headings
+
+    def lines(count: int) -> str:
+        return line * count
+
+    assert_linear(lines, find_headings, 2000, "the heading scan")
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["# a" + " " * 3000 + "x\n", ":" * 3000 + " x y\n", "::: a" + ":" * 10000 + " y\n"],
+    ids=["heading line of spaces", "line of colons", "colons after a div's class"],
+)
+def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
+    """Two patterns backtracked on one line: the ATX heading's title and closing hashes, and
+    a div fence's colons and class. A heading line holding 2,000 spaces took 67 s, and 1,000
+    colons 20 s, in a command that reads every line of a file someone sent."""
+    from manuscript_guard.text.blocks import find_headings, heading_shaped
+
+    started = time.perf_counter()
+    find_headings(line)
+    heading_shaped([line])
+    assert time.perf_counter() - started < 2.0
+
+
+def test_the_section_chain_is_looked_up_not_rebuilt(assert_linear) -> None:
+    """`chain_at` walked every heading before a number, for every number: 4,000 headings and
+    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry.
+    The index is built off the clock; only the lookups are timed."""
+    from manuscript_guard.text.sections import chain_at, heading_index
+
+    def parts(count: int) -> tuple[list, range]:
+        text = "".join(f"## Part {i}\n\nValues 1, 2 and 3.\n\n" for i in range(count))
+        return heading_index(text), range(0, len(text), max(1, len(text) // (3 * count)))
+
+    def look_up(given: tuple[list, range]) -> None:
+        index, offsets = given
+        for offset in offsets:
+            chain_at(index, offset)
+
+    assert_linear(parts, look_up, 250, "the section chain at every offset")
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [" *_" * 3000 + " x", " " * 9000 + "x"],
+    ids=["emphasis marks", "spaces"],
+)
+def test_a_long_heading_title_does_not_stall_the_methods_check(tail: str) -> None:
+    """`is_methods` reads every title in a number's chain, for every number and every rule
+    that holds only in Methods. The patterns that trimmed a title's emphasis and attribute
+    block backtracked from every character of a run of spaces or marks: a heading ending in
+    1,000 ` *_` over five numbers took G2 36 s."""
+    from manuscript_guard.classify import is_methods
+
+    started = time.perf_counter()
+    is_methods(("Outcomes" + tail, "Methods"))
+    assert time.perf_counter() - started < 0.5
 
 
 @pytest.mark.parametrize(

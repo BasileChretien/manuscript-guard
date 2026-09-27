@@ -20,6 +20,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
     fenced_blocks,
     front_matter_abstract,
@@ -85,6 +86,18 @@ def is_supplementary(manuscript_dir: Path, path: Path) -> bool:
     return len(parts) > 1 and parts[0] == SUPPLEMENTARY
 
 
+def printed_order(paths: list[Path], *, supplementary: bool) -> list[Path]:
+    """The files of one document in the order the build prints them: the supplement's by
+    file name, the main text's with `main.md` first and the rest by file name, whatever
+    their paths sort as. Shared with the paragraph record, which reads what stands beside a
+    paragraph across the files: read in path order, `1_methods.md` came before `main.md`,
+    and the heading opening it was beside no paragraph it stands beside in Word."""
+    if supplementary:
+        return sorted(paths, key=lambda path: path.name)
+    main = [path for path in paths if path.name == "main.md"]
+    return main + sorted((path for path in paths if path.name != "main.md"), key=lambda p: p.name)
+
+
 def check_numbers(
     project: Project,
     namespace: dict[str, Value],
@@ -147,6 +160,20 @@ def check_numbers(
                         line=placeholder.line,
                         col=placeholder.col,
                         hint=_nearest_hint(placeholder.ref, namespace),
+                    )
+                )
+            elif placeholder.is_value and (what := _splits(namespace[placeholder.ref])):
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="value-splits-paragraph",
+                        message=f"{placeholder.raw} prints {what} into its paragraph, where "
+                        f"it can break the paragraph in parts in Word",
+                        path=path,
+                        line=placeholder.line,
+                        col=placeholder.col,
+                        hint="a value is printed inside a sentence; write what it holds in the "
+                        ".md, as a block of its own, and bind only the numbers in it",
                     )
                 )
 
@@ -456,6 +483,21 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                 )
             )
     return report
+
+
+def _splits(value: Value) -> str | None:
+    """What in a value's display would break the paragraph that prints it; None if nothing.
+
+    Identifiers are given to the source before bindings are substituted, and a paragraph whose
+    source holds display maths gets none (`roundtrip.splits_a_paragraph`). A value printing
+    `$$y = 2.1 x$$` put it into a paragraph that had one: pandoc gave the equation a Word
+    paragraph of its own, only the part before it carried the identifier, and a co-author's
+    swap of that part moved the whole sentence in the .md. A line break is refused too: what
+    can start on the next line - a blank line, a fence, a `<div>` - ends the paragraph there.
+    """
+    if "\n" in value.display or "\r" in value.display:
+        return "a line break"
+    return splits_a_paragraph(value.display)
 
 
 def _prose_as_value(namespace: dict[str, Value], referenced: set[str]) -> Report:

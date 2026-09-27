@@ -9431,6 +9431,33 @@ def test_a_move_that_pushes_a_note_into_a_definitions_place_holds_its_section(
 
 
 @needs_pandoc
+def test_a_move_across_a_definition_that_strands_a_note_holds_its_section(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A move may cross a link's definition within a section (#64), and none may leave a
+    paragraph the next build would not identify (#69). The two meet here. Swapped in Word
+    with the paragraph above it, the note marked for the indented block below it crossed
+    `[reg]: ...` and landed over it, where the next build reads a note and prints nothing.
+    The section is held, nothing is written, and the move named is the note's."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project, "Doses were capped.[^cap]", "Alpha comes first.", f"[reg]: {REGISTRY}", NOTE,
+        RUNS_INTO,
+    )
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    returned = rewrite(built(project), tmp_path / "moved.docx", swapped("Alpha comes", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert f"without its identifier:\n    {NOTE}\n    Not applied" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
 def test_the_other_changes_beside_a_refused_move_are_applied(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -9514,6 +9541,24 @@ def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -
     plan = plan_import(known, sent, [sent[1], sent[0]])
     assert plan.held == {"a", "n"}
     assert dict(plan.held_back) == {"n": "n"}
+    assert not plan.moved and not plan.refused
+    apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_move_that_pushes_a_note_across_a_definition_is_held(tmp_path: Path) -> None:
+    """The plan, without pandoc. The section's first paragraph, moved below the note, pushes
+    the note, which nobody moved, up across `[reg]: ...` into a place over the definition,
+    where the next build would read a note. The section is held; the move named is the one
+    made, with the note it would strand; applying the plan writes nothing."""
+    from manuscript_guard.merge import apply_plan
+
+    text = f"Doses were capped.[^cap]\n\nAaa first.\n\n[reg]: {REGISTRY}\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source, known, plan = _plan_of(
+        tmp_path, text, lambda by: [by["Aaa"], by["[^cap]:"], by["Doses"]]
+    )
+    assert plan.held == {"Doses", "Aaa", "[^cap]:"}
+    assert dict(plan.held_back) == {"Doses": "[^cap]:"}
     assert not plan.moved and not plan.refused
     apply_plan(known, plan)
     assert source.read_text(encoding="utf-8") == text

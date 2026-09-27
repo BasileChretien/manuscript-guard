@@ -2934,13 +2934,32 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
         # its closer, is the comment's, and pandoc prints none of it.
         f"<!-- An earlier model:\n\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
         f"<!--\n{_TICKS}r\nx\n{_TICKS}\n\n{_TICKS}python\ny\n{_TICKS}\n-->\n",
-        f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
     ],
 )
 def test_a_plain_fence_is_not_refused(block: str) -> None:
     from manuscript_guard.text.fences import unclear_fence_lines
 
     assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "<!--\n~~~r\nx\n~~~\n-->\n",
+        f"<!--\n- Fit the model:\n\n  {_TICKS}r\n  x\n  {_TICKS}\n-->\n",
+        f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
+    ],
+    ids=["tilde-under-comment", "in-a-list-item", "under-text-opening-it"],
+)
+def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
+    """Known gaps: pandoc prints nothing of these, and they are refused. A listing a comment
+    holds is let be only where pandoc would read it as the gates do without the comment,
+    and a backtick fence not apart only straight under a `<!--` that starts its line: under
+    any line of text, a footnote's or a list item's took the fence in, and pandoc printed
+    the claim after it (round 3's review of #71)."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
 
 
 def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:

@@ -2947,12 +2947,19 @@ Closed since, and why each mattered:
   and a comment on one line, in the fence reader, which reads before any comment is known.
   So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
   which is accepted.
-- **Two more listings commented out whole are refused.** A tilde listing straight under the
-  `<!--` line, and a listing inside a commented-out list item. Pandoc prints nothing of
-  either, and #65's build did. A listing a comment holds is let be only where pandoc would
-  read it as the gates do without the comment, and neither is: a tilde fence does not open
+- **Three more listings commented out whole are refused.** A tilde listing straight under
+  the `<!--` line; a listing inside a commented-out list item; and a backtick listing
+  straight under a line of text that opens the comment, `Text <!-- aside`. Pandoc prints
+  nothing of any, and #65's build did. A listing a comment holds is let be only where
+  pandoc would read it as the gates do without the comment: a tilde fence does not open
   under a line of text, and a list item's listing ends at pandoc's closer, not the gates'.
-  A blank line under `<!--`, or the listing moved out of the item, is accepted.
+  A backtick fence does open under a line of text, but under a footnote's line, or a list
+  item's with more than one, pandoc took it into the note or the item, ended it at an
+  indented closer and printed the claim after it; so one is held only straight under a
+  `<!--` that starts its line, with a blank line, the file's start or a listing's closer
+  above it (the third round of review). A
+  blank line under `<!--`, `<!--` on a line of its own after a blank line, or the listing
+  moved out of the item, is accepted.
 - **A fence's attribute letters are Python's Unicode, not pandoc's.** A class or a key
   starts with a letter, and pandoc 3.9 knows Unicode 15.1. Python 3.10 knows 13.0, 3.11
   14.0, 3.12 15.0 (622 letters short, CJK Extension I), 3.13 15.1, and 3.14 16.0. On an

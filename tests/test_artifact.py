@@ -51,6 +51,27 @@ def test_the_built_document_says_what_the_manuscript_says(project: Path) -> None
 
 
 @needs_pandoc
+def test_front_matter_closed_by_dots_keeps_the_introduction(project: Path) -> None:
+    """YAML closes a header with `...` as well as `---`. The build looked only for `---`, so
+    it ran on to the next `---` in the file, a horizontal rule, and the Introduction between
+    the two never reached the document. Nothing said so."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    lines = source.read_text(encoding="utf-8").split("\n")
+    closing = lines.index("---", 1)
+    lines[closing] = "..."
+    lines.insert(lines.index("# Methods"), "---\n")
+    source.write_text("\n".join(lines), encoding="utf-8")
+
+    assert main(["build", str(project), "--offline"]) == 0
+    text = visible(project / "build" / "manuscript.docx")
+    assert "Introduction" in text, "the Introduction heading is missing"
+    assert "remains among the commonest reasons" in text, "the Introduction's text is missing"
+    assert "Methods" in text
+
+
+@needs_pandoc
 def test_the_built_document_contains_its_tables_and_figure(project: Path) -> None:
     from manuscript_guard.cli import main
 
@@ -108,6 +129,118 @@ def test_a_built_document_can_be_brought_back(project: Path) -> None:
     order = paragraph_order(document)
     assert len(order) > 5, f"only {len(order)} paragraphs are identifiable"
     assert len(set(order)) == len(order), "identifiers must be unique"
+
+
+BLOCKS = """\
+The analysis rests on three steps:
+
+- Reports were deduplicated by case identifier.
+- Suspected drugs were mapped to active ingredients.
+- Events were coded to preferred terms.
+
+The order of work was fixed in advance:
+
+1. The protocol was registered.
+2. The data were extracted.
+3. The analysis was run once.
+
+> Disproportionality is a signal, not a measure of risk.
+
+"""
+
+
+def paragraphs(xml: str) -> list[tuple[str, str]]:
+    """Every paragraph as (its markup, the text a reader sees in it)."""
+    return [
+        (p, "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", p, re.DOTALL)))
+        for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+    ]
+
+
+def list_format(archive: zipfile.ZipFile, markup: str) -> str | None:
+    """`bullet` or `decimal` for a list paragraph, None for anything else."""
+    num = re.search(r'<w:numId w:val="(\d+)"', markup)
+    if num is None:
+        return None
+    numbering = archive.read("word/numbering.xml").decode("utf-8")
+    abstract = re.search(
+        rf'<w:num w:numId="{num.group(1)}"[^>]*>\s*<w:abstractNumId w:val="(\d+)"', numbering
+    )
+    assert abstract, f"numId {num.group(1)} is not defined in numbering.xml"
+    level = re.search(
+        rf'<w:abstractNum [^>]*w:abstractNumId="{abstract.group(1)}".*?'
+        r'<w:lvl w:ilvl="0".*?<w:numFmt w:val="(\w+)"',
+        numbering,
+        re.DOTALL,
+    )
+    return level.group(1) if level else None
+
+
+@needs_pandoc
+def test_lists_and_quotes_reach_the_page_as_lists_and_quotes(project: Path) -> None:
+    """The paragraph identifier used to go in front of every block, and in front of a list
+    it stopped being a list: pandoc read `[]{#mg-p-...}- item one` as a paragraph, so every
+    list in a manuscript came out as one run-on paragraph with its dashes and numbers in it.
+    A block quote became a paragraph opening with ">". Nothing reported either."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("# Funding", BLOCKS + "# Funding", 1), encoding="utf-8")
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = project / "build" / "manuscript.docx"
+    archive = zipfile.ZipFile(document)
+    found = paragraphs(archive.read("word/document.xml").decode("utf-8"))
+
+    items = {
+        "Reports were deduplicated by case identifier.": "bullet",
+        "Suspected drugs were mapped to active ingredients.": "bullet",
+        "Events were coded to preferred terms.": "bullet",
+        "The protocol was registered.": "decimal",
+        "The data were extracted.": "decimal",
+        "The analysis was run once.": "decimal",
+    }
+    for item, kind in items.items():
+        holding = [(markup, seen) for markup, seen in found if item in seen]
+        assert len(holding) == 1, f"{item!r} is in {len(holding)} paragraphs"
+        markup, seen = holding[0]
+        assert seen == item, f"{item!r} shares its paragraph: {seen!r}"
+        assert list_format(archive, markup) == kind, f"{item!r} is not a {kind} list item"
+
+    quote = [markup for markup, seen in found if "not a measure of risk" in seen]
+    assert len(quote) == 1
+    assert '<w:pStyle w:val="BlockText"' in quote[0], "the quotation is not a block quote"
+
+    for _markup, seen in found:
+        assert not re.match(r"\s*(?:[-*+>]|\d+[.)])\s", seen), f"a marker printed: {seen!r}"
+
+    # The paragraphs around the blocks are still ordinary paragraphs, and still identified.
+    lead = [markup for markup, seen in found if seen == "The analysis rests on three steps:"]
+    assert len(lead) == 1 and "mg-p-" in lead[0], "the paragraph before a list lost its id"
+
+
+@needs_pandoc
+def test_every_identifier_in_the_documents_is_one_import_knows(project: Path) -> None:
+    """`tag` writes the identifiers and `tagged_paragraphs` is what `import` looks them up
+    in. If the two disagree about which blocks are paragraphs, an identifier in the file
+    names nothing on disk, or a paragraph on disk is never compared."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import paragraph_order, tagged_paragraphs
+
+    source = project / "manuscript" / "main.md"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("# Funding", BLOCKS + "# Funding", 1), encoding="utf-8")
+
+    assert main(["build", str(project), "--offline"]) == 0
+    built = paragraph_order(project / "build" / "manuscript.docx") + paragraph_order(
+        project / "build" / "supplementary.docx"
+    )
+    known = tagged_paragraphs(load_project(project)[0])
+
+    assert len(built) == len(set(built)), "identifiers must be unique"
+    assert set(built) == set(known)
 
 
 @needs_pandoc

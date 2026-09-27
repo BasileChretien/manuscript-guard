@@ -570,14 +570,7 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     return found
 
 
-def _took_in(
-    name: str,
-    now: str,
-    was: str,
-    reference: list[Block],
-    missing: Counter,
-    compared: Collection[str] = (),
-) -> str:
+def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
@@ -587,36 +580,20 @@ def _took_in(
     not merely found, because a paragraph often opens by naming its heading ("Statistical
     analysis used..."), and requiring the text to be new let that join through as
     "Statistical analysisStatistical analysis used...".
-
-    A paragraph of the fresh build that is not `compared` - one the author added since the
-    build - is looked past: the co-author never had it between the heading and this one,
-    and stopped at it, the heading was not seen and the run-in paragraph merged. So is a
-    block with no identifier that is `missing` from the returned document and did not run
-    in: a list, a quotation or a sub-heading added since the build, which the co-author
-    never had either.
     """
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
-
-    def passed(block: Block) -> bool:
-        if block.table:
-            return False
-        if block.names:
-            return compared and not any(n in compared for n in block.names)
-        return not block.text
-
     for step in (-1, 1):
         i = at + step
-        while 0 <= i < len(reference):
-            block = reference[i]
+        while 0 <= i < len(reference) and not (
+            reference[i].names or reference[i].table or reference[i].text
+        ):
             i += step
-            if passed(block):
-                continue
-            if block.names or block.table or not missing[block.text]:
-                break
-            text = " ".join(block.text.split())
-            if squashed_now.count(text) > squashed_was.count(text):
-                return block.text
+        if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
+            continue
+        text = " ".join(reference[i].text.split())
+        if missing[reference[i].text] and squashed_now.count(text) > squashed_was.count(text):
+            return reference[i].text
     return ""
 
 
@@ -652,20 +629,22 @@ def _read_returned(
     return texts, joined, slid
 
 
-def _absorbed(now: str, other: str, was: str) -> bool:
+def _absorbed(now: str, other: str, was: str, *, unsent: bool = False) -> bool:
     """Whether this paragraph reads more like itself followed by `other` than like itself.
 
     A join made by selecting across the boundary and retyping deletes the second paragraph's
     bookmark with the selection, so the second paragraph looks deleted and the first merely
     longer. Two explanations fit a paragraph that changed beside one that vanished - reworded
     while its neighbour was deleted, or joined with its neighbour - and the one whose text
-    the returned paragraph resembles more is taken, a tie counting as the join. Except a tie
-    at nothing: a rewording sharing no word with either paragraph holds none of the
-    neighbour's words, which a join does, and counted as one, "Not applicable." rewritten whole
-    above a paragraph added since the build was refused where main merged it. A join retyped
-    with no space holds the words either side of the break as one word, and is still one.
-    Only those two are looked for: any of the neighbour's words inside any word refused
-    rewordings main merged, "no" being inside "not".
+    the returned paragraph resembles more is taken, a tie counting as the join, even a tie at
+    nothing: a join retyped across the break takes the full stop or the capital with it,
+    and "Nil.Unfunded." shares no word with "None." or "Unfunded.".
+
+    Except beside a paragraph that is `unsent`: one the document carries no identifier for,
+    under an identifier it carries for another paragraph. The co-author never had it there,
+    and a rewording sharing no word with either paragraph, counted as a join, was refused
+    where main, which does not weigh that paragraph at all, merged it. A join with the one
+    the co-author had there is refused all the same, as beside a paragraph lost.
 
     Two earlier versions looked for the neighbour's words instead, and each was defeated in
     a round of review: one unbroken run of six words was split by a single edited word, and
@@ -677,15 +656,16 @@ def _absorbed(now: str, other: str, was: str) -> bool:
         return False
     alone = difflib.SequenceMatcher(a=before, b=mine, autojunk=False).ratio()
     together = difflib.SequenceMatcher(a=before + theirs, b=mine, autojunk=False).ratio()
-    if together == 0:
-        # Nothing in common word by word: "None." and "Unfunded." retyped with no space are
-        # one word, "None.Unfunded.", a join all the same.
-        return bool(before) and before[-1] + theirs[0] in now
+    if together == 0 and unsent:
+        return False
     return together >= alone
 
 
 def _joined_without_bookmark(
-    rendered: dict[str, str], texts: dict[str, str], in_join: set[str]
+    rendered: dict[str, str],
+    texts: dict[str, str],
+    in_join: set[str],
+    unsent: Collection[str] = (),
 ) -> list[tuple[str, str]]:
     """Pairs whose second paragraph vanished into the first; see `_absorbed`."""
     found = []
@@ -698,7 +678,7 @@ def _joined_without_bookmark(
             and now
             and not {name, before} & in_join
             and not _same(rendered[before], now)
-            and _absorbed(now, rendered[name], rendered[before])
+            and _absorbed(now, rendered[name], rendered[before], unsent=name in unsent)
         ):
             found.append((before, name))
             in_join.update((before, name))
@@ -739,6 +719,7 @@ def plan_import(
     every: dict | None = None,
     built: Sequence[str] = (),
     unsure: frozenset[str] = frozenset(),
+    unsent: frozenset[str] = frozenset(),
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -760,7 +741,9 @@ def plan_import(
     `unsure` names paragraphs the document may have carried without an identifier: in one
     that records nothing, those older releases did not tag (`roundtrip.Numbering.unsure`);
     in one that does, those its record does not hold. Missing from it, each is still weighed
-    as a join into the paragraph before it.
+    as a join into the paragraph before it. `unsent` names those of them under an
+    identifier the document carries for another paragraph, which the co-author never had
+    there: see `_absorbed`.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -794,12 +777,7 @@ def plan_import(
         and not b.table
         and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
     }
-    joined += _joined_without_bookmark(weighed, texts, in_join)
-    # And over the compared paragraphs alone, in the order the document had them. The fresh
-    # build can hold, between two of them, a paragraph the author added or moved since the
-    # build, which the co-author never had; the pair was then never weighed, and a join of
-    # the two retyped in Word merged as a rewording of the first.
-    joined += _joined_without_bookmark(rendered, texts, in_join)
+    joined += _joined_without_bookmark(weighed, texts, in_join, unsent)
     beside_lost = _beside_lost(rendered, texts, built, present)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:
@@ -851,7 +829,7 @@ def plan_import(
             refused.append(Refusal(name, now, (_GLUED,)))
         elif name in in_parts or held.get(name) == "in-parts":
             refused.append(Refusal(name, now, (_IN_PARTS,)))
-        elif took := _took_in(name, now, was, reference, missing, rendered):
+        elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))

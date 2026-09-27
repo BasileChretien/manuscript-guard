@@ -2010,8 +2010,8 @@ def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
     each paragraph's text, which cannot tell the two apart, so with a third declaration added
     above them since the build, the first one's identifier named the new one, read the same,
     was trusted, and `import --apply --force` wrote a co-author's ethics approval under
-    "Consent to participate". The heading above each tells them apart: followed, the
-    approval lands under "Ethics approval", and nowhere else."""
+    "Consent to participate". The heading above each tells them apart, so the approval lands
+    under "Ethics approval" or nowhere."""
     from manuscript_guard.cli import main
     from manuscript_guard.roundtrip import tagged_paragraphs
 
@@ -2047,12 +2047,14 @@ def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
         ),
         encoding="utf-8",
     )
-    edited = path.read_text(encoding="utf-8").replace(
+    before = path.read_text(encoding="utf-8")
+    edited = before.replace(
         "# Ethics approval\n\nNot applicable.", "# Ethics approval\n\nApproved by the review board."
     )
 
     main(["import", str(returned), str(project), "--apply", "--force"])
-    assert path.read_text(encoding="utf-8") == edited, "the edit is not where it was made"
+    # Beside the declaration added, it is not followed, and is named as not compared.
+    assert path.read_text(encoding="utf-8") in {before, edited}, "the edit went elsewhere"
 
 
 def _edited_under(name: str, was: str, now: str):
@@ -2240,8 +2242,10 @@ def test_a_join_across_a_paragraph_the_source_put_between_is_not_merged(
         "- A list item added since the build.",
         "> A quotation added since the build.",
         "## Data sources",
+        "$$y = x$$",
+        "| a | b |\n|---|---|\n| 1 | 2 |",
     ],
-    ids=["paragraph", "list", "quotation", "sub-heading"],
+    ids=["paragraph", "list", "quotation", "sub-heading", "equation", "table"],
 )
 @pytest.mark.parametrize("below", [False, True], ids=["heading above", "heading below"])
 def test_a_heading_run_into_a_followed_paragraph_is_not_merged(
@@ -2250,8 +2254,10 @@ def test_a_heading_run_into_a_followed_paragraph_is_not_merged(
     """A heading run into the paragraph beside it in Word is refused: its text would be in
     the source twice. The heading was looked for beside the paragraph in the fresh build,
     where a block the author added since the build now stood between them, so the heading
-    was not seen and the run-in paragraph merged. Looking past a paragraph not compared was
-    not enough: a list, a quotation or a sub-heading carries no identifier at all."""
+    was not seen and the run-in paragraph merged. Looking past what the co-author never had
+    was never enough: past a paragraph, then a list, a quotation or a sub-heading, then a
+    table or an equation, each round of review found another. A paragraph is followed only
+    where nothing beside it changed, so its neighbours are the ones the co-author saw."""
     from manuscript_guard.cli import main
 
     if below:
@@ -2311,6 +2317,92 @@ def test_two_one_word_paragraphs_joined_without_a_space_are_not_merged(
 
     main(["import", str(returned), str(project), "--apply"])
     assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("second", "retyped"),
+    [
+        ("Unfunded.", "Nil.Unfunded."),
+        ("Unfunded.", "NoneUnfunded."),
+        ("Unfunded.", "None; unfunded."),
+        ("{{results.cohort.n_reports}}", "None:{value}"),
+    ],
+    ids=["first word retyped", "stop taken", "lower case", "value after a colon"],
+)
+def test_a_join_retyped_across_the_break_is_not_merged(
+    project: Path, tmp_path: Path, second: str, retyped: str
+) -> None:
+    """Retyping across the break of a join replaces the selection, which usually takes the
+    full stop or the capital with it. Looked for as the two words either side of the break
+    run together, as they were, such a join shared no word with either paragraph, merged as
+    a rewording, and left the second paragraph's text in the source twice: a value typed as
+    a number above the binding that prints it. Beside a paragraph the co-author had, a tie
+    at nothing is a join, as on main."""
+    from manuscript_guard.cli import main
+
+    path = _paper(project, "# Notes", _ALPHA, "None.", second, _BRAVO)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def joined(xml: str) -> str:
+        paragraphs = _xml_paragraphs(xml)
+        first = next(p for p in paragraphs if ">None.<" in p)
+        after = paragraphs[paragraphs.index(first) + 1]
+        value = "".join(re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", after, re.DOTALL))
+        text = retyped.format(value=value)
+        return xml.replace(after, "", 1).replace(first, first.replace(">None.<", f">{text}<", 1), 1)
+
+    returned = _sent_back(project, tmp_path, joined, document=_UNCHECKED)
+    source = path.read_text(encoding="utf-8")
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sub_section_folded_into_the_prose_below_it_is_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """The co-author deleted a sub-heading and its list, and reworded the paragraph below to
+    open with the heading's word. Looking past every block missing from the returned
+    document to find a run-in heading reached that deleted heading, and refused the
+    rewording as a run-in, which main merges."""
+    from manuscript_guard.cli import main
+
+    limits = "These limits apply to all spontaneous reporting systems."
+    prose = (
+        "Limitations include voluntary reporting and unverified exposure, which apply to all "
+        "spontaneous reporting systems."
+    )
+    path = _paper(
+        project,
+        "# Discussion",
+        _ALPHA,
+        "## Limitations",
+        "- Reporting is voluntary.",
+        "- Exposure is not verified.",
+        limits,
+        "# Conclusion",
+        _ROMEO,
+    )
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    def folded(xml: str) -> str:
+        for paragraph in _xml_paragraphs(xml):
+            if "mg-p-" not in paragraph and (
+                "Reporting is voluntary." in paragraph
+                or "Exposure is not verified." in paragraph
+                or (">Limitations<" in paragraph and "Heading" in paragraph)
+            ):
+                xml = xml.replace(paragraph, "", 1)
+        target = _word_paragraph(xml, "These limits apply")
+        return xml.replace(target, target.replace(limits, prose, 1), 1)
+
+    returned = _sent_back(project, tmp_path, folded, document=_UNCHECKED)
+    expected = path.read_text(encoding="utf-8").replace(limits, prose, 1)
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == expected, "the rewording was refused"
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

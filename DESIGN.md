@@ -1440,17 +1440,34 @@ reviews each found a change that would not have.
 positional, so one paragraph added to the source since the build moved every identifier
 below it by a block: each named its neighbour, and every co-author edit below it was named
 as not compared, to be ported by hand. `import` now follows such a paragraph to where it
-stands (`roundtrip._repointed`): by its text, when that text is found once in its file both
-then and now, the rule a paragraph is trusted in place by; otherwise by its text and the
-block before it, when that pair is found once in both. And only along the order the
-document was built in. A paragraph the author moved, followed, came back from Word in its
-old place, which `import` reads as the co-author moving it back, and `--apply` would have
-undone the author's move. So of paragraphs the author reordered only the longest run
-still in order is followed, and one the author reworded, or whose text and block before
-both repeat, is still not compared. A
-followed paragraph is compared, moved, merged and anchored under the identifier the document
-carries: the fresh builds and the source are read under those names for the comparison,
-and `respond --open` anchors a comment on one where it now stands.
+stands (`roundtrip._repointed`). It is found by its text, when that text is found once in
+its file both then and now, or by its text and the block before it, when that pair is.
+It is found only along the order the document was built in: a paragraph the author moved,
+followed, came back from Word in its old place, which `import` reads as the co-author
+moving it back, and `--apply` would have undone the author's move.
+
+And it is followed only where nothing beside it changed (`roundtrip._kept_beside`):
+
+- the block before it reads as it did at the build;
+- the paragraphs before and after it in the record are found too, each moved by as many
+  blocks as it was, so nothing was added or removed between;
+- at most one block stands between it and each of them, and the record hashes that block
+  with the paragraph after it.
+
+`import` looks beside a paragraph for a heading run into it, or a paragraph joined to it,
+in Word. It looks in the source as it is now, and a block added there since the build is
+one the co-author never had. Past it, the heading or the paragraph they joined was not
+seen, and the join merged with its text in the source twice. Three rounds of review each
+found another kind of block to look past: a paragraph; a list, a quotation or a
+sub-heading; a table or an equation. So none is looked past, and a paragraph with
+anything changed beside it is not followed. Nothing is recorded of what stands before a
+file's first paragraph or after its last, so neither is followed. A paragraph the author
+reworded, one beside what the author added, removed or reordered, and one whose text and
+block before both repeat are still not compared.
+
+A followed paragraph is compared, moved, merged and anchored under the identifier the
+document carries: the fresh builds and the source are read under those names for the
+comparison, and `respond --open` anchors a comment on one where it now stands.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
@@ -3162,9 +3179,15 @@ Closed since, and why each mattered:
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
   left, to be carried over by hand, even when it would have merged cleanly. Paragraphs below
-  one the source added or removed are followed to where they stand; one the author moved
-  relative to the others is not, nor one whose text and the block before it both repeat in
-  its file, and an edit to either is named and left too. So is an edit to a paragraph that
+  one the source added or removed are followed to where they stand, but some are not:
+  - the one directly beside the change;
+  - the first and last paragraph of a file;
+  - one with two blocks or more between it and the paragraph before or after it, such as a
+    sub-heading under a heading, or a list;
+  - one the author moved relative to the others, and those beside it;
+  - one whose text and the block before it both repeat in its file.
+
+  An edit to any of these is named and left too. So is an edit to a paragraph that
   reads word for word like another in its file once the block before it changed, and to the
   paragraph before one that is left out of the comparison and did not come back, which may
   be a join.
@@ -3181,10 +3204,11 @@ Closed since, and why each mattered:
   refused. In two samples built from the example's sentences, 18% and 8% of complete
   rewrites of a short paragraph were refused, and none with under 40% of the words
   replaced. Nothing is written in that case.
-- **A paragraph is followed by its text alone when that text is unique.** That is the rule
-  it is trusted in place by, and it is as sure: a paragraph deleted from the source since
-  the build and written again word for word elsewhere is taken for the one the co-author
-  edited, and the edit goes to the new place.
+- **A run of paragraphs rewritten word for word elsewhere is taken for the one sent.**
+  Suppose the author deleted three paragraphs or more since the build and wrote them again
+  word for word, in the same order, elsewhere in the file. A paragraph inside that run is
+  then followed, and the co-author's edit to it goes to the new place. Trust in place
+  assumes the same of a paragraph found at its old place.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

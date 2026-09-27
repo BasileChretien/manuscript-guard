@@ -766,59 +766,99 @@ def _followed(recorded: dict[int, str], now: dict[int, str]) -> dict[str, str]:
     }
 
 
-def test_paragraphs_below_one_added_since_the_build_are_followed() -> None:
+#: Four paragraphs one after another, each hashed with the one before it.
+_RUN = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb", 8: "eeeeeeee.cccccc"}
+
+
+def test_a_paragraph_below_one_added_since_the_build_is_followed() -> None:
     """Identifiers are positional: one paragraph added moved every one below it by a block,
     each named its neighbour, and every co-author edit below it had to be ported by hand.
-    The one straight under the new paragraph is followed by its text, which is unique,
-    although the block before it changed."""
-    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
+    One whose neighbours both moved with it, and read as they did, is followed."""
     now = {
         2: "aaaaaaaa.000000",
         4: "dddddddd.aaaaaa",
         6: "bbbbbbbb.dddddd",
         8: "cccccccc.bbbbbb",
+        10: "eeeeeeee.cccccc",
     }
-    assert _followed(recorded, now) == {"m-4": "m-6", "m-6": "m-8"}
+    assert _followed(_RUN, now) == {"m-6": "m-8"}
 
 
-def test_paragraphs_below_one_removed_since_the_build_are_followed() -> None:
-    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
-    now = {2: "bbbbbbbb.000000", 4: "cccccccc.bbbbbb"}
-    assert _followed(recorded, now) == {"m-4": "m-2", "m-6": "m-4"}
+def test_a_paragraph_below_one_removed_since_the_build_is_followed() -> None:
+    now = {2: "bbbbbbbb.000000", 4: "cccccccc.bbbbbb", 6: "eeeeeeee.cccccc"}
+    assert _followed(_RUN, now) == {"m-6": "m-4"}
+
+
+def test_a_paragraph_beside_what_changed_is_not_followed() -> None:
+    """The co-author saw the blocks beside it as they were at the build. With one added,
+    removed or changed there since, a heading run into it or a paragraph joined to it in
+    Word was looked for among blocks the co-author never had, and merged: past a paragraph,
+    a list, a quotation, a sub-heading, a table or an equation, one per round of review. So
+    the block before it must read as it did, and so must the one before the next, and its
+    neighbours must have moved by as many blocks as it did."""
+    recorded = _RUN | {10: "ffffffff.eeeeee"}
+    now = {2: "xxxxxxxx.000000", 4: "aaaaaaaa.xxxxxx", 6: "bbbbbbbb.aaaaaa"}
+    now |= {8: "dddddddd.bbbbbb", 10: "cccccccc.dddddd", 12: "eeeeeeee.cccccc"}
+    now |= {14: "ffffffff.eeeeee"}
+    followed = _followed(recorded, now)
+    assert "m-4" not in followed, "a block was added after it"
+    assert "m-6" not in followed, "the block before it is new"
+    assert followed == {"m-8": "m-12"}
+
+
+def test_a_paragraph_first_or_last_in_its_file_is_not_followed() -> None:
+    """Nothing is recorded of the blocks before the first paragraph or after the last, so
+    what stands beside one of them cannot be told."""
+    now = {4: "aaaaaaaa.000000", 6: "bbbbbbbb.aaaaaa", 8: "cccccccc.bbbbbb"}
+    now |= {10: "eeeeeeee.cccccc"}
+    assert _followed(_RUN, now) == {"m-4": "m-6", "m-6": "m-8"}
+
+
+def test_a_paragraph_with_an_unrecorded_block_it_cannot_check_beside_it_is_not_followed() -> None:
+    """Only the block before each paragraph is recorded. With two between it and its
+    neighbour, the first of them could have been replaced by another since the build, and
+    nothing would show it."""
+    recorded = {2: "aaaaaaaa.000000", 8: "bbbbbbbb.hhhhhh", 10: "cccccccc.bbbbbb"}
+    recorded |= {12: "eeeeeeee.cccccc"}
+    now = {4: "aaaaaaaa.000000", 10: "bbbbbbbb.hhhhhh", 12: "cccccccc.bbbbbb"}
+    now |= {14: "eeeeeeee.cccccc", 16: "ffffffff.eeeeee"}
+    assert _followed(recorded, now) == {"m-10": "m-12"}
 
 
 def test_repeated_text_is_followed_by_the_block_before_it() -> None:
     """ "Not applicable." under three declarations: the heading above each tells them
     apart, and one added above the other two moves both."""
     na = "11111111"
-    recorded = {2: f"{na}.eeeeee", 4: f"{na}.ffffff"}
-    now = {2: f"{na}.cccccc", 4: f"{na}.eeeeee", 6: f"{na}.ffffff"}
-    assert _followed(recorded, now) == {"m-2": "m-4", "m-4": "m-6"}
+    recorded = {2: "aaaaaaaa.000000", 6: f"{na}.eeeeee", 10: f"{na}.ffffff"}
+    recorded |= {14: "bbbbbbbb.gggggg"}
+    now = {2: "aaaaaaaa.000000", 6: f"{na}.cccccc", 10: f"{na}.eeeeee", 14: f"{na}.ffffff"}
+    now |= {18: "bbbbbbbb.gggggg"}
+    assert _followed(recorded, now) == {"m-10": "m-14"}
 
 
 def test_repeated_text_after_repeated_blocks_is_not_followed() -> None:
     """Two paragraphs that read the same after blocks that read the same cannot be told
     apart, and following either could put an edit into the other."""
     none = "22222222.ffffff"
-    recorded = {2: "aaaaaaaa.000000", 4: none, 6: none}
-    now = {2: "dddddddd.000000", 4: "aaaaaaaa.dddddd", 6: none, 8: none}
-    assert _followed(recorded, now) == {"m-2": "m-4"}
+    recorded = {2: "aaaaaaaa.000000", 6: none, 10: none, 14: "bbbbbbbb.ffffff"}
+    recorded |= {16: "cccccccc.bbbbbb", 18: "eeeeeeee.cccccc"}
+    now = {2: "aaaaaaaa.000000", 4: "dddddddd.aaaaaa", 8: none, 12: none}
+    now |= {16: "bbbbbbbb.ffffff", 18: "cccccccc.bbbbbb", 20: "eeeeeeee.cccccc"}
+    assert _followed(recorded, now) == {"m-16": "m-18"}
 
 
 def test_a_paragraph_the_author_moved_is_not_followed_out_of_order() -> None:
     """Followed to where the author moved it, a paragraph came back from Word in its old
     place, which `import` reads as the co-author moving it back, and `--apply` undid the
-    author's move. Only an order-preserving match is followed."""
-    recorded = {2: "aaaaaaaa.000000", 4: "bbbbbbbb.aaaaaa", 6: "cccccccc.bbbbbb"}
+    author's move. Neither of two paragraphs swapped is followed, nor any beside them."""
     now = {
         2: "dddddddd.000000",
         4: "bbbbbbbb.dddddd",
         6: "aaaaaaaa.bbbbbb",
         8: "cccccccc.aaaaaa",
+        10: "eeeeeeee.cccccc",
     }
-    followed = _followed(recorded, now)
-    assert followed["m-6"] == "m-8"
-    assert not {"m-2", "m-4"} <= set(followed), "two paragraphs that swapped both followed"
+    assert _followed(_RUN, now) == {}
 
 
 def test_a_followed_paragraph_never_crosses_one_trusted_in_place() -> None:
@@ -879,28 +919,31 @@ def test_a_move_in_word_below_a_paragraph_added_since_the_build_is_applied(
 def test_a_comment_below_a_paragraph_added_since_the_build_keeps_its_anchor(
     project: Path, tmp_path: Path
 ) -> None:
-    """The anchor names the paragraph where it now stands, which is what G13 looks up."""
+    """The anchor names the paragraph where it now stands, which is what G13 looks up. The
+    paragraph directly beside the one added is not followed, and its comment is unanchored."""
     import yaml
     from test_seed_revision import commented
 
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
-    first_text = next(t for n, t in _texts(project).items() if n.startswith("mg-p-main"))
-    returned = commented(
-        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
-    )
+    texts = [t for n, t in _texts(project).items() if n.startswith("mg-p-main")][:3]
+    notes = [("Reviewer 2", "Why?"), ("Reviewer 2", "How?"), ("Reviewer 2", "Where?")]
+    returned = commented(project / "build" / "manuscript.docx", tmp_path / "back.docx", notes)
     _added_to_abstract(project)
-    now = next(n for n, text in _texts(project).items() if text == first_text)
+    now = {text: n for n, text in _texts(project).items()}
 
     assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 0
     document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
-    assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [now]
+    where = [p.get("where") for r in document["reviewers"] for p in r["points"]]
+    assert where == [None, now[texts[1]], now[texts[2]]]
 
 
-def _beside_one_not_compared(tmp_path: Path, returned_text: str):
+def _beside_one_not_compared(tmp_path: Path, returned_text: str, *, unsent: bool = True):
     """The plan for a first paragraph that came back as `returned_text`, with the paragraph
-    after it in the fresh build not compared and not in the returned document."""
+    after it in the fresh build not compared and not in the returned document: `unsent`,
+    under an identifier the document carries for another paragraph, or one it may have
+    carried without an identifier."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import plan_import
 
@@ -912,31 +955,34 @@ def _beside_one_not_compared(tmp_path: Path, returned_text: str):
         sent,
         [Block(("a",), returned_text)],
         unsure=frozenset({"b"}),
+        unsent=frozenset({"b"} if unsent else ()),
     )
 
 
-def test_a_rewording_that_shares_no_word_with_either_paragraph_is_no_join(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "rewording",
+    ["Approved by the review board.", "Nonetheless, the board waived approval."],
+    ids=["no word shared", "a word inside a word"],
+)
+def test_a_rewording_that_shares_no_word_with_either_paragraph_is_no_join_beside_one_unsent(
+    tmp_path: Path, rewording: str
 ) -> None:
     """Sharing no word with the paragraph or the one after it, a rewording read no more like
     the two joined than like the paragraph alone, both at nothing, and the tie counted as a
     join: "Not applicable." rewritten whole above a declaration added since the build was
-    refused, where main merged it. A join holds some of the other paragraph's words."""
-    plan = _beside_one_not_compared(tmp_path, "Approved by the review board.")
+    refused, where main, which does not weigh that one at all, merged it. A join with a
+    paragraph the co-author had under the identifier is refused as beside one lost."""
+    plan = _beside_one_not_compared(tmp_path, rewording)
     assert not plan.joined
-    assert plan.merged == {"a": "Approved by the review board."}
+    assert plan.merged == {"a": rewording}
 
 
-def test_a_rewording_holding_the_next_paragraph_s_word_inside_its_own_is_no_join(
-    tmp_path: Path,
-) -> None:
-    """A tie at nothing counted as a join when any word of the paragraph after it appeared
-    anywhere in the rewording, and "None" is inside "Nonetheless", as "no" is inside "not":
-    the rewording was refused where main merged it. A join retyped with no space holds the
-    two words either side of the break as one, and only that is looked for."""
-    plan = _beside_one_not_compared(tmp_path, "Nonetheless, the board waived approval.")
-    assert not plan.joined
-    assert plan.merged == {"a": "Nonetheless, the board waived approval."}
+def test_a_tie_at_nothing_is_a_join_beside_a_paragraph_main_weighs(tmp_path: Path) -> None:
+    """Beside a paragraph the co-author may have had, a join retyped across the break shares
+    no word with either paragraph ("Nil.Unfunded."), and is a join all the same, as main
+    counts it."""
+    plan = _beside_one_not_compared(tmp_path, "Nil.None", unsent=False)
+    assert plan.joined and not plan.merged
 
 
 def test_a_paragraph_joined_with_the_one_after_it_not_compared_is_still_a_join(

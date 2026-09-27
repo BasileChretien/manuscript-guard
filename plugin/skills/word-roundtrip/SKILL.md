@@ -238,9 +238,14 @@ differently. A paragraph that reads word for word like another in its file, such
 applicable." under two declarations, is also listed once the block before it changed.
 
 Paragraphs below one you added or removed in the `.md` since the build are followed to
-where they now stand, and their edits merge as usual. Of paragraphs you reordered, only the
-longest run still in order is followed; the rest, and one whose text and the block before it
-both repeat in its file, are listed as not compared. One you moved across a heading can be
+where they now stand, and their edits merge as usual. Some are not followed, and are listed
+as not compared:
+- the paragraph directly beside what you added or removed;
+- the first and last paragraph of a file;
+- one with more than one block between it and the paragraph before or after it, such as a
+  sub-heading under a heading, or a list;
+- paragraphs you reordered, and those beside them;
+- one whose text and the block before it both repeat in its file. One you moved across a heading can be
 followed and listed as moved into another section, marked as moved in the `.md` since the
 build: leave it where you put it.
 

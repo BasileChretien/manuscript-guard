@@ -1532,6 +1532,12 @@ def _repointed(
     trusted in place. A paragraph the author moved, followed, came back from Word in its
     old place, which `import` reads as the co-author moving it back, and `--apply` undid the
     author's move.
+
+    And only where nothing beside it changed (`_kept_beside`). `import` looks beside a
+    paragraph for a heading run into it or a paragraph joined to it in Word, and it looks in
+    the source as it is now: with a block added there since the build, which the co-author
+    never had, the heading or the paragraph they joined was not seen, and the join merged.
+    Each of three rounds of review found another kind of block to look past, so none is.
     """
     followed: dict[str, str] = {}
     for slug in dict.fromkeys(map(_slug_of, recorded)):
@@ -1540,6 +1546,7 @@ def _repointed(
         at_then = {name: i for i, name in enumerate(sent)}
         at_now = {name: j for j, name in enumerate(here)}
         fixed = [name for name in sent if name in trusted and name in at_now]
+        found = {}
         for old, new in _aligned(sent, here):
             if old == new or old in trusted or new in trusted:
                 continue
@@ -1548,8 +1555,49 @@ def _repointed(
                 for stays in fixed
             ):
                 continue
-            followed[old] = new
+            found[old] = new
+        where = {name: name for name in fixed} | found
+        order = list(sent)
+        followed |= {
+            old: new
+            for old, new in found.items()
+            if _kept_beside(order, at_then[old], where, sent, here)
+        }
     return followed
+
+
+def _index(identifier: str) -> int:
+    """The piece an identifier numbers: see `_BREAK`, which makes every other piece a blank
+    run, so two blocks one after the other are two apart."""
+    return int(identifier.rpartition("-")[2])
+
+
+def _kept_beside(
+    order: list[str], at: int, where: dict[str, str], sent: dict[str, str], here: dict[str, str]
+) -> bool:
+    """Whether the paragraph `order[at]` stands among the same blocks as at the build.
+
+    Its neighbours in the record, the paragraph before and the one after, must be found
+    now, each as far from where it was as this one is, so no block was added or removed
+    between. Every block between must be one the record hashed: the block before this one,
+    whose hash is recorded with it, and the block before the next, with that one; so at most
+    one block between, and both hashes the same. Nothing is recorded of what stands before
+    the first paragraph of a file or after its last, so neither is followed.
+    """
+    if at == 0 or at == len(order) - 1:
+        return False
+    before, this, after = order[at - 1], order[at], order[at + 1]
+    if before not in where or after not in where:
+        return False
+    shift = _index(where[this]) - _index(this)
+    return (
+        _index(where[before]) - _index(before) == shift
+        and _index(where[after]) - _index(after) == shift
+        and _index(this) - _index(before) <= 4
+        and _index(after) - _index(this) <= 4
+        and sent[this] == here[where[this]]
+        and sent[after] == here[where[after]]
+    )
 
 
 def _aligned(sent: dict[str, str], here: dict[str, str]) -> list[tuple[str, str]]:

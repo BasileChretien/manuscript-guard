@@ -509,6 +509,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     untagged_then = (
         {n for b in reference for n in b.names} - set(known) if numbered.recorded else set()
     )
+    # Of those, the ones under an identifier the document carries for another paragraph,
+    # which main does not weigh: see `merge._absorbed`.
+    carried = set(numbered.sent)
+    unsent = frozenset(n for n in untagged_then if n.partition("#")[0] in carried)
     plan = plan_import(
         known,
         reference,
@@ -518,6 +522,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         every=every,
         built=numbered.sent,
         unsure=unsure | untagged_then,
+        unsent=unsent,
     )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table

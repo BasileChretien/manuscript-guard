@@ -2270,6 +2270,9 @@ def _opened(text: str, whole: bool = True) -> str:
     gets one backslash, and pandoc prints it as typed. A paragraph that is nothing but a
     rule, `---` or `===`, has every dash and equals sign escaped: with the first alone,
     `\\---` printed a hyphen and an en dash. A stretch with a token after it is no rule.
+    Only one of these applies, the first that does, so a rule that opens with `|` or a
+    colon is escaped there alone: `|---|` prints as `|—|` and `:---:` as `:—:`, pandoc's
+    usual typesetting of the dashes.
     """
     if block := _OPENER.match(text):
         at = next(block.start(g) for g in ("mark", "bullet") if block.group(g))
@@ -2810,6 +2813,10 @@ def align(
     # A stretch kept from the source keeps its braces bare, and one written from Word has
     # them escaped, so a pair with one half on each side of a token no longer pairs. The
     # paragraph would build without an identifier, and its next edit could not come back.
+    # Writing Word's half bare again is not safe: next to a `]`, a `)`, a `>`, a value or a
+    # kept `{`, a bare brace completes what pandoc reads as attributes, and three review
+    # rounds of #90 each found such a shape that printed wrong text and passed `check`
+    # (`[a [b] c]{k={{results.x}}}` printed without its value). So the rewording is refused.
     if _brace_group_runs_on(rebuilt) and not _brace_group_runs_on(source):
         return Alignment(None, unpaired=True)
     if not _reads_as(rebuilt, protected, tokens, returned):

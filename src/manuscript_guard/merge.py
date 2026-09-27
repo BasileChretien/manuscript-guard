@@ -521,7 +521,8 @@ def _beside_new_text(
         return block.text, block.unread
 
     unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
-    # Paragraphs sent empty: a `&nbsp;` or `<br>` spacer. Nothing was split around one.
+    # Paragraphs sent with no text: a `&nbsp;` or `<br>` spacer, or any line whose identifier
+    # is on something that is not text, such as maths alone. Nothing was split around one.
     spacers = {n for b in sent if b.names and not b.table and not any(content(b)) for n in b.names}
     new: set[int] = set()
     for index, block in enumerate(returned):
@@ -538,13 +539,15 @@ def _beside_new_text(
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
             # stood where the second half of a split had, and the split merged as the whole.
             # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
-            # text, it was looked past as an empty line, and vouched for the split again. Only
-            # a line with neither text nor an identifier, Enter pressed, is looked past, and
-            # a spacer Enter was pressed on is a neighbour like any other: it read as arrived,
-            # and the rewording beside it was refused.
-            if block.arrived and (
-                any(content(block)) or any(n not in spacers for n in block.names)
-            ):
+            # text, it was looked past as an empty line, and vouched for the split again.
+            # One that holds nothing and names only paragraphs sent empty - a spacer - is an
+            # empty line wherever it came from, and is looked past as one: Enter pressed on a
+            # spacer reads as arrived, and as a paragraph that vouches for nothing it had the
+            # rewording beside it refused; as a neighbour, a spacer moved in with the paragraph
+            # under it vouched for the split whose halves it stood between.
+            if block.arrived and not any(content(block)) and set(block.names) <= spacers:
+                continue
+            if block.arrived and (any(content(block)) or block.names):
                 return True
             if block.table:
                 if counterparts is None or i not in counterparts:

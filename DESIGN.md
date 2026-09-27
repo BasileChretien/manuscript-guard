@@ -2295,10 +2295,13 @@ The checks that came out of the review rounds guard the tracked path as well:
   the halves of a split, carrying its identifier, stood where the second half had. It
   vouches for nothing whatever it still holds: with its moved text deleted, or replaced by a
   symbol with no text, it was looked past as an empty line is, and the split merged as its
-  first half. Only an arrived line with neither text nor an identifier - Enter pressed - is
-  looked past, and a `&nbsp;` or `<br>` spacer Enter was pressed on, which reads as arrived,
-  is a neighbour like any other: it was sent empty, and nothing was split around it. A
-  spacer moved in between the halves of a split vouches for them as it did before.
+  first half. Only an arrived line that holds nothing, and carries no identifier or only
+  those of paragraphs sent with no text - a `&nbsp;` or `<br>` spacer - is looked past, as
+  the empty line it is, and what lies beyond it decides. Enter pressed on a spacer reads as
+  arrived, and treated as a paragraph that vouches for nothing it had the rewording beside
+  it refused. A spacer and the paragraph under it cut together and pasted between the halves
+  of a split are one move to Word, and treated as a neighbour, the spacer vouched for the
+  split; looked past, the moved paragraph beyond it does not.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -3128,8 +3131,9 @@ Closed since, and why each mattered:
   and reads without the document's own heading styles, taking only Word's built-in ones as
   headings. A part zipfile cannot decompress - Deflate64, which some zip tools write when
   a document is zipped again, or an encrypted one - is such a part, and so is one declaring
-  an encoding the XML parser cannot read. Each used to crash the reader that read it: the
-  body or the build's record crashed the import, the body or the styles the audit.
+  an encoding the XML parser cannot read. Each used to crash the reader that met it, the
+  import or the audit, on the body, the comments, the styles or the font parts; a part that
+  could not be decompressed crashed the import on the build's record as well.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

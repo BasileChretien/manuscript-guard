@@ -10460,7 +10460,10 @@ def _declare_encoding(document: Path, part: str, encoding: str) -> None:
         ("word/document.xml", "blocks"),
         ("word/document.xml", "read_docx"),
         ("word/comments.xml", "comment_texts"),
+        ("word/styles.xml", "blocks"),
         ("word/styles.xml", "read_docx"),
+        ("word/fontTable.xml", "blocks"),
+        ("word/fontTable.xml", "read_docx"),
     ],
 )
 def test_a_part_that_cannot_be_read_is_refused_not_a_crash(
@@ -10470,10 +10473,11 @@ def test_a_part_that_cannot_be_read_is_refused_not_a_crash(
     encrypted one - raised NotImplementedError or RuntimeError out of whichever reader read
     it: the body out of the import and the audit, the comments out of the import, the styles
     out of the audit. So did a part declaring an encoding the XML parser cannot read: a
-    multi-byte one raised ValueError, an unknown name LookupError. Word writes UTF-8, but the
-    font parts were refused and the rest crashed. Each is refused as a part that cannot be
-    read safely is, and the audit reads on without the heading styles, as it does without
-    the fonts."""
+    multi-byte one raised ValueError, an unknown name LookupError, out of each reader, and out
+    of the import for the styles and the font table too once #98 stopped wrapping the font
+    parts' own. Word writes UTF-8. The import refuses the document, as for any part it cannot
+    read safely; the audit refuses it only for its body, and reads on without the heading
+    styles or the fonts."""
     from manuscript_guard.docxtext import DocumentUnreadable, blocks, comment_texts
     from manuscript_guard.text.docx import NotADocx, read_docx
 
@@ -10481,14 +10485,16 @@ def test_a_part_that_cannot_be_read_is_refused_not_a_crash(
     document = symbol_document(tmp_path, text_run("We found 77 cases."), styles=heading)
     comment = f'<w:comment w:id="0" w:author="A"><w:p>{text_run("Check this.")}</w:p></w:comment>'
     comments = f'<w:comments xmlns:w="{WORD_MAIN}">{comment}</w:comments>'
+    table = f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="Calibri"/></w:fonts>'
     with zipfile.ZipFile(document, "a") as archive:
         archive.writestr("word/comments.xml", comments)
+        archive.writestr("word/fontTable.xml", table)
     if damage == "Deflate64":
         _unsupported_compression(document, part)
     else:
         _declare_encoding(document, part, damage)
     read = {"blocks": blocks, "comment_texts": comment_texts, "read_docx": read_docx}[reader]
-    if part == "word/styles.xml":
+    if reader == "read_docx" and part != "word/document.xml":
         assert "We found 77 cases." in read(document)
     else:
         with pytest.raises(NotADocx if reader == "read_docx" else DocumentUnreadable):
@@ -10668,6 +10674,34 @@ def test_a_rewording_beside_a_spacer_enter_was_pressed_on_merges(
     plan = _import(tmp_path, known, sent, _section(a, entered, b))
     assert not plan.refused, plan.refused
     assert plan.merged["mg-p-a-0" if above else "mg-p-b-0"] == reworded, plan.merged
+
+
+@pytest.mark.parametrize("spacer", list(_SPACERS))
+def test_a_spacer_moved_into_a_split_does_not_vouch_for_it(tmp_path: Path, spacer: str) -> None:
+    """A paragraph split in Word, then a spacer and the paragraph under it cut together and
+    pasted between the halves with Track Changes on: Word records one move, and the spacer's
+    moved copy stands beside the first half, empty and holding only the spacer's
+    identifier. Let vouch as a paragraph sent empty, it merged the split as its first half.
+    It is an empty line wherever it came from, and what lies past it decides: the paragraph
+    moved in with it, which vouches for nothing."""
+    from manuscript_guard.merge import apply_plan
+
+    y, z, o = "Yankee one is here. Yankee two is there.", "Zulu is moved.", "Oscar closes it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{spacer}\n\n{z}\n\n{o}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = (("y", y), ("s", spacer), ("z", z), ("o", o))
+    known = {f"mg-p-{n}-0": (path, line, text.index(line)) for n, line in lines}
+    blank = _tagged("mg-p-s-0", _SPACERS[spacer])
+    zulu, oscar = _tagged("mg-p-z-0", text_run(z)), _tagged("mg-p-o-0", text_run(o))
+    sent = _HEADING + _tagged("mg-p-y-0", text_run(y)) + blank + zulu + oscar
+    second = f"<w:p>{text_run('Yankee two is there.')}</w:p>"
+    split = _HEADING + _tagged("mg-p-y-0", text_run("Yankee one is here.")) + second
+    back = _word_paste(split + blank + zulu + oscar, [blank, zulu], second, "tracked-move")
+    plan = _import(tmp_path, known, sent, back)
+    assert "mg-p-y-0" in [refusal.name for refusal in plan.refused], plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
 @needs_pandoc

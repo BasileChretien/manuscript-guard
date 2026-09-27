@@ -1704,6 +1704,27 @@ what pandoc prints, except before a quote, a hyphen or a full stop, which it wou
 typesetting; those are escaped only where they open a paragraph as a list would (`1990.`,
 `- `), and there nothing is typeset.
 
+The writer and the tagger have to read an opening the same way. The tagger judges a block by
+pandoc's rules, and the writer kept a short list of its own: `B) the ratio was...`, `IV.
+The`, `| The` and `Table: The` merged as typed, pandoc made a list, a line block or a caption
+of them at the next build, `tag` gave the paragraph no identifier, and its next edit in Word
+was dropped with nothing reported. The writer now asks the tagger's own reading of a
+numbered list and a caption, so "E. coli" stays a sentence and "IV. The" is escaped, and the
+property is tested as it is meant: whatever the merge writes, pandoc reads as one paragraph
+and `tag` names it, read alone, under a paragraph and under a table - or the merge is
+refused, and says why. The tagger, for its
+part, took any HTML tag it did not know for a block and counted an escaped brace. Pandoc
+reads a tag it does not know as inline and `\{` as a brace, so "Concentrations <LLOQ and
+>ULOQ were excluded." lost its identifier when the tagger learned pandoc's blocks. Its block
+tags are pandoc's own lists now, HTML's and the DocBook and EPUB ones pandoc also reads in
+markdown, checked by a test that asks pandoc about each tag where it stands. A first version
+held HTML's list alone, measured rather than read from pandoc's source, and marked a table
+row under a line holding `<example>`. And `import` escapes a `}` as well as a `{`, so the
+braces a co-author types never look like half of a TeX group. Only unescaped braces count,
+so a pair split across a binding - one brace kept from the source bare, its partner edited
+in Word and written escaped - no longer pairs, and that rewording is refused rather than
+merged into a paragraph the next build could not name.
+
 Then the rebuilt paragraph is read back the way Word should show it, and must read as what
 the co-author wrote, or the merge is refused. That check uses the same reading, so it
 catches what this module can see - a delimiter left unpaired, a span stretched over new
@@ -1765,6 +1786,17 @@ paragraph with a tab in it merged `</w:r><w:r><w:t xml:space="preserve">` into t
 A paragraph's text is its `w:t` elements read with every tracked change accepted, so a
 paragraph deleted with Track Changes on is reported as deleted. It used to come back empty
 and be refused as "a number or a citation changed".
+
+No text box is read, and no AlternateContent fallback, which repeats its choice. So a
+character Word writes only in a fallback is read from the choice: an emoji inserted in Word
+can be a `w16se:symEx` in the choice, with the character as text only in the fallback. The
+document attached to pandoc issue 11113, saved by Word 16, holds six emoji written that
+way. Read as nothing, an emoji the author inserted never came back ("nothing came back: the
+document matches the manuscript on disk"), and one already in the source read as deleted:
+`--apply` took it out and reported a reworded paragraph. Word 16 did not write that form for
+an emoji set as text or typed through its COM interface, nor on saving a built document
+holding one, untouched or edited beside it (verified 2026-09-25), so which way of inserting
+one produces it is not known here.
 
 ## An exemption has to prove itself
 
@@ -2195,12 +2227,12 @@ Added by the adversarial review, verified and **not** fixed:
   a list, the inline HTML tags a paragraph may open with, what can interrupt a paragraph —
   and is checked against pandoc in `tests/test_pandoc_agreement.py`, which CI skips because
   CI has no pandoc. Where the patterns are unsure they leave a block unmarked, which costs a
-  comparison and corrupts nothing. Known cases: a paragraph opening with an unrecognised HTML
-  tag or a TeX command (`\noindent`), one holding a line of nothing but dashes and pipes,
-  one starting "p. 12" (pandoc's abbreviation rule, not reproduced), and every paragraph
-  after a `<!--` written inside inline code, up to the next `-->`; a paragraph whose braces
-  do not pair. Raw TeX other than an environment is not followed across a blank line. When
-  the blank line falls inside braces, the blocks either side are refused by the brace
+  comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
+  (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
+  (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
+  inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
+  Raw TeX other than an environment is not followed across a blank line. When the blank line
+  falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
   marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which
@@ -2211,7 +2243,21 @@ Added by the adversarial review, verified and **not** fixed:
   interval such as `[0, 1)`. Every review round on these patterns found holes in the
   version before it,
   each by running pandoc on a construct the table did not yet hold, so the table is
-  evidence for what is in it and no more.
+  evidence for what is in it and no more. The HTML block tags are pandoc 3.9.0.2's, taken
+  from its source; a later pandoc that takes another tag for a block marks a paragraph it
+  splits, until the agreement test is run against it.
+- **A caption or a definition is told from a paragraph by its opening alone.** A block
+  opening `Table:`, `table:` or a colon is a caption beside a table, and a line that is `: `
+  and text, or a colon or a tilde alone, makes a definition of the line or paragraph above
+  it; otherwise each is a paragraph. The tagger sees one block at a time, so it leaves every
+  block that opens so, or holds such a line, without an identifier. The merge escapes any
+  such opening a co-author types, so an import cannot make one, but a paragraph written that
+  way in the `.md` is never compared.
+- **A brace an earlier version wrote back is half a pair now.** Before a `}` was escaped,
+  `import` wrote a co-author's `{a, b}` as `\{a, b}`. Only unescaped braces count now, so
+  such a paragraph has an unpaired `}` and no identifier: it builds as before, but an edit
+  to it in Word is reported as not compared and not applied, so it can be edited only in
+  the `.md`. Adding the missing backslash, `\{a, b\}`, gives it its identifier back.
 - **A line pandoc does not call blank still ends a block for the numbering.** A line
   holding only a non-breaking space, an em or ideographic space or a form feed ends a block
   for the identifiers' numbering, while pandoc reads one paragraph across it. Marked, the
@@ -2675,12 +2721,18 @@ Closed since, and why each mattered:
   moving the row and cell separators the reader writes before the cell's text. A table
   whose every row was deleted or moved away is the exception, since nothing of it is left
   to join into: the paragraph runs on past it into the next, as Word 16 shows it.
-- **The audit reads every `mc:Choice` and no `mc:Fallback`, whatever the choice requires.**
-  Word does the same for everything it writes, since it writes a choice only where it
-  understands it. Text that sits only in a fallback, behind a choice the reader does not
-  know, goes unread: Word does this for an emoji, whose choice (`w16se:symEx`) the reader
-  does know, and would for any other such element it adds. A second choice, which the
-  format allows and Word does not write, would be read as well as the first.
+- **The audit and the import read every `mc:Choice` and no `mc:Fallback`, whatever the
+  choice requires.** Word does the same for everything it writes, since it writes a choice
+  only where it understands it. Text that sits only in a fallback, behind a choice the
+  readers do not know, goes unread: Word does this for an emoji, whose choice
+  (`w16se:symEx`) both readers know, and would for any other such element it adds. In the
+  import that loses the co-author's insertion, and where Word writes text already in the
+  source that way, `--apply` deletes it from the source. A second choice, which the format
+  allows and Word does not write, would be read as well as the first.
+- **The import does not read a Symbol-font character.** Insert > Symbol with the Symbol
+  font writes a `w:sym` element, not text. The audit's reader maps the ones that can stand
+  beside a number (minus, ±, ≤, ≥, ×); the import's reads nothing, so "3.2 ± 0.4" inserted
+  that way comes back as "3.2 0.4" and the co-author's ± is dropped.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its
@@ -3366,7 +3418,9 @@ Closed since, and why each mattered:
     which reaches the next four - is the note's next paragraph, and the unindented lines
     under it are more of it. So a note is left alone only when a blank line ends it and the
     line after the last blank one is indented less, and a note of several paragraphs is
-    marked. Anything else - a link wrapped over two lines, with attributes or a title on the
+    marked. A link written straight above a paragraph or a heading is passed over, and the
+    paragraph after it carries the identifier (see the next entry). Anything else - a link
+    wrapped over two lines, with attributes or a title on the
     next line, a nested bracket in its label, a link under a note, a footnote running to a
     second paragraph - is marked, and prints as text. That failure is visible, and it is a
     choice: on `main` after #25, which left every block opening `[label]:` alone, these
@@ -3470,6 +3524,54 @@ Closed since, and why each mattered:
     the moves are held after.
   - *A paragraph that never reached the document is not checked.* One inside an HTML
     comment has an identifier in the source and none in Word, and nothing writes it.
+- **A paragraph under a heading or a link's definition carries the identifier.** Pandoc
+  needs no blank line after a heading, nor after a link's definition, so `# Methods` with
+  its paragraph on the next line is a heading and a paragraph. Every block starting with
+  `#` went unmarked, and a co-author's edit to that paragraph was dropped while `import`
+  said nothing came back; and a paragraph straight under a definition was marked with it,
+  which printed the definition. Now the headings and definitions a block opens with - ATX
+  or setext headings, and links in the strict one-line shape, under a line pandoc takes for
+  blank - are passed over (`_lead_end`), and what follows them is judged as any block is:
+  marked, at its own offset, when `_untagged` finds it one paragraph. What that leaves:
+  - *Anything else under a heading stays unmarked with it.* A list, code, a table, or a
+    paragraph with a fence or block-level HTML after it in the same block goes unmarked, as
+    the whole block always did, and an edit to it is not compared. A blank line after the
+    heading avoids it.
+  - *Under a heading, a line that may open a definition stays unmarked.* A line opening
+    `[label]:` in a shape the strict rule does not take - its title on the next line,
+    `{attributes}`, words for an address - is a definition to pandoc, and a marker in front
+    of it would print it and break every link to it. So it is left as the whole block
+    always was, and prose that opens with `[label]:` under a heading is not compared.
+  - *Under a link's definition, what is not one paragraph goes unmarked with it*, as it
+    would on its own: a list, code, a table. The definition works. A definition the strict
+    rule does not take, under a strict one, is the paragraph there, and is marked, and
+    prints as on #54 - unless a heading was passed over too, when it is left alone as under
+    a heading.
+  - *Only a heading of plain text is passed over.* Markup opened in a heading's line can
+    close on the next: pandoc then reads that line into an ATX heading, or a setext title
+    and all under it as one paragraph, and a marker between printed inside it. Review found
+    one form after another - a code span, a comment, a TeX environment, a citation's
+    locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
+    off from its citation), a citation group, maths, a link's destination, a tag's
+    attributes, emphasis, a backslash inside code. So a heading is passed over only when
+    its lines hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute
+    block ending the line (`{#sec-methods}`, which cross-references need). Any other
+    heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
+    compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
+    over an underline.
+  - *A reworded paragraph can take the link above it along.* One that comes back from Word
+    opening with `(`, `"` or `'` could be the title of a link's definition written straight
+    above it, so the next build marks the whole block, as #54 does, and the definition
+    prints as text.
+  - *Setext headings are not compared, as before.* On `main` since #25 a block holding an
+    underline is left unmarked whole, so the paragraph under a setext heading had no
+    identifier either; it has one now, and the heading still none. A revision round opened
+    on #54 and before this change, with a point anchored to a paragraph under a link's
+    definition, reads that paragraph as revised: its identifier covered the definition too.
+  - *`#` opens no heading unless pandoc says so.* `#Methods` and `#1 priority` are
+    paragraphs to pandoc, and are marked like any other. Indented one to three spaces,
+    ` # Methods` is a paragraph at the top level and a heading inside a list item, where a
+    marker would print it; it is left alone, as on `main`, and the paragraph is not compared.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

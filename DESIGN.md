@@ -3390,8 +3390,18 @@ Closed since, and why each mattered:
   `_escaped` scanning back from the start of the line that way, behind the one line of
   eighteen whose run of backslashes is as long at any size. So the seventeen that grow are
   timed by `check_linear`, and all eighteen keep a 5 s budget. The headroom was measured on
-  one laptop under load. The budgets on a whole `check` run have 1.8 to 3.5 times, which is
-  thin, and most of what they time is `check` itself rather than the hostile input.
+  one laptop under load.
+- **The whole-`check` tests catch a hang or a blow-up, not a scan gone quadratic.** Each
+  holds what a hostile input adds to `check` to 30 times a plain `check` on the same
+  project, in CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on
+  Windows, none on Linux) and every other process. A wall clock backs it up at 60 s, for a
+  `check` that waits instead of working. At the sizes these inputs are written at, the
+  heaviest linear ones already cost nine times a plain `check`, so a quadratic that adds a
+  few seconds passes among them. Two do, on main: `BRACKETED`, the citation pattern, reads
+  to the end of the line from every `[` (5,000 of them cost three seconds a call, three
+  calls a `check`), and `chain_at` walks every heading before a number once per number (18 s
+  for 3,000 numbered headings). Seeing those is `check_linear`'s job, one scan at a time,
+  and both are left to a change of their own.
 
 ## Still open
 

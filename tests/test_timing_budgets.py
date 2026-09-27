@@ -105,17 +105,52 @@ def stale(found: dict[str, list[int]], listed: list[dict]) -> list[str]:
     return sorted(entry["where"] for entry in listed if entry["where"] not in found)
 
 
-def budgets_compared(source: str, name: str) -> list[float | str] | None:
-    """What the function `name` in `source` compares its timings against: a number, or the
-    name of a constant. None if there is no such function.
+def _held(
+    function: ast.AST, source: Callable[[ast.AST], bool]
+) -> tuple[list[float | str], bool]:
+    """What `function` holds the timings from `source` to, and whether it returns one.
 
-    A timing is an expression holding a clock read, a call to a function of the module that
-    returns one, or a name assigned from either. Only the other side of a comparison with a
-    timing counts, so a test that also asserts `line == 24` does not have 24 for a budget. A
-    helper that compares nothing and returns a timing, like `timed_check`, answers for what
-    its callers compare it against."""
+    A timing is an expression holding a node `source` marks, or a name assigned from one.
+    Only the other side of a comparison with a timing counts, as a number or the name of a
+    constant, so a test that also asserts `line == 24` does not have 24 for a budget."""
+    timed: set[str] = set()
+
+    def timing(expression: ast.AST) -> bool:
+        return any(
+            source(node) or (isinstance(node, ast.Name) and node.id in timed)
+            for node in ast.walk(expression)
+        )
+
+    for node in ast.walk(function):
+        if isinstance(node, ast.Assign) and timing(node.value):
+            timed |= {target.id for target in node.targets if isinstance(target, ast.Name)}
+    comparisons = sorted(
+        (node for node in ast.walk(function) if isinstance(node, ast.Compare)),
+        key=lambda node: (node.lineno, node.col_offset),
+    )
+    held = [
+        side.value
+        if isinstance(side, ast.Constant) and isinstance(side.value, (int, float))
+        else side.id if isinstance(side, ast.Name) else ast.unparse(side)
+        for node in comparisons
+        if timing(node.left)
+        for side in node.comparators
+    ]
+    returned = any(
+        isinstance(node, ast.Return) and node.value is not None and timing(node.value)
+        for node in ast.walk(function)
+    )
+    return held, returned
+
+
+def budgets_compared(source: str, name: str) -> list[float | str] | None:
+    """What the timing the function `name` in `source` reads is held to: a number, or the name
+    of a constant. None if there is no such function.
+
+    Only its own clock reads count: a timing it gets from another helper answers to that
+    helper's entry. One it returns, like `timed_check`, answers for what its callers hold
+    the result to, and theirs when they pass it on in turn."""
     tree = ast.parse(source)
-    reads = clock_reader(tree)
     functions = {
         node.name: node
         for node in tree.body
@@ -123,58 +158,27 @@ def budgets_compared(source: str, name: str) -> list[float | str] | None:
     }
     if name not in functions:
         return None
-    timers = {
-        called
-        for called, function in functions.items()
-        for node in ast.walk(function)
-        if isinstance(node, ast.Return)
-        and node.value is not None
-        and any(reads(inner) for inner in ast.walk(node.value))
-    }
+    held, returned = _held(functions[name], clock_reader(tree))
+    passed_on, seen = [name] if returned else [], {name}
+    while passed_on:
+        helper = passed_on.pop(0)
 
-    def compared_in(function: ast.AST) -> list[float | str]:
-        timed: set[str] = set()
-
-        def timing(expression: ast.AST) -> bool:
-            return any(
-                reads(node)
-                or (isinstance(node, ast.Name) and node.id in timed)
-                or (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id in timers
-                )
-                for node in ast.walk(expression)
+        def calls(node: ast.AST, helper: str = helper) -> bool:
+            return (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == helper
             )
 
-        for node in ast.walk(function):
-            if isinstance(node, ast.Assign) and timing(node.value):
-                timed |= {target.id for target in node.targets if isinstance(target, ast.Name)}
-        comparisons = sorted(
-            (node for node in ast.walk(function) if isinstance(node, ast.Compare)),
-            key=lambda node: (node.lineno, node.col_offset),
-        )
-        return [
-            side.value
-            if isinstance(side, ast.Constant) and isinstance(side.value, (int, float))
-            else side.id if isinstance(side, ast.Name) else ast.unparse(side)
-            for node in comparisons
-            if timing(node.left)
-            for side in node.comparators
-        ]
-
-    compared = compared_in(functions[name])
-    if compared or name not in timers:
-        return compared
-    return [
-        value
-        for caller in functions.values()
-        if any(
-            isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
-            for node in ast.walk(caller)
-        )
-        for value in compared_in(caller)
-    ]
+        for caller, function in functions.items():
+            if caller in seen or not any(calls(node) for node in ast.walk(function)):
+                continue
+            seen.add(caller)
+            found, returns = _held(function, calls)
+            held += found
+            if returns:
+                passed_on.append(caller)
+    return held
 
 
 def budget_mismatch(entry: dict, source: str) -> str | None:
@@ -370,6 +374,27 @@ HELPED = (
     "def test_b():\n"
     "    assert timed() < {b}\n"
 )
+# A helper's timing passed on through another that also reads a clock of its own, as
+# `check_overhead` passes on `timed_check`'s and holds its own wall clock to a backstop.
+PASSED_ON = (
+    "import time\n"
+    "BOUND = 30.0\n"
+    "HANG = 60.0\n"
+    "def timed():\n"
+    "    started = time.process_time()\n"
+    "    return time.process_time() - started\n"
+    "def overhead():\n"
+    "    started = time.perf_counter()\n"
+    "    ratio = timed() / timed()\n"
+    "    assert time.perf_counter() - started < HANG\n"
+    "    if ratio < BOUND:\n"
+    "        return ratio\n"
+    "    return ratio\n"
+    "def test_a():\n"
+    "    assert overhead() < BOUND\n"
+    "def test_b():\n"
+    "    assert overhead() < {b}\n"
+)
 
 
 @pytest.mark.parametrize(
@@ -418,6 +443,18 @@ HELPED = (
             HELPED.format(b="BUDGET"),
             None,
             id="a-helper-every-caller-holds-to-the-constant",
+        ),
+        pytest.param(
+            {"where": "t.py::timed", "budget": 30.0, "constant": "BOUND"},
+            PASSED_ON.format(b=60),
+            "compares its timing against ['BOUND', 'BOUND', 60], listed as 'BOUND'",
+            id="a-timing-passed-on-and-held-to-another-number",
+        ),
+        pytest.param(
+            {"where": "t.py::overhead", "budget": 60.0, "constant": "HANG"},
+            PASSED_ON.format(b="BOUND"),
+            None,
+            id="a-function-answers-for-its-own-clock-only",
         ),
     ],
 )

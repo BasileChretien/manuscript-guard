@@ -116,6 +116,9 @@ class Block:
     #: Every word of it, and its paragraph mark, tracked as arriving here: typed, pasted, or
     #: moved here. It was not here in the document as sent, whatever identifier it carries.
     arrived: bool = False
+    #: What its style says it is: "heading", "caption", "reference" (an entry of the reference
+    #: list), or "" for anything else. See `_roles`.
+    role: str = ""
 
     #: What Word draws in it that is not read as text, or not read exactly, named once for
     #: each occurrence: a Wingdings character, a piece of a tall bracket, a private-use
@@ -153,7 +156,72 @@ class _Paragraph:
     retracted: bool = False
     #: The names of the tracked moves its moved text belongs to.
     moves: tuple[str, ...] = ()
+    #: What its style says it is; see `Block.role`.
+    role: str = ""
     unread: tuple[str, ...] = ()
+
+
+#: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
+_HEADING_LEVELS = frozenset("012345678")
+_HEADING_NAME = re.compile(r"heading [1-9]")
+
+
+def _roles(archive, what: str) -> dict[str, str]:
+    """Each paragraph style's role, by style id.
+
+    By name and outline level, never by id: Word renames the ids when it saves in another
+    language - a Japanese Word saved pandoc's `Heading1` as `1` and `BodyText` as `a0` - and
+    keeps the built-in names ("heading 1", "caption", "Bibliography"). A heading is a style
+    whose outline level, its own or one it is based on, is a heading level; a table of
+    contents heading is based on heading 1 and sets its own back to body text, and is not one.
+    A caption or a reference entry is named so, or based on a style that is.
+    """
+    if "word/styles.xml" not in archive.namelist():
+        return {}
+    styles: dict[str, tuple[str, str, str | None]] = {}
+    for style in read_part(archive, "word/styles.xml", what=f"{what}:styles").iter(W + "style"):
+        if style.get(W + "type") != "paragraph":
+            continue
+        name, based = style.find(W + "name"), style.find(W + "basedOn")
+        level = style.find(f"{W}pPr/{W}outlineLvl")
+        styles[style.get(W + "styleId", "")] = (
+            (name.get(W + "val", "") if name is not None else "").strip().lower(),
+            based.get(W + "val", "") if based is not None else "",
+            level.get(W + "val") if level is not None else None,
+        )
+
+    def role(style_id: str) -> str:
+        names: list[str] = []
+        outline: str | None = None
+        seen: set[str] = set()
+        while style_id in styles and style_id not in seen:
+            seen.add(style_id)
+            name, based, level = styles[style_id]
+            names.append(name)
+            outline = level if outline is None else outline
+            style_id = based
+        if outline in _HEADING_LEVELS or (
+            outline is None and any(_HEADING_NAME.fullmatch(name) for name in names)
+        ):
+            return "heading"
+        if "caption" in names:
+            return "caption"
+        return "reference" if "bibliography" in names else ""
+
+    return {style_id: role(style_id) for style_id in styles}
+
+
+def _role(element: ET.Element, roles: dict[str, str]) -> str:
+    """A paragraph's role: its style's, unless an outline level set on the paragraph itself
+    says otherwise."""
+    style = element.find(f"{W}pPr/{W}pStyle")
+    found = roles.get(style.get(W + "val", ""), "") if style is not None else ""
+    level = element.find(f"{W}pPr/{W}outlineLvl")
+    if level is None:
+        return found
+    if level.get(W + "val") in _HEADING_LEVELS:
+        return "heading"
+    return "" if found == "heading" else found
 
 
 def _text(element: ET.Element, fonts: Fonts | None = None) -> str:
@@ -310,7 +378,12 @@ def _removes(element: ET.Element) -> bool:
 
 
 def _paragraph(
-    element: ET.Element, *, table: bool, moves: tuple[str, ...], fonts: Fonts
+    element: ET.Element,
+    *,
+    table: bool,
+    moves: tuple[str, ...],
+    fonts: Fonts,
+    roles: dict[str, str],
 ) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -367,6 +440,7 @@ def _paragraph(
         arrived=arrived,
         retracted=retracted,
         moves=moves,
+        role=_role(element, roles),
         unread=unread,
     )
 
@@ -381,7 +455,12 @@ def _visible(element: ET.Element):
 
 
 def _walk_body(
-    node: ET.Element, moves: dict[int, tuple[str, ...]], *, fonts: Fonts, table: bool = False
+    node: ET.Element,
+    moves: dict[int, tuple[str, ...]],
+    roles: dict[str, str],
+    *,
+    fonts: Fonts,
+    table: bool = False,
 ) -> list[_Paragraph]:
     out: list[_Paragraph] = []
     for child in node:
@@ -389,16 +468,14 @@ def _walk_body(
             # A table row deleted with Track Changes on: gone once the change is accepted.
             continue
         if child.tag == W + "p":
-            out.append(
-                _paragraph(child, table=table, moves=moves.get(id(child), ()), fonts=fonts)
-            )
+            found = moves.get(id(child), ())
+            out.append(_paragraph(child, table=table, moves=found, fonts=fonts, roles=roles))
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, moves, fonts=fonts, table=True))
+            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
-            out.extend(
-                _walk_body(child, moves, fonts=fonts, table=table or child.tag == W + "tc")
-            )
+            inside = table or child.tag == W + "tc"
+            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=inside))
     return out
 
 
@@ -501,13 +578,14 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
             if part not in archive.namelist():
                 return []
             root = read_part(archive, part, what=f"{document.name}:{part}")
+            roles = _roles(archive, document.name)
             # Which font a run is in decides what its text is; see `wordfonts`.
             fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
-    return _settled(_walk_body(body, _move_names(body), fonts=fonts))
+    return _settled(_walk_body(body, _move_names(body), roles, fonts=fonts))
 
 
 def blocks(document: Path) -> list[Block]:
@@ -623,7 +701,12 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
     tokens = kept[0].tokens if len(kept) == 1 else ()
     unread = tuple(u for p in run for u in p.unread)
     arrived = all(p.arrived for p in kept)
-    return [Block(names=names, text=text, tokens=tokens, unread=unread, arrived=arrived)]
+    # The role of the paragraph the block opens with, which carries its identifier: a
+    # paragraph run on into the heading after it is that paragraph, joined, not a heading.
+    role = kept[0].role
+    return [
+        Block(names=names, text=text, tokens=tokens, unread=unread, arrived=arrived, role=role)
+    ]
 
 
 def comment_anchors(document: Path) -> dict[str, str]:

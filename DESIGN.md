@@ -2284,9 +2284,20 @@ never retype it - and the skill asks co-authors to keep Track Changes on. Two ex
 stayed: an identifier left on an empty line goes back to the next paragraph when that has
 text and reads exactly as the identified one was sent (Enter without Track Changes; a line
 holding only a symbol read as the empty line an HTML comment renders as, and took the
-comment's identifier), and an identifier on a block reading exactly as a heading or caption
-is taken off it (the last paragraph of a section, deleted without Track Changes, used to
-merge the heading's text into itself when it named the heading, on `main` too).
+comment's identifier), and an identifier on a heading, a caption or a reference entry is
+taken off it (the last paragraph of a section, deleted without Track Changes, used to merge
+the heading's text into itself, on `main` too).
+Recognised by its text at first, a heading retitled in the same round was still merged -
+"Study design", as Word's own saved file showed - so a paragraph's role is now read from its
+style: a heading by its outline level, a caption or a reference entry by its style's name,
+never by the id, which Word renames when it saves in another language (a Japanese Word saves
+pandoc's `Heading1` as `1`). Three kinds of block keep their identifier all the same, since
+reported deleted they would invite deleting a paragraph that is there: a paragraph restyled
+as a heading in Word, its words mostly its own; a paragraph the heading before it was
+joined into, which keeps the heading's style and is refused as a join - known by that
+heading gone from the document and its text turned up in the block, as a join is known
+anywhere, since the paragraph may have been reworded in the same round; and a paragraph
+sent with the role it has, such as a note the source styles as a caption.
 
 The checks that came out of the review rounds guard the tracked path as well:
 
@@ -3981,10 +3992,37 @@ Closed since, and why each mattered:
   - *A comment's anchor is read from the markup only.* After a paste made without Track
     Changes at the start of a paragraph, a comment on the pasted text is attached to the
     paragraph it landed in front of.
-  - *A heading retitled after the last paragraph of its section was deleted without Track
-    Changes* is merged as that paragraph's text, on `main` too. The paragraph's identifier
-    slides onto the heading, and only a heading that still reads exactly as it was sent is
-    recognised as one; paragraph styles are not read.
+  - *A heading is what its style says it is.* An identifier left on a heading, a caption or
+    a reference entry - the paragraph before it deleted without Track Changes - names a
+    paragraph that is gone, whatever the heading now says. A heading made by hand, bold and
+    larger with no heading style or outline level, is not a heading to Word's navigation
+    pane either, and not to `import`: retitled in the same round, it reads as the deleted
+    paragraph's new wording, as every heading did on `main`. So does a heading, a caption or
+    a reference entry whose new text and the paragraph deleted before it share most of
+    their words, in order, which is read as that paragraph restyled: a short caption edited
+    into mostly a deleted lead-in's words merges into the lead-in's slot, as on `main`, and
+    the caption in the source stays as it was.
+  - *A heading joined into a short paragraph under it and retitled in the same round* is no
+    longer known as a join once the heading's old title is gone from the block. When the new
+    title and the paragraph still share most of their words ("Ethics approval" with "Not
+    applicable."), the block merges into the paragraph's slot, title and all, and the
+    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted.
+  - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
+    identifier on any caption. Deleted without Track Changes just above a table whose
+    caption was edited, it has the caption's new text written over it, as on `main`.
+    Nothing in the toolkit writes such a div.
+  - *A paragraph restyled as a heading and reworded past most of its words* is reported
+    deleted, and the heading as new text. One restyled that keeps most of its words merges
+    its rewording, and the style change is dropped without a word, as on `main`.
+  - *A subheading typed above a paragraph without Track Changes* takes that paragraph's
+    identifier, as any text typed at its start does, and the paragraph is reported as moved
+    in Word, though it never moved. Nothing is written. Only an empty line is given its
+    identifier back.
+  - *The live build's reference list before Zotero refreshes it* is one placeholder paragraph
+    with no style, so it is not recognised as a reference entry. The last paragraph deleted
+    without Track Changes leaves its identifier on the placeholder, and its text is written
+    over that paragraph, on `main` too. After a refresh the entries carry the Bibliography
+    style and are recognised.
 - **A join into a table is neither applied nor reported.** A paragraph whose mark was
   deleted just before a table runs on in Word into the table's first cell. Import folds a
   paragraph into the next only when no table stands between them, so it reads the paragraph

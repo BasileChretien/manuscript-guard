@@ -2576,11 +2576,12 @@ Added by the adversarial review, verified and **not** fixed:
   not pair. And the scan for raw content does not know where pandoc reads a `<!--`, a
   verbatim tag such as `<pre>`, or a `\begin{x}` inside something it closes first. Found
   so far: inline code, inline or display maths, `\verb|...|`, an indented code block, a
-  fence written under a line of its block rather than after a blank one, a fence in a
-  block quote or indented four columns or more, a link's destination or title, an
-  autolink, an image's title, the attributes of a tag, a span, a heading, a div, a link,
-  an image or a code span, a table cell, a list item, a block quote, a line block, a
-  definition, a YAML block in the body and a rendered value of the front matter. `<pre>`
+  fence written under a line of its block rather than after a blank one, a fence opening
+  a list item on its marker's line, a fence in a block quote or indented four columns or
+  more, a link's destination or title, an image's destination or title, an autolink, the
+  attributes of a tag, a span, a heading, a div, a link, an image or a code span, a table
+  cell, a list item, a block quote, a line block, a definition, a YAML block in the body
+  and any value in the front matter. `<pre>`
   and `\begin` are misread in link text, an image's alt text, an inline note and a
   citation's locator too, and `<!--` and `<pre>` in a TeX command's argument. There the
   opener is taken for real. The paragraphs from the one holding it to the one holding its
@@ -2590,22 +2591,13 @@ Added by the adversarial review, verified and **not** fixed:
   those paragraphs in Word comes back listed as not compared, to be carried over by hand.
   For a `<!--` anywhere but inline code, a fence and the front matter, `check`'s comment
   scanner hides the text from the opener to the closer as well, and G2 reads no number
-  there (see "The comment scanner knows code spans, fences and the front matter"). What
-  avoids it depends on where the opener stands. Code goes in a fenced block that opens its
-  own block after a blank line, indented less than four columns, outside a block quote:
-  so not in a note's later paragraphs, a definition, or a list item indented four. After
-  an opener in inline code, maths or `\verb`, and after a `<pre>` in running text, an
-  empty comment later in the same paragraph prints nothing (`<!-- -->`, `<!-- </pre> -->`
-  or `<!-- \end{x} -->`). Never put one after a `<!--` or a `\begin{x}` in running text: it
-  closes the author's own, and pandoc drops the words between. There, and in the front
-  matter, escape the opener instead (`\<!--`, `\\begin{x}`). In a link's destination the
-  `<` is `%3C`, and in an attribute `&lt;`, since an empty comment at the end of a
-  heading's or a div's attribute line breaks the attribute. For `<pre>` and `\begin{x}`,
-  the opener's own paragraph stays unmarked whatever is done: a block-level tag or an
-  environment splits its paragraph. Raw TeX other than an environment is not followed
-  across a blank line. When the blank line falls inside braces, the blocks either side are
-  refused by the brace
-  count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
+  there (see "The comment scanner knows code spans, fences and the front matter"). No way
+  around it is given here: each tried, a fenced block, an empty comment after the opener,
+  an escape, `%3C` or `&lt;`, fails or changes the printed words somewhere the others
+  work, and the reviews of #97 list where. Raw TeX other than an environment is not
+  followed across a blank line. When the blank line falls inside braces, the blocks either
+  side are refused by the brace count, since `\footnote{One.\n\nTwo.}` is one paragraph
+  to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
   marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which
   `import` already tolerates. When it falls inside an optional argument,

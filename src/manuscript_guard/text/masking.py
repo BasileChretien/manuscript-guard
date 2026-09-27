@@ -12,6 +12,7 @@ dangerous direction, so anything questionable is left unmasked and allowed to fa
 
 from __future__ import annotations
 
+import itertools
 import re
 from bisect import bisect_right
 from functools import lru_cache
@@ -386,6 +387,7 @@ def comparison_escapes(text: str) -> list[int]:
 # that is partly machinery and partly prose. HTML comments are handled separately too, and
 # before any of these, by `text/comments.py`: whether `<!--` opens one depends on whether a
 # code span opened first, which no pattern here can see.
+_URL = re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)
 _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # A fenced block is masked *here* and read by a different reader. Inline code is not
     # masked at all.
@@ -401,7 +403,7 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     # loop bound is not.
     ("placeholder", re.compile(r"\{\{[^}\n]*\}\}")),
     ("autolink", re.compile(r"<(?:https?|doi|mailto):[^>\s]+>")),
-    ("url", re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)\S+", re.IGNORECASE)),
+    ("url", _URL),
     ("link-target", re.compile(r"\]\([^)\n]*\)")),
     ("footnote", re.compile(r"\[\^[^\]\n]+\]")),
     # Citation KEYS, not whole citation brackets. Better BibTeX keys routinely end in a year,
@@ -422,19 +424,86 @@ _PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+_OPENER = re.compile(r"---[ \t]*\r?")
+_CLOSER = re.compile(r"(?:---|\.\.\.)[ \t]*\r?")
+_BLANK = re.compile(r"[ \t]*\r?")
+
+
+def metadata_blocks(text: str) -> list[tuple[int, int]]:
+    """The YAML metadata blocks in the body, which pandoc reads as it reads the front matter,
+    as (start, end) from the opening `---` to past the closing line. Their lines are no
+    headings; their values are read as any text is, since the build passes the block to
+    pandoc, which prints its author, date and abstract.
+
+    Pandoc reads one anywhere a `---` line follows a blank line, or the front matter, and is
+    not followed by one, up to the next `---` or `...` line, when what is between is a YAML
+    mapping. Read as prose, a `# Methods` in one was a heading: the numbers under it took
+    the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha chosen in
+    advance. A list or a sentence there is printed, and stays prose, and so does a block in a
+    listing.
+
+    Every opener is a closer line too, so no block is looked for past the next opener, and
+    the scan is linear.
+    """
+    head = front_matter_end(text)
+    if "---" not in text[head:]:
+        return []
+    lines = text[head:].split("\n")
+    starts = list(itertools.accumulate((len(line) + 1 for line in lines[:-1]), initial=head))
+    fenced = [(f.start, f.end) for f in fenced_blocks(text)]
+    following: list[int | None] = [None] * len(lines)
+    upcoming: int | None = None
+    for index in range(len(lines) - 1, -1, -1):
+        following[index] = upcoming
+        if _CLOSER.fullmatch(lines[index]):
+            upcoming = index
+    blocks: list[tuple[int, int]] = []
+    index = 0
+    while index < len(lines) - 1:
+        closing = following[index]
+        if (
+            closing is not None
+            and _OPENER.fullmatch(lines[index])
+            and (head > 0 if index == 0 else _BLANK.fullmatch(lines[index - 1]) is not None)
+            and not _BLANK.fullmatch(lines[index + 1])
+            and not _inside(fenced, starts[index])
+        ):
+            yaml_text = "\n".join(lines[index + 1 : closing]) + "\n"
+            if yaml_text.strip() and _read_yaml(yaml_text)[0]:
+                end = starts[closing] + len(lines[closing]) + (closing + 1 < len(lines))
+                blocks.append((starts[index], end))
+                index = closing + 1
+                continue
+        index += 1
+    return blocks
+
+
+def _inside(spans: list[tuple[int, int]], offset: int) -> bool:
+    """Whether `offset` lies in one of `spans`, sorted and not overlapping."""
+    found = bisect_right(spans, (offset, float("inf"))) - 1
+    return found >= 0 and spans[found][0] <= offset < spans[found][1]
+
+
 def _frontmatter_spans(text: str) -> list[tuple[int, int]]:
     """The parts of the opening YAML block to mask: everything but the rendered values.
+
+    Not a block of the body (`metadata_blocks`): the build strips only the opening one, and
+    pandoc prints a body block's author, date and abstract, a table under a caption, and
+    nothing of one inside a comment, whose closing the block's masked lines hid. Masked, each
+    of these hid numbers the document prints.
 
     Returned as spans rather than applied here, so `masked_spans` can report them under one
     name and `mask` can apply them with everything else.
     """
     opening = FRONTMATTER.match(text)
-    if opening is None:
-        return []
+    return _yaml_spans(text, opening.start(), opening.end()) if opening else []
 
+
+def _yaml_spans(text: str, begin: int, finish: int) -> list[tuple[int, int]]:
+    """The parts of the YAML block `text[begin:finish]`, delimiters included, to mask."""
     spans: list[tuple[int, int]] = []
-    offset = opening.start()
-    block = text[opening.start() : opening.end()]
+    offset = begin
+    block = text[begin:finish]
     keeping_from: int | None = None  # indent of an open block scalar, e.g. `abstract: |`
 
     for line in block.splitlines(keepends=True):
@@ -551,9 +620,18 @@ def blank_comments(text: str) -> str:
     return blank(text, html_comments(text))
 
 
+# In the front matter, a URL ends at a masked character too: the next line's key is masked
+# before it, and a URL ending a title ran through that key into the next value.
+_URL_IN_YAML = re.compile(r"(?:https?://|www\.|doi:\s*|10\.\d{4,9}/)[^\s\x00]+", re.IGNORECASE)
+
+
 def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Match[str]]:
-    """Matches in the front matter and in the body, none running from one into the other."""
-    return [*pattern.finditer(text, 0, head), *pattern.finditer(text, head)]
+    """Matches in the front matter and in the body, none running from one into the other.
+    Not in the body: stopped there at a comment's masked characters, a URL left what was
+    after them to a link target, which ran on across the space and hid what pandoc prints.
+    """
+    front = _URL_IN_YAML if pattern is _URL else pattern
+    return [*front.finditer(text, 0, head), *pattern.finditer(text, head)]
 
 
 def mask(text: str) -> str:

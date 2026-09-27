@@ -41,8 +41,10 @@ _NUMERIC_TEXT = re.compile(r"^\s*[-+−]?[\d,  ]*\d(?:[.,]\d+)?\s*%?\s*$")
 _NUMBER_IN_TEXT = re.compile(r"\d[\d,  ]*(?:\.\d+)?")
 
 __all__ = [
+    "DIGEST_SUFFIX",
     "TABLE_SECTION",
     "Composed",
+    "DisplayError",
     "Emitter",
     "read_digest",
     "sha256_of",
@@ -730,15 +732,3 @@ class Emitter:
         path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
         return path
-
-
-__all__ = [
-    "DIGEST_SUFFIX",
-    "DisplayError",
-    "Emitter",
-    "read_digest",
-    "sha256_of",
-    "source_digest",
-    "source_digest_matches",
-    "write_digest",
-]

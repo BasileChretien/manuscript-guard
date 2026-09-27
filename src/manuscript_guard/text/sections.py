@@ -207,8 +207,9 @@ class Section:
         return bool(_REFERENCES.match(self.title))
 
 
-def scannable(text: str) -> str:
-    """`text` with code fences and HTML comments blanked, offsets preserved.
+def scannable(text: str, *, metadata: bool = True) -> str:
+    """`text` with code fences and HTML comments blanked, offsets preserved, and, unless
+    `metadata` is false, the YAML blocks of the body.
 
     Headings are found by scanning for `^#{1,6}\\s`, and `#` is a comment character in
     Python, R, shell and YAML. Once fenced code stopped being masked — correctly, because it
@@ -246,7 +247,8 @@ def scannable(text: str) -> str:
     head = front_matter_end(text)
     fences = fenced_blocks(text)
     spans = [(f.start, f.end) for f in fences] + html_comments(text, fences)
-    return blank(text, [(0, head), *metadata_blocks(text), *spans])
+    blocks = metadata_blocks(text) if metadata else []
+    return blank(text, [(0, head), *blocks, *spans])
 
 
 @dataclass(frozen=True)
@@ -561,9 +563,10 @@ def rules_opening_blocks(text: str) -> list[int]:
     lines, where pandoc reads nothing but a thematic break, and a heading is written with
     `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
     pandoc starts a block behind either. A line in code, a comment or the front matter is
-    not read.
+    not read. A YAML block of the body is: its dashes are what is refused, and blanked with
+    it, as the heading reads blank it (#85), it passed `check`.
     """
-    shown = scannable(text).split("\n")
+    shown = scannable(text, metadata=False).split("\n")
     source = text.split("\n")
     found = []
     for number, line in enumerate(shown):

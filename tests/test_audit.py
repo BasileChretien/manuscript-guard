@@ -1017,20 +1017,29 @@ def attribute_blocks(n: int) -> list[str]:
         "# References {" + "#a" * n + " !}",
         "# References {" + ".a" * n + "!}",
         "# References {" + "a" * 2 * n + "}",
-        '# References {k="' + "a" * 2 * n + " !}",
         "# References {" + " " * 2 * n + "!}",
         "# References {" + "-" * 2 * n + "!}",
         "# References " + "{" * 2 * n + "}",
         "# References " + "{}" * n,
         "# References " + "{-} " * (n // 2),
+        "# References " + "\\{" * n + "}",
+        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
+        '# References {k=" ' + "a" * 2 * n + '"}',
+    ]
+
+
+def attribute_values(n: int) -> list[str]:
+    """More of them, each a `k=` value whose reading costs more per character past a size
+    that falls between the two a ratio compares: from 400 to 3,200 characters, or 1,600 to
+    12,800, they read 10 to 21 times the time while linear. So a budget holds them, and the
+    ratio does not."""
+    return [
+        '# References {k="' + "a" * 2 * n + " !}",
         '# References {k="' + '\\"' * n + " !}",
         "# References {k='" + "\\'" * n + " !}",
         "# References {k=" + "\\}" * n + " !}",
         "# References {k=" + "\\" * (2 * n + 1) + "}",
-        "# References " + "\\{" * n + "}",
-        "# References {" + "k=\"a\\\" k='a\\' " * (n // 7) + "!}",
         "# References {k=" + "\u00a0" * 2 * n + " !}",
-        '# References {k=" ' + "a" * 2 * n + '"}',
     ]
 
 
@@ -1043,18 +1052,22 @@ def test_a_long_attribute_block_does_not_stall_the_heading_check() -> None:
     # 20,000 characters each. A linear reading of all eighteen took 300 to 400 ms on a loaded
     # machine, which the old 0.5 s budget barely covered; a quadratic one takes tens of
     # seconds (`_escaped` scanning back from the start of the line: 35 s). The run of 999
-    # backslashes is as long whatever `n` is, which is why it is timed here and not below.
+    # backslashes is as long whatever `n` is, and the `k=` values cost more per character
+    # past a size, which is why they are timed here and not below.
+    fixed = "# References " + ("\\" * 999 + "{") * 20 + "}"
     started = time.perf_counter()
-    for line in (*attribute_blocks(10000), "# References " + ("\\" * 999 + "{") * 20 + "}"):
+    for line in (*attribute_blocks(10000), *attribute_values(10000), fixed):
         assert not is_bibliography_heading(line, marked=True)
     assert time.perf_counter() - started < 5.0
 
 
 def test_the_heading_check_reads_an_attribute_block_in_linear_time(assert_linear) -> None:
-    """The blocks above that grow, timed as they grow. Timed with the run of 999 backslashes
-    among them, `_escaped` scanning back from the start of the line passed: that one line took
-    over the 20 ms floor by itself, so the input never grew, and the ratio compared two times
-    made mostly of the same constant. Without it, the same rescan reads 64 times the time."""
+    """The blocks that grow smoothly, timed as they grow. Timed with the run of 999
+    backslashes among them, `_escaped` scanning back from the start of the line passed: that
+    one line took over the 20 ms floor by itself, so the input never grew, and the ratio
+    compared two times made mostly of the same constant. Without it, the same rescan reads 80
+    times the time. The `k=` values are left to the budget above: with them, correct code
+    read over 16 in 4 of 24 runs."""
     from manuscript_guard.audit import is_bibliography_heading
 
     def read(lines: list[str]) -> None:

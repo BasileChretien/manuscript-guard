@@ -873,6 +873,18 @@ def test_a_rewording_that_shares_no_word_with_either_paragraph_is_no_join(
     assert plan.merged == {"a": "Approved by the review board."}
 
 
+def test_a_rewording_holding_the_next_paragraph_s_word_inside_its_own_is_no_join(
+    tmp_path: Path,
+) -> None:
+    """A tie at nothing counted as a join when any word of the paragraph after it appeared
+    anywhere in the rewording, and "None" is inside "Nonetheless", as "no" is inside "not":
+    the rewording was refused where main merged it. A join retyped with no space holds the
+    two words either side of the break as one, and only that is looked for."""
+    plan = _beside_one_not_compared(tmp_path, "Nonetheless, the board waived approval.")
+    assert not plan.joined
+    assert plan.merged == {"a": "Nonetheless, the board waived approval."}
+
+
 def test_a_paragraph_joined_with_the_one_after_it_not_compared_is_still_a_join(
     tmp_path: Path,
 ) -> None:

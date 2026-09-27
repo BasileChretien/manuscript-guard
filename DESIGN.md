@@ -3062,9 +3062,10 @@ Closed since, and why each mattered:
   paragraph of the fresh build compared under none of the document's identifiers - added,
   moved or edited by the author since the build - is weighed as a join into the paragraph
   above it, since a block untagged at the build looks the same. A wholesale rewrite of
-  that paragraph sharing a few common words with it reads as the join, and is refused:
-  about one in five complete rewrites of a short paragraph, none below 40% of its words
-  replaced.
+  the paragraph above that shares a few common words with it reads as the join, and is
+  refused. In two samples built from the example's sentences, 18% and 8% of complete
+  rewrites of a short paragraph were refused, and none with under 40% of the words
+  replaced. Nothing is written in that case.
 - **A paragraph is followed by its text alone when that text is unique.** That is the rule
   it is trusted in place by, and it is as sure: a paragraph deleted from the source since
   the build and written again word for word elsewhere is taken for the one the co-author

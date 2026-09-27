@@ -588,7 +588,10 @@ def _took_in(
 
     A paragraph of the fresh build that is not `compared` - one the author added since the
     build - is looked past: the co-author never had it between the heading and this one,
-    and stopped at it, the heading was not seen and the run-in paragraph merged.
+    and stopped at it, the heading was not seen and the run-in paragraph merged. So is a
+    block with no identifier that is `missing` from the returned document and did not run
+    in: a list, a quotation or a sub-heading added since the build, which the co-author
+    never had either.
     """
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
@@ -602,13 +605,16 @@ def _took_in(
 
     for step in (-1, 1):
         i = at + step
-        while 0 <= i < len(reference) and passed(reference[i]):
+        while 0 <= i < len(reference):
+            block = reference[i]
             i += step
-        if not 0 <= i < len(reference) or reference[i].names or reference[i].table:
-            continue
-        text = " ".join(reference[i].text.split())
-        if missing[reference[i].text] and squashed_now.count(text) > squashed_was.count(text):
-            return reference[i].text
+            if passed(block):
+                continue
+            if block.names or block.table or not missing[block.text]:
+                break
+            text = " ".join(block.text.split())
+            if squashed_now.count(text) > squashed_was.count(text):
+                return block.text
     return ""
 
 
@@ -655,7 +661,9 @@ def _absorbed(now: str, other: str, was: str) -> bool:
     at nothing: a rewording sharing no word with either paragraph holds none of the
     neighbour's words, which a join does, and counted as one, "Not applicable." rewritten whole
     above a paragraph added since the build was refused where main merged it. A join retyped
-    with no space holds them inside one word, and is still one.
+    with no space holds the words either side of the break as one word, and is still one.
+    Only those two are looked for: any of the neighbour's words inside any word refused
+    rewordings main merged, "no" being inside "not".
 
     Two earlier versions looked for the neighbour's words instead, and each was defeated in
     a round of review: one unbroken run of six words was split by a single edited word, and
@@ -670,7 +678,7 @@ def _absorbed(now: str, other: str, was: str) -> bool:
     if together == 0:
         # Nothing in common word by word: "None." and "Unfunded." retyped with no space are
         # one word, "None.Unfunded.", a join all the same.
-        return any(token in now for token in theirs)
+        return bool(before) and before[-1] + theirs[0] in now
     return together >= alone
 
 

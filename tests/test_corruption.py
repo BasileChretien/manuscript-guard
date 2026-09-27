@@ -2233,22 +2233,34 @@ def test_a_join_across_a_paragraph_the_source_put_between_is_not_merged(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "between",
+    [
+        _NEW,
+        "- A list item added since the build.",
+        "> A quotation added since the build.",
+        "## Data sources",
+    ],
+    ids=["paragraph", "list", "quotation", "sub-heading"],
+)
 @pytest.mark.parametrize("below", [False, True], ids=["heading above", "heading below"])
 def test_a_heading_run_into_a_followed_paragraph_is_not_merged(
-    project: Path, tmp_path: Path, below: bool
+    project: Path, tmp_path: Path, below: bool, between: str
 ) -> None:
     """A heading run into the paragraph beside it in Word is refused: its text would be in
     the source twice. The heading was looked for beside the paragraph in the fresh build,
-    where a paragraph the author added since the build now stood between them, so the
-    heading was not seen and the run-in paragraph merged."""
+    where a block the author added since the build now stood between them, so the heading
+    was not seen and the run-in paragraph merged. Looking past a paragraph not compared was
+    not enough: a list, a quotation or a sub-heading carries no identifier at all."""
     from manuscript_guard.cli import main
 
     if below:
         built = ("# Intro", _ALPHA, _PAPA, "# Methods", _ROMEO)
-        now = ("# Intro", _NEW, _ALPHA, _PAPA, _NEW.replace("Novel", "Second"), "# Methods", _ROMEO)
+        second = between.replace("Novel", "Second")
+        now = ("# Intro", _NEW, _ALPHA, _PAPA, second, "# Methods", _ROMEO)
     else:
         built = ("# Intro", _ALPHA, "# Methods", _PAPA, _ROMEO)
-        now = ("# Intro", _ALPHA, "# Methods", _NEW, _PAPA, _ROMEO)
+        now = ("# Intro", _ALPHA, "# Methods", between, _PAPA, _ROMEO)
     path = _paper(project, *built)
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
 

@@ -155,8 +155,8 @@ def check_numbers(
                     Finding(
                         gate=GATE,
                         code="value-splits-paragraph",
-                        message=f"{placeholder.raw} prints {what} into its paragraph, which "
-                        f"then reaches Word in parts",
+                        message=f"{placeholder.raw} prints {what} into its paragraph, where "
+                        f"it can break the paragraph in parts in Word",
                         path=path,
                         line=placeholder.line,
                         col=placeholder.col,

@@ -11362,6 +11362,49 @@ def test_a_split_with_paragraphs_cut_in_between_without_track_changes_is_not_mer
     assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
+@pytest.mark.parametrize(
+    ("role", "added"),
+    [
+        ("heading", "Reports of hepatic injury"),
+        ("caption", "Reports of hepatic injury"),
+        ("", "Reporting of hepatic injury"),
+    ],
+    ids=["heading", "caption", "body"],
+)
+def test_new_text_sharing_a_few_words_a_rewording_dropped_does_not_refuse_it(
+    tmp_path: Path, role: str, added: str
+) -> None:
+    """A rewording that dropped "reports of hepatic injury", and a heading "Reporting of
+    hepatic injury" added under Results in the same round (Word 365, the example's build):
+    three of the heading's four words were among the words the paragraph lost, and it was
+    refused as split off - a split that never happened, where `main` merged it. A heading or
+    a caption is never a split's second half, which Word gives the body style, whatever
+    words it shares; and a short text shares its words with a paragraph by its "of" and
+    "the" as much as by what it says, so three are not enough."""
+    from manuscript_guard.merge import plan_import
+
+    was = (
+        "The reporting odds ratio was computed from a 2 x 2 table contrasting reports of "
+        "hepatic injury with all other reported events, for example-drug against all other "
+        "drugs in the database."
+    )
+    now = (
+        "We computed the reporting odds ratio from a 2 x 2 table, for example-drug against all "
+        "other drugs."
+    )
+    words = {"m": was, "r": "We found 77 cases."}
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{was}\n\n# Results\n\n{words['r']}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, line, text.index(line)) for name, line in words.items()}
+    methods, results = Block((), "Methods", role="heading"), Block((), "Results", role="heading")
+    sent = [methods, Block(("m",), was), results, Block(("r",), words["r"])]
+    new = Block((), added, role=role)
+    plan = plan_import(known, sent, [methods, Block(("m",), now), results, sent[3], new])
+    assert not plan.refused, plan.refused
+    assert "m" in plan.merged, plan
+
+
 @needs_pandoc
 @pytest.mark.parametrize("returned", CUT_DOWN)
 def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:

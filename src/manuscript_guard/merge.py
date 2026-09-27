@@ -178,12 +178,17 @@ def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
 
 
 def _untagged_new(reference: list[Block], returned: list[Block]) -> list[str]:
-    """Text without an identifier that the returned document holds and the one as sent did
-    not - a new paragraph, an edited heading, a split's second half - in document order."""
+    """Body text without an identifier that the returned document holds and the one as sent
+    did not - a new paragraph, a split's second half - in document order.
+
+    Not a heading, a caption or a reference entry: Word gives a split's second half the
+    body style, and a heading added in the same round as a rewording, sharing a phrase with
+    what the rewording dropped, had it refused as split off.
+    """
     left = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     out: list[str] = []
     for block in returned:
-        if block.names or block.table or not block.text:
+        if block.names or block.table or not block.text or block.role:
             continue
         if left[block.text]:
             left[block.text] -= 1
@@ -369,13 +374,13 @@ def _parts_apart(
     return found
 
 
-#: The fewest words new text needs before `_split_off` weighs it: a heading retitled with a
-#: word the paragraph beside it lost is not a split.
+#: The fewest of its words new text must share with what a paragraph lost for `_split_off`
+#: to weigh it: shorter, "of the" and one topical word made a rewording look split.
 _SPLIT_OFF_WORDS = 4
 
 
 def _split_off(was: str, now: str, fresh: list[str]) -> str:
-    """New text without an identifier holding most of what this paragraph lost.
+    """New body text without an identifier made mostly of words this paragraph lost.
 
     A paragraph split in Word, and something moved in between its halves: its first half
     kept the identifier, and a paragraph that stood beside it as sent still stood beside it,
@@ -383,24 +388,31 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     half past the moved paragraph only listed as new text. Nothing in the markup says so
     when the move was not recorded - Word keeps the identifier of every paragraph but the
     first in a cut - or when what moved in has none to show it moved, as an equation has
-    none. A sentence cut out and pasted as a paragraph of its own is the same loss. A
-    judgement - most of the new text's words, in order, among the words this paragraph
+    none. A sentence cut out and pasted as a paragraph of its own is the same loss.
+
+    Exact when the paragraph kept its opening word for word and the new text is the rest of
+    it, word for word: a split, however short the second half. Otherwise a judgement - most
+    of the new text's words, in order and four at least, among the words the paragraph
     lost - and it only refuses.
     """
     before, after = was.split(), now.split()
+    rest = before[len(after) :] if before[: len(after)] == after else []
     matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    # In any case: a sentence split off into a paragraph of its own is capitalised there.
     lost = [
-        word
+        word.casefold()
         for tag, i1, i2, _j1, _j2 in matcher.get_opcodes()
         if tag in ("delete", "replace")
         for word in before[i1:i2]
     ]
     for text in fresh if lost else ():
         words = text.split()
-        if len(words) < _SPLIT_OFF_WORDS:
-            continue
-        shared = difflib.SequenceMatcher(a=words, b=lost, autojunk=False).get_matching_blocks()
-        if sum(block.size for block in shared) >= _ALIKE * len(words):
+        if rest and words == rest:
+            return text
+        folded = [word.casefold() for word in words]
+        shared = difflib.SequenceMatcher(a=folded, b=lost, autojunk=False).get_matching_blocks()
+        matched = sum(block.size for block in shared)
+        if matched >= max(_SPLIT_OFF_WORDS, _ALIKE * len(words)):
             return text
     return ""
 
@@ -1547,10 +1559,10 @@ _SWALLOWED = (
     "in the .md, and move or join that paragraph there if that was meant."
 )
 _SPLIT_OFF = (
-    "most of what it lost came back as a paragraph of its own ('{text}'): split in Word with a "
-    "paragraph moved in between the halves, or cut out and pasted elsewhere. Merging would "
-    "drop that part from the source, where the new paragraph is only listed. Make the split "
-    "or the move in the .md."
+    "new text without an identifier ('{text}') is mostly words it lost: its second half, split "
+    "off in Word with a paragraph moved in between the halves, or a part cut out and pasted "
+    "elsewhere. Merging would drop those words from the source, where the new text is only "
+    "listed. Make the split or the move in the .md."
 )
 _UNREAD = (
     "Word draws something in it that has no text the source can hold: {what}. Merging would "

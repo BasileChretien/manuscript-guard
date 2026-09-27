@@ -2319,13 +2319,21 @@ The checks that came out of the review rounds guard the tracked path as well:
 - Text on a line sent empty is new text. Delete pressed at the end of a split's second half
   takes in the spacer line under it, and the second half then carries the spacer's
   identifier: as a paragraph with an identifier, it vouched for the split, and the paragraph
-  was merged as its first half, on `main` too.
-- A paragraph most of whose lost words came back as new text without an identifier - four
-  words or more, in order - is refused. A split with a paragraph cut in between without
-  Track Changes shows nothing else: Word keeps the identifier of every paragraph but the
-  first of a cut, so the pasted paragraph stood beside the first half as if nothing had
+  was merged as its first half, on `main` too. The cost: a rewording beside a spacer line
+  that anything was typed on, or that an untracked deletion left its identifier on, is
+  refused as a split with it, where `main` refused only the spacer line. With the neighbour
+  shortened, that cannot be told from the join.
+- A paragraph is refused when new body text without an identifier is the rest of it, word
+  for word, after an opening it kept word for word, or is made mostly of words it lost:
+  four of them at least, in order, in any case. A split with a paragraph cut in between
+  without Track Changes shows nothing else: Word keeps the identifier of every paragraph but
+  the first of a cut, so the pasted paragraph stood beside the first half as if nothing had
   moved, and the first line of the cut, a spacer or an equation, landed without one. A
-  sentence cut out and pasted as a paragraph of its own is the same loss.
+  sentence cut out and pasted as a paragraph of its own is the same loss. A heading, a
+  caption or a reference entry is not weighed: Word gives a split's second half the body
+  style, and a heading added in the same round, sharing "of hepatic injury" with a
+  rewording that dropped it, had that rewording refused. Three words are not enough either,
+  when "of" and "the" are two of them.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -4383,15 +4391,15 @@ Closed since, and why each mattered:
   That is the price of refusing a split, and it does not refuse every one. The search for
   new text stops at the first untagged text the document already had. A table moved with
   its caption between the halves of a split, or a heading dragged there, puts that text
-  first, so the paragraph is merged as its first half and the rest is gone from the source,
-  as on main. Exit 1, because the caption or heading is reported out of place, but the
-  merge is written. A tagged paragraph moved between the halves does the same when Word
-  keeps its bookmark, and Word keeps the bookmark of every paragraph but the first of a cut:
-  a line and the paragraph under it, cut together without Track Changes and pasted between
-  the halves, stood there with the second one's identifier (Word 365, 2026-09-28). The
-  paragraph is refused by its words instead: most of what it lost, in order, came back as
-  new text of four words or more. That is a judgement, and a second half reworded past it
-  in the same round still has the paragraph merged as its first half. A table, figure or
+  first, and a tagged paragraph moved there does the same when Word keeps its bookmark -
+  which it does for every paragraph but the first of a cut: a line and the paragraph under
+  it, cut together without Track Changes and pasted between the halves, stood there with
+  the second one's identifier (Word 365, 2026-09-28). Each of these is refused by the
+  second half's words instead (see "A move, the way Word makes one"): the
+  rest of the paragraph word for word, or four words or more it lost. That is partly a
+  judgement. A second half of under four words, reworded in the same round, still has the
+  paragraph merged as its first half and the rest gone from the source, as on main; exit
+  1, because the second half is listed, but the merge is written. A table, figure or
   equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the

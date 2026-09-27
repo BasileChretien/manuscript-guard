@@ -47,8 +47,11 @@ CHECK_OVERHEAD = 30.0
 #: laptop.
 HANG_SECONDS = 60.0
 #: A ratio between the bound and twice it is measured again this many times before it
-#: fails, in alternation with a plain check, each keeping its best, as `check_linear` does.
-#: One at twice the bound or more fails at once: a blow-up, not a slow spell.
+#: fails, each time a plain check then the hostile one, and the lowest pair's ratio stands:
+#: a slow spell falls on both runs of a pair, where the best of each could fall in different
+#: lulls. One at twice the bound or more fails at once. Unlike `check_linear`, which decides
+#: that on a best of three, this is one timed run against the baseline: under host load in a
+#: VM, one read 55, within 9% of it, and on Windows twice the cores busy raised them to 19.
 CONFIRM = 3
 
 
@@ -95,8 +98,8 @@ def check_overhead(project: Path, plain: Path) -> float:
     The first run opens every file of a fresh copy for the first time, which costs Windows
     seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
     run decides a ratio under the bound, and one at twice the bound or more. One between is
-    measured again, in alternation with the plain project, before it stands: a slow spell
-    falls on both."""
+    measured again, a plain check then the hostile one each time, and the lowest pair's
+    ratio stands: a slow spell falls on both runs of a pair."""
     started = time.perf_counter()
     run_check(project)
     waited = time.perf_counter() - started
@@ -105,7 +108,7 @@ def check_overhead(project: Path, plain: Path) -> float:
     if overhead < CHECK_OVERHEAD or overhead / 2 >= CHECK_OVERHEAD:
         return overhead
     pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
-    return min(second for _, second in pairs) / min(first for first, _ in pairs)
+    return min(second / first for first, second in pairs)
 
 
 # ---------------------------------------------------------------- pathological text
@@ -138,7 +141,8 @@ def check_overhead(project: Path, plain: Path) -> float:
 def test_check_finishes_on_pathological_prose(
     project: Path, name: str, body: str, plain_project: Path
 ) -> None:
-    """A scan that blows up on prose someone might write, or a wait of a minute or more."""
+    """A scan that blows up on prose someone might write, or a wait of a minute or more that
+    ends: one that never does hangs the suite."""
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
     overhead = check_overhead(project, plain_project)
     assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"

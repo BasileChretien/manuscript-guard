@@ -4398,17 +4398,19 @@ Closed since, and why each mattered:
 - **The whole-`check` tests catch a hang or a blow-up, not a scan gone quadratic.** Each
   holds `check` on a hostile project to 30 times a plain `check` on the same project, in
   CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on Windows, none
-  on Linux) and every other process. A wall clock backs it up at 60 s, for a `check` that
-  waits instead of working, so a wait that returns within about a minute passes, where the
-  old 20 s budget failed one of 30 s; one that never returns hangs the suite, as it always
-  did. At the sizes these inputs are written at, the heaviest linear ones already cost ten
-  times a plain `check` (up to eleven in a Linux VM), so a quadratic that adds a few
-  seconds passes among them. One does, on main: `BRACKETED`, the citation pattern, reads
-  to the end of the line from every `[` (5,000 of them cost three seconds a call, two calls
-  a `check`, G6's and G7's). Seeing it is `check_linear`'s job, one scan at a time, and it
-  is left to a change of its own. Two costs fall outside the CPU ratio too: a scan whose
-  result is cached by content runs once, on the untimed first check, and garbage
-  collection is off while timing. Both are left to the wall clock.
+  on Linux) and the other processes on the machine. Inside a VM it does not leave out what
+  the host takes: with three times the host's cores busy, one sample read 55. A wall clock
+  backs it up at 60 s, for a `check` that waits instead of working, so a wait that returns
+  within about a minute passes, where the old 20 s budget failed one of 30 s; one that
+  never returns hangs the suite, as it always did. At the sizes these inputs are written
+  at, the heaviest linear ones already cost ten times a plain `check` (up to eleven in a
+  Linux VM), so a quadratic that adds a few seconds passes among them. One does, on main:
+  `BRACKETED`, the citation pattern, reads on to the next `]` or blank line from every `[`
+  (5,000 of them cost three seconds a call, two calls a `check`, G6's and G7's). Seeing it
+  is `check_linear`'s job, one scan at a time, and it is left to a change of its own. Two
+  costs fall outside the CPU ratio too: a scan whose result is cached by content runs once,
+  on the untimed first check, and garbage collection is off while timing. Both are left to
+  the wall clock.
 
 ## Still open
 

@@ -178,12 +178,7 @@ def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
 
 
 def _off_headings(
-    rendered: dict[str, str],
-    reference: list[Block],
-    returned: list[Block],
-    expected: Counter,
-    beside_changed: Collection[str] = frozenset(),
-    stale: bool = False,
+    rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
     """Identifiers taken off a heading, caption or reference entry they slid onto.
 
@@ -204,31 +199,16 @@ def _off_headings(
     reworded in the same round - or made the heading's run-in text - was reported deleted.
     Only the heading before: one after it, retitled around its old title, is the heading an
     identifier slid onto.
-
-    `_took_in` looks for the heading as the source prints it now. Beside a heading that is not
-    the one the document was sent with - changed in the .md since the build
-    (`beside_changed`), or missing from a document forced in (`stale`) - that is not the text
-    Word had, the join went unseen, and the paragraph was reported deleted before
-    `plan_import` could refuse it for the changed heading. It is kept for that refusal.
     """
     sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
     missing = _untagged_missing(reference, returned)
-
-    def heading_before_changed(name: str) -> bool:
-        if name in beside_changed:
-            return True
-        return stale and any(missing[b.text] for b in _headings_beside(name, reference, (-1,)))
-
     out = []
     for block in returned:
         text = _squashed(block.text)
         own = [rendered.get(name, "") for name in block.names]
         joined = any(
             name in rendered
-            and (
-                _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
-                or heading_before_changed(name)
-            )
+            and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
             for name in block.names
         )
         restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
@@ -286,17 +266,12 @@ def _given_back(
 
 
 def _recovered(
-    rendered: dict[str, str],
-    reference: list[Block],
-    returned: list[Block],
-    beside_changed: Collection[str] = frozenset(),
-    stale: bool = False,
+    rendered: dict[str, str], reference: list[Block], returned: list[Block]
 ) -> list[Block]:
     """The returned document with identifiers put back where only exact text can say.
-    `docxtext` has already put them back where the tracked changes say. `beside_changed` and
-    `stale` are `plan_import`'s; see `_off_headings`."""
+    `docxtext` has already put them back where the tracked changes say."""
     expected = _untagged_counts(reference)
-    off = _off_headings(rendered, reference, returned, expected, beside_changed, stale)
+    off = _off_headings(rendered, reference, returned, expected)
     return _given_back(rendered, off, expected)
 
 
@@ -1213,7 +1188,10 @@ def plan_import(
         for b in reference
         if b.names and not b.table and b.names[0] in known
     }
-    returned = _recovered(rendered, reference, returned, beside_changed, stale)
+    carried_by = {n: b.text for b in returned if not b.table for n in b.names}
+    returned = _recovered(rendered, reference, returned)
+    # Identifiers taken off a heading or caption they slid onto: see the refusal below.
+    taken_off = set(carried_by) - {n for b in returned if not b.table for n in b.names}
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
@@ -1291,6 +1269,19 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
+        elif (
+            now is None
+            and name in taken_off
+            and (name in beside_changed or (stale and _printed_otherwise(name, reference, missing)))
+        ):
+            # Its identifier came back on a heading beside it and was taken off as one that
+            # slid there, but that heading is not the one the document was sent with, so a
+            # heading joined into the paragraph could not be told from one it slid onto.
+            # Reported deleted, beside Word's heading listed as changed, it read as advice to
+            # delete the paragraph and retype Word's copy. Kept on the heading instead, it
+            # gave the paragraph text again, and a paragraph it was pasted onto merged
+            # holding its words. Refused, as main refuses it; still missing, for the rest.
+            refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now) or (

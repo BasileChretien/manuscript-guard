@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, unquoted-result, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity.
 ---
 
 # Binding the numbers
@@ -157,6 +157,7 @@ checked like any other.
 |---|---|
 | `unclassified-number` | bind it, emit it, cite it, or declare the convention |
 | `unresolved-binding` | the key does not exist; the finding suggests the nearest one |
+| `value-splits-paragraph` | the value prints display maths, a LaTeX environment, an HTML block tag or a line break into its sentence, where it can break the paragraph in parts in Word. Write that part in the `.md`, as a block of its own, and bind only the numbers in it |
 | `unquoted-result` | a published value is quoted nowhere: quote it, or emit with `quoted=False` |
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `hand-authored-table` | emit the table |

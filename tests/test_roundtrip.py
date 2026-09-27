@@ -1181,13 +1181,22 @@ def test_a_line_that_ends_a_note_is_not_taken_into_it(line: str) -> None:
         pytest.param("[^cap]: Capped per protocol\n:::\n<!-- check the dose", id="div-fence"),
         pytest.param("[^cap]: Capped per protocol <!-- check the dose\n:", id="bare-colon"),
         pytest.param("[^cap]: Capped per protocol\n~\n<pre>", id="bare-tilde"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n: as agreed", id="term"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n:\tas agreed", id="term-tab"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n: ", id="term-empty"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n   : as agreed", id="term-indented"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n~ as agreed", id="term-tilde"),
     ],
 )
 def test_a_note_over_a_line_it_may_end_at_hides_nothing_after_it(note: str) -> None:
     """Round eleven, found refusing these lines: a `:::` line is more of a note outside a
     fenced div, and a bare `:` or `~` under the label makes it a term. Either way pandoc
     reads a `<!--` or a `<pre>` there by itself. Refused, the block was read for raw content,
-    and the opener hid the paragraphs below, which pandoc prints."""
+    and the opener hid the paragraphs below, which pandoc prints.
+
+    The round-4 review of #72 found the same with a definition's text under the label, `: `
+    or `~ ` and more: a term and its definition, each read by itself, and two of the four
+    paragraphs below went without an identifier."""
     import json
     import subprocess
 
@@ -9272,6 +9281,29 @@ def swapped(first: str, second: str):
         return xml.replace(below, "", 1).replace(above, below + above, 1)
 
     return swap
+
+
+@needs_pandoc
+def test_a_rewording_that_leaves_a_link_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, from the round-4 review of #72. A paragraph opening `[Note]:` with a
+    narrative citation after it is prose, and marked. Cut down in Word to the label and the
+    citation, it is a link's definition in the shape pandoc reads no other way: the next
+    build would print nothing of it. No rewording written from Word can open so, since `[`
+    comes back escaped; the kept stretches do it. Refused, with the source untouched."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "[Note]: @fictionalClassSignal2019 says the ratio was high.")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    returned = edit_docx(built(project), tmp_path / "cut.docx", {"says the ratio was high.": ""})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "the next build would give it no identifier" in out
+    assert source.read_text(encoding="utf-8") == before
 
 
 @needs_pandoc

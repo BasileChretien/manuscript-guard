@@ -1155,6 +1155,50 @@ TAGGING = {
     "a capital and a period, then a line": "C.\nmore text\n",
     "a word made of roman letters": "dim. lights were used.\n",
     "a valid roman numeral": "mix. up\n",
+    # A note's label with a definition under it is a term and its definition, each read by
+    # itself: the `<!--` in the label opens nothing, and every paragraph below is marked.
+    "a comment in a note's label made a term": (
+        "Doses were capped.[^cap]\n\n[^cap]: Capped per protocol <!-- check the dose\n"
+        ": as agreed\n\nThe first result paragraph.\n\nA later one, closing --> it.\n\n"
+        "The last.\n"
+    ),
+    # Unless the definition ends inside the block, at a fence or at the close of a div
+    # around it: what follows is at the top level, and a comment opened there hides the
+    # paragraphs below. Taken for a term's by itself, they were marked inside the comment.
+    "a comment after a code fence under a note's term": (
+        f"Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n{FENCE}\ndose <- 40\n{FENCE}\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a tilde fence under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n~~~\ndose <- 40\n~~~\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a div closed under a note's term": (
+        "::: box\n\n[^cap]: Capped at 40 mg\n: per protocol\n:::\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after an HTML div closed under a note's term": (
+        "<div>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</div>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    # And at a list's start, or at the close of any tag pandoc takes for a block: a lazy
+    # line of a definition ends at each, and the block after it is at the top level.
+    "a comment after a list item made a heading under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n1. item\n---\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a list item under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n- item\nlazy text\n: z "
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after an ins closed under a note's term": (
+        "<ins>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</ins>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a video closed under a note's term": (
+        "<video>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</video>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
 }
 
 
@@ -1256,11 +1300,13 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
     pieces = re.split(r"\n\s*\n", tagged)
     # A footnote or a link resolves against definitions anywhere in the document, so a
     # paragraph read on its own is read with them. Not with a line of dashes under one: over
-    # it the definition is a simple table's header, which would come back as a table.
+    # it the definition is a simple table's header, which would come back as a table. Nor a
+    # label with a definition list's `:` or `~` under it, which makes it a term that prints.
     definitions = "\n\n".join(
         re.split(r"\n(?= {0,3}-+(?:[ \t]+-+)*[ \t]*(?:\n|$))", p)[0]
         for p in pieces
         if re.match(r" {0,3}\[[^\]]+\]:", p)
+        and not re.match(r"[^\n]*\n {0,3}[:~](?:[ \t]|\n|$)", p)
     )
     for index, piece in enumerate(pieces):
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)

@@ -2577,23 +2577,34 @@ Added by the adversarial review, verified and **not** fixed:
   verbatim tag such as `<pre>`, or a `\begin{x}` inside something it closes first. Found
   so far: inline code, inline or display maths, `\verb|...|`, an indented code block, a
   fence written under a line of its block rather than after a blank one, a fence in a
-  block quote, a link's destination or title, an autolink, the attributes of a tag, a
-  span, a heading or a div, a table cell, a list item, a block quote, a line block, a
-  definition and a YAML block in the body. `<pre>` and `\begin` are misread in link text,
-  an image's alt text, an inline note and a citation's locator too, and `<!--` and `<pre>`
-  in a TeX command's argument. There the opener is taken for real. The paragraphs from the
-  one holding it to the one holding its closer go unmarked, though pandoc prints them: the
-  closer is the next `-->` or `</pre>`, or the `\end{x}` matching it by name. With no closer
+  block quote or indented four columns or more, a link's destination or title, an
+  autolink, an image's title, the attributes of a tag, a span, a heading, a div, a link,
+  an image or a code span, a table cell, a list item, a block quote, a line block, a
+  definition, a YAML block in the body and a rendered value of the front matter. `<pre>`
+  and `\begin` are misread in link text, an image's alt text, an inline note and a
+  citation's locator too, and `<!--` and `<pre>` in a TeX command's argument. There the
+  opener is taken for real. The paragraphs from the one holding it to the one holding its
+  closer go unmarked, though pandoc prints them: the closer is the next `-->`, the tag's
+  own end tag (`</pre>`, `</script>`), or the `\end{x}` matching it by name. With no closer
   later in the file, nothing is hidden. The document looks right; an edit made to one of
   those paragraphs in Word comes back listed as not compared, to be carried over by hand.
-  For a `<!--` anywhere but inline code and a fence, `check`'s comment scanner hides the
-  same paragraphs, and G2 reads no number in them (see "The comment scanner knows code
-  spans, fences and the front matter"). Each of these avoids it: code in a fenced block
-  with a blank line above it, outside a block quote; an empty comment after the opener in
-  the same paragraph, which prints nothing (`<!-- -->`, or `<!-- </pre> -->` and
-  `<!-- \end{x} -->` for the others); `%3C` for the `<` in a link's destination; and
-  `&lt;` in an attribute. Raw TeX other than an environment is not followed across a blank line. When the blank line
-  falls inside braces, the blocks either side are refused by the brace
+  For a `<!--` anywhere but inline code, a fence and the front matter, `check`'s comment
+  scanner hides the text from the opener to the closer as well, and G2 reads no number
+  there (see "The comment scanner knows code spans, fences and the front matter"). What
+  avoids it depends on where the opener stands. Code goes in a fenced block that opens its
+  own block after a blank line, indented less than four columns, outside a block quote:
+  so not in a note's later paragraphs, a definition, or a list item indented four. After
+  an opener in inline code, maths or `\verb`, and after a `<pre>` in running text, an
+  empty comment later in the same paragraph prints nothing (`<!-- -->`, `<!-- </pre> -->`
+  or `<!-- \end{x} -->`). Never put one after a `<!--` or a `\begin{x}` in running text: it
+  closes the author's own, and pandoc drops the words between. There, and in the front
+  matter, escape the opener instead (`\<!--`, `\\begin{x}`). In a link's destination the
+  `<` is `%3C`, and in an attribute `&lt;`, since an empty comment at the end of a
+  heading's or a div's attribute line breaks the attribute. For `<pre>` and `\begin{x}`,
+  the opener's own paragraph stays unmarked whatever is done: a block-level tag or an
+  environment splits its paragraph. Raw TeX other than an environment is not followed
+  across a blank line. When the blank line falls inside braces, the blocks either side are
+  refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside
   such a group, the middle of a `\newcommand` with two blank lines in its body, gets a
   marker, and pandoc drops raw TeX from the .docx so the identifier names nothing, which

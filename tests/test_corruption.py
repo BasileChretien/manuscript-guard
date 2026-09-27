@@ -3422,7 +3422,8 @@ def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:
 
 def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:
     """A YAML block between two fences only the gates saw escaped the refusal, and its
-    `title:` replaced paper.yaml's."""
+    `title:` replaced paper.yaml's. No listing hides it now; the heading reads blank it as
+    metadata (#85), and the rule scan, which keeps it (#65), refuses it."""
     from manuscript_guard.text.sections import rules_opening_blocks, scannable
 
     feed = chr(0x0C)
@@ -3430,7 +3431,7 @@ def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:
         f"---\ntitle: A study\n---\n\n# Results\n\nWe found it.{feed}{_TICKS}\n\n"
         f"---\ntitle: Evil\n---\n\nThe end.{feed}{_TICKS}\n"
     )
-    assert "Evil" in scannable(text)
+    assert "Evil" in scannable(text, metadata=False)
     assert rules_opening_blocks(text) != []
 
 

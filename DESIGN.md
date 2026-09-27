@@ -2572,8 +2572,17 @@ Added by the adversarial review, verified and **not** fixed:
   the pandoc it installs and pins, 3.9.0.2. Where the patterns are unsure they leave a block
   unmarked, which costs a comparison and corrupts nothing. Known cases: a paragraph opening with a TeX command
   (`\noindent`), one holding a line of nothing but dashes and pipes, one starting "p. 12"
-  (pandoc's abbreviation rule, not reproduced), and every paragraph after a `<!--` written
-  inside inline code, up to the next `-->`; a paragraph whose unescaped braces do not pair.
+  (pandoc's abbreviation rule, not reproduced), and a paragraph whose unescaped braces do
+  not pair. And the scan for raw content does not know where pandoc reads a `<!--`, a
+  `<pre>` or a `\begin{...}` as code, maths or part of a link or a tag. That covers inline
+  code, a code span of two backticks, inline or display maths, an indented code block (in
+  a list item too), a link's destination, an autolink, an HTML attribute, and
+  `\verb|...|`. There the opener is taken for real, and every paragraph after it goes
+  unmarked up to the next `-->`, `</pre>` or `\end{...}`, though pandoc prints them. The
+  document looks right; an edit made to one of them in Word comes back listed as not
+  compared, to be carried over by hand. Each of these avoids it: code in a fenced block,
+  the comment closed in the same paragraph (`` `<!--` `` and then `` `-->` ``), `%3C` for
+  the `<` in a URL, and `&lt;` in an attribute.
   Raw TeX other than an environment is not followed across a blank line. When the blank line
   falls inside braces, the blocks either side are refused by the brace
   count, since `\footnote{One.\n\nTwo.}` is one paragraph to pandoc; a block wholly inside

@@ -88,67 +88,6 @@ def _closes(line: str, char: str, width: int) -> bool:
     return closing is not None and closing[0] == char and closing[1] >= width
 
 
-# A line pandoc 3.9 reads as a fence (`codeBlockFenced`): up to three spaces, the fence, and
-# the info string. A closer is the fence alone, then spaces or tabs: a tab in front is four
-# columns of indent to pandoc, and no other space is skipped. `_closing` strips every space
-# Python knows, and counts only spaces in front.
-PANDOC_FENCE = re.compile(r"[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)", re.DOTALL)
-_PANDOC_CLOSER = re.compile(r"[ ]{0,3}(?:`{3,}|~{3,})[ \t]*")
-_RAW_FORMAT = re.compile(r"\{=[^\s{}]+\}")
-# The language a fence opens with: anything but a backtick, a brace or a space.
-_LANGUAGE = re.compile(r"[^`{}\s]*")
-_CLASS_OR_ID = re.compile(r"[#.][^\s{}\"'=]+")
-_KEY = re.compile(r"[^\s{}\"'=#.][^\s{}\"'=]*=")
-_BARE_VALUE = re.compile(r"[^\s}]*")
-
-
-def pandoc_closes(line: str) -> bool:
-    """Whether pandoc closes a fence on `line`, without its newline."""
-    return _PANDOC_CLOSER.fullmatch(line.rstrip("\r")) is not None
-
-
-def pandoc_opens(info: str) -> bool:
-    """Whether pandoc opens a fence with this info string: none, a raw format alone
-    (`{=html}`), or a language and then attributes in braces, either one alone. Anything
-    else - R Markdown's `{r}`, two words as in `r echo=FALSE`, a raw format after a
-    language, a space pandoc does not skip - leaves the line a paragraph's. Read by hand
-    rather than by a pattern: attributes in a nested repetition backtracked, in time
-    exponential in a line that never closes its brace."""
-    rest = info.rstrip("\r").strip(" \t")
-    if _RAW_FORMAT.fullmatch(rest):
-        return True
-    rest = rest[_LANGUAGE.match(rest).end() :].lstrip(" \t")
-    return not rest or _attributes(rest)
-
-
-def _attributes(text: str) -> bool:
-    """Whether `text` is one attribute block as pandoc reads it: `{`, then `#id`, `.class`
-    or `key=value` items with spaces or tabs between, then `}`. A quoted value holds
-    anything but its quote; a quote left open is a bare value, as pandoc falls back to."""
-    if not text.startswith("{"):
-        return False
-    # Where each quote last stands: a value opened after it closes nowhere, and searching
-    # the rest of the line for it again at each item would take the square of the line.
-    last = {quote: text.rfind(quote) for quote in ("'", '"')}
-    at = 1
-    while True:
-        while at < len(text) and text[at] in " \t":
-            at += 1
-        if at < len(text) and text[at] == "}":
-            return at == len(text) - 1
-        item = _CLASS_OR_ID.match(text, at)
-        if item:
-            at = item.end()
-            continue
-        key = _KEY.match(text, at)
-        if not key:
-            return False
-        at = key.end()
-        quote = text[at : at + 1]
-        close = text.find(quote, at + 1) if last.get(quote, -1) > at else -1
-        at = close + 1 if close >= 0 else _BARE_VALUE.match(text, at).end()
-
-
 def fenced_spans(text: str, begin: int = 0) -> list[Fence]:
     """Every fenced block, in document order. Linear in the length of the text.
 

@@ -30,7 +30,7 @@ from manuscript_guard.text.masking import (
     front_matter_problem,
 )
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import rules_opening_blocks, unclear_fences
+from manuscript_guard.text.sections import rules_opening_blocks
 
 GATE = "BUILD"
 
@@ -144,36 +144,11 @@ def rule_findings(path: Path, text: str) -> tuple[Finding, ...]:
     )
 
 
-def fence_findings(path: Path, text: str) -> tuple[Finding, ...]:
-    """A refusal for each code fence the gates and the build read otherwise than pandoc
-    (`sections.unclear_fences`): a number pandoc prints went unchecked, or an identifier
-    printed inside a listing. Refused in the build as well as in `check`."""
-    lines = text.split("\n")
-    return tuple(
-        Finding(
-            gate=GATE,
-            code="unclear-fence",
-            message=f"{path.name}: a code fence pandoc reads differently from manuscript-guard, "
-            "which can leave numbers unchecked or print a marker inside the code",
-            path=path,
-            line=line,
-            context=lines[line - 1].strip()[:120],
-            hint="open a fence with a language alone, as ```r, or with attributes in braces, "
-            'as ```{.r caption="Fitting glm"}: pandoc prints {r} and two words, as '
-            "r echo=FALSE, as text; put a caption holding backticks on a ~~~ fence; close a "
-            "fence with the fence alone, no tab in front and no space but spaces after it",
-        )
-        for line in unclear_fences(text)
-    )
-
-
 def check_rules(project: Project) -> Report:
-    """`rule_findings` and `fence_findings` for every source file, so `check` refuses what
-    the build would."""
+    """`rule_findings` for every source file, so `check` refuses what the build would."""
     report = Report()
     for path in source_files(project.path("manuscript")):
-        text = path.read_text(encoding="utf-8")
-        report = report.with_findings(*rule_findings(path, text), *fence_findings(path, text))
+        report = report.with_findings(*rule_findings(path, path.read_text(encoding="utf-8")))
     return report
 
 
@@ -196,7 +171,7 @@ def assemble(
 
         relative = path.relative_to(project.path("manuscript")).as_posix()
         source = path.read_text(encoding="utf-8")
-        report = report.with_findings(*rule_findings(path, source), *fence_findings(path, source))
+        report = report.with_findings(*rule_findings(path, source))
         # Built anyway, the header printed as text: the identifier in front of it hid it
         # from pandoc, which would have refused the file. `--skip-checks` does not reach this.
         problem = front_matter_problem(source)

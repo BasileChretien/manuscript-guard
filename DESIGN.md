@@ -2501,20 +2501,29 @@ Added by the adversarial review, verified and **not** fixed:
   in the document.
 - **Code fences are paired by `text/fences.py`, not by pandoc.** Where the two pair them
   differently, a paragraph can be marked inside code, and the marker prints there, and a
-  number pandoc prints can go unread by G2. A fence line the two read apart is refused, by
-  `check` and by the build (`unclear-fence`, `sections.unclear_fences`), with a hint:
-  - an opener pandoc rejects: R Markdown's `{r}`, two words as in `r echo=FALSE` or
-    `python title="x"`, `{code-cell} ipython3`. The build hands the source to pandoc, not to
-    knitr, and pandoc prints such a chunk as text;
+  number pandoc prints as a paragraph can go unread by G2, so `check` passes it. Known
+  cases:
+  - an opener pandoc rejects, which the scanner opens: R Markdown's `{r}` and
+    `{r echo=FALSE}`, two words as in `r echo=FALSE` or `python title="x"`,
+    `{code-cell} ipython3`, a class or key pandoc does not take, as in `{.c++}`. The build
+    hands the source to pandoc, not to knitr, and pandoc prints such a chunk as text;
   - a backtick fence with a backtick in its attributes, which pandoc opens and the scanner
-    did not, as in `` ```{.r caption="Fitting `glm`"} ``. A `~~~` fence reads alike in both;
-  - a closer with a tab in front, or a space other than a space or a tab around it.
+    does not: a pandoc-crossref caption holding inline code,
+    `` ```{.r caption="Fitting `glm`"} ``. A paragraph of the listing is marked, with no
+    footnote anywhere, and the marker prints inside it. The same caption on a `~~~` fence
+    reads alike in both;
+  - a closer with a tab in front, or a space other than a space or a tab around it, a
+    no-break space for one. The scanner strips every space Python knows, and closes where
+    pandoc reads on;
+  - a `~~~` straight under a paragraph line, since pandoc lets only a backtick fence
+    interrupt a paragraph;
+  - a fence line with no partner inside an HTML comment, including a chunk commented out
+    by a comment that closes on its last fence line.
 
-  Which info strings pandoc opens a fence with is `fences.pandoc_opens`, checked against
-  pandoc. Still read apart, and not refused: a `~~~` straight under a paragraph line, since
-  pandoc lets only a backtick fence interrupt a paragraph, and a fence line with no partner
-  inside an HTML comment. The same pairing decides which blocks start inside code, so a
-  table under such a fence can go unfollowed as well.
+  The same pairing decides which blocks start inside code, so a table under such a fence
+  can go unfollowed as well. Refusing these lines was tried, with a reading of pandoc's
+  info strings, and review found fences both read alike that it refused, a caption with an
+  escaped quote among them. The fix is a scanner that reads fences by pandoc's own rules.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.
@@ -3767,7 +3776,8 @@ Closed since, and why each mattered:
     paired with the next fence below, so what lies between goes unmarked, or a marker lands
     inside a real code block. Both are so on `main`. The gates find code the same way, so
     G2 does not read a number typed in the prose between, and `check` passes it. Keeping
-    code out of footnotes, or a blank line and four columns of indent before it, avoids it.
+    code out of footnotes avoids it. Indenting a note's code four columns does not: the
+    gates do not take it for code, and G2 reads its numbers as claims.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below

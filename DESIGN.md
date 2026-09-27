@@ -2410,6 +2410,18 @@ Closed since, and why each mattered:
   Unlabelled prose is a defect in the annotated copy and a `prose-as-value` warning in
   `check`. A warning rather than a refusal, because the toolkit does not get to decide that
   keeping a name in one place is wrong.
+- **A value printing display maths split its paragraph in Word.** Identifiers are given to
+  the source before bindings are substituted, and a paragraph with `$$` in its source gets
+  none. `em.value("model.formula", "$$y = 2.1 x$$")`, bound in the sentence that ends a
+  section, put `$$` into a paragraph that had one. Pandoc gave the equation a Word paragraph
+  of its own, and only the part before it carried the identifier. A co-author who swapped
+  that part with the paragraph above had the whole sentence moved in the .md, exit 0, and
+  `check` said nothing: the digit kept even the prose warning quiet. G2 now refuses a value
+  whose display holds what, typed into the source, would have kept the identifier off the
+  paragraph (display maths, a LaTeX environment or an HTML block tag), and a line break,
+  after which a blank line, a fence or a `<div>` ends the paragraph. Leaving such a
+  paragraph untagged was the other way, and it was not taken: the identifiers would then
+  depend on the results as well as the source, and `import` reads them from the source.
 - **A p-value of 3.2 × 10⁻⁹ was published as "0.00".** `digits=2` on any number smaller than
   half a unit in the last place gives a string of zeroes, and nothing objected: an explicit
   `display` has been checked against its value since round two, but a *derived* one was
@@ -3237,12 +3249,13 @@ Closed since, and why each mattered:
   identifier at all. An equation directly after a tagged paragraph is not taken for part of
   it, since `$$` anywhere in a paragraph keeps the identifier off. One that pandoc splits
   for another reason and that ends its section is not recognised: a rewording of its first
-  part would replace the rest, and a move of its first part would carry the rest along. A
-  binding is one such reason. Bindings are substituted after the identifiers are given, so
-  a value whose display is `$$…$$` splits its paragraph in Word, and `check` only warns
-  that the value is words rather than a number. There a rewording of the first part is
-  refused, as it no longer reads as the source, but a swap of the first part with the
-  paragraph above moves the whole sentence in the .md, equation and all.
+  part would replace the rest, and a move of its first part would carry the rest along.
+  Bindings are substituted after the identifiers are given, so G2 refuses a value whose
+  display would split its paragraph: display maths, a LaTeX environment, an HTML block tag
+  or a line break. `build --skip-checks` still builds one, and `import` then handles its
+  paragraph as it did before the refusal: a rewording of the first part is refused, but a
+  swap of that part with the paragraph above moves the whole sentence in the .md. Other raw
+  markup in a value, such as a raw OpenXML span, is not looked at.
 - **A paragraph with display maths is not compared.** It carries no identifier, so a
   rewording of any part of it, before or after the equation, is listed with the paragraphs
   without an identifier that came back different, and not applied.

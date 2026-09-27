@@ -20,6 +20,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.masking import (
     fenced_blocks,
     front_matter_abstract,
@@ -147,6 +148,20 @@ def check_numbers(
                         line=placeholder.line,
                         col=placeholder.col,
                         hint=_nearest_hint(placeholder.ref, namespace),
+                    )
+                )
+            elif placeholder.is_value and (what := _splits(namespace[placeholder.ref])):
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="value-splits-paragraph",
+                        message=f"{placeholder.raw} prints {what} into its paragraph, which "
+                        f"then reaches Word in parts",
+                        path=path,
+                        line=placeholder.line,
+                        col=placeholder.col,
+                        hint="a value is printed inside a sentence; write what it holds in the "
+                        ".md, as a block of its own, and bind only the numbers in it",
                     )
                 )
 
@@ -456,6 +471,21 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                 )
             )
     return report
+
+
+def _splits(value: Value) -> str | None:
+    """What in a value's display would break the paragraph that prints it; None if nothing.
+
+    Identifiers are given to the source before bindings are substituted, and a paragraph whose
+    source holds display maths gets none (`roundtrip.splits_a_paragraph`). A value printing
+    `$$y = 2.1 x$$` put it into a paragraph that had one: pandoc gave the equation a Word
+    paragraph of its own, only the part before it carried the identifier, and a co-author's
+    swap of that part moved the whole sentence in the .md. A line break is refused too: what
+    can start on the next line - a blank line, a fence, a `<div>` - ends the paragraph there.
+    """
+    if "\n" in value.display or "\r" in value.display:
+        return "a line break"
+    return splits_a_paragraph(value.display)
 
 
 def _prose_as_value(namespace: dict[str, Value], referenced: set[str]) -> Report:

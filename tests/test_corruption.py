@@ -798,6 +798,41 @@ def test_the_example_publishes_no_prose(project: Path) -> None:
     assert "prose-as-value" not in {f.code for f in gate_report(project).findings}
 
 
+@pytest.mark.parametrize(
+    "display",
+    [
+        "$$y = 2.1 x$$",
+        "2.1\n\n3.4",
+        "2.1\n::: {.note}",
+        "\\begin{equation}y = 2.1 x\\end{equation}",
+        "2.1 <div>3.4</div>",
+    ],
+    ids=["display-maths", "blank-line", "line-break", "latex-environment", "html-block-tag"],
+)
+def test_a_value_that_would_split_its_paragraph_is_caught(project: Path, display: str) -> None:
+    """Identifiers are given to the source before bindings are substituted, and a paragraph
+    with `$$` in its source gets none. A value that prints display maths puts `$$` into a
+    paragraph that has one: pandoc gives the equation a Word paragraph of its own, only the
+    part before it carries the identifier, and import took a move of that part for a move
+    of the whole sentence. `label=True` changes nothing, and a digit kept it quiet: the only
+    word said was the prose warning, for a display with no digit in it."""
+    _publish_text(project, "model.formula", display, label=True)
+    report = gate_report(project)
+    assert "value-splits-paragraph" in codes(report), report.findings
+    finding = next(f for f in report.failures if f.code == "value-splits-paragraph")
+    assert finding.path == main_md(project) and "results.model.formula" in finding.message
+
+
+@pytest.mark.parametrize("display", ["$y = 2.1 x$", "2.1 (95% CI 1.8-2.4)", "*E. coli*"])
+def test_a_value_that_stays_inside_its_sentence_is_not_caught(
+    project: Path, display: str
+) -> None:
+    """Inline maths, a number with its interval, emphasis: pandoc keeps each inside the
+    paragraph, and the paragraph reaches Word whole."""
+    _publish_text(project, "model.formula", display, label=True)
+    assert "value-splits-paragraph" not in {f.code for f in gate_report(project).findings}
+
+
 def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
     clean = codes(gate_report(project))
     assert not clean & {

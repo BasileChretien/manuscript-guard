@@ -18,7 +18,15 @@ from datetime import date
 from pathlib import Path
 
 from manuscript_guard import __version__
-from manuscript_guard.build import LIVE, OFFLINE, BuildError, assemble, build_document
+from manuscript_guard.build import (
+    LIVE,
+    OFFLINE,
+    BuildError,
+    MisreadError,
+    assemble,
+    build_document,
+)
+from manuscript_guard.build.assemble import check_rules
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import ContractError, load_namespace, load_project
@@ -111,6 +119,7 @@ def _run_gates(
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
+        ("BUILD", lambda: check_rules(project)),
     ):
         reports.append(_guarded(name, gate))
 
@@ -369,6 +378,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         numbering,
         numbering_refusal,
         read_blocks,
+        records_moves,
         stamp_of,
         tagged_paragraphs,
     )
@@ -428,6 +438,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 1
 
     namespace, results, _literature, _r = load_namespace(project)
+    # What the assembly reports is not import's to enforce: a source the build refuses is
+    # still refused by `check` and the build after the import, and refusing here blocked
+    # the return of a document built before a refusal existed.
     assembled, _ar = assemble(project, namespace, results)
 
     # The document as it was sent, rebuilt from the source, is what the returned one is
@@ -441,7 +454,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         try:
             for assembly, output in ((assembled, reference), (marked_assembly, tokens)):
                 build_document(
-                    project, assembly, mode=OFFLINE, output=output, supplementary=supplementary
+                    project,
+                    assembly,
+                    mode=OFFLINE,
+                    output=output,
+                    supplementary=supplementary,
+                    verify_reading=False,
                 )
             abbreviated = abbreviations()
         except BuildError as exc:
@@ -538,6 +556,12 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 0
 
     _report_plan(project, known, plan, applying=args.apply)
+    if not records_moves(edited):
+        print(
+            f"\n{edited.name} was built before manuscript-guard let Word record moves: its "
+            f"settings ask Word not to. A paragraph moved in it comes back as a deletion and new "
+            f"text, and is refused. Rebuild and resend the document for moves to come back."
+        )
 
     if args.apply:
         apply_plan(known, plan)
@@ -561,8 +585,10 @@ def cmd_import(args: argparse.Namespace) -> int:
     outstanding = bool(
         plan.refused
         or plan.gone
+        or plan.displaced
         or plan.joined
         or plan.misplaced
+        or plan.withheld
         or plan.lost
         or plan.strayed
         or plan.unidentified
@@ -644,7 +670,8 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
-            "another file, or a paragraph it holds in place ends one. An HTML comment or a "
+            "another file, or a paragraph it holds in place ends one, and a paragraph moved "
+            "between the parts of one Word shows in parts is in none. An HTML comment or a "
             "`\\newpage` ends one too, though Word shows nothing there. It holds a paragraph "
             "Word shows as an empty line, one with a line such as `\\end{table}` directly "
             "under it in the .md, one with a `<!--` that never closes, and one Word shows as "
@@ -741,6 +768,21 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         for name, was_at, now_at in plan.moved:
             print(f"    position {was_at} -> {now_at}: {opening(name)}")
 
+    if plan.withheld:
+        print(f"{len(plan.withheld)} paragraph(s) came back in a different place, not applied:")
+        for name in plan.withheld:
+            print(f"    {opening(name)}")
+        print(
+            "    Their section also came back with text the document as sent did not have - a "
+            "paragraph split, a new one, a heading or caption edited - or with a paragraph "
+            "whose identifier is on other text, or one Word shows in parts whose parts came "
+            "apart, so where "
+            "each of its paragraphs now stands cannot be read with certainty. Move them in "
+            "the .md yourself if the moves were intended."
+        )
+        for text in plan.held_by[:3]:
+            print(f"    new text: {text.strip()[:110]}")
+
     verb = "merging" if applying else "would merge"
     for name, rebuilt in plan.merged.items():
         print(f"\n{verb} into {where(name)}:")
@@ -762,9 +804,24 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             "if that was intended, and make any rewording there."
         )
 
+    for name, text in plan.displaced:
+        print(f"\nmoved in Word, left in place here: {known[name][1].strip()[:110]}")
+        print(f"    + {text.strip()[:150]}")
+        print(
+            "    Nothing in the returned document says which paragraph the copy above is - "
+            "Word did not record the move, or recorded one that did not take whole "
+            "paragraphs - so it is not applied. Move the paragraph in the .md, and make any "
+            "rewording there. Do not delete it and retype Word's copy: its numbers and "
+            "citations would come back as typed text, not as bindings."
+        )
+
     for name in plan.gone:
         print(f"\ndeleted in Word, left in place here: {known[name][1].strip()[:110]}")
-        print("    delete it in the .md yourself if that was intended.")
+        print(
+            "    delete it in the .md yourself if that was intended. If it was moved instead, "
+            "move it in the .md: retyped from Word's copy, its numbers and citations would "
+            "come back as typed text."
+        )
 
 
 def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
@@ -1241,6 +1298,9 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         reference_doc=reference,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
+        # Marked up for the author to read, not the document sent, and the marks change how
+        # a subscript or a code span reads: checked, it was refused as a misread.
+        verify_reading=False,
     )
     added = finish(result.output, marks)
     print(result.report.render(project.root))
@@ -1303,6 +1363,10 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     try:
         result = build_document(project, assembled, mode=mode, csl=args.csl, output=output)
+    except MisreadError as exc:
+        # A refusal, like a failing gate, not a build that could not run.
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 1
     except BuildError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         if not args.offline:
@@ -1325,7 +1389,11 @@ def cmd_build(args: argparse.Namespace) -> int:
     if fields:
         print(f"{fields} live Zotero citation field{'' if fields == 1 else 's'}")
 
-    supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    try:
+        supplement = _build_supplement(project, assembled, mode=mode, csl=args.csl)
+    except MisreadError as exc:
+        print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+        return 1
     if supplement is not None:
         print(f"built {supplement} (supplementary material, its own document)")
     return 0
@@ -1337,7 +1405,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
     Built alongside the paper rather than on request, because a supplement that has to be
     asked for is one that arrives at the journal a version behind the manuscript it belongs
     to. A failure here is reported and does not fail the build: the paper is what the author
-    was making.
+    was making. A refusal does (`MisreadError`, raised): pandoc reads the supplement
+    otherwise than the gates did, and the one from the last build is removed with it.
     """
     from manuscript_guard.gates.numbers import is_supplementary
 
@@ -1346,6 +1415,8 @@ def _build_supplement(project, assembled, *, mode: str, csl: Path | None) -> Pat
         return None
     try:
         built = build_document(project, assembled, mode=mode, csl=csl, supplementary=True)
+    except MisreadError:
+        raise
     except BuildError as exc:
         print(f"manuscript-guard: the supplement did not build: {exc}", file=sys.stderr)
         return None
@@ -1379,6 +1450,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
         mode = OFFLINE if args.offline else LIVE
         try:
             built = build_document(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 1
         except BuildError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
@@ -1397,7 +1471,27 @@ def cmd_submit(args: argparse.Namespace) -> int:
         # belongs to this manuscript. Taking whatever `supplementary.docx` happened to be
         # lying in build/ is how a supplement arrives at a journal a version behind the
         # paper it is supplementing.
-        _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        try:
+            _build_supplement(project, assembled, mode=mode, csl=args.csl)
+        except MisreadError as exc:
+            print(f"manuscript-guard: the supplement is not built: {exc}", file=sys.stderr)
+            print("\nThe pack is not assembled.")
+            return 1
+
+    # A build refused as a misread removes its document and its supplement, and a pack was
+    # then assembled without either, and reported as made.
+    from manuscript_guard.build.submission import supplement_for
+    from manuscript_guard.gates.numbers import is_supplementary
+
+    supplement = supplement_for(project, document)
+    wants_supplement = any(
+        is_supplementary(project.path("manuscript"), p)
+        for p in source_files(project.path("manuscript"))
+    )
+    for needed in [document, *([supplement] if wants_supplement else [])]:
+        if not needed.is_file():
+            print(f"manuscript-guard: {needed} does not exist; build it first", file=sys.stderr)
+            return 2
 
     try:
         pack = assemble_pack(project, document, checked=report.ok)

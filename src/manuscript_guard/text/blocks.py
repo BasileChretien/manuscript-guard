@@ -41,7 +41,7 @@ from manuscript_guard.text.masking import (
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
 
-def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
+def _scanned(text: str, *, metadata: bool = True) -> tuple[str, list[tuple[int, int]]]:
     """`scannable(text)`, and where its comments were in `text`."""
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
@@ -61,15 +61,16 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     comments = html_comments(text, fences)
     spans = [
         (0, head),
-        *metadata_blocks(text),
+        *(metadata_blocks(text) if metadata else ()),
         *((fence.start, fence.end) for fence in fences),
         *comments,
     ]
     return blank(text, spans), comments
 
 
-def scannable(text: str) -> str:
-    """`text` with code fences and HTML comments blanked, offsets preserved.
+def scannable(text: str, *, metadata: bool = True) -> str:
+    """`text` with code fences and HTML comments blanked, offsets preserved, and, unless
+    `metadata` is false, the YAML blocks of the body.
 
     `#` is a comment character in Python, R, shell and YAML. Once fenced code stopped being
     masked — correctly, because it renders — an ordinary comment inside a listing became a
@@ -90,7 +91,7 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-    return _scanned(text)[0]
+    return _scanned(text, metadata=metadata)[0]
 
 
 @dataclass(frozen=True)

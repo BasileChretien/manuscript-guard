@@ -89,6 +89,24 @@ def test_the_fence_scanner_is_linear(assert_linear) -> None:
     assert_linear(opener_lines, fenced_spans, 50, "the fence scanner")
 
 
+@pytest.mark.parametrize(
+    "item",
+    ['a="x ', ".a ", 'a="b" ', 'a="`x '],
+    ids=["open quotes", "classes", "quoted values", "backticks in open quotes"],
+)
+def test_an_unclear_fence_is_found_in_linear_time(assert_linear, item: str) -> None:
+    """`check` and the build read every fence line's attributes as pandoc does, to refuse
+    one the two read apart. A pattern for them nested a repetition and backtracked, in time
+    exponential in a line that never closes its brace; searching for each open quote's
+    partner took the square of the line."""
+    from manuscript_guard.text.sections import unclear_fences
+
+    def document(count: int) -> str:
+        return "Prose.\n\n```{" + item * count + "\ncode\n```\n\nMore prose.\n"
+
+    assert_linear(document, unclear_fences, 100, "finding unclear fences")
+
+
 def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
     """A ratio of microseconds is noise, so a size that never reaches the floor is an error
     in the test, not a pass."""

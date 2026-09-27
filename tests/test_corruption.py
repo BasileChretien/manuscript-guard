@@ -4071,3 +4071,79 @@ def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(
     from manuscript_guard.text.inline import link_text_spans
 
     assert [text[start:end] for start, end in link_text_spans(text)] == links
+
+
+# ------------------------------------------------ fences the gates and pandoc read apart
+
+_NUMBER = "The odds ratio was 9.99."
+_UNCLEAR_FENCES = {
+    # Pandoc opens it and the gates did not: a backtick in the caption of a pandoc-crossref
+    # listing. The build read the listing as prose and printed an identifier inside it.
+    "backtick-in-a-caption": (
+        '```{.r caption="Fitting `glm`"}\nfit <- glm(y ~ x)\n\nsummary(fit)\n```'
+    ),
+    # The gates opened code where pandoc prints a paragraph, and G2 read nothing in it.
+    "r-markdown-chunk": f"```{{r}}\n{_NUMBER}\n```",
+    "two-words": f"```r echo=FALSE\n{_NUMBER}\n```",
+    "tildes-two-words": f"~~~ r a\n{_NUMBER}\n~~~",
+    # The gates closed the code where pandoc does not.
+    "space-after-the-closer": "```\nx <- 1\n```" + chr(0xA0) + "\n\ny <- 2\n\n```\nz\n```",
+    "tab-before-the-closer": "```\nx <- 1\n\t```\n\ny <- 2\n\n```\nz\n```",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_UNCLEAR_FENCES))
+def test_a_fence_pandoc_reads_otherwise_is_refused(project: Path, name: str, capsys) -> None:
+    """The gates and the build find code with `fenced_spans`, not with pandoc, and on some
+    fence lines the two disagree: a number pandoc prints went unchecked by G2, or a
+    paragraph's identifier printed inside a listing. Such a line is refused, by `check` and
+    by the build, with a hint saying how to write it so both read it alike."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n{_UNCLEAR_FENCES[name]}\n", "utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-fence" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "a code fence pandoc reads differently" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("text", "lines"),
+    [
+        pytest.param('```{.r caption="Fitting `glm`"}\nx\n```\n', [1], id="backtick-in-a-caption"),
+        pytest.param("```{r}\nx\n```\n", [1], id="r-markdown-chunk"),
+        pytest.param("Prose.\n\n~~~ r a\nx\n~~~\n", [3], id="tildes-two-words"),
+        pytest.param("```\nx\n```" + chr(0xA0) + "\n", [3], id="space-after-the-closer"),
+        pytest.param("```\nx\n\t```\n", [3], id="tab-before-the-closer"),
+        pytest.param("```\nx\n" + chr(0x2028) + "```\n", [3], id="line-separator-before"),
+    ],
+)
+def test_unclear_fences_are_the_lines_pandoc_reads_otherwise(text: str, lines: list[int]) -> None:
+    from manuscript_guard.text.sections import unclear_fences
+
+    assert unclear_fences(text) == lines
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("```r\nx\n```\n", id="one-word"),
+        pytest.param("```{.r}\nx\n```\n", id="class"),
+        pytest.param("```{.r echo=FALSE}\nx\n```\n", id="class-and-option"),
+        pytest.param('```{#lst:fit .r caption="Fitting glm"}\nx\n```\n', id="crossref-listing"),
+        pytest.param('~~~{.r caption="Fitting `glm`"}\nx\n~~~\n', id="backtick-on-tildes"),
+        pytest.param("```{=html}\n<b>x</b>\n```\n", id="raw-block"),
+        pytest.param("```\nx\n```  \n", id="spaces-after-the-closer"),
+        pytest.param("   ```\nx\n   ```\n", id="indented-three"),
+        pytest.param("<!--\n```{r}\nx\n```\n-->\n", id="a-chunk-commented-out"),
+        pytest.param("~~~\n```r echo=FALSE\n~~~\n", id="inside-code"),
+        pytest.param("---\ntitle: x\n---\n\n```r\nx\n```\n", id="under-front-matter"),
+    ],
+)
+def test_a_fence_both_read_alike_is_not_refused(text: str) -> None:
+    from manuscript_guard.text.sections import unclear_fences
+
+    assert unclear_fences(text) == []

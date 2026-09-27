@@ -1275,3 +1275,46 @@ def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
         for word in re.findall(r"w\d+", text[note.start : note.end])
     }
     assert ours <= pandoc, (ours - pandoc, pandoc)
+
+
+#: Info strings a fence can open with, some pandoc 3.9 opens it with and some it does not.
+FENCE_INFOS = [
+    *["", "r", " r", ".r", "python", "c++", "r,", '"r"', "{.r}", "{ .r }", "{}", "{=html}"],
+    *["r {.x}", "{#lst:fit .r}", "{.r echo=FALSE}", "{.r caption='Fitting glm'}", "{a=}"],
+    '{.r caption="Fitting `glm`"}',
+    '{a="unterminated}',
+    # What pandoc leaves a paragraph: R Markdown's chunks, two words, a raw format after a
+    # word, a word holding a brace or a backtick, a space pandoc does not skip.
+    *["{r}", "r echo=FALSE", "{r echo=FALSE}", "{r, echo=FALSE}", "python title", "r a"],
+    *["r{=html}", "r}", "r`x", chr(0xA0) + "r", "r" + chr(0x3000), "{.r", "{.r} x"],
+]
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~"])
+@pytest.mark.parametrize("info", FENCE_INFOS)
+def test_the_info_strings_pandoc_opens_a_fence_with(fence: str, info: str) -> None:
+    """`pandoc_opens` answers for pandoc, so that a fence the gates and pandoc read
+    differently can be refused rather than misread."""
+    from manuscript_guard.text.fences import pandoc_opens
+
+    kinds = [b["t"] for b in pandoc_blocks(f"Para.\n\n{fence}{info}\ncode\n{fence}\n\nAfter.\n")]
+    assert pandoc_opens(info) == (kinds[1] in ("CodeBlock", "RawBlock") and len(kinds) == 3)
+
+
+FENCE_CLOSERS = [
+    *["```", "```  ", "```\t", "   ```", "````"],
+    *["\t```", " \t```", "```" + chr(0xA0), "```" + chr(0x2003), "```" + chr(0x3000)],
+    *["```\f", chr(0x2028) + "```", chr(0xA0) + "```"],
+]
+
+
+@pytest.mark.parametrize("closer", FENCE_CLOSERS)
+def test_the_lines_pandoc_closes_a_fence_on(closer: str) -> None:
+    """`pandoc_closes` answers for pandoc: up to three spaces, the fence, then spaces or
+    tabs. The fence scanner strips any space Python knows and counts only spaces in front,
+    so it closed on lines pandoc reads as code."""
+    from manuscript_guard.text.fences import pandoc_closes
+
+    blocks = pandoc_blocks(f"Para.\n\n```\ncode\n{closer}\n\nAfter.\n\n```\nz\n```\n")
+    closed = [b["t"] for b in blocks] == ["Para", "CodeBlock", "Para", "CodeBlock"]
+    assert pandoc_closes(closer) == closed

@@ -2500,12 +2500,21 @@ Added by the adversarial review, verified and **not** fixed:
   span, goes unfollowed: a paragraph inside it is marked, and the identifier names nothing
   in the document.
 - **Code fences are paired by `text/fences.py`, not by pandoc.** Where the two pair them
-  differently, a paragraph can be marked inside code, and the marker prints there. Known
-  cases: an opener whose info string pandoc rejects (`python title="x"`,
-  `{code-cell} ipython3`), a `~~~` straight under a paragraph line, since pandoc lets only a
-  backtick fence interrupt a paragraph, and a fence line with no partner inside an HTML
-  comment. The same pairing decides which blocks start inside code, so a table under such a
-  fence can go unfollowed as well.
+  differently, a paragraph can be marked inside code, and the marker prints there, and a
+  number pandoc prints can go unread by G2. A fence line the two read apart is refused, by
+  `check` and by the build (`unclear-fence`, `sections.unclear_fences`), with a hint:
+  - an opener pandoc rejects: R Markdown's `{r}`, two words as in `r echo=FALSE` or
+    `python title="x"`, `{code-cell} ipython3`. The build hands the source to pandoc, not to
+    knitr, and pandoc prints such a chunk as text;
+  - a backtick fence with a backtick in its attributes, which pandoc opens and the scanner
+    did not, as in `` ```{.r caption="Fitting `glm`"} ``. A `~~~` fence reads alike in both;
+  - a closer with a tab in front, or a space other than a space or a tab around it.
+
+  Which info strings pandoc opens a fence with is `fences.pandoc_opens`, checked against
+  pandoc. Still read apart, and not refused: a `~~~` straight under a paragraph line, since
+  pandoc lets only a backtick fence interrupt a paragraph, and a fence line with no partner
+  inside an HTML comment. The same pairing decides which blocks start inside code, so a
+  table under such a fence can go unfollowed as well.
 - **A heading with its first paragraph directly under it is one block, left unmarked.**
   `# Methods\nWe did X.` is a heading and a paragraph to pandoc, and since the block starts
   with `#` the paragraph never carries an identifier and its edits are never compared.
@@ -3756,7 +3765,9 @@ Closed since, and why each mattered:
     `\begin{...}` in its text leaves the paragraphs after it unmarked, and pandoc prints
     them. And a code fence wrapped onto a note's second line, left alone or not, is still
     paired with the next fence below, so what lies between goes unmarked, or a marker lands
-    inside a real code block. Both are so on `main`.
+    inside a real code block. Both are so on `main`. The gates find code the same way, so
+    G2 does not read a number typed in the prose between, and `check` passes it. Keeping
+    code out of footnotes, or a blank line and four columns of indent before it, avoids it.
   - *A note marked only for what is below it would become a definition if moved.* A note
     over a blank line and then a line indented four columns would take that line in, so it
     is marked, and prints as text. Moved in Word to a place with a plain paragraph below

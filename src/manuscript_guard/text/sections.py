@@ -23,7 +23,7 @@ import bisect
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.fences import blank_fences
+from manuscript_guard.text.fences import PANDOC_FENCE, blank_fences, pandoc_closes, pandoc_opens
 from manuscript_guard.text.masking import (
     blank,
     fenced_blocks,
@@ -547,6 +547,63 @@ _QUOTED = re.compile(r"^[ ]{0,3}>")
 
 def _blank(line: str) -> bool:
     return not line.strip(" \t\r")
+
+
+def unclear_fences(text: str) -> list[int]:
+    """The lines, numbered from 1, of each code fence the gates and the build read
+    otherwise than pandoc does.
+
+    Code is found by `fenced_spans`, not by pandoc, and on these lines the two part:
+    - an opener it takes and pandoc does not: R Markdown's `{r}`, two words as in
+      `r echo=FALSE`, a space pandoc does not skip;
+    - a closer it takes and pandoc does not: a tab in front, any other space than a space or
+      a tab around it, or a line pandoc does not split where `splitlines` does;
+    - a backtick fence with a backtick in its attributes, which it leaves alone and pandoc
+      opens, as in a pandoc-crossref caption.
+
+    Read otherwise, a number pandoc prints went unchecked by G2, and a paragraph's
+    identifier printed inside a listing. Modelling pandoc here would mean rewriting the fence
+    scanner, so these lines are refused instead, which neither reader mistakes. Lines in the
+    front matter, in an HTML comment and inside code are not read: pandoc prints none of
+    them as a fence.
+    """
+    fences = fenced_blocks(text)
+    unread = sorted([(0, front_matter_end(text)), *html_comments(text, fences)])
+    code = [(fence.body_start, fence.body_end) for fence in fences]
+    starts = [0, *(newline.end() for newline in re.finditer("\n", text))]
+    found: set[int] = set()
+
+    def line_at(offset: int) -> tuple[int, str]:
+        number = bisect.bisect_right(starts, offset) - 1
+        end = starts[number + 1] - 1 if number + 1 < len(starts) else len(text)
+        return number, text[starts[number] : end]
+
+    for fence in fences:
+        number, line = line_at(fence.start)
+        opener = PANDOC_FENCE.fullmatch(line.rstrip("\r"))
+        if opener is None or not pandoc_opens(opener.group("info")):
+            found.add(number)
+        number, line = line_at(fence.body_end)
+        if not pandoc_closes(line):
+            found.add(number)
+    for number, start in enumerate(starts):
+        end = starts[number + 1] - 1 if number + 1 < len(starts) else len(text)
+        opener = PANDOC_FENCE.fullmatch(text[start:end].rstrip("\r"))
+        if (
+            opener is not None
+            and opener.group("fence")[0] == "`"
+            and "`" in opener.group("info")
+            and not _within(code, start)
+            and pandoc_opens(opener.group("info"))
+        ):
+            found.add(number)
+    return sorted(number + 1 for number in found if not _within(unread, starts[number]))
+
+
+def _within(spans: list[tuple[int, int]], offset: int) -> bool:
+    """Whether `offset` falls in one of `spans`, sorted and not overlapping."""
+    index = bisect.bisect_right(spans, (offset, float("inf"))) - 1
+    return index >= 0 and spans[index][0] <= offset < spans[index][1]
 
 
 def rules_opening_blocks(text: str) -> list[int]:

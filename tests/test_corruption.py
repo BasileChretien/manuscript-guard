@@ -2401,6 +2401,88 @@ def test_a_listing_behind_a_false_comment_keeps_the_plain_form(comment: str) -> 
     assert unclear_fence_lines(text) != []
 
 
+# Lines a backtick fence straight under them joins for pandoc: a footnote's, or a list
+# item's that already has more than one line. Pandoc takes the fence into the container,
+# strips its indentation and ends the code at an indented closer; the gates read on to the
+# next closer at the margin, over the claim after it.
+_CONTAINERS = {
+    "footnote": "Ref.[^1]\n\n[^1]: A note.\n",
+    "footnote continued": "Ref.[^1]\n\n[^1]: A note.\n\n    More of the note.\n",
+    "footnote in a list": "- Ref.[^1]\n\n  [^1]: A note.\n",
+    "nested item": "- An item.\n  - A sub-item.\n",
+    "item continued": "- An item.\n\n  More of it.\n",
+    "nested ordered item": "1. One.\n   a. Sub.\n",
+    "comment under a footnote": "Ref.[^1]\n\n[^1]: A note.\n<!-- never closed\n",
+}
+
+
+@pytest.mark.parametrize("apart", [False, True], ids=["tight", "apart"])
+@pytest.mark.parametrize("above", sorted(_CONTAINERS))
+def test_a_listing_under_a_container_s_line_is_not_held_by_a_false_comment(
+    above: str, apart: bool
+) -> None:
+    """Found by round 3's review: behind a comment the gates see and pandoc does not, a
+    backtick listing straight under any line was held, since pandoc opens one under a line
+    of text. Not under a footnote's or a longer list item's line, which takes the fence in;
+    the claim after it printed, and `check` and the build passed. A listing that is not
+    apart is held only straight under the `<!--` line, itself apart."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    gap = "\n" if apart else ""
+    text = (
+        f"# Results\n\n<!-- never closed\n\n{_CONTAINERS[above]}{_TICKS}r\n"
+        f"fit <- glm(y ~ x)\n    {_TICKS}\n{gap}The excess was 9.87 (p < 0.001).\n{gap}"
+        f"{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"# Results\n\n<!-- An earlier model:\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"<!-- An earlier model:\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"# Results\n\n<!--\n{_TICKS}r\nfit0\n{_TICKS}\n\n{_TICKS}r\nfit1\n{_TICKS}\n-->\n",
+    ],
+    ids=["under-a-heading", "file-start", "two-listings"],
+)
+def test_a_listing_straight_under_its_comment_is_still_held(text: str) -> None:
+    """Round 1's shape stays accepted with `<!--` straight above the opener: the comment
+    line is apart, and pandoc opens a backtick fence under it."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(text) == []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "lead",
+    [
+        "As noted.[^n1]\n\n[^n1]: A note `<!--` `x\n",
+        "- Fit the model.\n  - A step `<!--` `x\n",
+        "- Fit the model.\n\n  A step `<!--` `x\n",
+    ],
+    ids=["footnote", "nested-item", "item-continued"],
+)
+def test_a_false_comment_in_a_container_hides_no_claim(project: Path, lead: str) -> None:
+    """Round 3's reproduction on the example: `<!--` in code beside a stray backtick, on a
+    footnote's or a list item's line, then a listing whose closer pandoc reads early. The
+    claim after it printed in the document, untraced, while `check` and the build passed."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    block = (
+        f"{lead}{_TICKS}r\nfit <- glm(y ~ x)\n    {_TICKS}\n\n"
+        f"The excess was 9.87 (p < 0.001).\n\n{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    assert main(["check", str(project)]) == 1
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )

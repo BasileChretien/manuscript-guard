@@ -434,17 +434,24 @@ def _walk(text: str, begin: int) -> tuple[list[str], set[int], list[Fence]]:
             continue
         # A listing a comment holds whole. The comment is the gates' reading, which a stray
         # backtick fools, so the listing must also be one pandoc reads as the gates do if
-        # the comment is not there: opened at the margin, and a tilde fence apart from the
-        # line above, which pandoc does not open under text. Let be in a list item, it was
-        # code to the gates to the last closer and ended early for pandoc, which printed
-        # the claim after it (round 2's review). A backtick fence at the margin interrupts
-        # a line of text for pandoc, so `<!--` straight above one still holds it.
+        # the comment is not there: opened at the margin, and apart from the line above.
+        # Let be in a list item, it was code to the gates to the last closer and ended
+        # early for pandoc, which printed the claim after it (round 2's review). A backtick
+        # fence at the margin interrupts a line of text for pandoc, so `<!--` straight above
+        # one still holds it, when that line is itself apart. Not any line: a footnote's, or
+        # a list item's with more than one line, takes the fence in, and pandoc ended it at
+        # an indented closer and printed the claim after it (round 3's review).
+        straight_under_comment = (
+            bares[index][:1] == "`"
+            and above.startswith("<!--")
+            and (index == 1 or not bares[index - 2].strip(" ") or index - 2 in closers)
+        )
         if (
             last is not None
             and raw is not None
             and raw.kind == "comment"
             and margin
-            and (apart or bares[index][0] == "`")
+            and (apart or straight_under_comment)
             and not any("-->" in bares[at] for at in range(index, last + 1))
         ):
             inside.update(range(index, last + 1))

@@ -6952,12 +6952,24 @@ def test_a_heading_its_paragraph_already_names_is_still_seen_joined(tmp_path: Pa
 
 
 @needs_pandoc
+@pytest.mark.parametrize(
+    ("heading_text", "opening"),
+    [("Methods", "We analysed"), ("Competing interests", "None declared.")],
+    ids=["long-paragraph", "short-paragraph"],
+)
 def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
-    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    project: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    heading_text: str,
+    opening: str,
 ) -> None:
     """Delete at the end of a heading makes a run-in heading: one paragraph reading
     "MethodsWe analysed...", carrying the paragraph's identifier. It merged as prose, and
-    `# Methods` stayed in the file above it."""
+    `# Methods` stayed in the file above it. Word keeps the heading's style on the joined
+    paragraph, so a paragraph short beside its heading - "None declared." - read as an
+    identifier slid onto a heading, and was reported deleted: the advice was to delete it
+    and retype Word's copy into the heading."""
     from manuscript_guard.cli import main
 
     document = built(project)
@@ -6965,13 +6977,14 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     before = source.read_text(encoding="utf-8")
 
     def join(xml: str) -> str:
-        paragraph = tagged_xml(xml)[3]
+        (paragraph,) = [p for p in tagged_xml(xml) if f">{opening}" in p]
         heading = re.search(
-            r"<w:p>(?:(?!<w:p>).)*?>Methods</w:t></w:r></w:p>\s*" + re.escape(paragraph),
+            rf"<w:p>(?:(?!<w:p>).)*?>{heading_text}</w:t></w:r></w:p>\s*"
+            + re.escape(paragraph),
             xml,
             re.DOTALL,
         )
-        assert heading, "the Methods heading sits directly before its first paragraph"
+        assert heading, "the heading sits directly before its first paragraph"
         inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
         heading_xml = heading.group(0)[: heading.group(0).index(paragraph)].rstrip()
         joined = heading_xml[: -len("</w:p>")] + inner
@@ -6981,7 +6994,88 @@ def test_a_heading_joined_into_its_paragraph_is_not_duplicated(
     capsys.readouterr()
     assert main(["import", str(returned), str(project), "--apply"]) == 1
     assert source.read_text(encoding="utf-8") == before
-    assert "heading" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "joined with the heading" in out, out
+    assert "deleted in Word" not in out, out
+
+
+@needs_pandoc
+def test_a_heading_joined_with_track_changes_on_is_not_reported_deleted(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The same join made with Track Changes on: the heading's paragraph mark tracked as
+    deleted, so the heading runs on into the paragraph under it and opens the block, whose
+    role is then the heading's. "Not applicable." under a long heading was reported deleted."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            "# Competing interests",
+            "# Ethics approval and consent to participate\n\nNot applicable.\n\n"
+            "# Competing interests",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def join(xml: str) -> str:
+        heading = re.search(
+            r"<w:p>(<w:pPr>(?:(?!<w:p>).)*?</w:pPr>)(?:(?!<w:p>).)*?"
+            r">Ethics approval and consent to participate</w:t>",
+            xml,
+            re.DOTALL,
+        )
+        assert heading, "the heading is in the document"
+        props = heading.group(1)
+        at = heading.start(1)
+        return xml[:at] + _tracked_mark(props, "del") + xml[at + len(props) :]
+
+    returned = rewrite(document, tmp_path / "tracked-runin.docx", join)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    out = capsys.readouterr().out
+    assert "joined with the heading" in out, out
+    assert "deleted in Word" not in out, out
+
+
+@needs_pandoc
+def test_a_paragraph_sent_with_a_captions_style_keeps_its_identifier(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph the source styles as a caption itself - a table note in a custom-style
+    div - carries an identifier with that role. Only an identifier that slid onto a caption
+    has no place there: reworded in Word, the note was reported deleted, where it merged."""
+    from manuscript_guard.cli import main
+
+    note = "Counts are of reports, not of patients."
+    reworded = "Each report is counted once, whatever the number of patients it describes."
+    source = project / "manuscript" / "main.md"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace(
+            "# Discussion",
+            f'::: {{custom-style="Caption"}}\n\n{note}\n\n:::\n\n# Discussion',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    document = built(project)
+
+    def reword(xml: str) -> str:
+        (paragraph,) = [p for p in tagged_xml(xml) if note in p]
+        assert "Caption" in paragraph, "pandoc styled the note as a caption"
+        return xml.replace(paragraph, paragraph.replace(note, reworded), 1)
+
+    returned = rewrite(document, tmp_path / "note.docx", reword)
+    capsys.readouterr()
+    code = main(["import", str(returned), str(project), "--apply"])
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out, out
+    assert code == 0, out
+    assert reworded in source.read_text(encoding="utf-8")
 
 
 @needs_pandoc

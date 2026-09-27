@@ -163,7 +163,7 @@ def _squashed(text: str) -> str:
     return spaced(text).strip()
 
 
-def _unidentified(reference: list[Block]) -> Counter:
+def _untagged_counts(reference: list[Block]) -> Counter:
     """What the document as sent held without an identifier - headings, captions - by text."""
     return Counter(_squashed(b.text) for b in reference if not b.names and not b.table and b.text)
 
@@ -236,7 +236,7 @@ def _recovered(
 ) -> list[Block]:
     """The returned document with identifiers put back where only exact text can say.
     `docxtext` has already put them back where the tracked changes say."""
-    expected = _unidentified(reference)
+    expected = _untagged_counts(reference)
     return _given_back(rendered, _off_headings(rendered, returned, expected), expected)
 
 
@@ -461,7 +461,7 @@ def _displaced(
     A judgement, and it only chooses the words of a refusal. Returns each with the text it most
     resembles, for the author to port the rewording from.
     """
-    expected = _unidentified(reference)
+    expected = _untagged_counts(reference)
     elsewhere = [
         block.text
         for block in returned
@@ -1128,7 +1128,7 @@ def plan_import(
     headings = _text_counterparts(reference, returned)
     counterparts, lost = _counterparts(reference, returned, headings)
     beside_new = _beside_new_text(reference, returned, counterparts)
-    expected = _unidentified(reference)
+    expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
     untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)

@@ -1283,7 +1283,13 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     for item in assembled:
         source = item.path.read_text(encoding="utf-8") if item.path.exists() else item.text
         text, found = annotate(
-            source, namespace, classifier, counter=counter, results=results, project=project
+            source,
+            namespace,
+            classifier,
+            counter=counter,
+            results=results,
+            project=project,
+            pandoc=pandoc(),
         )
         marked.append(Assembled(path=item.path, text=text))
         marks.extend(found)
@@ -1298,8 +1304,10 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         reference_doc=reference,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
-        # Marked up for the author to read, not the document sent, and the marks change how
-        # a subscript or a code span reads: checked, it was refused as a misread.
+        # Marked up for the author to read, not the document sent, which the plain build
+        # checks from the same sources. The marks are checked where they are made:
+        # `annotate` has pandoc read each file with them and without, and takes out every
+        # mark of a paragraph that reads otherwise.
         verify_reading=False,
     )
     added = finish(result.output, marks)
@@ -1310,6 +1318,12 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     print(f"wrote {result.output}")
     print("  " + "  ".join(f"{tier}: {count}" for tier, count in sorted(tiers.items())))
     print(f"  {added} number(s) carry a hover showing where they came from")
+    unmarked = sum(1 for mark in marks if mark.unmarked)
+    if unmarked:
+        print(
+            f"  {unmarked} number(s) are not marked in the text, where a mark would change how "
+            "it reads; the appendix lists each with the reason"
+        )
     if tiers.get("defect"):
         print("  red marks a number bound to nothing. Yellow is not a verification.")
     return 0

@@ -523,7 +523,8 @@ refuses a document inside build/submission/ too, which the new pack replaces: th
 review found `--document build/submission/manuscript.docx` deleted before it was copied. Two
 builds go without asking: `import`'s, since the document it rebuilds has already been sent,
 and refusing there stranded it with the co-author holding it; and the annotated copy, marked
-up for the author to read, whose marks change how a subscript or a code span reads.
+up for the author to read, whose marks the annotator has pandoc check as it makes them
+(#76).
 
 **The header comes from `paper.yaml`, and a manuscript's front matter prints nothing.** The
 build strips every source file's YAML block and writes a header of its own with the title,
@@ -1396,6 +1397,52 @@ happens immediately. The highlight itself is a character style injected into pan
 reference document, generated at build time rather than committed: a reference `.docx` is a
 binary, and this repository ignores `*.docx` precisely so a build product cannot be mistaken
 for a source.
+
+**A mark never changes how the text reads.** The number finder reads raw text, and takes
+markup in with a number: `HbA~1c` out of `HbA~1c~`, `CO~2` out of `CO~2~`, `span>7</span`
+out of `<span>7</span>`. A mark around what it found left the closing `~` outside, so
+pandoc read no subscript, and a number in a code span, `` `x2` ``, got its mark written
+inside the span, where the link printed as text. So the annotator places each mark first:
+- **Code, equations, a link's text and the front matter take no mark.** Code spans are
+  paired a run of backticks with the next run of the same length in its paragraph, which
+  is pandoc's rule but for two edges (see Known gaps). Equations are pandoc's dollars,
+  looked for outside code: a `$` in `` `df$age` `` opened one that ran to the next code
+  span's (review of #76). A dollar sign before a number is a currency's, not markup, and
+  `US$5` is marked whole; one after a number stays outside the mark, where `5$ … 10$`
+  faced each other across the marks between, and a backslash before a number goes
+  inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
+  escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
+  So is anything else a backslash escapes in a number read across several runs, which
+  for pandoc is any character but a letter or a digit, save a space, a bracket or a
+  backslash: `5\%-10\%`, `\~5-\~7` and `5\°-10\°` are marked whole (the rounds after the
+  extra one). A link's text, the target a URL or an anchor, can't hold a mark,
+  which is itself a link. A bracket before another is taken for a link's text only when
+  the file defines the second one's label, or, the second empty, the first one's: pandoc
+  reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their
+  numbers are marked (the extra round of #76).
+  A binding in a link's text is put in as its value, unmarked.
+- **Inside other markup, the mark goes around the digits.** The mark goes around the one
+  run free of markup that holds a digit, inside the subscript or the span, where pandoc
+  reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
+  digits, `10^-3^`, it goes around the whole of what was found, if every sub- and
+  superscript in it opens and closes there; brackets in it are escaped in the mark and
+  read as text, `12][13`. No mark opens straight after a `]`, where pandoc read the two
+  brackets as a reference. Otherwise the number is left unmarked.
+
+That rule is a model of pandoc's inline reader, and models of pandoc's readers have been
+found wrong round after round in this repository. So the build then asks pandoc: each file
+is read with its marks and without, the marks unwrapped and each block compared, and every
+mark in a block that reads differently is taken out. Which mark did it is not worked out,
+so a paragraph can lose all its marks for one; a number in an HTML tag's attribute,
+`width="300"`, is the example the tests hold. What still reads differently after that loses
+every mark in the file, so the annotated copy never reads otherwise than the manuscript,
+marks aside. Two things are left out of the comparison. A pipe table's column widths: a
+longer row, marks in it, makes pandoc give the table widths, which changes the layout of
+the annotated copy's tables and not their words. And a citation as written, which pandoc
+keeps and citeproc replaces: with a mark on its locator, `p. 33`, it differed, and the
+paragraph lost every mark (review of #76). A number left unmarked is
+still listed in the appendix, with the reason, and the build says how many there are. It
+costs two runs of pandoc's reader a file, and a third where a mark is taken out.
 
 The annotated copy is deliberately **not stamped**. The source stamp is what G1 reads to
 decide whether the document a co-author opens is current, and there must be exactly one such
@@ -3861,6 +3908,56 @@ Closed since, and why each mattered:
   and nothing else. An SVG figure needs `rsvg-convert` for pandoc to place it in the contact
   sheet, so a raster sibling is preferred where one exists and the vector is skipped when it
   is not.
+- **Some numbers are listed in the annotated copy's appendix and not marked in its text.**
+  A number in code, an equation, a link's text or the front matter takes no mark, and nor
+  does one inside markup the annotator cannot mark around. Where pandoc reads a paragraph
+  differently with its marks in, every mark in that paragraph comes out, not only the one
+  that did it: a number in an HTML tag's attribute unmarks its whole paragraph, and a
+  hand-written grid or simple table, or a block with attributes, loses every mark in it.
+  Each is in the appendix with the reason, but the reader has to look there for it; its
+  colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
+  pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
+  read as an escape, and a backtick left unpaired in one list item that pairs with one in
+  the next. The extra round of #76 left these, each rare or no worse than on `main`:
+  - a link's text across a line break is not found, so its paragraph loses every mark,
+    as `main`'s copy misreads it;
+  - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
+    paragraph, which `main`'s copy also misreads;
+  - a number in a reference definition, `[tbl]: #tbl-2` or `[Table 2]: #t`, is marked, which
+    breaks the definition and costs the paragraphs that use it their marks;
+  - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
+    `from $5 to 7\$` both numbers go unmarked as "in an equation";
+  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5 times`, or
+    a lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
+    reference two brackets make, and it reaches past them;
+  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked;
+  - so is a number read across several runs with a backslash pandoc keeps, before a letter
+    or a digit: a TeX command, `1.2\pm0.3` or `5\times10^3^`, a path, `data\2021\05`, or
+    `\é5-\é10`; and one before a character Python counts as a digit, even in one run,
+    `12\²`. `main` marks each, and its copy reads the same. Word drops the command, so
+    `1.2\pm0.3` prints "1.2" (the final round of #76);
+  - a mark straight after a TeX command, `\a`, is taken for its argument, and the
+    paragraph loses every mark;
+  - an ordered list loses every mark: its `1.` and `2.` are marked, which breaks the list,
+    as `main`'s copy does.
+
+  And its fix-only round these, each contrived or no worse than on `main`:
+  - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
+    file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
+    prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
+    manuscript" holds file by file;
+  - a link the annotator does not know pandoc reads costs its paragraph every mark: a
+    definition inside a quotation or a list item, an implicit reference to a heading,
+    `[the 3 steps][Methods]`, and `[Table 2][@a]` where only `[table 2]:` is defined, since
+    pandoc falls back to the first bracket's label; `main`'s copy misreads each;
+  - definitions are read in the raw text, so one in a listing or a comment, or straight
+    under a line of a paragraph, where pandoc reads none, takes the number in
+    `[Table 2][t]` for a link's and leaves it unmarked; and labels are matched with
+    `casefold`, which differs from pandoc's lower-casing for ß.
+- **The annotated copy prints a manuscript file's own front matter.** The annotated build
+  re-reads each source whole, where the build strips its YAML block, so whatever pandoc
+  prints from that block prints in the annotated copy and not in the manuscript, its
+  numbers listed as "in the front matter".
 - **An interval is only checked in prose when it was emitted as one.** `em.interval()`
   publishes the estimate and both bounds together, verifies that the bounds bracket the
   estimate, and records which end each bound is — which is what lets G2 refuse

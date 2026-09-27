@@ -3764,3 +3764,289 @@ def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
 ) -> None:
     _with_footnote(project, referenced, defined, note)
     assert not gate_report(project).failures, codes(gate_report(project))
+
+
+def _unmarked(node):
+    """Pandoc's reading with every annotation mark, a styled span around a link to an
+    `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""
+    if isinstance(node, list):
+        out: list = []
+        for item in node:
+            if (
+                isinstance(item, dict)
+                and item.get("t") == "Span"
+                and any(key == "custom-style" for key, _ in item["c"][0][2])
+                and len(item["c"][1]) == 1
+                and item["c"][1][0].get("t") == "Link"
+                and item["c"][1][0]["c"][2][0].startswith("#mg-n")
+            ):
+                out.extend(_unmarked(item["c"][1][0]["c"][1]))
+            else:
+                out.append(_unmarked(item))
+        joined: list = []
+        for item in out:
+            if joined and isinstance(item, dict) and item.get("t") == "Str":
+                last = joined[-1]
+                if isinstance(last, dict) and last.get("t") == "Str":
+                    joined[-1] = {"t": "Str", "c": last["c"] + item["c"]}
+                    continue
+            joined.append(item)
+        return joined
+    if isinstance(node, dict):
+        return {key: _unmarked(value) for key, value in node.items()}
+    return node
+
+
+def _marked_texts(node) -> list[str]:
+    """The text of every annotation mark in pandoc's reading."""
+    found: list[str] = []
+    if isinstance(node, list):
+        for item in node:
+            found += _marked_texts(item)
+    elif isinstance(node, dict):
+        if node.get("t") == "Link" and node["c"][2][0].startswith("#mg-n"):
+            found.append(json.dumps(node["c"][1]))
+        found += _marked_texts(node.get("c"))
+    return found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_annotated_copy_keeps_inline_markup_around_numbers(project: Path) -> None:
+    """The annotator wrapped `HbA~1c` in a mark and left the closing `~` outside, so pandoc
+    read no subscript, and wrote a link inside a code span, where it printed literally. The
+    annotated copy must read as the manuscript does, marks aside, with each number marked
+    where a mark can go, and a number in code listed in the appendix instead."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    added = (
+        "\n# Change in HbA~1c~ from baseline\n\n"
+        "The CO~2~ level was read over a 3 m^2^ area, with the `x2` variable.\n"
+    )
+    source.write_text(text + added, encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--annotated", "--skip-checks"]) == 0
+    annotated = (project / "build" / "manuscript.annotated.md").read_text(encoding="utf-8")
+
+    def read(markdown: str):
+        out = subprocess.run(
+            [shutil.which("pandoc"), "-f", "markdown", "-t", "json"],
+            input=markdown.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+        return json.loads(out.stdout)["blocks"]
+
+    blocks = read(annotated)
+    heading = next(
+        b for b in blocks if b["t"] == "Header" and "Change" in json.dumps(b["c"][2])
+    )
+    paragraph = next(b for b in blocks if b["t"] == "Para" and '"CO"' in json.dumps(b["c"]))
+    # The markup survives, marks aside: each reads as the same text without marks does.
+    assert _unmarked(heading) == _unmarked(read(added)[0])
+    assert _unmarked(paragraph) == _unmarked(read(added)[1])
+    # The numbers are marked where they can be, and the one in code is not.
+    marked = _marked_texts(heading) + _marked_texts(paragraph)
+    assert any('"1c"' in m for m in marked), marked
+    assert any('"3"' in m for m in marked), marked
+    assert sum('"2"' in m for m in marked) == 2, marked
+    assert {"t": "Code", "c": [["", [], []], "x2"]} in paragraph["c"]
+    appendix = annotated[annotated.index("# Appendix") :]
+    assert "x2" in appendix and "code" in appendix
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
+    """The number finder reads `width="300` in an HTML tag as a number, and nothing in the
+    annotator's own rule knows tags, so the mark went inside the tag. Pandoc reads the file
+    with its marks and without, and each mark in a paragraph that reads differently is
+    taken out and listed in the appendix with the reason. The next paragraph keeps its own."""
+    import shutil
+
+    from manuscript_guard.annotate import READ_OTHERWISE, annotate, appendix
+    from manuscript_guard.classify import Classifier
+
+    text = (
+        '# Extra\n\nA figure <img src="f.png" width="300"> of 12 patients.\n\n'
+        "Another 42 plain.\n"
+    )
+    annotated, marks = annotate(
+        text, {}, Classifier.load([], []), counter=[0], pandoc=shutil.which("pandoc")
+    )
+    assert '<img src="f.png" width="300">' in annotated
+    shown = {mark.shown: mark for mark in marks}
+    assert shown["12"].unmarked == READ_OTHERWISE
+    assert not shown["42"].unmarked
+    assert "[[42](#" in annotated
+    assert f"Not marked in the text: {READ_OTHERWISE}" in appendix(marks)
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("text", "marked", "unmarked"),
+    [
+        # Found by review of round 1: numbers main marked, and the first version did not.
+        # A citation's locator: pandoc keeps the citation's source text, which citeproc
+        # never prints, and it differed with the mark in.
+        ("Of 120 reports, 14 were serious [@smith2021, p. 33].", {"120", "14"}, {}),
+        # A currency sign is not an equation's: a mark on the digits alone left one dollar
+        # sign facing another across the paragraph.
+        ("The fee was US$5 and the refund US$3, and 7 more.", {"US$5", "US$3", "7"}, {}),
+        ("Costs ranged from $10-$50 per dose.", {"$10-$50"}, {}),
+        # Found by the fix-only round: an escaped dollar, the mark after its backslash,
+        # which escaped the mark's bracket; and a dollar after the digits, which faced the
+        # next one across the marks.
+        ("The fee was \\$5 for 3 visits.", {"\\$5", "3"}, {}),
+        ("It cost 5$ and then 10$, over 3 days.", {"5", "10", "3"}, {}),
+        # A footnote marker after a bracket is not a link's target, and a citation is not a
+        # link's text.
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][^2] in 40 patients.\n\n[^2]: Adjusted.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        (
+            "Of 120 reports, 14 were serious [@smith2021, p. 33][^1].\n\n[^1]: A note.",
+            {"120", "14", "33"},
+            {},
+        ),
+        ("As shown [@a2020, p. 3][@b2021, p. 5].", {"3", "5"}, {}),
+        # Found by the extra round: an escaped range, split by its inner backslash; and a
+        # bracket before a citation, or before a label nothing defines, which pandoc reads
+        # as text. In prose, and in a table or a list, where the first version unmarked
+        # the whole block.
+        ("Costs ranged from \\$10-\\$50 per dose.", {"\\$10-\\$50"}, {}),
+        ("Costs ranged from \\$1,000-\\$2,000 per dose.", {"\\$1,000-\\$2,000"}, {}),
+        # An escaped dollar after the digits stays outside the mark, with its backslash.
+        ("It cost 5\\$ and then 10\\$, over 3 days.", {"5", "10", "3"}, {}),
+        # Found by the fix-only round of the extra one: any escaped punctuation in a range
+        # is text, `\%` from LaTeX habit, and `\~`, without which pandoc reads a subscript.
+        ("Between 5\\%-10\\% of 40 sites.", {"5\\%-10\\%", "40"}, {}),
+        (
+            "It was 12\\% (95\\% CI 10\\%-14\\%) in 40 sites.",
+            {"12", "95", "10\\%-14\\%", "40"},
+            {},
+        ),
+        ("About \\~5-\\~7 in 40 sites.", {"\\~5-\\~7", "40"}, {}),
+        (
+            "| Site | Share |\n|------|-------|\n| A | 5\\%-10\\% |\n| B | \\~5-\\~7 |",
+            {"5\\%-10\\%", "\\~5-\\~7"},
+            {},
+        ),
+        (
+            "- Between 5\\%-10\\%.\n- About \\~5-\\~7 in 40 sites.",
+            {"5\\%-10\\%", "\\~5-\\~7", "40"},
+            {},
+        ),
+        # Found by the round after the budget: pandoc escapes any character that is not a
+        # letter, a digit or a space, not ASCII punctuation alone.
+        ("Between 5\\°-10\\° of 40 sites.", {"5\\°-10\\°", "40"}, {}),
+        ("Doses of \\±5-\\±10 in 40 sites.", {"\\±5-\\±10", "40"}, {}),
+        ("Values of \\≥5-\\≥10 in 40 sites.", {"\\≥5-\\≥10", "40"}, {}),
+        ("From 5\\‰-10\\‰ and 5\\–10 in 40 sites.", {"5\\‰-10\\‰", "5\\–10", "40"}, {}),
+        (
+            "| Site | Range |\n|------|-------|\n| A | 5\\°-10\\° |\n| B | 2\\*3\\*4 |",
+            {"5\\°-10\\°", "2\\*3\\*4"},
+            {},
+        ),
+        ("It was 12\\° and 12\\% at 40 sites.", {"12", "40"}, {}),
+        (
+            "| Drug | Cost |\n|------|------|\n| A | \\$10-\\$50 |\n| B | \\$5 |",
+            {"\\$10-\\$50", "\\$5"},
+            {},
+        ),
+        ("- Drug A cost \\$10-\\$50.\n- Drug B cost \\$5 for 3 visits.", {"\\$10-\\$50", "3"}, {}),
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][@smith2021] in 40 patients.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        ("The rate was [4.5 per 100][see @smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        ("The rate was [4.5 per 100][-@smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        # The finder reads `12][13` as one number, as on main, whose mark escapes the
+        # brackets.
+        ("Counts were [12][13] in all 40 sites.", {"12][13", "40"}, {}),
+        # A mark straight after a `]` reads as a reference: that number goes unmarked, and
+        # its paragraph keeps the rest.
+        ("Fees [B]7 in 3 sites.", {"3"}, {"B]7": "IN_MARKUP"}),
+        (
+            "It was [95% CI 1.2-3.4]1.2-3.4[12] in 40 sites.",
+            {"95%", "40"},
+            {"1.2-3.4[12": "IN_MARKUP"},
+        ),
+        (
+            "| Odds ratio | CI |\n|----|----|\n| 2.1 | [1.2-3.4][@smith2021] |",
+            {"2.1", "1.2-3.4"},
+            {},
+        ),
+        ("- 2.1 [95% CI 1.2-3.4][@smith2021]\n- 40 patients", {"95%", "1.2-3.4", "40"}, {}),
+        # A reference link the file defines is a link: its number stays unmarked. (The
+        # definition holds no digit: a number in a definition is marked, which is recorded
+        # in Known gaps.)
+        (
+            "Of 120 reports, as shown in [Table 2][tbl].\n\n[tbl]: #results-table",
+            {"120"},
+            {"2": "IN_LINK"},
+        ),
+        # A dollar sign in inline code opens no equation.
+        ("Age (`df$age`) was split into 3 groups and sex (`df$sex`) into 2.", {"3", "2"}, {}),
+        # A link to an anchor: only the number in its text goes unmarked.
+        (
+            "Of 120 reports, 14 were serious, as shown in [Table 2](#tbl-2).",
+            {"120", "14"},
+            {"2": "IN_LINK"},
+        ),
+    ],
+)
+def test_the_annotated_copy_marks_what_main_marked(
+    text: str, marked: set[str], unmarked: dict[str, str]
+) -> None:
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    shown = {mark.shown: mark.unmarked for mark in marks}
+    assert marked <= {s for s, reason in shown.items() if not reason}, shown
+    for number, reason in unmarked.items():
+        assert shown.get(number) == getattr(module, reason), shown
+
+
+@pytest.mark.parametrize(
+    ("text", "links"),
+    [
+        # Pandoc matches a label ignoring case and runs of white space, and an empty
+        # bracket takes the text as the label.
+        ("See [Table 2][].\n\n[table  2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][T].\n\n[t]: #t\n", ["[Table 2]"]),
+        ("See [Table 2](#t).\n", ["[Table 2]"]),
+        # Nothing defines these, so pandoc reads text: a footnote's marker, a citation,
+        # a label with no definition, and a footnote's definition, which is no link's.
+        ("See [Table 2][^1].\n\n[^1]: A note.\n", []),
+        ("See [Table 2][@smith2021].\n", []),
+        ("See [Table 2][t].\n", []),
+        ("See [Table 2][].\n\n[^table 2]: A note.\n", []),
+    ],
+)
+def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(
+    text: str, links: list[str]
+) -> None:
+    from manuscript_guard.text.inline import link_text_spans
+
+    assert [text[start:end] for start, end in link_text_spans(text)] == links

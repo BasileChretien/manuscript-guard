@@ -261,9 +261,9 @@ def build_document(
     """Make the document. `verify_reading` asks pandoc first whether it reads the sources
     as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
     document already sent in order to compare the returned one with it, since refusing
-    there stranded a document a co-author was holding; and the annotated copy, whose marks
-    change how a subscript or a code span reads, and which is for the author to read, not
-    to send."""
+    there stranded a document a co-author was holding; and the annotated copy, which is for
+    the author to read, not to send, and whose marks `annotate` has pandoc check as it
+    makes them."""
     from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
 
     build_dir = project.path("build")

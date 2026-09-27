@@ -22,18 +22,22 @@ from manuscript_guard.audit import (
     render,
     strip_bibliography,
 )
-from manuscript_guard.text.docx import NotADocx, read_docx
+from manuscript_guard.text.docx import DocxText, NotADocx, read_docx, read_docx_text
 
 NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
 
 # A fixed timestamp, so the same body always gives the same bytes (see test_transcribe).
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 
-def make_docx(path: Path, body: str) -> Path:
+def make_docx(path: Path, body: str, styles: str = "") -> Path:
     document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+        if styles:
+            part = f"<w:styles {NS}>{styles}</w:styles>"
+            archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), part)
     return path
 
 
@@ -72,6 +76,264 @@ def test_tracked_deletions_are_dropped_and_insertions_kept(tmp_path: Path) -> No
     text = read_docx(make_docx(tmp_path / "d.docx", body))
     assert "77" in text
     assert "41" not in text, "a deleted number is not in the paper anyone will read"
+
+
+def gone(text: str, style: str = "") -> str:
+    """A paragraph whose mark was deleted as a tracked change: it runs on into the next."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    mark = f'<w:pPr>{styled}<w:rPr><w:del w:id="1" w:author="a"/></w:rPr></w:pPr>'
+    return f"<w:p>{mark}<w:r><w:t>{text}</w:t></w:r></w:p>"
+
+
+def heading(text: str) -> str:
+    return f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>'
+
+
+@pytest.mark.parametrize(
+    ("body", "line", "is_heading"),
+    [
+        (gone("Appendix", "Heading1") + para("Text"), "AppendixText", False),
+        (gone("Text") + heading("Appendix"), "TextAppendix", True),
+        (gone("A1") + gone("B2", "Heading1") + para("C3"), "A1B2C3", False),
+    ],
+    ids=["heading-then-text", "text-then-heading", "three"],
+)
+def test_a_joined_line_takes_the_last_paragraphs_style(
+    tmp_path: Path, body: str, line: str, is_heading: bool
+) -> None:
+    """The mark that is left is the last paragraph's, and so is the style: Word 16, accepting
+    the change, keeps it. When Word deletes a mark itself it first copies the first
+    paragraph's style onto the second, recording the old one in `w:pPrChange`, so this is
+    what Word shows either way."""
+    document = read_docx_text(make_docx(tmp_path / "j.docx", para("Intro") + body))
+    assert document.body.split("\n") == ["", "Intro", line]
+    assert document.headings == (frozenset({2}) if is_heading else frozenset())
+
+
+def test_a_join_stops_at_a_table(tmp_path: Path) -> None:
+    """Only a sibling paragraph continues the line, and only empty elements - a bookmark, a
+    comment's range - may sit between them. Joined past the table, "-0.5" and the "1" after
+    the table read as -0.51."""
+    table = f"<w:tbl>{row('0.3')}</w:tbl>"
+    text = read_docx(make_docx(tmp_path / "t.docx", gone("-0.5") + table + para("1")))
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    assert lines == ["-0.5", "|", "0.3", "1"]
+
+
+@pytest.mark.parametrize(
+    ("cell", "line", "is_heading"),
+    [
+        (gone("-0.5") + para("1"), "-0.51", False),
+        (gone("Table") + heading("References"), "TableReferences", True),
+        (gone("References", "Heading1") + para("Table"), "ReferencesTable", False),
+    ],
+    ids=["text", "text-then-heading", "heading-then-text"],
+)
+def test_a_joined_line_in_a_table_cell_is_still_a_cell(
+    tmp_path: Path, cell: str, line: str, is_heading: bool
+) -> None:
+    """A cell's line is marked, because "References" there is a column header. The mark goes
+    at the start of the joined line, not in the middle of it, and after the heading mark
+    when the last paragraph is a heading."""
+    table = f"<w:tbl><w:tr><w:tc>{cell}</w:tc></w:tr></w:tbl>"
+    document = read_docx_text(make_docx(tmp_path / "c.docx", table))
+    lines = document.body.split("\n")
+    assert lines[-1] == line, lines
+    assert len(lines) - 1 in document.cells
+    assert (len(lines) - 1 in document.headings) == is_heading
+
+
+def text_box(inside: str, *, fallback: bool) -> str:
+    """A run holding a text box: as DrawingML alone, or as Word writes one, with the same box
+    again in VML in an AlternateContent fallback for readers that predate DrawingML."""
+    content = f"<w:txbxContent>{inside}</w:txbxContent>"
+    choice = f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+    spare = f"<mc:Fallback><w:pict>{content}</w:pict></mc:Fallback>" if fallback else ""
+    return f"<w:r><mc:AlternateContent {MC}>{choice}{spare}</mc:AlternateContent></w:r>"
+
+
+@pytest.mark.parametrize(
+    ("inside", "number"),
+    [(para("Panel 12"), "12"), (f"<w:tbl>{row('7', '8')}</w:tbl>", "7")],
+    ids=["paragraph", "table"],
+)
+def test_a_text_box_is_read_once_although_word_writes_it_twice(
+    tmp_path: Path, inside: str, number: str
+) -> None:
+    """Both copies were read, so every line of the box came twice and each number in it was
+    reported twice. The fallback's paragraphs, rows and cells break nothing either: only the
+    lines of the box as Word shows it are read."""
+
+    def read(*, fallback: bool) -> DocxText:
+        body = f"<w:p><w:r><w:t>Host</w:t></w:r>{text_box(inside, fallback=fallback)}</w:p>"
+        return read_docx_text(make_docx(tmp_path / f"{fallback}.docx", body))
+
+    once, twice = read(fallback=False), read(fallback=True)
+    assert once.body.count(number) == 1, once.body
+    assert twice == once, twice.body
+
+
+def tracked(change: str, text: str, style: str = "", runs: str = "") -> str:
+    """A paragraph whose mark and text were deleted, inserted or moved as a tracked change,
+    with any further `runs` inside the same change."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    kind = "delText" if change == "del" else "t"
+    return (
+        f'<w:p><w:pPr>{styled}<w:rPr><w:{change} w:id="2" w:author="a"/></w:rPr></w:pPr>'
+        f'<w:{change} w:id="3" w:author="a"><w:r><w:{kind}>{text}</w:{kind}></w:r>{runs}'
+        f"</w:{change}></w:p>"
+    )
+
+
+def tracked_row(change: str, *cells: str, style: str = "") -> str:
+    """A table row inserted, deleted or moved away as a tracked change, as Word 16 writes
+    one: each cell paragraph's mark and text marked with the change, and the row marked in
+    its properties when it was inserted or deleted. A row moved away is not marked as one."""
+    inner = "".join(f"<w:tc>{tracked(change, c, style)}</w:tc>" for c in cells)
+    props = f'<w:trPr><w:{change} w:id="1" w:author="a"/></w:trPr>' if change != "moveFrom" else ""
+    return f"<w:tr>{props}{inner}</w:tr>"
+
+
+# A row moved away holding a text box: Word 16 marks no paragraph of the box, in either
+# copy, since its anchor went with the text around it (verified 2026-09-25).
+BOXED = tracked("moveFrom", "b", runs=text_box(para("Box 9"), fallback=True))
+# A row moved away holding a table: Word 16 moves that table's paragraph marks too.
+NESTED = f"{tracked('moveFrom', 'b')}<w:tbl>{tracked_row('moveFrom', '9')}</w:tbl>"
+# The same, but with the nested table's paragraph left in place: the row stays.
+AROUND = f"{tracked('moveFrom', 'b')}<w:tbl>{row('9')}</w:tbl>{tracked('moveFrom', '')}"
+
+
+@pytest.mark.parametrize(
+    ("tracked_table", "plain"),
+    [
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('del', 'b', '22', style='Heading1')}"
+            f"{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{tracked_row('del', 'a', '11')}{tracked_row('del', 'b', '22')}</w:tbl>",
+            "",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('moveFrom', 'b', '22', style='Heading1')}"
+            f"{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}<w:tr><w:tc>{BOXED}</w:tc></w:tr>{row('c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}<w:tr><w:tc>{NESTED}{tracked('moveFrom', '')}</w:tc></w:tr>"
+            "</w:tbl>",
+            f"<w:tbl>{row('a', '11')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl>{row('a', '11')}{tracked_row('ins', 'c', '33')}</w:tbl>",
+            f"<w:tbl>{row('a', '11')}{row('c', '33')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl><w:tr><w:tc>{tracked('moveFrom', 'b')}{para('22')}</w:tc></w:tr></w:tbl>",
+            f"<w:tbl>{row('22')}</w:tbl>",
+        ),
+        (
+            f"<w:tbl><w:tr><w:tc>{AROUND}</w:tc></w:tr></w:tbl>",
+            f"<w:tbl><w:tr><w:tc><w:p/><w:tbl>{row('9')}</w:tbl><w:p/></w:tc></w:tr></w:tbl>",
+        ),
+    ],
+    ids=[
+        "deleted-row",
+        "deleted-table",
+        "moved-row",
+        "moved-row-with-text-box",
+        "moved-row-with-table",
+        "inserted-row",
+        "moved-from-cell",
+        "moved-around-a-kept-table",
+    ],
+)
+def test_a_table_row_gone_is_read_as_absent_and_an_inserted_one_as_present(
+    tmp_path: Path, tracked_table: str, plain: str
+) -> None:
+    """A deleted row's text was dropped, but the row and its cells still broke lines, and a
+    cell styled as a heading was recorded as an empty heading - which ended the reference
+    list it stood in. A deleted table is every row deleted, and a row moved away has every
+    paragraph mark in it moved, a nested table's too, though not a text box's. The document
+    reads as it will once the changes are accepted, as if the row had never been there, or
+    always had. A paragraph moved out of a cell leaves the row, which keeps the mark of the
+    cell's last paragraph, and so does a row whose nested table stays."""
+
+    def read(name: str, table: str) -> DocxText:
+        body = para("Intro") + table + para("End")
+        return read_docx_text(make_docx(tmp_path / f"{name}.docx", body))
+
+    assert read("tracked", tracked_table) == read("plain", plain)
+
+
+@pytest.mark.parametrize(
+    ("table", "lines"),
+    [
+        (f"<w:tbl>{tracked_row('del', '7')}{tracked_row('del', '8')}</w:tbl>", ["-0.51"]),
+        (f"<w:tbl>{tracked_row('moveFrom', '7')}{tracked_row('moveFrom', '8')}</w:tbl>", ["-0.51"]),
+        (f"<w:tbl>{tracked_row('del', '7')}{row('8')}</w:tbl>", ["-0.5", "|", "8", "1"]),
+    ],
+    ids=["deleted", "moved", "one-row-kept"],
+)
+def test_a_join_runs_past_a_table_word_drops_whole(
+    tmp_path: Path, table: str, lines: list[str]
+) -> None:
+    """A table whose every row was deleted or moved away is not there once the changes are
+    accepted, and Word 16 joins the paragraphs either side of it: "-0.5" and "1" read apart
+    matched two outputs where Word shows -0.51. A table with a row left still parts them."""
+    text = read_docx(make_docx(tmp_path / "t.docx", gone("-0.5") + table + para("1")))
+    assert [line.strip() for line in text.split("\n") if line.strip()] == lines
+
+
+@pytest.mark.parametrize(
+    ("code", "shown"),
+    [("1F642", chr(0x1F642)), ("zz", " "), ("1E", " "), ("D800", " "), ("110000", " ")],
+    ids=["emoji", "unreadable", "control", "surrogate", "past-unicode"],
+)
+def test_an_emoji_word_inserted_is_read_from_the_choice(
+    tmp_path: Path, code: str, shown: str
+) -> None:
+    """Word writes an emoji it inserts as a `w16se:symEx` element in an AlternateContent
+    choice, with the character as text only in the fallback, which is not read. A code that
+    is not a character text can hold reads as a space, as an unknown Symbol-font character
+    does: U+001E is the mark the reader puts on a heading's line."""
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {MC} {se}><mc:Choice Requires="w16se">'
+        f'<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="{code}"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>12</w:t></w:r>{emoji}<w:r><w:t>34</w:t></w:r></w:p>"
+    assert read_docx(make_docx(tmp_path / "e.docx", body)) == f"\n12{shown}34"
+
+
+GREEK_STYLE = (
+    '<w:style w:type="character" w:styleId="Greek"><w:name w:val="Greek"/>'
+    '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:style>'
+)
+
+
+@pytest.mark.parametrize(
+    ("run", "styles"),
+    [
+        ('<w:r><w:sym w:font="Symbol" w:char="F06D"/></w:r>', ""),
+        ('<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr><w:t>m</w:t></w:r>', ""),
+        (f"<w:r><w:rPr><w:rFonts w:hAnsi=\"Symbol\"/></w:rPr><w:t>{chr(0xF06D)}</w:t></w:r>", ""),
+        ('<w:r><w:rPr><w:rStyle w:val="Greek"/></w:rPr><w:t>m</w:t></w:r>', GREEK_STYLE),
+    ],
+    ids=["inserted", "typed", "typed-private-use", "from-a-style"],
+)
+def test_the_symbol_font_is_read_as_what_it_draws(tmp_path: Path, run: str, styles: str) -> None:
+    """Insert > Symbol writes the μ of the Symbol font as `w:sym`, which the reader knew only
+    for the five characters that stand beside a number, and read as a space otherwise. Typed
+    in that font it is an `m`, or the private-use U+F06D, which Word draws as μ."""
+    body = f'<w:p><w:r><w:t xml:space="preserve">5 </w:t></w:r>{run}<w:r><w:t>g</w:t></w:r></w:p>'
+    assert read_docx(make_docx(tmp_path / "s.docx", body, styles)) == f"\n5 {chr(0x03BC)}g"
 
 
 def test_a_file_that_is_not_a_docx_says_so(tmp_path: Path) -> None:

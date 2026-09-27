@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.text.fences import fenced_spans
+from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 from manuscript_guard.text.masking import FRONTMATTER
 from manuscript_guard.text.sections import headings
 
@@ -701,9 +701,104 @@ FENCE_CASES = {
     "unterminated fence": f"{FENCE}python\nx = 1\n\nProse 9.99.\n",
 }
 
+# Characters that end a line for Python, or are space to it, and what pandoc makes of each.
+_ODD = {
+    "a vertical tab": 0x0B,
+    "a form feed": 0x0C,
+    "a lone carriage return": 0x0D,
+    "a file separator": 0x1C,
+    "a group separator": 0x1D,
+    "a record separator": 0x1E,
+    "a next-line control": 0x85,
+    "a no-break space": 0xA0,
+    "an en quad": 0x2000,
+    "a line separator": 0x2028,
+    "a paragraph separator": 0x2029,
+    "an ideographic space": 0x3000,
+}
+# What may follow an opening fence. Pandoc takes a raw `{=format}`, or a word and
+# `{attributes}`, either or both; anything more and the lines are a paragraph.
+_INFOS = [
+    "", "r", " r", "r ", "\tr\t", "r foo", "r`x", "r{x}", "r{.x}", "r {.x}", "r {r}",
+    "{}", "{-}", "{.r}", "{ .r }", "{.r}\t", "{#id .r}", '{.r .numberLines startFrom="5"}',
+    "{.r key='a b'}", '{.r k=""}', "{.r k=}", '{.r k="a"b}', '{.r k=" a"}', "{.r k=a`b}",
+    "{.r k=a\\}b}", "{.r k=a\\ b}", "{.r k=a\\bc}", '{.r k="a\\"b"}', '{.r k="a\\\\"}',
+    "{.r k=a\\é}", "{.é}", "{.x²}", "{.²x}", "{.2x}", "{r}", "{r, echo=FALSE}",
+    "{r echo=FALSE}", "{.r} x", "{.r}x", "{.r}}", "{.r", "{=html}", " {=html} ", "{= html}",
+    "{=openxml} x", "{ =openxml}", "{#1 .r}", "{#1}", "{#_x}", "{#-x}", "{#.x}", "{#}",
+]
+FENCE_CASES.update(
+    {
+        **{
+            f"opener {FENCE}{info!r}": f"Prose.\n\n{FENCE}{info}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            for info in _INFOS
+        },
+        "tilde opener with a backtick": "Prose.\n\n~~~r`x\nProse 9.99.\n~~~\n\nEnd.\n",
+        # A chunk header pandoc rejects, and its closer, which then paired with the next.
+        "two R Markdown chunks": (
+            f"{FENCE}{{r setup}}\nx <- 1\n{FENCE}\n\nProse 9.99.\n\n{FENCE}{{r plot}}\ny\n{FENCE}\n"
+        ),
+        # Straight under a line of text: pandoc opens a backtick fence there, not a tilde one
+        # or an indented one.
+        "backtick fence under a line": f"We used:\n{FENCE}r\nProse 9.99.\n{FENCE}\n",
+        "tilde fence under a line": "We used:\n~~~\n\nProse 9.99.\n\n~~~r\ny\n~~~\n",
+        "indented fence under a line": (
+            f"We used:\n  {FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
+        "fence behind a byte-order mark": (
+            f"{chr(0xFEFF)}{FENCE}r\nx\n{FENCE}\n\nProse 9.99.\n\n{FENCE}r\ny\n{FENCE}\n"
+        ),
+        # Pandoc lets attributes, and a quoted value, run on while no line between is blank.
+        **{
+            f"attributes over lines {opener!r}": (
+                f"Prose.\n\n{FENCE}{opener}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for opener in (
+                "{.r\n.x}",
+                "{.r\n  .x\n  k=v}",
+                "{\n.r}",
+                "r {.x\n}",
+                '{.r k="a\nb"}',
+                "{.r\n\n.x}",
+                '{.r k="a\n\nb"}',
+                "{.r\nThe excess}",
+                "{.r\n.x} y",
+            )
+        },
+        "tilde opener with a backtick in a value": (
+            "Prose.\n\n~~~{.r k=a`b}\nProse 9.99.\n~~~\n\nEnd.\n"
+        ),
+        **{
+            f"opener {FENCE}r then {name}": (
+                f"Prose.\n\n{FENCE}r{chr(code)}\nProse 9.99.\n{FENCE}\n\nEnd.\n"
+            )
+            for name, code in _ODD.items()
+        },
+        **{
+            f"closer {where}": f"{FENCE}r\nx\n{closer}\n\nProse 9.99.\n\n{FENCE}\ny\n{FENCE}\n"
+            for where, closer in {
+                "after three spaces": "   " + FENCE,
+                "after a tab": "\t" + FENCE,
+                "after a space and a tab": " \t" + FENCE,
+                "then spaces and a tab": FENCE + "  \t",
+                "then a word": FENCE + " x",
+                **{f"then {name}": FENCE + chr(code) for name, code in _ODD.items()},
+                **{f"after {name}": chr(code) + FENCE for name, code in _ODD.items()},
+            }.items()
+        },
+        **{
+            f"a fence after {name} on one line": (
+                f"We found it.{chr(code)}{FENCE}\n\nProse 9.99.\n\nThe end.{chr(code)}{FENCE}\n"
+            )
+            for name, code in _ODD.items()
+        },
+    }
+)
+
 
 def pandoc_code_text(markdown: str) -> str:
-    """Everything pandoc puts inside a CodeBlock, concatenated."""
+    """Everything pandoc puts inside a CodeBlock, or a RawBlock, which a fence opens as well
+    and the gates treat the same, concatenated."""
     finished = subprocess.run(
         [PANDOC, "-f", "markdown", "-t", "json"],
         input=markdown,
@@ -716,7 +811,7 @@ def pandoc_code_text(markdown: str) -> str:
 
     def walk(node) -> None:
         if isinstance(node, dict):
-            if node.get("t") == "CodeBlock":
+            if node.get("t") in ("CodeBlock", "RawBlock"):
                 blocks.append(node["c"][1])
             for value in node.values():
                 walk(value)
@@ -881,6 +976,8 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
 
     Asked as "is the prose after the block inside code, according to each of us?" rather
     than by comparing spans, because pandoc reports content and the toolkit reports offsets.
+    A fence the toolkit does not claim to read as pandoc does is refused instead
+    (`unclear_fence_lines`), so either the two agree or `check` and the build stop.
     """
     markdown = FENCE_CASES[name]
     in_code_for_pandoc = "9.99" in pandoc_code_text(markdown)
@@ -891,9 +988,20 @@ def test_prose_outside_a_fence_is_prose_to_both(name: str) -> None:
             masked[index] = " "
     in_code_for_toolkit = "9.99" not in "".join(masked)
 
-    assert in_code_for_toolkit == in_code_for_pandoc, (
+    if in_code_for_toolkit == in_code_for_pandoc:
+        return
+    # The refusal must be of the fence that misreads, not of any line: the toolkit's listing
+    # over the prose, or, where only pandoc's code holds it, a fence above it.
+    refused = set(unclear_fence_lines(markdown))
+    prose = markdown.index("9.99")
+    if in_code_for_toolkit:
+        covering = next(f for f in fenced_spans(markdown) if f.start <= prose < f.end)
+        wanted = {markdown.count("\n", 0, covering.start) + 1}
+    else:
+        wanted = set(range(1, markdown.count("\n", 0, prose) + 1))
+    assert refused & wanted, (
         f"{name}: pandoc puts the prose {'inside' if in_code_for_pandoc else 'outside'} a "
-        f"code block; the toolkit thinks the opposite"
+        f"code block; the toolkit thinks the opposite, and does not refuse the fence"
     )
 
 
@@ -988,6 +1096,28 @@ TAGGING = {
     "prose opening with a negative number": "-5 is below zero.\n",
     "prose opening with a decimal": "1.5 mg was given.\n",
     "prose opening with an initial": "C. difficile was isolated.\n",
+    "prose with a tag pandoc does not know": "Concentrations <LLOQ and >ULOQ were excluded.\n",
+    "prose opening with a tag pandoc does not know": "<LOQ values> were imputed as half.\n",
+    "prose with an escaped angle": "Concentrations \\<LLOQ and >ULOQ were excluded.\n",
+    "prose with an escaped brace": "Alpha beta \\{ gamma delta.\n",
+    "prose with a DocBook tag": "Doses were adjusted <note>see it</note> as needed.\n",
+    "prose with an EPUB tag": "In the <case>x</case> group.\n",
+    "a DocBook tag line over a multiline table": (
+        "Some prose.\n\n<example>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    # A tag that opens a raw block only where a block starts does here, and a table opens
+    # straight under it.
+    "an opening-only tag line over a multiline table": (
+        "Some prose.\n\n<del>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a video tag line over a multiline table": (
+        "Some prose.\n\n<video>\n----------  -----------\nFirst       A row.\n\n"
+        "Second      another row.\n\nThird       the last row.\n----------  -----------\n"
+    ),
+    "a colon alone under a paragraph": "Some prose here.\n:\n",
+    "a tilde alone under a paragraph": "Some prose here.\n~\n",
     "prose opening with a capital roman one": "I. first, in one sense.\n",
     "prose opening with i.e.": "i.e. this one.\n",
     "prose opening with a citation": "[@k] reported this.\n",
@@ -1453,6 +1583,50 @@ TAGGING = {
     "a capital and a period, then a line": "C.\nmore text\n",
     "a word made of roman letters": "dim. lights were used.\n",
     "a valid roman numeral": "mix. up\n",
+    # A note's label with a definition under it is a term and its definition, each read by
+    # itself: the `<!--` in the label opens nothing, and every paragraph below is marked.
+    "a comment in a note's label made a term": (
+        "Doses were capped.[^cap]\n\n[^cap]: Capped per protocol <!-- check the dose\n"
+        ": as agreed\n\nThe first result paragraph.\n\nA later one, closing --> it.\n\n"
+        "The last.\n"
+    ),
+    # Unless the definition ends inside the block, at a fence or at the close of a div
+    # around it: what follows is at the top level, and a comment opened there hides the
+    # paragraphs below. Taken for a term's by itself, they were marked inside the comment.
+    "a comment after a code fence under a note's term": (
+        f"Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n{FENCE}\ndose <- 40\n{FENCE}\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a tilde fence under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n~~~\ndose <- 40\n~~~\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a div closed under a note's term": (
+        "::: box\n\n[^cap]: Capped at 40 mg\n: per protocol\n:::\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after an HTML div closed under a note's term": (
+        "<div>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</div>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    # And at a list's start, or at the close of any tag pandoc takes for a block: a lazy
+    # line of a definition ends at each, and the block after it is at the top level.
+    "a comment after a list item made a heading under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n1. item\n---\n"
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a list item under a note's term": (
+        "Intro.\n\n[^cap]: Capped at 40 mg\n: per protocol\n- item\nlazy text\n: z "
+        "<!-- check the dose\n\nThe first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after an ins closed under a note's term": (
+        "<ins>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</ins>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
+    "a comment after a video closed under a note's term": (
+        "<video>\n\n[^cap]: Capped at 40 mg\n: per protocol\n</video>\n<!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one. -->\n\nThe last.\n"
+    ),
 }
 
 
@@ -1554,17 +1728,21 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
     pieces = re.split(r"\n\s*\n", tagged)
     # A footnote or a link resolves against definitions anywhere in the document, so a
     # paragraph read on its own is read with them. Not with a line of dashes under one: over
-    # it the definition is a simple table's header, which would come back as a table.
+    # it the definition is a simple table's header, which would come back as a table. Nor a
+    # label with a definition list's `:` or `~` under it, which makes it a term that prints.
     definitions = "\n\n".join(
         re.split(r"\n(?= {0,3}-+(?:[ \t]+-+)*[ \t]*(?:\n|$))", p)[0]
         for p in pieces
         if re.match(r" {0,3}\[[^\]]+\]:", p)
+        and not re.match(r"[^\n]*\n {0,3}[:~](?:[ \t]|\n|$)", p)
     )
     for index, piece in enumerate(pieces):
         marker = re.search(r"\[\]\{#(mg-p-[^}]+)\}", piece)
         if marker is None:
             continue
-        source = piece.replace(marker.group(0), "", 1) + "\n\n" + definitions
+        # From the marker on: under a heading or a link's definition it marks the paragraph
+        # after them, and that paragraph is what must be whole.
+        source = piece[marker.end() :] + "\n\n" + definitions
         read = pandoc_ast(source)
         assert [block["t"] for block in read] in (["Para"], ["Plain"]), (
             f"{name}: {piece!r} is marked and pandoc reads it as {[b['t'] for b in read]}"
@@ -1579,3 +1757,103 @@ def test_an_identifier_marks_a_whole_paragraph_and_changes_nothing(
         assert returned.get(marker.group(1)) == written_out[0], (
             f"{name}: the marked Word paragraph holds only part of {piece!r}"
         )
+
+
+#: Every HTML5 element, some from before it that pandoc still knows, the DocBook and EPUB block
+#: tags pandoc's reader knows too (its `TagCategories.hs`), and names it does not know.
+HTML_NAMES = (
+    "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base", "bdi", "bdo",
+    "blockquote", "body", "br", "button", "canvas", "caption", "cite", "code", "col", "colgroup",
+    "data", "datalist", "dd", "del", "details", "dfn", "dialog", "div", "dl", "dt", "em", "embed",
+    "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+    "head", "header", "hgroup", "hr", "html", "i", "iframe", "img", "input", "ins", "kbd", "label",
+    "legend", "li", "link", "main", "map", "mark", "menu", "meta", "meter", "nav", "noscript",
+    "object", "ol", "optgroup", "option", "output", "p", "param", "picture", "pre", "progress",
+    "q", "rp", "rt", "ruby", "s", "samp", "script", "search", "section", "select", "slot", "small",
+    "source", "span", "strong", "style", "sub", "summary", "sup", "table", "tbody", "td",
+    "template", "textarea", "tfoot", "th", "thead", "time", "title", "tr", "track", "u", "ul",
+    "var", "video", "wbr", "center", "font", "strike", "tt", "dir", "frame", "frameset",
+    "noframes", "isindex", "marquee", "Div", "SECTION", "LLOQ", "LOQ", "foo", "custom-el",
+    "applet", "svg",
+    "calloutlist", "bibliolist", "glosslist", "itemizedlist", "orderedlist", "segmentedlist",
+    "simplelist", "variablelist", "caution", "important", "note", "tip", "warning",
+    "literallayout", "programlisting", "programlistingco", "screen", "screenco", "screenshot",
+    "synopsis", "example", "informalexample", "informalfigure", "informaltable", "para",
+    "simpara", "formalpara", "equation", "informalequation", "mediaobject", "qandaset",
+    "procedure", "task", "cmdsynopsis", "funcsynopsis", "classsynopsis", "epigraph", "msgset",
+    "sidebar", "case", "switch", "default",
+)
+
+
+@pytest.mark.parametrize("name", HTML_NAMES)
+@pytest.mark.parametrize("where", ["mid-line", "opening"])
+def test_a_tag_ends_a_paragraph_exactly_when_pandoc_ends_it(name: str, where: str) -> None:
+    """`_untagged` took any tag it did not know for a block, so "Concentrations <LLOQ and
+    >ULOQ were excluded." went without an identifier, though pandoc reads a tag it does not
+    know as inline and the sentence as one paragraph. The lists are measured, not recalled:
+    this asks pandoc about every name, where it stands."""
+    from manuscript_guard.roundtrip import _untagged
+
+    block = f"Text <{name}>x</{name}> more." if where == "mid-line" else f"<{name}>x</{name}> more."
+    one_paragraph = [b["t"] for b in pandoc_ast(block + "\n")] == ["Para"]
+    assert _untagged(block) != one_paragraph, (
+        f"pandoc reads {block!r} as {'one paragraph' if one_paragraph else 'more than one'}"
+    )
+
+
+# ---------------------------------------------------------------- footnote definitions
+
+# Each word is a token, `wN`, so what lands in pandoc's note can be told from what does not.
+FOOTNOTE_CASES = {
+    "one line": "Text.[^n]\n\n[^n]: w1 w2\n\nw3\n",
+    "lazy lines": "Text.[^n]\n\n[^n]: w1\nw2\nw3\n\nw4\n",
+    "indented paragraph": "Text.[^n]\n\n[^n]: w1\n\n    w2\n\nw3\n",
+    "tabbed paragraph": "Text.[^n]\n\n[^n]: w1\n\n\tw2\n\n   w3\n",
+    "three spaces": "Text.[^n]\n\n[^n]: w1\n\n   w2\n",
+    "two notes": "Text.[^n] and[^m]\n\n[^n]: w1\n[^m]: w2\nw3\n\nw4\n",
+    "heading under": "Text.[^n]\n\n[^n]: w1\n# w2\n\nw3\n",
+    "quote under": "Text.[^n]\n\n[^n]: w1\n> w2\n\nw3\n",
+    "list under": "Text.[^n]\n\n[^n]: w1\n- w2\n\nw3\n",
+    "fence under": "Text.[^n]\n\n[^n]: w1\n```\nw2\n```\n\nw3\n",
+    "indented then margin": "Text.[^n]\n\n[^n]: w1\n\n    w2\nw3\n\nw4\n",
+    "many blank lines": "Text.[^n]\n\n[^n]: w1\n\n\n\n    w2\n\n\nw3\n",
+    "defined first": "[^n]: w1\n\nw2 Text.[^n]\n",
+    "empty then indented": "Text.[^n]\n\n[^n]:\n    w1\n\nw2\n",
+}
+
+
+def _note_words(node, inside: bool, out: set[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _note_words(item, inside, out)
+    elif isinstance(node, dict):
+        if node.get("t") == "Str" and inside:
+            out.update(re.findall(r"w\d+", node["c"]))
+        _note_words(node.get("c"), inside or node.get("t") == "Note", out)
+
+
+@pytest.mark.parametrize("name", list(FOOTNOTE_CASES))
+def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
+    """For plain notes, at the margin after a blank line, the gates' reading of a note's
+    text stays inside pandoc's note. Where the gates misread one it matters less than it
+    did: a number is judged where it stands as well as at each reference, so reading past
+    the note only adds a section it must pass in (see `chains_at`)."""
+    from manuscript_guard.text.sections import footnote_index
+
+    text = FOOTNOTE_CASES[name]
+    read = json.loads(
+        subprocess.run(
+            [PANDOC, "-f", "markdown", "-t", "json"],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        ).stdout
+    )
+    pandoc: set[str] = set()
+    _note_words(read["blocks"], False, pandoc)
+    ours = {
+        word
+        for note in footnote_index(text)
+        for word in re.findall(r"w\d+", text[note.start : note.end])
+    }
+    assert ours <= pandoc, (ours - pandoc, pandoc)

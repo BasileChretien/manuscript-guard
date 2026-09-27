@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from manuscript_guard.docxtext import Block
 from manuscript_guard.roundtrip import (
     comments_in,
     segments,
@@ -105,6 +106,21 @@ def edit_docx(source: Path, target: Path, replacements: dict[str, str]) -> Path:
     return target
 
 
+EMOJI = chr(0x1F642)
+
+
+def word_emoji() -> str:
+    """A run holding an emoji as Word can write one it inserts (pandoc issue 11113): a
+    `w16se:symEx` in an AlternateContent choice, the character as text only in the fallback."""
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    return (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{EMOJI}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+
+
 @needs_pandoc
 def test_a_built_document_carries_its_source_digest(project: Path) -> None:
     """A sidecar cannot survive being emailed, and the returned document is exactly the case
@@ -187,6 +203,232 @@ def test_a_prose_edit_merges(project: Path, tmp_path: Path) -> None:
 
 
 @needs_pandoc
+def test_an_emoji_inserted_in_word_merges(project: Path, tmp_path: Path) -> None:
+    """Written as text only in the fallback, which is not read, the emoji was nothing:
+    "nothing came back", and the co-author's edit was dropped without a word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"no funding.</w:t>": f"no funding</w:t></w:r>{word_emoji()}<w:r><w:t>.</w:t>"},
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"This work received no funding{EMOJI}." in text
+
+
+@needs_pandoc
+def test_an_emoji_word_saves_as_a_choice_is_no_edit(project: Path, tmp_path: Path) -> None:
+    """An emoji in the source that came back in Word's own form read as deleted, and
+    `--apply` took it out of the source, reporting a reworded paragraph."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    source = main_md.read_text(encoding="utf-8").replace("no funding.", f"no funding{EMOJI}.")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {f"no funding{EMOJI}.</w:t>": f"no funding</w:t></w:r>{word_emoji()}<w:r><w:t>.</w:t>"},
+    )
+    with zipfile.ZipFile(returned) as archive:
+        # Unchanged source is also what an edit that never landed leaves.
+        assert "symEx" in archive.read("word/document.xml").decode("utf-8")
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert main_md.read_text(encoding="utf-8") == source
+
+
+def _funding(inserted: str) -> dict[str, str]:
+    """"no funding." with `inserted` runs typed before the full stop."""
+    return {"no funding.</w:t>": f"no funding </w:t></w:r>{inserted}<w:r><w:t>.</w:t>"}
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("inserted", "merged"),
+    [
+        (
+            '<w:r><w:sym w:font="Symbol" w:char="F0B1"/></w:r>',
+            f"This work received no funding {chr(0xB1)}.",
+        ),
+        (
+            '<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr><w:t>m</w:t></w:r>'
+            "<w:r><w:t>g</w:t></w:r>",
+            f"This work received no funding {chr(0x03BC)}g.",
+        ),
+    ],
+    ids=["symbol-plus-minus", "typed-mu"],
+)
+def test_a_symbol_font_character_inserted_in_word_merges_as_what_word_shows(
+    project: Path, tmp_path: Path, inserted: str, merged: str
+) -> None:
+    """Read as nothing, an inserted ± was dropped and the rest of the edit merged without
+    it, and a μ typed in the Symbol font read as the `m` it is stored as: "5 μg" merged into
+    the source as "5 mg"."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", _funding(inserted)
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert merged in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+def test_a_second_private_use_character_of_a_code_in_the_source_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Counted once for each kind, a second U+F06D beside one the source held matched the
+    document as sent, and `--apply` wrote it into the source."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    pua = chr(0xF06D)
+    source = main_md.read_text(encoding="utf-8").replace("no funding.", f"no funding ({pua}).")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    # In the body font, so the second is the same kind as the first, only more of it.
+    added = f" and </w:t></w:r>{in_font(pua, 'Times New Roman')}<w:r><w:t>."
+    returned = _edit_part(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        "word/document.xml",
+        f"no funding ({pua}).",
+        f"no funding ({pua}){added}",
+    )
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert main_md.read_text(encoding="utf-8") == source
+    assert "private-use character F06D" in capsys.readouterr().out
+
+
+@needs_pandoc
+@pytest.mark.parametrize("edit", ["elsewhere", "font-only"])
+def test_a_private_use_character_in_the_source_is_kept(
+    project: Path, tmp_path: Path, edit: str
+) -> None:
+    """Text pasted from an old document can hold a symbol font's private-use character.
+    Dropped from both copies, it put every paragraph holding one beyond merging - "could not
+    be lined up with its own source" - and named after the font it resolved to, a co-author
+    who only changed the body font had it refused as their own insertion."""
+    from manuscript_guard.cli import main
+
+    main_md = project / "manuscript" / "main.md"
+    source = main_md.read_text(encoding="utf-8")
+    source = source.replace("no funding.", f"no funding ({chr(0xF06D)}).")
+    main_md.write_text(source, encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    built = project / "build" / "manuscript.docx"
+    if edit == "elsewhere":
+        was, now = "received no funding", "received no external funding"
+        returned = _edit_part(built, tmp_path / "back.docx", "word/document.xml", was, now)
+        expected = source.replace(was, now)
+    else:
+        normal = '<w:name w:val="Normal" />'
+        times = '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>'
+        now = f"{normal}<w:rPr>{times}</w:rPr>"
+        returned = _edit_part(built, tmp_path / "back.docx", "word/styles.xml", normal, now)
+        expected = source
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert main_md.read_text(encoding="utf-8") == expected
+
+
+def _edit_part(document: Path, target: Path, part: str, was: str, now: str) -> Path:
+    """A copy of `document` with `was` replaced once in `part`, which must hold it."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == part:
+                text = data.decode("utf-8")
+                assert was in text, (part, was)
+                data = text.replace(was, now, 1).encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+def test_a_symbol_font_minus_before_a_number_is_refused_and_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Symbol-font minus read as nothing left the bound estimate as it was: "nothing came
+    back", and a sign the co-author put on it was dropped without a word."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    minus = '<w:r><w:sym w:font="Symbol" w:char="F02D"/></w:r>'
+    returned = edit_docx(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        {"ratio was 3.84</w:t>": f"ratio was </w:t></w:r>{minus}<w:r><w:t>3.84</w:t>"},
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    out = capsys.readouterr().out
+    assert "'3.84' comes from results.ror.point" in out, out
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "smiley",
+    [
+        '<w:r><w:sym w:font="Wingdings" w:char="F04A"/></w:r>',
+        '<w:r><w:rPr><w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/></w:rPr><w:t>J</w:t></w:r>',
+    ],
+    ids=["inserted", "typed"],
+)
+def test_a_symbol_with_no_text_is_refused_and_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], smiley: str
+) -> None:
+    """A Wingdings glyph read as nothing merged the rest of the edit without it: "no
+    funding ." went into the source. Typed in Wingdings, it is the letter J, which Word
+    draws as the smiley: read as written, "no funding J." went in."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", _funding(smiley)
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    capsys.readouterr()
+    main(["import", str(returned), str(project), "--apply"])
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    out = capsys.readouterr().out
+    assert "Wingdings character F04A" in out, out
+
+
+@needs_pandoc
+def test_a_symbol_typed_into_a_heading_is_still_reported(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A heading has no identifier, so a change to it is only listed. Read as no text, a
+    smiley typed in Wingdings left the heading reading as it was sent, and import said the
+    document matched the manuscript, where main had listed "Funding J"."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    heading = '<w:t xml:space="preserve">Funding</w:t></w:r>'
+    fonts = '<w:rFonts w:ascii="Wingdings" w:hAnsi="Wingdings"/>'
+    typed = f"<w:r><w:rPr>{fonts}</w:rPr><w:t>J</w:t></w:r>"
+    returned = _edit_part(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        "word/document.xml",
+        heading,
+        f'<w:t xml:space="preserve">Funding </w:t></w:r>{typed}',
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "Funding [Wingdings character F04A]" in out, out
+
+
+@needs_pandoc
 def test_a_document_built_from_older_source_is_refused(project: Path, tmp_path: Path) -> None:
     """Merging edits made against text that has since changed is how a correction lands on
     the wrong sentence."""
@@ -210,6 +452,469 @@ def test_an_unstamped_document_is_refused(project: Path, tmp_path: Path) -> None
     with zipfile.ZipFile(plain, "w") as archive:
         archive.writestr("word/document.xml", "<w:document/>")
     assert main(["import", str(plain), str(project)]) == 1
+
+
+# ---------------------------------------------------------------- what an identifier named
+
+
+def with_record(document: Path, change) -> Path:
+    """The document with its record of paragraphs rewritten: `change` takes the property
+    elements holding it, as one string, and returns their replacement."""
+    scratch = document.with_suffix(".p.docx")
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "docProps/custom.xml":
+                xml = data.decode("utf-8")
+                ours = re.compile(
+                    r'<property\b[^>]*name="manuscript-guard-paragraphs-\d+"[^>]*>.*?</property>',
+                    re.DOTALL,
+                )
+                found = "".join(ours.findall(xml))
+                xml = ours.sub("", xml)
+                xml = xml.replace("</Properties>", change(found) + "</Properties>")
+                data = xml.encode("utf-8")
+            zout.writestr(item, data)
+    scratch.replace(document)
+    return document
+
+
+def unrecorded(document: Path) -> Path:
+    """The document as a release from before paragraphs were recorded built it."""
+    return with_record(document, lambda found: "")
+
+
+FUNDING = {"This work received no funding.": "This work received no external funding."}
+
+
+@needs_pandoc
+def test_a_built_document_records_what_each_identifier_names(project: Path) -> None:
+    """Its own paragraphs, in its order, and not the supplement's; split over properties
+    short enough that Word does not cut them when it saves."""
+    import hashlib
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import paragraph_order, paragraphs_of, tagged_paragraphs
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = project / "build" / "manuscript.docx"
+    known = tagged_paragraphs(load_project(project)[0])
+    recorded = paragraphs_of(document)
+    assert list(recorded) == [name for name in paragraph_order(document) if name in known]
+    assert len(recorded) < len(known), "the supplement's paragraphs are in its own document"
+    assert all(
+        value.partition(".")[0] == hashlib.sha256(known[name][1].encode()).hexdigest()[:8]
+        for name, value in recorded.items()
+    )
+    xml = zipfile.ZipFile(document).read("docProps/custom.xml").decode("utf-8")
+    values = re.findall(r'name="manuscript-guard-paragraphs-\d+"[^>]*><vt:lpwstr>([^<]*)<', xml)
+    assert len(values) > 1 and all(len(value) < 255 for value in values)
+
+
+def test_a_restamp_replaces_the_record_rather_than_adding_to_it(tmp_path: Path) -> None:
+    from manuscript_guard.roundtrip import paragraphs_of
+
+    document = tmp_path / "d.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+        archive.writestr("[Content_Types].xml", "<Types></Types>")
+        archive.writestr("_rels/.rels", "<Relationships></Relationships>")
+    many = {f"mg-p-main-{2 * i}": f"{i:08x}.abcdef" for i in range(60)}
+    stamp_into(document, "a" * 64, many)
+    stamp_into(document, "b" * 64, {"mg-p-main-2": "0123abcd.456789"})
+    assert set(paragraphs_of(document)) == {"mg-p-main-2"}
+    assert stamp_of(document) == "b" * 64
+
+
+@needs_pandoc
+def test_an_edit_is_not_merged_where_the_identifier_now_names_other_text(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Whatever made an identifier name other text, a source edited since the build or a
+    release that numbers paragraphs by other rules, the edit made under it belongs to a
+    paragraph that is not there now. It is named and left, even with --force."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    funding = next(n for n, text in _texts(project).items() if text.startswith("This work"))
+    index = funding.rpartition("-")[2]
+    ours, _, before = _recorded(returned)[funding].partition(".")
+    # The record says the funding identifier named some other text at the build.
+    with_record(
+        returned,
+        lambda found: re.sub(
+            rf"(?<=[:,]){index}\.{ours}\.{before}(?=[,<])", f"{index}.00000000.{before}", found
+        ),
+    )
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert (project / "manuscript" / "main.md").read_text(encoding="utf-8") == source
+    assert "were not compared" in capsys.readouterr().out
+
+
+def _recorded(document: Path) -> dict[str, str]:
+    from manuscript_guard.roundtrip import paragraphs_of
+
+    return paragraphs_of(document) or {}
+
+
+def _texts(project: Path) -> dict[str, str]:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    known = tagged_paragraphs(load_project(project)[0])
+    return {name: text for name, (_path, text, _start) in known.items()}
+
+
+@needs_pandoc
+def test_a_paragraph_tagged_now_and_not_at_the_build_is_not_reported_deleted(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A release that tags more kinds of block gives the source identifiers the document
+    never carried. Walked as the manuscript's paragraphs, each read as deleted in Word, and
+    the author was told to delete it from the source."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = project / "build" / "manuscript.docx"
+    # From now on a paragraph that is only a table or a figure is tagged; at the build it
+    # was not.
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip,
+        "_untagged",
+        lambda text: was(text) and not re.fullmatch(r"\{\{(?:table|figure)\.[^}]*\}\}", text),
+    )
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_an_unrecorded_document_whose_numbering_did_not_change_still_imports(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built before paragraphs were recorded carries no record. Its source
+    reading the same under the old rules as the new is the ordinary case, and it merges as
+    it did."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+
+
+@needs_pandoc
+def test_an_unrecorded_document_built_from_other_text_is_refused_even_with_force(
+    project: Path, tmp_path: Path
+) -> None:
+    """Whether an unrecorded document was numbered as its source is now can only be asked
+    of the text it was built from. Asked of the source as edited since, a forced import
+    wrote four paragraphs' text over their neighbours; the plan shows what an edit becomes
+    and not what it replaces, so checking every hunk could not have caught it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nA later paragraph.\n", "utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 1
+
+
+@needs_pandoc
+def test_a_paragraph_whose_identifier_the_manuscript_no_longer_gives_is_named(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A release that tags fewer kinds of block leaves the document carrying an identifier
+    the manuscript no longer gives. The import walks the manuscript's identifiers, so one
+    of these was skipped without a word: an edit in it went nowhere, the import said nothing
+    came back, and it exited 0."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    was = roundtrip._untagged
+    monkeypatch.setattr(
+        roundtrip, "_untagged", lambda text: was(text) or text.startswith("This work received")
+    )
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "were not compared" in out
+    assert "nothing came back" not in out
+
+
+@needs_pandoc
+def test_an_unrecorded_document_is_judged_by_the_files_it_carries(
+    project: Path, tmp_path: Path
+) -> None:
+    """An identifier names its file. A supplement whose front matter is read differently now
+    says nothing about the numbering of the main text's document, and refusing it for that
+    blocked every unrecorded main document in a project with such a supplement."""
+    from manuscript_guard.cli import main
+
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        "---\ntitle: S1\n...\n\n" + supplement.read_text(encoding="utf-8"), "utf-8"
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = edit_docx(project / "build" / "manuscript.docx", tmp_path / "back.docx", FUNDING)
+    unrecorded(returned)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert "no external funding" in (project / "manuscript" / "main.md").read_text(
+        encoding="utf-8"
+    )
+
+
+@needs_pandoc
+def test_a_comment_on_a_paragraph_whose_identifier_moved_opens_no_anchor(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Anchored to whatever paragraph sits there now, the point's revision was checked
+    against the wrong one, and a paragraph nobody revised could pass."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    # Every identifier the record covers now names other text.
+    with_record(returned, lambda found: re.sub(r"\.[0-9a-f]{8}", ".00000000", found))
+    capsys.readouterr()
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert not any(p.get("where") for r in document["reviewers"] for p in r["points"])
+    assert "recorded without one" in capsys.readouterr().out
+
+
+def _without_paragraph(document: Path, target: Path, identifier: str) -> Path:
+    """The document with the Word paragraph carrying `identifier` deleted outright."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml = data.decode("utf-8")
+                gone = next(
+                    p
+                    for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+                    if f'w:name="{identifier}"' in p
+                )
+                data = xml.replace(gone, "", 1).encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+def test_a_paragraph_the_source_changed_and_word_deleted_is_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the identifiers that came back were asked about, so a paragraph whose identifier
+    was no longer trusted, deleted in Word, left no trace: `import --force` said nothing came
+    back and exited 0. Main reports the deletion."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    whether = next(n for n, text in _texts(project).items() if text.startswith("Whether"))
+    returned = _without_paragraph(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", whether
+    )
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("been examined.", "been examined before.", 1),
+        encoding="utf-8",
+    )
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    out = capsys.readouterr().out
+    assert whether in out
+    assert "nothing came back" not in out
+
+
+@needs_pandoc
+def test_an_empty_paragraph_under_an_identifier_no_longer_given_is_not_reported(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Releases before 0.2.45 put an identifier in front of an HTML comment standing alone,
+    and the document carried an empty paragraph under it. Returned untouched, such a document
+    had it named as not compared, and the import exited 1."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    slug = next(iter(_texts(project))).removeprefix("mg-p-").rpartition("-")[0]
+    empty = (
+        f'<w:p><w:bookmarkStart w:id="990" w:name="mg-p-{slug}-999"/>'
+        f'<w:bookmarkEnd w:id="990"/></w:p>'
+    )
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml = data.decode("utf-8")
+                at = xml.index("</w:p>") + len("</w:p>")
+                data = (xml[:at] + empty + xml[at:]).encode("utf-8")
+            zout.writestr(item, data)
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 0
+    assert "nothing came back" in capsys.readouterr().out
+
+
+#: A paragraph that is only a value, which releases before 0.2.49 gave no identifier.
+LONE_VALUE = "{{results.ror.point}}"
+
+
+def _with_lone_value(project: Path) -> None:
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Methods\n", f"{LONE_VALUE}\n\n# Methods\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+
+@needs_pandoc
+def test_a_value_paragraph_an_unrecorded_document_never_carried_is_not_reported_deleted(
+    project: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """0.2.49 gave a paragraph that is only a value an identifier. A document built before
+    then never carried it, and returned untouched had it reported deleted in Word."""
+    from manuscript_guard import roundtrip
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    was = roundtrip._untagged
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            roundtrip,
+            "_untagged",
+            lambda block: was(block) or re.fullmatch(r"\{\{[^}]*\}\}", block.strip()) is not None,
+        )
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = unrecorded(project / "build" / "manuscript.docx")
+
+    capsys.readouterr()
+    main(["import", str(returned), str(project)])
+    assert "deleted in Word" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_value_paragraph_deleted_in_an_unrecorded_document_is_still_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Built by 0.2.49, an unrecorded document did carry it, and a co-author could delete
+    it. Not knowing which release built it, the import cannot drop the report."""
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    value = next(n for n, text in _texts(project).items() if text == LONE_VALUE)
+    returned = _without_paragraph(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", value
+    )
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    assert "nothing came back" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_an_old_supplement_does_not_lack_the_papers_value_paragraph(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The supplement is imported on its own, and a value paragraph of the paper was never
+    meant to be in it: asked about everywhere, an untouched supplement from before the
+    record named the paper's value paragraph as not in it, and the import exited 1."""
+    from manuscript_guard.cli import main
+
+    _with_lone_value(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "supplementary.docx"
+    shutil.copy(project / "build" / "supplementary.docx", returned)
+    unrecorded(returned)
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 0
+    assert "only a value" not in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its_anchor(
+    project: Path, tmp_path: Path
+) -> None:
+    """`import` compares a paragraph that is only a value when the document carries it;
+    `respond --open` dropped the anchor of a comment on one, saying its identifier no longer
+    named the text commented on."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Abstract\n\n", f"# Abstract\n\n{LONE_VALUE}\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    value = next(n for n, text in _texts(project).items() if text == LONE_VALUE)
+    returned = commented(
+        project / "build" / "manuscript.docx", tmp_path / "back.docx", [("Reviewer 2", "Why?")]
+    )
+    unrecorded(returned)
+
+    assert main(["respond", str(project), "--open", "--from", str(returned)]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [value]
+
+
+def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
+    """Whether a paragraph reached Word in parts was judged by the section of the identified
+    paragraph after it, and one left out of the comparison had none: the rewording of the
+    first part merged, and the rest of the paragraph would have been deleted."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    path.write_text("Alpha text here.\n\nBeta.\n", encoding="utf-8")
+    every = {"a": (path, "Alpha text here.", 0), "b": (path, "Beta.", 18)}
+    sent = [Block(("a",), "Alpha text here."), Block((), "y = z"), Block(("b",), "Beta.")]
+    returned = [Block(("a",), "Alpha text here, reworded."), sent[1], sent[2]]
+
+    plan = plan_import({"a": every["a"]}, sent, returned, every=every)
+    assert not plan.merged
+    assert [refusal.name for refusal in plan.refused] == ["a"]
 
 
 def test_a_document_with_no_comments_reports_none(project: Path) -> None:
@@ -245,6 +950,683 @@ def test_every_ordinary_paragraph_is_tagged_and_headings_are_not() -> None:
     assert "[]{#mg-p-" in tagged
     assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
     assert "}{{table.baseline}}" not in tagged
+
+
+REGISTRY = "https://example.org/registry"
+
+#: (paragraph, its definitions, what the paragraph prints as)
+REFERENCE_LINKS = [
+    pytest.param(
+        "See [the registry][reg] for details.",
+        f"[reg]: {REGISTRY}",
+        "See the registry for details.",
+        id="full",
+    ),
+    pytest.param(
+        "See [reg][] for details.", f"[reg]: {REGISTRY}", "See reg for details.", id="collapsed"
+    ),
+    pytest.param(
+        "See [reg] for details.", f"[reg]: {REGISTRY}", "See reg for details.", id="shortcut"
+    ),
+    pytest.param(
+        "See [reg] for details.",
+        f"   [reg]: <{REGISTRY}> 'The registry'",
+        "See reg for details.",
+        id="indented-with-title",
+    ),
+    pytest.param(
+        "See [reg] and [other] for details.",
+        f"[other]: https://example.org/other\n[reg]: {REGISTRY} \"The registry\"",
+        "See reg and other for details.",
+        id="several-definitions",
+    ),
+    # A binding beside the link, so the marked build is not the plain one again.
+    pytest.param(
+        "See [the registry][reg] for {{results.ror.point}} details.",
+        f"[reg]: {REGISTRY}",
+        "See the registry for {{results.ror.point}} details.",
+        id="beside-a-binding",
+    ),
+]
+
+
+def _docx_part(document: Path, part: str) -> str:
+    return zipfile.ZipFile(document).read(part).decode("utf-8")
+
+
+#: The plain build, and the marked one `import` compares with: both go through `_untagged`.
+BUILDS = pytest.mark.parametrize("mark", [False, True], ids=["plain", "marked"])
+
+
+@needs_pandoc
+@BUILDS
+@pytest.mark.parametrize(("paragraph", "definition", "printed"), REFERENCE_LINKS)
+def test_a_link_definition_is_left_for_pandoc_to_read(
+    paragraph: str, definition: str, printed: str, mark: bool, tmp_path: Path
+) -> None:
+    """`[reg]: https://...` standing as its own block defines a reference-style link. With an
+    identifier in front of it, pandoc read it as a paragraph instead: every `[text][reg]` in
+    the manuscript printed with its brackets, linked to nothing, and the definition itself
+    printed as a line of text. On every build, not only in `import`."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = f"{paragraph}\n\n{definition}\n"
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert f'Target="{REGISTRY}"' in _docx_part(document, "word/_rels/document.xml.rels")
+    assert "<w:hyperlink" in _docx_part(document, "word/document.xml")
+    # The paragraph keeps its identifier and reads as the link's words; the definition
+    # reaches the document as nothing at all.
+    assert list(paragraph_text(document).values()) == [printed]
+    if mark and "{{" in paragraph:
+        from manuscript_guard.docxtext import TOKEN
+
+        assert f'w:name="{TOKEN}' in _docx_part(document, "word/document.xml")
+
+
+@needs_pandoc
+@BUILDS
+def test_a_footnote_definition_is_left_for_pandoc_to_read(mark: bool, tmp_path: Path) -> None:
+    """The same syntax defines a footnote, and failed the same way: `[^cap]` printed in the
+    paragraph, and the note's text printed as a paragraph of its own."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = "Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n"
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "Capped at 40 mg." in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped."]
+
+
+@needs_pandoc
+@BUILDS
+@pytest.mark.parametrize(
+    "wrap",
+    [
+        pytest.param("\nevery participant.", id="plain"),
+        pytest.param("\n    every participant.", id="indented"),
+        pytest.param("\nin the first cohort,\nand in every participant.", id="three-lines"),
+    ],
+)
+def test_a_wrapped_footnote_is_left_for_pandoc_to_read(
+    mark: bool, wrap: str, tmp_path: Path
+) -> None:
+    """Round ten: a footnote hard-wrapped over its lines works on main, where #25 leaves any
+    block opening `[label]:` alone, and this rule marked it for its second line, so it
+    printed as text, and `[^cap]` with it, on every build. Pandoc takes the lines under a
+    footnote's label into the note, and so does the rule now."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg in{wrap}\n\nAfter.\n"
+    source.write_text(tag(text, "main.md", mark=mark), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "every participant." in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped.", "After."]
+
+
+@needs_pandoc
+def test_a_comment_opened_in_a_note_hides_nothing_after_it() -> None:
+    """Round ten, on main too: `_blocks` followed a `<!--` in a footnote's text to the next
+    `-->`, and left every paragraph in between unmarked, while pandoc reads a note's text by
+    itself and printed them all. A strict definition is not read for raw content now."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        "Doses were capped.[^cap]\n\n[^cap]: Capped per protocol <!-- check the dose\n\n"
+        "The first result paragraph.\n\nA later one, with a comment <!-- ok --> in it.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 3
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("[^cap]: Capped at 40 mg.\n[^b c] was a draft label.", id="spaced-label"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^ b]: was a draft label.", id="spaced-caret"),
+        pytest.param("[^cap]: Capped at 40 mg.\n\t[^b]: after a tab.", id="tab"),
+        pytest.param("[^cap]: Capped at 40 mg.\n    [^b]: indented four.", id="indented"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^] with no label.", id="empty-label"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^b[c] with a bracket.", id="bracket"),
+        pytest.param("[^cap]: Capped at 40 mg.\n[^^] with a caret.", id="caret"),
+        pytest.param("[^cap]: Capped at 40 mg in\nrenal impairment,\n~ 0.3 mg/kg.", id="tilde"),
+        pytest.param("[^cap]: Capped at 40 mg in\nrenal impairment,\n: 0.3 mg/kg.", id="colon"),
+    ],
+)
+def test_a_note_takes_in_every_line_pandoc_takes_in(note: str, tmp_path: Path) -> None:
+    """Round eleven: pandoc ends a note only at a line opening a note's marker - `[^`, then
+    no space, tab, caret or bracket, then `]` - and a definition list's `:` or `~` changes a
+    note only directly under its label. The rule refused more, so each of these notes was
+    marked, and printed as text with `[^cap]`, where it works on main."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import paragraph_text, tag
+
+    source = tmp_path / "a.md"
+    text = f"Doses were capped.[^cap]\n\n{note}\n\nAfter.\n"
+    source.write_text(tag(text, "main.md"), encoding="utf-8")
+    document = tmp_path / "a.docx"
+    subprocess.run(["pandoc", str(source), "-o", str(document)], check=True)
+
+    assert "Capped at 40 mg" in _docx_part(document, "word/footnotes.xml")
+    assert list(paragraph_text(document).values()) == ["Doses were capped.", "After."]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("[^b] was typed after it.", id="marker"),
+        pytest.param("   [^b] was typed after it.", id="indented-three"),
+        pytest.param("[^b`c] was typed after it.", id="backtick"),
+        pytest.param("[^b]\twas typed after it.", id="tab-after"),
+        pytest.param(f"[^b{chr(0xA0)}c] was typed after it.", id="no-break-space"),
+    ],
+)
+def test_a_line_that_ends_a_note_is_not_taken_into_it(line: str) -> None:
+    """Pandoc ends a note at a line opening a note's marker, with a colon or without, and
+    prints that line in the body. It must reach the document with an identifier."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n{line}\n\nAfter.\n"
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert any('"typed"' in paragraph for paragraph in paragraphs)
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n:::", id="div-fence-last"),
+        pytest.param("[^cap]: Capped per protocol\n:::\n<!-- check the dose", id="div-fence"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n:", id="bare-colon"),
+        pytest.param("[^cap]: Capped per protocol\n~\n<pre>", id="bare-tilde"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n: as agreed", id="term"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n:\tas agreed", id="term-tab"),
+        pytest.param("[^cap]: Capped per protocol <!-- check the dose\n: ", id="term-empty"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n   : as agreed", id="term-indented"),
+        pytest.param("[^cap]: Capped <!-- check the dose\n~ as agreed", id="term-tilde"),
+    ],
+)
+def test_a_note_over_a_line_it_may_end_at_hides_nothing_after_it(note: str) -> None:
+    """Round eleven, found refusing these lines: a `:::` line is more of a note outside a
+    fenced div, and a bare `:` or `~` under the label makes it a term. Either way pandoc
+    reads a `<!--` or a `<pre>` there by itself. Refused, the block was read for raw content,
+    and the opener hid the paragraphs below, which pandoc prints.
+
+    The round-4 review of #72 found the same with a definition's text under the label, `: `
+    or `~ ` and more: a term and its definition, each read by itself, and two of the four
+    paragraphs below went without an identifier."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"Doses were capped.[^cap]\n\n{note}\n\n"
+        "The first result paragraph.\n\nA later one, closing --> it.\n\nThe last.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 4
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+def test_a_comment_opened_in_a_link_title_hides_nothing_after_it() -> None:
+    """Round eleven's gap: a strict link's title is read by itself too. A `<!--` in it opens
+    nothing beyond the definition."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = (
+        f"See [the registry][reg].\n\n[reg]: {REGISTRY} \"Registry <!-- draft\"\n\n"
+        "The first result paragraph.\n\nA later one, with a comment <!-- ok --> in it.\n"
+    )
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    paragraphs = [json.dumps(b) for b in json.loads(read.stdout)["blocks"] if b["t"] == "Para"]
+    assert len(paragraphs) == 3
+    assert all("mg-p-" in paragraph for paragraph in paragraphs)
+
+
+#: How pandoc 3.9 reads a block, and what `tag` does with it: a definition in a shape pandoc
+#: can read no other way is left alone; prose is marked; and a definition written any other
+#: way is marked on purpose, so it prints as text - visibly, where leaving a block unmarked
+#: that pandoc prints would lose a co-author's edit to it without a word.
+DEFINITION, PROSE, MARKED = "definition", "prose", "marked"
+
+BLOCKS = [
+    pytest.param(f"[reg]: {REGISTRY}", DEFINITION, id="link"),
+    pytest.param(f"[reg]: {REGISTRY} \"The registry\"", DEFINITION, id="title"),
+    pytest.param(f"   [reg]: <{REGISTRY}> (The registry)", DEFINITION, id="angled-title"),
+    pytest.param("[^cap]: Capped at 40 mg.", DEFINITION, id="footnote"),
+    pytest.param(f"[a]: {REGISTRY}\n[b]: {REGISTRY}/b", DEFINITION, id="several"),
+    pytest.param(f"[a]: {REGISTRY}\n[^1]: A note.\n[^2]: Another.", DEFINITION, id="links-notes"),
+    pytest.param(f"[]: {REGISTRY}", DEFINITION, id="empty-label"),
+    pytest.param("[^@cap]: A note <!-- with `code` $x$", DEFINITION, id="note-with-markup"),
+    pytest.param("[^or]: Adjusted, {{results.ror.point}}.", DEFINITION, id="note-with-binding"),
+    # An address of several words, run together: pandoc prints nothing of these.
+    pytest.param("[Methods]: patients were enrolled.", MARKED, id="prose-shaped"),
+    pytest.param("[1]: Smith J, Doe A. A cohort study. Lancet. 2020;395:1.", MARKED, id="refs"),
+    # A footnote's label decides it: pandoc takes the lines under it into the note.
+    pytest.param("[^cap]: Capped at 40 mg,\nor 20 mg.", DEFINITION, id="note-lines"),
+    pytest.param("[^cap]: Capped at 40 mg,\n    or 20 mg.", DEFINITION, id="note-indented-lines"),
+    pytest.param("[^cap]: Capped at 40 mg:\n- or 20 mg.", DEFINITION, id="note-with-a-dash-line"),
+    # Definitions in a shape pandoc could read another way.
+    pytest.param(f"[^1]: A note.\n[a]: {REGISTRY}", MARKED, id="link-under-a-note"),
+    pytest.param(f"[a [b] c]: {REGISTRY}", MARKED, id="nested-label"),
+    pytest.param(f"[mail@example.org]: {REGISTRY}", MARKED, id="at-in-label"),
+    pytest.param(f"[Food and Drug\nAdministration]: {REGISTRY}", MARKED, id="wrapped-label"),
+    pytest.param(f"[reg]: {REGISTRY} (The registry) {{.external}}", MARKED, id="attributes"),
+    pytest.param(f"[reg]: {REGISTRY}\n  'Registry'", MARKED, id="title-below"),
+    pytest.param(f"[a\\]b]: {REGISTRY}", MARKED, id="escaped-bracket"),
+    # Filled in after `tag` has read the line, a binding's value could make it prose.
+    pytest.param(f"[reg]: {REGISTRY}/{{{{lit.agency.url}}}}", MARKED, id="binding-in-link"),
+    # Prose: a line pandoc gives up on as a definition, or a line after it that it does not.
+    pytest.param(f"[reg]: {REGISTRY}{chr(0xA0)}", PROSE, id="no-break-space-after"),
+    pytest.param(f"{chr(0x3000)}[reg]: {REGISTRY}", PROSE, id="wide-space-before"),
+    pytest.param(f'[reg]: {REGISTRY} "Registry" {{#NCT01/2020}}', PROSE, id="bad-attributes"),
+    pytest.param(
+        "[^1]: Adjusted for age.\n[^2]: Adjusted for sex.\n[^3] Adjusted for renal function.",
+        PROSE,
+        id="note-without-colon",
+    ),
+    pytest.param("[<!--x]: u\n[^y]: -->", PROSE, id="comment-in-label"),
+    pytest.param("[a $x]: u '$'", PROSE, id="maths-in-label"),
+    pytest.param("[@*key]: u", PROSE, id="wildcard-citation"),
+    # Words after what pandoc takes for a title, or a bracket in the address, make it prose.
+    pytest.param("[Methods]: patients (n = 200) were enrolled.", PROSE, id="words-after-title"),
+    pytest.param('[Box 1]: Patients described as "frail" were excluded.', PROSE, id="quoted"),
+    pytest.param('[Note]: answers were coded "yes", "(blank)"', PROSE, id="two-quotes"),
+    pytest.param("[Methods]: see [reg] for the protocol.", PROSE, id="bracket-in-address"),
+    pytest.param("[Note]: [see Figure 2] for this.", PROSE, id="address-is-bracketed"),
+    pytest.param(f"[reg]: <{REGISTRY}> and more words", PROSE, id="words-after-address"),
+    pytest.param(f"[reg]: {REGISTRY}\n(which is public) and more.", PROSE, id="title-then-words"),
+    # A first line pandoc swallows, and the paragraph it reads under it.
+    pytest.param(
+        "[Box 1]: Definitions. Injury was an ALT above three times\nthe upper limit of normal.",
+        PROSE,
+        id="wrapped-prose",
+    ),
+    pytest.param("See [Methods] here.", PROSE, id="bracket-inside"),
+    pytest.param("[Methods] describes the cohort.", PROSE, id="no-colon"),
+    pytest.param(f"[reg] : {REGISTRY}", PROSE, id="space-before-colon"),
+    # A definition cannot interrupt a paragraph.
+    pytest.param(f"See [reg] for details.\n[reg]: {REGISTRY}", PROSE, id="second-line"),
+    pytest.param("[@fictionalClassSignal2019]: a cohort of 1,200.", PROSE, id="citation"),
+    pytest.param("[see @fictionalClassSignal2019]: a cohort.", PROSE, id="prefixed-citation"),
+    pytest.param("[see\n@fictionalClassSignal2019]: a cohort.", PROSE, id="wrapped-citation"),
+]
+
+
+@BUILDS
+@pytest.mark.parametrize(("block", "reads"), BLOCKS)
+def test_only_a_block_of_definitions_is_left_without_an_identifier(
+    block: str, reads: str, mark: bool
+) -> None:
+    """A paragraph keeps its identifier however it opens: with a bracket, with a citation and
+    a colon, or with a line pandoc would swallow as a definition."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(block, "main.md", mark=mark)
+    assert (tagged == block) is (reads == DEFINITION), tagged
+    assert tagged.lstrip().startswith("[]{#mg-p-") is (reads != DEFINITION), tagged
+
+
+def _renders_nothing(text: str) -> bool:
+    import json
+    import subprocess
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=text,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return json.loads(read.stdout)["blocks"] == []
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("block", "reads"), BLOCKS)
+def test_what_is_left_unmarked_renders_nothing(block: str, reads: str) -> None:
+    """The readings above are pandoc's, and the property that matters is checked on the
+    artefact. A block left without an identifier renders nothing, so no paragraph goes
+    without one; a marked block renders something, so its identifier reaches Word."""
+    from manuscript_guard.roundtrip import tag
+
+    tagged = tag(block, "main.md")
+    assert tagged != block or _renders_nothing(block), "a paragraph went without an identifier"
+    assert _renders_nothing(block) is (reads != PROSE)
+    assert _renders_nothing(tagged) is (reads == DEFINITION)
+
+
+@pytest.mark.parametrize(
+    "space",
+    [chr(0xA0), chr(0x3000), chr(12), chr(0x2028)],
+    ids=["no-break", "full-width", "form-feed", "line-separator"],
+)
+def test_a_definition_under_a_line_pandoc_does_not_take_for_blank_is_no_definition(
+    space: str,
+) -> None:
+    """A line holding only a no-break or full-width space, or a form feed, separates blocks
+    in `tag` and not to pandoc, which reads it and the definition under it as a paragraph.
+    `_blocks` leaves both sides of such a line unmarked on its own account; the definition
+    rule must not be what does it, or it would still do it if that rule were relaxed."""
+    from manuscript_guard.roundtrip import _definitions
+
+    assert not _definitions(f"[reg]: {REGISTRY}", f"\n\n{space}\n", "\n\nIt")
+    assert _definitions(f"[reg]: {REGISTRY}", "\n\n", "\n\nIt")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "space", [chr(0xA0), chr(0x3000), chr(12)], ids=["no-break", "full-width", "form-feed"]
+)
+def test_a_definition_under_an_empty_line_below_a_line_of_spaces_is_left_alone(
+    space: str, tmp_path: Path
+) -> None:
+    """Only the line directly above counts. With such a line and then an empty one, the
+    definition starts a block to pandoc; judged by the whole run, it was marked, printed as
+    text, and its link resolved nowhere."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"See [reg] for details.\n\n{space}\n\n[reg]: {REGISTRY}\n"
+    tagged = tag(text, "main.md")
+    assert tagged.endswith(f"\n\n[reg]: {REGISTRY}\n"), tagged
+    source = tmp_path / "a.md"
+    source.write_text(tagged, encoding="utf-8")
+    subprocess.run(["pandoc", str(source), "-o", str(tmp_path / "a.docx")], check=True)
+    rels = _docx_part(tmp_path / "a.docx", "word/_rels/document.xml.rels")
+    assert f'Target="{REGISTRY}"' in rels
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("between", "runs_on"),
+    [
+        pytest.param(f"\n{chr(0xA0)}\n", True, id="no-break"),
+        pytest.param(f"\n{chr(0x3000)}\n", True, id="full-width"),
+        pytest.param(f"\n{chr(12)}\n", True, id="form-feed"),
+        pytest.param(f"\n\n    {chr(0xA0)}\n", True, id="indented-no-break"),
+        pytest.param(f"\n\n\t{chr(0x3000)}\n", True, id="tab-full-width"),
+        pytest.param(f"\n\n{chr(0xA0)}\n", False, id="blank-then-no-break"),
+        pytest.param(f"\n\n   {chr(0xA0)}\n", False, id="blank-then-three-spaces"),
+        pytest.param(f"\n\n    {chr(0xA0)}\n\n", False, id="indented-no-break-between-blanks"),
+    ],
+)
+def test_no_identifier_goes_into_a_note_over_a_line_pandoc_does_not_take_for_blank(
+    between: str, runs_on: bool
+) -> None:
+    """A note runs on through every line pandoc does not take for blank, and past a blank
+    line into an indented one. Under a line holding only a no-break or full-width space -
+    directly, or indented after a blank line - the next paragraph went into the footnote,
+    and its identifier with it, where `import` never looks. `_blocks` leaves both sides of
+    such a line unmarked; the note rule declines such a note on its own account too."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import _around, _definitions, tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.{between}It was rare.\n"
+    pieces = re.split(r"(\n\s*\n)", text)
+    note = next(i for i, piece in enumerate(pieces) if piece.startswith("[^cap]"))
+    assert _definitions(pieces[note], *_around(pieces, note)) is not runs_on
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    notes: list[dict] = []
+
+    def gather(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("t") == "Note":
+                notes.append(node)
+            for value in node.values():
+                gather(value)
+        elif isinstance(node, list):
+            for value in node:
+                gather(value)
+
+    gather(blocks)
+    assert not any("mg-p-" in json.dumps(note) for note in notes), "an identifier went in"
+    # Where the rule says the note ends, pandoc must agree: the paragraph stays in the body.
+    assert runs_on or not any("rare" in json.dumps(note) for note in notes)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "indented",
+    [
+        pytest.param(f"    {chr(0x200B)}", id="zero-width-space"),
+        pytest.param(f"\t{chr(0x2060)}", id="tab-word-joiner"),
+        pytest.param(f"  \t{chr(0xFEFF)}", id="spaces-tab-byte-order-mark"),
+        pytest.param(f"    {chr(0xAD)}", id="soft-hyphen"),
+        pytest.param("    More about it.\n", id="second-paragraph"),
+    ],
+)
+def test_a_note_over_an_indented_block_prints_as_text(indented: str) -> None:
+    """After a blank line, a line indented four columns is the note's next paragraph, and
+    the unindented lines under it are more of it. A zero-width character is no whitespace
+    to Python, so a line holding only one, indented, opened the next block; the note went
+    unmarked, and the paragraph under that line left the body for the footnote with nothing
+    to show. The note is now marked, and prints as text. Visible, not mended: pandoc sets
+    the indented line apart as code, and a paragraph straight under it has no identifier.
+    A note of several paragraphs is marked the same way."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.\n\n{indented}\nIt was rare.\n"
+    tagged = tag(text, "main.md")
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[\^cap\]:", tagged)
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tagged,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    shown = read.stdout
+    assert '"t":"Note"' not in shown.replace(" ", "")
+    paragraphs = [json.dumps(b) for b in json.loads(shown)["blocks"] if b["t"] == "Para"]
+    assert any("Capped" in paragraph and "mg-p-" in paragraph for paragraph in paragraphs)
+    assert any("rare" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "between",
+    [
+        pytest.param("\n\n", id="empty-line"),
+        pytest.param("\n\n   ", id="next-indented-three"),
+        pytest.param("\n  \n\n", id="spaces-then-empty"),
+        pytest.param("\n\n\t\n", id="tab-only-line"),
+    ],
+)
+def test_a_note_a_blank_line_ends_is_left_alone(between: str) -> None:
+    """The direction whose failure is silent, judged by pandoc: a note left unmarked must be
+    a note, and what follows it must stay in the body with its identifier. A blank line ends
+    a note unless the line after it is indented four columns."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    text = f"Doses were capped.[^cap]\n\n[^cap]: Capped at 40 mg.{between}It was rare.\n"
+    tagged = tag(text, "main.md")
+    assert "\n\n[^cap]: Capped at 40 mg." in tagged
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tagged,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    notes: list[str] = []
+
+    def gather(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("t") == "Note":
+                notes.append(json.dumps(node))
+            for value in node.values():
+                gather(value)
+        elif isinstance(node, list):
+            for value in node:
+                gather(value)
+
+    gather(blocks)
+    assert any("Capped" in note for note in notes)
+    assert not any("rare" in note for note in notes)
+    paragraphs = [json.dumps(b) for b in blocks if b["t"] == "Para"]
+    assert any("rare" in paragraph and "mg-p-" in paragraph for paragraph in paragraphs)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("lead", ["\t", "    "], ids=["tab", "four-spaces"])
+def test_a_note_ending_a_file_does_not_take_in_the_next_file(project: Path, lead: str) -> None:
+    """Review of #64: `tag` judges a note by the end of its own file, where nothing follows,
+    and the build joined the files with blank lines alone. A note ending one file then took
+    in the next file's first paragraph when that opened indented, and a co-author's edit to
+    it was dropped with nothing said. An empty div between files ends it; the paragraph is
+    code to pandoc then, as any block opening indented is."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8").replace("None declared.", "None declared.[^end]")
+    main_md.write_text(f"{text.rstrip()}\n\n[^end]: A closing note.\n", encoding="utf-8")
+    (project / "manuscript" / "zz_extra.md").write_text(
+        f"{lead}Extra paragraph from the next file.\n", encoding="utf-8"
+    )
+
+    document = built(project)
+    notes = _docx_part(document, "word/footnotes.xml")
+    assert "A closing note." in notes
+    assert "Extra paragraph" not in notes
+    assert "Extra paragraph" in _docx_part(document, "word/document.xml")
+
+
+@needs_pandoc
+def test_a_comment_left_open_hides_nothing_past_its_file(project: Path) -> None:
+    """Round nine: the files were first joined with a comment, and its `-->` closed a `<!--`
+    left open earlier in the file, so every paragraph after it in that file vanished from
+    the document, with nothing reported. Joined by an empty div, they print, the stray
+    `<!--` with them, as they did before."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8").rstrip()
+    main_md.write_text(
+        f"{text}\n\nPara two <!-- to check later\n\nPara three stays.\n", encoding="utf-8"
+    )
+    (project / "manuscript" / "zz_extra.md").write_text("Next file.\n", encoding="utf-8")
+
+    body = _docx_part(built(project), "word/document.xml")
+    assert "Para three stays." in body
+    assert "Next file." in body
+
+
+def test_tag_and_tagged_paragraphs_name_the_same_blocks(project: Path) -> None:
+    """`tag` marks the document and `tagged_paragraphs` names what `import` looks up. Read
+    from the stripped block in one and the raw block in the other, a definition ending in a
+    no-break space was marked in the document and unknown on disk; so it would be if one
+    of them stopped asking what stands above a definition."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    text = "\n\n".join(param.values[0] for param in BLOCKS)
+    text += f"\n\n{chr(0x3000)}\n\n[later]: {REGISTRY}"
+    text += f"\n\n{chr(0x3000)}\n[late]: {REGISTRY}"
+    text += f"\n\n[^runs]: A note.\n{chr(0xA0)}\nIt runs on.\n"
+    text += f"\n\n[^deep]: A note.\n\n    {chr(0xA0)}\nIt runs on."
+    text += f"\n\n[^zero]: A note.\n\n    {chr(0x200B)}\nIt runs on."
+    text += f"\n\n[^ends]: A note.\n\n{chr(0xA0)}\nIt starts afresh.\n"
+    (project / "manuscript" / "definitions.md").write_text(text, encoding="utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name
+        for name, (path, _text, _start) in tagged_paragraphs(loaded).items()
+        if path.name == "definitions.md"
+    }
+    tagged = tag(text, "definitions.md")
+    marked = set(re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tagged))
+    assert marked == known
+    # Every block of `BLOCKS` is marked as it is on its own - a `<!--` in one note's text hid
+    # sixteen blocks after it - but the last, beside the full-width space that follows it;
+    # and of the notes after, only the one over an indented zero-width space.
+    alone = sum(reads != DEFINITION for _block, reads in (p.values for p in BLOCKS))
+    last = BLOCKS[-1].values[0]
+    assert len(marked) == alone - (tag(last, "definitions.md") != last) + 1
+    # Beside a line pandoc does not take for blank nothing is marked, the definitions and
+    # notes there included; the note over a blank line and an indented zero-width space runs
+    # on into it, and is marked.
+    for untouched in ("[later]", "[late]", "[^runs]", "[^deep]", "[^ends]"):
+        assert f"}}{untouched}" not in tagged, untouched
+    assert re.search(r"\[\]\{#mg-p-[^}]+\}\[\^zero\]", tagged)
 
 
 FENCE = "`" * 3
@@ -763,6 +2145,113 @@ def test_nothing_inside_a_code_block_or_a_comment_is_marked() -> None:
     assert re.search(r"\[\]\{#mg-p-[^}]+\}After\.", tagged), "the prose after them keeps its"
 
 
+def _identified(text: str) -> dict[str, bool]:
+    """For each of the words Alpha to Omega that pandoc prints in the body of `tag(text)`,
+    whether the paragraph holding it carries an identifier. A word inside raw content, which
+    prints nothing, is left out."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    found: dict[str, bool] = {}
+    for block in json.loads(read.stdout)["blocks"]:
+        if block["t"] not in ("Para", "Plain"):
+            continue
+        printed = json.dumps([i for i in block["c"] if i["t"] != "RawInline"])
+        for word in ("Alpha", "Beta", "Gamma", "Omega"):
+            if word in printed:
+                found[word] = "mg-p-" in json.dumps(block)
+    return found
+
+
+BACKSLASH = chr(92)
+RAW_OPENERS = [
+    pytest.param("<!--", "-->", id="comment"),
+    pytest.param(BACKSLASH + "begin{x}", BACKSLASH + "end{x}", id="tex"),
+    pytest.param("<pre>", "</pre>", id="pre"),
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_an_escaped_raw_opener_opens_nothing(opener: str, closer: str, escapes: int) -> None:
+    """After an odd number of backslashes, `<!--`, `\\begin{x}` or `<pre>` is text to pandoc,
+    which prints it; `import` writes a `<!--` typed in Word so. `_blocks` took it for an
+    opener all the same, and its paragraph and every one up to the closer went without an
+    identifier, so a co-author's edit to them was not compared. On main too."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    assert _identified(text) == dict.fromkeys(("Alpha", "Beta", "Gamma", "Omega"), True)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 2])
+@pytest.mark.parametrize(("opener", "closer"), RAW_OPENERS)
+def test_a_raw_opener_after_escaped_backslashes_still_opens(
+    opener: str, closer: str, escapes: int
+) -> None:
+    """After an even number, the backslashes escape each other and the opener opens: what
+    pandoc hides is not marked, and what follows the closer is."""
+    text = (
+        f"Alpha {BACKSLASH * escapes}{opener} opens.\n\nBeta in between.\n\n"
+        f"Gamma follows.\n\n{closer}\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+def test_an_escaped_tex_closer_closes_nothing() -> None:
+    """`\\\\end{x}` is a line break and the word "end" to LaTeX, so it closes no environment,
+    and pandoc reads the `\\begin{x}` above it as text. `_blocks` paired the two, and the
+    paragraphs between went without an identifier."""
+    text = (
+        f"Alpha {BACKSLASH}begin{{x}} opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * 2}end{{x}} here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert found["Beta"] and found["Gamma"] and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [0, 1, 2])
+def test_an_escaped_comment_closer_still_closes(escapes: int) -> None:
+    """Inside a comment pandoc reads no escapes: `\\-->` closes it, whatever stands before."""
+    text = (
+        f"Alpha <!-- opens.\n\nBeta in between.\n\n"
+        f"Gamma {BACKSLASH * escapes}--> here.\n\nOmega.\n"
+    )
+    found = _identified(text)
+    assert "Beta" not in found and found["Omega"]
+
+
+@needs_pandoc
+@pytest.mark.parametrize("escapes", [1, 3])
+@pytest.mark.parametrize(
+    "markup",
+    ["<div>", '<div class="x">', "</div>", "<table>", BACKSLASH + "begin{x}"],
+    ids=["div", "div-with-class", "div-closer", "table", "tex"],
+)
+def test_an_escaped_block_tag_leaves_its_paragraph_one(markup: str, escapes: int) -> None:
+    """Mid-line, a block-level tag or a LaTeX environment ends a paragraph, so a paragraph
+    holding one is left unmarked. Escaped, it is text, and the paragraph is one: `import`
+    writes a `<div>` typed in Word so, and the paragraph lost its identifier."""
+    text = f"Alpha {BACKSLASH * escapes}{markup} mid-line.\n\nOmega.\n"
+    assert _identified(text) == {"Alpha": True, "Omega": True}
+
+
 def test_tagged_paragraphs_names_what_tag_marks_at_the_right_offsets(project: Path) -> None:
     """`tag` writes the identifiers and `import` splices at the offsets `tagged_paragraphs`
     gives them. Sharing `_blocks` keeps the two lists the same; this pins that down, and
@@ -797,6 +2286,342 @@ def test_a_setext_heading_is_not_tagged() -> None:
     tagged = tag("Methods\n-------\n\nSome prose here.\n", "main")
     assert tagged.startswith("Methods\n-------")
     assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
+
+
+#: (block, the paragraph under its headings that carries the identifier, or None) - read off
+#: pandoc 3.9. Pandoc needs no blank line after a heading, and the paragraph is always last.
+HEADED = [
+    pytest.param("# Methods\nPatients were enrolled.", "Patients were enrolled.", id="atx"),
+    pytest.param("## Methods ##\nPatients.", "Patients.", id="atx-closed"),
+    pytest.param("#\tMethods {#sec-methods}\nPatients.", "Patients.", id="atx-attributes"),
+    pytest.param("#\nPatients.", "Patients.", id="atx-empty"),
+    pytest.param("Methods\n=======\nPatients.", "Patients.", id="setext"),
+    pytest.param("Methods\n-\nPatients.", "Patients.", id="setext-one-dash"),
+    pytest.param("    Methods\n=======\nPatients.", "Patients.", id="setext-indented"),
+    pytest.param("# Results\n## Methods\nPatients.", "Patients.", id="two-headings"),
+    pytest.param("# Results\nMethods\n=======\nPatients.", "Patients.", id="atx-then-setext"),
+    pytest.param("# Methods\nText one.\nText two.", "Text one.\nText two.", id="two-lines"),
+    pytest.param("# Methods\nText.\n1. Not a list here.", "Text.\n1. Not a list here.", id="later"),
+    pytest.param(
+        "# Methods\n[@fictionalClassSignal2019] found it.",
+        "[@fictionalClassSignal2019] found it.",
+        id="citation-first",
+    ),
+    pytest.param(
+        "# Methods\n{{results.ror.point}} was the ratio.",
+        "{{results.ror.point}} was the ratio.",
+        id="binding-first",
+    ),
+    pytest.param("# Methods\n*Emphasis* first.", "*Emphasis* first.", id="emphasis-first"),
+    # A heading alone, and what a marker would break: these stay unmarked, as before.
+    pytest.param("# Methods", None, id="heading-alone"),
+    pytest.param("Methods\n=======", None, id="setext-alone"),
+    pytest.param("# Methods\nText.\n---", None, id="underlined-into-a-heading"),
+    pytest.param("# Methods\n- first item", None, id="bullets"),
+    pytest.param("# Methods\na) first item", None, id="letters"),
+    pytest.param("# Methods\n12. Twelve were chosen.", None, id="numbers"),
+    pytest.param("# Methods\n    indented code", None, id="code"),
+    pytest.param("# Methods\nText.\n```\ncode\n```", None, id="fence-below"),
+    pytest.param("# Methods\nTerm\n: definition", None, id="definition-list"),
+    pytest.param("# Methods\n<div>x</div>", None, id="html"),
+    pytest.param("# Methods\n{{table.baseline}}", None, id="placeholder"),
+    pytest.param(f"# References\n[reg]: {REGISTRY}", None, id="link-definition"),
+    pytest.param("# Methods\n***", None, id="rule"),
+    pytest.param("# Methods\nII. Aims", None, id="numeral-list"),
+    pytest.param("#. First\nSecond", None, id="hash-list"),
+    pytest.param("# Tables\nTable: Baseline characteristics.", None, id="caption"),
+    # A definition in a shape the strict rule does not take, under a heading: a marker in
+    # front of it would print it and break its links, where main left the block alone.
+    pytest.param(f"# References\n[reg]: {REGISTRY}\n    \"The registry\"", None, id="title-below"),
+    pytest.param(f"# References\n[reg]: {REGISTRY} {{.external}}", None, id="attributes"),
+    pytest.param("# References\n[Note]: see the registry", None, id="words-address"),
+    # A link's definition is passed over like a heading, when nothing on the next line could
+    # be its title or attributes.
+    pytest.param(f"[reg]: {REGISTRY}\nIt is public.", "It is public.", id="definition-first"),
+    pytest.param(
+        f"[reg]: {REGISTRY} \"The registry\"\n## Results\nPatients.",
+        "Patients.",
+        id="definition-then-heading",
+    ),
+    pytest.param(f"# Methods\n[reg]: {REGISTRY}\nPatients.", "Patients.", id="heading-then-link"),
+    pytest.param(f"[reg]: {REGISTRY}\n## Results", None, id="definition-over-heading"),
+    # Under a definition, what `_untagged` finds one paragraph is marked, whatever it opens
+    # with; it was marked with the whole block, which printed the definition.
+    *(
+        pytest.param(f"[reg]: {REGISTRY}\n{line}", line.lstrip(" "), id=name)
+        for name, line in [
+            ("definition-over-code-span", "`glm()` was used."),
+            ("definition-over-dash", chr(0x2014) + "and so it was."),
+            ("definition-over-ellipsis", chr(0x2026) + "and more."),
+            ("definition-over-indent", "  Indented two spaces."),
+            ("definition-over-html", "<b>Bold</b> first."),
+            ("definition-over-decimal", ".5 of them."),
+        ]
+    ),
+    # What `_untagged` does not find one paragraph goes unmarked with the definition, as it
+    # would on its own: a TeX command, a line opening like a fence, indented code.
+    *(
+        pytest.param(f"[reg]: {REGISTRY}\n{line}", None, id=name)
+        for name, line in [
+            ("definition-over-tex", "\\emph{Stress} first."),
+            ("definition-over-inline-fence", "```glm()``` was used."),
+            ("definition-over-unclosed-tildes", "~~~ text that runs on."),
+            ("definition-over-indented-comment", "    # comment\nThe model was fitted."),
+            ("definition-over-r-chunk", "```{r}\nx <- 1\n```"),
+        ]
+    ),
+    # What under a definition prints no prose is left unmarked with it.
+    pytest.param(f"[reg]: {REGISTRY}\n```r\nx <- 1\n```", None, id="definition-over-fence"),
+    pytest.param(f"[reg]: {REGISTRY}\n    x <- 1\n    y <- 2", None, id="definition-over-code"),
+    pytest.param(f"[reg]: {REGISTRY}\n#. First", None, id="definition-over-hash-list"),
+    # A link that opens a sentence is no definition, though a label follows it later.
+    pytest.param(
+        "# Results\n[Table 1](#t) shows [95% CI]: 1.2.",
+        "[Table 1](#t) shows [95% CI]: 1.2.",
+        id="link-then-label",
+    ),
+    # Prose that the first version left unmarked.
+    pytest.param("# Methods\nE. coli was isolated.", "E. coli was isolated.", id="initial"),
+    pytest.param("# Methods\nI. Aims were set.", "I. Aims were set.", id="single-capital"),
+    pytest.param(
+        "# Methods\nThe threshold was\n< 0.05 in all.",
+        "The threshold was\n< 0.05 in all.",
+        id="wrapped-comparison",
+    ),
+    pytest.param("  \n# Methods\nPatients.", "Patients.", id="blank-first-line"),
+    # `#` that opens no heading: a paragraph to pandoc, marked like one.
+    pytest.param("#Methods\nPatients.", "#Methods\nPatients.", id="hash-no-space"),
+    # Indented, `#` opens a paragraph at the top level and a heading inside a list item, which
+    # a marker would print; and moved to the first column by `import`, it became a heading.
+    # Left alone, as on main (round four).
+    pytest.param(" # Methods\nPatients.", None, id="hash-indented"),
+    pytest.param("   ## Methods\nPatients.", None, id="hash-indented-three"),
+    # A heading whose code span, comment or TeX environment runs onto the next line: pandoc
+    # reads the two lines as one heading, and a marker would print inside it (round four).
+    pytest.param("# The `lm function\nWe used `glm()` here.", None, id="heading-open-code"),
+    pytest.param("The `lm\n===\nWe used `glm()` here.", None, id="setext-open-code"),
+    pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
+    pytest.param("# Notes \\begin{x}\ny \\end{x} Patients.", None, id="heading-open-tex"),
+    # Only a heading of plain text is passed over (round six): code, even closed, keeps the
+    # block as it was.
+    pytest.param("# The `lm` function\nWe used it.", None, id="heading-closed-code"),
+    # Round five: a citation's locator, a citation group, maths, and a code span opened
+    # after an escaped backtick all run onto the next line too. The locator was the
+    # paragraph's to `import`, and an edit in Word wrote it into the source cut off from
+    # its citation.
+    pytest.param(
+        "# Zeta as in @smith2020\n[p. 33]\nAlpha paragraph.", None, id="heading-citation-locator"
+    ),
+    pytest.param(
+        "# Compared [@smith2020;\n@jones2021]\nText.", None, id="heading-citation-group"
+    ),
+    pytest.param(
+        "## Costs ($US)\nCosts were converted to US$ at 2020 rates.", None, id="heading-maths"
+    ),
+    pytest.param("# Quote \\` and `x\nMore` text.", None, id="heading-escaped-backtick"),
+    # Round six: a link's destination or title, an HTML tag's attributes, emphasis, and a
+    # code span whose backslash is only text all run onto the next line as well. A heading
+    # is passed over only when its line is plain text now.
+    pytest.param('# See [x](http://x.org\n"Title") here.\nAlpha.', None, id="heading-link"),
+    pytest.param('# Zeta <a\nhref="x">link</a> more\nAlpha.', None, id="heading-html-tag"),
+    pytest.param(
+        "# Paths `C:\\` and `D:\nmore` text.\nAlpha.", None, id="heading-code-backslash"
+    ),
+    pytest.param("# A *wrapped\nemphasis* here\nAlpha.", None, id="heading-emphasis"),
+    pytest.param("# Results: the 2020 cohort (n = 12)\nAlpha.", "Alpha.", id="heading-plain"),
+    # Under a link and a heading, a definition the strict rule does not take is left alone,
+    # as under a heading alone: #54 left the block alone for its underline (round four).
+    pytest.param(
+        f"[reg]: {REGISTRY}\nResults\n-------\n[Note]: see the registry",
+        None,
+        id="definition-heading-loose-definition",
+    ),
+]
+
+
+@BUILDS
+@pytest.mark.parametrize(("block", "paragraph"), HEADED)
+def test_the_paragraph_under_a_heading_carries_the_identifier(
+    block: str, paragraph: str | None, mark: bool
+) -> None:
+    """In front of the paragraph, never in front of the heading: `[]{#id}# Methods` is not
+    a heading. Only a plain paragraph is marked; a list or code under a heading would be
+    broken by a marker, and is left alone as the whole block always was."""
+    from manuscript_guard.roundtrip import paragraph_slug, tag
+
+    tagged = tag(block, "main.md", mark=mark)
+    if paragraph is None:
+        assert tagged == block
+        return
+    headings = block[: len(block) - len(paragraph)]
+    assert tagged.startswith(f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}")
+    if not mark:
+        assert tagged == f"{headings}[]{{#mg-p-{paragraph_slug('main.md')}-0}}{paragraph}"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("- Item one.\n\n  # Heading\n\n  Para text.\n", id="bullet"),
+        pytest.param("1. Item one.\n\n   ## Heading\n   Para text.\n", id="numbered-joined"),
+    ],
+)
+def test_a_heading_inside_a_list_item_stays_a_heading(text: str) -> None:
+    """Round four: indented one to three spaces, `#` was taken for a paragraph, which it is
+    only at the top level. Inside a list item it opens a heading, and the marker in front of
+    it printed "# Heading" as text."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(text, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert '"Header"' in json.dumps(json.loads(read.stdout)["blocks"])
+    # A `#` printed as text is a Str that opens with it.
+    assert '"c":"#' not in read.stdout.replace(" ", "")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(("block", "paragraph"), HEADED)
+def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
+    block: str, paragraph: str | None
+) -> None:
+    """The artefact: the headings stay headings without an identifier in them, a definition
+    renders nothing, and the one paragraph after them carries it."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(block, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    assert all("mg-p-" not in json.dumps(b) for b in blocks if b["t"] == "Header")
+    if paragraph is not None:
+        assert blocks[-1]["t"] == "Para"
+        assert "mg-p-" in json.dumps(blocks[-1])
+        assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+@BUILDS
+def test_a_comment_in_fenced_code_is_not_read_as_a_heading(mark: bool) -> None:
+    """Fenced code may hold blank lines, and the piece after one - `# Fit the model` and a
+    line of code - read as a heading and a paragraph, so a marker was printed inside the
+    listing. No piece that starts inside a fence is marked."""
+    from manuscript_guard.roundtrip import tag
+
+    code = (
+        "```r\nlibrary(stats)\n\n# Load the data\nd <- read.csv('x.csv')\n\n"
+        "# Fit the model\nm <- lm(y ~ x, data = d)\n```"
+    )
+    tagged = tag(f"Before.\n\n{code}\n\nAfter.\n", "main.md", mark=mark)
+    assert f"\n\n{code}\n\n" in tagged
+    assert tagged.count("[]{#mg-p-") == 2
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "block", ["<div>\n---\n`glm()` was used.", "<div>\n---\nPlain text."], ids=["code", "plain"]
+)
+def test_what_follows_a_div_over_an_underline_is_left_alone(block: str) -> None:
+    """A `<div>` line over `---` looks like a setext heading, and pandoc reads a div around
+    what follows instead. Only a heading of plain text is passed over, so the block is left
+    alone, as on main: no marker lands inside the div."""
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(block, "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    assert "mg-p-" not in read.stdout
+
+
+def test_a_run_of_spaces_is_read_in_linear_time() -> None:
+    """A pattern that split a run of spaces between two quantifiers took 1.4 s for a block
+    opening with 20,000 spaces, and every block pays whatever the heading test costs."""
+    import time
+
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(" " * 40000 + "x\n", "main.md")
+    assert time.perf_counter() - started < 1.0
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("above", "code"),
+    [
+        pytest.param("\n\n", "    # random intercept per centre\n    m <- lmer(y)", id="spaces"),
+        pytest.param("\n\n", "\t# drop duplicates\n\td <- unique(d)", id="tab"),
+        pytest.param("\n\n", "  \t# two spaces and a tab\n  \tx <- 1", id="spaces-and-tab"),
+    ],
+)
+def test_indented_code_opening_with_a_comment_is_not_marked(above: str, code: str) -> None:
+    """Code indented four spaces or a tab, opening with a `# comment`: `#` opens a heading
+    now only in the first column, and code must not be taken for prose because of that.
+    Marked after its indent, the identifier would print as text inside the code in Word."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    read = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=tag(f"Intro.{above}{code}\n\nAfter.\n", "main.md"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    blocks = json.loads(read.stdout)["blocks"]
+    assert all("mg-p-" not in json.dumps(b) for b in blocks if b["t"] == "CodeBlock")
+    assert all("mg-p-" in json.dumps(b) for b in blocks if b["t"] == "Para")
+
+
+def test_tagged_paragraphs_splices_only_the_paragraph_under_a_heading(project: Path) -> None:
+    """`import` splices a merged paragraph at the offset `tagged_paragraphs` gives, over
+    exactly the text it gives. Under a heading, that is the paragraph alone: the heading
+    stays where it is, and `tag` marks the same paragraph."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.roundtrip import tag, tagged_paragraphs
+
+    blocks = [param.values for param in HEADED]
+    text = "\n\n".join(block for block, _paragraph in blocks) + "\n"
+    source = project / "manuscript" / "headed.md"
+    source.write_text(text, encoding="utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name: (found, start)
+        for name, (path, found, start) in tagged_paragraphs(loaded).items()
+        if path.name == "headed.md"
+    }
+    marked = re.findall(r"\[\]\{#(mg-p-[^}]+)\}", tag(text, "headed.md"))
+    assert set(marked) == set(known)
+    raw = source.read_text(encoding="utf-8")
+    expected = [paragraph for _block, paragraph in blocks if paragraph is not None]
+    assert [found for found, _start in known.values()] == expected
+    assert all(raw[start : start + len(found)] == found for found, start in known.values())
 
 
 @needs_pandoc
@@ -2626,7 +4451,7 @@ TYPED_IN_WORD = [
     pytest.param("Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
                  "Im \u201aSinne\u2018 des \u201eGesetzes\u201c, seit den \u201990ern.",
                  id="german-quotes"),
-    pytest.param("Use {{results.x}} here.", r"Use \{\{results.x}} here.", id="binding"),
+    pytest.param("Use {{results.x}} here.", r"Use \{\{results.x\}\} here.", id="binding"),
     pytest.param("1990. The year was bad.", r"1990\. The year was bad.", id="list"),
     pytest.param("A *real* change.", r"A \*real\* change.", id="emphasis"),
     pytest.param(
@@ -3359,7 +5184,138 @@ def test_reordered_list_items_are_not_called_a_match(
     assert "order" in out, out
     named = "~ First, the reports." in out or "~ Third, the events." in out
     assert named, "the reordered items are named, not only counted"
+    assert "somewhere else" not in out, "the swap is reported once, not also as a heading"
     assert source.read_text(encoding="utf-8") == before
+
+
+def test_text_that_came_back_out_of_order_is_reported_once(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A swap of list items was reported twice: as headings that came back somewhere else,
+    and as text that came back in a different order, each naming its own share of the items.
+    Once the untagged texts came back reordered, each out of place is named with them."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    plan = Plan(
+        reached=frozenset(),
+        order=(),
+        strayed=(("text", "First, the reports."), ("table", "")),
+        reordered=("Third, the events.",),
+    )
+    _report_plan(None, {}, plan, applying=False)
+    out = capsys.readouterr().out
+    elsewhere, _, in_order = out.partition("different order")
+    assert "a table" in elsewhere and "First, the reports." not in elsewhere, out
+    assert "~ First, the reports." in in_order and "~ Third, the events." in in_order, out
+
+    alone = Plan(reached=frozenset(), order=(), strayed=(("text", "Results"),))
+    _report_plan(None, {}, alone, applying=False)
+    assert "'Results'" in capsys.readouterr().out, "with nothing reordered it is still named"
+
+
+def test_a_heading_out_of_place_beside_a_long_reorder_is_still_named(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Named with the texts that came back in a different order, a heading out of place was
+    added after them, and that list prints its first twelve: beside a reversed list of
+    thirteen items, the heading dragged past a table was named nowhere. The report named it
+    before the two were put together."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Item {n:02d} of the list." for n in range(13, 0, -1))
+    plan = Plan(
+        reached=frozenset(), order=(), strayed=(("text", "Limitations"),), reordered=items
+    )
+    _report_plan(None, {}, plan, applying=False)
+    out = capsys.readouterr().out
+    assert "~ Limitations" in out, out
+    assert "and 1 more" in out, "a list cut short says so"
+
+
+def test_a_text_kept_in_order_is_not_cut_by_the_folded_ones(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Twelve lines were shared between the texts out of place and the rest, so with twelve
+    or more out of place a heading the ordering kept was cut, where it had been named."""
+    from manuscript_guard.cli import _report_plan
+    from manuscript_guard.merge import Plan
+
+    items = tuple(f"Term {chr(ord('M') - n)} is listed." for n in range(13))
+    plan = Plan(
+        reached=frozenset(),
+        order=(),
+        strayed=tuple(("text", t) for t in items),
+        reordered=("Methods", *items[:-1]),
+    )
+    _report_plan(None, {}, plan, applying=False)
+    assert "~ Methods" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_heading_dragged_above_a_reversed_list_is_still_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end: a list of thirteen reversed in Word, and the heading after it dragged
+    above it. The ordering keeps the heading and puts all thirteen items out of place, and
+    the heading was named nowhere."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    items = [f"Term {chr(ord('A') + n)} is listed." for n in range(13)]
+    block = "".join(f"- {t}\n" for t in items) + "\n"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("# Methods", block + "# Methods", 1),
+        encoding="utf-8",
+    )
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def text(p: str) -> str:
+        return "".join(re.findall(r"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", p))
+
+    def edit(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        found = [next(p for p in paragraphs if text(p) == t) for t in items]
+        for n, p in enumerate(found):
+            xml = xml.replace(p, f"\0{n}\0", 1)
+        for n, p in enumerate(reversed(found)):
+            xml = xml.replace(f"\0{n}\0", p, 1)
+        heading = next(p for p in paragraphs if "Heading" in p and text(p) == "Methods")
+        xml = xml.replace(heading, "", 1)
+        return xml.replace(found[-1], heading + found[-1], 1)
+
+    returned = rewrite(document, tmp_path / "methods.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert re.search(r"^    (~ Methods|'Methods')$", out, re.M), out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_deleted_figure_is_not_followed_by_none_changed(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """After a deleted figure the closing note said "None outside a table changed" beside the
+    report that the figure could not be found: it only looked at paragraphs without an
+    identifier."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+
+    def edit(xml: str) -> str:
+        figure = re.search(r"<w:p>(?:(?!<w:p>).)*?<w:drawing>.*?</w:p>", xml, re.DOTALL)
+        assert figure, "the example has a figure"
+        return xml.replace(figure.group(0), "", 1)
+
+    returned = rewrite(document, tmp_path / "no-figure.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "could not be found" in out, out
+    assert "None outside a table changed" not in out, out
 
 
 @needs_pandoc
@@ -4413,6 +6369,94 @@ def test_a_display_equation_dragged_elsewhere_in_a_real_build_is_reported(
     assert "an equation" in capsys.readouterr().out
 
 
+def test_a_value_that_prints_display_maths_stops_check_and_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, the review of #81's case. A value printing `$$y = 2.1 x$$` in the sentence
+    that ends the Introduction reached Word as three paragraphs, and only the first carried
+    the identifier: a co-author who swapped that part with the paragraph above had the whole
+    sentence moved in the .md, equation and all, exit 0. `check` passed it, with a digit in
+    the display not even the prose warning, and the build made the document."""
+    import json
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.emit import write_digest
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    formula = "$$y = 2.1 x$$"
+    document["values"]["model.formula"] = {"value": formula, "display": formula, "quoted": True}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    source = project / "manuscript" / "main.md"
+    sentence = "The model {{results.model.formula}} was fitted to every report.\n\n"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("# Methods", sentence + "# Methods", 1), encoding="utf-8")
+    stale = project / "build" / "manuscript.docx"
+    stale.unlink(missing_ok=True)
+
+    capsys.readouterr()
+    assert main(["check", str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "[FAIL] G2" in out and "{{results.model.formula}} prints display maths" in out, out
+    assert main(["build", str(project), "--offline"]) == 1
+    assert "not building" in capsys.readouterr().out
+    assert not stale.exists()
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "below",
+    ["$$x = y$$", "- $y = a x$", "> $e = m c$"],
+    ids=["display-maths", "a-list-item-of-maths", "a-quotation-of-maths"],
+)
+def test_a_paragraph_above_an_equation_in_a_real_build_is_reworded_and_moved(
+    project: Path, tmp_path: Path, below: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, because what Word shows as an equation block is pandoc's to decide: each
+    of these reaches Word as one, directly under the paragraph above it, and that paragraph
+    was held. Its rewording was refused with the display-maths reason, and a swap with the
+    paragraph before it was reported as a move into another section, exit 1 both times."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    anchor = "# Data availability"
+    added = f"Omega one opens.\n\nAbove the equation.\n\n{below}\n\n"
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace(anchor, added + anchor, 1), encoding="utf-8")
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+
+    def paragraphs(xml: str) -> list[str]:
+        return re.findall(r"<w:p\b(?:(?!<w:p\b).)*?</w:p>", xml, re.DOTALL)
+
+    def reword(xml: str) -> str:
+        found = paragraphs(xml)
+        above = next(p for p in found if "Above the equation." in p)
+        assert "<m:oMath" in found[found.index(above) + 1], "an equation block follows it"
+        return xml.replace("Above the equation.", "Directly above the equation.", 1)
+
+    def swap(xml: str) -> str:
+        found = paragraphs(xml)
+        first = next(p for p in found if "Omega one opens." in p)
+        second = next(p for p in found if "Above the equation." in p)
+        return xml.replace(first, "\0", 1).replace(second, first, 1).replace("\0", second, 1)
+
+    returned = rewrite(document, tmp_path / "reworded.docx", reword)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0, capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before.replace(
+        "Above the equation.", "Directly above the equation.", 1
+    )
+
+    source.write_text(before, encoding="utf-8")
+    returned = rewrite(document, tmp_path / "swapped.docx", swap)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0, capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before.replace(
+        "Omega one opens.\n\nAbove the equation.", "Above the equation.\n\nOmega one opens.", 1
+    )
+
+
 def test_a_dragged_heading_that_shares_its_text_is_still_reported(tmp_path: Path) -> None:
     """Paired as a sequence, a dragged heading drops out of the sequence; paired afterwards
     only when its text was unique, a dragged "Outcome" with another "Outcome" in the paper
@@ -4490,31 +6534,68 @@ def test_display_maths_or_an_open_comment_is_found_past_code_and_strikeout(
     assert _held_in_place(known, {"p": para.split("\n")[0]}).get("p") in ("in-parts", "runs-on")
 
 
-def test_an_equation_after_a_paragraph_in_the_document_as_sent_holds_that_paragraph(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "para",
+    [
+        "Commands are quoted in backticks (\\`); the estimate is $$x = u / w$$ as in `metafor`.",
+        "Models were fitted with `glmer` from\n$$y = X b$$\nusing the `nlme`{.r} package.",
+        "Units ~~ $$x = y$$ ~~ after.",
+        "Display maths goes between `$$` signs.",
+        "The ratio is $$x = y$$",
+    ],
+    ids=[
+        "after-an-escaped-backtick",
+        "after-a-code-span",
+        "inside-strikeout",
+        "inside-code",
+        "at-the-end",
+    ],
+)
+def test_no_paragraph_with_dollars_in_it_carries_an_identifier(para: str) -> None:
+    """What let the rule that an equation directly after a paragraph belongs to it go. The
+    rule was for a paragraph whose `$$` a reading of its source missed, as one after an
+    escaped backtick; no such paragraph is tagged any more, wherever its `$$` stands."""
+    tagged = tag(f"Before.\n\n{para}\n\nAfter.\n", "main.md")
+    assert tagged.count("{#mg-p-") == 2 and para in tagged
+
+
+@pytest.mark.parametrize(
+    "below",
+    ["$$x = y$$", "- $y = a x$", "> $e = m c$"],
+    ids=["display-maths", "a-list-item-of-maths", "a-quotation-of-maths"],
+)
+def test_a_paragraph_above_an_equation_is_reworded_and_moved_like_any_other(
+    tmp_path: Path, below: str
 ) -> None:
-    """Display maths was only found by reading the source, and every reading of Markdown
-    short of pandoc's can miss one: an escaped backtick opened what was taken for a code
-    span, which swallowed the `$$`. The document as sent says it outright: an equation
-    directly after a paragraph is part of that paragraph, even at the end of its section."""
+    """Word shows display maths standing on its own, and a list item or quotation holding only
+    maths, as an equation block. One directly after a paragraph was taken for part of it, so
+    the paragraph was held although no paragraph with `$$` in it carries an identifier: its
+    rewording was refused, and a swap with the paragraph before it was reported as a move
+    into another section."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import apply_plan, plan_import
 
     path = tmp_path / "main.md"
-    text = "# A\n\nFirst paragraph.\n\nSecond, however it is written.\n\n# B\n\nBeta.\n"
+    text = f"# A\n\nFirst paragraph.\n\nSecond paragraph.\n\n{below}\n\n# B\n\nBeta.\n"
     path.write_text(text, encoding="utf-8")
-    words = {"p1": "First paragraph.", "p2": "Second, however it is written.", "b": "Beta."}
+    words = {"p1": "First paragraph.", "p2": "Second paragraph.", "b": "Beta."}
     known = {name: (path, w, text.index(w)) for name, w in words.items()}
     heading_a, heading_b = Block((), "A"), Block((), "B")
-    p1, p2 = Block(("p1",), "First paragraph."), Block(("p2",), "Second,")
-    equation, tail = Block(kind="equation", key="x=y"), Block((), "however it is written.")
-    beta = Block(("b",), "Beta.")
-    sent = [heading_a, p1, p2, equation, tail, heading_b, beta]
+    p1, p2, beta = (Block((name,), w) for name, w in words.items())
+    equation = Block(kind="equation", key="x=y")
+    sent = [heading_a, p1, p2, equation, heading_b, beta]
 
-    plan = plan_import(known, sent, [heading_a, p2, p1, equation, tail, heading_b, beta])
-    assert plan.misplaced and not plan.moved
+    reworded = Block(("p2",), "Second paragraph, reworded.")
+    plan = plan_import(known, sent, [heading_a, p1, reworded, equation, heading_b, beta])
+    assert plan.merged == {"p2": "Second paragraph, reworded."} and not plan.refused
+
+    plan = plan_import(known, sent, [heading_a, p2, p1, equation, heading_b, beta])
+    assert plan.moved and not plan.misplaced
     apply_plan(known, plan)
-    assert path.read_text(encoding="utf-8") == text
+    swapped = text.replace(
+        "First paragraph.\n\nSecond paragraph.", "Second paragraph.\n\nFirst paragraph."
+    )
+    assert path.read_text(encoding="utf-8") == swapped
 
 
 def test_pandocs_no_break_space_taken_out_of_a_held_paragraph_is_no_edit(tmp_path: Path) -> None:
@@ -5470,6 +7551,1006 @@ def test_an_edited_citation_is_refused_and_named(
     assert "[@fictionalHepaticCohort2021]" in out, out
 
 
+# ------------------------------------------------------ a move, the way Word writes one
+#
+# Each helper writes what Word 365 wrote when driven over COM on the example's own build
+# (2026-09-24). A paragraph's identifier is an empty bookmark at its very start, and Word
+# does not carry an empty bookmark with the text it cuts: the bookmark stays where the
+# paragraph was, and the paste goes in behind the bookmark of the paragraph it lands in
+# front of. Every move test before these moved the whole `<w:p>`, bookmark and all, which
+# Word never does.
+
+_WORD_IDS = iter(range(900, 9999))
+_BY = 'w:author="A Co-Author" w:date="2026-09-01T00:00:00Z"'
+_OPENING = re.compile(
+    r"<w:p>(?P<props><w:pPr>.*?</w:pPr>)?(?P<mark>(?:<w:bookmark(?:Start|End)\b[^>]*/>)*)",
+    re.DOTALL,
+)
+
+
+def _parts(paragraph: str) -> tuple[str, str, str]:
+    """A built paragraph's properties, its identifier's bookmark and its runs."""
+    opening = _OPENING.match(paragraph)
+    assert opening, paragraph[:80]
+    return opening["props"] or "", opening["mark"], paragraph[opening.end() : -len("</w:p>")]
+
+
+def _tracked_mark(props: str, change: str) -> str:
+    """Paragraph properties whose paragraph mark was tracked as `change`."""
+    mark = f'<w:rPr><w:{change} w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr>'
+    return props.replace("</w:pPr>", mark + "</w:pPr>") if props else f"<w:pPr>{mark}</w:pPr>"
+
+
+def _tracked_runs(runs: str, change: str) -> str:
+    if change == "del":
+        runs = re.sub(r"<w:t(?=[ >])", "<w:delText", runs).replace("</w:t>", "</w:delText>")
+    return f'<w:{change} w:id="{next(_WORD_IDS)}" {_BY}>{runs}</w:{change}>'
+
+
+def _range(kind: str, name: str) -> tuple[str, str]:
+    at = next(_WORD_IDS)
+    start = f'<w:{kind}RangeStart w:id="{at}" {_BY} w:name="{name}"/>'
+    return start, f'<w:{kind}RangeEnd w:id="{at}"/>'
+
+
+def _word_paste(
+    xml: str, moved: list[str], landing: str, how: str, edit=lambda runs: runs
+) -> str:
+    """`moved` cut and pasted at the start of `landing`, as Word writes it, the pasted copy
+    then passed through `edit`.
+
+    `how` is "tracked-move" (Track Changes on, and Word recording moves), "tracked" (Track
+    Changes on, and a move recorded as a deletion and an insertion, which is what Word did
+    with every document built before the build let it record moves) or "untracked".
+    """
+    removal, arrival = {"tracked-move": ("moveFrom", "moveTo"), "tracked": ("del", "ins")}.get(
+        how, ("", "")
+    )
+    name = f"move{next(_WORD_IDS)}"
+    from_start, from_end = _range("moveFrom", name) if how == "tracked-move" else ("", "")
+    to_start, to_end = _range("moveTo", name) if how == "tracked-move" else ("", "")
+    left_behind, end = "", 0
+    for index, paragraph in enumerate(moved):
+        props, mark, runs = _parts(paragraph)
+        stays = ""
+        if removal:
+            opening = from_start if index == 0 else ""
+            stays = f"<w:p>{_tracked_mark(props, removal)}{mark}{opening}"
+            stays += f"{_tracked_runs(runs, removal)}</w:p>"
+        else:
+            left_behind += mark
+        at = xml.index(paragraph)
+        xml, end = xml[:at] + stays + xml[at + len(paragraph) :], at + len(stays)
+    # Inside the paragraph that follows, Word closes the move's range after that paragraph's
+    # own bookmark, and puts the bookmarks it did not cut in front of it.
+    following = _OPENING.match(xml, xml.index("<w:p>", end))
+    assert following
+    at = following.end("mark") if removal else following.start("mark")
+    xml = xml[:at] + (from_end if removal else left_behind) + xml[at:]
+
+    props, mark, runs = _parts(landing)
+    pasted = ""
+    for index, paragraph in enumerate(moved):
+        moved_props, _mark, moved_runs = _parts(paragraph)
+        carried, moved_runs = (mark if index == 0 else ""), edit(moved_runs)
+        if arrival:
+            opening = to_start if index == 0 else ""
+            pasted += f"<w:p>{_tracked_mark(moved_props, arrival)}{carried}{opening}"
+            pasted += f"{_tracked_runs(moved_runs, arrival)}</w:p>"
+        else:
+            pasted += f"<w:p>{moved_props}{carried}{moved_runs}</w:p>"
+    assert landing in xml, "the landing paragraph is not the one just after the cut"
+    return xml.replace(landing, pasted + to_end + f"<w:p>{props}{runs}</w:p>", 1)
+
+
+def _moved_first(text: str, heading: str, *openings: str) -> dict[str, list[str]]:
+    """The manuscript by heading, with the paragraphs opening so moved to the section's top."""
+    expected = by_heading(text)
+    section = expected[heading]
+    moved = [p for opening in openings for p in section if p.startswith(opening)]
+    expected[heading] = moved + [p for p in section if p not in moved]
+    return expected
+
+
+@needs_pandoc
+def test_a_paragraph_moved_with_track_changes_on_is_moved(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With Track Changes on, the paragraph was reported "deleted in Word, left in place here"
+    and the pasted copy refused as a split, which told the author to delete a paragraph of
+    bindings in the .md and type Word's copy, numbers and all, in its place. Word leaves the
+    identifier in the moved-from copy, and names the move on both sides: the identifier goes
+    where the name says, and the move is applied from the text on disk."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        assert "was computed" in tagged[5] and "We analysed" in tagged[3]
+        return _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+
+    returned = rewrite(document, tmp_path / "moved.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out and "NOT merged" not in out, out
+    after = source.read_text(encoding="utf-8")
+    assert by_heading(after) == _moved_first(before, "# Methods", "The reporting odds ratio")
+    assert sorted(re.findall(r"\{\{[^}]*\}\}", after)) == sorted(
+        re.findall(r"\{\{[^}]*\}\}", before)
+    )
+
+
+@needs_pandoc
+def test_two_paragraphs_moved_together_with_track_changes_on_are_not_a_join(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two paragraphs moved as one were reported "2 paragraphs came back joined into one",
+    and the second as deleted: the paragraph landed on took the first one's place."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        return _word_paste(xml, [tagged[4], tagged[5]], tagged[3], "tracked-move")
+
+    returned = rewrite(document, tmp_path / "two.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "joined" not in out and "deleted in Word" not in out, out
+    expected = _moved_first(before, "# Methods", "Hepatic injury is", "The reporting odds ratio")
+    assert by_heading(source.read_text(encoding="utf-8")) == expected
+
+
+@needs_pandoc
+def test_a_tracked_move_then_reworded_lands_moved_and_reworded(
+    project: Path, tmp_path: Path
+) -> None:
+    """Word's move markup pairs the two places by name, so a moved paragraph edited after the
+    move is still that paragraph: moved on disk, and its rewording merged around its
+    bindings."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml = _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+        # Word's edit inside moved text: the deletion nested in the move, the insertion
+        # between two pieces of it.
+        arrived = xml.index("<w:moveTo ", xml.index("w:moveToRangeStart"))
+        at = xml.index("was computed", arrived)
+        edit = (
+            f'</w:t></w:r><w:del w:id="{next(_WORD_IDS)}" {_BY}><w:r><w:delText>was computed'
+            f'</w:delText></w:r></w:del></w:moveTo><w:ins w:id="{next(_WORD_IDS)}" {_BY}>'
+            f'<w:r><w:t>was then computed</w:t></w:r></w:ins><w:moveTo w:id="'
+            f'{next(_WORD_IDS)}" {_BY}><w:r><w:t xml:space="preserve">'
+        )
+        return xml[:at] + edit + xml[at + len("was computed") :]
+
+    returned = rewrite(document, tmp_path / "edited.docx", move)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    reworded = before.replace("was computed", "was then computed", 1)
+    expected = _moved_first(reworded, "# Methods", "The reporting odds ratio")
+    assert by_heading(source.read_text(encoding="utf-8")) == expected
+
+
+def _empty_line_docx(target: Path, change) -> Path:
+    """A document of five identified paragraphs, the second of which renders nothing - as a
+    paragraph of only a comment or raw markup does - with `change` applied to its XML."""
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    texts = ["Alpha opens it.", "", "Gamma follows.", "Beta moves up.", "Delta closes it."]
+    body = ""
+    for index, text in enumerate(texts, start=1):
+        run = f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>' if text else ""
+        body += (
+            f'<w:p><w:pPr><w:pStyle w:val="BodyText" /></w:pPr>'
+            f'<w:bookmarkStart w:id="{index}" w:name="mg-p-x-{index}" />'
+            f'<w:bookmarkEnd w:id="{index}" />{run}</w:p>'
+        )
+    document = f"<w:document {w}><w:body>{change(body)}</w:body></w:document>"
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr("word/document.xml", document)
+    return target
+
+
+def test_a_move_onto_a_line_that_renders_nothing_leaves_the_line_its_identifier(
+    tmp_path: Path,
+) -> None:
+    """A paragraph moved in front of a line that renders nothing takes that line's identifier,
+    as it would any landing's. A recorded move gives it back even to a line with no text: the
+    line is still the paragraph that renders nothing, and the moved one is itself."""
+    from manuscript_guard.docxtext import blocks as read
+
+    def move(body: str) -> str:
+        tagged = tagged_xml(body)
+        assert "<w:t" not in _parts(tagged[1])[2]
+        return _word_paste(body, [tagged[3]], tagged[1], "tracked-move")
+
+    document = _empty_line_docx(tmp_path / "moved.docx", move)
+    named = [(block.names, block.text) for block in read(document) if block.names]
+    assert named[:3] == [
+        (("mg-p-x-1",), "Alpha opens it."),
+        (("mg-p-x-4",), "Beta moves up."),
+        (("mg-p-x-2",), ""),
+    ], named
+
+
+def test_text_typed_on_a_line_that_renders_nothing_keeps_the_lines_identifier(
+    tmp_path: Path,
+) -> None:
+    """Text typed on a line that renders nothing, with Track Changes on, and Enter, reads as a
+    paragraph that arrived in front of it. Its identifier stays on the typed text, so the
+    import refuses it as text typed where the paragraph renders nothing, instead of handing it
+    to the empty line and reporting that nothing came back."""
+    from manuscript_guard.docxtext import blocks as read
+
+    def typed(body: str) -> str:
+        empty = tagged_xml(body)[1]
+        props, mark, _runs = _parts(empty)
+        text = _tracked_runs("<w:r><w:t>A sentence typed on the empty line.</w:t></w:r>", "ins")
+        return body.replace(
+            empty, f"<w:p>{_tracked_mark(props, 'ins')}{mark}{text}</w:p><w:p>{props}</w:p>", 1
+        )
+
+    document = _empty_line_docx(tmp_path / "typed.docx", typed)
+    named = [(block.names, block.text) for block in read(document) if block.names]
+    assert (("mg-p-x-2",), "A sentence typed on the empty line.") in named, named
+
+
+@needs_pandoc
+@pytest.mark.parametrize("how", ["tracked", "untracked"])
+@pytest.mark.parametrize("reworded", [False, True])
+def test_a_move_word_did_not_record_is_refused_as_a_move(
+    project: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    how: str,
+    reworded: bool,
+) -> None:
+    """Without Word's move markup - Track Changes off, or a document built before moves were
+    recorded - nothing says which paragraph the pasted text is. It is not reported as deleted
+    with the advice to delete it in the .md: the only copy of it Word sent back has numbers
+    where the source has bindings, and retyping that one is how a checked paragraph becomes
+    an unchecked one. Matching it by its text was tried, and beaten in review three times."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+
+        def edit(runs: str) -> str:
+            return runs.replace("was computed", "was then computed", 1) if reworded else runs
+
+        return _word_paste(xml, [tagged[5]], tagged[3], how, edit)
+
+    returned = rewrite(document, tmp_path / "unrecorded.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    out = capsys.readouterr().out
+    assert "moved in Word" in out and "The reporting odds ratio was computed" in out, out
+    assert "delete it in the .md yourself" not in out
+    assert "retype" in out
+
+
+@needs_pandoc
+@pytest.mark.parametrize("track", [True, False])
+@pytest.mark.parametrize("typed", ["", "A new opening paragraph."])
+def test_a_paragraph_started_in_front_of_another_leaves_it_its_identifier(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], track: bool, typed: str
+) -> None:
+    """Enter pressed at the start of a paragraph put its identifier on the empty line Word
+    made, and the paragraph was reported "deleted in Word": followed, that advice deletes a
+    paragraph nobody deleted. Text typed there was refused as a split of it, which with Track
+    Changes on it now is not: the markup says the new paragraph is new. Without it, a new
+    paragraph typed in front of this one reads like this one rewritten with a copy of it
+    pasted after, so it is still refused, and the refusal shows the new text."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def enter(xml: str) -> str:
+        paragraph = tagged_xml(xml)[4]
+        props, mark, runs = _parts(paragraph)
+        new = f'<w:r><w:t xml:space="preserve">{typed}</w:t></w:r>' if typed else ""
+        if track:
+            new = _tracked_runs(new, "ins") if new else ""
+            props_new = _tracked_mark(props, "ins")
+        else:
+            props_new = props
+        return xml.replace(
+            paragraph, f"<w:p>{props_new}{mark}{new}</w:p><w:p>{props}{runs}</w:p>", 1
+        )
+
+    returned = rewrite(document, tmp_path / "enter.docx", enter)
+    capsys.readouterr()
+    refused = bool(typed) and not track
+    # New text is listed among the paragraphs without an identifier, which exits 1.
+    assert main(["import", str(returned), str(project), "--apply"]) == (1 if typed else 0)
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out, out
+    assert ("NOT merged" in out and typed in out) if refused else "NOT merged" not in out, out
+    if typed:
+        assert f"+ {typed}" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+def _word_delete(xml: str, paragraph: str) -> str:
+    """`paragraph` deleted with Track Changes off: its bookmark, which Word does not delete
+    with the text, goes in front of the next paragraph's own."""
+    _props, mark, _runs = _parts(paragraph)
+    at = xml.index(paragraph)
+    xml = xml[:at] + xml[at + len(paragraph) :]
+    following = _OPENING.match(xml, xml.index("<w:p>", at))
+    assert following
+    return xml[: following.start("mark")] + mark + xml[following.start("mark") :]
+
+
+def _methods(text: str) -> list[str]:
+    return [p[:24] for p in by_heading(text)["# Methods"]]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "shape", ["over-a-deletion", "two-together", "reworded", "with-a-heading", "copied"]
+)
+def test_what_a_paste_without_track_changes_leaves_unclear_is_not_written(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], shape: str
+) -> None:
+    """Pastes made with Track Changes off, which a recovery by text got wrong in review: a
+    paste carrying a deleted paragraph's identifier as well as its landing's, two paragraphs
+    pasted together, a paste reworded after it, one carrying a heading, a copy rather than a
+    cut. Each wrote a wrong paragraph into the source, twice under "bindings intact", or
+    went silent. None of it may be written."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        if shape == "over-a-deletion":
+            xml = _word_delete(xml, tagged[5])
+            tagged = tagged_xml(xml)
+            return _word_paste(xml, [tagged[3]], tagged[5], "untracked")
+        if shape == "two-together":
+            return _word_paste(xml, [tagged[3], tagged[4]], tagged[6], "untracked")
+        if shape == "reworded":
+            reworded = lambda runs: runs.replace("We analysed", "We then analysed", 1)  # noqa: E731
+            return _word_paste(xml, [tagged[3], tagged[4]], tagged[6], "untracked", reworded)
+        if shape == "with-a-heading":
+            paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            heading = next(p for p in paragraphs if ">Discussion<" in p)
+            return _word_paste(xml, [heading, tagged[9]], tagged[6], "untracked")
+        props, mark, runs = _parts(tagged[6])
+        _p, _m, copied = _parts(tagged[4])
+        return xml.replace(tagged[6], f"<w:p>{props}{mark}{copied}</w:p><w:p>{props}{runs}</w:p>")
+
+    returned = rewrite(document, tmp_path / f"{shape}.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert source.read_text(encoding="utf-8") == before
+    out = capsys.readouterr().out
+    assert "nothing came back" not in out and "merging" not in out, out
+
+
+@needs_pandoc
+def test_a_paragraph_retyped_whole_and_ended_with_enter_keeps_its_identifier(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Enter at the end of a paragraph gives it an inserted paragraph mark, and with every word
+    retyped all its text is inserted too, so it read as a paragraph pasted in front of the
+    empty one after it: its identifier went there, and it was reported deleted. What tells
+    them apart is the text it deleted, which a pasted paragraph does not have."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    retyped = "Every word of this paragraph was retyped here."
+
+    def edit(xml: str) -> str:
+        paragraph = tagged_xml(xml)[6]
+        props, mark, runs = _parts(paragraph)
+        new = _tracked_runs(f"<w:r><w:t>{retyped}</w:t></w:r>", "ins")
+        rewritten = f"<w:p>{_tracked_mark(props, 'ins')}{mark}{_tracked_runs(runs, 'del')}{new}"
+        return xml.replace(paragraph, f"{rewritten}</w:p><w:p>{props}</w:p>", 1)
+
+    returned = rewrite(document, tmp_path / "retyped.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "deleted in Word" not in out, out
+    assert source.read_text(encoding="utf-8") == before.replace(
+        "Reporting follows the checklist declared in `paper.yaml`.", retyped
+    )
+
+
+def _split(
+    xml: str, paragraph: str, tracked: bool, second: str = "Confidence"
+) -> tuple[str, str]:
+    """`paragraph` split in Word before its sentence opening `second`."""
+    cut = f'<w:r><w:t xml:space="preserve">database. {second}'
+    at = paragraph.index(cut)
+    props, _mark, _runs = _parts(paragraph)
+    first = paragraph[:at] + '<w:r><w:t xml:space="preserve">database.</w:t></w:r></w:p>'
+    if tracked:
+        first_props, first_mark, first_runs = _parts(first)
+        first = f"<w:p>{_tracked_mark(first_props, 'ins')}{first_mark}{first_runs}</w:p>"
+    rest = f'<w:p>{props}<w:r><w:t xml:space="preserve">{second}' + paragraph[at + len(cut) :]
+    return xml.replace(paragraph, first + rest, 1), rest
+
+
+@needs_pandoc
+@pytest.mark.parametrize("how", ["untracked", "tracked-move"])
+@pytest.mark.parametrize("second_half", ["as-it-was", "reworded"])
+def test_a_paragraph_split_around_a_moved_one_is_not_truncated(
+    project: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    how: str,
+    second_half: str,
+) -> None:
+    """A split is recognised by the second half standing beside the first. A paragraph moved
+    in between, carrying its identifier, stood there instead, and the paragraph merged as its
+    first sentence with the rest gone, exit 0. A paragraph that arrived with Track Changes on
+    vouches for nothing beside it, and the move is not applied either: the place it was put,
+    between the halves, is one the source does not have."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml, rest = _split(xml, tagged[5], tracked=how != "untracked")
+        if second_half == "reworded":
+            xml = xml.replace(rest, rest.replace("Confidence intervals were", "We derived", 1))
+            rest = rest.replace("Confidence intervals were", "We derived", 1)
+        return _word_paste(xml, [tagged[3]], rest, how)
+
+    returned = rewrite(document, tmp_path / "split.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert "split" in capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before
+
+
+def test_a_paragraph_moved_among_the_parts_of_another_is_not_reordered(tmp_path: Path) -> None:
+    """Display maths reaches Word as three paragraphs, and a paragraph moved between the
+    equation and the text after it was reordered to after the whole paragraph: the split the
+    co-author made was dropped without a word."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    fitted = "The model was fitted as $$y = a + b x$$ where b is the slope."
+    paragraphs = {
+        "a": "Alpha opens the section here.",
+        "p": fitted,
+        "b": "Beta sits in the middle of it.",
+        "c": "Cutting this paragraph is the co-author's plan.",
+        "n": "November closes the section.",
+    }
+    path = tmp_path / "main.md"
+    text = "# Methods\n\n" + "\n\n".join(paragraphs.values()) + "\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, words, text.index(words)) for name, words in paragraphs.items()}
+    sent = [
+        Block((), "Methods"),
+        Block(("a",), paragraphs["a"]),
+        Block(("p",), "The model was fitted as"),
+        Block(kind="equation", key="y = a + b x"),
+        Block((), "where b is the slope."),
+        Block(("b",), paragraphs["b"]),
+        Block(("c",), paragraphs["c"]),
+        Block(("n",), paragraphs["n"]),
+    ]
+    # "c" moved with Track Changes on, between the equation and the text after it.
+    moved = Block(("c",), paragraphs["c"], arrived=True)
+    returned = [*sent[:4], moved, sent[4], sent[5], sent[7]]
+    plan = plan_import(known, sent, returned)
+    assert "c" in plan.misplaced and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize("how", ["deleted", "moved"])
+def test_an_identifier_that_slid_onto_a_heading_is_not_merged_as_its_text(
+    tmp_path: Path, how: str
+) -> None:
+    """The last paragraph of a section, deleted or cut without Track Changes, leaves its
+    identifier on the heading after it. Read as the paragraph's text, the heading was merged
+    into it whenever the paragraph named the heading: "Methods", bindings intact."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    last = "Whether the signal holds is examined in the Methods below."
+    path = tmp_path / "main.md"
+    text = f"# Introduction\n\nAlpha opens it.\n\n{last}\n\n# Methods\n\nWe analysed it.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {
+        "a": (path, "Alpha opens it.", text.index("Alpha")),
+        "w": (path, last, text.index(last)),
+        "m": (path, "We analysed it.", text.index("We analysed")),
+    }
+    sent = [Block((), "Introduction"), Block(("a",), "Alpha opens it."), Block(("w",), last),
+            Block((), "Methods"), Block(("m",), "We analysed it.")]
+    if how == "deleted":
+        returned = [sent[0], sent[1], Block(("w",), "Methods"), sent[4]]
+    else:
+        returned = [sent[0], Block((), last), sent[1], Block(("w",), "Methods"), sent[4]]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged, plan.merged
+    if how == "deleted":
+        assert plan.gone == ("w",)
+    else:
+        assert [name for name, _text in plan.displaced] == ["w"]
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_holding_the_whole_of_another_paragraph_is_not_merged(
+    tmp_path: Path,
+) -> None:
+    """A paragraph pasted in front of another took its identifier, and the other's text was
+    then joined onto a third paragraph with no bookmark to say so. The third merged holding
+    the other's whole text, which was then in the source twice."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {
+        "h": "Hepatic injury is the single event term used here.",
+        "m": "The reporting odds ratio was computed from a table.",
+        "r": "Reporting follows the declared checklist.",
+        "z": "Zulu closes the section.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    returned = [
+        Block(("h",), paragraphs["r"]),
+        Block(("m",), paragraphs["h"] + " " + paragraphs["m"]),
+        Block(("r", "z"), paragraphs["z"]),
+    ]
+    plan = plan_import(known, sent, returned)
+    assert {refusal.name for refusal in plan.refused} >= {"h", "m"}
+    assert not plan.merged and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_a_paragraph_typed_in_front_of_another_refuses_that_one_only(tmp_path: Path) -> None:
+    """Track Changes off, a new paragraph typed at the start of another: that one is refused
+    beside the new text, and a rewording elsewhere in the document still merges."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "y": "The cohort included adult patients only.",
+        "m": "Middle paragraph left alone.",
+        "z": "Patients with prior liver disease were excluded.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    edited = "Patients with prior liver disease were left out."
+    returned = [
+        Block(("y",), "A new paragraph typed here."),
+        Block((), paragraphs["y"]),
+        sent[1],
+        Block(("z",), edited),
+    ]
+    plan = plan_import(known, sent, returned)
+    assert [refusal.name for refusal in plan.refused] == ["y"]
+    assert plan.merged == {"z": edited}
+
+
+def test_a_sentence_deleted_while_a_paragraph_is_added_elsewhere_is_merged(
+    tmp_path: Path,
+) -> None:
+    """A split is judged by what stands beside a paragraph, not by whether any new text
+    anywhere reuses its words: a check by words refused this ordinary pair of edits as a
+    split."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "a": "Confidence intervals were derived from the standard error. They are two-sided.",
+        "b": "Beta sits between them.",
+        "c": "Gamma closes the section.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    shorter = "Confidence intervals were derived from the standard error."
+    returned = [Block(("a",), shorter), sent[1], sent[2], Block((), "They are two-sided.")]
+    plan = plan_import(known, sent, returned)
+    assert plan.merged == {"a": shorter}
+
+
+@needs_pandoc
+def test_a_paragraph_deleted_after_a_move_landed_in_front_of_it_is_reported_deleted(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A paragraph moved to the start of the last one of a section, that one then deleted,
+    and the heading after it retitled, all with Track Changes on. The identifier was carried
+    past the deleted paragraph onto the heading, and the heading's new title merged as the
+    paragraph's text. (The move crosses a heading, so it is reported and not applied.)"""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        assert "Whether the signal extends" in tagged[2]
+        xml = _word_paste(xml, [tagged[3]], tagged[2], "tracked-move")
+        landing = next(
+            p
+            for p in re.findall(r"<w:p>.*?</w:p>", xml, re.DOTALL)
+            if "Whether the signal extends" in p
+        )
+        xml = xml.replace(landing, _tracked_deletion(landing), 1)
+        assert ">Methods</w:t>" in xml
+        return xml.replace(">Methods</w:t>", ">Study design</w:t>", 1)
+
+    returned = rewrite(document, tmp_path / "retitled.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "merging" not in out and "deleted in Word" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_paragraph_typed_in_front_of_one_then_deleted_is_not_a_join(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Track Changes on: a paragraph typed at the start of another, that other deleted, the
+    next one reworded. The deleted paragraph's identifier was carried past it, and the three
+    were reported as a join, with the deletion unreported."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        props, mark, runs = _parts(tagged[4])
+        typed = _tracked_runs("<w:r><w:t>A new paragraph typed here.</w:t></w:r>", "ins")
+        deleted = _tracked_deletion(f"<w:p>{props}{runs}</w:p>")
+        return xml.replace(
+            tagged[4], f"<w:p>{_tracked_mark(props, 'ins')}{mark}{typed}</w:p>{deleted}", 1
+        ).replace("was computed", "was then computed", 1)
+
+    returned = rewrite(document, tmp_path / "typed.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "joined" not in out and "deleted in Word" in out, out
+    assert "Hepatic injury is the single" in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_paragraph_another_reviewer_deleted_does_not_take_an_identifier(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two paragraphs typed in front of one with Track Changes on, the second deleted by
+    another reviewer, and the paragraph reworded: the identifier went to the deleted one and
+    vanished with it, and the paragraph it names was reported "moved in Word". It is refused
+    as it was before, beside the new paragraph."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        paragraph = tagged_xml(xml)[5]
+        props, mark, runs = _parts(paragraph)
+        first = _tracked_runs("<w:r><w:t>A first new paragraph.</w:t></w:r>", "ins")
+        gone = _tracked_runs(_tracked_runs("<w:r><w:t>A second one.</w:t></w:r>", "del"), "ins")
+        deleted = f'<w:del w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr>'
+        both = _tracked_mark(props, "ins").replace("</w:rPr>", deleted, 1)
+        typed = f"<w:p>{_tracked_mark(props, 'ins')}{mark}{first}</w:p>"
+        typed += f"<w:p>{both}{gone}</w:p>"
+        edited = runs.replace(
+            "was computed",
+            f'</w:t></w:r>{_tracked_runs("<w:r><w:t>was computed</w:t></w:r>", "del")}'
+            f'{_tracked_runs("<w:r><w:t>was then computed</w:t></w:r>", "ins")}'
+            '<w:r><w:t xml:space="preserve">',
+            1,
+        )
+        assert edited != runs
+        return xml.replace(paragraph, typed + f"<w:p>{props}{edited}</w:p>", 1)
+
+    returned = rewrite(document, tmp_path / "second.docx", edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "moved in Word" not in out and "deleted in Word" not in out, out
+    assert "NOT merged" in out and "was then computed" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+def _maths(tmp_path: Path) -> tuple[Path, str, dict, list]:
+    """A section with a paragraph that reaches Word in parts, as sent."""
+    from manuscript_guard.docxtext import Block
+
+    fitted = "The model was fitted as $$y = a + b x$$ where b is the slope."
+    paragraphs = {
+        "a": "Alpha opens the section here.",
+        "p": fitted,
+        "b": "Beta sits in the middle of it.",
+        "c": "Gamma closes the section here.",
+    }
+    path = tmp_path / "main.md"
+    text = "# Methods\n\n" + "\n\n".join(paragraphs.values()) + "\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, words, text.index(words)) for name, words in paragraphs.items()}
+    sent = [
+        Block((), "Methods"),
+        Block(("a",), paragraphs["a"]),
+        Block(("p",), "The model was fitted as"),
+        Block(kind="equation", key="y = a + b x"),
+        Block((), "where b is the slope."),
+        Block(("b",), paragraphs["b"]),
+        Block(("c",), paragraphs["c"]),
+    ]
+    return path, text, known, sent
+
+
+def test_moving_the_first_part_of_a_display_maths_paragraph_does_not_move_it_all(
+    tmp_path: Path,
+) -> None:
+    """Only the line before the equation was moved with Track Changes on, and the whole
+    paragraph was moved in the source, equation and all, while Word still showed the
+    equation where it was. Exit 0, "reordered 1 paragraph"."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path, text, known, sent = _maths(tmp_path)
+    first = Block(("p",), "The model was fitted as", arrived=True)
+    returned = [sent[0], sent[1], sent[3], sent[4], sent[5], first, sent[6]]
+    plan = plan_import(known, sent, returned)
+    assert "p" in plan.misplaced and not plan.moved
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_paragraph_left_between_the_parts_of_another_is_reported(tmp_path: Path) -> None:
+    """A paragraph that came back between an equation and the text after it, with the order
+    of the identified paragraphs unchanged, was dropped without a word: "nothing came
+    back"."""
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, sent = _maths(tmp_path)
+    returned = [sent[0], sent[1], sent[2], sent[3], sent[5], sent[4], sent[6]]
+    plan = plan_import(known, sent, returned)
+    assert "b" in plan.misplaced and not plan.empty
+
+
+def test_a_display_maths_paragraph_whose_later_part_changed_is_not_moved(tmp_path: Path) -> None:
+    """A paragraph Word shows in parts counted as come apart whenever any part after its
+    equation changed - the sentence after it reworded - because its equation, the first
+    part, was still in the document. It was reported "moved into a different section",
+    and it had not moved: it is apart only when its equation no longer follows it."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, _text, known, sent = _maths(tmp_path)
+    reworded = Block((), "where b is the gradient.")
+    returned = [*sent[:4], reworded, *sent[5:]]
+    plan = plan_import(known, sent, returned)
+    assert "p" not in plan.misplaced and not plan.moved
+
+
+@pytest.mark.parametrize("boundary", ["heading", "comment"])
+def test_a_move_beside_a_split_is_held_whatever_stands_next_to_the_new_text(
+    tmp_path: Path, boundary: str
+) -> None:
+    """A section that gained text keeps its order. The section was found from the paragraphs
+    either side of the new text, and a paragraph moved in from another section standing
+    beside it hid the one it was in: a paragraph moved between the halves of a split was
+    reordered to after the whole of it. Walking past paragraphs named misplaced was not
+    enough: across an HTML comment, which ends a section in the source and shows nothing in
+    Word, the one moved in is not named misplaced, and it hid the section all the same."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    words = {
+        "x": "Xray opens section one.",
+        "y": "Yankee closes section one. It has a second sentence.",
+        "f": "Foxtrot opens section two.",
+        "g": "Golf closes section two.",
+    }
+    between = "# Two" if boundary == "heading" else "<!-- a note -->"
+    text = f"# One\n\n{words['x']}\n\n{words['y']}\n\n{between}\n\n{words['f']}\n\n{words['g']}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    shown = [Block((), "Two")] if boundary == "heading" else []
+    sent = [Block((), "One"), Block(("x",), words["x"]), Block(("y",), words["y"]),
+            *shown, Block(("f",), words["f"]), Block(("g",), words["g"])]
+    returned = [
+        sent[0],
+        Block(("y",), "Yankee closes section one."),
+        Block(("x",), words["x"], arrived=True),
+        Block(("f",), words["f"], arrived=True),
+        Block((), "It has a second sentence."),
+        *shown,
+        sent[-1],
+    ]
+    plan = plan_import(known, sent, returned)
+    assert not plan.moved and not plan.merged
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_took_in_a_vanished_paragraph_is_not_merged(tmp_path: Path) -> None:
+    """A paragraph cut and pasted onto the end of one elsewhere, with a word typed to join
+    them: the one it joined merged holding it, and the report told the author to move the
+    vanished paragraph in the .md rather than delete it - so its text was in the source
+    twice."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    paragraphs = {
+        "x": "Patients with prior liver disease were excluded from every analysis we ran.",
+        "m": "Middle paragraph left alone.",
+        "y": "The cohort included adult patients only.",
+        "z": "Zulu closes it.",
+    }
+    path, known = source_of(tmp_path, paragraphs)
+    before = path.read_text(encoding="utf-8")
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    joined = paragraphs["y"] + " Moreover, " + paragraphs["x"][0].lower() + paragraphs["x"][1:]
+    returned = [Block(("x", "m"), paragraphs["m"]), Block(("y",), joined), sent[3]]
+    plan = plan_import(known, sent, returned)
+    assert "y" in [refusal.name for refusal in plan.refused] and not plan.merged
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_an_empty_line_gives_back_only_the_identifier_that_matched(tmp_path: Path) -> None:
+    """A paragraph cut without Track Changes left its identifier on the line an HTML comment
+    renders as, and was pasted just below it. Both identifiers went to the pasted text, and
+    the comment was reported "deleted in Word" - an invitation to delete the author's note."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    text = "Sierra is a paragraph.\n\n<!-- a note -->\n\nTango follows.\n"
+    path.write_text(text, encoding="utf-8")
+    known = {
+        "s": (path, "Sierra is a paragraph.", 0),
+        "h": (path, "<!-- a note -->", text.index("<!--")),
+        "t": (path, "Tango follows.", text.index("Tango")),
+    }
+    sent = [Block(("s",), "Sierra is a paragraph."), Block(("h",), ""),
+            Block(("t",), "Tango follows.")]
+    returned = [Block(("s", "h"), ""), Block((), "Sierra is a paragraph."), sent[2]]
+    plan = plan_import(known, sent, returned)
+    assert "h" not in plan.gone and "h" not in [name for name, _t in plan.displaced]
+
+
+@needs_pandoc
+def test_a_recorded_move_ended_with_enter_is_still_a_move(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Enter at the end of the moved copy marks its paragraph mark inserted rather than moved,
+    and the pairing asked for a moved mark: the move was reported as one Word did not
+    record."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml = _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+        arrived = xml.index("w:moveToRangeStart")
+        mark = xml.rindex("<w:moveTo ", 0, arrived)
+        xml = xml[:mark] + "<w:ins " + xml[mark + len("<w:moveTo ") :]
+        end = xml.index("</w:p>", arrived) + len("</w:p>")
+        # The new empty line ends with the copy's own mark, still a moved one.
+        empty = f"<w:p>{_tracked_mark('', 'moveTo')}</w:p>"
+        return xml[:end] + empty + xml[end:]
+
+    returned = rewrite(document, tmp_path / "enter.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    out = capsys.readouterr().out
+    assert "moved in Word" not in out, out
+    after = source.read_text(encoding="utf-8")
+    assert by_heading(after) == _moved_first(before, "# Methods", "The reporting odds ratio")
+
+
+@needs_pandoc
+def test_a_move_held_back_says_what_held_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A heading retitled with Track Changes on is text the document as sent did not have, and
+    it holds the moves beside it. The report said "a paragraph split, or a new one (below)",
+    and nothing was below."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        xml = _word_paste(xml, [tagged[5]], tagged[3], "tracked-move")
+        return xml.replace(">Methods</w:t>", ">Study design</w:t>", 1)
+
+    returned = rewrite(document, tmp_path / "retitled.docx", move)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "not applied" in out and "Study design" in out, out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_document_built_before_moves_were_recorded_is_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A document built before the build let Word record moves brings every move back as a
+    deletion and new text. The advice named a version the command line cannot show; the
+    document itself says which kind it is."""
+    from manuscript_guard.cli import main
+
+    document = built(project)
+
+    def move(xml: str) -> str:
+        tagged = tagged_xml(xml)
+        return _word_paste(xml, [tagged[5]], tagged[3], "tracked")
+
+    returned = rewrite(document, tmp_path / "old.docx", move)
+    scratch = tmp_path / "old-settings.docx"
+    with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/settings.xml":
+                data = data.replace(b"<w:zoom ", b"<w:doNotTrackMoves /><w:zoom ", 1)
+                assert b"doNotTrackMoves" in data
+            zout.writestr(item, data)
+    capsys.readouterr()
+    assert main(["import", str(scratch), str(project)]) == 1
+    out = capsys.readouterr().out
+    assert "record moves" in out and "rebuild" in out.lower(), out
+
+
+@needs_pandoc
+def test_a_built_document_lets_word_record_a_move_as_a_move(project: Path) -> None:
+    """Pandoc's reference document carries `w:doNotTrackMoves`, so with Track Changes on Word
+    wrote a cut and paste as a deletion and an unrelated insertion, and dropped the one piece
+    of markup that says which paragraph arrived where."""
+    with zipfile.ZipFile(built(project)) as archive:
+        settings = archive.read("word/settings.xml").decode("utf-8")
+    assert "<w:settings" in settings and "doNotTrackMoves" not in settings
+
+
 def source_of(tmp_path: Path, paragraphs: dict[str, str]) -> tuple[Path, dict]:
     """A one-file manuscript and the identifier table `tagged_paragraphs` would give it."""
     path = tmp_path / "main.md"
@@ -5697,6 +8778,47 @@ def test_a_paragraph_that_came_back_twice_stays_where_it_was(tmp_path: Path) -> 
     assert path.read_text(encoding="utf-8") == text
 
 
+def test_a_rewritten_paragraph_with_its_old_text_pasted_after_it_is_not_given_away(
+    tmp_path: Path,
+) -> None:
+    """A paragraph duplicated and its first copy rewritten reads like an identifier that slid
+    onto text pasted in front of it: the untouched copy comes next, reading exactly as the
+    paragraph was sent. Given to that copy, the identifier would say nothing changed, and the
+    rewrite would be dropped without a word. It stays refused as a split."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "a": "Alpha comes first here.",
+        "b": "The cohort included adult patients only, recruited over ten years.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    sent = [Block((name,), text) for name, text in paragraphs.items()]
+    rewritten = "Adults alone were recruited, across a decade of enrolment."
+    plan = plan_import(known, sent, [sent[0], Block(("b",), rewritten), Block((), paragraphs["b"])])
+    assert [refusal.name for refusal in plan.refused] == ["b"]
+    assert not plan.merged and not plan.gone
+
+
+def test_a_vanished_paragraph_is_not_found_in_text_another_one_shares(tmp_path: Path) -> None:
+    """Found again by its text only when no other paragraph of the document as sent reads the
+    same: a limitation stated in the Abstract and again in the Discussion could be either."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    same = "Spontaneous reports are subject to notoriety bias."
+    paragraphs = {"a": same, "b": "Text B here.", "c": same}
+    path = tmp_path / "main.md"
+    text = "# One\n\n" + same + "\n\n# Two\n\nText B here.\n\n" + same + "\n"
+    path.write_text(text, encoding="utf-8")
+    known = {"a": (path, same, 7), "b": (path, "Text B here.", text.index("Text B")),
+             "c": (path, same, text.rindex(same))}
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    # "c" cut, its bookmark left on nothing, and its text pasted untagged before "b".
+    plan = plan_import(known, sent, [sent[0], Block((), same), sent[1]])
+    assert plan.displaced == (("c", same),) and not plan.moved and not plan.gone
+
+
 def test_import_without_pandoc_says_so_rather_than_crashing(
     project: Path,
     tmp_path: Path,
@@ -5780,6 +8902,34 @@ def test_import_keeps_an_inline_comment_and_footnote(
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     assert paragraph in text, "the paragraph, comment and footnote included, is untouched"
     assert "an HTML comment and a footnote" in out, out
+
+
+@needs_pandoc
+def test_a_comment_opener_typed_in_word_leaves_every_paragraph_identified(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end. A co-author types `<!--` into a paragraph, and the merge writes it
+    escaped, `\\<!--`, which pandoc prints as typed. The next build took it for a comment
+    opened there and closed by a `-->` further down, and the paragraphs between went without
+    an identifier: a co-author's next edit to them was dropped with "nothing came back"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import paragraph_text
+
+    with_paragraphs(
+        project, "Alpha comes first.", "Beta sits between.", "Gamma shows an arrow --> here."
+    )
+    # Written into document.xml, where Word stores a typed `<` as `&lt;`.
+    edits = {"Alpha comes first.": "Alpha comes first &lt;!-- as typed."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    source = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"Alpha comes first {BACKSLASH}<!-- as typed." in source
+    # Pandoc prints the `--` of `<!--` as a dash; the words are what is compared.
+    printed = list(paragraph_text(built(project)).values())
+    assert "Beta sits between." in printed
+    assert any(text.startswith("Gamma shows an arrow") for text in printed)
+    assert any(text.startswith("Alpha comes first <!") for text in printed)
 
 
 @needs_pandoc
@@ -5893,6 +9043,201 @@ def test_import_does_not_drop_an_edit_to_text_the_reading_hides(
 
 
 @needs_pandoc
+def test_import_leaves_a_link_definition_where_it_was(project: Path, tmp_path: Path) -> None:
+    """A definition has no identifier and reaches Word as nothing, so `import` never splices
+    into it: a rewording of the paragraph after it merges into that paragraph alone, and the
+    next build still links."""
+    from manuscript_guard.cli import main
+
+    definition = f"[reg]: {REGISTRY}"
+    with_paragraphs(project, "See [the registry][reg] for details.", definition, "It is public.")
+    returned = edit_docx(built(project), tmp_path / "back.docx", {"It is public.": "It is open."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"for details.\n\n{definition}\n\nIt is open.\n" in text
+    assert f'Target="{REGISTRY}"' in _docx_part(built(project), "word/_rels/document.xml.rels")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("paragraph", "was", "now"),
+    [
+        pytest.param(
+            "[Note]: patients (all adults) were enrolled.",
+            "enrolled.",
+            "recruited.",
+            id="words-after-title",
+        ),
+        pytest.param(
+            "[Box 1]: Definitions. Injury was an ALT above three times\n"
+            "the upper limit of normal.",
+            "limit of normal.",
+            "limit of normal (ULN).",
+            id="first-line-swallowed",
+        ),
+        # Not `[Methods]`: the example has that heading, and `[Methods]` is a link to it.
+        pytest.param("[Aim]: to estimate the risk.", "the risk.", "its risk.", id="swallowed"),
+    ],
+)
+def test_import_merges_prose_that_only_opens_like_a_definition(
+    project: Path, tmp_path: Path, paragraph: str, was: str, now: str
+) -> None:
+    """End to end, the way two rounds of review found it. Each of these was taken for a
+    definition and left without an identifier. Where pandoc printed it, or the lines under
+    its first, a co-author's edit to it was dropped while `import` said nothing came back;
+    where pandoc did not, the paragraph was missing from the document."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, paragraph)
+    returned = edit_docx(built(project), tmp_path / "back.docx", {was: now})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert now in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "heading",
+    [
+        pytest.param("# Findings", id="atx"),
+        pytest.param("Findings\n========", id="setext"),
+        pytest.param("# Results\n## Findings", id="two-headings"),
+        pytest.param(f"[reg]: {REGISTRY}", id="link-definition"),
+        pytest.param(f"# Findings\n[reg]: {REGISTRY}", id="heading-and-definition"),
+    ],
+)
+def test_import_merges_a_paragraph_written_straight_under_a_heading(
+    project: Path, tmp_path: Path, heading: str
+) -> None:
+    """End to end, the way review found it. `# Findings` with its paragraph on the next line
+    is one block starting with `#`, and every such block went unmarked. Pandoc reads a
+    heading and a paragraph, so the paragraph reached Word with no identifier, and a
+    co-author's edit to it was dropped while `import --apply` said nothing came back. A
+    link's definition over the paragraph is passed over the same way."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, f"{heading}\nPatients were enrolled early.")
+    edit = {"enrolled early.": "enrolled late."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"{heading}\nPatients were enrolled late.\n" in text
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("definition", "second", "part", "resolved"),
+    [
+        pytest.param(
+            f"[reg]: {REGISTRY}",
+            "Omega sees [the registry][reg].",
+            "word/_rels/document.xml.rels",
+            f'Target="{REGISTRY}"',
+            id="link",
+        ),
+        pytest.param(
+            "[^cap]: Capped at forty milligrams.",
+            "Omega was capped.[^cap]",
+            "word/footnotes.xml",
+            "Capped at forty milligrams.",
+            id="footnote",
+        ),
+    ],
+)
+def test_a_paragraph_moved_across_a_definition_is_moved(
+    project: Path, tmp_path: Path, definition: str, second: str, part: str, resolved: str
+) -> None:
+    """A definition renders nothing in the body, and pandoc reads it wherever it stands.
+    As untagged source text between two paragraphs it counted as a section boundary, so a
+    co-author's move across it was refused as a move past a heading, a table or a figure.
+    The paragraphs now change places around it, and it still resolves."""
+    from manuscript_guard.cli import main
+
+    first = "Alpha comes first."
+    with_paragraphs(project, first, definition, second)
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        alpha = next(p for p in paragraphs if "Alpha comes first" in p)
+        omega = next(p for p in paragraphs if "Omega" in p)
+        return xml.replace(omega, "", 1).replace(alpha, omega + alpha, 1)
+
+    returned = rewrite(built(project), tmp_path / "moved.docx", swap)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert f"{second}\n\n{definition}\n\n{first}\n\n" in text
+    assert resolved in _docx_part(built(project), part)
+
+
+@needs_pandoc
+def test_a_definition_beside_a_line_pandoc_prints_leaves_an_edit_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round four: a definition over a line holding only a no-break space still counted as
+    a definition between two paragraphs, though `_blocks` leaves it unmarked for that line,
+    and pandoc prints the line as a block of its own. So the gap made no new section, the
+    section held an untagged block, and an edit to the paragraph above was refused as one
+    that reaches Word as more than one paragraph. On #54 alone the edit merges."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Alpha comes first.",
+        f"[reg]: {REGISTRY}\n{chr(0xA0)}",
+        f"[other]: {REGISTRY}/o",
+        "Omega sees [the registry][reg] and [o][other].",
+    )
+    edits = {"Alpha comes first.": "Alpha now comes first."}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edits)
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "Alpha now comes first.\n\n" in text
+
+
+def test_only_definitions_between_two_paragraphs_keep_them_in_one_section(
+    project: Path,
+) -> None:
+    """Blank lines and definitions are no boundary; a table or a heading is. A definition
+    under a line pandoc does not take for blank is prose to pandoc, not a definition: text
+    between two paragraphs that holds one is a boundary, as any untagged text is."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.merge import _sections
+    from manuscript_guard.roundtrip import only_definitions_between, tagged_paragraphs
+
+    assert only_definitions_between(f"\n\n[late]: {REGISTRY}/late\n\n")
+    assert not only_definitions_between(f"\n\n{chr(0xA0)}\n[late]: {REGISTRY}/late\n\n")
+    # Over such a line, or under one with an empty line between, as `_blocks` leaves it.
+    for between in (f"\n{chr(0xA0)}\n\n", f"\n\n{chr(0xA0)}\n\n", f"\n\n{chr(0x3000)}\n\n"):
+        assert not only_definitions_between(
+            f"\n\n[a]: {REGISTRY}/a{between}[b]: {REGISTRY}/b\n\n"
+        )
+    pieces = [
+        "Alpha.",
+        f"[reg]: {REGISTRY}",
+        "[^cap]: A note.",
+        "Beta.",
+        "{{table.baseline}}",
+        "Gamma.",
+        f"[other]: {REGISTRY}/other",
+        "# Heading",
+        "Delta.",
+    ]
+    (project / "manuscript" / "sections.md").write_text("\n\n".join(pieces) + "\n", "utf-8")
+    loaded, _report = load_project(project)
+    known = {
+        name: entry
+        for name, entry in tagged_paragraphs(loaded).items()
+        if entry[0].name == "sections.md"
+    }
+    section = {known[name][1]: number for name, (_path, number) in _sections(known).items()}
+    assert section["Alpha."] == section["Beta."]
+    assert section["Gamma."] == section["Beta."] + 1
+    assert section["Delta."] == section["Gamma."] + 1
+
+
+@needs_pandoc
 @pytest.mark.parametrize(
     ("paragraph", "was", "now", "expected"),
     [
@@ -5924,6 +9269,303 @@ def test_import_writes_pandocs_no_break_space_back_as_a_space(
 
     assert main(["import", str(returned), str(project), "--apply"]) == 0
     assert expected in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------ end to end: a write the next build would not identify
+
+SHAPED = "[x]: https://example.org/xyz"
+NOTE = "[^cap]: Capped at forty."
+#: A block pandoc takes into the note above it: after a blank line, indented four columns,
+#: a zero-width space that shows nothing. The note is marked for it, and prints as text.
+RUNS_INTO = f"    {chr(0x200B)}\nIt was rare."
+
+
+def swapped(first: str, second: str):
+    """A co-author, simulated: the paragraph holding `second` cut and pasted above the one
+    holding `first`."""
+
+    def swap(xml: str) -> str:
+        paragraphs = tagged_xml(xml)
+        above = next(p for p in paragraphs if first in p)
+        below = next(p for p in paragraphs if second in p)
+        return xml.replace(below, "", 1).replace(above, below + above, 1)
+
+    return swap
+
+
+@needs_pandoc
+def test_a_rewording_that_leaves_a_link_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end, from the round-4 review of #72. A paragraph opening `[Note]:` with a
+    narrative citation after it is prose, and marked. Cut down in Word to the label and the
+    citation, it is a link's definition in the shape pandoc reads no other way: the next
+    build would print nothing of it. No rewording written from Word can open so, since `[`
+    comes back escaped; the kept stretches do it. Refused, with the source untouched."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "[Note]: @fictionalClassSignal2019 says the ratio was high.")
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    returned = edit_docx(built(project), tmp_path / "cut.docx", {"says the ratio was high.": ""})
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "the next build would give it no identifier" in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_a_move_that_would_make_a_paragraph_a_definition_is_refused(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """End to end. A note is marked where what is below it would run into it, and prints
+    as text. Swapped in Word with the paragraph above it, it landed over a plain paragraph,
+    where the next build read it as a note again and printed nothing of it in the body -
+    while `import --apply` exited 0 and said it had reordered a paragraph."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Alpha comes first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    assert "Capped at forty." in _docx_part(document, "word/document.xml")
+    returned = rewrite(document, tmp_path / "moved.docx", swapped("Alpha comes", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project)]) == 1
+    dry = capsys.readouterr().out
+    assert "without its identifier" in dry
+    assert "applies the safe changes" not in dry
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "without its identifier" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+    assert "Capped at forty." in _docx_part(built(project), "word/document.xml")
+
+
+@needs_pandoc
+def test_a_move_that_pushes_a_note_into_a_definitions_place_holds_its_section(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Review round one: the co-author moved only the first paragraph, below the note, and
+    that pushed the note, which nobody touched, up into a place where it was a definition
+    again. Holding back the note alone refused a paragraph nobody moved and put the others
+    in an order neither side had. No move in the section is applied now, and each is named
+    with the note it would leave behind."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "Doses were capped.[^cap]", "Aaa first.", NOTE, RUNS_INTO)
+    source = project / "manuscript" / "main.md"
+    before = source.read_text(encoding="utf-8")
+    document = built(project)
+    once = rewrite(document, tmp_path / "once.docx", swapped("Doses were", "Aaa first"))
+    returned = rewrite(once, tmp_path / "moved.docx", swapped("Doses were", "Capped at"))
+
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert "Doses were capped." in out and "it would leave behind: [^cap]" in out
+    assert "reordered" not in out
+    assert source.read_text(encoding="utf-8") == before
+
+
+@needs_pandoc
+def test_the_other_changes_beside_a_refused_move_are_applied(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Moves are held back in the one section, and a rewording there still lands, in place;
+    a move in another section is applied."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(
+        project,
+        "Doses were capped.[^cap]",
+        "Alpha comes first.",
+        NOTE,
+        RUNS_INTO,
+        "## Later",
+        "Beta was second.",
+        "Gamma was third.",
+    )
+    source = project / "manuscript" / "main.md"
+    document = built(project)
+    first = rewrite(document, tmp_path / "one.docx", swapped("Alpha comes", "Capped at"))
+    both = rewrite(first, tmp_path / "two.docx", swapped("Beta was", "Gamma was"))
+    returned = edit_docx(both, tmp_path / "back.docx", {"Alpha comes first.": "Alpha came first."})
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    text = source.read_text(encoding="utf-8")
+    assert f"Alpha came first.\n\n{NOTE}\n\n{RUNS_INTO}" in text
+    assert "## Later\n\nGamma was third.\n\nBeta was second." in text
+    assert "without its identifier" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
+    project: Path, tmp_path: Path
+) -> None:
+    """The other way a paragraph could take a definition's shape is typed in Word, and that
+    one never lost anything: the merge escapes the bracket, so the paragraph prints as it was
+    typed and keeps its identifier. Kept here beside the move, which has no such escape."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The registry is at https://example.org/xyz for anyone.")
+    edit = {"The registry is at https://example.org/xyz for anyone.": SHAPED}
+    returned = edit_docx(built(project), tmp_path / "back.docx", edit)
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    assert f"\n\n\\{SHAPED}\n\n" in (project / "manuscript" / "main.md").read_text(encoding="utf-8")
+    assert "example.org/xyz" in _docx_part(built(project), "word/document.xml")
+
+
+def test_word_text_reads_an_emoji_word_writes_as_a_choice(tmp_path: Path) -> None:
+    """Word can write an emoji it inserts as `w16se:symEx` in an AlternateContent choice, with
+    the character only in the fallback, which is not read: a fallback repeats its choice, so
+    read, it would give the emoji twice. Read as nothing, it ran "12" and "34" together."""
+    from manuscript_guard.docxtext import blocks
+
+    main = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    xml = (
+        f'<w:document xmlns:w="{main}"><w:body><w:p>'
+        '<w:bookmarkStart w:id="0" w:name="mg-p-x-0"/>'
+        f"<w:r><w:t>Scored 12</w:t></w:r>{word_emoji()}<w:r><w:t>34 today</w:t></w:r>"
+        "</w:p></w:body></w:document>"
+    )
+    document = tmp_path / "a.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    assert [b.text for b in blocks(document)] == [f"Scored 12{EMOJI}34 today"]
+
+
+def test_a_move_the_next_build_would_lose_is_held_where_it_was(tmp_path: Path) -> None:
+    """The plan itself, without pandoc: no move in the section is applied, the move made -
+    the note's, by the order diff - is named with the note it would strand, none is listed
+    as moved, and applying the plan writes nothing."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    source = tmp_path / "main.md"
+    text = f"Alpha.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "n": (source, NOTE, text.index(NOTE))}
+    sent = [Block((name,), known[name][1]) for name in known]
+
+    plan = plan_import(known, sent, [sent[1], sent[0]])
+    assert plan.held == {"a", "n"}
+    assert dict(plan.held_back) == {"n": "n"}
+    assert not plan.moved and not plan.refused
+    apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_write_that_would_cost_another_paragraph_its_identifier_is_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write can cost a paragraph beside it its identifier - a comment or a fence opened in
+    one block runs on into the next - and which write did it cannot be told, so every
+    rewording in that file is refused. Simulated: the next build is made to lose `Gamma.`
+    once `Alpha.` is reworded."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    source = tmp_path / "main.md"
+    text = "Alpha.\n\nGamma.\n"
+    source.write_text(text, encoding="utf-8")
+    known = {"a": (source, "Alpha.", 0), "g": (source, "Gamma.", 8)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    marked = merge.marked_blocks
+
+    def losing_gamma(raw: str) -> list:
+        return [block for block in marked(raw) if "Alpha now." not in raw or block[1] != "Gamma."]
+
+    monkeypatch.setattr(merge, "marked_blocks", losing_gamma)
+    plan = merge.plan_import(known, sent, [Block(("a",), "Alpha now."), sent[1]])
+    assert not plan.merged
+    assert "another paragraph" in plan.refused[0].why[0]
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def _plan_of(tmp_path: Path, text: str, back) -> tuple:
+    """A source of paragraphs named by their first word, and the plan for what came back:
+    `back` maps those names to the returned blocks, in their returned order."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.roundtrip import marked_blocks
+
+    source = tmp_path / "main.md"
+    source.write_text(text, encoding="utf-8")
+    known = {body.split()[0]: (source, body, start) for _i, body, start in marked_blocks(text)}
+    sent = [Block((name,), known[name][1]) for name in known]
+    return source, known, merge.plan_import(known, sent, back({b.names[0]: b for b in sent}))
+
+
+def test_a_rewording_that_strands_a_paragraph_once_its_section_is_held_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Review round two, HIGH: held, a section's moves go back, and a rewording there lands
+    in place, where it can do what it did not do where it was moved. Beta, reworded with a
+    `-->` and moved above Alpha, closed nothing there; held back under Alpha, it closed
+    Alpha's `<!--`, and pandoc read the two as one comment. The check looked at no held
+    paragraph again, so the rewording was merged, and the next build lost Beta."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = f"Alpha opens <!-- here.\n\nBeta plain.\n\nGamma plain.\n\n{NOTE}\n\n{RUNS_INTO}\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [Block(("Beta",), "Beta --> plain."), by["Alpha"], by["[^cap]:"], by["Gamma"]],
+    )
+    assert "Beta" not in plan.merged
+    refusal = next(r for r in plan.refused if r.name == "Beta")
+    assert refusal.text == "Beta --> plain."
+    assert not merge._unidentified(known, plan)
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text
+
+
+def test_a_rewording_that_hides_moved_paragraphs_does_not_hold_the_moves(
+    tmp_path: Path,
+) -> None:
+    """Review round two, MEDIUM: Rho's `-->` closed the `<!--` above Alpha and Beta, so the
+    two came out without their identifiers, swapped or not. Every lost paragraph was acted
+    on in one round: the rewording was refused and the swap held back too, blamed on a
+    definition or a heading. A rewording is refused first now, and the plan checked again."""
+    from manuscript_guard import merge
+    from manuscript_guard.docxtext import Block
+
+    text = "Opens <!-- here.\n\nAlpha plain.\n\nBeta plain.\n\n## Heading\n\nRho plain.\n"
+    source, known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [by["Opens"], by["Beta"], by["Alpha"], Block(("Rho",), "Rho --> plain.")],
+    )
+    assert "Rho" in {refusal.name for refusal in plan.refused}
+    assert not plan.held and not plan.held_back
+    assert {entry[0] for entry in plan.moved} & {"Alpha", "Beta"}
+    merge.apply_plan(known, plan)
+    assert source.read_text(encoding="utf-8") == text.replace(
+        "Alpha plain.\n\nBeta plain.", "Beta plain.\n\nAlpha plain."
+    )
+
+
+def test_a_held_section_names_the_moves_made_not_every_paragraph_they_shift(
+    tmp_path: Path,
+) -> None:
+    """Review round two, LOW: one paragraph moved from the top of a section to below a note
+    shifts every paragraph between, and each was named as moved - nine for one move."""
+    paragraphs = [f"P{number} was written here." for number in range(8)]
+    text = "\n\n".join([*paragraphs, NOTE, RUNS_INTO]) + "\n"
+    _source, _known, plan = _plan_of(
+        tmp_path,
+        text,
+        lambda by: [block for name, block in by.items() if name != "P0"] + [by["P0"]],
+    )
+    assert [name for name, _left in plan.held_back] == ["P0"]
 
 
 # ------------------------------------ end to end: a paragraph cut down to its number stays named
@@ -5963,6 +9605,782 @@ def test_a_paragraph_cut_down_to_its_number_can_be_edited_again(
     again = rewrite(built(project), tmp_path / "again.docx", reworded)
     assert main(["import", str(again), str(project), "--apply"]) == 0
     assert "\n\nAbout {{results.ror.point}}.\n\n" in source.read_text(encoding="utf-8")
+
+
+# ------------------------------------------- what import writes, the next build must name
+
+
+#: Openings a co-author can type that pandoc reads as a list, a line block, a definition or a
+#: caption when they open a paragraph - and that `tag` therefore leaves without an identifier.
+WRITTEN_OPENINGS = [
+    pytest.param("B) the ratio was 3.84 overall.", id="capital-and-parenthesis"),
+    pytest.param("(B) the ratio was 3.84 overall.", id="capital-in-parentheses"),
+    pytest.param("IV. the ratio was 3.84 overall.", id="capital-roman"),
+    pytest.param("A.  the ratio was 3.84 overall.", id="capital-full-stop-two-spaces"),
+    pytest.param("| The ratio was 3.84 overall.", id="bar"),
+    pytest.param(": the ratio was 3.84 overall.", id="colon"),
+    pytest.param(":the ratio was 3.84 overall.", id="colon-without-a-space"),
+    pytest.param("Table: the ratio was 3.84 overall.", id="table-colon"),
+    pytest.param("iv) the ratio was 3.84 overall.", id="small-roman"),
+    pytest.param("--- the ratio was 3.84 overall.", id="dashes"),
+    pytest.param("The ratio } was 3.84 overall.", id="close-brace"),
+]
+
+#: What a paragraph without a binding can be cut down to in Word: as typed, each is a list, a
+#: rule or a definition, or a paragraph `tag` skips.
+CUT_DOWN = [
+    pytest.param("-", id="dash"),
+    pytest.param("+", id="plus"),
+    pytest.param("---", id="rule"),
+    pytest.param("===", id="equals"),
+    pytest.param("--", id="two-dashes"),
+    pytest.param("-- |", id="dashes-and-bar"),
+    pytest.param("-:::", id="dash-and-colons"),
+    pytest.param(":", id="colon"),
+]
+
+
+def _merged(returned: str) -> str | None:
+    """What the merge writes for `returned`: into the binding's paragraph if it keeps the
+    value, into a paragraph without one if not."""
+    if "3.84" in returned:
+        return realign(
+            "The final ratio was {{results.ror.point}} overall.",
+            "The final ratio was 3.84 overall.",
+            returned,
+        )
+    return realign("Costs were low.", "Costs were low.", returned)
+
+
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS)
+def test_a_rewording_merges_as_a_paragraph_the_next_build_names(returned: str) -> None:
+    """The writer escaped only some of what the tagger skips. `B) the ratio was...` merged,
+    pandoc read it as a list at the next build, `tag` gave it no identifier, and the
+    paragraph's next edit in Word was dropped with nothing reported."""
+    from manuscript_guard.roundtrip import tag
+
+    merged = _merged(returned)
+    assert merged is not None
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS + CUT_DOWN)
+def test_a_plain_paragraph_retyped_merges_as_one_the_next_build_names(returned: str) -> None:
+    """The same for a paragraph without a binding, which Word's text replaces whole."""
+    from manuscript_guard.roundtrip import tag
+
+    merged = realign("Costs were low.", "Costs were low.", returned.replace("3.84", "low"))
+    assert merged is not None
+    assert tag(merged, "main.md").startswith("[]{#mg-p-"), merged
+
+
+def test_an_initial_that_opens_no_list_is_not_escaped() -> None:
+    """Pandoc wants two spaces after a single capital and a full stop before it starts a
+    list, so "E. coli" is a sentence. Escaping it anyway would put a backslash into every
+    species name a co-author types."""
+    assert _merged("E. coli gave 3.84 overall.") == "E. coli gave {{results.ror.point}} overall."
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [
+        pytest.param("Set {x, 3.84, y} was chosen.", id="close-brace-edited"),
+        pytest.param("Sets {x, 3.84, y} was used.", id="open-brace-edited"),
+    ],
+)
+def test_a_brace_pair_split_across_a_value_is_refused_and_named(returned: str) -> None:
+    """A brace kept from the source and its partner written from Word, escaped, no longer
+    pair: `Set {x, {{results.ror.point}}, y\\} was chosen.` merged, and the next build gave
+    it no identifier, so its next edit in Word could not come back."""
+    from manuscript_guard.merge import why
+
+    aligned = align(
+        "Set {x, {{results.ror.point}}, y} was used.", "Set {x, 3.84, y} was used.", returned
+    )
+    assert aligned.rebuilt is None
+    assert aligned.unpaired
+    assert "brace" in why(aligned)[0]
+
+
+def test_a_brace_pair_kept_whole_still_merges() -> None:
+    """Only a pair the merge would split is refused: one kept whole on its own side of the
+    value merges as it always did."""
+    merged = realign(
+        "Note {see the note} gave {{results.ror.point}} here.",
+        "Note {see the note} gave 3.84 here.",
+        "Note {see the note} gave 3.84 there.",
+    )
+    assert merged == "Note {see the note} gave {{results.ror.point}} there."
+
+
+def test_dashes_before_a_value_are_no_rule_and_stay_bare() -> None:
+    """The first stretch goes on past the value, so it is no rule, and escaping its first
+    dash printed `-–` where pandoc typesets `---` as an em dash."""
+    merged = realign(
+        "{{results.ror.point}} was the final ratio.",
+        "3.84 was the final ratio.",
+        "--- 3.84 was the final ratio.",
+    )
+    assert merged == "--- {{results.ror.point}} was the final ratio."
+
+
+MU, MINUS, PLUS_MINUS = chr(0x03BC), chr(0x2212), chr(0x00B1)
+WORD_MAIN = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def symbol_document(tmp_path: Path, runs: str, styles: str = "", paragraph_style: str = "") -> Path:
+    """A one-paragraph document carrying an identifier, with `word/styles.xml` if given."""
+    style = f'<w:pPr><w:pStyle w:val="{paragraph_style}"/></w:pPr>' if paragraph_style else ""
+    xml = (
+        f'<w:document xmlns:w="{WORD_MAIN}"><w:body><w:p>{style}'
+        f'<w:bookmarkStart w:id="0" w:name="mg-p-x-0"/>{runs}</w:p></w:body></w:document>'
+    )
+    document = tmp_path / "a.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+        if styles:
+            archive.writestr(
+                "word/styles.xml", f'<w:styles xmlns:w="{WORD_MAIN}">{styles}</w:styles>'
+            )
+    return document
+
+
+def text_run(text: str) -> str:
+    return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
+def symbol(code: str, font: str = "Symbol") -> str:
+    """What Insert > Symbol writes (verified with Word 16): the font and the code in it."""
+    return f'<w:r><w:sym w:font="{font}" w:char="{code}"/></w:r>'
+
+
+def in_font(text: str, font: str = "Symbol", *, hint: bool = False) -> str:
+    """A run in `font`. Word 16 with a Japanese interface adds `w:hint="eastAsia"` to one
+    typed there, which sends the private-use characters to the East Asian font instead."""
+    hinted = ' w:hint="eastAsia"' if hint else ""
+    fonts = f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}"{hinted}/>'
+    return f"<w:r><w:rPr>{fonts}</w:rPr><w:t>{text}</w:t></w:r>"
+
+
+#: A character style whose font is Symbol, and a run using it.
+SYMBOL_STYLE = (
+    '<w:style w:type="character" w:styleId="Greek"><w:name w:val="Greek"/>'
+    '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr></w:style>'
+)
+STYLED_M = '<w:r><w:rPr><w:rStyle w:val="Greek"/></w:rPr><w:t>m</w:t></w:r>'
+
+
+@pytest.mark.parametrize(
+    ("runs", "expected"),
+    [
+        (
+            text_run("Mean 3.2 ") + symbol("F0B1") + text_run(" 0.4 kg"),
+            f"Mean 3.2 {PLUS_MINUS} 0.4 kg",
+        ),
+        (text_run("5 ") + symbol("F06D") + text_run("g"), f"5 {MU}g"),
+        (text_run("CI ") + symbol("F02D") + text_run("0.3"), f"CI {MINUS}0.3"),
+        (text_run("5 ") + in_font("m", hint=True) + text_run("g"), f"5 {MU}g"),
+        (text_run("5 ") + in_font(chr(0xF06D)) + text_run("g"), f"5 {MU}g"),
+        (text_run("in ") + in_font(chr(0xF034) + chr(0xF030)) + text_run(" days"), "in 40 days"),
+    ],
+    ids=[
+        "symbol-plus-minus",
+        "symbol-mu",
+        "symbol-minus",
+        "typed-m",
+        "typed-private-use",
+        "typed-digits",
+    ],
+)
+def test_word_text_reads_the_symbol_font_as_what_it_draws(
+    tmp_path: Path, runs: str, expected: str
+) -> None:
+    """Insert > Symbol with the Symbol font writes `w:sym`, not text, and text typed in that
+    font is in the font's own encoding: an `m` it draws as μ, or the private-use U+F06D. Read
+    as nothing, an inserted ± was dropped and the rest of the edit merged without it; read as
+    written, "5 μg" was "5 mg"."""
+    from manuscript_guard.docxtext import blocks
+
+    [block] = blocks(symbol_document(tmp_path, runs))
+    assert block.text == expected
+    assert block.unread == ()
+
+
+@pytest.mark.parametrize(
+    ("runs", "styles", "named"),
+    [
+        (text_run("Done ") + symbol("F04A", "Wingdings"), "", "Wingdings character F04A"),
+        (text_run("Done ") + in_font(chr(0xF0FE), "Wingdings"), "", "Wingdings character F0FE"),
+        (text_run("A ") + symbol("F0E6") + text_run("b"), "", "Symbol character F0E6"),
+        (
+            text_run("5 ") + STYLED_M + text_run("g"),
+            SYMBOL_STYLE,
+            "Symbol font from the style Greek",
+        ),
+        (
+            text_run("5 ") + in_font(chr(0xF06D), hint=True) + text_run("g"),
+            "",
+            "private-use character F06D",
+        ),
+        (
+            text_run("Done ") + in_font(chr(0xE73E), "Segoe MDL2 Assets"),
+            "",
+            "private-use character E73E",
+        ),
+        (text_run("Done ") + in_font("J", "Wingdings"), "", "Wingdings character F04A"),
+        (text_run("Done ") + in_font(chr(0xFC), "Webdings"), "", "Webdings character F0FC"),
+    ],
+    ids=[
+        "wingdings-symbol",
+        "wingdings-typed",
+        "bracket-piece",
+        "symbol-style",
+        "hinted",
+        "icon",
+        "wingdings-typed-letter",
+        "webdings-typed-latin",
+    ],
+)
+def test_word_text_names_what_it_cannot_read(
+    tmp_path: Path, runs: str, styles: str, named: str
+) -> None:
+    """Wingdings has no text for most of what it draws, a piece of a tall bracket has none,
+    and a font set by a style is not read as exactly as one set on the text itself. Each is
+    named, so the import can refuse the paragraph rather than merge it without."""
+    from manuscript_guard.docxtext import blocks
+
+    [block] = blocks(symbol_document(tmp_path, runs, styles))
+    assert block.unread == (named,)
+
+
+def _style(kind: str, ident: str, font: str = "", based_on: str = "", default: bool = False) -> str:
+    """A `w:style` with a font, a `basedOn`, or neither."""
+    flag = ' w:default="1"' if default else ""
+    based = f'<w:basedOn w:val="{based_on}"/>' if based_on else ""
+    fonts = f'<w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/></w:rPr>' if font else ""
+    return (
+        f'<w:style w:type="{kind}"{flag} w:styleId="{ident}"><w:name w:val="{ident}"/>'
+        f"{based}{fonts}</w:style>"
+    )
+
+
+def _run(text: str, style: str = "", font: str = "", hint: bool = False) -> str:
+    props = f'<w:rStyle w:val="{style}"/>' if style else ""
+    if font:
+        hinted = ' w:hint="eastAsia"' if hint else ""
+        props += f'<w:rFonts w:ascii="{font}" w:hAnsi="{font}"{hinted}/>'
+    return f"<w:r><w:rPr>{props}</w:rPr><w:t>{text}</w:t></w:r>"
+
+
+@pytest.mark.parametrize(
+    ("run", "styles", "paragraph_style", "shown"),
+    [
+        pytest.param(
+            _run("m", style="Greek"),
+            _style("character", "Greek", "Symbol") + _style("paragraph", "Body", "Times New Roman"),
+            "Body",
+            MU,
+            id="character-style-over-paragraph-style",
+        ),
+        pytest.param(
+            _run("m", style="Roman"),
+            _style("character", "Roman", "Times New Roman") + _style("paragraph", "Body", "Symbol"),
+            "Body",
+            "m",
+            id="paragraph-style-under-character-style",
+        ),
+        pytest.param(
+            _run("m", style="Greek", font="Times New Roman"),
+            _style("character", "Greek", "Symbol"),
+            "",
+            "m",
+            id="run-over-character-style",
+        ),
+        pytest.param(
+            _run("m", style="Greek2"),
+            _style("character", "Greek", "Symbol")
+            + _style("character", "Greek2", based_on="Greek"),
+            "",
+            MU,
+            id="based-on",
+        ),
+        pytest.param(
+            _run("m"),
+            _style("paragraph", "Normal", "Symbol", default=True),
+            "",
+            MU,
+            id="default-paragraph-style",
+        ),
+        pytest.param(
+            _run("m", style="A"),
+            _style("character", "A", based_on="B") + _style("character", "B", based_on="A"),
+            "",
+            "m",
+            id="based-on-cycle",
+        ),
+        pytest.param(_run(chr(0xD7), font="Symbol"), "", "", chr(0x22C5), id="times-in-symbol"),
+        pytest.param(
+            _run(chr(0xD7), font="Symbol", hint=True), "", "", chr(0xD7), id="times-hinted"
+        ),
+    ],
+)
+def test_word_text_takes_a_runs_font_where_word_takes_it(
+    tmp_path: Path, run: str, styles: str, paragraph_style: str, shown: str
+) -> None:
+    """The rules, each checked against Word 16: the run's own font, else its character
+    style, else its paragraph style, else the default paragraph style, following `basedOn`;
+    and `w:hint="eastAsia"` draws × with the East Asian font, where the Symbol font draws ⋅
+    at the same code. Following no `basedOn`, a μ from a style merged as "5 mg"."""
+    from manuscript_guard.docxtext import blocks
+
+    # The "g" names its own font: in a paragraph whose style is Symbol, Word draws it as γ.
+    runs = text_run("5 ") + run + _run("g", font="Times New Roman")
+    [block] = blocks(symbol_document(tmp_path, runs, styles, paragraph_style))
+    assert block.text == f"5 {shown}g"
+
+
+def test_word_text_takes_a_symbol_font_from_the_font_table(tmp_path: Path) -> None:
+    """Word marks a symbol font in the document's font table with `w:charset w:val="02"`,
+    as it does Symbol, Wingdings and Webdings (Word 16), and draws text in it as the font's
+    own characters; one the reader has no name for is known from there. A space in it is a
+    space."""
+    from manuscript_guard.docxtext import blocks
+
+    document = symbol_document(tmp_path, text_run("Done ") + in_font("J J", "MyDings"))
+    table = (
+        f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="MyDings"><w:charset w:val="02"/>'
+        '</w:font><w:font w:name="Times New Roman"><w:charset w:val="00"/></w:font></w:fonts>'
+    )
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/fontTable.xml", table)
+    [block] = blocks(document)
+    assert block.text == "Done"
+    assert block.unread == ("MyDings character F04A",) * 2
+
+
+@pytest.mark.parametrize(
+    ("font", "code", "shown", "unread"),
+    [
+        ("Symbol", "F06D", MU, ()),
+        ("Segoe Fluent Icons", "F0041", chr(0xF0041), ("private-use character F0041",)),
+    ],
+    ids=["symbol", "icon-plane-15"],
+)
+def test_word_text_reads_a_symbol_extension_in_the_font_it_names(
+    tmp_path: Path, font: str, code: str, shown: str, unread: tuple[str, ...]
+) -> None:
+    """`w16se:symEx` names its font as a run does, and was read as its code whatever the
+    font: U+F06D, which the Symbol font draws as μ, merged into the source as it was."""
+    from manuscript_guard.docxtext import blocks
+
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    run = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        f'<w16se:symEx w16se:font="{font}" w16se:char="{code}"/></mc:Choice>'
+        "<mc:Fallback><w:t>?</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    [block] = blocks(symbol_document(tmp_path, text_run("5 ") + run + text_run("g")))
+    assert block.text == f"5 {shown}g"
+    assert block.unread == unread
+
+
+def test_a_new_paragraph_holding_only_a_symbol_is_new_text_beside_its_neighbour(
+    tmp_path: Path,
+) -> None:
+    """A paragraph with no text was skipped as empty, so the rewording beside it merged and
+    the check box in it was dropped. The same edit with a check mark typed as text was
+    refused as a split."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    sent = [Block(("a",), "The task is done.")]
+    box = Block((), "", unread=("Wingdings character F0FE",))
+    plan = plan_import(known, sent, [Block(("a",), "The task is now done."), box])
+    assert not plan.merged
+    assert [r.name for r in plan.refused] == ["a"]
+
+
+def test_a_paragraph_replaced_by_a_symbol_is_refused_not_deleted(tmp_path: Path) -> None:
+    """Read as empty, it was reported deleted in Word, and deleting it in the .md, as the
+    report advised, lost the symbol."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "None declared."})
+    sent = [Block(("a",), "None declared.")]
+    returned = [Block(("a",), "", unread=("Wingdings character F0FC",))]
+    plan = plan_import(known, sent, returned)
+    assert not plan.gone
+    assert [r.name for r in plan.refused] == ["a"]
+
+
+@pytest.mark.parametrize("where", ["theme", "defaults"])
+def test_word_text_names_the_symbol_font_from_the_theme_or_the_defaults(
+    tmp_path: Path, where: str
+) -> None:
+    """A run's font can come from the theme, by `w:asciiTheme`, or from the document's
+    defaults, and is followed there as Word follows it."""
+    from manuscript_guard.docxtext import blocks
+
+    if where == "theme":
+        run = '<w:r><w:rPr><w:rFonts w:asciiTheme="minorHAnsi"/></w:rPr><w:t>m</w:t></w:r>'
+        styles = ""
+    else:
+        run = "<w:r><w:t>m</w:t></w:r>"
+        styles = (
+            '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Symbol"/>'
+            "</w:rPr></w:rPrDefault></w:docDefaults>"
+        )
+    document = symbol_document(tmp_path, text_run("5 ") + run, styles)
+    if where == "theme":
+        theme = (
+            '<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            "<a:themeElements><a:fontScheme><a:majorFont><a:latin typeface=\"Cambria\"/>"
+            '</a:majorFont><a:minorFont><a:latin typeface="Symbol"/></a:minorFont>'
+            "</a:fontScheme></a:themeElements></a:theme>"
+        )
+        rels = (
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId9" Target="theme/theme1.xml" Type="http://schemas.'
+            'openxmlformats.org/officeDocument/2006/relationships/theme"/></Relationships>'
+        )
+        with zipfile.ZipFile(document, "a") as archive:
+            archive.writestr("word/theme/theme1.xml", theme)
+            archive.writestr("word/_rels/document.xml.rels", rels)
+    [block] = blocks(document)
+    assert block.text == f"5 {MU}"
+    origin = "the document's theme" if where == "theme" else "the document's defaults"
+    # Named once for each character the font draws: the defaults draw "5 " in it too.
+    assert set(block.unread) == {f"Symbol font from {origin}"}
+
+
+@pytest.mark.parametrize("before", ["The task is done.", "The task is done"])
+def test_a_paragraph_holding_something_with_no_text_is_refused(
+    tmp_path: Path, before: str
+) -> None:
+    """Pandoc never writes a symbol-font character, so one that came back was inserted in
+    Word. Merged, the rest of the edit landed without it; with nothing else edited, the
+    paragraph read as unchanged and the co-author's symbol was dropped without a word."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": before})
+    sent = [Block(("a",), before)]
+    returned = [Block(("a",), "The task is done.", unread=("Wingdings character F04A",))]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    [refusal] = plan.refused
+    assert "Wingdings character F04A" in " ".join(refusal.why)
+
+
+def test_text_whose_symbol_font_a_style_sets_is_refused_as_read(tmp_path: Path) -> None:
+    """It is read as the Symbol font draws it, so "no text the source can hold" was wrong
+    about it: what is refused is taking a style's font as exact."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The dose was 5 mg daily."})
+    sent = [Block(("a",), "The dose was 5 mg daily.")]
+    now = f"The dose was 5 {MU}g daily."
+    returned = [Block(("a",), now, unread=("Symbol font from the style Greek",))]
+    [refusal] = plan_import(known, sent, returned).refused
+    why = " ".join(refusal.why)
+    assert "set by the style Greek" in why, why
+    assert "no text" not in why, why
+
+
+def test_a_second_private_use_character_of_a_code_already_sent_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Each kind was named once, so a second of a code the paragraph held already matched
+    what was sent, and merged into the source as a character the build cannot draw."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    pua = chr(0xF06D)
+    _path, known = source_of(tmp_path, {"a": f"The mark {pua} is here."})
+    once = ("private-use character F06D",)
+    sent = [Block(("a",), f"The mark {pua} is here.", unread=once)]
+    returned = [Block(("a",), f"The mark {pua} is here and {pua} there.", unread=once * 2)]
+    plan = plan_import(known, sent, returned)
+    assert not plan.merged
+    [refusal] = plan.refused
+    why = " ".join(refusal.why)
+    assert "private-use character F06D" in why and "body font" in why, why
+    assert "no text" not in why, why
+
+
+def test_what_the_sent_document_could_not_read_either_is_no_edit(tmp_path: Path) -> None:
+    """A reference document can give a style the Symbol font, and then the document as sent
+    holds the same: it is not the co-author's, and refusing it would refuse every import."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    unread = ("Symbol font from the style Greek",)
+    sent = [Block(("a",), "The task is done.", unread=unread)]
+    returned = [Block(("a",), "The task is done at last.", unread=unread)]
+    plan = plan_import(known, sent, returned)
+    assert not plan.refused
+    assert plan.merged
+
+
+@pytest.mark.parametrize(
+    ("sent_heading", "returned_heading", "listed"),
+    [
+        (
+            Block((), "Funding"),
+            Block((), "Funding", unread=("Wingdings character F04A",)),
+            "Funding [Wingdings character F04A]",
+        ),
+        (None, Block((), "", unread=("Wingdings character F0FC",)), "[Wingdings character F0FC]"),
+    ],
+    ids=["heading", "new-paragraph"],
+)
+def test_a_symbol_without_an_identifier_is_listed(
+    tmp_path: Path, sent_heading: object, returned_heading: object, listed: str
+) -> None:
+    """A paragraph without an identifier is compared by what it says and by what in it has
+    no text: by its text alone, a heading that gained a Wingdings smiley, or a new paragraph
+    holding only a check box, read as unchanged or empty, and was not listed."""
+    from manuscript_guard.merge import plan_import
+
+    _path, known = source_of(tmp_path, {"a": "The task is done."})
+    body = Block(("a",), "The task is done.")
+    sent = ([sent_heading] if sent_heading is not None else []) + [body]
+    returned = [returned_heading, body]
+    plan = plan_import(known, sent, returned)
+    assert plan.unidentified == (listed,), plan.unidentified
+    assert not plan.empty
+
+
+SMILEY = "Wingdings character F04A"
+
+
+def test_a_heading_that_gained_a_symbol_holds_the_moves_beside_it(tmp_path: Path) -> None:
+    """A heading edited in Word is text the document as sent did not have, and it holds the
+    moves in its section. One that gained a smiley typed in Wingdings read as "Funding J"
+    before the symbol was read as one; by its text alone it then read as unchanged, and the
+    move beside it was applied."""
+    from manuscript_guard.merge import plan_import
+
+    words = {"x": "Xray opens it.", "y": "Yankee is in the middle.", "z": "Zulu closes it."}
+    path = tmp_path / "main.md"
+    text = "# Funding\n\n" + "\n\n".join(words.values()) + "\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    sent = [Block((), "Funding"), *(Block((name,), w) for name, w in words.items())]
+    moved = [Block(("y",), words["y"]), Block(("x",), words["x"], arrived=True), sent[3]]
+    assert plan_import(known, sent, [sent[0], *moved]).moved, "the move alone is applied"
+    plan = plan_import(known, sent, [Block((), "Funding", unread=(SMILEY,)), *moved])
+    assert not plan.moved and plan.withheld, plan
+    assert plan.held_by == (f"Funding [{SMILEY}]",)
+
+
+def test_a_line_holding_only_a_symbol_is_not_an_empty_line(tmp_path: Path) -> None:
+    """Enter pressed at the start of a paragraph leaves its identifier on the empty line, and
+    only from an empty line is it given back to the text below. A line holding a smiley typed
+    in Wingdings read as empty once the symbol had no text, and the smiley typed in front of
+    the paragraph was taken for Enter alone: its identifier moved to the text below."""
+    from manuscript_guard.merge import plan_import
+
+    words = {"s": "Sierra is a paragraph.", "t": "Tango follows."}
+    _path, known = source_of(tmp_path, words)
+    sent = [Block(("s",), words["s"]), Block(("t",), words["t"])]
+    empty = [Block(("s",), ""), Block((), words["s"]), sent[1]]
+    assert not plan_import(known, sent, empty).refused, "an empty line gives it back"
+    typed = [Block(("s",), "", unread=(SMILEY,)), Block((), words["s"]), sent[1]]
+    plan = plan_import(known, sent, typed)
+    assert [refusal.name for refusal in plan.refused] == ["s"], plan
+    assert not plan.merged
+
+
+def test_a_paragraph_holding_only_a_symbol_is_part_of_a_join(tmp_path: Path) -> None:
+    """A paragraph whose text was replaced by a smiley typed in Wingdings, then joined to the
+    next, was left out of the join as an empty line would be: its identifier was dropped, and
+    the paragraph was reported deleted in Word, with the advice to delete it in the .md."""
+    from manuscript_guard.docxtext import blocks
+
+    deleted = f'<w:pPr><w:rPr><w:del w:id="1" {_BY}/></w:rPr></w:pPr>'
+    xml = (
+        f'<w:document xmlns:w="{WORD_MAIN}"><w:body>'
+        f'<w:p>{deleted}<w:bookmarkStart w:id="0" w:name="mg-p-a-0"/>'
+        f'{in_font("J", "Wingdings")}</w:p>'
+        f'<w:p><w:bookmarkStart w:id="2" w:name="mg-p-b-0"/>{text_run("Bravo.")}</w:p>'
+        "</w:body></w:document>"
+    )
+    document = tmp_path / "joined.docx"
+    with zipfile.ZipFile(document, "w") as archive:
+        archive.writestr("word/document.xml", xml)
+    (joined,) = blocks(document)
+    assert joined.names == ("mg-p-a-0", "mg-p-b-0"), joined
+    assert joined.text == "Bravo." and joined.unread == (SMILEY,)
+
+
+def _unsupported_compression(document: Path, part: str) -> None:
+    """Mark one part of `document` as stored with Deflate64, which zipfile cannot read."""
+    import struct
+
+    raw = bytearray(document.read_bytes())
+    with zipfile.ZipFile(document) as archive:
+        offset = archive.getinfo(part).header_offset
+    struct.pack_into("<H", raw, offset + 8, 9)
+    at = raw.find(b"PK\x01\x02")
+    while at >= 0:
+        size = struct.unpack_from("<H", raw, at + 28)[0]
+        if bytes(raw[at + 46 : at + 46 + size]) == part.encode():
+            struct.pack_into("<H", raw, at + 10, 9)
+        at = raw.find(b"PK\x01\x02", at + 4)
+    document.write_bytes(bytes(raw))
+
+
+def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path: Path) -> None:
+    """Both readers now read the font table, and a part zipfile cannot decompress raised
+    NotImplementedError out of both, where main read the document. The import refuses it,
+    as for any part it cannot read safely; the audit reads the fonts the runs name."""
+    from manuscript_guard.docxtext import DocumentUnreadable, blocks
+    from manuscript_guard.text.docx import read_docx
+
+    document = symbol_document(tmp_path, text_run("Mean 3.2 ") + symbol("F0B1") + text_run(" 0.4"))
+    table = f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="Symbol"/></w:fonts>'
+    with zipfile.ZipFile(document, "a") as archive:
+        archive.writestr("word/fontTable.xml", table)
+    _unsupported_compression(document, "word/fontTable.xml")
+    with pytest.raises(DocumentUnreadable):
+        blocks(document)
+    assert f"Mean 3.2 {PLUS_MINUS} 0.4" in read_docx(document)
+
+
+@needs_pandoc
+@pytest.mark.parametrize("returned", CUT_DOWN)
+def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:
+    """`\\---` printed `-–`, a hyphen and an en dash: neither what Word showed nor pandoc's own
+    typesetting of it. Each rule character is escaped now."""
+    import subprocess
+
+    merged = realign("Costs were low.", "Costs were low.", returned)
+    printed = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "plain"],
+        input=(merged + "\n").encode("utf-8"),
+        capture_output=True,
+        check=True,
+    ).stdout.decode("utf-8")
+    assert printed.strip() == returned, (merged, printed)
+
+
+PIPE_TABLE = "| a | b |\n|---|---|\n| 1 | 2 |"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("returned", WRITTEN_OPENINGS + CUT_DOWN)
+@pytest.mark.parametrize(
+    ("above", "reads"),
+    [
+        pytest.param("", ["Para"], id="alone"),
+        pytest.param("Above.\n\n", ["Para", "Para"], id="under-a-paragraph"),
+        pytest.param(PIPE_TABLE + "\n\n", ["Table", "Para"], id="under-a-table"),
+    ],
+)
+def test_what_import_writes_pandoc_reads_as_one_paragraph(
+    returned: str, above: str, reads: list[str]
+) -> None:
+    """The property itself, asked of pandoc: whatever the merge writes, built, is one
+    paragraph. Read where it may stand, because a definition needs the paragraph above it
+    and a caption the table: alone, `: the ratio...` and `Table: ...` were paragraphs."""
+    import json
+    import subprocess
+
+    merged = _merged(returned)
+    built_text = above + merged.replace("{{results.ror.point}}", "3.84") + "\n"
+    out = subprocess.run(
+        ["pandoc", "-f", "markdown", "-t", "json"],
+        input=built_text.encode("utf-8"),
+        capture_output=True,
+        check=True,
+    ).stdout
+    blocks = json.loads(out)["blocks"]
+    assert [b["t"] for b in blocks] == reads, (merged, blocks)
+
+
+@pytest.mark.parametrize(
+    "paragraph",
+    [
+        pytest.param("Concentrations <LLOQ and >ULOQ were excluded.", id="unknown-tag"),
+        pytest.param("<LOQ values> were imputed as half the limit.", id="unknown-tag-opening"),
+        pytest.param(
+            r"Concentrations \<LLOQ and >ULOQ (n = {{results.n}}) were excluded.",
+            id="escaped-angle",
+        ),
+        pytest.param(r"Alpha beta \{&lbrace;{{results.drug}} gamma delta.", id="escaped-brace"),
+        pytest.param(r"\{\{table.cases\}\}", id="escaped-braces"),
+        pytest.param(r"The ratio \{ was {{results.ror.point}} overall.", id="escaped-brace-open"),
+        pytest.param("Text\n<del>x</del> more.", id="opening-only-tag-on-a-later-line"),
+    ],
+)
+def test_a_paragraph_pandoc_reads_as_one_is_tagged(paragraph: str) -> None:
+    """`_untagged` took any tag it did not know for a block, and counted an escaped brace:
+    pandoc reads each of these as one paragraph, and each went without an identifier. The
+    first was tagged before #25."""
+    from manuscript_guard.roundtrip import tag
+
+    assert tag(paragraph, "main.md").startswith("[]{#mg-p-")
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("Text <div>x</div> more.", id="block-tag-mid-line"),
+        pytest.param("<section>A section.</section>", id="block-tag-opening"),
+        pytest.param("Doses were adjusted <note>see it</note> as needed.", id="docbook-tag"),
+        pytest.param("Doses were adjusted <case>x</case> as needed.", id="epub-tag"),
+        pytest.param(r"\footnote{In one analysis.", id="open-tex-group"),
+        pytest.param("And in another.}", id="tail-of-a-tex-group"),
+        pytest.param(r"The set \{a, b\} was used.} after.", id="tail-holding-escaped-braces"),
+        pytest.param(": a definition of the term above.", id="definition"),
+        pytest.param(":a caption beside a table.", id="caption"),
+    ],
+)
+def test_a_block_pandoc_reads_as_more_than_a_paragraph_stays_untagged(block: str) -> None:
+    """What is not one paragraph keeps going without a marker, which would rewrite it. Pandoc
+    splits a paragraph at a DocBook or EPUB block tag as at an HTML one; a colon opening a
+    block may make it a caption or a definition, which one block alone cannot tell."""
+    from manuscript_guard.roundtrip import tag
+
+    assert not tag(block, "main.md").startswith("[]{#mg-p-")
+
+
+@needs_pandoc
+def test_a_paragraph_reworded_to_open_like_a_list_can_be_edited_again(
+    project: Path, tmp_path: Path
+) -> None:
+    """End to end, the way the review of #33 found it. A co-author reworded a paragraph to
+    open with `B)`; it merged, and the next build made a list of it with no identifier, so
+    its next edit in Word was dropped with "nothing came back"."""
+    from manuscript_guard.cli import main
+
+    with_paragraphs(project, "The final ratio was {{results.ror.point}} overall.")
+    first = edit_docx(
+        built(project),
+        tmp_path / "first.docx",
+        {"The final ratio was 3.84 overall.": "B) the ratio was 3.84 overall."},
+    )
+    assert main(["import", str(first), str(project), "--apply"]) == 0
+    source = project / "manuscript" / "main.md"
+    assert r"B\) the ratio was {{results.ror.point}} overall." in source.read_text(
+        encoding="utf-8"
+    )
+
+    again = edit_docx(
+        built(project),
+        tmp_path / "again.docx",
+        {"B) the ratio was 3.84 overall.": "B) the ratio was 3.84 in all."},
+    )
+    assert main(["import", str(again), str(project), "--apply"]) == 0
+    assert r"B\) the ratio was {{results.ror.point}} in all." in source.read_text(
+        encoding="utf-8"
+    )
 
 
 # --------------------------------------------------- a supplement is a document of its own

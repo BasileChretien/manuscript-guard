@@ -117,6 +117,92 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
     assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
 
 
+def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
+    """Code spans were found with a pattern that retried from every position inside a run
+    of backticks: one line of 20,000 took seven seconds to read for comments."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = "# Results\n\nSee " + "`" * count + " there.\n"
+        started = time.perf_counter()
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(5000), 1e-4)
+    large = measure(20000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        lambda count: "<pre>\n" + "<pre " * count,
+        lambda count: "\\begin{a}\n" + "\\begin{a}" * count,
+        lambda count: "".join(f"\\begin{{e{i}}}\\end{{e{i}}}" for i in range(count)),
+    ],
+    ids=["tags", "environments", "distinct names"],
+)
+def test_marks_inside_a_raw_block_are_read_in_linear_time(block) -> None:
+    """Inside a raw block, its closer and another of its name were each searched for from
+    the last mark to the end of the line, mark by mark: a line of 300,000 characters took
+    eighteen seconds. Every mark on a line is now found in one pass."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
+        started = time.perf_counter()
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_narrowing_openers_are_read_in_linear_time() -> None:
+    """A run of openers each one backtick narrower than the last, with no closer: skipping
+    only openers at least as wide as one known unclosed, each read to the end of the text,
+    and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
+    read from the end once."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def measure(lines: int) -> float:
+        text = "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+        started = time.perf_counter()
+        fenced_spans(text)
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(10000), 1e-4)
+    large = measure(40000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_unclosed_attributes_are_read_in_linear_time() -> None:
+    """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
+    backslash before each newline read as an escape, took every opener to the end of the
+    text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
+    attributes on its own line and refuse the rest, so doubling the input must not much
+    more than double the time, and the refusal is read in the same pass."""
+    from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
+
+    def measure(count: int) -> float:
+        text = (
+            "```{k=a\\\n" * count
+            + "```{.r\n"
+            + ".x k=v\n" * count
+            + "".join(f"```{{k='{i}\n" for i in range(count))
+        )
+        started = time.perf_counter()
+        fenced_spans(text)
+        unclear_fence_lines(text)
+        return time.perf_counter() - started
+
+    small = max(measure(4000), 1e-4)
+    large = measure(16000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the
@@ -129,6 +215,46 @@ def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     started = time.perf_counter()
     assert strip_front_matter(text) == (text, "")
     assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param("[x]: u {" + "a=b" * 15, id="attribute-that-splits"),
+        pytest.param("[x]: a" + " " * 1000 + "b", id="run-of-spaces"),
+        pytest.param("[x]: a" + " " * 1000 + "\n b c", id="spaces-then-a-line"),
+        pytest.param('[x]: u "' + 'a "b ' * 8000, id="unclosed-quotes"),
+        pytest.param('[x]: u "t" {' + 'data-x="1" ' * 24, id="quoted-attributes"),
+        pytest.param('[x]: "a\n' * 4000, id="quote-opening-each-line"),
+        pytest.param("[x]: u\n" * 8000 + "prose", id="many-definitions"),
+    ],
+)
+def test_a_link_definition_is_recognised_quickly(block: str) -> None:
+    """`tag` asks of every block of every file whether it is a link definition, in build,
+    check and import. Versions that modelled more of pandoc's grammar were caught in review
+    taking seconds to minutes: an attribute that could be split two ways made `{a=ba=b...`
+    exponential - 18 of them took a minute and a half - and so did quoted values; optional
+    spaces stacked on optional spaces made a run of a thousand take six seconds; and a quote
+    opening each line was scanned to the end of the block from every line."""
+    from manuscript_guard.roundtrip import tag
+
+    started = time.perf_counter()
+    tag(block, "main.md")
+    assert time.perf_counter() - started < 2.0
+
+
+def test_definitions_over_a_paragraph_are_passed_over_in_linear_time(assert_linear) -> None:
+    """Each definition passed over looked at the rest of the block for a title on the next
+    line by copying it: 40,000 definitions over a paragraph took 42 seconds, where the
+    definitions alone took a fifth of one."""
+    from manuscript_guard.roundtrip import tag
+
+    assert_linear(
+        lambda count: "[x]: u\n" * count + "Prose.",
+        lambda text: tag(text, "main.md"),
+        5000,
+        "passing over definitions above a paragraph",
+    )
 
 
 @pytest.mark.parametrize(
@@ -379,6 +505,72 @@ def test_a_long_heading_title_does_not_stall_the_methods_check(tail: str) -> Non
     assert time.perf_counter() - started < 0.5
 
 
+@pytest.mark.parametrize(
+    "text",
+    [" " * 20000, " " * 20000 + "x", "     \n" * 400, " |" * 10000 + "x"],
+    ids=["one line of spaces", "spaces then a letter", "lines of spaces", "spaces and pipes"],
+)
+def test_table_alignment_row_does_not_stall_on_whitespace(text: str) -> None:
+    """`table-alignment-row` was `^\\s*\\|?[\\s:|-]+\\|[\\s:|-]*$`. Its three pieces could all
+    take the same spaces, and `\\s` took line breaks too, so the scan backtracked over every
+    way of sharing them out: one line of 20,000 spaces took about 7 s, and 400 lines holding
+    only spaces about 9 s. `check` scans every manuscript file with every rule.
+
+    Whitespace alone, which this rule stalled on. Other rules stalled on a keyword followed by
+    a long run of spaces: see the test below."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load()
+    started = time.perf_counter()
+    classifier.scan(text)
+    assert time.perf_counter() - started < 2.0
+
+
+# A word a rule reads, a long run of spaces, and a character the rule does not take. Each rule
+# here had neighbouring pieces that could take the same spaces, `\s*[-–]?\s*` say, and the scan
+# backtracked through every way of sharing them out. The runs are sized so the old patterns took
+# 4 to 60 seconds each. Scanned with every rule, the rewrites take under 0.1 s, and 0.3 s for
+# "A-" repeated, where each of 28 rules looks at every one of 20,000 word boundaries.
+SPACES = " " * 16000
+STALLS = {
+    # Six optional words, each after its own `\s*`: faster than the fourth power of the run.
+    # 80 spaces took 3.7 s, which a fast runner could pass; 100 took 12 s.
+    "checklist-item": "STROBE" + " " * 100 + "x",
+    "age-band": "age" + " " * 800 + "x",
+    "time-label": "day" + SPACES + "x",
+    "cross-reference": "Table" + SPACES + "x",
+    "categorical-label": "grade" + SPACES + "x",
+    "significance-threshold": "p" + SPACES + "x",
+    "alpha-level": "alpha" + SPACES + "x",
+    "target-power": "power" + SPACES + "x",
+    "coding-system-code": "MedDRA" + SPACES + "x",
+    "balance-criterion": "caliper" + SPACES + "x",
+    # How pandoc's own Markdown writer pads a table's cells: 9 s.
+    "a padded table": ("| STROBE" + " " * 50 + "| Title and abstract | 1 |\n") * 20,
+    # `(?:[A-Z]{1,2}\d*)*` split a run of capitals every way it could: exponential.
+    "alphanumeric-identifier": "A12" + "AB" * 16 + "_",
+    # Audit only. A name was taken from every capital after a hyphen, to the end of the run.
+    "author-year-citation": "A-" * 10000,
+    "author-year-citation, spaces": "Smith et al." + SPACES + "x",
+    # Audit only. The prefix before a `[` was tried from every letter of a run.
+    "numbered-citation": "a" * 20000,
+}
+
+
+@pytest.mark.parametrize("rendered", [False, True], ids=["source", "rendered"])
+@pytest.mark.parametrize("text", list(STALLS.values()), ids=list(STALLS))
+def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: bool) -> None:
+    """Every manuscript file is scanned with every rule, so one rule that backtracks stalls
+    `check`. Rendered, for the audit, the scan also runs the audit-only rules."""
+    from manuscript_guard.classify import Classifier
+
+    classifier = Classifier.load(rendered=rendered)
+    started = time.perf_counter()
+    classifier.scan(text)
+    elapsed = time.perf_counter() - started
+    assert elapsed < 2.0, f"the scan took {elapsed:.1f} s"
+
+
 # ---------------------------------------------------------------- hostile files
 
 
@@ -557,3 +749,49 @@ def test_an_interrupted_stamp_does_not_leave_an_empty_one(tmp_path: Path) -> Non
 
     source = inspect.getsource(document._stamp_source)
     assert "os.replace(pending, stamp)" in source
+
+
+def test_footnotes_are_indexed_in_linear_time() -> None:
+    """Each footnote's references, and each number's note, are found by bisection: read
+    against every definition in turn, a paper of many notes took time in their square."""
+    from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+
+    def measure(count: int) -> float:
+        text = "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
+            f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
+        )
+        started = time.perf_counter()
+        notes = footnote_index(text)
+        headings = heading_index(text)
+        for note in notes[:: max(1, count // 100)]:
+            chains_at(headings, notes, note.start)
+        return time.perf_counter() - started
+
+    small = max(measure(2000), 1e-4)
+    large = measure(8000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+
+
+def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
+    """A number in a note was judged once per reference: a note with a thousand references
+    and a thousand numbers took two minutes. Its sections are judged once each now."""
+    from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+
+    def measure(count: int) -> float:
+        paragraphs = "Text.[^n]\n\n" * (count // 10)
+        text = (
+            "".join(f"# S{i}\n\n{paragraphs}" for i in range(10))
+            + "[^n]: "
+            + " ".join(f"{i}.5" for i in range(count))
+            + "\n"
+        )
+        notes, headings = footnote_index(text), heading_index(text)
+        note = notes[0]
+        started = time.perf_counter()
+        for offset in range(note.start, note.end, max(1, (note.end - note.start) // count)):
+            chains_at(headings, notes, offset)
+        return time.perf_counter() - started
+
+    small = max(measure(500), 1e-4)
+    large = measure(2000)
+    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"

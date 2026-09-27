@@ -18,7 +18,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -614,6 +616,66 @@ RESULTS_READ_AS_METHODS = {
         "# Results\n\n-----  -----\nText\n---\n# Methods\n# Outcomes\n---\n"
         "The excess was significant (p < 0.001).\n"
     ),
+    # Found by the eighth review. The level-1 reading of a `# X` line over a rule is `main`'s,
+    # and `main` read only a `#` at the margin: an indented ` # Y`, or one after a comment,
+    # took level 1 too, and the printed chain lost the Results it still held.
+    "an indented hash line over a rule after a comment-led one": (
+        "# Results\n\nText\n<!-- c --># Outcomes\n\n # Y\n-\n\n## Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "an indented hash line over a rule after an unclosed quote": (
+        '# Results\n\n<div class="a># Outcomes\n\n # Y\n-\n\n## Statistical analysis\n\n'
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a comment-led hash line over a rule after a quote over an underline": (
+        "# Results\n\nText\n> Outcomes\n===\n\n<!-- c --># Y\n-\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # A setext title `main` refused, starting `>` or `|`, opened a section wherever the walk
+    # placed one wrongly, under a stray `</script>`.
+    "a quote title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n> Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a pipe title over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n| Outcomes\n===\n\n## Methods\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # An empty `###` in a paragraph, which `main` read with the line below it as its title.
+    "an empty heading in a paragraph over a results line": (
+        "# Res<!-- -->ults\n\n## Statistical analysis\n\nText\n###\nResults\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the ninth review. A setext title `main` read as an ATX heading kept its place
+    # on the printed chain, but at pandoc's level rather than at `main`'s hash count.
+    "two hashes over an underline under a stray closing tag": (
+        "# Results\n\nText\n</script>\n## Outcomes\n===\n\n## Statistical analysis\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "three hashes over a rule under a level-two results": (
+        "## Results\n\nText\n</script>\n### Y\n---\n\n### Sensitivity analyses\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # `main`'s `#{1,6}\s+` took a no-break space after the hash too.
+    "a hash and a no-break space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0xA0) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash and an em space over a rule": (
+        "## Results\n\nText\n</script>\n#" + chr(0x2003) + "Results\n-\nMethods\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    # Found by the tenth review. The same title, when the walk marks it as text and it does
+    # not say Results, stays off the printed chain, and on the other it took the underline's
+    # level: it nested under a wrongly placed Methods that `main`'s level 1 closed.
+    "a hash and a no-break space over a rule under a misplaced methods": (
+        "# Results\n\nText\n</script>\n# Methods\n\n#" + chr(0xA0) + "Outcomes\n---\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
+    "a hash line over a rule in a misplaced methods paragraph": (
+        "# Results\n\nText\n</script>\n# Methods\nText\n# Y\n-\n\n"
+        "The excess was significant (p < 0.001).\n"
+    ),
 }
 
 
@@ -1134,6 +1196,41 @@ def test_the_example_publishes_no_prose(project: Path) -> None:
     assert "prose-as-value" not in {f.code for f in gate_report(project).findings}
 
 
+@pytest.mark.parametrize(
+    "display",
+    [
+        "$$y = 2.1 x$$",
+        "2.1\n\n3.4",
+        "2.1\n::: {.note}",
+        "\\begin{equation}y = 2.1 x\\end{equation}",
+        "2.1 <div>3.4</div>",
+    ],
+    ids=["display-maths", "blank-line", "line-break", "latex-environment", "html-block-tag"],
+)
+def test_a_value_that_would_split_its_paragraph_is_caught(project: Path, display: str) -> None:
+    """Identifiers are given to the source before bindings are substituted, and a paragraph
+    with `$$` in its source gets none. A value that prints display maths puts `$$` into a
+    paragraph that has one: pandoc gives the equation a Word paragraph of its own, only the
+    part before it carries the identifier, and import took a move of that part for a move
+    of the whole sentence. `label=True` changes nothing, and a digit kept it quiet: the only
+    word said was the prose warning, for a display with no digit in it."""
+    _publish_text(project, "model.formula", display, label=True)
+    report = gate_report(project)
+    assert "value-splits-paragraph" in codes(report), report.findings
+    finding = next(f for f in report.failures if f.code == "value-splits-paragraph")
+    assert finding.path == main_md(project) and "results.model.formula" in finding.message
+
+
+@pytest.mark.parametrize("display", ["$y = 2.1 x$", "2.1 (95% CI 1.8-2.4)", "*E. coli*"])
+def test_a_value_that_stays_inside_its_sentence_is_not_caught(
+    project: Path, display: str
+) -> None:
+    """Inline maths, a number with its interval, emphasis: pandoc keeps each inside the
+    paragraph, and the paragraph reaches Word whole."""
+    _publish_text(project, "model.formula", display, label=True)
+    assert "value-splits-paragraph" not in {f.code for f in gate_report(project).findings}
+
+
 def test_the_examples_own_interval_brackets_its_estimate(project: Path) -> None:
     clean = codes(gate_report(project))
     assert not clean & {
@@ -1375,6 +1472,143 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     )
     main.write_text(text, encoding="utf-8")
     assert "abstract-headings-missing" in codes(_journal(project))
+
+
+# ------------------------------------------------------------- what the build prints
+# The build strips every file's front matter and writes the header from paper.yaml. Text
+# the gates read there and the build drops is checked, then left out of the document.
+
+SENTINEL = "Zebrafish marmalade sentinel phrase."
+
+
+@pytest.mark.parametrize(
+    "abstract",
+    [
+        f"abstract: |\n  {SENTINEL}\n",
+        "abstract: >-\n  Zebrafish marmalade\n  sentinel phrase.\n",
+        f"abstract: {SENTINEL}\n",
+        f'"abstract": {SENTINEL}\n',
+    ],
+)
+def test_an_abstract_in_the_front_matter_is_refused(project: Path, abstract: str, capsys) -> None:
+    """G2 read an `abstract:` in the front matter, because pandoc prints one, and the build
+    stripped the block and wrote a header from paper.yaml, which has no abstract. The
+    abstract was checked and then left out of the document without a word, and the word
+    count, which follows the build, gave a journal's abstract limit 0 words to pass on.
+    `check` refuses it now, and the build refuses it even when told to skip the checks."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("---\n", "---\n" + abstract, 1), encoding="utf-8")
+
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    failing = [(f["code"], f["line"]) for f in findings if f["severity"] == "fail"]
+    assert failing == [("front-matter-abstract", 2)]
+
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "under a `# Abstract` heading" in capsys.readouterr().out
+    # Any name: a build that skipped failing checks writes `manuscript.UNCHECKED.*`.
+    assert list((project / "build").glob("manuscript*")) == []
+
+
+def test_a_supplements_front_matter_abstract_is_refused(project: Path) -> None:
+    """The build strips a supplement's front matter as it strips the paper's."""
+    from manuscript_guard.build.assemble import assemble
+
+    supplement = project / "manuscript" / "supplementary" / "appendix.md"
+    supplement.parent.mkdir(parents=True, exist_ok=True)
+    supplement.write_text(f"---\nabstract: {SENTINEL}\n---\n\n# Appendix\n\nText.\n", "utf-8")
+
+    def refused(report) -> list[tuple[str, str, int | None]]:
+        found = [f for f in report.failures if f.code == "front-matter-abstract"]
+        return [(f.gate, f.path.name, f.line) for f in found]
+
+    assert refused(gate_report(project)) == [("G2", "appendix.md", 2)]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _report = load_namespace(projekt)
+    assert refused(assemble(projekt, namespace, results)[1]) == [("BUILD", "appendix.md", 2)]
+
+
+def _abstract_line(front: str) -> int | None:
+    from manuscript_guard.text.masking import front_matter_abstract
+
+    found = front_matter_abstract(f"---\n{front}---\n\nBody.\n")
+    return None if found is None else found[0]
+
+
+@pytest.mark.parametrize(
+    ("front", "line"),
+    [
+        (f"abstract: {SENTINEL}\n", 2),
+        (f"'abstract': {SENTINEL}\n", 2),
+        (f'abstract: "\n  {SENTINEL}"\n', 2),
+        (f"abstract: '\n  {SENTINEL}'\n", 2),
+        (f"{{title: T, abstract: {SENTINEL}}}\n", 2),
+        (f"title: T\nabstract:\n\n  {SENTINEL}\n", 3),
+        ("abstract: 0\n", 2),
+        # Blocks pandoc reads and PyYAML could not turn into Python values, or not scan.
+        (f'date: 2024-02-30\n"abstract": {SENTINEL}\n', 3),
+        (f"created: !r Sys.Date()\n'abstract': {SENTINEL}\n", 3),
+        (f'subtitle:\tS\n"abstract": {SENTINEL}\n', 3),
+        # Pandoc expands a tab to the next multiple of four columns, so this is one block.
+        ('"abstract": |\n  Zebrafish marmalade\n\tsentinel phrase.\n', 2),
+        (f'title:\tT\n"abstract":\t{SENTINEL}\n', 3),
+        # Pandoc takes a merge key's mapping into the one holding it, and knows a merge key
+        # by its text, `<<`, however it is quoted or tagged.
+        (f"base: &b {{abstract: {SENTINEL}}}\n<<: *b\n", 2),
+        (f'base: &b {{abstract: {SENTINEL}}}\n"<<": *b\n', 2),
+        (f"base: &b {{abstract: {SENTINEL}}}\n'<<': *b\n", 2),
+        (f"!!merge abstract: {SENTINEL}\n", 2),
+        # PyYAML counts U+2028 as a line break, and the file does not.
+        (f'title: "Hepatic{chr(0x2028)}injury"\nabstract: {SENTINEL}\n', 3),
+        # Pandoc prints the text whatever the tag says, and a quoted "null" is the word.
+        (f"abstract: !!null {SENTINEL}\n", 2),
+        ('abstract: "null"\n', 2),
+    ],
+)
+def test_every_spelling_of_a_front_matter_abstract_is_found(front: str, line: int) -> None:
+    """G2 finds a front-matter value by its key line, and YAML has spellings that line
+    misses: a quoted key, a quoted value opened on the key's line and continued below it, a
+    flow mapping, a merge key. Pandoc prints each as the abstract, so the refusal reads the
+    block as YAML, the way pandoc reads it, and names the line of the key."""
+    assert _abstract_line(front) == line
+
+
+@pytest.mark.parametrize(
+    "front",
+    [
+        'abstract: ""\n',
+        "abstract:\n",
+        "abstract: |\n",
+        "abstract: >-\n",
+        "abstract: |2\n",
+        "abstract: null\n",
+        "abstract: # written last\n",
+        'abstract: "" # none\n',
+        f"meta:\n  abstract: {SENTINEL}\n",
+        # The first of two merge keys wins, quoted or not, and its abstract is empty.
+        f'e: &e {{abstract: ""}}\nf: &f {{abstract: {SENTINEL}}}\n"<<": *e\n<<: *f\n',
+    ],
+)
+def test_a_front_matter_abstract_pandoc_prints_nothing_for_is_not_refused(front: str) -> None:
+    """Nothing is lost by stripping an abstract pandoc reads as empty, or a key named
+    `abstract` inside another mapping, which pandoc does not take for the abstract."""
+    assert _abstract_line(front) is None
+
+
+def test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check() -> None:
+    """A mapping merging the one before it twice doubles, with each line, the work of
+    anything that expands merge keys: 22 lines, 614 bytes, held `check` for 38 seconds when
+    the block was built into Python values. The search for a merged abstract has the same
+    shape, so it visits each mapping once; this one is found only after all of `a21`."""
+    merges = [f"a{i}: &a{i} {{<<: [*a{i - 1}, *a{i - 1}]}}" for i in range(1, 22)]
+    lines = ["a0: &a0 {k: v}", *merges, f"z: &z {{abstract: {SENTINEL}}}", "<<: [*a21, *z]"]
+    started = time.perf_counter()
+    line = _abstract_line("\n".join(lines) + "\n")
+    assert time.perf_counter() - started < 5
+    assert line == 24
 
 
 # ------------------------------------------------------------------------------ audit
@@ -1857,8 +2091,626 @@ def test_audit_reads_prose_after_a_rule_at_the_top(tmp_path: Path, references: s
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["9.99"]
 
 
-_CLAIM = "The excess was significant (p < 0.001).\n"
-_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM
+_CLAIM_LINE = "The excess was significant (p < 0.001).\n"
+_RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLAIM_LINE
+
+_OPENING_RULES = [
+    # YAML metadata below the front matter: pandoc prints none of it, and a `title:` in it
+    # replaces paper.yaml's.
+    "---\nnote: |\n  Methods\n---\n",
+    "---\n# Methods\nnote: v\n...\n",
+    # Not YAML: pandoc reads a table, whose lines are cells, not headings.
+    "---\nMethods\n---\n",
+    "----\nMethods\n\n## Results\n----\n",
+    # Directly under a setext heading, the rule is not its underline.
+    "Results\n-------\n---\nMethods\n---\n",
+    # A setext heading itself: `#` is the one way to write a heading with nothing to judge.
+    "Methods\n-------\n",
+]
+
+
+@pytest.mark.parametrize("block", _OPENING_RULES)
+def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsys) -> None:
+    """Below the front matter, pandoc reads a line of dashes with a line directly under it
+    as YAML metadata or as a table, and neither prints a heading. The gates read prose and
+    took the closing rule for a setext underline: under `## Results`, `Methods` in a YAML
+    comment or a one-cell table headed the paragraph after, and `p < 0.001` in it passed as
+    the alpha chosen in advance. Modelling pandoc's readers here was tried and did not hold,
+    so the shape is refused, by `check` and by the build."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}\n{_CLAIM_LINE}", "utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "rule-opens-a-block" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "pandoc may read as a heading's underline, YAML metadata or a table" in (
+        capsys.readouterr().out
+    )
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_import_takes_back_a_document_built_before_its_source_was_refused(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document built from a setext heading before the refusal existed came back and was
+    refused, and rewriting the heading as the hint said changed the digest, so it was then
+    refused as built from another version. The refusal belongs to `check` and the build,
+    which still make the author rewrite the heading before the next document."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\nSensitivity analyses\n--------------------\n\nText.\n", "utf-8")
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, report = assemble(loaded, namespace, results)
+    assert not report.ok, "the source is refused now"
+    built = build_document(loaded, assembled, mode=OFFLINE)
+    returned = tmp_path / "back.docx"
+    returned.write_bytes(built.output.read_bytes())
+    assert main(["import", str(returned), str(project)]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("block", "said"),
+    [
+        # A `<!--` pandoc prints as code opens a comment for the heading scan, which then
+        # read no rule, while pandoc merged the YAML block's title over paper.yaml's. Written
+        # `\<!--` here first, which #39 taught the gates to read as pandoc does; indented
+        # code is one place the gates' comment reading still does not know.
+        (
+            "Run it as:\n\n    make all <!-- aside\n\n::: note\n---\ntitle: Evil\n...\n:::\n\n"
+            "later -->\n",
+            "title",
+        ),
+        # A title continuing a paragraph over `===`: the gates read a Methods heading pandoc
+        # prints as text, and put the claim under it. Named with its file and line.
+        (f"We also saw\nMethods\n=======\n\n{_CLAIM_LINE}", "'Methods' at main.md:"),
+    ],
+)
+def test_the_build_refuses_what_pandoc_reads_otherwise(
+    project: Path, block: str, said: str, capsys
+) -> None:
+    """Every shape the refusals list was found by a review, and each round found more: the
+    fifth found five that put another title on the title page. So the build asks pandoc
+    how it reads the document it is about to make, and stops when the metadata holds
+    anything the build's header did not set, or the headings differ from the gates'."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "pandoc reads" in err and said in err, err
+    assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_misread_supplement_fails_the_build_and_leaves_no_old_copy(
+    project: Path, capsys
+) -> None:
+    """The supplement was reported as not built and the build still exited 0, and `submit`
+    packed the supplement from the build before, a version behind the manuscript."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    old = project / "build" / "supplementary.docx"
+    assert old.exists()
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    text = supplement.read_text(encoding="utf-8")
+    supplement.write_text(f"{text}\nWe also saw\nMethods\n=======\n\nText.\n", "utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "pandoc reads" in capsys.readouterr().err
+    assert not old.exists()
+    assert main(["submit", str(project), "--offline", "--skip-checks"]) == 1
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_import_takes_back_a_document_built_before_the_build_asked_pandoc(
+    project: Path, tmp_path: Path
+) -> None:
+    """`import` rebuilds the document it sent, to compare the returned one with, and that
+    rebuild refused a source the build now refuses, a document already out with a
+    co-author included."""
+    from manuscript_guard.build import OFFLINE, assemble, build_document
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\nWe also saw\nMethods\n=======\n\nText.\n", "utf-8")
+    loaded = load_project(project)[0]
+    namespace, results, _literature, _report = load_namespace(loaded)
+    assembled, _assembly = assemble(loaded, namespace, results)
+    built = build_document(loaded, assembled, mode=OFFLINE, verify_reading=False)
+    returned = tmp_path / "back.docx"
+    returned.write_bytes(built.output.read_bytes())
+    assert main(["import", str(returned), str(project)]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## Limitations <!-- shorten this later -->",
+        "## Estimating $\\beta_{1}$",
+        "## Change in HbA~1c~ from baseline",
+        "## Effect of CO~2~ on growth",
+        "## Area in m^2^",
+        "## Strengths &amp; limitations",
+        "## The set {1, 2, 3}",
+        "## The `f{x}` call",
+        "## Methods^[A note.]",
+        "## Methods[^m]\n\n[^m]: A note.",
+        "## See [the site][ref]\n\n[ref]: https://example.org",
+        "## Aware**ness**",
+        '## <span class="x">Results</span>',
+        # Found by the seventh: definitions whose text starts on the next line, and an
+        # example reference.
+        "## Methods[^m]\n\n[^m]:\n    A note.",
+        "## See [the site][ref]\n\n[ref]:\n  https://example.org",
+        "## See (@good)\n\n(@good) An example.",
+    ],
+)
+def test_a_heading_pandoc_prints_as_the_gates_read_it_is_not_refused(heading: str) -> None:
+    """The sixth review found each refused by the build: the gates' raw title and pandoc's
+    printed one split into words differently. The gates' titles are now read by pandoc
+    too, so both sides are pandoc's words."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = f"# Introduction\n\nText.\n\n{heading}\n\nMore text.\n"
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("written", "built"),
+    [
+        ("## Patients on {{results.dose}}mg", "## Patients on 50mg"),
+        ("## The {{results.rank}}th percentile", "## The 90th percentile"),
+        ("## x{{results.i}} and y", "## x3 and y"),
+        ("## Doses of {{results.range}}", "## Doses of 3 to 5 mg"),
+    ],
+)
+def test_a_placeholder_against_letters_is_read_as_its_value(written: str, built: str) -> None:
+    """The stand-in for a placeholder was set apart by spaces, so `{{results.dose}}mg`
+    read as two words where pandoc printed one, `50mg`, and was refused."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    source = f"# Introduction\n\nText.\n\n{written}\n\nMore text.\n"
+    document = f"# Introduction\n\nText.\n\n{built}\n\nMore text.\n"
+    found = misreading(
+        header + document,
+        header,
+        [("main.md", source)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
+    )
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("written", "built"),
+    [
+        # Found by the eighth: YAML in a footnote's definition, which the build copied into
+        # the text it read the header's metadata from, so the title it set went unseen.
+        (
+            "# Results\n\nA closing remark.[^n]\n\n[^n]:\n    ---\n    title: Evil\n    ...\n",
+            None,
+        ),
+        # A heading in a list item is a heading in the document, and the gates read text.
+        ("# Methods\n\n1. # Results\n\n   The excess (p < 0.001).\n", None),
+        ("# Methods\n\n- ## Listed\n\nText.\n", None),
+        ("# Methods\n\nTerm\n:   ## Inside\n\nText.\n", None),
+        # A heading that is only a placeholder matched any heading at its level, so two
+        # misreads that cancelled passed: the value is read now, not a wildcard.
+        (
+            "# Results\n\nWe also saw\n## {{results.x}}\n\nThe `<!--` marker.\n\n## Methods\n\n"
+            "The excess (p < 0.001). -->\n\n## Last\n",
+            "# Results\n\nWe also saw\n## Subgroups\n\nThe `<!--` marker.\n\n## Methods\n\n"
+            "The excess (p < 0.001). -->\n\n## Last\n",
+        ),
+        # A value that puts a heading in: the gates judged the file as written.
+        (
+            "# Results\n\nThe rate was {{results.rate}}.\n\nThe excess (p < 0.001).\n",
+            "# Results\n\nThe rate was 4.\n\n# Discussion\n\nThe excess (p < 0.001).\n",
+        ),
+        # Found by the ninth: a heading in a list stood in for one the gates misread, a
+        # `# Methods` straight under a line of text that pandoc prints as text. The gates
+        # read no heading in a list, so one there is never theirs.
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "- # Methods\n",
+            None,
+        ),
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "1. # Methods\n",
+            None,
+        ),
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "Aside\n:   # Methods\n",
+            None,
+        ),
+        # A commented-out footnote holding YAML pandoc cannot read: copied into the titles'
+        # own document, it made that run fail, and the check gave up on every heading.
+        (
+            "# Results\n\nShown in Table 2.\n# Methods\n\nThe excess (p < 0.001).\n\n"
+            "<!--\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n-->\n",
+            None,
+        ),
+    ],
+)
+def test_the_build_refuses_what_its_reading_used_to_let_through(
+    written: str, built: str | None
+) -> None:
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    document = built or written
+    found = misreading(
+        header + document,
+        header,
+        [("main.md", written)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
+    )
+    assert found is not None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
+    """Found reviewing #71: six hundred nested divs overflowed the recursive walk of
+    pandoc's reading, and the build stopped on a traceback. Where Python's own JSON reader
+    gives up depends on its version, before 600 on 3.10 and past 2000 on 3.13, so either
+    depth may be compared or refused; neither may crash."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    for depth in (600, 2000):
+        body = (
+            "# Results\n\n"
+            + "".join(":" * (depth + 3 - i) + " {.d}\n\n" for i in range(depth))
+            + "Deep.\n\n"
+            + "".join(":" * (4 + i) + "\n\n" for i in range(depth))
+        )
+        found = misreading(
+            header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+        )
+        assert found is None or found.startswith("a document nested too deep"), (
+            depth,
+            found,
+        )
+
+
+def test_opener_lines_are_read_in_linear_time() -> None:
+    """Roman numerals that were single letters too, a comment's pattern that ran across
+    later comments, a TeX argument that was also a footnote marker, and a command's name
+    that could stop at any letter let one line of a few hundred characters take minutes:
+    each could be read more ways than one."""
+    import time
+
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    backslash = chr(92)
+    for item, tail in [
+        ("i. ", "y ---"),
+        ("* <!-- --> ", "y ---"),
+        (f"{backslash}a[^x]: ", "y ---"),
+        (f"{backslash}ivx. ", "y ---"),
+        ("- ", "y - - -"),
+    ]:
+        text = "# Results\n\nx) " + item * 4000 + tail + "\ntitle: Evil\n"
+        started = time.perf_counter()
+        rules_opening_blocks(text)
+        assert time.perf_counter() - started < 2, item
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A heading holding block-level HTML: pandoc makes no heading of it, and the gates'
+        # title of it made no paragraph on its own, which switched the whole check off.
+        "# Discussion <hr>\n\nText.\n",
+        (
+            "# Results\n\nWe also saw\nMethods\n=======\n\nThe excess (p < 0.001).\n\n"
+            "## Notes <div></div>\n\nNone.\n"
+        ),
+        # A paragraph of the titles' own taken for a title, its first word for the lead.
+        (
+            "# Intro\n\nText.\n\n## Methods <div>x</div> dropped Results\n\n"
+            "The ROR was 4.2 (p < 0.001).\n\n- ## Results\n\nText.\n"
+        ),
+    ],
+)
+def test_a_title_pandoc_cannot_read_alone_does_not_switch_the_check_off(body: str) -> None:
+    """When a title did not come back as a paragraph of its own, the check gave up on the
+    headings of the whole document, and a misread elsewhere in it built."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is not None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_annotated_copy_builds_with_a_subscript_in_a_heading(project: Path) -> None:
+    """The annotated copy is marked up for the author to read, not the document sent, and
+    its marks changed how a subscript in a heading read: it was refused as a misread."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("# Discussion", "# Change in HbA~1c~ from baseline"), "utf-8")
+    args = ["build", str(project), "--offline", "--annotated", "--skip-checks"]
+    assert main(args) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
+    project: Path, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\nWe also saw\nMethods\n=======\n\nText.\n", "utf-8")
+    (project / "build").mkdir(exist_ok=True)
+    out = project / "build"
+    assert main(["build", str(project), "--offline", "--skip-checks", "-o", str(out)]) == 1
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_submit_refuses_a_pack_missing_its_document_or_its_supplement(
+    project: Path, capsys
+) -> None:
+    """A refused build removes its document, and `submit --document` then packed nothing
+    in its place, and no supplement, and exited 0."""
+    from manuscript_guard.cli import main
+
+    missing = project / "build" / "manuscript.docx"
+    assert main(["submit", str(project), "--document", str(missing), "--skip-checks"]) == 2
+    assert main(["build", str(project), "--offline"]) == 0
+    # A document edited elsewhere is packed with the supplement the build made.
+    elsewhere = project / "final" / "manuscript-edited.docx"
+    elsewhere.parent.mkdir()
+    elsewhere.write_bytes(missing.read_bytes())
+    assert main(["submit", str(project), "--document", str(elsewhere), "--skip-checks"]) == 0
+    assert (project / "build" / "submission" / "supplementary.docx").exists()
+    (project / "build" / "supplementary.docx").unlink()
+    assert main(["submit", str(project), "--document", str(missing), "--skip-checks"]) == 2
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_submit_does_not_delete_a_document_inside_the_pack(project: Path) -> None:
+    """Found by the ninth review: the pack's directory is emptied before the document is
+    copied into it, so `--document build/submission/manuscript.docx` deleted the document,
+    perhaps a co-author's edited copy, and exited 0 with a pack that lacked it."""
+    from manuscript_guard.cli import main
+
+    assert main(["submit", str(project), "--offline"]) == 0
+    inside = project / "build" / "submission" / "manuscript.docx"
+    written = inside.read_bytes()
+    assert main(["submit", str(project), "--document", str(inside), "--skip-checks"]) == 2
+    assert inside.read_bytes() == written
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_reads_a_binding_in_a_heading_as_its_value(project: Path) -> None:
+    """The gates read `{{results.cohort.n}}` where pandoc reads the number: not a
+    difference, and neither are emphasis or an identifier."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    heading = "\n## A cohort of {{results.cohort.n}} *reports* {#sec-cohort}\n\nText.\n"
+    source.write_text(f"{text}{heading}", encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+
+_EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        # Found by review: a line the heading scan takes for a setext title but pandoc does
+        # not, so the rule under it was let through as an underline while pandoc read YAML
+        # and took its title for the document's.
+        f"::: note\nA note.\n:::\n{_EVIL}",
+        f"::: note\n{_EVIL}:::\n",
+        f"<div>\nA note.\n</div>\n{_EVIL}",
+        f"\\begin{{center}}\nx\n\\end{{center}}\n{_EVIL}",
+        f"+---+---+\n| a | b |\n+---+---+\n{_EVIL}",
+        f"a | b\n--|--\nc | d\n{_EVIL}",
+        f"    x <- 1\n    y <- 2\n{_EVIL}",
+        f"{{{{table.two_by_two}}}}\n{_EVIL}",
+        # A lazy line of a quotation or a list item under the rule: pandoc reads a table in
+        # the quotation or the item, the heading scan a heading from the closing rule.
+        "> ---\nMethods\n---\n",
+        "* ---\n  Methods\n---\n",
+        "-\nMethods\n-\n",
+        # Under the second line of a paragraph a rule is text to pandoc, not an underline.
+        "We also saw\nMethods\n---\n",
+        # Rules of two dashes, spaced dashes, or indented a little open tables too.
+        "--\nMethods\n--\n",
+        "- - -\nMethods\n- - -\n",
+        "  ---\nMethods\n  ---\n",
+        # ...where only the opening rule can be caught: the closing one is under a heading.
+        "--\ncell\n\n## Results\n--\n",
+        "- -\ncell\n\n## Results\n- -\n",
+        # A comment closing on the rule's line: pandoc reads on from the `-->`.
+        f"<!-- x\nabc -->{_EVIL}",
+        # Found by the second review: a comment on the line above the title is no break.
+        # In a paragraph the title continues it; at a block start the build's bookmark goes
+        # in front of the comment, and the title then continues that paragraph.
+        "We also saw it.\n<!-- check with reviewer 2 -->\nMethods\n-------\n",
+        "<!-- reviewer 2 asked for this -->\nMethods\n-------\n",
+        # Found by the third: a table placeholder spelled with spaces, or after other text,
+        # is still where the build puts a table, which takes the lines under it for caption.
+        "{{ table.two_by_two }}\n---\nMethods\n---\n",
+        "See {{table.two_by_two}}\n---\nMethods\n---\n",
+        # Found by the fourth, each a title the exemption for setext headings let through:
+        # a comment after the underline, which pandoc prints with it as text;
+        "Methods\n------- <!-- check -->\n\n",
+        "Methods\n-------<!-- x -->\n\n",
+        # a comment whose last line looks like a heading, taken for a break above the title;
+        "<!-- Removed at a reviewer's request:\n## Sensitivity analysis -->\nMethods\n-------\n\n",
+        # a rule with a blank line under it, under a line pandoc makes its heading;
+        "# Methods\n---\n\n## Statistical analysis\n\n",
+        "> Cases were compared with non-cases.\n---\n\n",
+        # a comment closing on the rule's line, its last line indented;
+        "<!-- reviewer note\n  on two lines --> ---\ntitle: Evil\n...\n\n",
+        # a comment inside a placeholder's braces, which the build removes first;
+        "{{table.baseline<!-- x -->}}\n---\ntitle: Evil\n...\n",
+        # a listing pandoc does not make, and an underline pandoc does not read.
+        "We also saw it.\n~~~\nx <- 1\n~~~\nMethods\n-------\n\n",
+        "We also saw\nPart\n====\nMethods\n-------\n\n",
+        # So no line of dashes passes under a title: every one of those was a title the
+        # exemption had to judge, and a plain one is refused with them, `#` doing the same.
+        "Results\n-------\n\nText.\n",
+        "Results\n---\nText directly under a heading.\n",
+        "Results\n-\n\nText.\n",
+        "```\nx\n```\nResults\n-------\n",
+        "## Section\nResults\n-------\n",
+        "Part\n====\nResults\n-------\n",
+        "2. Methods\n----------\n",
+        "2) Methods\n----------\n",
+        "{{results.cohort.n}} reports\n---\n",
+        # Nor over a line: pandoc reads an item, YAML or a table from it.
+        "-\n  an empty item's text\n",
+        # Found by the fifth: pandoc starts a block after markup, or a list, definition or
+        # footnote marker, and reads the dashes after it as YAML.
+        "<div>---\ntitle: Evil\n...\n</div>\n",
+        "<hr>---\ntitle: Evil\n...\n",
+        "<div>\nA note.\n\n</div>---\ntitle: Evil\n...\n",
+        "## Note\n<!-- aside -->    ---\ntitle: Evil\n...\n",
+        "## Note\n<!-- aside -->\t---\ntitle: Evil\n...\n",
+        "## Note\n\\newpage ---\ntitle: Evil\n...\n",
+        "## Note\n\\end{center}---\ntitle: Evil\n...\n",
+        "Term\n:   ---\n    title: Evil\n    ...\n",
+        "## Note\n* ---\n  title: Evil\n  ...\n",
+        "## Note\n1. ---\n   title: Evil\n   ...\n",
+        "## Note\n[^1]: ---\n    title: Evil\n    ...\n",
+        # Found by the sixth: markers nested on one line, and a TeX group closed with `}}`.
+        "## Note\n* * ---\n    title: Evil\n    ...\n",
+        "## Note\n- 1) ---\n     title: Evil\n     ...\n",
+        "## Note\n\\newcommand{\\x}{\\textbf{y}}---\ntitle: Evil\n...\n",
+        # Found by the seventh: tags that are blocks or inline as pandoc finds them, a
+        # processing instruction, a starred command, a marker before markup or a TeX
+        # command, a comment closing on the line before either, and a deeper TeX group.
+        "## Note\n<del> ---\ntitle: Evil\n...\n",
+        "## Note\n<svg> ---\ntitle: Evil\n...\n",
+        "## Note\n<?xml version='1.0'?> ---\ntitle: Evil\n...\n",
+        "## Note\n\\section*{A} ---\ntitle: Evil\n...\n",
+        "## Note\n* \\newpage ---\n  title: Evil\n  ...\n",
+        "## Note\n<div> * ---\n  title: Evil\n  ...\n",
+        "## Note\n<!-- a\nb --> \\newpage ---\ntitle: Evil\n...\n",
+        "## Note\n<!-- a\nb --> * ---\n  title: Evil\n  ...\n",
+        "## Note\n\\newcommand{\\x}{\\textbf{\\emph{y}}}---\ntitle: Evil\n...\n",
+        # Found by the eighth: four more tags pandoc starts a block behind.
+        "## Note\n<applet> ---\ntitle: Evil\n...\n",
+        "## Note\n<area> ---\ntitle: Evil\n...\n",
+        "## Note\n<frameset> ---\ntitle: Evil\n...\n",
+        "## Note\n<isindex> ---\ntitle: Evil\n...\n",
+        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc,
+        # and a footnote's marker only with a colon after it.
+        "## Note\n\\newpage[^1]---\ntitle: Evil\n...\n",
+        "## Note\n\\vspace{1em}[^x] ---\ntitle: Evil\n...\n",
+    ],
+)
+def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    text = f"---\ntitle: A study\n---\n\n# Introduction\n\nProse.\n\n{block}\nThe end.\n"
+    assert rules_opening_blocks(text) != []
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "Text.\n\n---\n\nMore text.\n",
+        "Text.\n\n- - -\n\nMore text.\n",
+        "Text.\n \t\n---\n  \nMore text.\n",
+        "Text.\n\n-\n\nMore text.\n",
+        "```\n---\nnote: v\n---\n```\n",
+        "<!--\n---\nnote: v\n---\n-->\n",
+        "The end.\n\n---\n",
+        "Results\n=======\n\nText.\n",
+        # Dashes in prose are dashes, a range split over lines included.
+        "The interval ran from {{results.ror.ci_low}}--\n{{results.ror.ci_high}}.\n",
+        "As we said ---\nand as the data show.\n",
+        # Found by the sixth: inline markup is no block, and a rule inside a quotation is the
+        # quotation's.
+        "An area of 3 m<sup>2</sup> ---\nlarge.\n",
+        "The [drug]{.smallcaps} --\nwas used.\n",
+        "Values x > --\nnext.\n",
+        "> Para one.\n>\n> ---\n>\n> Para two.\n",
+        # An item that is an en dash: no YAML opens on two dashes.
+        "1. a\n2. --\n3. b\n",
+    ],
+)
+def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
+    """A line of dashes between blank lines is a thematic break to pandoc, whatever is
+    around it; one in code or a comment is not read at all. A setext heading underlined
+    with `=` has no dashes to misread."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    text = f"---\ntitle: A study\n---\n\n# Introduction\n\n{block}"
+    assert rules_opening_blocks(text) == []
 
 
 @pytest.mark.parametrize(
@@ -1868,8 +2720,8 @@ _RULED = "\n## Methods\n\nCases were compared with non-cases.\n\n---\n\n" + _CLA
         (f"---\n{_RULED}", ["Methods"]),
         (f"---\n  {_RULED}", ["Methods"]),
         # Front matter, with a YAML comment in it: nothing prints.
-        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM}", []),
-        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM}', []),
+        (f"---\n# keep in step\ntitle: A study\n# Methods\n---\n\n{_CLAIM_LINE}", []),
+        (f'---\n# Methods\ntitle: "A study <!--"\n---\n-->\n\n{_CLAIM_LINE}', []),
     ],
 )
 def test_the_build_prints_the_headings_the_gates_read(text: str, printed: list[str]) -> None:
@@ -2018,6 +2870,324 @@ def test_a_comment_opened_in_the_front_matter_hides_no_binding(project: Path) ->
     assert "interval-reversed" in codes(gate_report(project))
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("header", "rule"),
+    [
+        # 0.2.12 closed front matter only with `---`.
+        ("---\n{title}\n...\n", r"\A---\r?\n(.*?)\r?\n---[ \t]*\r?\n"),
+        # From 0.2.13 until 0.2.47 a header that is a sentence, which pandoc prints, was
+        # stripped all the same.
+        (
+            "---\nKept for the authors.\n...\n",
+            r"\A---[ \t]*\r?\n(?![ \t]*\r?\n)(.*?)\r?\n(?:---|\.\.\.)[ \t]*\r?\n",
+        ),
+    ],
+    ids=["0.2.12", "0.2.13"],
+)
+def test_a_document_numbered_under_older_rules_is_not_merged(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, header: str, rule: str
+) -> None:
+    """Paragraph identifiers are positional, and 0.2.13 moved where front matter closed by
+    `...` ends. A document built before that and imported after it had every identifier a
+    block out of step: `import --apply` wrote three paragraphs' text over three others and
+    printed "merged 3 reworded paragraph(s), bindings intact". The rule changed again in
+    0.2.47, for a header pandoc does not keep as metadata."""
+    import importlib
+
+    from manuscript_guard.cli import main
+
+    # The module, not the `assemble` function the package exports under the same name.
+    assembly = importlib.import_module("manuscript_guard.build.assemble")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    path.write_text(
+        header.format(title=title) + text[text.index("\n---\n") + len("\n---\n") :], "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+
+    # Built as that release built it.
+    before = re.compile(rule, re.DOTALL)
+
+    def as_before(raw: str) -> tuple[str, str]:
+        found = before.match(raw)
+        return (raw[found.end() :].lstrip("\n"), "") if found else (raw, "")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(assembly, "strip_front_matter", as_before)
+        # Nor did that release refuse a line of dashes over a line of text (#65).
+        patched.setattr(assembly, "rule_findings", lambda path, text: ())
+        assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    shutil.copy(project / "build" / "manuscript.docx", returned)
+    # A co-author's edit, in a document that records no paragraphs, as 0.2.12's did not.
+    scratch = tmp_path / "t.docx"
+    with zipfile.ZipFile(returned) as zin, zipfile.ZipFile(scratch, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            elif item.filename == "docProps/custom.xml":
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
+            zout.writestr(item, data)
+
+    main(["import", str(scratch), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
+    project: Path, tmp_path: Path
+) -> None:
+    """Identifiers are positional. With a paragraph added to the source since the build,
+    above the one a co-author edited, every identifier after it named the paragraph before,
+    and `import --apply --force` wrote three edits over their neighbours and printed "merged
+    3 reworded paragraph(s), bindings intact". The plan showed what each edit became, never
+    which paragraph it replaced, so reading every hunk could not have caught it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = data.replace(b"received no funding", b"received no external funding")
+            zout.writestr(item, data)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+def _sent_back(project: Path, tmp_path: Path, change, *, recorded: bool = True) -> Path:
+    """The built document as a co-author returns it, `change` applied to its body's XML;
+    without its record of paragraphs unless `recorded`, as releases before 0.2.60 built it."""
+    returned = tmp_path / "back.docx"
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as zin, zipfile.ZipFile(
+        returned, "w"
+    ) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                data = change(data.decode("utf-8")).encode("utf-8")
+            elif item.filename == "docProps/custom.xml" and not recorded:
+                data = re.sub(
+                    rb'<property\b[^>]*name="manuscript-guard-paragraphs-\d+".*?</property>',
+                    b"",
+                    data,
+                    flags=re.DOTALL,
+                )
+            zout.writestr(item, data)
+    return returned
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_import_does_not_cut_a_paragraph_down_to_a_link_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """A paragraph opening `[Note]:` with a narrative citation after it is prose. Cut down
+    in Word to the label and the citation, it is a link's definition, which pandoc prints
+    nothing of: merged, the paragraph vanished from the next build (#72's round-4 review)."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    paragraph = "[Note]: @fictionalClassSignal2019 says the ratio was high.\n\n"
+    anchor = "# Data availability"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(anchor, paragraph + anchor, 1), "utf-8"
+    )
+    source = path.read_text(encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(
+        project, tmp_path, lambda xml: xml.replace("says the ratio was high.", "", 1)
+    )
+
+    main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == source, "cut down to a link definition"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_retyped_into_the_one_before_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A document that records nothing may never have carried a paragraph that is only a
+    value, releases before 0.2.49 gave it no identifier, so one missing from it was left out
+    of the comparison, and of the join check with it. Joined into the paragraph before by
+    retyping across the break, which takes its bookmark, it merged as a rewording and the
+    number was in the source twice. Main reports the join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "has not been examined.\n\n# Methods"
+    assert anchor in text
+    path.write_text(
+        text.replace(anchor, "has not been examined.\n\n{{results.ror.point}}\n\n# Methods"),
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def retyped(xml: str) -> str:
+        value = _word_paragraph(xml, ">3.84<")
+        return xml.replace(value, "", 1).replace(
+            "has not been examined.", "has not been examined. 3.84", 1
+        )
+
+    returned = _sent_back(project, tmp_path, retyped, recorded=False)
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "the number was written in twice"
+
+
+def _word_paragraph(xml: str, words: str) -> str:
+    """The Word paragraph carrying an identifier whose text holds `words`."""
+    return next(
+        p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if "mg-p-" in p and words in p
+    )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_forced_import_does_not_write_into_another_paragraph_reading_the_same(
+    project: Path, tmp_path: Path
+) -> None:
+    """Declarations repeat: "Not applicable." under two headings. The record held a hash of
+    each paragraph's text, which cannot tell the two apart, so with a third declaration added
+    above them since the build, the first one's identifier named the new one, read the same,
+    was trusted, and `import --apply --force` wrote a co-author's ethics approval under
+    "Consent to participate"."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    path = main_md(project)
+    tail = (
+        "# Funding\n\nThis work received no funding.\n\n# Competing interests\n\nNone declared.\n"
+    )
+    declared = (
+        "# Ethics approval\n\nNot applicable.\n\n# Consent for publication\n\nNot applicable.\n\n"
+        "# Competing interests\n\nNone declared.\n"
+    )
+    text = path.read_text(encoding="utf-8")
+    assert tail in text
+    path.write_text(text.replace(tail, declared), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    ethics = next(
+        name
+        for name, (_path, words, _start) in tagged_paragraphs(load_project(project)[0]).items()
+        if words == "Not applicable."
+    )
+
+    def approved(xml: str) -> str:
+        at = xml.index(f'w:name="{ethics}"')
+        stop = xml.index("</w:p>", at)
+        edited = xml[at:stop].replace("Not applicable.", "Approved by the review board.")
+        return xml[:at] + edited + xml[stop:]
+
+    returned = _sent_back(project, tmp_path, approved)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Ethics approval\n",
+            "# Consent to participate\n\nNot applicable.\n\n# Ethics approval\n",
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("lost", [False, True], ids=["bookmark kept", "bookmark lost"])
+def test_a_paragraph_joined_to_one_the_source_changed_is_not_merged(
+    project: Path, tmp_path: Path, lost: bool
+) -> None:
+    """With the second of two paragraphs edited in the source since the build, only the first
+    kept a trusted identifier, and the two joined in Word read as the first one reworded:
+    `import --apply --force` merged it, and the second paragraph's text was in the source
+    twice. With the join retyped across the boundary, which takes the second bookmark with
+    it, the import also exited 0. Main reports the join."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def joined(xml: str) -> str:
+        first = _word_paragraph(xml, "Drug-induced hepatic injury remains")
+        second = _word_paragraph(xml, "Whether the signal")
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", second, flags=re.DOTALL)
+        if lost:
+            inner = re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", inner)
+        return xml.replace(second, "", 1).replace(first, first[: -len("</w:p>")] + inner, 1)
+
+    returned = _sent_back(project, tmp_path, joined)
+    path = main_md(project)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "has not been examined.", "has not been examined before.", 1
+        ),
+        encoding="utf-8",
+    )
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_block_tagged_since_the_build_joined_into_the_one_above_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """A list item carries no identifier, so a document records none for it; turned into a
+    paragraph since the build, it has one now, which the record does not hold and the join
+    check did not weigh. Joined in Word into the paragraph above it, the join merged as a
+    rewording, the import exited 0, and the sentence was in the source twice. A release that
+    tags more kinds of block does the same with no source change at all. Main reports the
+    join."""
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    signal = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    item = "- No other signal was examined in this analysis.\n"
+    text = path.read_text(encoding="utf-8")
+    assert signal in text
+    path.write_text(text.replace(signal, f"{signal}\n{item}", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+
+    def joined(xml: str) -> str:
+        above = _word_paragraph(xml, "Whether the signal")
+        below = next(
+            p
+            for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+            if "No other signal was examined" in p
+        )
+        inner = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", below, flags=re.DOTALL)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        return xml.replace(below, "", 1).replace(above, above[: -len("</w:p>")] + space + inner, 1)
+
+    returned = _sent_back(project, tmp_path, joined)
+    path.write_text(path.read_text(encoding="utf-8").replace(item, item[2:], 1), encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
+
+    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
+    assert path.read_text(encoding="utf-8") == source, "a join was merged as a rewording"
+
+
 def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> None:
     """A fence opener in an abstract, with no closer there, paired with a fence in the body,
     and the prose between was judged as R."""
@@ -2030,6 +3200,697 @@ def test_g2_reads_no_body_prose_as_code_from_a_fence_in_the_front_matter() -> No
     )
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" not in {f.code for f in report.findings}
+
+
+def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
+    """A code block in a front-matter value is a listing too, and a number in its string is
+    a claim. Looked for in the body alone, `_fenced_code` missed it while `mask` hid it, and
+    the number was read by nothing; no test held the two to the same fences."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+    from manuscript_guard.text.masking import NUL, fenced_blocks, mask
+
+    text = (
+        '---\ntitle: T\nsubtitle: |\n  ```python\n  print("ROR 9.99")\n  ```\n---\n\n'
+        "# Results\n\nText.\n"
+    )
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "code-block-text-number" in {f.code for f in report.findings}
+    masked = mask(text)
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
+
+
+def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
+    """A URL is masked to the next space, and the key of the next YAML line is masked too,
+    so one ending a title ran through that key into the next value: 9.99, which pandoc
+    prints in the abstract, was read by nothing."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.masking import mask
+
+    paper = (
+        "---\ntitle: Data at https://example.org/data\nabstract: 9.99 was the ROR.\n---\n\n"
+        "# Results\n\nThe cohort held n = 1 report.\n"
+    )
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_text(paper, encoding="utf-8")
+    assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == {"9.99"}
+    assert "9.99" in mask(paper)
+
+
+def test_a_yaml_block_in_the_body_heads_nothing(project: Path) -> None:
+    """Pandoc reads a YAML block anywhere in the body as metadata, so a `# Methods` line in
+    one is a YAML comment. Read as a heading, it gave the paragraph under
+    the block the Methods chain, and a `p < 0.001` in the Introduction passed as the alpha
+    chosen in advance."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    assert anchor in text
+    block = "\n---\nnote: x\n# Methods\n---\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + block, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        # The build passes a body block to pandoc, which prints its author, date and
+        # abstract, a wrapped value included.
+        (
+            "Para.\n\n---\nauthor: The 12 investigators\ndate: Revised after 9.94\n"
+            "abstract: The ROR was\n  9.91 in the cohort.\n---\n\nAfter.\n",
+            ("12", "9.94", "9.91"),
+        ),
+        # Under a caption, pandoc reads the block as a table and prints it.
+        ("Table: Cohort sizes.\n\n---\nCases: 120\nControls: 480\n---\n", ("120", "480")),
+        # In the body a URL still runs to the next space: stopped at a comment, the link
+        # target after it started inside the old URL and ran on.
+        ("See https://x.org/a<!--c-->](b ROR 8.88) here.\n", ("8.88",)),
+    ],
+    ids=["printed values", "table", "url in the body"],
+)
+def test_masking_hides_nothing_a_body_yaml_block_prints(text: str, shown: tuple[str, ...]) -> None:
+    """Masked as a whole, a YAML block in the body hid values the build prints: pandoc
+    prints a body block's author, date and abstract, and a block under a caption is a
+    table. A body block is only kept from heading anything."""
+    from manuscript_guard.text.masking import mask
+
+    masked = mask(text)
+    assert all(number in masked for number in shown)
+
+
+def test_a_yaml_block_inside_a_comment_brings_back_no_heading(project: Path) -> None:
+    """Pandoc reads a YAML block inside an HTML comment as part of the comment. Masked, the
+    block stopped the comment scanner, so a `# Methods` further down the comment headed the
+    paragraph after it, and its `p < 0.001` passed as the alpha."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    anchor = "Whether the signal extends to example-drug specifically has not been examined.\n"
+    comment = "\n<!--\n\n---\nnote: x\n---\n\n# Methods\n\n-->\n\nThe difference was p < 0.001.\n"
+    path.write_text(text.replace(anchor, anchor + comment, 1), encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_raw_block_in_the_front_matter_is_not_reported(project: Path) -> None:
+    """The build strips the manuscript's front matter, so a raw LaTeX block under
+    `header-includes` never reaches the document; G2 failed it as a `raw-block` written
+    straight into the build."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    title = text.split("\n")[1]
+    header = (
+        f"---\n{title}\nheader-includes: |\n  ```{{=latex}}\n  \\usepackage{{setspace}}\n"
+        "  ```\n---\n"
+    )
+    path.write_text(header + text[text.index("\n---\n") + len("\n---\n") :], encoding="utf-8")
+    assert "raw-block" not in codes(gate_report(project))
+
+
+_TICKS = "`" * 3
+_PRINTED = "The excess was 9.99."
+# Each makes a fenced listing of prose to the gates that pandoc prints: a fence pandoc does
+# not open, or one it does not close, so that the gates' closer paired with the next fence.
+_NOT_A_FENCE = {
+    # Python splits a line at these; pandoc splits at a newline alone, and deletes a lone
+    # carriage return.
+    **{
+        f"a fence after {name} on one line": (
+            f"We found it.{chr(code)}{_TICKS}\n\n{_PRINTED}\n\nThe end.{chr(code)}{_TICKS}\n"
+        )
+        for name, code in {
+            "a form feed": 0x0C,
+            "a vertical tab": 0x0B,
+            "a file separator": 0x1C,
+            "a next-line control": 0x85,
+            "a line separator": 0x2028,
+            "a paragraph separator": 0x2029,
+            "a lone carriage return": 0x0D,
+        }.items()
+    },
+    # After the fence pandoc takes one word, then `{attributes}`, and nothing else.
+    "an opener with two words": f"{_TICKS}r foo\n{_PRINTED}\n{_TICKS}\n",
+    "an R Markdown chunk header": f"{_TICKS}{{r, echo=FALSE}}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener with a word after its attributes": f"{_TICKS}{{.r}} x\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a no-break space": f"{_TICKS}r{chr(0xA0)}\n{_PRINTED}\n{_TICKS}\n",
+    "an opener ending in a form feed": f"{_TICKS}r{chr(0x0C)}\n{_PRINTED}\n{_TICKS}\n",
+    "a tilde opener with a backtick": f"~~~r`x\n{_PRINTED}\n~~~\n",
+    # Attributes may run on to the next line, but not past a blank one.
+    "attributes broken by a blank line": f"{_TICKS}{{.r\n\n.x}}\n{_PRINTED}\n{_TICKS}\n",
+    # Pandoc closes on spaces and tabs after the fence, and no indentation past three.
+    **{
+        f"a closer {where}": (
+            f"{_TICKS}r\nx\n{closer}\n\nMore code.\n\n{_TICKS}\n{_PRINTED}\n\n"
+            f"{_TICKS}r\ny\n{_TICKS}\n"
+        )
+        for where, closer in {
+            "ending in a no-break space": _TICKS + chr(0xA0),
+            "ending in a form feed": _TICKS + chr(0x0C),
+            "ending in an ideographic space": _TICKS + chr(0x3000),
+            "after a no-break space": chr(0xA0) + _TICKS,
+            "after a tab": "\t" + _TICKS,
+            "after a space and a tab": " \t" + _TICKS,
+            "after a lone carriage return": "x\r" + _TICKS,
+        }.items()
+    },
+}
+
+
+@pytest.mark.parametrize("name", sorted(_NOT_A_FENCE))
+def test_the_gates_read_prose_that_no_fence_of_pandocs_holds(name: str) -> None:
+    """The fence reader split lines where Python does, at a form feed and six other
+    characters as well as a newline, and stripped every Unicode space off a closer. Pandoc
+    does neither, so prose it printed was a listing to every gate, and G2 read no number in
+    it. Now the gates read it, or the shape is refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+    from manuscript_guard.text.masking import mask
+
+    text = f"# Results\n\nWe found it.\n\n{_NOT_A_FENCE[name]}\nThe end.\n"
+    assert "9.99" in mask(text) or unclear_fence_lines(text)
+
+
+_CHUNK = (
+    f"{_TICKS}{{r setup}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n\n"
+    f"{_TICKS}{{r plot}}\ny <- 2\n{_TICKS}\n"
+)
+# Fences pandoc may not open, or may pair otherwise than the gates.
+_UNCLEAR_FENCES = [
+    # Found by review: pandoc opens no fence on an R Markdown chunk header, and its closer
+    # then opened one to the gates that ran to the next chunk, over the prose between.
+    _CHUNK,
+    _CHUNK.replace(_TICKS, "~~~"),
+    _CHUNK.replace("{r setup}", "{r, echo=FALSE}"),
+    _CHUNK.replace("{r setup}", "r see below"),
+    _CHUNK.replace("{r setup}", "{.r} x"),
+    _CHUNK.replace("{r setup}", 'python title="x"'),
+    # Attributes over two lines pandoc may or may not close.
+    f"{_TICKS}{{.r\n{_TICKS}\n}}\nBody.\n{_TICKS}\n\n{_PRINTED}\n",
+    f"{_TICKS}{{.r\n.x}}\nx <- 1\n{_TICKS}\n\n{_PRINTED}\n",
+    # A tilde fence, or an indented one, cannot interrupt a paragraph; a backtick one can.
+    f"We used a line:\n~~~\n\n{_PRINTED}\n\n~~~r\ny\n~~~\n",
+    f"We used a line:\n  {_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"We used a line:\n{_TICKS}r\nx\n{_TICKS}\n",
+    # Something other than a space in front of the fence: pandoc reads text.
+    f"{chr(0xFEFF)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    f"{chr(0xA0)}{_TICKS}r\nx\n{_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny\n{_TICKS}\n",
+    # An opener with no closer, and a closer with no opener.
+    f"{_TICKS}r\nx <- 1\n\n{_PRINTED}\n",
+    f"{_PRINTED}\n\n{_TICKS}\n",
+    # Found by the second review. In a list item pandoc takes the item's indentation off
+    # before it looks for the closer, and closed where the gates read on to the next one.
+    f"- {_TICKS}r\n  x <- a\n\n  {_TICKS}\n\n{_PRINTED}\n\n{_TICKS}r\ny <- b\n{_TICKS}\n",
+    (
+        f"1. Step one:\n\n   {_TICKS}r\n   x <- 1\n    {_TICKS}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}r\ny\n{_TICKS}\n"
+    ),
+    f"- [ ] {_TICKS}r\nx\n{_TICKS}\n",
+    f": {_TICKS}r\nx\n{_TICKS}\n",
+    f"[^1]: {_TICKS}r\n    x\n    {_TICKS}\n",
+    # Inside a comment or a raw block the fence is raw text to pandoc, and the gates paired
+    # it with a later one.
+    f"<!-- old version:\n\n{_TICKS}r\nx <- 1\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<pre>\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<script>\n\n{_TICKS}r\nx\n</script>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin{{comment}}\n\n{_TICKS}r\nx\n\\end{{comment}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    # A quoted value not closed on the line: pandoc reads it on over the lines.
+    f"{_TICKS}{{.r label='fit1}}\nThe cohort's data.\n{_TICKS}\n\n{_PRINTED}\n",
+    # A backslash before a tab: pandoc expands the tab first, and escapes a space.
+    f"{_TICKS}{{k=a\\\tb .r}}\nx\n{_TICKS}\n",
+    # Found by the third review: a raw block or a comment closes only on its own mark, and
+    # another mark inside it closed it to the gates.
+    f"<pre>\na --> b\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin{{center}}\na --> b\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<!-- see </pre>\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    # Found by the fourth: pandoc counts a raw block of the same name opened inside one,
+    # reads a backslash before a backtick as a backtick, and closes a code span on a later
+    # line; a space may stand before an environment's brace, and `<?php` opens raw text.
+    f"<pre>\n<pre>\n</pre>\n\n{_TICKS}r\nx\n</pre>\n\n{_PRINTED}\n\n{_TICKS}\n",
+    (
+        f"\\begin{{center}}\n\\begin{{center}}\n\\end{{center}}\n\n{_TICKS}r\nx\n"
+        f"\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n"
+    ),
+    f"Text \\`<!-- and `x`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"See `x\ny` and <!-- z `w`.\n\n{_TICKS}r\nx\n-->\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"\\begin {{center}}\n\n{_TICKS}r\nx\n\\end{{center}}\n\n{_PRINTED}\n\n{_TICKS}\n",
+    f"<?php\n\n{_TICKS}r\nx\n?>\n\n{_PRINTED}\n\n{_TICKS}\n",
+]
+
+
+@pytest.mark.parametrize("block", _UNCLEAR_FENCES)
+def test_a_fence_pandoc_may_not_open_is_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
+
+
+def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, capsys) -> None:
+    """Two chunks and prose between: the gates hid the prose, and pandoc printed it."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{_CHUNK}", encoding="utf-8")
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-fence" in {f["code"] for f in findings if f["severity"] == "fail"}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "not a plain fenced listing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        f"{_TICKS}\nx <- 1\n{_TICKS}\n",
+        "~~~ {.r .numberLines}\nx <- 1\n~~~~\n",
+        f"{_TICKS}{{=openxml}}\n<w:p/>\n{_TICKS}\n",
+        f"{_TICKS}{{#1 .r}}\nx <- 1\n{_TICKS}\n",
+        # Back to back, the second under the first's closer.
+        f"{_TICKS}r\nx\n{_TICKS}\n{_TICKS}python\ny\n{_TICKS}\n",
+        # A listing of Markdown, fences and all.
+        f"````md\n{_TICKS}r\nx\n{_TICKS}\n````\n",
+        # Inline code, and a listing in a list item, indented four columns.
+        f"Use {_TICKS}x{_TICKS} here.\n",
+        f"1. Run this:\n\n    {_TICKS}r\n    x <- 1\n    {_TICKS}\n",
+        # Markup in a listing is code: a comment's marks in it open or close nothing.
+        f"{_TICKS}html\n<p>A <b>bold</b> claim.</p>\n<!-- left open\n{_TICKS}\n",
+        f"{_TICKS}mermaid\ngraph LR\n  A --> B\n{_TICKS}\n",
+        # A custom element whose name starts with a raw one's.
+        f"<pre-x>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Two identical listings.
+        f"{_TICKS}r\nx <- 1\n{_TICKS}\n\n{_TICKS}r\nx <- 1\n{_TICKS}\n",
+        # Found by the third review: a mark in inline code, a `<pre>` in a line of text and a
+        # comment closed at once open nothing.
+        f"Use `<!--` to open a comment.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"The HTML `<pre>` element.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Wrap it in `\\begin{{table}}`.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"Text with <pre> in it.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-- the <pre> tag -->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<!-->\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found by the fifth: pandoc counts no `<script>` opened inside one, and `<?` opens
+        # nothing before anything but a letter.
+        f"<script>\na <script> b\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<script>\n<script>\n</script>\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<? marks a query in our notation.\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        f"<?= x\n\n{_TICKS}r\nx\n{_TICKS}\n",
+        # Found reviewing round six: a listing commented out whole, the comment's `-->` after
+        # its closer, is the comment's, and pandoc prints none of it.
+        f"<!-- An earlier model:\n\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\n\n{_TICKS}python\ny\n{_TICKS}\n-->\n",
+    ],
+)
+def test_a_plain_fence_is_not_refused(block: str) -> None:
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") == []
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "<!--\n~~~r\nx\n~~~\n-->\n",
+        f"<!--\n- Fit the model:\n\n  {_TICKS}r\n  x\n  {_TICKS}\n-->\n",
+        f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
+    ],
+    ids=["tilde-under-comment", "in-a-list-item", "under-text-opening-it"],
+)
+def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
+    """Known gaps: pandoc prints nothing of these, and they are refused. A listing a comment
+    holds is let be only where pandoc would read it as the gates do without the comment,
+    and a backtick fence not apart only straight under a `<!--` that starts its line: under
+    any line of text, a footnote's or a list item's took the fence in, and pandoc printed
+    the claim after it (round 3's review of #71)."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(f"# Results\n\nWe found it.\n\n{block}\nThe end.\n") != []
+
+
+def test_a_listing_a_comment_closes_inside_is_still_refused() -> None:
+    """A comment whose `-->` falls inside the listing ends there, and the lines after it are
+    printed: the listing is not the comment's, and stays refused."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = f"# Results\n\n<!--\n{_TICKS}r\nx -->\nThe excess (p < 0.001).\n{_TICKS}\n"
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        # Comments the gates see and pandoc does not: `<!--` in code beside a stray
+        # backtick, and one never closed.
+        "Write `<!--` to hide a line; the `x column is unused.\n\n",
+        "<!-- an aside never closed\n\n",
+    ],
+)
+def test_a_listing_behind_a_false_comment_keeps_the_plain_form(comment: str) -> None:
+    """Found by round 2's review: a listing a comment holds was let be whatever its shape, on
+    the gates' reading of where comments are. Behind a comment pandoc does not see, a listing
+    in a list item, its closer indented past the item's, is code to the gates up to the last
+    closer; pandoc ends it early and prints the claim after it. It passed `check` and the
+    build, where round 1's head refused it. A listing a comment holds keeps the plain form."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    text = (
+        f"# Results\n\n{comment}- Fit the model:\n  {_TICKS}r\n  fit <- glm(y ~ x)\n"
+        f"    {_TICKS}\n\nThe excess was 9.87 (p < 0.001).\n\n{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    assert unclear_fence_lines(text) != []
+
+
+# Lines a backtick fence straight under them joins for pandoc: a footnote's, or a list
+# item's that already has more than one line. Pandoc takes the fence into the container,
+# strips its indentation and ends the code at an indented closer; the gates read on to the
+# next closer at the margin, over the claim after it.
+_CONTAINERS = {
+    "footnote": "Ref.[^1]\n\n[^1]: A note.\n",
+    "footnote continued": "Ref.[^1]\n\n[^1]: A note.\n\n    More of the note.\n",
+    "footnote in a list": "- Ref.[^1]\n\n  [^1]: A note.\n",
+    "nested item": "- An item.\n  - A sub-item.\n",
+    "item continued": "- An item.\n\n  More of it.\n",
+    "nested ordered item": "1. One.\n   a. Sub.\n",
+    "comment under a footnote": "Ref.[^1]\n\n[^1]: A note.\n<!-- never closed\n",
+}
+
+
+@pytest.mark.parametrize("apart", [False, True], ids=["tight", "apart"])
+@pytest.mark.parametrize("above", sorted(_CONTAINERS))
+def test_a_listing_under_a_container_s_line_is_not_held_by_a_false_comment(
+    above: str, apart: bool
+) -> None:
+    """Found by round 3's review: behind a comment the gates see and pandoc does not, a
+    backtick listing straight under any line was held, since pandoc opens one under a line
+    of text. Not under a footnote's or a longer list item's line, which takes the fence in;
+    the claim after it printed, and `check` and the build passed. A listing that is not
+    apart is held only straight under the `<!--` line, itself apart."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    gap = "\n" if apart else ""
+    text = (
+        f"# Results\n\n<!-- never closed\n\n{_CONTAINERS[above]}{_TICKS}r\n"
+        f"fit <- glm(y ~ x)\n    {_TICKS}\n{gap}The excess was 9.87 (p < 0.001).\n{gap}"
+        f"{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    assert unclear_fence_lines(text) != []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"# Results\n\n<!-- An earlier model:\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"<!-- An earlier model:\n{_TICKS}r\nfit0 <- glm(y ~ x)\n{_TICKS}\n-->\n",
+        f"# Results\n\n<!--\n{_TICKS}r\nfit0\n{_TICKS}\n\n{_TICKS}r\nfit1\n{_TICKS}\n-->\n",
+    ],
+    ids=["under-a-heading", "file-start", "two-listings"],
+)
+def test_a_listing_straight_under_its_comment_is_still_held(text: str) -> None:
+    """Round 1's shape stays accepted with `<!--` straight above the opener: the comment
+    line is apart, and pandoc opens a backtick fence under it."""
+    from manuscript_guard.text.fences import unclear_fence_lines
+
+    assert unclear_fence_lines(text) == []
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "lead",
+    [
+        "As noted.[^n1]\n\n[^n1]: A note `<!--` `x\n",
+        "- Fit the model.\n  - A step `<!--` `x\n",
+        "- Fit the model.\n\n  A step `<!--` `x\n",
+    ],
+    ids=["footnote", "nested-item", "item-continued"],
+)
+def test_a_false_comment_in_a_container_hides_no_claim(project: Path, lead: str) -> None:
+    """Round 3's reproduction on the example: `<!--` in code beside a stray backtick, on a
+    footnote's or a list item's line, then a listing whose closer pandoc reads early. The
+    claim after it printed in the document, untraced, while `check` and the build passed."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    block = (
+        f"{lead}{_TICKS}r\nfit <- glm(y ~ x)\n    {_TICKS}\n\n"
+        f"The excess was 9.87 (p < 0.001).\n\n{_TICKS}r\nsessionInfo()\n{_TICKS}\n"
+    )
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    assert main(["check", str(project)]) == 1
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_commented_out_whole_builds(project: Path) -> None:
+    """Found reviewing round six: every fence line inside a comment was refused, so a
+    listing commented out while an author decided, an ordinary habit, failed `check` and
+    the build, `--skip-checks` too, where #65's tip built it. Pandoc prints nothing of it,
+    and the gates mask both the comment and the listing."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    anchor = "Reporting follows the checklist declared in `paper.yaml`.\n"
+    assert text.count(anchor) == 1
+    snippet = (
+        f"\n<!-- An earlier model, kept while we decide:\n\n{_TICKS}r\n"
+        f"fit0 <- glm(case ~ drug, family = binomial)\n{_TICKS}\n-->\n"
+    )
+    source.write_text(text.replace(anchor, anchor + snippet), encoding="utf-8")
+    assert main(["check", str(project)]) == 0
+    assert main(["build", str(project), "--offline"]) == 0
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_listing_in_a_comment_pandoc_does_not_see_is_compared() -> None:
+    """`check` lets a listing a comment holds whole be, and the comment is the tracker's
+    reading, which a stray backtick can fool: here `<!--` is code to pandoc, and the gates'
+    listing runs from one chunk's closer to the next, over a claim pandoc prints. The build
+    finds the listing neither in a comment nor opening a code block, and refuses."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Results\n\nUse `<!--` for the `x variable.\n\n"
+        f"{_TICKS}{{r}}\nx\n{_TICKS}\n\nThe excess (p < 0.001).\n\n{_TICKS}{{r}}\ny\n{_TICKS}\n"
+    )
+    found = misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert found is not None
+
+def test_the_unclear_fence_hint_names_the_margin_and_list_items() -> None:
+    """A listing in a list item, indented as Markdown has it, was refused under a hint that
+    said to open it under a blank line, which it was."""
+    from manuscript_guard.build.assemble import fence_findings
+
+    text = f"# Methods\n\n1. Install:\n\n   {_TICKS}r\n   install.packages('x')\n   {_TICKS}\n"
+    hint = fence_findings(Path("main.md"), text)[0].hint
+    assert "margin" in hint and "list item" in hint and "comment" in hint, hint
+
+
+@pytest.mark.parametrize(
+    ("info", "language"),
+    [
+        ("r", "r"),
+        (" python ", "python"),
+        ("{.python}", "python"),
+        ("r{.x}", "r"),
+        ("", ""),
+        ("{k='a .b' .r}", "r"),
+    ],
+)
+def test_a_listing_s_language_is_its_word_or_its_first_class(info: str, language: str) -> None:
+    """`{.python}` and `r {.x}` came out as the languages `{.python}` and `r{.x}`, which no
+    lexer knows, so the listing was reported unread instead of judged."""
+    from manuscript_guard.text.fences import Fence
+
+    assert Fence(start=0, body_start=0, body_end=0, end=0, info=info).language == language
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_refuses_a_listing_pandoc_does_not_make(project: Path, capsys) -> None:
+    """A plain listing inside a TeX group: raw to pandoc, which prints the prose after it,
+    and code to the gates, which read on to the next fence. `check` cannot see the group;
+    the build compares every listing the gates mask with the code pandoc makes."""
+    from manuscript_guard.cli import main
+
+    block = f"\\newcommand{{\\x}}{{\n\n{_TICKS}r\nx\n}}\n\n{_PRINTED}\n\n{_TICKS}\n"
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_build_finds_each_listing_where_the_gates_read_it(project: Path, capsys) -> None:
+    """Listings were matched to pandoc's code by their lines, so a copy did as well as the
+    listing: the gates read a listing inside a TeX group, masking the claim after it, and an
+    indented block holding the same lines passed for it. Each listing is now found by a line
+    of its own, put in the copy pandoc reads."""
+    from manuscript_guard.cli import main
+
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}r\n}}\n\n{_PRINTED}\n\n{_TICKS}\n\n"
+        f"    }}\n    {_PRINTED}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    err = capsys.readouterr().err
+    assert "listing" in err and "main.md" in err, err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("written", "built"),
+    [
+        # Found by the sixth review: a caption over a listing whose first line is dashes is
+        # a table to pandoc, its header the fence, ending at the first blank line, and the
+        # YAML and heading after it read. The line put first in the listing to find it made
+        # it a code block, and only that reading was compared.
+        (
+            f"# Methods\n\n: Settings used.\n\n{_TICKS}yaml\n---\nseed: 1\n\n---\n"
+            f"title: Another title\n...\n\n# Results\n\nThe excess (p < 0.001).\n\n{_TICKS}\n",
+            None,
+        ),
+        (
+            f"# Methods\n\n: The model call.\n\n{_TICKS}r\n------\n"
+            f"The reporting odds ratio was 9.99.\n{_TICKS}\n",
+            None,
+        ),
+        # A value holding a fence ends the listing early, and the claim after it prints as
+        # prose: the listings were paired by count, and each compared built to built.
+        (
+            f'# Results\n\n{_TICKS}r\nx <- "{{{{results.label}}}}"\nThe excess was 9.99.\n'
+            f"{_TICKS}\n",
+            f'# Results\n\n{_TICKS}r\nx <- "a"\n{_TICKS}\n"\nThe excess was 9.99.\n{_TICKS}\n',
+        ),
+        # A value holding a whole listing: the file has more listings as built.
+        (
+            "# Results\n\nThe code is {{results.label}}.\n",
+            f"# Results\n\nThe code is a\n\n{_TICKS}r\nx\n{_TICKS}\n\n.\n",
+        ),
+    ],
+)
+def test_the_build_refuses_a_listing_the_line_or_a_value_changes(
+    written: str, built: str | None
+) -> None:
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    document = built or written
+    found = misreading(
+        header + document,
+        header,
+        [("main.md", written)],
+        shutil.which("pandoc"),
+        Path(),
+        built=[document],
+    )
+    assert found is not None
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_placeholders_in_a_listing_are_matched_in_linear_time() -> None:
+    """A listing of placeholders was matched with a pattern joined by `.*?`, tried against
+    every block pandoc made: six placeholder lines after an 80-line comment ran past two
+    minutes."""
+    import shutil
+    import time
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    comment = "<!--\n" + "".join(f"draft line {i}\n" for i in range(80)) + "-->\n\n"
+    listing = f"{_TICKS}r\n" + "".join(f"{{{{results.v{i}}}}}\n" for i in range(8)) + "Total\n"
+    body = f"# Results\n\n{comment}{listing}{_TICKS}\n"
+    started = time.perf_counter()
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+    assert time.perf_counter() - started < 20
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_copy_of_a_listing_s_mark_does_not_pass_for_it(project: Path, capsys) -> None:
+    """The line put first in each listing was `mglisting0`, which anyone can type: a
+    listing opening with it, after a listing pandoc does not make, passed for that one. The
+    line is made new each build, and must come back once."""
+    from manuscript_guard.cli import main
+
+    # One listing to the gates, from the first fence to the last; to pandoc, a TeX group,
+    # the claim printed, and a listing opening with a typed copy of the mark.
+    block = (
+        f"\\newcommand{{\\x}}{{\n\n{_TICKS}\n}}\n\n{_PRINTED}\n\n"
+        f"{_TICKS}r\nmglisting0\n{_TICKS}\n"
+    )
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(f"{text}\n## Results\n\nWe found it.\n\n{block}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "listing" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_listings_deep_in_quotations_do_not_overflow() -> None:
+    """Pandoc's reading was walked by recursion, and quotations six hundred deep raised
+    RecursionError in the build."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = "# Results\n\n" + "> " * 600 + "Deep.\n"
+    misreading(header + body, header, [("main.md", body)], shutil.which("pandoc"), Path())
+
+
+def test_a_raw_block_with_a_space_before_its_format_is_one() -> None:
+    """Pandoc reads `{ =openxml}` as a raw block, whose text reaches the reader as formatted
+    prose; the gate took it for a listing in no known language and only warned."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.numbers import _fenced_code
+
+    text = f"# Results\n\n{_TICKS}{{ =openxml}}\n<w:p/>\n{_TICKS}\n"
+    report = _fenced_code(Path("main.md"), text, Classifier.load())
+    assert "raw-block" in {f.code for f in report.findings}
+
+
+def test_a_yaml_block_after_a_form_feed_fence_is_refused() -> None:
+    """A YAML block between two fences only the gates saw escaped the refusal, and its
+    `title:` replaced paper.yaml's. No listing hides it now; the heading reads blank it as
+    metadata (#85), and the rule scan, which keeps it (#65), refuses it."""
+    from manuscript_guard.text.sections import rules_opening_blocks, scannable
+
+    feed = chr(0x0C)
+    text = (
+        f"---\ntitle: A study\n---\n\n# Results\n\nWe found it.{feed}{_TICKS}\n\n"
+        f"---\ntitle: Evil\n---\n\nThe end.{feed}{_TICKS}\n"
+    )
+    assert "Evil" in scannable(text, metadata=False)
+    assert rules_opening_blocks(text) != []
 
 
 def test_audit_does_not_take_a_hash_paragraph_in_word_for_a_heading(tmp_path: Path) -> None:
@@ -2109,6 +3970,30 @@ def test_audit_does_not_start_a_reference_list_inside_a_paragraph(tmp_path: Path
     report = audit([paper], [outputs])
     assert [c.text.rstrip(".") for c in report.unmatched] == ["9.99"]
     assert report.not_audited == []
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["####### References", "<!-- c --># References", " # References\n---"],
+    ids=["seven hashes", "after a comment", "indented over a rule"],
+)
+def test_audit_does_not_start_a_reference_list_at_a_heading_the_walk_misplaces(
+    tmp_path: Path, heading: str
+) -> None:
+    """Found by the eighth review of #38. Under a stray `</script>` the walk can place a
+    heading pandoc prints as text; G2 marks such a heading so that it opens no Methods, but
+    the audit took it as the reference list's heading, and cut the prose after it."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"ror": 1.23}')
+    paper = tmp_path / "paper.md"
+    paper.write_text(
+        f"# Introduction\n\nThe ROR was 1.23.\n\nText\n</script>\n{heading}\n"
+        "The final ROR was 9.87.\n",
+        encoding="utf-8",
+    )
+    report = audit([paper], [outputs])
+    assert "9.87" in [c.text.rstrip(".") for c in report.unmatched]
 
 
 def test_audit_still_ends_a_reference_list_at_a_heading_printed_as_prose(
@@ -2533,6 +4418,307 @@ def test_audit_does_not_read_text_moved_away(tmp_path: Path) -> None:
     assert [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched] == ["-0.5"]
 
 
+def _gone(change: str, style: str | None = None) -> str:
+    """The properties of a paragraph whose mark was deleted or moved away."""
+    styled = f'<w:pStyle w:val="{style}"/>' if style else ""
+    return f'<w:pPr>{styled}<w:rPr><w:{change} w:id="1" w:author="a"/></w:rPr></w:pPr>'
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+@pytest.mark.parametrize(
+    "between",
+    ["", '<w:bookmarkStart w:id="9" w:name="_Ref1"/><w:bookmarkEnd w:id="9"/>'],
+    ids=["adjacent", "bookmark-between"],
+)
+def test_audit_joins_paragraphs_whose_mark_was_removed(
+    tmp_path: Path, change: str, between: str
+) -> None:
+    """A paragraph whose mark was deleted, or moved away, as a tracked change runs on into
+    the next once the change is accepted, and the audit read the two as separate lines: "−"
+    ending one and "0.30" starting the next matched an output of +0.30, and "-0.5" then "1"
+    matched -0.5 and 1 where the paper prints -0.51. A bookmark between them does not part
+    them."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "hi": 0.30}')
+
+    def joined(before: str, after: str) -> str:
+        run = f'<w:r><w:t xml:space="preserve">{before}</w:t></w:r>'
+        return f"<w:p>{_gone(change)}{run}</w:p>{between}{_p(after)}"
+
+    paper = _docx(
+        tmp_path / "paper.docx",
+        joined("The estimate was -0.5", "1.") + joined("Its upper bound was −", "0.30."),
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51", "−0.30"}, shown
+
+
+@pytest.mark.parametrize(("part", "note"), [("footnotes", "footnote"), ("endnotes", "endnote")])
+def test_audit_joins_paragraphs_within_a_note(tmp_path: Path, part: str, note: str) -> None:
+    """Footnotes and endnotes go through the same reader as the body. A deleted mark joins
+    two paragraphs of one note, so "-0.5" and "1" there are -0.51, and the last paragraph
+    of a note does not run on into the next note: "2" and "3" stay two numbers."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1, "a": 2, "b": 3}')
+    joined = f"<w:p>{_gone('del')}<w:r><w:t>The estimate was -0.5</w:t></w:r></w:p>{_p('1.')}"
+    last = f"<w:p>{_gone('del')}<w:r><w:t>Group 2</w:t></w:r></w:p>"
+    notes = "".join(f"<w:{note}>{body}</w:{note}>" for body in (joined, last, _p("3 more.")))
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("See the notes."),
+        {f"word/{part}.xml": f"<w:{part} {W}>{notes}</w:{part}>"},
+    )
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize(
+    "props",
+    [
+        '<w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs>',
+        '<w:pPrChange w:id="2" w:author="a"><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/>'
+        "</w:tabs></w:pPr></w:pPrChange>",
+    ],
+    ids=["tab-stops", "tab-stops-before-the-change"],
+)
+def test_audit_joins_a_paragraph_that_sets_tab_stops(tmp_path: Path, props: str) -> None:
+    """A tab stop is `w:tab` too, under `w:pPr/w:tabs`, and was read as a typed tab: a
+    space at the start of the paragraph's line, where it did no harm until a join put it
+    between "-0.5" and "1". Word writes the old tab stops into `w:pPrChange` when it copies
+    the first paragraph's formatting onto the second."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    after = f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{after}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+@pytest.mark.parametrize("joined", [False, True])
+def test_audit_reads_a_paragraph_whole_around_a_text_box(tmp_path: Path, joined: bool) -> None:
+    """A text box's paragraphs were read where its anchor sits, in the middle of the paragraph
+    holding it, so the rest of that paragraph, or the one it runs on into, landed on the text
+    box's line: "-0.5", a text box, then "1" read as -0.5, which matched."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    box = (
+        '<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml"><v:textbox>'
+        f"<w:txbxContent>{_p('Panel A')}</w:txbxContent></v:textbox></v:shape></w:pict></w:r>"
+    )
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    if joined:
+        body = f"<w:p>{_gone('del')}{before}{box}</w:p>{_p('1.')}"
+    else:
+        body = f"<w:p>{before}{box}<w:r><w:t>1.</w:t></w:r></w:p>"
+    paper = _docx(tmp_path / "paper.docx", body)
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+def test_audit_reports_a_number_in_a_text_box_once(tmp_path: Path) -> None:
+    """Word writes every text box twice: as DrawingML, and again in VML inside an
+    AlternateContent fallback for readers that predate it. Both copies were read, so a wrong
+    number in a text box was reported twice, on two lines, and took two of the forty findings
+    listed for its file; a right one was counted twice as found."""
+    from manuscript_guard.audit import audit, measure_discrimination, render
+
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    content = f"<w:txbxContent>{_p('Cases: 412 of 8393.')}</w:txbxContent>"
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    vml = 'xmlns:v="urn:schemas-microsoft-com:vml"'
+    box = (
+        f"<w:r><mc:AlternateContent {mc}>"
+        f'<mc:Choice Requires="wps"><w:drawing>{content}</w:drawing></mc:Choice>'
+        f"<mc:Fallback><w:pict><v:shape {vml}><v:textbox>{content}</v:textbox></v:shape>"
+        "</w:pict></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    paper = _docx(tmp_path / "paper.docx", f"<w:p><w:r><w:t>See the box.</w:t></w:r>{box}</w:p>")
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == ["8393"], report.unmatched
+    assert [c.text for c in report.matched] == ["412"], report.matched
+    shown = render(report, measure_discrimination(report.backing_values))
+    assert "1 found in the outputs, 1 not found." in shown, shown
+
+
+def test_audit_reads_an_emoji_word_writes_only_as_a_choice(tmp_path: Path) -> None:
+    """Word writes an emoji it inserts as `w16se:symEx` in an AlternateContent choice, and the
+    character itself only in the fallback. With the fallback unread and the choice not
+    understood, the numbers either side ran together: "12", an emoji and "34" read as 1234,
+    which matched an output the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 1234}')
+    mc = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+    se = 'xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"'
+    emoji = (
+        f'<w:r><mc:AlternateContent {mc} {se}><mc:Choice Requires="w16se">'
+        '<w16se:symEx w16se:font="Segoe UI Emoji" w16se:char="1F642"/></mc:Choice>'
+        f"<mc:Fallback><w:t>{chr(0x1F642)}</w:t></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    body = f"<w:p><w:r><w:t>Scored 12</w:t></w:r>{emoji}<w:r><w:t>34.</w:t></w:r></w:p>"
+    report = audit([_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert report.matched == [], report.matched
+    assert [c.text.rstrip(".") for c in report.unmatched] == [f"12{chr(0x1F642)}34"]
+
+
+def test_audit_reads_a_number_typed_in_the_symbol_font(tmp_path: Path) -> None:
+    """Word can keep text typed in the Symbol font as that font's private-use characters:
+    "40" as U+F034 U+F030 (found in a real document). They are not digits, so the number was
+    never seen, and a wrong one went unaudited while the file was reported as audited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"days": 41}')
+    fonts = '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/></w:rPr>'
+    digits = f"<w:r>{fonts}<w:t>{chr(0xF034)}{chr(0xF030)}</w:t></w:r>"
+    body = f'<w:p><w:r><w:t xml:space="preserve">Follow-up was </w:t></w:r>{digits}'
+    body += '<w:r><w:t xml:space="preserve"> days.</w:t></w:r></w:p>'
+    paper = _docx(tmp_path / "paper.docx", body)
+    assert [c.text for c in audit([paper], [outputs]).unmatched] == ["40"]
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+def test_audit_reads_past_a_text_box_deleted_or_moved_out_of_the_reference_list(
+    tmp_path: Path, change: str
+) -> None:
+    """A deleted text box's text was dropped, but its paragraphs still started lines. One
+    styled as a heading was an empty heading, which ended the reference list there, and the
+    entries after it were reported as numbers missing from the outputs. A box moved away
+    with Track Changes on is the same where it was, and is read once, where it went."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import read_docx_text
+
+    outputs = _outputs(tmp_path, '{"n": 77, "panel": 12}')
+    content = f"<w:txbxContent>{_p('Panel 12', 'Heading1')}</w:txbxContent>"
+    box = (
+        f'<w:{change} w:id="2" w:author="a"><w:r><w:drawing>{content}</w:drawing></w:r>'
+        f"</w:{change}>"
+    )
+    entry = f"<w:p><w:r><w:t>Smith J. Lancet. 2019;393:1-2.</w:t></w:r>{box}</w:p>"
+    moved_to = (
+        '<w:p><w:r><w:t>See the panel.</w:t></w:r><w:moveTo w:id="3" w:author="a"><w:r>'
+        f"<w:drawing>{content}</w:drawing></w:r></w:moveTo></w:p>"
+        if change == "moveFrom"
+        else ""
+    )
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + moved_to
+        + _p("References", "Heading1")
+        + entry
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    lines = "3-5" if change == "del" else "5-7"
+    assert report.not_audited == [f"paper.docx: lines {lines}, read as the reference list"]
+    document = read_docx_text(paper)
+    body = document.body.split("\n")
+    # Only "References", and the moved copy before it, are headings: none inside the list.
+    assert sorted(body[i] for i in document.headings) == sorted(
+        ["References"] + (["Panel 12"] if change == "moveFrom" else [])
+    )
+    assert document.body.count("Panel 12") == (1 if change == "moveFrom" else 0)
+
+
+#: A text box as Word writes one, twice over. In a row moved away Word 16 marks none of its
+#: paragraphs, in either copy: the box goes with the text it is anchored in.
+_BOX = (
+    '<w:r><mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/'
+    '2006"><mc:Choice Requires="wps"><w:drawing><w:txbxContent>'
+    f"{_p('Panel 9')}</w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict>"
+    f"<w:txbxContent>{_p('Panel 9')}</w:txbxContent></w:pict></mc:Fallback>"
+    "</mc:AlternateContent></w:r>"
+)
+
+
+@pytest.mark.parametrize(
+    ("row_mark", "mark", "text", "inside"),
+    [
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "", "del", ""),
+        ('<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>', "del", "del", ""),
+        ("", "moveFrom", "moveFrom", ""),
+        ("", "moveFrom", "moveFrom", _BOX),
+    ],
+    ids=["deleted-row", "deleted-row-and-mark", "moved-row", "moved-row-with-text-box"],
+)
+def test_audit_reads_past_a_table_row_gone_from_the_reference_list(
+    tmp_path: Path, row_mark: str, mark: str, text: str, inside: str
+) -> None:
+    """Word marks a deleted table row in the row's own properties, not by wrapping it, and a
+    row moved away not at all: it moves the mark of every paragraph in the row instead. The
+    row's text was dropped, but its row and cell still started lines, and a cell styled as a
+    heading was an empty heading, which ended the reference list there: the entries after
+    it were reported as numbers missing from the outputs. A text box in a moved row has no
+    mark moved, and read as one left in place it kept the row."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77}')
+    gone = f'<w:rPr><w:{mark} w:id="5" w:author="a"/></w:rPr>' if mark else ""
+    kind = "delText" if text == "del" else "t"
+    cell = (
+        f'<w:p><w:pPr><w:pStyle w:val="Heading1"/>{gone}</w:pPr><w:{text} w:id="4" '
+        f'w:author="a"><w:r><w:{kind}>Old</w:{kind}></w:r>{inside}</w:{text}></w:p>'
+    )
+    row = f"<w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We found 77 cases.")
+        + _p("References", "Heading1")
+        + _p("Smith J. Lancet. 2019;393:1-2.")
+        + f"<w:tbl>{row}</w:tbl>"
+        + _p("Jones K. BMJ. 2020;368:45-52."),
+    )
+    report = audit([paper], [outputs])
+    assert report.unmatched == [], report.unmatched
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+@pytest.mark.parametrize("change", ["del", "moveFrom"])
+def test_audit_joins_a_paragraph_across_a_table_word_drops(tmp_path: Path, change: str) -> None:
+    """A paragraph whose mark was deleted runs on past a table whose every row was deleted or
+    moved away: Word 16 shows "-0.5", such a table, and "1" as -0.51. The table ended the
+    line, so the two pieces were read apart and matched two outputs the paper never printed."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"est": -0.5, "n": 1}')
+    row_mark = '<w:trPr><w:del w:id="3" w:author="a"/></w:trPr>' if change == "del" else ""
+    kind = "delText" if change == "del" else "t"
+    cell = (
+        f'<w:p>{_gone(change)}<w:{change} w:id="4" w:author="a"><w:r><w:{kind}>7</w:{kind}>'
+        f"</w:r></w:{change}></w:p>"
+    )
+    table = f"<w:tbl><w:tr>{row_mark}<w:tc>{cell}</w:tc></w:tr></w:tbl>"
+    before = "<w:r><w:t>The estimate was -0.5</w:t></w:r>"
+    paper = _docx(tmp_path / "paper.docx", f"<w:p>{_gone('del')}{before}</w:p>{table}{_p('1.')}")
+    shown = {c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched}
+    assert shown == {"-0.51"}, shown
+
+
+def test_audit_reads_an_appendix_whose_heading_a_reference_ran_into(tmp_path: Path) -> None:
+    """A paragraph run on into a heading takes the heading's style, which is what Word shows
+    once the change is accepted. Taking the first paragraph's instead read the appendix as
+    part of the reference list, and a wrong number in it went unaudited."""
+    from manuscript_guard.audit import audit
+
+    outputs = _outputs(tmp_path, '{"n": 77, "sens": 4.56}')
+    entry = "<w:r><w:t>Smith J. T. Lancet. 2019;393:1-2.</w:t></w:r>"
+    paper = _docx(
+        tmp_path / "paper.docx",
+        _p("We saw 77 cases.")
+        + _p("References", "Heading1")
+        + f"<w:p>{_gone('del')}{entry}</w:p>"
+        + _p("Supplementary appendix", "Heading1")
+        + _p("The sensitivity estimate was 4.65."),
+    )
+    assert "4.65" in [c.text.rstrip(".") for c in audit([paper], [outputs]).unmatched]
+
+
 @pytest.mark.parametrize(
     ("name", "content"),
     [
@@ -2554,3 +4740,498 @@ def test_audit_reads_a_typeset_minus_in_the_outputs(
     paper.write_text("The estimate was 0.51 (95% CI 0.72 to 0.30).\n", encoding="utf-8")
     shown = {c.text.strip("().") for c in audit([paper], [outputs]).unmatched}
     assert {"0.51", "0.72", "0.30"} <= shown, shown
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_comment_mark_in_a_listing_hides_no_binding_from_the_build(project: Path) -> None:
+    """A `<!--` in a listing is code to pandoc. The placeholder parser on main read it as a
+    comment that ran on to a later note's `-->`, so the binding between was never
+    substituted, and the document printed `{{results.ror.point}}` while `check` passed.
+    `test_comments.py` holds the parser to it; this holds the build, end to end. A listing
+    of HTML is an ordinary thing to write, so the build must print the value, not refuse."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    ticks = "`" * 3
+    source.write_text(
+        f"{text}\n# Appendix\n\n{ticks}html\n<!-- a comment left open in a listing\n{ticks}\n\n"
+        "The reporting odds ratio was {{results.ror.point}}.\n\n<!-- a later note -->\n",
+        encoding="utf-8",
+    )
+    assert main(["build", str(project), "--offline"]) == 0
+    built = (project / "build" / "manuscript.md").read_text(encoding="utf-8")
+    assert "{{results.ror.point}}" not in built
+    value = load_namespace(load_project(project)[0])[0]["results.ror.point"].display
+    assert f"The reporting odds ratio was {value}." in built
+
+
+# A sentence in the example's Results, one in its Methods, and its last line.
+_IN_RESULTS = "are shown in Table 2."
+_IN_METHODS = "Reporting follows the checklist declared in `paper.yaml`."
+_AT_END = "None declared.\n"
+
+
+def _with_footnote(project: Path, referenced: tuple[str, ...], defined: str, note: str) -> None:
+    """The example with `[^n]` after each sentence in `referenced`, and `note`, its
+    definition, in a paragraph of its own after the sentence `defined`."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    for sentence in referenced:
+        assert text.count(sentence) == 1, sentence
+        text = text.replace(sentence, sentence + "[^n]")
+    anchor = defined + "[^n]" if defined in referenced else defined
+    assert text.count(anchor) == 1, anchor
+    text = text.replace(anchor, anchor.rstrip("\n") + "\n\n" + note, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # The review's reproduction: referenced from Results, defined under Methods.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        # Its first paragraph runs on over lines, and later ones are indented.
+        ((_IN_RESULTS,), _IN_METHODS, "[^n]: The excess\nwas significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n    The excess was significant (p < 0.001).\n",
+        ),
+        # Referenced from Methods and from Results, it prints in both, and must pass in both.
+        (
+            (_IN_METHODS, _IN_RESULTS),
+            _AT_END,
+            "[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        # Found by the ninth review: a heading the walk found but pandoc prints as text
+        # neither refuses a definition nor ends a note. An empty heading takes the line under
+        # it as its title, and a lazy line of the note is shaped like a title `main` refused.
+        ((_IN_RESULTS,), _IN_METHODS, "##\n[^n]: The excess was significant (p < 0.001).\n"),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "######\n\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note\n    > The excess was significant (p < 0.001).\n---\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "#######\n[^n]: The excess was significant (p < 0.001).\n",
+        ),
+    ],
+)
+def test_a_footnote_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    """Pandoc prints a footnote where it is referenced. G2 filed its text under the section
+    its definition sits in, so a finding referenced from Results and defined under Methods,
+    `p < 0.001`, passed as the alpha chosen in advance, and the document printed it as a
+    footnote to a Results sentence."""
+    _with_footnote(project, referenced, defined, note)
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_s_lazy_pipe_line_is_read_where_it_is_referenced(project: Path) -> None:
+    """Found by the ninth review. A lazy line of a note, shaped like a setext title starting
+    `|` that the walk found and pandoc prints as the note's text, ended the note above it;
+    its `p < 0.001` passed as the alpha, where `main` reports it as a table row."""
+    note = "[^n]: A note\n    | The excess was significant (p < 0.001).\n-\n"
+    _with_footnote(project, (_IN_RESULTS,), _IN_METHODS, note)
+    assert "hand-authored-table" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        "Text\n[^a]: As reported.[^n]\n---\n",
+        "Text\n[^a]: A note\nAs reported.[^n]\n---\n",
+    ],
+    ids=["on the definition line", "on a lazy line"],
+)
+def test_a_reference_under_a_misread_definition_still_counts(project: Path, results: str) -> None:
+    """Found by the tenth review. A `[^a]:` line over an underline is paragraph text to
+    pandoc and a setext title to `main`, which refused it as a definition, so the `[^n]` on
+    it counted as a reference in the Results. Taken for a definition, it swallowed that
+    reference, and note n, defined under Methods, was judged there alone."""
+    path = main_md(project)
+    tail = f"# Methods\n\nText.\n\n[^n]: {_CLAIM}\n\n# Results\n\n{results}"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n" + tail, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+_CLAIM = "The excess was significant (p < 0.001)."
+
+
+@pytest.mark.parametrize(
+    "after_results",
+    [
+        # Found by review: text the gates took for a note's, which pandoc prints where it
+        # stands, under Results. Judged at the Methods reference alone, each passed.
+        # A `[^n]:` line under a paragraph's last line is that paragraph's to pandoc.
+        f"\n[^n]: {_CLAIM}\n",
+        # A list item holds the definition, and the four-space paragraph after it.
+        f"\n\n- Serious cases were reviewed.\n\n  [^n]: By two assessors.\n\n    {_CLAIM}\n",
+        # A line of no-break spaces is not blank to pandoc, and a comment ends the note.
+        f"\n\n[^n]: By two assessors.\n\n{chr(0xA0)}\n    {_CLAIM}\n",
+        f"\n\n[^n]: By two assessors.\n\n<!-- check wording -->\n\n    {_CLAIM}\n",
+    ],
+)
+def test_a_claim_taken_for_a_note_s_text_is_judged_where_it_stands(
+    project: Path, after_results: str
+) -> None:
+    """A number in a note is judged where it stands as well as at its references, so a claim
+    the gates misread as a Methods note's text still fails in Results, as it did on main."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + after_results, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_nested_in_another_is_judged_where_it_stands(project: Path) -> None:
+    """A definition in another note's indented block is a note of its own to pandoc,
+    printed at its own reference in Results; the gates read it as the Methods note's."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    text = text.replace(_IN_METHODS, _IN_METHODS + "[^n]", 1)
+    nested = f"[^m]\n\n[^n]: By two assessors.\n\n    [^m]: {_CLAIM}\n"
+    text = text.replace(_IN_RESULTS, _IN_RESULTS + nested, 1)
+    path.write_text(text, encoding="utf-8")
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+def test_a_note_in_another_file_is_judged_where_it_stands(project: Path) -> None:
+    """The build joins the main text's files, so a note is printed at references in other
+    files too; each file is indexed apart, and a note referenced from a Methods-like section
+    of its own file was judged there alone."""
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace(_IN_RESULTS, _IN_RESULTS + "[^n]", 1), encoding="utf-8")
+    (project / "manuscript" / "appendix.md").write_text(
+        "# Statistical analysis\n\nThe threshold was fixed in advance.[^n]\n\n"
+        f"# Notes\n\n[^n]: {_CLAIM}\n",
+        encoding="utf-8",
+    )
+    assert "unclassified-number" in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    ("referenced", "defined", "note"),
+    [
+        # Past its end the text is its own section's: a paragraph at the margin after a
+        # blank line, or indented three spaces, is not the note's.
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\nSignificance was set at p < 0.05.\n",
+        ),
+        (
+            (_IN_RESULTS,),
+            _IN_METHODS,
+            "[^n]: A note.\n\n   Significance was set at p < 0.05.\n",
+        ),
+    ],
+)
+def test_a_footnote_s_alpha_is_read_where_it_is_referenced(
+    project: Path, referenced: tuple[str, ...], defined: str, note: str
+) -> None:
+    _with_footnote(project, referenced, defined, note)
+    assert not gate_report(project).failures, codes(gate_report(project))
+
+
+def _unmarked(node):
+    """Pandoc's reading with every annotation mark, a styled span around a link to an
+    `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""
+    if isinstance(node, list):
+        out: list = []
+        for item in node:
+            if (
+                isinstance(item, dict)
+                and item.get("t") == "Span"
+                and any(key == "custom-style" for key, _ in item["c"][0][2])
+                and len(item["c"][1]) == 1
+                and item["c"][1][0].get("t") == "Link"
+                and item["c"][1][0]["c"][2][0].startswith("#mg-n")
+            ):
+                out.extend(_unmarked(item["c"][1][0]["c"][1]))
+            else:
+                out.append(_unmarked(item))
+        joined: list = []
+        for item in out:
+            if joined and isinstance(item, dict) and item.get("t") == "Str":
+                last = joined[-1]
+                if isinstance(last, dict) and last.get("t") == "Str":
+                    joined[-1] = {"t": "Str", "c": last["c"] + item["c"]}
+                    continue
+            joined.append(item)
+        return joined
+    if isinstance(node, dict):
+        return {key: _unmarked(value) for key, value in node.items()}
+    return node
+
+
+def _marked_texts(node) -> list[str]:
+    """The text of every annotation mark in pandoc's reading."""
+    found: list[str] = []
+    if isinstance(node, list):
+        for item in node:
+            found += _marked_texts(item)
+    elif isinstance(node, dict):
+        if node.get("t") == "Link" and node["c"][2][0].startswith("#mg-n"):
+            found.append(json.dumps(node["c"][1]))
+        found += _marked_texts(node.get("c"))
+    return found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_the_annotated_copy_keeps_inline_markup_around_numbers(project: Path) -> None:
+    """The annotator wrapped `HbA~1c` in a mark and left the closing `~` outside, so pandoc
+    read no subscript, and wrote a link inside a code span, where it printed literally. The
+    annotated copy must read as the manuscript does, marks aside, with each number marked
+    where a mark can go, and a number in code listed in the appendix instead."""
+    import shutil
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    added = (
+        "\n# Change in HbA~1c~ from baseline\n\n"
+        "The CO~2~ level was read over a 3 m^2^ area, with the `x2` variable.\n"
+    )
+    source.write_text(text + added, encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--annotated", "--skip-checks"]) == 0
+    annotated = (project / "build" / "manuscript.annotated.md").read_text(encoding="utf-8")
+
+    def read(markdown: str):
+        out = subprocess.run(
+            [shutil.which("pandoc"), "-f", "markdown", "-t", "json"],
+            input=markdown.encode("utf-8"),
+            capture_output=True,
+            check=True,
+        )
+        return json.loads(out.stdout)["blocks"]
+
+    blocks = read(annotated)
+    heading = next(
+        b for b in blocks if b["t"] == "Header" and "Change" in json.dumps(b["c"][2])
+    )
+    paragraph = next(b for b in blocks if b["t"] == "Para" and '"CO"' in json.dumps(b["c"]))
+    # The markup survives, marks aside: each reads as the same text without marks does.
+    assert _unmarked(heading) == _unmarked(read(added)[0])
+    assert _unmarked(paragraph) == _unmarked(read(added)[1])
+    # The numbers are marked where they can be, and the one in code is not.
+    marked = _marked_texts(heading) + _marked_texts(paragraph)
+    assert any('"1c"' in m for m in marked), marked
+    assert any('"3"' in m for m in marked), marked
+    assert sum('"2"' in m for m in marked) == 2, marked
+    assert {"t": "Code", "c": [["", [], []], "x2"]} in paragraph["c"]
+    appendix = annotated[annotated.index("# Appendix") :]
+    assert "x2" in appendix and "code" in appendix
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
+    """The number finder reads `width="300` in an HTML tag as a number, and nothing in the
+    annotator's own rule knows tags, so the mark went inside the tag. Pandoc reads the file
+    with its marks and without, and each mark in a paragraph that reads differently is
+    taken out and listed in the appendix with the reason. The next paragraph keeps its own."""
+    import shutil
+
+    from manuscript_guard.annotate import READ_OTHERWISE, annotate, appendix
+    from manuscript_guard.classify import Classifier
+
+    text = (
+        '# Extra\n\nA figure <img src="f.png" width="300"> of 12 patients.\n\n'
+        "Another 42 plain.\n"
+    )
+    annotated, marks = annotate(
+        text, {}, Classifier.load([], []), counter=[0], pandoc=shutil.which("pandoc")
+    )
+    assert '<img src="f.png" width="300">' in annotated
+    shown = {mark.shown: mark for mark in marks}
+    assert shown["12"].unmarked == READ_OTHERWISE
+    assert not shown["42"].unmarked
+    assert "[[42](#" in annotated
+    assert f"Not marked in the text: {READ_OTHERWISE}" in appendix(marks)
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    ("text", "marked", "unmarked"),
+    [
+        # Found by review of round 1: numbers main marked, and the first version did not.
+        # A citation's locator: pandoc keeps the citation's source text, which citeproc
+        # never prints, and it differed with the mark in.
+        ("Of 120 reports, 14 were serious [@smith2021, p. 33].", {"120", "14"}, {}),
+        # A currency sign is not an equation's: a mark on the digits alone left one dollar
+        # sign facing another across the paragraph.
+        ("The fee was US$5 and the refund US$3, and 7 more.", {"US$5", "US$3", "7"}, {}),
+        ("Costs ranged from $10-$50 per dose.", {"$10-$50"}, {}),
+        # Found by the fix-only round: an escaped dollar, the mark after its backslash,
+        # which escaped the mark's bracket; and a dollar after the digits, which faced the
+        # next one across the marks.
+        ("The fee was \\$5 for 3 visits.", {"\\$5", "3"}, {}),
+        ("It cost 5$ and then 10$, over 3 days.", {"5", "10", "3"}, {}),
+        # A footnote marker after a bracket is not a link's target, and a citation is not a
+        # link's text.
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][^2] in 40 patients.\n\n[^2]: Adjusted.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        (
+            "Of 120 reports, 14 were serious [@smith2021, p. 33][^1].\n\n[^1]: A note.",
+            {"120", "14", "33"},
+            {},
+        ),
+        ("As shown [@a2020, p. 3][@b2021, p. 5].", {"3", "5"}, {}),
+        # Found by the extra round: an escaped range, split by its inner backslash; and a
+        # bracket before a citation, or before a label nothing defines, which pandoc reads
+        # as text. In prose, and in a table or a list, where the first version unmarked
+        # the whole block.
+        ("Costs ranged from \\$10-\\$50 per dose.", {"\\$10-\\$50"}, {}),
+        ("Costs ranged from \\$1,000-\\$2,000 per dose.", {"\\$1,000-\\$2,000"}, {}),
+        # An escaped dollar after the digits stays outside the mark, with its backslash.
+        ("It cost 5\\$ and then 10\\$, over 3 days.", {"5", "10", "3"}, {}),
+        # Found by the fix-only round of the extra one: any escaped punctuation in a range
+        # is text, `\%` from LaTeX habit, and `\~`, without which pandoc reads a subscript.
+        ("Between 5\\%-10\\% of 40 sites.", {"5\\%-10\\%", "40"}, {}),
+        (
+            "It was 12\\% (95\\% CI 10\\%-14\\%) in 40 sites.",
+            {"12", "95", "10\\%-14\\%", "40"},
+            {},
+        ),
+        ("About \\~5-\\~7 in 40 sites.", {"\\~5-\\~7", "40"}, {}),
+        (
+            "| Site | Share |\n|------|-------|\n| A | 5\\%-10\\% |\n| B | \\~5-\\~7 |",
+            {"5\\%-10\\%", "\\~5-\\~7"},
+            {},
+        ),
+        (
+            "- Between 5\\%-10\\%.\n- About \\~5-\\~7 in 40 sites.",
+            {"5\\%-10\\%", "\\~5-\\~7", "40"},
+            {},
+        ),
+        # Found by the round after the budget: pandoc escapes any character that is not a
+        # letter, a digit or a space, not ASCII punctuation alone.
+        ("Between 5\\°-10\\° of 40 sites.", {"5\\°-10\\°", "40"}, {}),
+        ("Doses of \\±5-\\±10 in 40 sites.", {"\\±5-\\±10", "40"}, {}),
+        ("Values of \\≥5-\\≥10 in 40 sites.", {"\\≥5-\\≥10", "40"}, {}),
+        ("From 5\\‰-10\\‰ and 5\\–10 in 40 sites.", {"5\\‰-10\\‰", "5\\–10", "40"}, {}),
+        (
+            "| Site | Range |\n|------|-------|\n| A | 5\\°-10\\° |\n| B | 2\\*3\\*4 |",
+            {"5\\°-10\\°", "2\\*3\\*4"},
+            {},
+        ),
+        ("It was 12\\° and 12\\% at 40 sites.", {"12", "40"}, {}),
+        (
+            "| Drug | Cost |\n|------|------|\n| A | \\$10-\\$50 |\n| B | \\$5 |",
+            {"\\$10-\\$50", "\\$5"},
+            {},
+        ),
+        ("- Drug A cost \\$10-\\$50.\n- Drug B cost \\$5 for 3 visits.", {"\\$10-\\$50", "3"}, {}),
+        (
+            "The odds ratio was 2.1 [95% CI 1.2-3.4][@smith2021] in 40 patients.",
+            {"2.1", "95%", "1.2-3.4", "40"},
+            {},
+        ),
+        ("The rate was [4.5 per 100][see @smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        ("The rate was [4.5 per 100][-@smith2021] in 12 sites.", {"4.5", "100", "12"}, {}),
+        # The finder reads `12][13` as one number, as on main, whose mark escapes the
+        # brackets.
+        ("Counts were [12][13] in all 40 sites.", {"12][13", "40"}, {}),
+        # A mark straight after a `]` reads as a reference: that number goes unmarked, and
+        # its paragraph keeps the rest.
+        ("Fees [B]7 in 3 sites.", {"3"}, {"B]7": "IN_MARKUP"}),
+        (
+            "It was [95% CI 1.2-3.4]1.2-3.4[12] in 40 sites.",
+            {"95%", "40"},
+            {"1.2-3.4[12": "IN_MARKUP"},
+        ),
+        (
+            "| Odds ratio | CI |\n|----|----|\n| 2.1 | [1.2-3.4][@smith2021] |",
+            {"2.1", "1.2-3.4"},
+            {},
+        ),
+        ("- 2.1 [95% CI 1.2-3.4][@smith2021]\n- 40 patients", {"95%", "1.2-3.4", "40"}, {}),
+        # A reference link the file defines is a link: its number stays unmarked. (The
+        # definition holds no digit: a number in a definition is marked, which is recorded
+        # in Known gaps.)
+        (
+            "Of 120 reports, as shown in [Table 2][tbl].\n\n[tbl]: #results-table",
+            {"120"},
+            {"2": "IN_LINK"},
+        ),
+        # A dollar sign in inline code opens no equation.
+        ("Age (`df$age`) was split into 3 groups and sex (`df$sex`) into 2.", {"3", "2"}, {}),
+        # A link to an anchor: only the number in its text goes unmarked.
+        (
+            "Of 120 reports, 14 were serious, as shown in [Table 2](#tbl-2).",
+            {"120", "14"},
+            {"2": "IN_LINK"},
+        ),
+    ],
+)
+def test_the_annotated_copy_marks_what_main_marked(
+    text: str, marked: set[str], unmarked: dict[str, str]
+) -> None:
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    shown = {mark.shown: mark.unmarked for mark in marks}
+    assert marked <= {s for s, reason in shown.items() if not reason}, shown
+    for number, reason in unmarked.items():
+        assert shown.get(number) == getattr(module, reason), shown
+
+
+@pytest.mark.parametrize(
+    ("text", "links"),
+    [
+        # Pandoc matches a label ignoring case and runs of white space, and an empty
+        # bracket takes the text as the label.
+        ("See [Table 2][].\n\n[table  2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][T].\n\n[t]: #t\n", ["[Table 2]"]),
+        ("See [Table 2](#t).\n", ["[Table 2]"]),
+        # Nothing defines these, so pandoc reads text: a footnote's marker, a citation,
+        # a label with no definition, and a footnote's definition, which is no link's.
+        ("See [Table 2][^1].\n\n[^1]: A note.\n", []),
+        ("See [Table 2][@smith2021].\n", []),
+        ("See [Table 2][t].\n", []),
+        ("See [Table 2][].\n\n[^table 2]: A note.\n", []),
+    ],
+)
+def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(
+    text: str, links: list[str]
+) -> None:
+    from manuscript_guard.text.inline import link_text_spans
+
+    assert [text[start:end] for start, end in link_text_spans(text)] == links

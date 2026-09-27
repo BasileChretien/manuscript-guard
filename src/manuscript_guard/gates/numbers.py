@@ -20,9 +20,16 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import INFO, WARN, Finding, Report
-from manuscript_guard.text.masking import fenced_blocks, front_matter_problem, mask
+from manuscript_guard.roundtrip import splits_a_paragraph
+from manuscript_guard.text.masking import (
+    fenced_blocks,
+    front_matter_abstract,
+    front_matter_end,
+    front_matter_problem,
+    mask,
+)
 from manuscript_guard.text.placeholders import parse
-from manuscript_guard.text.sections import chain_at, heading_index
+from manuscript_guard.text.sections import chain_at, chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
 
 GATE = "G2"
@@ -101,12 +108,17 @@ def check_numbers(
         text = path.read_text(encoding="utf-8")
         loose = 0
         headings = heading_index(text)
+        notes = footnote_index(text)
 
         # Read as prose until it is fixed, a `# Methods` in it heads a section here while
         # pandoc refuses the whole file; see `front_matter_problem`.
         problem = front_matter_problem(text)
         if problem is not None:
             report = report.with_findings(unreadable_header(path, *problem, GATE))
+        # Read here and printed by nothing: the build strips the block.
+        abstract = front_matter_abstract(text)
+        if abstract is not None:
+            report = report.with_findings(abstract_in_header(path, *abstract, GATE))
 
         placeholders, malformed = parse(text)
         totals["placeholders"] += len(placeholders)
@@ -138,6 +150,20 @@ def check_numbers(
                         hint=_nearest_hint(placeholder.ref, namespace),
                     )
                 )
+            elif placeholder.is_value and (what := _splits(namespace[placeholder.ref])):
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="value-splits-paragraph",
+                        message=f"{placeholder.raw} prints {what} into its paragraph, where "
+                        f"it can break the paragraph in parts in Word",
+                        path=path,
+                        line=placeholder.line,
+                        col=placeholder.col,
+                        hint="a value is printed inside a sentence; write what it holds in the "
+                        ".md, as a block of its own, and bind only the numbers in it",
+                    )
+                )
 
         report = report.merge(_interval_order(placeholders, namespace, path, text))
 
@@ -149,7 +175,11 @@ def check_numbers(
             # Where the number sits decides what some rules mean. `p < 0.05` under Methods
             # is the threshold the author chose in advance; the same characters in Results
             # are a finding, and were passing as a convention.
-            verdict = classifier.classify(atom, chain_at(headings, atom.start), scan)
+            # A footnote's text is judged where it stands and at every reference to it,
+            # where pandoc prints it.
+            verdict = classifier.classify_under(
+                atom, chains_at(headings, notes, atom.start), scan
+            )
             if verdict.kind != UNCLASSIFIED:
                 totals[verdict.kind] += 1
                 if classifier.is_project_exemption(verdict):
@@ -251,10 +281,16 @@ def _fenced_code(path: Path, text: str, classifier: Classifier, headings=()) -> 
     from manuscript_guard.gates.figure_source import judge_code_numbers
 
     report = Report()
+    head = front_matter_end(text)
     for fence in fenced_blocks(text):
         line = text.count("\n", 0, fence.start) + 1
         body = text[fence.body_start : fence.body_end]
 
+        if fence.is_raw and fence.start < head:
+            # The build strips the manuscript's front matter, so a raw block there - LaTeX
+            # under `header-includes`, the usual one - reaches no document, and reporting it
+            # as written straight into the build was a false alarm on every such paper.
+            continue
         if fence.is_raw:
             # ```{=openxml} and friends are not listings. pandoc splices the contents into
             # the output verbatim, so this reaches the reader as formatted prose — and it
@@ -354,6 +390,25 @@ def unreadable_header(path: Path, reason: str, line: int, gate: str) -> Finding:
     )
 
 
+def abstract_in_header(path: Path, line: int, words: str, gate: str) -> Finding:
+    """An abstract in a file's front matter, which the build does not print.
+
+    Refused rather than printed from the header: under an Abstract heading it prints, is
+    counted against the journal's abstract limit, and carries the paragraph identifiers
+    the Word import maps edits back with, like the rest of the text.
+    """
+    return Finding(
+        gate=gate,
+        code="front-matter-abstract",
+        message=f"{path.name} has an abstract in its front matter, which the build does not print",
+        path=path,
+        line=line,
+        context=words[:120],
+        hint="move it out of the front matter and under a `# Abstract` heading, where "
+        "the build prints it and the journal's abstract limit counts it",
+    )
+
+
 def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text: str) -> Report:
     """The bounds of one interval must be quoted low first.
 
@@ -416,6 +471,21 @@ def _interval_order(placeholders, namespace: dict[str, Value], path: Path, text:
                 )
             )
     return report
+
+
+def _splits(value: Value) -> str | None:
+    """What in a value's display would break the paragraph that prints it; None if nothing.
+
+    Identifiers are given to the source before bindings are substituted, and a paragraph whose
+    source holds display maths gets none (`roundtrip.splits_a_paragraph`). A value printing
+    `$$y = 2.1 x$$` put it into a paragraph that had one: pandoc gave the equation a Word
+    paragraph of its own, only the part before it carried the identifier, and a co-author's
+    swap of that part moved the whole sentence in the .md. A line break is refused too: what
+    can start on the next line - a blank line, a fence, a `<div>` - ends the paragraph there.
+    """
+    if "\n" in value.display or "\r" in value.display:
+        return "a line break"
+    return splits_a_paragraph(value.display)
 
 
 def _prose_as_value(namespace: dict[str, Value], referenced: set[str]) -> Report:

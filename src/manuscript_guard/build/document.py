@@ -62,6 +62,11 @@ class BuildError(Exception):
     """The document could not be produced."""
 
 
+class MisreadError(BuildError):
+    """Pandoc reads the document otherwise than the gates read its sources, so it is not
+    made: see `reading.misreading`."""
+
+
 @dataclass(frozen=True)
 class BuildResult:
     output: Path
@@ -251,7 +256,14 @@ def build_document(
     prologue: str = "",
     epilogue: str = "",
     supplementary: bool = False,
+    verify_reading: bool = True,
 ) -> BuildResult:
+    """Make the document. `verify_reading` asks pandoc first whether it reads the sources
+    as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
+    document already sent in order to compare the returned one with it, since refusing
+    there stranded a document a co-author was holding; and the annotated copy, which is for
+    the author to read, not to send, and whose marks `annotate` has pandoc check as it
+    makes them."""
     from manuscript_guard.gates.numbers import SUPPLEMENTARY, is_supplementary
 
     build_dir = project.path("build")
@@ -280,12 +292,14 @@ def build_document(
             (a for a in wanted if a.path.name != "main.md"), key=lambda a: a.path.name
         )
 
-    body = prologue + "\n\n".join(a.text for a in ordered) + epilogue
-    source.write_text(
-        _front_matter(project, supplementary=supplementary, live=mode == LIVE) + body,
-        encoding="utf-8",
-        newline="\n",
-    )
+    # An empty div between two files, which puts nothing in the document, so each file
+    # starts afresh. Joined by blank lines alone, a footnote ending one file took in the next
+    # file's first paragraph when that opened indented, identifier and all: `tag` judges a
+    # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
+    # a `<!--` left open earlier in the file, and the rest of that file vanished.
+    body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
+    header = _front_matter(project, supplementary=supplementary, live=mode == LIVE)
+    source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
 
     cites = bool(find_citations(body, source))
@@ -297,6 +311,31 @@ def build_document(
     # picture's description. Everything else it is handed is made absolute, so the change of
     # directory cannot make a relative argument mean a different file.
     root = project.root.resolve()
+
+    from manuscript_guard.build.reading import misreading
+
+    read = [
+        ("the build's prologue", prologue),
+        *((a.path.name, a.path.read_text(encoding="utf-8")) for a in ordered),
+        ("the build's epilogue", epilogue),
+    ]
+    built = [prologue, *(a.text for a in ordered), epilogue]
+    differs = (
+        misreading(header + body, header, read, pandoc(), root, built=built)
+        if verify_reading
+        else None
+    )
+    if differs is not None:
+        # The document from the last build is not this source's, and left in build/ it is
+        # the one a co-author would be sent, or `submit` would pack.
+        if output.resolve().is_relative_to(build_dir.resolve()):
+            for stale in (output, output.with_name(output.name + SOURCE_STAMP)):
+                if stale.is_file():
+                    stale.unlink()
+        raise MisreadError(
+            f"pandoc reads {differs}. The gates judged the sources as they read them, so "
+            "the document is not built; `check` cannot see this, and the build asks pandoc."
+        )
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
     if reference_doc is not None:
         command += [f"--reference-doc={reference_doc.resolve()}"]
@@ -341,11 +380,19 @@ def build_document(
         # And inside the file, where it can survive being emailed. The sidecar answers
         # "is my build current"; this answers "which text were these edits made against",
         # which is the question the moment a co-author sends the document back.
+        # With what each paragraph identifier names, so an import can tell an identifier
+        # that still names its paragraph from one that has come to name another. Only the
+        # paragraphs this document carries, in its order: one of them that is missing when
+        # the document comes back was deleted in Word, and a supplement's are elsewhere.
         with contextlib.suppress(Exception):
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import stamp_into
+            from manuscript_guard.roundtrip import paragraph_order, paragraph_record, stamp_into
 
-            stamp_into(output, document_digest(project))
+            record = paragraph_record(project)
+            paragraphs = {
+                name: record[name] for name in paragraph_order(output) if name in record
+            }
+            stamp_into(output, document_digest(project), paragraphs)
     return BuildResult(output=output, mode=mode, report=report)
 
 

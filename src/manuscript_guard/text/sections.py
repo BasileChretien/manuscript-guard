@@ -19,12 +19,15 @@ count is reported with the rule, so a disagreement is visible rather than myster
 
 from __future__ import annotations
 
+import bisect
 import re
 from bisect import bisect_right
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import (
+    _OLD_SCAN_SKIPPED,
     Heading,
     Unprinted,
     find_headings,
@@ -109,7 +112,7 @@ def heading_index(text: str) -> list[Heading]:
     titled `Unprinted`: see `section_breaks`. For the headings a reader sees, as a word
     count or a required-section check wants them, use `split_sections` or `headings`.
     """
-    return HeadingIndex(section_breaks(text))
+    return HeadingIndex(section_breaks(text), text)
 
 
 class Chain(tuple):
@@ -138,7 +141,7 @@ class HeadingIndex(list):
     12,000 numbers took 50 s in G2. Found by bisection, it is a lookup.
     """
 
-    def __init__(self, headings: list[Heading]) -> None:
+    def __init__(self, headings: list[Heading], text: str | None = None) -> None:
         from manuscript_guard.classify import rules_out_methods
 
         super().__init__(headings)
@@ -146,13 +149,23 @@ class HeadingIndex(list):
         self.chains: list[Chain] = []
         every: list[tuple[int, str]] = []
         printed: list[tuple[int, str]] = []
+        shown = scannable(text) if text is not None else None
         for found in self:
             # A line printed as text stays off the printed chain, unless it says Results:
             # there it can only keep the Results in place. Off it, a later line printed as
             # text took it off the other chain as well, and left both saying Methods.
             both = type(found.title) is not Unprinted or rules_out_methods(found.title)
+            # Printed as text, it takes the old scan's level on the other chain too:
+            # `#<nbsp>Outcomes` over `---`, a paragraph's text under a wrongly placed
+            # `# Methods`, nested under it at the underline's level, where `main` read a
+            # level-1 heading that closed it.
+            unprinted = type(found.title) is Unprinted
             for stack in (every, printed) if both else (every,):
-                level = 1 if stack is printed and _hash_over_rule(found) else found.level
+                level = (
+                    _printed_level(found, shown)
+                    if stack is printed or unprinted
+                    else found.level
+                )
                 while stack and stack[-1][0] >= level:
                     stack.pop()
                 stack.append((level, found.title))
@@ -161,12 +174,36 @@ class HeadingIndex(list):
             )
 
 
+# Where the scan before the walk read an ATX heading: its `^#{1,6}\s+` at the margin, where
+# `\s` is a no-break space too. At a setext title the underline is always there for the rest
+# of that pattern to take.
+_OLD_SCAN_ATX_LEVEL = re.compile(r"(#{1,6})\s")
+
+
+def _printed_level(found: Heading, shown: str | None) -> int:
+    """A heading's level on the printed chain, and a line printed as text's on both.
+
+    A setext title that is an ATX line at the margin, `## Outcomes` over `===` say, is a
+    heading pandoc prints at the underline's level, which is how the walk places it, and the
+    scan before the walk read it at its hash count. Where the walk wrongly placed a heading,
+    under a stray `</script>` say, the two readings nest differently: pandoc's level-1
+    "## Outcomes" closed a Results that `main`'s level 2 kept open. So the printed chain takes
+    the hash count, and both readings must say Methods. The count is read in `shown`, the
+    text as `scannable` shows it, where the old scan read it: only a `#` at the margin, so
+    an indented ` # Y`, or one after a comment, which popped a Results the printed chain
+    still held, keeps the underline's level, and a `##` inside a comment is not counted.
+    Without the text, only a `# X` over a `-` rule is known to be one, and it takes level 1."""
+    if not found.setext:
+        return found.level
+    if shown is None:
+        return 1 if _hash_over_rule(found) else found.level
+    old = _OLD_SCAN_ATX_LEVEL.match(shown, found.start)
+    return len(old.group(1)) if old else found.level
+
+
 def _hash_over_rule(found: Heading) -> bool:
-    """A `# X` line over a `-` rule. Pandoc prints a level-2 heading titled "# X", which is
-    how the walk places it, and the scan before the walk read a level-1 heading "X". Where
-    the walk wrongly placed a `# Methods` above it, under a stray `</script>` say, the level-2
-    reading nested under that Methods, and the level-1 one closes it. So the printed chain
-    takes level 1, and both readings must say Methods."""
+    """A `# X` line over a `-` rule: a level-2 heading titled "# X" to pandoc, which the scan
+    before the walk read as a level-1 heading "X" (`_printed_level`)."""
     return (
         found.setext
         and found.level == 2
@@ -181,6 +218,152 @@ def chain_at(index: list[Heading], offset: int) -> Chain:
         index = HeadingIndex(index)
     before = bisect_right(index.starts, offset)
     return index.chains[before - 1] if before else Chain((), ())
+
+
+@dataclass(frozen=True)
+class Note:
+    """A footnote's definition: where its text runs in the file, and where it is
+    referenced, which is where pandoc prints it."""
+
+    start: int
+    end: int
+    references: tuple[int, ...]
+    # The heading chain of each reference, each once, found when the note is.
+    chains: tuple[tuple[str, ...], ...] = ()
+
+
+# A footnote's marker, as referenced or, at the start of a line and before a colon, defined.
+# Pandoc's labels hold no space and match case and all.
+_NOTE_MARKER = re.compile(r"\[\^(?P<label>[^\]\s]+)\]")
+_NOTE_DEFINITION = re.compile(r"[ ]{0,3}\[\^(?P<label>[^\]\s]+)\]:")
+# A line that may start a block of its own, which ends a definition's first paragraph here
+# whether or not it would for pandoc: a heading, a quotation, a listing, raw markup, a table,
+# a caption or definition, a rule or a list item, or another footnote.
+_MAY_START_BLOCK = re.compile(r"[ ]{0,3}(?:[#>`~<|:*+=_-]|\d+[.)]|\[\^)")
+_INDENTED = re.compile(r"(?: {4}|\t)")
+
+
+def _ends_a_note(found: Heading, shown: str) -> bool:
+    """Whether a heading refuses a `[^n]:` definition on its line and ends a note's text.
+
+    A heading pandoc prints does, and so does a setext title printed as text that the scan
+    before the walk read: `Text` / `[^a]: As reported.[^n]` / `---` is a paragraph to pandoc,
+    and `main` refused the definition, so the `[^n]` on it counted as a reference. Not a title
+    `main` never read, which it never let end a note: an empty `##` titled with the `[^n]:`
+    line under it, or a lazy line of the note starting `>` or `|` over `---`."""
+    if type(found.title) is not Unprinted:
+        return True
+    end = shown.find("\n", found.start)
+    line = shown[found.start : end if end != -1 else len(shown)]
+    return found.setext and not _OLD_SCAN_SKIPPED.match(line)
+
+
+def footnote_index(text: str) -> list[Note]:
+    """Every footnote definition in `text` with the references that print it.
+
+    Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
+    section its definition line sits in only: a finding referenced from Results and defined
+    under Methods, `p < 0.001`, passed as the alpha chosen in advance. So a note's text is
+    also read where it is referenced (`chains_at`).
+
+    Its text is the definition's line, the lines under it up to a blank one or one that may
+    start a block of its own, and after blank lines each block indented four spaces or a
+    tab. That is pandoc's reading of a plain note, not of every note: review found a `[^n]:`
+    line pandoc reads as the paragraph above's, and paragraphs a list item or a comment
+    holds, taken for a note's text. Since a number is still judged where it stands, such a
+    misreading only adds a section it must pass in. A reference inside a definition is not
+    counted. Code, comments and the front matter are read as `scannable` leaves them, blank.
+    Headings refuse a definition and end a note's text where `main` read one (`_ends_a_note`).
+    """
+    shown = scannable(text)
+    found_headings = heading_index(text)
+    headings = {found.start for found in found_headings if _ends_a_note(found, shown)}
+    lines: list[tuple[int, str]] = []
+    offset = 0
+    for line in shown.split("\n"):
+        lines.append((offset, line))
+        offset += len(line) + 1
+    spans: list[tuple[int, int, str]] = []
+    index = 0
+    while index < len(lines):
+        start, line = lines[index]
+        defined = _NOTE_DEFINITION.match(line)
+        if defined is None or start in headings:
+            index += 1
+            continue
+        last = index
+        index += 1
+        while index < len(lines):
+            at, line = lines[index]
+            if not line.strip() or at in headings or _MAY_START_BLOCK.match(line):
+                break
+            last, index = index, index + 1
+        while index < len(lines):
+            ahead = index
+            while ahead < len(lines) and not lines[ahead][1].strip():
+                ahead += 1
+            block = ahead
+            while block < len(lines) and lines[block][1].strip():
+                if not _INDENTED.match(lines[block][1]):
+                    break
+                block += 1
+            if block == ahead or (block < len(lines) and lines[block][1].strip()):
+                break
+            last, index = block - 1, block
+        end = lines[last][0] + len(lines[last][1])
+        spans.append((start, end, defined.group("label")))
+    references: dict[str, list[int]] = {}
+    defined = [Note(low, high, ()) for low, high, _label in spans]
+    for found in _NOTE_MARKER.finditer(shown):
+        if _containing(defined, found.start()) is None:
+            references.setdefault(found.group("label"), []).append(found.start())
+    return [
+        Note(
+            low,
+            high,
+            tuple(references[label]),
+            _distinct(chain_at(found_headings, at) for at in references[label]),
+        )
+        for low, high, label in spans
+        if label in references
+    ]
+
+
+def _containing(notes: list[Note], offset: int) -> Note | None:
+    """The note, of those in document order and apart, whose text holds `offset`."""
+    at = bisect.bisect_right(notes, offset, key=lambda note: note.start) - 1
+    return notes[at] if at >= 0 and notes[at].end > offset else None
+
+
+def chains_at(
+    index: list[Heading], notes: list[Note], offset: int
+) -> tuple[tuple[str, ...], ...]:
+    """Every heading chain a number at `offset` is judged under, and must pass under each:
+    where it stands, and, inside a footnote's definition, where each reference to it stands.
+
+    Where it stands is kept for a footnote's text too, although pandoc prints it at the
+    references. Judged at the references alone, a claim the gates took for a note's text and
+    pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
+    pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
+    of #77). Judged in both places, a number can only fail more than it did, never pass what
+    it failed before, however the note's end is misread. One chain per heading at most, so a
+    note referenced a thousand times costs no more than one referenced from every section."""
+    here = chain_at(index, offset)
+    note = _containing(notes, offset)
+    if note is None:
+        return (here,)
+    return _distinct([here, *note.chains])
+
+
+def _distinct(chains: Iterable[Chain]) -> tuple[Chain, ...]:
+    """`chains` without repeats, in order. A chain is its titles and its printed reading, and
+    a title printed as text (`Unprinted`) is not the same title printed: `is_methods` reads
+    them differently, where `==` on the tuples does not tell them apart."""
+    kept: dict[tuple, Chain] = {}
+    for chain in chains:
+        key = tuple((type(t), t) for t in (*chain, None, *getattr(chain, "printed", ())))
+        kept.setdefault(key, chain)
+    return tuple(kept.values())
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -255,6 +438,109 @@ def subsections(sections: list[Section], index: int) -> list[Section]:
 
 def headings(text: str) -> list[str]:
     return [found.title for found in find_headings(text)]
+
+
+# A line of dashes, in groups or not. Under a line pandoc reads a setext underline in it;
+# over one, YAML with three at the margin, a table's rule with two or more, and an empty
+# list item with one.
+_DASH_LINE = re.compile(r"^[ ]{0,3}(?:-[ \t]*)+$")
+# Dashes ending a line that opens with something pandoc starts a block behind: block-level
+# HTML tags or comments, a TeX command with its groups, or list, definition or footnote
+# markers, nested or not. Pandoc reads the dashes there as YAML or a table's rule. Inline
+# markup, `m<sup>2</sup> ---` or `[drug]{.smallcaps} --`, starts no block, and is prose.
+# Pandoc's block-level tags, and those it takes for a block or inline as it finds them.
+_BLOCK_TAGS = (
+    "address|applet|area|article|aside|audio|blockquote|body|button|canvas|caption|center|"
+    "col|colgroup|dd|del|details|dialog|dir|div|dl|dt|embed|fieldset|figcaption|figure|"
+    "footer|form|frameset|h[1-6]|head|header|hgroup|hr|html|iframe|ins|isindex|legend|li|"
+    "link|main|map|math|menu|meta|nav|noframes|noscript|object|ol|optgroup|option|output|p|"
+    "param|pre|progress|script|section|source|style|summary|svg|table|tbody|td|template|"
+    "textarea|tfoot|th|thead|title|tr|track|ul|video"
+)
+# One thing a line may open with that pandoc starts a block behind: a list, definition or
+# footnote marker, a task's box after it; a block-level tag, a comment or a processing
+# instruction; a TeX command, starred or not, with its groups three deep. The alternatives
+# read any text one way only: a roman numeral has two letters or more, since one is a
+# letter's; a comment ends at its first `-->`; a command's name takes every letter, as TeX
+# reads it; and `[^1]:` after a command is a footnote's marker, where `[^1]` with no colon
+# after it is the command's optional argument, as pandoc reads it, and `[x]:` an argument
+# before a definition's colon. Where one line could be read two ways, a line of a few
+# hundred items took minutes.
+_GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
+_ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
+_OPENER_ITEM = (
+    r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
+    r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
+    r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
+    r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*)"
+)
+_OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)
+
+
+def _opens_block(line: str) -> bool:
+    """Whether `line` is things pandoc starts a block behind, then three dashes or more.
+
+    Two are an en dash, and no YAML opens on them. The dashes are split off by reading back
+    from the end, so only the front is left to the pattern: matched whole, a line of dash
+    markers could be divided between the markers and the dashes as many ways as it had."""
+    tail = line.find("-", len(line.rstrip("- \t")))
+    return (
+        tail > 0
+        and line.count("-", tail) >= 3
+        and _OPENERS.fullmatch(line, 0, tail) is not None
+    )
+# A line inside a quotation: its dashes are the quotation's (see Known gaps).
+_QUOTED = re.compile(r"^[ ]{0,3}>")
+
+
+def _blank(line: str) -> bool:
+    return not line.strip(" \t\r")
+
+
+def rules_opening_blocks(text: str) -> list[int]:
+    """The lines, numbered from 1, of each line of dashes below the front matter with a line
+    directly above or under it.
+
+    Pandoc reads a line of dashes under a line as that line's setext underline, and over one
+    as the start of YAML metadata, when the lines under it are a mapping, or of a table. A
+    YAML block is merged over the document's metadata, and a table's lines are cells; the
+    gates read prose, and took a closing rule for an underline. Modelling pandoc's readers
+    did not hold up in review, and neither did an exemption for the underline of a plain
+    title: four reviews each found titles pandoc reads otherwise, under a comment, a listing
+    or a quotation, or holding a placeholder. So a line of dashes passes only between blank
+    lines, where pandoc reads nothing but a thematic break, and a heading is written with
+    `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
+    pandoc starts a block behind either. A line in code, a comment or the front matter is
+    not read. A YAML block of the body is: its dashes are what is refused, and blanked with
+    it, as the heading reads blank it (#85), it passed `check`.
+    """
+    shown = scannable(text, metadata=False).split("\n")
+    source = text.split("\n")
+    found = []
+    for number, line in enumerate(shown):
+        # A comment that closes on this line is blanked in front of what follows, and pandoc
+        # reads on from its `-->`, spaces and tabs skipped, as from the margin.
+        bare = source[number].rstrip("\r")
+        closes = bare.rfind("-->")
+        if closes >= 0 and not line[: closes + 3].strip():
+            line, bare = line[closes + 3 :].lstrip(" \t"), bare[closes + 3 :].lstrip(" \t")
+        visible = line.rstrip(" \t\r").endswith("-")
+        if (
+            visible
+            and not _QUOTED.match(bare)
+            and not _DASH_LINE.match(line.rstrip("\r"))
+            and _opens_block(bare)
+        ):
+            found.append(number + 1)
+            continue
+        if not _DASH_LINE.match(line.rstrip("\r")):
+            continue
+        above = source[number - 1] if number else ""
+        below = source[number + 1] if number + 1 < len(source) else ""
+        if not (_blank(above) and _blank(below)):
+            found.append(number + 1)
+    return found
 
 
 def count_words(text: str) -> int:

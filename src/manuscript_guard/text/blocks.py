@@ -31,11 +31,17 @@ from dataclasses import dataclass, replace
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.masking import blank, fenced_blocks, front_matter_end, html_comments
+from manuscript_guard.text.masking import (
+    blank,
+    fenced_blocks,
+    front_matter_end,
+    html_comments,
+    metadata_blocks,
+)
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
 
-def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
+def _scanned(text: str, *, metadata: bool = True) -> tuple[str, list[tuple[int, int]]]:
     """`scannable(text)`, and where its comments were in `text`."""
     # Front matter too, now that setext headings are recognised: its closing `---` sits
     # directly under a YAML line, which would otherwise read as `key: value` underlined —
@@ -47,15 +53,24 @@ def _scanned(text: str) -> tuple[str, list[tuple[int, int]]]:
     # Fences and comments are found in the text as written too, the comments as `mask`
     # finds them (text/comments.py): a `<!--` in inline code opens none, and blanking the
     # comments first made "```<!-- TODO -->" a bare closing fence.
+    # And every YAML block of the body, which pandoc reads as metadata: a `# Methods` in
+    # one is a YAML comment, and read as a heading it gave the paragraphs after the block
+    # the Methods chain.
     head = front_matter_end(text)
     fences = fenced_blocks(text)
     comments = html_comments(text, fences)
-    spans = [(0, head), *((fence.start, fence.end) for fence in fences), *comments]
+    spans = [
+        (0, head),
+        *(metadata_blocks(text) if metadata else ()),
+        *((fence.start, fence.end) for fence in fences),
+        *comments,
+    ]
     return blank(text, spans), comments
 
 
-def scannable(text: str) -> str:
-    """`text` with code fences and HTML comments blanked, offsets preserved.
+def scannable(text: str, *, metadata: bool = True) -> str:
+    """`text` with code fences and HTML comments blanked, offsets preserved, and, unless
+    `metadata` is false, the YAML blocks of the body.
 
     `#` is a comment character in Python, R, shell and YAML. Once fenced code stopped being
     masked — correctly, because it renders — an ordinary comment inside a listing became a
@@ -76,7 +91,7 @@ def scannable(text: str) -> str:
     Blanked rather than removed, because callers index back into the original text.
     Newlines are kept so line numbers and `^` anchors still line up.
     """
-    return _scanned(text)[0]
+    return _scanned(text, metadata=metadata)[0]
 
 
 @dataclass(frozen=True)
@@ -916,6 +931,13 @@ def heading_shaped(lines: list[str]) -> set[int]:
     return shaped
 
 
+# A setext title the scan before the walk refused: one starting with `#`, `>` or `|`, or made
+# only of dashes or equals signs. It read a `#` title at the margin as a heading of its own,
+# which `_OLD_SCAN_ATX` recognises; the rest it never read at all.
+_OLD_SCAN_SKIPPED = re.compile(r"^[ \t]*(?:[#>|]|[-=]+[ \t]*$)")
+_OLD_SCAN_ATX = re.compile(r"^#{1,6}(?:[ \t]|$)")
+
+
 class Unprinted(str):
     """The title of a line shaped like a heading that pandoc prints as text. It ends the
     section it stands in, and opens none: see `section_breaks`."""
@@ -936,24 +958,34 @@ def section_breaks(text: str) -> list[Heading]:
     Methods, and never open them. A table row is not such a line: the walk reads the table,
     and the rule under its last row is a rule.
 
-    Three kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
+    Four kinds of heading the walk does place come back `Unprinted` as well: a `#` heading
     after a tag or a comment on its line, a setext title after a tag, at the start of its
-    line or after a comment, and a heading of seven hashes or more. The scan before the walk
-    never read any of them, and wherever the walk wrongly starts a block, under a stray
-    `</script>` say, or ends a tag pandoc does not see, one could open Methods. A seven-hash
-    Methods did so too under a Results title the gates do not read, `# [Results]{.underline}`.
-    And an empty `##` over a line of text breaks there too,
-    titled with that line: pandoc prints the line as a paragraph, and the page shows
-    "Results" over the numbers under it.
+    line or after a comment, a setext title the scan before the walk refused (`> Outcomes`,
+    `| Outcomes`), and a heading of seven hashes or more. The scan before the walk never read
+    any of them, and wherever the walk wrongly starts a block, under a stray `</script>` say,
+    or ends a tag pandoc does not see, one could open Methods. A seven-hash Methods did so
+    too under a Results title the gates do not read, `# [Results]{.underline}`.
+
+    An empty `##` over a line of text breaks there too, titled with that line: pandoc
+    prints the line as a paragraph, and the page shows "Results" over the numbers under it.
+    That holds for an empty heading printed as text as well, which the scan before the walk
+    also titled with the next line; and a `#` line under an empty heading, which it read as
+    that heading's title, comes back `Unprinted`.
     """
     walk = _Walk(text).run()
     raw_at = {line.start: line.raw for line in walk.lines}
+    shown_at = {line.start: line.shown for line in walk.lines}
     found = [
         replace(heading, title=Unprinted(heading.title))
         if heading.start in walk.tagged
         or (not heading.setext and not raw_at[heading.start].startswith("#"))
         or (not heading.setext and heading.level >= 7)
         or (heading.setext and _START_TAG.match(raw_at[heading.start]))
+        or (
+            heading.setext
+            and _OLD_SCAN_SKIPPED.match(shown_at[heading.start])
+            and not _OLD_SCAN_ATX.match(raw_at[heading.start])
+        )
         else heading
         for heading in walk.found
     ]
@@ -974,8 +1006,10 @@ def section_breaks(text: str) -> list[Heading]:
             level = len(line) - len(line.lstrip("#"))
             title, setext = line[level:].strip().rstrip("#").strip(), False
         found.append(Heading(walk.lines[number].start, level, Unprinted(title), setext))
+    every_start = {heading.start: heading for heading in found}
+    titles: set[int] = set()
     for number, line in enumerate(walk.lines):
-        heading = by_start.get(line.start)
+        heading = every_start.get(line.start)
         if heading is None or heading.setext or heading.title:
             continue
         after = number + 1
@@ -984,6 +1018,16 @@ def section_breaks(text: str) -> list[Heading]:
         if after < len(shown) and after not in placed and after not in shaped:
             title = Unprinted(shown[after].strip())
             found.append(Heading(walk.lines[after].start, heading.level, title))
+        elif after < len(shown) and _SHAPED_ATX.match(shown[after]):
+            # The old scan took this `#` line for the empty heading's title and never read it
+            # as a heading of its own: it may close Methods, and not open them.
+            titles.add(walk.lines[after].start)
+    found = [
+        replace(heading, title=Unprinted(heading.title))
+        if heading.start in titles and not heading.setext and type(heading.title) is not Unprinted
+        else heading
+        for heading in found
+    ]
     return sorted(found, key=lambda heading: heading.start)
 
 

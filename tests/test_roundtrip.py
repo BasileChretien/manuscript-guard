@@ -8817,53 +8817,6 @@ def _sections_of(tmp_path: Path, sections: dict[str, dict[str, str]]):
     return known, sent, block, heading, words
 
 
-@pytest.mark.parametrize("new_in", ["two", "one"])
-def test_new_text_beside_a_move_at_a_sections_edge_does_not_hold_the_next_section(
-    tmp_path: Path, new_in: str
-) -> None:
-    """Moves recorded in two sections, new text typed in one of them. The walk out from the
-    new text passed every paragraph that arrived, whichever section it was in: a paragraph
-    moved to the edge of its own section let it cross the heading, and the clear move on
-    the other side was withheld with the rest. Once a moved paragraph has been passed, a
-    heading as it was sent ends the walk."""
-    from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import plan_import
-
-    known, sent, block, heading, words = _sections_of(
-        tmp_path,
-        {
-            "One": {
-                "a1": "Alpha one opens section one.",
-                "a2": "Alpha two stands in the middle of it.",
-                "a3": "Alpha three closes section one.",
-            },
-            "Two": {
-                "b1": "Bravo one opens section two.",
-                "b2": "Bravo two stands in the middle of it.",
-                "b3": "Bravo three closes section two.",
-            },
-        },
-    )
-    new = Block((), "A paragraph typed in Word.")
-
-    def arrived(name: str) -> Block:
-        return Block((name,), words[name], arrived=True)
-
-    if new_in == "two":
-        # a3 moved to the top of One; b3 to the top of Two, with new text after it.
-        returned = [heading["One"], arrived("a3"), block["a1"], block["a2"],
-                    heading["Two"], arrived("b3"), new, block["b1"], block["b2"]]
-        clear, held = "a3", "b3"
-    else:
-        # a1 moved to the end of One, with new text before it; b3 to the top of Two.
-        returned = [heading["One"], block["a2"], block["a3"], new, arrived("a1"),
-                    heading["Two"], arrived("b3"), block["b1"], block["b2"]]
-        clear, held = "b3", "a1"
-    plan = plan_import(known, sent, returned)
-    assert clear in {entry[0] for entry in plan.moved}, plan
-    assert held in plan.withheld, plan
-
-
 def test_a_withheld_move_quotes_only_the_new_text_in_its_own_section(tmp_path: Path) -> None:
     """A move withheld for new text in its section is reported with that text, to show the
     author what made its place uncertain. New text anywhere in the document was quoted: a

@@ -401,28 +401,17 @@ def _unsettled(
         these: set = set()
         for step in (-1, 1):
             i = index + step
-            passed = False
             while 0 <= i < len(returned) and returned[i].kind not in ("table", "figure"):
                 here = returned[i]
-                # Once past a paragraph moved in, a heading or caption as it was sent ends
-                # the search: the one moved in stood at the edge of its own section, and the
-                # search went on into the next and held a clear move there. Not text that
-                # arrived itself - a list item moved in beside a split's second half.
-                if (
-                    passed
-                    and not here.names
-                    and not here.arrived
-                    and shown[_squashed(_listed(here))]
-                ):
-                    break
                 names = [n for n in here.names if n in sections]
                 these.update(sections[n] for n in names)
                 # Past a paragraph moved in, named misplaced or not: across a boundary Word
                 # does not show - an HTML comment - one moved in is not named, and it hid the
-                # section of a split's new half beside it.
+                # section of a split's new half beside it. Nor does a heading end the search:
+                # stopping at one that read as sent, a quotation cut and pasted beside the
+                # paragraph moved in hid that section too, and the split's move was written.
                 if names and not set(names) <= misplaced and not here.arrived:
                     break
-                passed = passed or (here.arrived and bool(names))
                 i += step
         found |= these
         because.append((_listed(block), frozenset(these)))

@@ -3999,10 +3999,12 @@ Closed since, and why each mattered:
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
     reported with the new text in that section and not applied. The search for the section
-    goes past a paragraph moved in, and then stops at a heading or caption as it was sent;
-    but new text typed directly against a heading, with no moved paragraph between them,
-    still reaches across it, and a clear move in the section on the other side is held too.
-    Nothing is written either way.
+    goes past a paragraph moved in, and past headings: new text beside a paragraph moved to
+    the edge of its own section, or typed directly against a heading, reaches across it, and
+    a clear move in the section on the other side is held too. Nothing is written. Stopping
+    at a heading that read as sent was tried and taken out: a quotation cut and pasted beside
+    the paragraph moved in, without Track Changes, read as sent too, hid a split's section,
+    and the move between its halves was written.
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.

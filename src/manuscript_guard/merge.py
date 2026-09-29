@@ -412,13 +412,12 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     first in a cut - or when what moved in has none to show it moved, as an equation has
     none. A sentence cut out and pasted as a paragraph of its own is the same loss.
 
-    Exact when the paragraph kept its opening word for word and the new text is the rest of
-    it, word for word: a split, however short the second half. Otherwise a judgement - most
-    of the new text's words, in order and four at least, among the words the paragraph
-    lost - and it only refuses.
+    A judgement - most of the new text's words, in order and four at least, among the words
+    the paragraph lost - and it only refuses. Not shorter: a sentence of three words
+    deleted while a paragraph of the same words is added elsewhere merges, as `main`
+    decided, and a split's second half that short merges the paragraph as its first half.
     """
     before, after = was.split(), now.split()
-    rest = before[len(after) :] if before[: len(after)] == after else []
     matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
     # In any case: a sentence split off into a paragraph of its own is capitalised there.
     lost = [
@@ -429,8 +428,6 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     ]
     for text in fresh if lost else ():
         words = text.split()
-        if rest and words == rest:
-            return text
         folded = [word.casefold() for word in words]
         shared = difflib.SequenceMatcher(a=folded, b=lost, autojunk=False).get_matching_blocks()
         matched = sum(block.size for block in shared)

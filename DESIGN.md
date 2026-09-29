@@ -2323,9 +2323,8 @@ The checks that came out of the review rounds guard the tracked path as well:
   that anything was typed on, or that an untracked deletion left its identifier on, is
   refused as a split with it, where `main` refused only the spacer line. With the neighbour
   shortened, that cannot be told from the join.
-- A paragraph is refused when new body text without an identifier is the rest of it, word
-  for word, after an opening it kept word for word, or is made mostly of words it lost:
-  four of them at least, in order, in any case. A split with a paragraph cut in between
+- A paragraph is refused when new body text without an identifier is made mostly of words
+  it lost: four of them at least, in order, in any case. A split with a paragraph cut in between
   without Track Changes shows nothing else: Word keeps the identifier of every paragraph but
   the first of a cut, so the pasted paragraph stood beside the first half as if nothing had
   moved, and the first line of the cut, a spacer or an equation, landed without one. A
@@ -4395,11 +4394,12 @@ Closed since, and why each mattered:
   which it does for every paragraph but the first of a cut: a line and the paragraph under
   it, cut together without Track Changes and pasted between the halves, stood there with
   the second one's identifier (Word 365, 2026-09-28). Each of these is refused by the
-  second half's words instead (see "A move, the way Word makes one"): the
-  rest of the paragraph word for word, or four words or more it lost. That is partly a
-  judgement. A second half of under four words, reworded in the same round, still has the
-  paragraph merged as its first half and the rest gone from the source, as on main; exit
-  1, because the second half is listed, but the merge is written. A table, figure or
+  second half's words instead (see "A move, the way Word makes one"): four words or more
+  it lost. That is a judgement. A second half of under four words, or one reworded in the
+  same round, still has the paragraph merged as its first half and the rest gone from the
+  source, as on main; exit 1, because the second half is listed, but the merge is written.
+  Refusing a short one by its exact words would refuse a sentence deleted while a paragraph
+  of the same words is added elsewhere, which `main` merges on purpose. A table, figure or
   equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the

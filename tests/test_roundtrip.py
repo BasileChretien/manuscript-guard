@@ -2346,9 +2346,24 @@ def test_a_setext_heading_is_not_tagged() -> None:
     assert tagged.count("[]{#mg-p-") == 1, "only the prose paragraph"
 
 
+#: A bullet marker alone on its line over an underline, at each indent a list item may have:
+#: an empty list item to pandoc 3.9, and the underline and what follows are its text. Taken
+#: for a setext title since #62, the block was passed over, and the marker printed inside
+#: the list.
+LONE_MARKERS = [
+    pytest.param(f"{' ' * indent}{marker}\n{rule}\nAlpha.", id=f"lone-{name}-{indent}-{kind}")
+    for marker, name in (("-", "dash"), ("+", "plus"), ("*", "star"))
+    for indent in range(4)
+    for rule, kind in (("===", "equals"), ("---", "dashes"))
+]
+
 #: (block, the paragraph under its headings that carries the identifier, or None) - read off
 #: pandoc 3.9. Pandoc needs no blank line after a heading, and the paragraph is always last.
 HEADED = [
+    *(pytest.param(case.values[0], None, id=case.id) for case in LONE_MARKERS),
+    # An ordered marker alone over an underline is a title to pandoc, not a list item.
+    pytest.param("1.\n===\nAlpha.", "Alpha.", id="lone-ordered-marker"),
+    pytest.param("a.\n---\nAlpha.", "Alpha.", id="lone-letter-marker"),
     pytest.param("# Methods\nPatients were enrolled.", "Patients were enrolled.", id="atx"),
     pytest.param("## Methods ##\nPatients.", "Patients.", id="atx-closed"),
     pytest.param("#\tMethods {#sec-methods}\nPatients.", "Patients.", id="atx-attributes"),
@@ -2454,8 +2469,11 @@ HEADED = [
     # Left alone, as on main (round four).
     pytest.param(" # Methods\nPatients.", None, id="hash-indented"),
     pytest.param("   ## Methods\nPatients.", None, id="hash-indented-three"),
-    # A heading whose code span, comment or TeX environment runs onto the next line: pandoc
-    # reads the two lines as one heading, and a marker would print inside it (round four).
+    # A heading whose code span or comment runs onto the next line: pandoc reads the two
+    # lines into one ATX heading, or a setext title and all under it into one paragraph,
+    # and a marker would print inside it (round four). A TeX
+    # environment opened in the line and closed on the next makes no heading at all: pandoc
+    # reads text, then a raw block, then the paragraph.
     pytest.param("# The `lm function\nWe used `glm()` here.", None, id="heading-open-code"),
     pytest.param("The `lm\n===\nWe used `glm()` here.", None, id="setext-open-code"),
     pytest.param("# Notes <!-- a draft\nnote --> Patients.", None, id="heading-open-comment"),
@@ -2480,7 +2498,7 @@ HEADED = [
     # Round six: a link's destination or title, an HTML tag's attributes, and a code span
     # whose backslash is only text all run onto the next line as well. A heading is passed
     # over only when its line is plain text now. Emphasis runs on to no later line, and is
-    # kept out all the same: the allow-list takes no exceptions.
+    # kept out all the same: the allowlist takes no exceptions.
     pytest.param('# See [x](http://x.org\n"Title") here.\nAlpha.', None, id="heading-link"),
     pytest.param('# Zeta <a\nhref="x">link</a> more\nAlpha.', None, id="heading-html-tag"),
     pytest.param(
@@ -2574,6 +2592,45 @@ def test_pandoc_reads_the_headings_and_the_paragraph_under_them(
         assert blocks[-1]["t"] == "Para"
         assert "mg-p-" in json.dumps(blocks[-1])
         assert sum(b["t"] == "Para" for b in blocks) == 1
+
+
+@pytest.mark.parametrize("marker", ["-", "+", "*"])
+@pytest.mark.parametrize("indent", ["", "   ", "    ", "\t"])
+@pytest.mark.parametrize("rule", ["===", "---"])
+def test_a_lone_bullet_marker_is_no_setext_title(marker: str, indent: str, rule: str) -> None:
+    """Asked of `_SETEXT` itself, since `_PLAIN_LINE` keeps `*` out as well and the heading
+    tests could not tell which of the two did. At any indent: indented four, the line is a
+    title at the top level and a list item under a list, and the block cannot tell which."""
+    from manuscript_guard.roundtrip import _SETEXT
+
+    assert _SETEXT.match(f"{indent}{marker}\n{rule}\nAlpha.") is None
+
+
+@needs_pandoc
+@pytest.mark.parametrize("block", LONE_MARKERS)
+def test_a_lone_bullet_marker_over_an_underline_is_a_list_left_unmarked(block: str) -> None:
+    """Pandoc reads a bullet marker alone on its line as an empty list item, and the
+    underline under it as the item's text, not as a setext heading. `_SETEXT` excluded a
+    marker only with a space or a tab after it, so the block was passed over as a title
+    and the paragraph marked, and the marker printed inside the list."""
+    import json
+    import subprocess
+
+    from manuscript_guard.roundtrip import tag
+
+    def blocks(text: str) -> list:
+        read = subprocess.run(
+            ["pandoc", "-f", "markdown", "-t", "json"],
+            input=text,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return json.loads(read.stdout)["blocks"]
+
+    assert [b["t"] for b in blocks(block)] == ["BulletList"]
+    assert "mg-p-" not in json.dumps(blocks(tag(block, "main.md")))
 
 
 @BUILDS
@@ -9910,6 +9967,57 @@ def test_an_identifier_left_on_an_edited_heading_is_not_merged_as_its_text(
 
 
 @needs_pandoc
+@pytest.mark.parametrize("ids", ["as-built", "localised"])
+@pytest.mark.parametrize("where", ["heading", "caption"])
+def test_a_heading_an_identifier_slid_onto_is_not_read_as_joined_away(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ids: str, where: str
+) -> None:
+    """Two paragraphs deleted in a row without Track Changes: the first leaves its identifier
+    on a heading that still reads as it was sent, the second on the heading or caption after
+    it, which is then edited to take in the first heading's words - "Funding and competing
+    interests". Whether a heading was joined into the second paragraph was read from the
+    headings missing before any identifier was taken off, so the first heading, carrying the
+    first paragraph's identifier, counted as gone, and the edit merged into the second
+    paragraph's slot. It is reported deleted."""
+    from manuscript_guard.cli import main
+
+    source = project / "manuscript" / "main.md"
+    if where == "caption":
+        source.write_text(
+            source.read_text(encoding="utf-8").replace(
+                "{{table.baseline}}",
+                "## Baseline characteristics\n\nTable 2 gives the reports by drug group.\n\n"
+                "{{table.baseline}}",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        first, second = "The database contained", "Table 2 gives the reports by drug group."
+        was, now = ">Reports by drug group.", ">Baseline characteristics by drug group."
+    else:
+        first, second = "The synthetic dataset", "This work received no funding."
+        was, now = ">Competing interests</w:t>", ">Funding and competing interests</w:t>"
+    document = built(project)
+    before = source.read_text(encoding="utf-8")
+
+    def edit(xml: str) -> str:
+        for opening in (first, second):
+            (paragraph,) = [p for p in tagged_xml(xml) if f">{opening}" in p]
+            xml = _word_delete(xml, paragraph)
+        assert was in xml
+        return xml.replace(was, now, 1)
+
+    target = tmp_path / "slid-twice.docx"
+    reader = _localised if ids == "localised" else rewrite
+    returned = reader(document, target, edit)
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    out = capsys.readouterr().out
+    assert source.read_text(encoding="utf-8") == before, out
+    assert f"deleted in Word, left in place here: {second}" in out, out
+
+
+@needs_pandoc
 def test_a_paragraph_restyled_as_a_heading_is_not_reported_deleted(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -10958,23 +11066,42 @@ def test_a_font_part_that_cannot_be_decompressed_is_refused_not_a_crash(tmp_path
     assert f"Mean 3.2 {PLUS_MINUS} 0.4" in read_docx(document)
 
 
+def _declare_encoding(document: Path, part: str, encoding: str) -> None:
+    """Give one part of `document` an XML declaration naming `encoding`."""
+    with zipfile.ZipFile(document) as archive:
+        members = {name: archive.read(name) for name in archive.namelist()}
+    declared = f'<?xml version="1.0" encoding="{encoding}"?>'.encode("ascii")
+    members[part] = declared + members[part]
+    with zipfile.ZipFile(document, "w") as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+
+
+@pytest.mark.parametrize("damage", ["Deflate64", "shift_jis", "no-such-encoding"])
 @pytest.mark.parametrize(
     ("part", "reader"),
     [
         ("word/document.xml", "blocks"),
         ("word/document.xml", "read_docx"),
         ("word/comments.xml", "comment_texts"),
+        ("word/styles.xml", "blocks"),
         ("word/styles.xml", "read_docx"),
+        ("word/fontTable.xml", "blocks"),
+        ("word/fontTable.xml", "read_docx"),
     ],
 )
-def test_a_part_that_cannot_be_decompressed_is_refused_not_a_crash(
-    tmp_path: Path, part: str, reader: str
+def test_a_part_that_cannot_be_read_is_refused_not_a_crash(
+    tmp_path: Path, part: str, reader: str, damage: str
 ) -> None:
     """A part zipfile cannot decompress - Deflate64, which other zip tools write, or an
     encrypted one - raised NotImplementedError or RuntimeError out of whichever reader read
     it: the body out of the import and the audit, the comments out of the import, the styles
-    out of the audit. Each is refused as a part that cannot be read safely is, and the audit
-    reads on without the heading styles, as it does without the fonts."""
+    out of the audit. So did a part declaring an encoding the XML parser cannot read: a
+    multi-byte one raised ValueError, an unknown name LookupError, out of each reader, and out
+    of the import for the styles and the font table too once #98 stopped wrapping the font
+    parts' own. Word writes UTF-8. The import refuses the document, as for any part it cannot
+    read safely; the audit refuses it only for its body, and reads on without the heading
+    styles or the fonts."""
     from manuscript_guard.docxtext import DocumentUnreadable, blocks, comment_texts
     from manuscript_guard.text.docx import NotADocx, read_docx
 
@@ -10982,11 +11109,16 @@ def test_a_part_that_cannot_be_decompressed_is_refused_not_a_crash(
     document = symbol_document(tmp_path, text_run("We found 77 cases."), styles=heading)
     comment = f'<w:comment w:id="0" w:author="A"><w:p>{text_run("Check this.")}</w:p></w:comment>'
     comments = f'<w:comments xmlns:w="{WORD_MAIN}">{comment}</w:comments>'
+    table = f'<w:fonts xmlns:w="{WORD_MAIN}"><w:font w:name="Calibri"/></w:fonts>'
     with zipfile.ZipFile(document, "a") as archive:
         archive.writestr("word/comments.xml", comments)
-    _unsupported_compression(document, part)
+        archive.writestr("word/fontTable.xml", table)
+    if damage == "Deflate64":
+        _unsupported_compression(document, part)
+    else:
+        _declare_encoding(document, part, damage)
     read = {"blocks": blocks, "comment_texts": comment_texts, "read_docx": read_docx}[reader]
-    if part == "word/styles.xml":
+    if reader == "read_docx" and part != "word/document.xml":
         assert "We found 77 cases." in read(document)
     else:
         with pytest.raises(NotADocx if reader == "read_docx" else DocumentUnreadable):
@@ -11095,31 +11227,105 @@ def test_a_moved_paragraph_left_empty_does_not_vouch_for_a_split(
     assert path.read_text(encoding="utf-8") == text
 
 
-@pytest.mark.parametrize("left", ["typed", "inserted"])
-def test_a_symbol_on_a_new_line_below_a_comment_is_new_text(tmp_path: Path, left: str) -> None:
-    """An HTML comment reaches Word as an empty line, whose identifier is given back to the
-    text below only when that text reads as the comment did. A new line holding only a smiley
-    read as no text, as the comment does, so it took the comment's identifier: the smiley was
-    reported as an edit to the comment, "NOT merged", rather than listed as new text."""
+#: A line the .md leaves empty on purpose, as the build writes it: carrying an identifier,
+#: `&nbsp;` holding a no-break space and `<br>` nothing.
+_SPACERS = {"&nbsp;": f"<w:r><w:t>{chr(0xA0)}</w:t></w:r>", "<br>": ""}
+
+
+_ALPHA, _BRAVO = "Alpha opens it.", "Bravo follows it."
+
+
+def _spaced_out(tmp_path: Path, spacer: str) -> dict:
+    """The .md of a section of two paragraphs with `spacer` between them, and the
+    identifiers it knows: "a", "s" for the spacer, and "b"."""
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{_ALPHA}\n\n{spacer}\n\n{_BRAVO}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = (("a", _ALPHA), ("s", spacer), ("b", _BRAVO))
+    return {f"mg-p-{n}-0": (path, line, text.index(line)) for n, line in lines}
+
+
+def _section(a: str, spacer: str, b: str) -> str:
+    """The body of such a section: `spacer` is the XML between the two paragraphs."""
+    return _HEADING + _tagged("mg-p-a-0", text_run(a)) + spacer + _tagged("mg-p-b-0", text_run(b))
+
+
+def _import(tmp_path: Path, known: dict, sent: str, back: str):
     from manuscript_guard.docxtext import blocks
     from manuscript_guard.merge import plan_import
 
-    a, note, b = "Alpha opens it.", "<!-- note -->", "Bravo follows it."
-    path = tmp_path / "main.md"
-    text = f"# Methods\n\n{a}\n\n{note}\n\n{b}\n"
-    path.write_text(text, encoding="utf-8")
-    known = {f"mg-p-{n}-0": (path, w, text.index(w)) for n, w in (("a", a), ("c", note), ("b", b))}
-    opening = _HEADING + _tagged("mg-p-a-0", text_run(a)) + _tagged("mg-p-c-0", "")
-    sent = opening + _tagged("mg-p-b-0", text_run(b))
-    smiley = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}[left]
-    back = opening + f"<w:p>{smiley}</w:p>" + _tagged("mg-p-b-0", text_run(b))
-    plan = plan_import(
+    return plan_import(
         known,
         blocks(word_document(tmp_path / "sent.docx", sent)),
         blocks(word_document(tmp_path / "back.docx", back)),
     )
+
+
+@pytest.mark.parametrize("left", ["typed", "inserted"])
+def test_a_symbol_on_a_new_line_below_a_spacer_is_new_text(tmp_path: Path, left: str) -> None:
+    """A `&nbsp;` spacer reaches Word as an empty line carrying an identifier, which is given
+    back to the text below only when that text reads as the spacer did. A new line holding
+    only a smiley read as no text, as the spacer does, so it took the spacer's identifier:
+    the smiley was reported as an edit to the spacer, "NOT merged", rather than listed as new
+    text."""
+    known = _spaced_out(tmp_path, "&nbsp;")
+    spacer = _tagged("mg-p-s-0", _SPACERS["&nbsp;"])
+    smiley = {"typed": in_font("J", "Wingdings"), "inserted": symbol("F04A", "Wingdings")}[left]
+    sent = _section(_ALPHA, spacer, _BRAVO)
+    plan = _import(tmp_path, known, sent, _section(_ALPHA, spacer + f"<w:p>{smiley}</w:p>", _BRAVO))
     assert not plan.refused, plan.refused
     assert plan.unidentified == (f"[{SMILEY}]",), plan.unidentified
+
+
+@pytest.mark.parametrize("above", [True, False], ids=["reworded above", "reworded below"])
+@pytest.mark.parametrize("spacer", list(_SPACERS))
+def test_a_rewording_beside_a_spacer_enter_was_pressed_on_merges(
+    tmp_path: Path, spacer: str, above: bool
+) -> None:
+    """Enter pressed at the end of a spacer line with Track Changes on marks its paragraph
+    mark inserted, and with no text kept it read as a paragraph that arrived. One of those
+    vouches for nothing beside it, so the rewording of the paragraph above or below was
+    refused as a split, where `main` merged it. A spacer was sent empty: nothing was split
+    around it, and it vouches as any paragraph does."""
+    known = _spaced_out(tmp_path, spacer)
+    runs = _SPACERS[spacer]
+    mark = f'<w:pPr><w:rPr><w:ins w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr></w:pPr>'
+    entered = f'<w:p>{mark}<w:bookmarkStart w:id="{next(_WORD_IDS)}" w:name="mg-p-s-0"/>'
+    entered += f"{runs}</w:p><w:p></w:p>"
+    reworded = "It changed here."
+    a, b = (reworded, _BRAVO) if above else (_ALPHA, reworded)
+    sent = _section(_ALPHA, _tagged("mg-p-s-0", runs), _BRAVO)
+    plan = _import(tmp_path, known, sent, _section(a, entered, b))
+    assert not plan.refused, plan.refused
+    assert plan.merged["mg-p-a-0" if above else "mg-p-b-0"] == reworded, plan.merged
+
+
+@pytest.mark.parametrize("spacer", list(_SPACERS))
+def test_a_spacer_moved_into_a_split_does_not_vouch_for_it(tmp_path: Path, spacer: str) -> None:
+    """A paragraph split in Word, then a spacer and the paragraph under it cut together and
+    pasted between the halves with Track Changes on: Word records one move, and the spacer's
+    moved copy stands beside the first half, empty and holding only the spacer's
+    identifier. Let vouch as a paragraph sent empty, it merged the split as its first half.
+    It is an empty line wherever it came from, and what lies past it decides: the paragraph
+    moved in with it, which vouches for nothing."""
+    from manuscript_guard.merge import apply_plan
+
+    y, z, o = "Yankee one is here. Yankee two is there.", "Zulu is moved.", "Oscar closes it."
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{spacer}\n\n{z}\n\n{o}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = (("y", y), ("s", spacer), ("z", z), ("o", o))
+    known = {f"mg-p-{n}-0": (path, line, text.index(line)) for n, line in lines}
+    blank = _tagged("mg-p-s-0", _SPACERS[spacer])
+    zulu, oscar = _tagged("mg-p-z-0", text_run(z)), _tagged("mg-p-o-0", text_run(o))
+    sent = _HEADING + _tagged("mg-p-y-0", text_run(y)) + blank + zulu + oscar
+    second = f"<w:p>{text_run('Yankee two is there.')}</w:p>"
+    split = _HEADING + _tagged("mg-p-y-0", text_run("Yankee one is here.")) + second
+    back = _word_paste(split + blank + zulu + oscar, [blank, zulu], second, "tracked-move")
+    plan = _import(tmp_path, known, sent, back)
+    assert "mg-p-y-0" in [refusal.name for refusal in plan.refused], plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
 @needs_pandoc

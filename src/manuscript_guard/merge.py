@@ -199,9 +199,29 @@ def _off_headings(
     reworded in the same round - or made the heading's run-in text - was reported deleted.
     Only the heading before: one after it, retitled around its old title, is the heading an
     identifier slid onto.
+
+    Which headings are gone is read as `plan_import` reads it, after the identifiers taken off
+    by exact text. Read before, a heading that still stood but carried an identifier slid onto
+    it counted as gone, a join into the paragraph after it was read, and the next heading,
+    retitled to take in its words ("Funding and competing interests"), merged into the slot
+    of the paragraph deleted under it.
     """
     sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
-    missing = _untagged_missing(reference, returned)
+
+    def by_text(block: Block) -> bool:
+        # It reads exactly as a heading or caption the document was sent with, and not as
+        # its own paragraph.
+        text = _squashed(block.text)
+        return (
+            bool(block.names)
+            and not block.table
+            and bool(expected[text])
+            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+        )
+
+    missing = _untagged_missing(
+        reference, [replace(b, names=()) if by_text(b) else b for b in returned]
+    )
     out = []
     for block in returned:
         text = _squashed(block.text)
@@ -213,10 +233,12 @@ def _off_headings(
         )
         restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
         sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
-        if (
+        if by_text(block) or (
             block.names
             and not block.table
-            and (expected[text] or (block.role and not restyled and not sent_so))
+            and block.role
+            and not restyled
+            and not sent_so
             and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())
@@ -256,8 +278,8 @@ def _given_back(
             continue
         text = _squashed(out[after].text)
         theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
-        # Not to a line with no text: one holding only a symbol read as the empty line an
-        # HTML comment renders as, and took that comment's identifier.
+        # Not to a line with no text: one holding only a symbol read as the empty line a
+        # `&nbsp;` spacer renders as, and took that spacer's identifier.
         if not text or len(theirs) != 1 or expected[text]:
             continue
         # Only the one it matched: another identifier on the line - the note an HTML comment
@@ -554,6 +576,9 @@ def _beside_new_text(
         return block.text, block.unread
 
     unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
+    # Paragraphs sent with no text: a `&nbsp;` or `<br>` spacer, or any line whose identifier
+    # is on something that is not text, such as maths alone. Nothing was split around one.
+    spacers = {n for b in sent if b.names and not b.table and not any(content(b)) for n in b.names}
     new: set[int] = set()
     for index, block in enumerate(returned):
         if block.table or block.names or not any(content(block)):
@@ -569,8 +594,14 @@ def _beside_new_text(
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
             # stood where the second half of a split had, and the split merged as the whole.
             # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
-            # text, it was looked past as an empty line, and vouched for the split again. Only
-            # a line with neither text nor an identifier, Enter pressed, is looked past.
+            # text, it was looked past as an empty line, and vouched for the split again.
+            # One that holds nothing and names only paragraphs sent empty - a spacer - is an
+            # empty line wherever it came from, and is looked past as one: Enter pressed on a
+            # spacer reads as arrived, and as a paragraph that vouches for nothing it had the
+            # rewording beside it refused; as a neighbour, a spacer moved in with the paragraph
+            # under it vouched for the split whose halves it stood between.
+            if block.arrived and not any(content(block)) and set(block.names) <= spacers:
+                continue
             if block.arrived and (any(content(block)) or block.names):
                 return True
             if block.table:

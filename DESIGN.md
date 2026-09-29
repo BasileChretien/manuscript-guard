@@ -2294,8 +2294,8 @@ Word, left in place here", with Word's copy shown and the advice to move it in t
 never retype it - and the skill asks co-authors to keep Track Changes on. Two exact rules
 stayed: an identifier left on an empty line goes back to the next paragraph when that has
 text and reads exactly as the identified one was sent (Enter without Track Changes; a line
-holding only a symbol read as the empty line an HTML comment renders as, and took the
-comment's identifier), and an identifier on a heading, a caption or a reference entry is
+holding only a symbol read as the empty line a `&nbsp;` spacer renders as, and took the
+spacer's identifier), and an identifier on a heading, a caption or a reference entry is
 taken off it (the last paragraph of a section, deleted without Track Changes, used to merge
 the heading's text into itself, on `main` too).
 Recognised by its text at first, a heading retitled in the same round was still merged -
@@ -2317,8 +2317,13 @@ The checks that came out of the review rounds guard the tracked path as well:
   the halves of a split, carrying its identifier, stood where the second half had. It
   vouches for nothing whatever it still holds: with its moved text deleted, or replaced by a
   symbol with no text, it was looked past as an empty line is, and the split merged as its
-  first half. Only an arrived line with neither text nor an identifier - Enter pressed - is
-  looked past.
+  first half. Only an arrived line that holds nothing, and carries no identifier or only
+  those of paragraphs sent with no text - a `&nbsp;` or `<br>` spacer - is looked past, as
+  the empty line it is, and what lies beyond it decides. Enter pressed on a spacer reads as
+  arrived, and treated as a paragraph that vouches for nothing it had the rewording beside
+  it refused. A spacer and the paragraph under it cut together and pasted between the halves
+  of a split are one move to Word, and treated as a neighbour, the spacer vouched for the
+  split; looked past, the moved paragraph beyond it does not.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -3168,9 +3173,10 @@ Closed since, and why each mattered:
   write such parts; the audit, which cannot refuse, reads only the fonts a run names itself,
   and reads without the document's own heading styles, taking only Word's built-in ones as
   headings. A part zipfile cannot decompress - Deflate64, which some zip tools write when
-  a document is zipped again, or an encrypted one - is such a part. It used to crash the
-  reader that read it: the body or the build's record crashed the import, the body or the
-  styles the audit.
+  a document is zipped again, or an encrypted one - is such a part, and so is one declaring
+  an encoding the XML parser cannot read. Each used to crash the reader that met it, the
+  import or the audit, on the body, the comments, the styles or the font parts; a part that
+  could not be decompressed crashed the import on the build's record as well.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its
@@ -4363,14 +4369,16 @@ Closed since, and why each mattered:
   - *Only a heading of plain text is passed over.* Markup opened in a heading's line can
     close on the next: pandoc then reads that line into an ATX heading, or a setext title
     and all under it as one paragraph, and a marker between printed inside it. Review found
-    one form after another - a code span, a comment, a TeX environment, a citation's
-    locator (`[p. 33]` under `@key`, which an edit in Word then wrote into the source cut
-    off from its citation), a citation group, maths, a link's destination, a tag's
-    attributes, a backslash inside code. So a heading is passed over only when its lines
+    one form after another - a code span, a comment, a citation's locator (`[p. 33]` under
+    `@key`, which an edit in Word then wrote into the source cut off from its citation), a
+    citation group, maths, a link's destination, a tag's attributes, a backslash inside
+    code. A TeX environment opened in the line and closed later does worse: pandoc reads
+    no heading at all, only the line up to it as text and the environment as a raw block.
+    So a heading is passed over only when its lines
     hold none of `` ` @ $ [ ] < > \ * _ ~ ^ { } & ``, apart from a closed attribute block
     ending the line (`{#sec-methods}`, which cross-references need). The emphasis marks
     among them, `*`, `_`, `~` and `^`, run on to no later line: pandoc 3.9 closes none of
-    them past a heading, ATX or setext. They stay out all the same, because the allow-list
+    them past a heading, ATX or setext. They stay out all the same, because the allowlist
     is what ended review's search, and an exception to it would start one again. Any other
     heading stays unmarked with its paragraph, as on `main`, and that paragraph is not
     compared: `# The `lm` function`, `# Costs ($US)`, `# Contact: a@b.org`, a `<div>` line
@@ -4388,6 +4396,16 @@ Closed since, and why each mattered:
     paragraphs to pandoc, and are marked like any other. Indented one to three spaces,
     ` # Methods` is a paragraph at the top level and a heading inside a list item, where a
     marker would print it; it is left alone, as on `main`, and the paragraph is not compared.
+  - *A bullet marker alone over an underline is a list.* `-`, `+` or `*` alone on its line,
+    indented up to three spaces, over `===` or `---`, is an empty list item to pandoc, and
+    the underline and what follows are its text. `_SETEXT` excluded a marker only with a
+    space or a tab after it, so `-` and `+` were taken for a title, the block was passed
+    over, and the marker printed inside the list. Such a block is left unmarked whole again,
+    as before this change. An ordered marker alone, `1.` or `a.`, is a title to pandoc, and
+    passed over like one. The exclusion holds at any indent. Indented four columns or more,
+    or by a tab, the lone marker is a title to pandoc at the top level and a nested list
+    item under a list, and `_lead_end` cannot see which. So the paragraph under it is left
+    unmarked and not compared either way, where at the top level it could have been.
 - **A split is recognised by the new text beside it, and that is coarse.** An untagged
   paragraph whose text the document did not have when it was sent makes the tagged paragraph
   touching it a possible split. An edited heading is new text too, so when a heading and the

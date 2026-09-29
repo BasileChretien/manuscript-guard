@@ -8749,6 +8749,52 @@ def test_a_move_beside_a_split_is_held_whatever_stands_next_to_the_new_text(
     assert path.read_text(encoding="utf-8") == text
 
 
+@pytest.mark.parametrize("how", ["cut", "copied"])
+def test_a_move_beside_a_split_is_held_past_a_quotation_pasted_without_track_changes(
+    tmp_path: Path, how: str
+) -> None:
+    """B1's route across an HTML comment, with a quotation cut or copied without Track
+    Changes and pasted beside the paragraph moved in. A walk that stopped at any untagged
+    block reading as sent stopped at the quotation, never reached the split's own section,
+    and a move between the halves was written after the whole paragraph."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    path = tmp_path / "main.md"
+    words = {
+        "x": "Xray opens section one.",
+        "y": "Yankee closes section one. It has a second sentence.",
+        "f": "Foxtrot opens section two.",
+        "g": "Golf closes section two.",
+        "h": "Hotel follows the quotation.",
+    }
+    quote = "A quotation of the guideline."
+    text = (
+        f"# One\n\n{words['x']}\n\n{words['y']}\n\n<!-- a note -->\n\n{words['f']}\n\n"
+        f"{words['g']}\n\n> {quote}\n\n{words['h']}\n"
+    )
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, w, text.index(w)) for name, w in words.items()}
+    sent = [Block((), "One"), Block(("x",), words["x"]), Block(("y",), words["y"]),
+            Block(("f",), words["f"]), Block(("g",), words["g"]), Block((), quote),
+            Block(("h",), words["h"])]
+    returned = [
+        sent[0],
+        Block(("y",), "Yankee closes section one."),
+        Block(("x",), words["x"], arrived=True),
+        Block((), quote),
+        Block(("f",), words["f"], arrived=True),
+        Block((), "It has a second sentence."),
+        sent[4],
+        *([Block((), quote)] if how == "copied" else []),
+        sent[6],
+    ]
+    plan = plan_import(known, sent, returned)
+    assert not plan.moved and not plan.merged, plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text
+
+
 def _sections_of(tmp_path: Path, sections: dict[str, dict[str, str]]):
     """A source of headed sections, and each paragraph's identifier, `known` and sent block."""
     from manuscript_guard.docxtext import Block

@@ -2281,7 +2281,8 @@ rewording made after the move is merged like any other. A paragraph whose mark a
 arrived, and which deleted nothing it was sent with, was not in the document as sent, so an
 identifier at its start goes back to the paragraph after it: past a paragraph that arrived
 and was deleted again, not past one deleted whole, and onto an empty line only for a
-recorded move (text typed on the line an HTML comment renders as stays refused as such).
+recorded move (text typed on the empty line a spacer such as `&nbsp;` renders as stays
+refused as such).
 
 What Word does not record is not guessed at. The first version of this change also recovered
 moves made with Track Changes off, by matching whole paragraphs word for word. Three rounds
@@ -2351,11 +2352,6 @@ The checks that came out of the review rounds guard the tracked path as well:
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
   stand cannot be read with certainty. A paragraph moved in from another section standing
   beside the new text does not hide which section that is.
-- A paragraph can reach Word in parts, as one does when a binding puts display maths in it.
-  A paragraph that came back between the parts, or one whose first part moved without the
-  rest, is reported as moved into the middle of a paragraph, not reordered: the first
-  version moved the whole paragraph, equation and all, when only the line before the
-  equation had moved, and exited 0.
 - A rewording that holds the whole of another paragraph is refused, and so is one that
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
@@ -4067,8 +4063,13 @@ Closed since, and why each mattered:
     as unbound. That is how any number typed in Word arrives, on `main` too.
   - *A section that gained text keeps its order.* A recorded move in a section where a
     paragraph was also split, a new one typed, or a heading or caption beside it edited, is
-    reported with the new text and not applied. So is one in a section holding a paragraph
-    Word shows in parts whose parts came apart.
+    reported with the new text in that section and not applied. The search for the section
+    goes past a paragraph moved in, and past headings: new text beside a paragraph moved to
+    the edge of its own section, or typed directly against a heading, reaches across it, and
+    a clear move in the section on the other side is held too. Nothing is written. Stopping
+    at a heading that read as sent was tried and taken out: a quotation cut and pasted beside
+    the paragraph moved in, without Track Changes, read as sent too, hid a split's section,
+    and the move between its halves was written.
   - *A rewording that gained most of a vanished paragraph's words is refused.* Most of its
     words, in order, is a judgement, and it only refuses: a paragraph deleted in one place
     and paraphrased into another, both in one round, has its rewording refused.

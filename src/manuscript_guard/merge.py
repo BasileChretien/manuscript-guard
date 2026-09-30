@@ -302,8 +302,8 @@ def _given_back(
         # `&nbsp;` spacer renders as, and took that spacer's identifier.
         if not text or len(theirs) != 1 or expected[text]:
             continue
-        # Only the one it matched: another identifier on the line - the note an HTML comment
-        # renders as, say - is that line's, and taken with it was reported deleted.
+        # Only the one it matched: another identifier on the line - a `&nbsp;` spacer's, say -
+        # is that line's, and taken with it was reported deleted.
         out[after] = replace(out[after], names=(theirs[0],))
         out[index] = replace(block, names=tuple(n for n in block.names if n != theirs[0]))
     return out
@@ -317,83 +317,6 @@ def _recovered(
     expected = _untagged_counts(reference)
     off = _off_headings(rendered, reference, returned, expected)
     return _given_back(rendered, off, expected)
-
-
-def _signature(block: Block) -> tuple[str, str]:
-    """What one part of a paragraph is: an equation by its key, text by its words."""
-    return (block.kind, block.key) if block.kind else ("", _squashed(block.text))
-
-
-def _pieces(reference: list[Block], name: str) -> list[tuple[str, str]]:
-    """The parts Word shows after this paragraph's first, as sent: its equation and the text
-    after it, up to the next paragraph, table or figure."""
-    at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
-    pieces = []
-    for block in reference[at + 1 :]:
-        if block.names or block.kind in ("table", "figure"):
-            break
-        if block.text or block.kind:
-            pieces.append(_signature(block))
-    return pieces
-
-
-def _between_parts(
-    returned: list[Block], parts: dict[str, list[tuple[str, str]]], expected: Counter
-) -> dict[str, set[str]]:
-    """Paragraphs that came back between one paragraph and another part of it.
-
-    A paragraph display maths is part of - put there by a binding, say - reaches Word as
-    three paragraphs. A paragraph moved between the parts is inside the paragraph, a place
-    the source does not have: reordered to after the whole of it, the split the co-author
-    made was dropped without a word. Only within a section: a heading or caption ends the
-    search. Returns, for each paragraph with something inside it, what is. (A paragraph split
-    in Word leaves new text in its section, and `_unsettled` holds that section's moves.)
-    """
-    found: dict[str, set[str]] = {}
-    for index, block in enumerate(returned):
-        owner = next((name for name in block.names if parts.get(name)), None)
-        if owner is None:
-            continue
-        wanted = list(parts[owner])
-        passed: list[str] = []
-        for later in returned[index + 1 :]:
-            piece = _signature(later)
-            if not wanted or later.kind in ("table", "figure"):
-                break
-            if later.names:
-                passed += later.names
-            elif piece in wanted:
-                wanted.remove(piece)
-                if passed:
-                    found.setdefault(owner, set()).update(passed)
-            elif expected[piece[1]]:
-                break
-    return found
-
-
-def _parts_apart(
-    returned: list[Block], parts: dict[str, list[tuple[str, str]]]
-) -> set[str]:
-    """Paragraphs Word shows in parts whose parts no longer follow them.
-
-    Only the line before an equation, moved with Track Changes on, carries the paragraph's
-    identifier, and the move was applied to the whole paragraph - equation and all - while
-    Word still showed the equation where it was. Its parts must still be in the document,
-    elsewhere: an equation edited in Word is not a move.
-    """
-    loose = {_signature(b) for b in returned if not b.names and (b.text or b.kind)}
-    found: set[str] = set()
-    for index, block in enumerate(returned):
-        owner = next((name for name in block.names if parts.get(name)), None)
-        if owner is None:
-            continue
-        wanted = parts[owner]
-        after = [_signature(b) for b in returned[index + 1 :] if b.text or b.names or b.kind]
-        # Apart only when its equation, its first part, no longer follows it: a later part
-        # reworded - the sentence after the equation - is an edit, not a move.
-        if after[:1] != wanted[:1] and wanted[0] in loose:
-            found.add(owner)
-    return found
 
 
 #: The fewest of its words new text must share with what a paragraph lost for `_split_off`
@@ -506,7 +429,7 @@ def _unsettled(
     shown: Counter,
     suspects: set[str],
     misplaced: set[str],
-) -> tuple[set, list[str]]:
+) -> tuple[set, list[tuple[str, frozenset]]]:
     """Sections whose paragraphs cannot be placed with certainty.
 
     One gained text the document as sent did not have - a split's second half, a paragraph
@@ -516,14 +439,15 @@ def _unsettled(
     them it belongs to is not written anywhere; and a paragraph moved in from another
     section standing beside the new text says nothing about which section that is, so the
     search goes past it, to the first paragraph that is where it belongs. Returns the
-    sections, and the new text that unsettled them, for the report.
+    sections, and each new text with the sections it unsettled, for the report: quoted for a
+    move in another section, it pointed the author at the wrong place.
 
     Text is compared as `_listed` shows it, against `shown`, the document as sent shown the
     same way: by its text alone, a heading that gained a symbol with no text read as
     unchanged, and the moves beside it were applied.
     """
     found = {sections[name] for name in suspects if name in sections}
-    because: list[str] = []
+    because: list[tuple[str, frozenset]] = []
     unchanged = Counter(shown)
     for index, block in enumerate(returned):
         if block.table or block.names or not (block.text or block.unread):
@@ -532,18 +456,23 @@ def _unsettled(
         if unchanged[key]:
             unchanged[key] -= 1
             continue
-        because.append(_listed(block))
+        these: set = set()
         for step in (-1, 1):
             i = index + step
             while 0 <= i < len(returned) and returned[i].kind not in ("table", "figure"):
-                names = [n for n in returned[i].names if n in sections]
-                found.update(sections[n] for n in names)
+                here = returned[i]
+                names = [n for n in here.names if n in sections]
+                these.update(sections[n] for n in names)
                 # Past a paragraph moved in, named misplaced or not: across a boundary Word
                 # does not show - an HTML comment - one moved in is not named, and it hid the
-                # section of a split's new half beside it.
-                if names and not set(names) <= misplaced and not returned[i].arrived:
+                # section of a split's new half beside it. Nor does a heading end the search:
+                # stopping at one that read as sent, a quotation cut and pasted beside the
+                # paragraph moved in hid that section too, and the split's move was written.
+                if names and not set(names) <= misplaced and not here.arrived:
                     break
                 i += step
+        found |= these
+        because.append((_listed(block), frozenset(these)))
     return found, because
 
 
@@ -1444,16 +1373,6 @@ def plan_import(
     )
     # What moved among the paragraphs that will be reordered. Taken from the diff above, a
     # paragraph passed by a misplaced one was reported as reordered, and nothing was written.
-    # A paragraph that came back inside another that Word shows in parts, or one whose parts
-    # came apart, is somewhere the source has no place for, whether or not the order diff -
-    # which breaks ties either way - says it moved.
-    parts = {name: _pieces(reference, name) for name in in_parts}
-    inside = _between_parts(returned, parts, expected)
-    apart = _parts_apart(returned, parts)
-    shifted = {entry[0] for entry in diffed}
-    involved = set().union(*inside.values()) | apart | (set(inside) & shifted)
-    misplaced = [*misplaced, *(n for n in rendered if n in involved and n in order
-                               and n not in misplaced)]
     stays = {*misplaced, *held}
     kept = [n for n in order if n not in stays]
     moved = moves([n for n in rendered if n in set(kept)], kept)
@@ -1463,7 +1382,7 @@ def plan_import(
         if not b.names and not b.table and (b.text or b.unread)
     )
     unsettled, because = _unsettled(
-        returned, sections, shown, not_its_own | set(inside) | apart, set(misplaced)
+        returned, sections, shown, not_its_own, set(misplaced)
     )
     withheld = [entry[0] for entry in moved if sections[entry[0]] in unsettled]
     moved = [entry for entry in moved if entry[0] not in set(withheld)]
@@ -1513,7 +1432,10 @@ def plan_import(
         moved=tuple(moved),
         misplaced=tuple(misplaced),
         withheld=tuple(withheld),
-        held_by=tuple(because) if withheld else (),
+        # Only the new text in the withheld moves' own sections.
+        held_by=tuple(
+            text for text, where in because if where & {sections[n] for n in withheld}
+        ),
         sections=sections,
         lost=lost,
         strayed=tuple(strayed),

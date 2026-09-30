@@ -520,6 +520,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         built=numbered.sent,
         unsure=unsure | untagged_then,
         beside_changed=numbered.beside_changed,
+        same_text=numbered.same_text,
         stale=stale,
     )
 
@@ -784,10 +785,10 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
             print(f"    {opening(name)}")
         print(
             "    Their section also came back with text the document as sent did not have - a "
-            "paragraph split, a new one, a heading or caption edited - or with a paragraph "
-            "whose identifier is on other text, so where each of its paragraphs now stands "
-            "cannot be read with certainty. Move them in the .md yourself if the moves were "
-            "intended."
+            "paragraph split, a new one, a heading or caption edited - with a paragraph "
+            "whose identifier is on other text, or with one among them that was not "
+            "compared, so where each of its paragraphs now stands cannot be read with "
+            "certainty. Move them in the .md yourself if the moves were intended."
         )
         for text in plan.held_by[:3]:
             print(f"    new text: {text.strip()[:110]}")

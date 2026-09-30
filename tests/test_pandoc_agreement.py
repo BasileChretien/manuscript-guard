@@ -1099,6 +1099,82 @@ def test_a_number_is_in_a_comment_for_both_or_for_neither(name: str) -> None:
     )
 
 
+#: Comments in and around the blocks pandoc reads on their own: a list item, a quotation, a
+#: definition, a footnote. Where pandoc prints 9.99 the gates mask, `check` refuses the line
+#: of the `<!--`; where it drops 9.99 as the gates do, nothing is refused.
+BLOCK_COMMENT_CASES = {
+    "under a list item": "Intro.\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\n"
+    "more -->\n\nAfter 3.33.\n",
+    "code across list items": "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    "under a quotation": "> quote\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under a definition": "Term\n:   def\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an example": "(@) ex\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "in a term": "Term <!-- x\n\n:   def 9.99 -->\n",
+    "in a footnote": "Text.[^1]\n\n[^1]: note <!-- x\n\nmore 9.99 -->\n",
+    "past a stray div fence": "- item\n:::\nlazy <!-- x\n\n9.99 -->\n",
+    "on its own line after a blank line": "Intro.\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "under a paragraph": "Intro.\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "after a list and a blank line": "- item\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "a list commented out": "<!--\n- item 9.99\n- item\n-->\n",
+    "on an item's line": "- item <!-- hidden 9.99 -->\n",
+    "on an item's lines": "- item\n<!-- hidden 9.99\nstill -->\n",
+    "on a quoted item's lines": "> - a\n> - b <!-- x\n> 9.99 -->\n",
+    # Round 1 of #115. Inside a comment an item opened, a marker at or past the item's text
+    # is the item's, and one short of it ends the item; a table or a line block ends at a
+    # line at the margin.
+    "sub-list commented out": "- Reporting bias\n  <!--\n  - notoriety bias 9.99\n"
+    "  - duplicates\n  -->\n- Missing data\n",
+    "note with bullets on an item": "- Reporting bias. <!-- note to self:\n"
+    "  - check notoriety bias 9.99\n  - ask the second reviewer -->\n- Missing data.\n",
+    "numbered step, sub-step commented": "1. Step one\n   <!--\n   a. detail 9.99\n   -->\n"
+    "2. Step two\n",
+    "sub-item at a wide number's text": "10. Step <!-- x\n    - y 9.99 -->\n",
+    "sub-item short of a wide number's text": "10. Step <!-- x\n   - y 9.99 -->\n",
+    "sub-item short of its item's text": "- A\n  - A.1 <!-- x\n   - y 9.99 -->\n",
+    "sub-item commented out among sub-items": "- A\n  - A.1\n  <!--\n  - A.2 9.99\n  -->\n"
+    "- B\n",
+    "item commented out between items": "- A\n<!--\n- B 9.99\n-->\n- C\n",
+    "code paired across a sub-item": "- a `x\n  - b `<!--` 9.99 -->\n",
+    "table rows commented out": "| Analysis | Included |\n|---|---|\n| Primary | yes |\n"
+    "<!--\n| Excluding duplicates | 9.99 |\n-->\n\nText after.\n",
+    "a table in an item, then the margin": "- a\n\n  | x |\n<!-- y\n\nz 9.99 -->\n",
+    "line block spilling onto the margin": "| Department of Pharmacology\n"
+    "| University Hospital <!-- old address\nRoom 9.99 -->\n",
+    "under an empty quotation": ">\n<!-- x 9.99\n\n-->\n",
+    "under a `>` in an item": "(@) ex\n>\n<!-- 9.99\n   - sub3\n\n  -->\n",
+    "an item continuing a quoted list": ">   - qsub\nx -->\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "items continuing a quoted list": "> - qitem\n10. ten\n- a <!-- x 9.99\n  - b\n  -->\n",
+    "a line block's indented line, then the margin": "| a | b |\n  - a <!-- x\ntext 9.99\n"
+    "x -->\n",
+    "under a `>` that is an item's text": "- item\n>   - q\n</div>\n>\n<!-- 9.99\n"
+    "  - a <!-- x\nx -->\n",
+    "a line block's indented marker, then the margin": "| a | b |\n    - sub\n  - a <!-- x\n"
+    "`tick 9.99\n  -->\n",
+    "a line block after a closing tag": "(@) ex\n</div>\n| a | b |\n  <!--\n9.99\n  -->\n",
+    "an item's text past a `|` line": "- a\n| b\nc <!-- x\n\n9.99 -->\n",
+    "sub-items under a paragraph line": "Results\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "quoted sub-items after a lazy line": "> - q\n> x\n> - a <!-- x 9.99\n>   - sub\n>   -->\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(BLOCK_COMMENT_CASES))
+def test_a_comment_in_a_block_is_read_as_pandoc_reads_it_or_refused(name: str) -> None:
+    from manuscript_guard.text.comments import unclear_comment_lines
+    from manuscript_guard.text.masking import masked_spans
+
+    markdown = BLOCK_COMMENT_CASES[name]
+    at = markdown.index("9.99")
+    spans = masked_spans(markdown).get("html-comment", [])
+    in_comment_for_toolkit = any(start <= at < end for start, end in spans)
+    in_comment_for_pandoc = "9.99" in pandoc_comment_text(markdown)
+    refused = unclear_comment_lines(markdown)
+    if in_comment_for_toolkit and not in_comment_for_pandoc:
+        assert refused == [markdown[: markdown.index("<!--")].count("\n") + 1], name
+    else:
+        assert in_comment_for_toolkit == in_comment_for_pandoc, name
+        assert refused == [], f"{name}: pandoc drops the comment as the gates do"
+
+
 # ---------------------------------------------------------------- paragraph identifiers
 
 #: Every block construct pandoc's markdown reader distinguishes, and prose openings that

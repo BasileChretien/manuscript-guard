@@ -2355,6 +2355,33 @@ The checks that came out of the review rounds guard the tracked path as well:
 - A rewording that holds the whole of another paragraph is refused, and so is one that
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
+- The paragraph gone from its place is weighed as it printed at the build, not as the fresh
+  build prints it, and every paragraph the document was sent with counts, compared or not.
+  Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
+  re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
+  one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
+  joined into "None." above it, "None. 4000" read as no join and merged the same way.
+  Weighing only the paragraphs compared, a paragraph the `.md` reworded since the build,
+  pasted into another, merged there with its old words, and the source had them twice. So
+  in a document built from other inputs only a paragraph's words that touch none of its
+  bindings and citations are taken as sent (`merge._as_sent`), and it is weighed as the
+  fresh build prints it too, as before; either reading refuses. A word with a value in it
+  is not taken: kept apart, the full stop in "4000." and the dash in "2.89–5.12" were words
+  of their own, found nowhere among the words that came back, and a paragraph of values read
+  as known. One that is not compared is read from a paragraph whose source reads now as its
+  did then (`roundtrip.Numbering.same_text`). Where nothing it said is known - values alone,
+  or a paragraph the `.md` changed or dropped - a rewording that gained five words in a row,
+  or a word with a digit in it, is refused, since those words could be it; and a paragraph
+  whose next as sent is such a one and did not come back is refused, as a join cannot be
+  weighed. Five is the floor a paragraph pasted whole is looked for from. Refusing any
+  rewording that gained a word held back every ordinary edit in the document once Word
+  deleted a paragraph the author had also changed. A copy is looked for in the paragraphs as
+  they came back too.
+- A move is not applied in a section with a paragraph that is not compared standing between
+  two of its paragraphs as returned. Such a paragraph has no slot, and stands between
+  sections in the source; standing inside one in Word, a move passed it, and filling the
+  slots put the moved paragraph on its other side: the author reworded Papa, the co-author
+  moved Bravo above it, and Bravo was written below Papa.
 
 A fourth round, on the tracked path alone, found the display-maths move above, the hidden
 section, and a paragraph pasted onto the end of another merged with it while the report
@@ -2398,7 +2425,8 @@ plain form, a listing opened at the margin under a blank line, the first line or
 listing's closer, outside any comment or raw block, with its word and attributes on the
 opening line, and closed; any other line starting with three backticks or tildes, behind
 up to three spaces, behind a list marker, or behind whitespace other than spaces or a
-zero-width mark, is refused (`unclear-fence`), by `check` and by the build. The second
+zero-width mark, is refused (`unclear-fence`), by `check` and by the build, and `audit
+--strict` fails on one in a Markdown paper. The second
 review found why the margin: in a list item pandoc takes the item's indentation off before
 it looks for the closer, and closed a listing the gates read on through the prose after it;
 and why raw blocks: inside a comment, a `<pre>` or a TeX environment a fence is raw text to
@@ -3345,10 +3373,50 @@ Closed since, and why each mattered:
   And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
   or TeX maths as its own, where pandoc reads the enclosing construct first. So
   ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
-  prints, as a stray backtick in one list item does when it pairs with the one opening
-  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
-  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints, and a `<!--` in an indented code block is read as a comment, though pandoc
   prints it as code. The old regex did all of this and more.
+
+  A comment that runs out of a list item, a quotation, a definition or its term, a footnote
+  or a line of a line block is now refused (`unclear-comment`, by `check`, the build and
+  `audit`), and so is one that a stray backtick in one item, pairing with the one opening
+  `` `<!--` `` in the next, made to the gates. Pandoc reads each such block on its own, so
+  a `<!--` straight under an item's line is text continuing the item, and with its `-->`
+  past a blank line pandoc printed the comment the gates had masked. The refusal reads each
+  block alone and refuses a comment it does not find there
+  (`comments.unclear_comment_lines`). Two readings are pandoc's own, found by the first
+  review: inside a comment an item opened, a marker at or past the item's text is the
+  item's, and one short of it ends the item, so a sub-list commented out on the item's lines
+  is not refused; and a table or a line block ends at a line at the margin that is not one
+  of its `|` lines, so a `<!--` under a table's last row is not refused. A comment on its
+  own line under a blank line, and one in a paragraph at the margin, are not refused
+  either.
+
+  Elsewhere the blocks are cut short where pandoc's are not worth modelling, so some
+  comments pandoc drops are refused too:
+  - one across a blank line in an item's indented lines or a footnote's paragraphs, and a
+    `<!--` under a blank line after a list, indented less than the item's text;
+  - a sub-item commented out under a blank line in its item, or indented past its item's
+    marker and short of its text, as `    - sub` under `   - item`, which pandoc reads as
+    the item's because a marker four spaces in starts no item;
+  - one across a quotation's paragraphs, a `>` line between them, and one across a `>`
+    alone or a `|` line that pandoc reads as text continuing an item;
+  - one on the line after a div's closing `:::` under a list, or after a line indented
+    under a table;
+  - a multi-line one straight after a listing whose code has a line starting `+ `, `- `,
+    `* `, `> ` or `| `, since the blocks are read inside listings: ggplot's `+ geom_point()`;
+  - one across a blank line in a `: Caption` under a table;
+  - one opened on a line of a paragraph that only looks like a marker, `> 65 years` or `- 5`.
+
+  And it does not close the gap whole. Some comments pandoc prints are still masked and not
+  refused:
+  - a `<!--` on a line the refusal takes for the end of a block, under an item:
+    `</div> <!-- x`, `</span> <!-- x`, or `::: <!-- x`, with the `-->` past a blank line or
+    in the next item;
+  - one in an item whose ordered marker has ten digits or more, or on a first line behind a
+    byte-order mark, which the refusal does not take for an item;
+  - one on a line with a line of dashes under it, which pandoc reads as a setext title or,
+    under an item's line, a table in the item: `Results <!-- x` over `-------`, or
+    `- a <!-- x` over `---`, as on main.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they
@@ -4123,7 +4191,41 @@ Closed since, and why each mattered:
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not
   changes nothing in their order. The import names the paragraphs left out and exits 1, and
-  says this of them; the move is not applied.
+  says this of them; the move is not applied. A move among the paragraphs compared that
+  passed one left out is named as not applied, with every other move in its section; it
+  used to be applied, and the moved paragraph landed on the other side of the one it
+  passed.
+- **A rewording that gained five words in a row, or a number, is refused whenever a
+  paragraph that did not come back said something not known.** A paragraph the `.md`
+  changed or dropped since the build, deleted in Word too, or one that is only values or
+  citations in a document built from other inputs, leaves nothing to look for in the words
+  another paragraph gained. Every rewording in the document that gained a run of five words
+  or more, or a word with a digit in it, is refused and named, though most would have
+  merged cleanly: deleting in Word a paragraph the author also changed holds such edits
+  back in a forced import. One that gained less, as a word added, a word fixed or a clause
+  cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
+  another, as `_swallowed` lets one through: its words go into the source twice.
+- **The five-word rule is the interim one.** The build's record keeps a hash of each
+  paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
+  not known at import when the `.md` changed it since. Recording each paragraph's text, or
+  its five-word shingles, in the build's record would make the question exact for documents
+  built after that change, and is the follow-up; the narrowed refusal stays for documents
+  built before it.
+- **A copy of a re-run value, or a partial copy of under five words, merges.** A value
+  paragraph copied rather than cut in Word, or a stretch of under five words copied from a
+  paragraph ("Of 4000 reports screened"), in a document whose analysis was re-run since:
+  the copy stays where it was, so nothing vanished, and `_swallowed` looks for a copy of
+  five words or more. "...dates. 4000" merges, as on `main`, and `check` reports the typed
+  number as unbound.
+- **A sentence cut from a paragraph the `.md` changed since, and pasted into another,
+  merges.** The paragraph it went into gained it; the paragraph it left is not compared, so
+  what it lost is not seen. The sentence is in the source twice, as on `main`, and with no
+  number in it `check` cannot see it. This is the sibling of the tracked case below, where
+  the paragraph the sentence left is refused because a binding went with it.
+- **A paragraph cut from the supplement and pasted into the main text merges.** Each
+  document is imported on its own and its record covers only itself, so the main text's
+  import sees new words in a paragraph and the supplement's sees a deletion, which it
+  reports and does not apply. As on `main`.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still
@@ -4675,6 +4777,11 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **`mask()` is quadratic on two inputs no manuscript holds.** A run of `{{` with no `}}`
+  on its line, which the placeholder pattern tries from each `{{` to the line's end (2.7 s
+  at 32,000 characters), and a long run of backslashes with no `<` or `>` after it, which
+  `comparison_escapes` backtracks through from each backslash (about 74 s at 80,000, on one
+  machine). Low priority, and not fixed.
 - **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
   times a scan on eight times its input, taking each size's best of three in alternation,
   and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose

@@ -3608,6 +3608,153 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
     assert "not a plain fenced listing" in capsys.readouterr().out
 
 
+#: Comments the gates mask that pandoc prints, or partly prints: it reads a list item, a
+#: quotation, a definition and its term, a footnote and a line block on their own, and a
+#: comment opened in one ends there. Checked against pandoc in test_pandoc_agreement.py.
+_UNREAD_COMMENTS = {
+    "under a list item": "Intro.\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\n"
+    "more -->\n\nAfter 3.33.\n",
+    "code across list items": "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    "under a quotation": "> quote\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under a definition": "Term\n:   def\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an example": "(@) ex\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an empty item": "-\n<!-- x\n\n9.99 -->\n",
+    "across list items": "- a\n- b <!-- x\n- c 9.99 -->\n",
+    "across quoted items": "> - a <!-- x\n> - b 9.99 -->\n",
+    "in a term": "Term <!-- x\n\n:   def 9.99 -->\n",
+    "in a footnote": "Text.[^1]\n\n[^1]: note <!-- x\n\nmore 9.99 -->\n",
+    "in a line block": "| line <!-- x\n| b 9.99 -->\n",
+    "in an item's second paragraph": "- item\n\n  para <!-- x\n\ny 9.99 -->\n",
+    "past a stray div fence": "- item\n:::\nlazy <!-- x\n\n9.99 -->\n",
+    # Round 1 of #115: a line block ends at a line at the margin, and pandoc's item ends at
+    # a marker short of the item's text, a comment open or not.
+    "a line block spilling onto the margin": "| Department of Pharmacology\n"
+    "| University Hospital <!-- old address\nRoom 9.99 -->\n",
+    "an item commented out between items": "- A\n<!--\n- B 9.99\n-->\n- C\n",
+    "a comment run on to the next item": "- A <!--\n- B 9.99 -->\n- C\n",
+    "a sub-item commented out among sub-items": "- A\n  - A.1\n  <!--\n  - A.2 9.99\n"
+    "  -->\n- B\n",
+    "a marker short of the item's text": "- A\n  - A.1 <!-- x\n   - y 9.99 -->\n",
+    "a marker short of a wide number's text": "10. Step <!-- x\n   - y 9.99 -->\n",
+    "code paired across a sub-item": "- a `x\n  - b `<!--` 9.99 -->\n",
+    "a table in an item, then the margin": "- a\n\n  | x |\n<!-- y\n\nz 9.99 -->\n",
+    # Found fuzzing round 1's fix: a `>` alone opens a quotation, or is text in an item,
+    # and was read as a blank line.
+    "under an empty quotation": ">\n<!-- x 9.99\n\n-->\n",
+    "under a `>` in an item": "(@) ex\n>\n<!-- 9.99\n   - sub3\n\n  -->\n",
+    # An item on a line continuing a quotation is an item of the quotation's list, whose
+    # other items start where the sub-item does.
+    "an item continuing a quoted list": ">   - qsub\nx -->\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "items continuing a quoted list": "> - qitem\n10. ten\n- a <!-- x 9.99\n  - b\n  -->\n",
+    "a line block's indented line, then the margin": "| a | b |\n  - a <!-- x\ntext 9.99\n"
+    "x -->\n",
+    "under a `>` that is an item's text": "- item\n>   - q\n</div>\n>\n<!-- 9.99\n"
+    "  - a <!-- x\nx -->\n",
+    "a line block's indented marker, then the margin": "| a | b |\n    - sub\n  - a <!-- x\n"
+    "`tick 9.99\n  -->\n",
+    "a line block after a closing tag": "(@) ex\n</div>\n| a | b |\n  <!--\n9.99\n  -->\n",
+    "an item's text past a `|` line": "- a\n| b\nc <!-- x\n\n9.99 -->\n",
+}
+
+
+@pytest.mark.parametrize("paper", _UNREAD_COMMENTS.values(), ids=_UNREAD_COMMENTS.keys())
+def test_a_comment_pandoc_ends_with_its_block_is_refused(paper: str) -> None:
+    """The gates read the comment to its `-->`, past the end of the block pandoc reads it
+    in, or pair a backtick across the blocks and see a comment pandoc prints as code. The
+    refusal names the line of the `<!--`."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines(paper) == [paper[: paper.index("<!--")].count("\n") + 1]
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "Intro.\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "Intro.\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "Intro <!--\nhidden 9.99.\n\nmore -->\n",
+        "- item\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "<!--\n- item 9.99\n- item\n-->\n",
+        "- item <!-- hidden 9.99 -->\n",
+        "- item\n<!-- hidden 9.99\nstill -->\n",
+        "- a\n  - b <!-- x\n  9.99 -->\n",
+        "> - a\n> - b <!-- x\n> 9.99 -->\n",
+        "# Results <!-- draft\n\nThe ROR was 9.99 -->\n",
+        "---\ntitle: A study\n---\n\n- item\n\n<!-- 9.99 -->\n",
+        # Round 1 of #115: sub-items inside a comment the item opened, at or past the
+        # item's text, are the item's to pandoc, and a table ends at a line at the margin.
+        "- Reporting bias\n  <!--\n  - notoriety bias 9.99\n  - duplicates\n  -->\n"
+        "- Missing data\n",
+        "- Reporting bias. <!-- note to self:\n  - check notoriety bias 9.99\n"
+        "  - ask the second reviewer -->\n- Missing data.\n",
+        "1. Step one\n   <!--\n   a. detail 9.99\n   -->\n2. Step two\n",
+        "1. Step one\n    <!--\n    a. detail 9.99\n    -->\n2. Step two\n",
+        "10. Step <!-- x\n    - y 9.99 -->\n",
+        "- A\n<!--\n  - A.1 9.99\n-->\n- B\n",
+        "- a\n  - b <!-- x\n    - c 9.99 -->\n",
+        "- A <!-- x\n  > q 9.99\n  -->\n",
+        "> - a <!-- x\n>   - b 9.99 -->\n",
+        "| Analysis | Included |\n|---|---|\n| Primary | yes |\n<!--\n"
+        "| Excluding duplicates | 9.99 |\n-->\n\nText after.\n",
+        "## Results\n| a | b |\n|---|---|\n| 1 | 2 |\n<!--\nx 9.99\n\n-->\n",
+        "Text\n| a |\n<!--\nx 9.99\n\n-->\n",
+    ],
+)
+def test_a_comment_pandoc_drops_as_the_gates_do_is_not_refused(paper: str) -> None:
+    """On its own line under a blank line, in a paragraph at the margin, whose comment pandoc
+    reads on over blank lines, opened and closed on an item's own lines, sub-items and all,
+    or under a table."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines(paper) == []
+
+
+def test_a_comment_under_a_list_item_is_refused_by_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """Pandoc reads the `<!--` as text continuing the item, ends the item at the blank line
+    and prints the comment's 9.99, which the gates had masked: check and the build passed."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(
+        f"{text}\n## Results\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\nmore -->\n",
+        encoding="utf-8",
+    )
+    line = source.read_text(encoding="utf-8").split("\n").index("- item above") + 2
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert {(f["code"], f["line"]) for f in findings if f["severity"] == "fail"} == {
+        ("unclear-comment", line)
+    }
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "HTML comment" in capsys.readouterr().out
+
+
+def test_a_sub_list_or_table_rows_commented_out_pass_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #115: pandoc drops each comment, and main passed them, where the refusal
+    failed check and the build on ordinary list and table editing."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    source.write_text(
+        source.read_text(encoding="utf-8")
+        + "\n## Limitations\n\n- Reporting bias\n  <!--\n  - notoriety bias\n  - duplicates\n"
+        "  -->\n- Missing data. <!-- note to self:\n  - check the imputation\n"
+        "  - ask the second reviewer -->\n- Channelling.\n\n| Analysis | Included |\n"
+        "|---|---|\n| Primary | yes |\n<!--\n| Excluding duplicates | pending |\n-->\n\n"
+        "Text after.\n",
+        encoding="utf-8",
+    )
+    assert main(["check", str(project), "--json"]) == 0
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-comment" not in {f["code"] for f in findings}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+
 @pytest.mark.parametrize(
     "block",
     [
@@ -4453,6 +4600,51 @@ def test_the_comment_scanner_hides_nothing_the_old_rule_did_not(tmp_path: Path, 
     path.write_text(paper, encoding="utf-8")
     assert "9.99" in [c.text.rstrip(".") for c in audit([path], [outputs]).unmatched]
     assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "The ROR\n~~~\nwas 9.99.\n~~~\n",
+        "Set `x\n```\ny`.\n\nThe ROR was 9.99.\n\n```\n",
+        "<!--\n```r\nold\n-->\n\nThe ROR was 9.99.\n\n```r\nnew\n```\n",
+    ],
+    ids=["tilde fence under text", "fence in a code span", "fence opened in a comment"],
+)
+def test_audit_strict_refuses_a_fence_pandoc_may_not_open(
+    tmp_path: Path, paper: str, capsys
+) -> None:
+    """Pandoc prints 9.99 in each. The audit read a listing over it, reported 0 numeric
+    tokens, and `--strict` exited 0, where check and the build refuse the fence line."""
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_bytes(paper.encode("utf-8"))
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+    assert "not a plain fenced listing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "- item above\n<!--\nThe hidden odds ratio was 9.99.\n\nmore -->\n",
+        "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    ],
+    ids=["under a list item", "code across list items"],
+)
+def test_audit_strict_refuses_a_comment_pandoc_ends_with_its_item(
+    tmp_path: Path, paper: str, capsys
+) -> None:
+    """Pandoc prints 9.99 in each, and the audit, masking the comment as check does, read
+    no number at all: `--strict` exited 0."""
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_bytes(paper.encode("utf-8"))
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+    assert "HTML comment" in capsys.readouterr().out
 
 
 def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
@@ -5404,6 +5596,306 @@ def test_a_heading_run_into_a_paragraph_is_not_merged_where_it_prints_otherwise_
 
     main(["import", str(returned), str(project), "--apply", "--force"])
     assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+# --------------------------------- a paste or a move beside what the source changed since
+
+#: A paragraph that is only a value: 4000 reports at the build, re-run to 4100 in some tests.
+_REPORTS = "{{results.cohort.n_reports}}"
+
+
+def _forced_import(
+    project: Path,
+    tmp_path: Path,
+    built: tuple[str, ...],
+    now: tuple[str, ...],
+    change,
+    *,
+    reports: int | None = None,
+) -> tuple[str, str, str]:
+    """The main text built as `built`, returned with `change` made to it in Word, rewritten as
+    `now` in the `.md` - and with the analysis re-run to count `reports` reports, if given -
+    then imported with --force: the source after, the source before, and what was printed."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from manuscript_guard.cli import main
+
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(project, tmp_path, change, document=_UNCHECKED)
+    _paper(project, *now)
+    if reports is not None:
+        fragment = project / "results" / "01_disproportionality.json"
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["values"]["cohort.n_reports"].update(value=reports, display=str(reports))
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    before = path.read_text(encoding="utf-8")
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["import", str(returned), str(project), "--apply", "--force"])
+    return path.read_text(encoding="utf-8"), before, printed.getvalue()
+
+
+def _paragraph_runs(paragraph: str) -> str:
+    """A Word paragraph's runs, without its properties or its bookmarks."""
+    runs = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
+    return re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", runs[: -len("</w:p>")])
+
+
+def _pasted(words: str, into: str, *, cut: bool = True):
+    """The paragraph holding `words` pasted onto the end of the one holding `into`, after a
+    space, as a paste without Track Changes leaves it: the runs, and no bookmark. Cut, the
+    paragraph is gone from where it stood; copied, it is still there."""
+
+    def change(xml: str) -> str:
+        pasted = _word_paragraph(xml, words)
+        target = _word_paragraph(xml, into)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        grown = target[: -len("</w:p>")] + space + _paragraph_runs(pasted) + "</w:p>"
+        if cut:
+            xml = xml.replace(pasted, "", 1)
+        return xml.replace(target, grown, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_pasted_into_another_is_not_merged_once_the_value_is_rerun(
+    project: Path, tmp_path: Path
+) -> None:
+    """A paragraph that is only a value, printing 4000, cut and pasted onto the end of
+    another in Word; the analysis re-run to 4100 before the import. The paste check weighed
+    the words the paragraph gained against the value's paragraph as the fresh build prints
+    it, "4100", found nothing, and "...dates. 4000" was merged: a number typed into prose
+    beside the binding that prints it. Only the words it printed outside its bindings and
+    citations are known of what a paragraph printed at the build, and a value alone has
+    none."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _REPORTS, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks, _pasted(">4000<", "Papa paragraph"), reports=4100
+    )
+    assert after == before, "a number was typed into the source"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_joined_into_the_one_above_is_not_merged_once_the_value_is_rerun(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same, joined: "None." and the value after it, retyped across the break so the
+    value's identifier goes. Weighed against "4100", "None. 4000" read no more like the two
+    together than like "None." alone, and merged as a rewording."""
+
+    def joined(xml: str) -> str:
+        return _pasted(">4000<", ">None.<")(xml)
+
+    blocks = ("# Notes", _ALPHA, "None.", _REPORTS, _BRAVO)
+    after, before, _out = _forced_import(project, tmp_path, blocks, blocks, joined, reports=4100)
+    assert after == before, "a number was typed into the source"
+
+
+def _elsewhere(blocks: tuple[str, ...]) -> tuple[str, ...]:
+    """The `.md` edited since the build where Word left it alone: stale, nothing re-run."""
+    return tuple(block.replace("exposure window", "exposure period") for block in blocks)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        (f"{_REPORTS}.", ">4000.<"),
+        ("{{results.ror.ci_low}}\N{EN DASH}{{results.ror.ci_high}}", "5.12<"),
+    ],
+    ids=["full stop", "range"],
+)
+def test_a_value_with_punctuation_pasted_in_a_stale_document_is_not_merged(
+    project: Path, tmp_path: Path, value: str, shown: str
+) -> None:
+    """Round 1 of #116's review. Only the words outside a paragraph's bindings were taken as
+    what it printed at the build, and a full stop or a dash beside a value was kept as a word
+    of its own: "." and "–", never found among "4000." or "2.89–5.12". The value paragraph
+    counted as known, and pasted into Papa it merged, where main, weighing the fresh
+    rendering, which is what was sent when nothing was re-run, refused it."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, value, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, _elsewhere(blocks), _pasted(shown, "Papa paragraph")
+    )
+    assert after == before, "numbers were typed into Papa"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_interval_joined_in_a_stale_document_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same, joined: "(" and ")" beside the interval's values were words of their own,
+    and "...was as follows. 3.84 (2.89 to 5.12)" merged as a rewording."""
+    lead = "The reporting odds ratio for the main model, with its interval, was as follows."
+    trio = "{{results.ror.point}} ({{results.ror.ci_low}} to {{results.ror.ci_high}})"
+    blocks = ("# Results", _ALPHA, _PAPA, _ROMEO, lead, trio, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, _elsewhere(blocks), _pasted("(2.89", "was as follows.")
+    )
+    assert after == before, "numbers were typed into the paragraph above"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("blocks", "into"),
+    [
+        (("# Intro", _ALPHA, _PAPA, _ROMEO, f"{_REPORTS}.", _BRAVO), "Papa paragraph"),
+        (("# Notes", _ALPHA, "None.", f"{_REPORTS}.", _BRAVO), ">None.<"),
+    ],
+    ids=["pasted", "joined"],
+)
+def test_a_value_with_a_full_stop_is_not_merged_once_rerun(
+    project: Path, tmp_path: Path, blocks: tuple[str, ...], into: str
+) -> None:
+    """The first two tests above, with a full stop after the value: re-run to 4100, "4000."
+    was weighed as the word "." and merged."""
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks, _pasted(">4000.<", into), reports=4100
+    )
+    assert after == before, "a stale number was typed into the source"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("twelve reports were excluded", "twelve of the reports were excluded"),
+        ("were excluded for missing dates.", "were excluded."),
+    ],
+    ids=["a word added", "a sentence's end cut"],
+)
+@pytest.mark.parametrize("author", ["reworded", "dropped"])
+def test_an_edit_merges_when_word_deletes_a_paragraph_the_author_also_changed(
+    project: Path, tmp_path: Path, old: str, new: str, author: str
+) -> None:
+    """Round 1 of #116's review: with a paragraph the author also changed, or dropped,
+    deleted in Word, every rewording in the document that gained a word was refused, since
+    what the deleted one said could not be known. Only a rewording that gained five words in
+    a row, or a word with a digit in it, could hold such a paragraph pasted in; a word added
+    and a clause cut merge, as on main."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = _elsewhere(blocks) if author == "reworded" else blocks[:-1]
+
+    def change(xml: str) -> str:
+        return xml.replace(_word_paragraph(xml, "Bravo paragraph"), "", 1).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(old, new, 1), out
+
+
+def test_what_a_paragraph_printed_is_read_past_a_no_break_space_the_marked_build_lacks() -> None:
+    """Pandoc puts a no-break space after "et al." before a citation, and not before the
+    bookmark the marked build puts around it. Compared character for character, the two
+    builds differed, and in a document built from other inputs every such paragraph read as
+    saying nothing known. The words that touch no binding or citation are what was sent."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import _as_sent
+
+    fresh = f"As Smith et al.{chr(0xA0)}(2020) found, 4100 reports were screened."
+    plain = fresh.replace(chr(0xA0), " ")
+    spans = tuple((plain.index(t), plain.index(t) + len(t)) for t in ("(2020)", "4100"))
+    words = _as_sent(fresh, Block(("p",), plain, tokens=spans), stale=True)
+    assert words == ["As", "Smith", "et", "al.", "found,", "reports", "were", "screened."]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_whose_words_are_not_known_is_named_by_where_it_stood(
+    project: Path, tmp_path: Path
+) -> None:
+    """The refusal quoted the paragraph's identifier, 'mg-p-...', which the author cannot
+    find anywhere. It names the paragraph before it in the document as sent instead."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = (*blocks[:2], "A paragraph the author wrote in place of Papa.", *blocks[3:])
+    _after, _before, out = _forced_import(
+        project, tmp_path, blocks, now, _pasted("Papa paragraph", "Bravo paragraph")
+    )
+    refusal = next(line for line in out.splitlines() if "did not come back (" in line)
+    assert "the one after 'Alpha paragraph talks about" in refusal
+    assert "mg-p-" not in refusal
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rerun_paragraph_deleted_in_word_leaves_a_rewording_elsewhere_to_merge(
+    project: Path, tmp_path: Path
+) -> None:
+    """What a paragraph printed at the build is known outside its bindings: its words there
+    are weighed, and a rewording that holds none of them merges, as on main."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+
+    def edited(xml: str) -> str:
+        xml = xml.replace(_word_paragraph(xml, "reports screened"), "", 1)
+        return xml.replace("were excluded for missing dates", "were dropped for missing dates", 1)
+
+    after, before, _out = _forced_import(project, tmp_path, blocks, blocks, edited, reports=4100)
+    assert after == before.replace("were excluded for missing", "were dropped for missing", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "reworded",
+    [("the cohort of", "the group of"), (_ALPHA, "Another sentence altogether, rewritten.")],
+    ids=["a word", "all of it"],
+)
+@pytest.mark.parametrize("cut", [True, False], ids=["cut", "copied"])
+def test_a_paragraph_the_source_changed_pasted_into_another_is_not_merged(
+    project: Path, tmp_path: Path, reworded: tuple[str, str], cut: bool
+) -> None:
+    """A paragraph the author reworded since the build is not compared, so the paste check,
+    which weighed only the paragraphs compared, did not see it pasted onto the end of
+    another: that one merged holding the paragraph's old words, and the source had them
+    twice. Cut, what the paragraph said at the build is not known when the author changed
+    it; copied, it is what came back."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace(*reworded) for block in blocks)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, now, _pasted("Alpha paragraph", "Romeo paragraph", cut=cut)
+    )
+    assert after == before, "a paragraph's words went into the source twice"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_move_past_a_paragraph_not_compared_is_not_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """The author reworded Papa since the build, so it is not compared, and the co-author
+    moved Bravo above it in Word. Moves are worked out among the paragraphs compared, where
+    Bravo only passed Romeo, and it was written between Papa and Romeo, where nobody put
+    it. DESIGN.md said such a move is not applied; it is now withheld and named."""
+
+    def moved(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        papa = _word_paragraph(xml, "Papa paragraph")
+        return xml.replace(bravo, "", 1).replace(papa, bravo + papa, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, moved)
+    assert after == before, "a move was written where nobody put it"
+    assert "not applied" in out and "Bravo paragraph" in out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_move_beside_a_paragraph_not_compared_that_does_not_pass_it_is_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """Only a move past such a paragraph is withheld: two paragraphs swapped below it are
+    moved, as on main."""
+    delta = "Delta paragraph closes the section after Bravo."
+
+    def swapped(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        delta_ = _word_paragraph(xml, "Delta paragraph")
+        return xml.replace(bravo, "", 1).replace(delta_, delta_ + bravo, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO, delta)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, _out = _forced_import(project, tmp_path, blocks, now, swapped)
+    assert after == before.replace(f"{_BRAVO}\n\n{delta}", f"{delta}\n\n{_BRAVO}", 1)
 
 
 @pytest.mark.parametrize("left", [(), ("Wingdings character F04A",)], ids=["nothing", "symbol"])

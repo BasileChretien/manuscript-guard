@@ -230,16 +230,29 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
-The package's own version is fixed, so `pip install --upgrade` finds nothing newer and leaves
-an older copy in place, and so does `pipx upgrade`. To take the latest commit, reinstall it:
+The package and the plugin carry one version number, and every change to either raises it, so
+`manuscript-guard --version` names the release you have. To take a newer one:
 
 ```bash
-pip install --force-reinstall git+https://github.com/BasileChretien/manuscript-guard
-pipx install --force git+https://github.com/BasileChretien/manuscript-guard   # if you use pipx
+pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard
 ```
 
-The plugin's skills describe the commands of the current toolkit, so update the two together
-(see [the plugin](#the-claude-code-plugin-optional) below).
+With pipx, `pipx upgrade` refuses a copy installed from git (it checks a package index, not
+the repository), so reinstall instead:
+
+```bash
+pipx install --force git+https://github.com/BasileChretien/manuscript-guard
+```
+
+If pip says the requirement is already satisfied although the repository is ahead, the version
+did not rise with that commit, and only a reinstall takes it:
+`pip install --force-reinstall git+https://github.com/BasileChretien/manuscript-guard`.
+
+The plugin's skills describe the commands of the release they came with, so keep the two
+together (see [the plugin](#the-claude-code-plugin-optional) below). When the plugin is newer
+than the installed command line tool, its session-start hook says so, once, with the upgrade
+command, and blocks nothing. That warning comes from the tool itself, so a copy older than
+0.2.260 cannot give it: upgrade such a copy once, by hand.
 
 To work on the toolkit itself, install it editable with the test dependencies:
 
@@ -348,7 +361,7 @@ that should send you to it.
 
 | Hook | What it does |
 |---|---|
-| session start | One line: the stage, and how many findings fail and warn |
+| session start | One line: the stage, and how many findings fail and warn. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
 | before a submission-shaped shell command | Runs the submission check and blocks if it fails |

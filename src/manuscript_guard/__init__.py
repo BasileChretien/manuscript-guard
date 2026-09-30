@@ -5,6 +5,7 @@ returns the same verdict, with no language model involved. Anything that constit
 guarantee lives here; the Claude Code plugin layered on top only helps an author write.
 """
 
+# One number with pyproject.toml, plugin.json and the marketplace entry: see tests/test_version.py.
 __version__ = "0.2.270"
 
 from manuscript_guard.findings import Finding, Report

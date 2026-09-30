@@ -33,6 +33,19 @@ def test_the_shipped_template_is_a_valid_profile() -> None:
     assert report.ok, report.render()
 
 
+def test_the_template_says_where_the_style_is_read() -> None:
+    """The journal's `csl` reaches a live Zotero build only; an offline build formats with
+    `--csl`. The template and the schema both said offline builds used it."""
+    from manuscript_guard.paths import PACKAGE, SHIPPED_JOURNALS
+
+    schema = (PACKAGE / "contracts" / "schemas" / "journal.schema.json").read_text("utf-8")
+    template = (SHIPPED_JOURNALS / "TEMPLATE.yaml").read_text("utf-8")
+    for text in (schema, template):
+        assert "for offline builds" not in text
+        assert "used for offline builds" not in text
+        assert "--csl" in text
+
+
 def test_the_template_is_not_offered_as_a_journal(project: Path) -> None:
     """It names no journal. Listing it as one invites `target_journal: TEMPLATE`."""
     from manuscript_guard.contracts import load_project
@@ -278,7 +291,9 @@ def test_a_guideline_with_no_retrieved_checklist_fails_loudly(project: Path) -> 
     hints = " ".join(f.hint or "" for f in report.failures)
     assert "no recipe for NOT-A-GUIDELINE" in hints
     assert "manuscript-guard fetch NOT-A-GUIDELINE" not in hints
-    assert "STROBE" in hints, "the recipes that do exist are listed"
+    # In the recipes clause itself: the trailing "available:" list can hold a name too.
+    recipes = hints.split("(recipes: ", 1)[1].split(")", 1)[0].split(", ")
+    assert "STROBE" in recipes, "the recipes that do exist are listed"
 
 
 def test_a_guideline_with_a_recipe_is_told_the_commands_that_retrieve_it(project: Path) -> None:
@@ -291,6 +306,31 @@ def test_a_guideline_with_a_recipe_is_told_the_commands_that_retrieve_it(project
     assert "manuscript-guard fetch STROBE" in hints
     assert "manuscript-guard transcribe STROBE" in hints
     assert "no recipe" not in hints
+
+
+def test_a_recipe_the_project_wrote_is_told_the_commands_too(project: Path) -> None:
+    """`fetch` and `transcribe` read a project's own recipes as well as the shipped ones, so
+    the hint has to as well, or it says "no recipe" for one they would use."""
+    recipes = project / "profiles" / "reporting" / "recipes"
+    recipes.mkdir(parents=True)
+    (recipes / "MY-GUIDE.recipe.yaml").write_text("schema: manuscript-guard/recipe/1\n", "utf-8")
+    edit_yaml(project / "paper.yaml", lambda d: d.update(reporting_guideline=["MY-GUIDE"]))
+    hints = " ".join(f.hint or "" for f in reporting_report(project).failures)
+    assert "manuscript-guard fetch MY-GUIDE" in hints
+    assert "no recipe" not in hints
+
+
+def test_the_hint_and_the_commands_agree_on_which_recipes_exist(project: Path) -> None:
+    from manuscript_guard.cli import _recipe_paths
+    from manuscript_guard.gates.reporting import recipe_names
+
+    recipes = project / "profiles" / "reporting" / "recipes"
+    recipes.mkdir(parents=True)
+    (recipes / "MY-GUIDE.recipe.yaml").write_text("schema: manuscript-guard/recipe/1\n", "utf-8")
+    loaded, _ = load_project(project)
+    by_command = sorted(p.name.split(".recipe")[0] for p in _recipe_paths(project, None))
+    assert recipe_names(loaded) == by_command
+    assert "MY-GUIDE" in by_command
 
 
 def test_the_checklist_command_names_the_retrieval_commands(project: Path) -> None:

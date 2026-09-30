@@ -59,6 +59,22 @@ def workspace(explicit: Path | None = None, start: Path | None = None) -> Path:
         return here
 
 
+def recipes(root: Path) -> dict[str, Path]:
+    """Every checklist recipe by guideline name: the ones shipped inside the package, then
+    the ones the project wrote, which win.
+
+    One definition, because `fetch` and `transcribe` and the hint that tells an author to run
+    them each listed the directories themselves, and a third directory added to one would have
+    sent the author to a command that answers "no recipe".
+    """
+    found: dict[str, Path] = {}
+    for directory in (SHIPPED_RECIPES, root / "profiles" / "reporting" / "recipes"):
+        if directory.exists():
+            for path in sorted(directory.glob("*.recipe.yaml")):
+                found[path.name.split(".recipe")[0]] = path
+    return found
+
+
 __all__ = [
     "FIGURE_SCRIPT_SUFFIXES",
     "PACKAGE",
@@ -67,5 +83,6 @@ __all__ = [
     "SHIPPED_CHECKLISTS",
     "SHIPPED_JOURNALS",
     "SHIPPED_RECIPES",
+    "recipes",
     "workspace",
 ]

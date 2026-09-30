@@ -29,6 +29,18 @@ request against an interface that will change.
 - **No absolute paths, no author-specific configuration**, and no assumption that Claude
   Code is present.
 
+## Versions
+
+The package and the plugin are one release with one number. Every pull request that changes
+`src/` or `plugin/` takes the next shared number, and writes it in four places, all of which
+`tests/test_version.py` checks: `version` in `pyproject.toml`, `__version__` in
+`src/manuscript_guard/__init__.py`, and `version` in `plugin/.claude-plugin/plugin.json` and
+`.claude-plugin/marketplace.json`. The maintainer assigns the numbers; ask for one rather than
+picking, because two open pull requests that take the same number are merged by git without a
+conflict, and the second ships under a number that has already been released. A change that
+leaves the number alone is invisible to `pip install --upgrade`, which decides on it, and
+bumping only the plugin leaves an installed tool behind the skills that call it.
+
 ## Running it
 
 ```bash

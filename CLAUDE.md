@@ -34,9 +34,15 @@ pandoc is on PATH. Set it to the same value locally to run the suite as CI does;
 missing pandoc only skips the tests that need it.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
-`./plugin`). Bump `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace
-entry whenever a skill or hook changes, or `claude plugin update` reports the old copy as
-current. `tests/test_plugin.py` holds the two equal.
+`./plugin`). **Every pull request that changes `src/` or `plugin/` takes the next shared
+version number and bumps four places together:** `version` in `pyproject.toml`, `__version__`
+in `src/manuscript_guard/__init__.py`, and `version` in both `plugin/.claude-plugin/plugin.json`
+and the marketplace entry. The coordinating session assigns the numbers; ask it for one, and
+do not pick your own. Without a bump `claude plugin update` reports the old plugin as
+current, and `pip install --upgrade` finds nothing newer for the package. `tests/test_version.py`
+holds the four equal and `tests/test_plugin.py` the two manifests. When the installed tool is
+older than the plugin, its session-start hook (`manuscript-guard-hook`) warns once and blocks
+nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 

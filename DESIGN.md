@@ -3264,9 +3264,11 @@ Closed since, and why each mattered:
   the rendered figure first. Closed — a figure that could not be read no longer softens the
   check on the script behind it, and the PDF reader now has the same poppler-then-pypdf
   chain the literature reader uses.
-- **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
-  editor does not share, they silently do nothing — which is the safe direction, but it is
-  silent.
+- **The hooks depend on `manuscript-guard-hook` being on PATH.** Installed in a virtualenv
+  the editor does not share, they cannot run, which is the safe direction: nothing is blocked
+  and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
+  command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
+  non-blocking `hook error` notice in the transcript. Not observed in a live session.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -3274,6 +3276,35 @@ Closed since, and why each mattered:
   version in `plugin.json` and the marketplace entry: a skill edited without a bump is
   reported as "already at the latest version" and never reaches anyone. Verified 2026-09-24
   with Claude Code 2.1.119.
+- **The package and the plugin are one release with one number.** `pyproject.toml`,
+  `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
+  version. The policy (Basile, 2026-09-30) is that every pull request that changes `src/` or
+  `plugin/` takes the next shared number and bumps all four, and the coordinating session
+  assigns the numbers, so that two open pull requests never take one. `tests/test_version.py`
+  fails when the four differ. It cannot tell that a pull request changed code and left them
+  alone, which is the case the policy is for: `pip install --upgrade` finds nothing newer for
+  a fix that did not bump, and the stale-tool notice below cannot fire either, because
+  `plugin.json` did not move. The README's `--force-reinstall` is the fallback. Before this
+  the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
+  nothing newer and left an older copy in place, and `--version` could not say which release
+  anyone had. Verified 2026-09-30 with pip 26.2: an upgrade takes a newer commit when its
+  version rose, and does not when it did not. `pipx upgrade` never takes one from a git
+  install ("no package index was checked"); `pipx install --force git+...` does.
+- **A stale command line tool is warned about, not prevented, and only from 0.2.260 on.**
+  Skills and the tool update separately, so the plugin can be newer than the installed tool.
+  The session-start hook compares the plugin's version (read from
+  `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`) with the tool's and says so once, with the
+  upgrade command, and blocks nothing. It says nothing when the variable is unset, the file
+  is unreadable, or the version is not plain dotted digits. The comparison lives in the
+  tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
+  runs the old handler and never warns: its first upgrade has to be made by hand, as the
+  README says. Making the check from the plugin's `hooks.json` instead would reach them,
+  since that updates with the plugin. Not observed in a live Claude Code session. The
+  plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's
+  process, and the hooks reference describes `systemMessage` as a field any hook event can
+  return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
+  model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
+  a plugin never updated: nothing tells anyone to run `claude plugin update`.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

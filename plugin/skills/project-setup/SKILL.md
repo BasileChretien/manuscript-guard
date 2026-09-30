@@ -34,8 +34,10 @@ the tool says which when you reach it:
 | R with `jsonlite` and `digest` | only if the analysis is in R |
 
 The plugin's hooks run `manuscript-guard-hook`, so the package must be on the `PATH` Claude
-Code sees. Installed in a virtualenv the editor does not use, the hooks do nothing, and say
-nothing.
+Code sees. Installed in a virtualenv the editor does not use, the hooks cannot run: nothing
+is blocked and nothing is guarded, and Claude Code reports a non-blocking hook error.
+When the plugin is newer than the installed tool, the session-start hook says so once, with
+the upgrade command.
 
 ## 2. Scaffold
 

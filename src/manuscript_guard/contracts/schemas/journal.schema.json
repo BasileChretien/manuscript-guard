@@ -76,7 +76,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "csl": { "type": "string", "description": "CSL style name or file, for offline builds." },
+        "csl": { "type": "string", "description": "Zotero style name or URL, applied by a live build. An offline build uses --csl instead." },
         "style_name": { "type": "string" },
         "numbered": { "type": "boolean" }
       }

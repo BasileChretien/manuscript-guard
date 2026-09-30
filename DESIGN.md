@@ -4400,9 +4400,10 @@ Closed since, and why each mattered:
   it lost. That is a judgement. A second half of under four words, or one reworded in the
   same round, still has the paragraph merged as its first half and the rest gone from the
   source, as on main; exit 1, because the second half is listed, but the merge is written.
-  `main` merges a sentence deleted while a paragraph of the same words is added elsewhere,
-  on purpose, and so does this check under four words; from four on it refuses that pair,
-  which is left to the maintainer to settle. A table, figure or
+  A sentence deleted while a paragraph of the same words is added elsewhere is refused the
+  same way from four words on: merged, the sentence left the source while the paragraph
+  now holding it was only listed, and the words are all that tell it from such a split.
+  The maintainer chose refusing it (2026-09-30); under four words it merges. A table, figure or
   equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the

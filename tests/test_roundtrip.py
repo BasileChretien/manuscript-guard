@@ -8622,9 +8622,10 @@ def test_a_paragraph_typed_in_front_of_another_refuses_that_one_only(tmp_path: P
 def test_a_sentence_deleted_while_a_paragraph_is_added_elsewhere_is_merged(
     tmp_path: Path,
 ) -> None:
-    """A split is judged by what stands beside a paragraph, not by whether any new text
-    anywhere reuses its words: a check by words refused this ordinary pair of edits as a
-    split."""
+    """A sentence of three words deleted while a paragraph of the same words is added
+    elsewhere merges: three words are too few to tell a sentence moved from a coincidence,
+    and a check by words that fired on them refused this ordinary pair of edits as a split.
+    From four words on the pair is refused (the next test)."""
     from manuscript_guard.docxtext import Block
     from manuscript_guard.merge import plan_import
 
@@ -8639,6 +8640,32 @@ def test_a_sentence_deleted_while_a_paragraph_is_added_elsewhere_is_merged(
     returned = [Block(("a",), shorter), sent[1], sent[2], Block((), "They are two-sided.")]
     plan = plan_import(known, sent, returned)
     assert plan.merged == {"a": shorter}
+
+
+def test_a_sentence_of_four_words_moved_into_a_paragraph_of_its_own_is_refused(
+    tmp_path: Path,
+) -> None:
+    """From four words on, a sentence deleted from a paragraph while a paragraph of the same
+    words is added elsewhere is refused. Merged, the sentence left the source, and the
+    paragraph now holding it was only listed. It is also the shape of a split whose second
+    half nothing beside it shows - a paragraph or an equation cut in between without Track
+    Changes - and the words are all that tell the two apart. `main` merged it before #103;
+    the maintainer chose refusing (2026-09-30)."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import plan_import
+
+    paragraphs = {
+        "a": "Confidence intervals were derived from the standard error. Both are two-sided tests.",
+        "b": "Beta sits between them.",
+        "c": "Gamma closes the section.",
+    }
+    _path, known = source_of(tmp_path, paragraphs)
+    sent = [Block((name,), words) for name, words in paragraphs.items()]
+    shorter = "Confidence intervals were derived from the standard error."
+    returned = [Block(("a",), shorter), sent[1], sent[2], Block((), "Both are two-sided tests.")]
+    plan = plan_import(known, sent, returned)
+    assert [refusal.name for refusal in plan.refused] == ["a"], plan
+    assert not plan.merged
 
 
 @needs_pandoc

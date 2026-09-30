@@ -191,6 +191,29 @@ def test_the_advice_names_selectors_that_work(project: Path, capsys) -> None:
     assert unbound(*loaded(project)) == []
 
 
+def test_the_advice_names_a_line_once_when_two_suggestions_share_it(project: Path, capsys) -> None:
+    """Two typed numbers on one line made the advice read `--only main.md:13 --only
+    main.md:13` and promise to replace "just those two", which was one line."""
+    import re
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    both = "{{results.ror.ci_low}} to {{results.ror.ci_high}})"
+    assert both in text
+    path.write_text(text.replace(both, "2.89 to 5.12)", 1), encoding="utf-8")
+
+    assert main(["bind", str(project)]) == 1
+    advice = capsys.readouterr().out.strip().splitlines()[-1]
+    selectors = re.findall(r"--only ([^\s`]+)", advice)
+    assert len(selectors) == 1, advice
+    assert "just those two" not in advice, advice
+
+    assert main(["bind", str(project), "--apply", "--only", selectors[0]]) == 0
+    assert "{{results.ror.ci_low}}" in path.read_text(encoding="utf-8")
+
+
 def test_the_command_refuses_an_unknown_selector(project: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

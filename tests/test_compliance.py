@@ -274,6 +274,10 @@ def test_a_guideline_with_no_retrieved_checklist_fails_loudly(project: Path) -> 
     report = reporting_report(project)
     assert "checklist-not-retrieved" in codes(report)
     assert any("reporting-checklist skill" in (f.hint or "") for f in report.failures)
+    # The commands, not only the skill: someone without the plugin has no skill to open.
+    assert any(
+        "manuscript-guard fetch NOT-A-GUIDELINE" in (f.hint or "") for f in report.failures
+    )
 
 
 def test_an_unanswered_item_is_caught(project: Path) -> None:

@@ -164,10 +164,12 @@ required_statements:
 # ── References ───────────────────────────────────────────────────────────────────────────
 
 references:
-  # A CSL style name resolvable by pandoc, used for offline builds. The Zotero style
-  # repository (zotero.org/styles) is the usual source and often lists the journal by name.
-  # Delete when you cannot find a matching style; the build then uses the project default and
-  # says so, which is better than formatting to the wrong journal's rules.
+  # A Zotero style name, which a live build hands to Zotero's Word plugin as the document's
+  # citation style. An offline build does not read it: it formats with `--csl <file>` or the
+  # default style. The Zotero style repository (zotero.org/styles) is the usual source and
+  # often lists the journal by name. Delete when you cannot find a matching style; a live
+  # build then names none and Zotero asks for one on the first refresh, which is better than
+  # formatting to the wrong journal's rules.
   csl: ""            # e.g. "vancouver"; delete the line if no style matches
 
   # The style as the journal names it, for a human reading this file: "Vancouver",

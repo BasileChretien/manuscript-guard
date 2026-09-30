@@ -317,6 +317,31 @@ def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     assert "divergent-display" in codes(gate_report(project))
 
 
+def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:
+    """56 sources and 56.0 per cent are two quantities that happen to share a number.
+
+    G8 used to key collisions on the bare value, so this pair reported one quantity written
+    two ways and failed the build. There was no fix available to the author except to change
+    the paper until the coincidence went away, which is the tool corrupting the manuscript
+    rather than protecting it. Units are what distinguish the two, and they are recorded.
+    """
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    document["values"]["ror.point"] = {
+        **point, "value": 56.0, "display": "56.0%", "digits": 1, "unit": "%",
+    }
+    document["values"]["sources.n"] = {
+        **point, "value": 56, "display": "56", "digits": 0,
+    }
+    document["values"]["sources.n"].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    # Verified to fail without the unit key: with G8 grouping on the bare value, this
+    # fragment reports divergent-display and the build stops.
+    assert "divergent-display" not in codes(gate_report(project))
+
+
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     """A bonus from checking displays at emit time: the read path checks them too.
 

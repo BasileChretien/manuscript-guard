@@ -29,6 +29,7 @@ import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
@@ -72,6 +73,13 @@ TOKEN = "mg-t-"
 # not characters: the markers were U+E000 and U+E001 inside the text, so a genuine one - a
 # glyph pasted from a PDF - vanished from every document read.
 _OPEN, _CLOSE = object(), object()
+
+
+class _Place(NamedTuple):
+    """A paragraph identifier's bookmark, met where it is as the text is read."""
+
+    name: str
+
 
 #: Whitespace that is layout, not text: a source line wrapped by its author, a tab or a line
 #: break in Word. A no-break space is not in it. Read as `\s`, one came back as a plain space,
@@ -117,8 +125,15 @@ class Block:
     #: moved here. It was not here in the document as sent, whatever identifier it carries.
     arrived: bool = False
     #: What its style says it is: "heading", "caption", "reference" (an entry of the reference
-    #: list), or "" for anything else. See `_roles`.
+    #: list), "quote" (a block quotation), "list" (a list item, by its numbering too), or ""
+    #: for anything else. See `_roles` and `_role`.
     role: str = ""
+    #: Where each identifier's bookmark sits in `text`, as (identifier, offset), where that is
+    #: known: not for one Word's tracked changes say belongs here from another paragraph (see
+    #: `_settled`). Word keeps a joined paragraph's bookmark where its text begins, and puts a
+    #: deleted one's in front of the next paragraph's own, so the text each identifier holds
+    #: runs from its bookmark to the next one's.
+    at: tuple[tuple[str, int], ...] = ()
 
     #: What Word draws in it that is not read as text, or not read exactly, named once for
     #: each occurrence: a Wingdings character, a piece of a tall bracket, a private-use
@@ -159,6 +174,8 @@ class _Paragraph:
     #: What its style says it is; see `Block.role`.
     role: str = ""
     unread: tuple[str, ...] = ()
+    #: See `Block.at`.
+    at: tuple[tuple[str, int], ...] = ()
 
 
 #: A heading level, which Word writes as an outline level of 0 to 8; 9 is body text.
@@ -174,31 +191,37 @@ def _roles(archive, what: str) -> dict[str, str]:
     keeps the built-in names ("heading 1", "caption", "Bibliography"). A heading is a style
     whose outline level, its own or one it is based on, is a heading level; a table of
     contents heading is based on heading 1 and sets its own back to body text, and is not one.
-    A caption or a reference entry is named so, or based on a style that is.
+    A caption or a reference entry is named so, or based on a style that is; so is a block
+    quotation, which pandoc styles "Block Text". A list item is a style that numbers its
+    paragraphs, or based on one; pandoc numbers each item itself instead (`_role`).
     """
     if "word/styles.xml" not in archive.namelist():
         return {}
-    styles: dict[str, tuple[str, str, str | None]] = {}
+    styles: dict[str, tuple[str, str, str | None, str | None]] = {}
     for style in read_part(archive, "word/styles.xml", what=f"{what}:styles").iter(W + "style"):
         if style.get(W + "type") != "paragraph":
             continue
         name, based = style.find(W + "name"), style.find(W + "basedOn")
         level = style.find(f"{W}pPr/{W}outlineLvl")
+        numbering = style.find(f"{W}pPr/{W}numPr/{W}numId")
         styles[style.get(W + "styleId", "")] = (
             (name.get(W + "val", "") if name is not None else "").strip().lower(),
             based.get(W + "val", "") if based is not None else "",
             level.get(W + "val") if level is not None else None,
+            numbering.get(W + "val") if numbering is not None else None,
         )
 
     def role(style_id: str) -> str:
         names: list[str] = []
         outline: str | None = None
+        numbered: str | None = None
         seen: set[str] = set()
         while style_id in styles and style_id not in seen:
             seen.add(style_id)
-            name, based, level = styles[style_id]
+            name, based, level, numbering = styles[style_id]
             names.append(name)
             outline = level if outline is None else outline
+            numbered = numbering if numbered is None else numbered
             style_id = based
         if outline in _HEADING_LEVELS or (
             outline is None and any(_HEADING_NAME.fullmatch(name) for name in names)
@@ -206,27 +229,41 @@ def _roles(archive, what: str) -> dict[str, str]:
             return "heading"
         if "caption" in names:
             return "caption"
-        return "reference" if "bibliography" in names else ""
+        if "bibliography" in names:
+            return "reference"
+        if "block text" in names:
+            return "quote"
+        return "list" if numbered not in (None, "0") else ""
 
     return {style_id: role(style_id) for style_id in styles}
 
 
 def _role(element: ET.Element, roles: dict[str, str]) -> str:
     """A paragraph's role: its style's, unless an outline level set on the paragraph itself
-    says otherwise."""
+    says otherwise; and a list item's where it is numbered itself, as pandoc numbers each
+    item, with its style the body text's ("Compact", or "Body Text" in a loose list). A
+    numbering of 0 is none: Word writes it to take a style's numbering off a paragraph."""
     style = element.find(f"{W}pPr/{W}pStyle")
     found = roles.get(style.get(W + "val", ""), "") if style is not None else ""
     level = element.find(f"{W}pPr/{W}outlineLvl")
-    if level is None:
-        return found
-    if level.get(W + "val") in _HEADING_LEVELS:
+    if level is not None and level.get(W + "val") in _HEADING_LEVELS:
         return "heading"
-    return "" if found == "heading" else found
+    if level is not None and found == "heading":
+        found = ""
+    numbering = element.find(f"{W}pPr/{W}numPr/{W}numId")
+    if numbering is not None and found in ("", "list"):
+        return "" if numbering.get(W + "val") == "0" else "list"
+    return found
 
 
 def _text(element: ET.Element, fonts: Fonts | None = None) -> str:
     """The visible text under `element`, tracked changes accepted."""
     return _read(element, fonts or Fonts())[0]
+
+
+#: A paragraph's text, where each marked token sits in it, what in it is not read as text,
+#: and where each identifier's bookmark sits in it (`Block.at`).
+_Reading = tuple[str, tuple[tuple[int, int], ...], tuple[str, ...], tuple[tuple[str, int], ...]]
 
 
 def _kept(element: ET.Element) -> bool:
@@ -241,11 +278,9 @@ def _kept(element: ET.Element) -> bool:
     return False
 
 
-def _read(
-    element: ET.Element, fonts: Fonts
-) -> tuple[str, tuple[tuple[int, int], ...], tuple[str, ...]]:
-    """The visible text under `element`, where each marked token sits in it, and what
-    in it is not read as text, named.
+def _read(element: ET.Element, fonts: Fonts) -> _Reading:
+    """The visible text under `element`, where each marked token sits in it, what in it is
+    not read as text, named, and where each identifier's bookmark sits in it.
 
     A character is read as the font it is in draws it: Insert > Symbol writes a `w:sym`,
     and text typed in the Symbol font is in that font's encoding. See `wordfonts`.
@@ -273,6 +308,8 @@ def _read(
             out.append(_OPEN)
         elif node.tag == W + "bookmarkEnd" and node.get(W + "id", "") in marked:
             out.append(_CLOSE)
+        elif node.tag == W + "bookmarkStart" and _IDENTIFIER.match(node.get(W + "name", "")):
+            out.append(_Place(node.get(W + "name", "")))
         elif node.tag == W16SE + "symEx":
             # In the font it names, as text is in its run's: a symbol or icon font's code too.
             shown, name = fonts.drawn(extended_symbol(node), node.get(W16SE + "font"))
@@ -289,12 +326,15 @@ def _read(
             walk(child, run)
 
     walk(element, fonts.run(None, paragraph))
-    text, tokens = _extents(out)
-    return text, tokens, tuple(unread)
+    text, tokens, places = _extents(out)
+    return text, tokens, tuple(unread), places
 
 
-def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
-    """Fold whitespace as the rest of this module does, keeping each token's extent.
+def _extents(
+    raw: list[object],
+) -> tuple[str, tuple[tuple[int, int], ...], tuple[tuple[str, int], ...]]:
+    """Fold whitespace as the rest of this module does, keeping each token's extent and
+    each identifier's place.
 
     A token's extent starts at its first visible character and ends after its last, so a
     space pandoc put inside the bookmark belongs to the prose around it. Only layout
@@ -303,9 +343,10 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     """
     out: list[str] = []
     spans: list[list[int]] = []
+    places: list[tuple[str, int]] = []
     open_: list[int] = []
     space = False
-    for char in (c for piece in raw for c in ([piece] if piece in (_OPEN, _CLOSE) else piece)):
+    for char in (c for piece in raw for c in (piece if isinstance(piece, str) else [piece])):
         if char is _OPEN:
             spans.append([-1, -1])
             open_.append(len(spans) - 1)
@@ -315,6 +356,8 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
                 span[1] = len(out)
                 if span[0] < 0:
                     span[0] = len(out)
+        elif isinstance(char, _Place):
+            places.append((char.name, len(out)))
         elif char in _LAYOUT_CHARACTERS:
             space = True
         else:
@@ -328,8 +371,14 @@ def _extents(raw: list[object]) -> tuple[str, tuple[tuple[int, int], ...]]:
     text = "".join(out)
     lead = len(text) - len(text.lstrip())
     text = text.strip()
-    return text, tuple(
-        (max(start - lead, 0), min(end - lead, len(text))) for start, end in spans if start >= 0
+    return (
+        text,
+        tuple(
+            (max(start - lead, 0), min(end - lead, len(text)))
+            for start, end in spans
+            if start >= 0
+        ),
+        tuple((name, min(max(at - lead, 0), len(text))) for name, at in places),
     )
 
 
@@ -420,12 +469,15 @@ def _paragraph(
     # Enter at the end of a paragraph marks its mark inserted too, and one retyped whole has
     # no text but inserted text: what it does have is the text it deleted.
     arrived = mark in ("moveTo", "ins") and not _kept(element) and not _removes(element)
-    text, tokens, unread = _read(element, fonts)
+    text, tokens, unread, places = _read(element, fonts)
     maths = None
     if any(node.tag == _M + "oMath" for node in seen):
         # Word deletes an equation run by run with Track Changes on, leaving the `m:oMath`
         # around nothing: an equation with no text left is gone.
         maths = "".join(node.text or "" for node in seen if node.tag == _M + "t") or None
+    at: dict[str, int] = {}
+    for name, offset in places:
+        at.setdefault(name, offset)
     return _Paragraph(
         tuple(names),
         text,
@@ -442,6 +494,7 @@ def _paragraph(
         moves=moves,
         role=_role(element, roles),
         unread=unread,
+        at=tuple(at.items()),
     )
 
 
@@ -705,8 +758,31 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
     # paragraph run on into the heading after it is that paragraph, joined, not a heading.
     role = kept[0].role
     return [
-        Block(names=names, text=text, tokens=tokens, unread=unread, arrived=arrived, role=role)
+        Block(
+            names=names,
+            text=text,
+            tokens=tokens,
+            unread=unread,
+            arrived=arrived,
+            role=role,
+            at=_places(kept, text),
+        )
     ]
+
+
+def _places(kept: list[_Paragraph], text: str) -> tuple[tuple[str, int], ...]:
+    """Where each identifier's bookmark sits in the text of paragraphs folded into one, a
+    tracked join: each paragraph's own places, past the text of those before it. None where
+    the folded text is not their texts joined by a space."""
+    found: dict[str, int] = {}
+    joined = ""
+    for paragraph in kept:
+        start = len(joined) + (1 if joined and paragraph.text else 0)
+        for name, offset in paragraph.at:
+            found.setdefault(name, start + offset)
+        if paragraph.text:
+            joined = f"{joined} {paragraph.text}" if joined else paragraph.text
+    return tuple(found.items()) if joined == text else ()
 
 
 def comment_anchors(document: Path) -> dict[str, str]:

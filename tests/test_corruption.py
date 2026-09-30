@@ -2780,6 +2780,10 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n\\newenvironment{x}[1]{a}{b} ---\ntitle: Evil\n...\n",
         "## Note\n\\newtheorem{thm}{Theorem}[section] ---\ntitle: Evil\n...\n",
         "## Note\n\\titleformat{a}[b]{c}{d}{e}{f} ---\ntitle: Evil\n...\n",
+        # Found reviewing #109: three more definitions pandoc reads by their own shape.
+        "## Note\n\\DeclareRobustCommand{\\foo}[1]{bar} ---\ntitle: Evil\n...\n",
+        "## Note\n\\provideenvironment{x}[1]{a}{b} ---\ntitle: Evil\n...\n",
+        "## Note\n\\DeclareMathOperator*{\\argmax}{arg\\,max} ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:

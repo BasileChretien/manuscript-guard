@@ -298,6 +298,26 @@ def test_link_texts_on_one_long_line_are_read_in_linear_time(assert_linear) -> N
     assert_linear(lambda count: "See [1] " * count + "\n", link_text_spans, 4000, "link texts")
 
 
+def test_starred_commands_before_text_are_read_in_linear_time(assert_linear) -> None:
+    """`\\newcommand* ` could be read as the starred command, or as the command and then a
+    `* ` list marker, so a line of them that is not all openers was read every way:
+    24 of them took 25 seconds."""
+    from manuscript_guard.text.sections import rules_opening_blocks
+
+    def starred(count: int) -> str:
+        return "Text.\n" + "\\newcommand* " * count + "x ---\nnext.\n"
+
+    assert_linear(starred, rules_opening_blocks, 2000, "starred commands")
+
+
+def test_quotation_marks_before_a_bracket_are_read_in_linear_time(assert_linear) -> None:
+    """A space after `>` could be the mark's own or the next one's, so a line of `> ` that is
+    no definition was read every way: 28 of them took 60 seconds in `build --annotated`."""
+    from manuscript_guard.text.inline import link_text_spans
+
+    assert_linear(lambda count: "> " * count + "x[t]: a\n", link_text_spans, 2000, "quote marks")
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the

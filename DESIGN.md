@@ -2515,8 +2515,9 @@ Three decisions worth recording:
 
 - **UTF-16 with a BOM is never normalised.** There 0x0D and 0x0A appear as bytes of ordinary
   characters, so rewriting them corrupts text rather than reformatting it: U+340D and U+340A
-  become the same file. A BOM settles it cheaply; without one, see Known gaps. Excel's "Unicode Text" export and many Japanese-Windows
-  CSV exports are UTF-16, so this is in the path of the projects the toolkit is for.
+  become the same file. A BOM settles it cheaply; without one, see Known gaps. Excel's
+  "Unicode Text" export and many Japanese-Windows CSV exports are UTF-16, so this is in the
+  path of the projects the toolkit is for.
 - **Both emitters moved together, and there is now a test that says so.** `mg_input_digest`
   mirrors `input_digest`. There was no such test when this first shipped, and the R side
   consequently crashed on any text-suffixed file containing a NUL byte — it converted to a
@@ -2539,8 +2540,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   UTF-16 carry a BOM; a file without one is taken for 8-bit text.
 - **Checking a declared input reads the whole file into memory.** Before input digests
   normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
-  checks it, and R's `readBin` does the same. Large binary inputs are affected too, because the
-  file is read before its suffix is tested.
+  checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since
+  its line-ending masks are logical vectors of four bytes a byte. Large binary inputs are
+  affected too, because the file is read before its suffix is tested.
 - **One pandoc version is tested.** CI pins one, in `.github/workflows/ci.yml`: the version
   the tests that assert on pandoc's output were written against. It refuses to run the
   suite with any other. An author's pandoc may be older or newer, and nothing here checks

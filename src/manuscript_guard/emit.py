@@ -236,8 +236,8 @@ _TEXT_SUFFIXES = _SOURCE_SUFFIXES | _DATA_SUFFIXES
 # of ordinary characters, so rewriting them corrupts text rather than reformatting it.
 # Verified: "㐍" (U+340D) and "㐊" (U+340A) written as UTF-16LE .csv normalise to the same
 # bytes. Excel's "Unicode Text" export and many Japanese-Windows CSV exports are UTF-16, so
-# this is in the path of the projects this toolkit is for. A BOM settles it cheaply, and a
-# file whose encoding cannot be read off its first bytes is hashed byte for byte.
+# this is in the path of the projects this toolkit is for. A BOM settles it cheaply; a UTF-16
+# file without one is taken for 8-bit text and normalised (DESIGN.md, Known gaps).
 _UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
 
 

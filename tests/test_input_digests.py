@@ -251,7 +251,7 @@ def test_the_r_emitter_agrees_byte_for_byte(tmp_path: Path) -> None:
     """`mg_input_digest` mirrors `input_digest` and must keep mirroring it.
 
     There was no such test when the input digest changed, and the R side then crashed on two
-    of these eight — anything with an embedded NUL, because it converted to a string before
+    of these cases — anything with an embedded NUL, because it converted to a string before
     normalising. A rule enforced on one side only is a rule an author steps around by
     switching language.
     """

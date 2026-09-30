@@ -13,14 +13,19 @@ A security review found three ways in, all reachable by accident rather than onl
 * a FIFO in `figures/` blocks a read forever on Linux and macOS, which is where CI runs, and
   nothing in the gate runner bounds wall-clock time.
 
-The budget here is deliberately loose. It is not a benchmark; it is a tripwire for a change
-that turns a linear scan into a quadratic one, which has now happened twice in this file's
-subject matter.
+What a hostile input adds to `check` is measured against a plain `check` on the same project,
+in the process's own CPU time. It is a tripwire for a hang or a blow-up, not a benchmark,
+and not the test that a scan is linear: at these sizes some inputs cost `check` ten times
+its plain run while being linear, which leaves no room to tell a quadratic that adds a few
+seconds from them. That is `assert_linear`'s job, one scan at a time.
 """
 
 from __future__ import annotations
 
+import functools
+import gc
 import os
+import shutil
 import sys
 import time
 from collections.abc import Callable
@@ -30,13 +35,80 @@ import pytest
 
 BUDGET_SECONDS = 20.0
 
+#: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
+#: same project, both in CPU time. The heaviest linear input here read up to 10.0 (one long
+#: run of backticks), and the quadratic one known on main up to 12.3 (nested brackets,
+#: `BRACKETED`). A ratio, so the same bound holds on a runner of any speed.
+CHECK_OVERHEAD = 30.0
+#: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
+#: on a read or a network call that takes its time and then returns. A wait under about a
+#: minute passes, and one that never ends hangs the suite, as it always did. The first check
+#: on a hostile project and the timed one after it took at most 21 s together, on a loaded
+#: laptop.
+HANG_SECONDS = 60.0
+#: A ratio between the bound and twice it is measured again this many times before it
+#: fails, each time a plain check then the hostile one, and the lowest pair's ratio stands:
+#: a slow spell falls on both runs of a pair, where the best of each could fall in different
+#: lulls. One at twice the bound or more fails at once. Unlike `check_linear`, which decides
+#: that on a best of three, this is one timed run against the baseline: under host load in a
+#: VM, one read 55, within 9% of it, and on Windows twice the cores busy raised them to 19.
+CONFIRM = 3
 
-def timed_check(project: Path) -> float:
+
+def run_check(project: Path) -> None:
+    """One `check` on `project`, untimed."""
     from manuscript_guard.cli import _run_gates
 
-    started = time.perf_counter()
     _run_gates(project, stage="drafting")
-    return time.perf_counter() - started
+
+
+def timed_check(project: Path) -> float:
+    """The CPU time of one `check` on `project`, with the garbage collector off as
+    `check_linear` has it. CPU time is `check`'s own work: not G7 waiting for Zotero to refuse
+    its ping, 2 s on Windows and none on Linux, nor another process's."""
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        started = time.process_time()
+        run_check(project)
+        return time.process_time() - started
+    finally:
+        if collecting:
+            gc.enable()
+
+
+@functools.cache
+def plain_baseline(plain: Path) -> float:
+    """The best of three checks on a plain copy of the example, once for each copy."""
+    run_check(plain)  # imports, compiled patterns and first opens, off the clock
+    return min(timed_check(plain) for _ in range(3))
+
+
+@pytest.fixture(scope="module")
+def plain_project(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A plain copy of the example, for the module's hostile checks to be measured against."""
+    root = tmp_path_factory.mktemp("plain") / "paper"
+    shutil.copytree(built_example, root, ignore=shutil.ignore_patterns("build", "__pycache__"))
+    return root
+
+
+def check_overhead(project: Path, plain: Path) -> float:
+    """How many times a plain `check`'s CPU time `check` takes on `project`.
+
+    The first run opens every file of a fresh copy for the first time, which costs Windows
+    seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
+    run decides a ratio under the bound, and one at twice the bound or more. One between is
+    measured again, a plain check then the hostile one each time, and the lowest pair's
+    ratio stands: a slow spell falls on both runs of a pair."""
+    started = time.perf_counter()
+    run_check(project)
+    waited = time.perf_counter() - started
+    assert waited < HANG_SECONDS, f"check took {waited:.0f} s by the wall clock"
+    overhead = timed_check(project) / plain_baseline(plain)
+    if overhead < CHECK_OVERHEAD or overhead / 2 >= CHECK_OVERHEAD:
+        return overhead
+    pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
+    return min(second / first for first, second in pairs)
 
 
 # ---------------------------------------------------------------- pathological text
@@ -66,11 +138,14 @@ def timed_check(project: Path) -> float:
     # turns every case in this table into a collection error rather than a test.
     ids=lambda value: value if isinstance(value, str) and len(value) < 60 else "",
 )
-def test_check_finishes_on_pathological_prose(project: Path, name: str, body: str) -> None:
-    """The specific regression this catches: a linear scan quietly becoming quadratic."""
+def test_check_finishes_on_pathological_prose(
+    project: Path, name: str, body: str, plain_project: Path
+) -> None:
+    """A scan that blows up on prose someone might write, or a wait of a minute or more that
+    ends: one that never does hangs the suite."""
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS, f"{name}: check took {elapsed:.1f}s"
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"
 
 
 def opener_lines(count: int) -> str:
@@ -557,7 +632,7 @@ def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: 
 # ---------------------------------------------------------------- hostile files
 
 
-def test_an_enormous_source_stamp_is_not_read_whole(project: Path) -> None:
+def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_project: Path) -> None:
     """`build/*.docx.source.sha256` is read by G1 and had no size cap.
 
     A digest line is 80 bytes. Anything larger is not a digest, and reading it whole is a
@@ -570,8 +645,8 @@ def test_an_enormous_source_stamp_is_not_read_whole(project: Path) -> None:
     (build / "manuscript.docx").write_bytes(b"PK\x03\x04not really a docx")
     (build / f"manuscript.docx{SOURCE_STAMP}").write_text("0" * (8 * 1024 * 1024), encoding="utf-8")
 
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 
 def test_a_figure_stem_with_glob_characters_still_finds_its_siblings(project: Path) -> None:
@@ -597,14 +672,16 @@ def test_a_figure_stem_with_glob_characters_still_finds_its_siblings(project: Pa
 
 
 @pytest.mark.skipif(os.name == "nt", reason="FIFOs do not exist on Windows")
-def test_a_fifo_in_the_figures_directory_does_not_hang_check(project: Path) -> None:
+def test_a_fifo_in_the_figures_directory_does_not_hang_check(
+    project: Path, plain_project: Path
+) -> None:
     """Nothing bounds wall-clock time in the gate runner, so a blocking read is forever.
 
     CI runs Ubuntu and macOS, where an unprivileged `mkfifo` in `figures/` was enough.
     """
     os.mkfifo(project / "figures" / "trap.svg")
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 
 def test_an_enormous_figure_sibling_is_not_read_whole(project: Path) -> None:

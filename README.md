@@ -230,8 +230,8 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
-The package and the plugin carry one version number, and every change to the plugin raises it
-in both, so `manuscript-guard --version` names the release you have. To take a newer one:
+The package and the plugin carry one version number, and every change to either raises it, so
+`manuscript-guard --version` names the release you have. To take a newer one:
 
 ```bash
 pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard
@@ -251,7 +251,8 @@ did not rise with that commit, and only a reinstall takes it:
 The plugin's skills describe the commands of the release they came with, so keep the two
 together (see [the plugin](#the-claude-code-plugin-optional) below). When the plugin is newer
 than the installed command line tool, its session-start hook says so, once, with the upgrade
-command, and blocks nothing.
+command, and blocks nothing. That warning comes from the tool itself, so a copy older than
+0.2.260 cannot give it: upgrade such a copy once, by hand.
 
 To work on the toolkit itself, install it editable with the test dependencies:
 

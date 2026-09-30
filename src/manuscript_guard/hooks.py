@@ -278,7 +278,10 @@ def _version_tuple(text: object) -> tuple[int, ...] | None:
     """`0.2.260` as (0, 2, 260); None for anything that is not plain dotted digits."""
     if not isinstance(text, str) or not re.fullmatch(r"\d+(?:\.\d+)*", text.strip()):
         return None
-    return tuple(int(part) for part in text.strip().split("."))
+    try:
+        return tuple(int(part) for part in text.strip().split("."))
+    except ValueError:  # int() refuses a part of more than 4300 digits
+        return None
 
 
 def _plugin_version() -> str | None:
@@ -292,7 +295,7 @@ def _plugin_version() -> str | None:
         return None
     try:
         document = json.loads((Path(root) / ".claude-plugin" / "plugin.json").read_text("utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # the last for a file nested past the limit
         return None
     version = document.get("version") if isinstance(document, dict) else None
     return version if isinstance(version, str) else None
@@ -314,8 +317,8 @@ def stale_cli_notice() -> str | None:
     if wanted is None or have is None or have >= wanted:
         return None
     return (
-        f"manuscript-guard: the plugin is at {plugin} but the installed command line tool is "
-        f"at {__version__}, so a skill may name a command or option this copy lacks. "
+        f"manuscript-guard: the plugin is at {plugin.strip()} but the installed command line "
+        f"tool is at {__version__}, so a skill may name a command or option this copy lacks. "
         f"Upgrade it with: {UPGRADE_COMMAND}."
     )
 
@@ -327,8 +330,13 @@ def session_start(payload: dict) -> int:
     older than the plugin. It is said here, where it is heard once, and not by the hooks that
     fire on every edit and every shell command.
     """
-    source = payload.get("source")
-    notice = None if source in QUIET_SOURCES else stale_cli_notice()
+    # Each is guarded on its own, so that neither can cost the other: outside a project there
+    # is no status line, and a manifest nobody should have written is no reason to lose it.
+    source = payload.get("source") if isinstance(payload, dict) else None
+    try:
+        notice = None if source in QUIET_SOURCES else stale_cli_notice()
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        notice = None
     try:
         status = _status_line(payload)
     except Exception:  # noqa: BLE001 - outside a project there is no line, and no error

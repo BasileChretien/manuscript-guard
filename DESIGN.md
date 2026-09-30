@@ -3225,24 +3225,33 @@ Closed since, and why each mattered:
   with Claude Code 2.1.119.
 - **The package and the plugin are one release with one number.** `pyproject.toml`,
   `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
-  version, and every plugin bump bumps all four (`tests/test_version.py` fails when they
-  differ; CLAUDE.md and CONTRIBUTING.md say so). Before that the package sat at 0.1.0 while
-  the plugin moved, so `pip install --upgrade git+...` found nothing newer and left an older
-  copy in place, and `--version` could not say which release anyone had. Verified 2026-09-30
-  with pip 26.2: an upgrade takes a newer commit when its version rose, and does not when it
-  did not. `pipx upgrade` never takes one from a git install ("no package index was
-  checked"); `pipx install --force git+...` does.
-- **A stale command line tool is warned about, not prevented.** Skills and the tool update
-  separately, so the plugin can be newer than the installed tool. The session-start hook
-  compares the plugin's version (read from `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`)
-  with the tool's and says so once, with the upgrade command, and blocks nothing. It says
-  nothing when the variable is unset, the file is unreadable, or the version is not plain
-  dotted digits. Not verified against a live Claude Code session: the hooks documentation
-  lists `${CLAUDE_PLUGIN_ROOT}` as a placeholder in hook commands and does not say it is also
-  exported to the hook's environment, nor that a top-level `systemMessage` is shown for a
-  SessionStart hook. The same JSON carries `additionalContext`, so the model is told either
-  way. The reverse, a tool newer than its plugin, is silent, and so is a plugin never
-  updated: nothing tells anyone to run `claude plugin update`.
+  version. The policy (Basile, 2026-09-30) is that every pull request that changes `src/` or
+  `plugin/` takes the next shared number and bumps all four, and the coordinating session
+  assigns the numbers, so that two open pull requests never take one. `tests/test_version.py`
+  fails when the four differ. It cannot tell that a pull request changed code and left them
+  alone, which is the case the policy is for: `pip install --upgrade` finds nothing newer for
+  a fix that did not bump, and the stale-tool notice below cannot fire either, because
+  `plugin.json` did not move. The README's `--force-reinstall` is the fallback. Before this
+  the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
+  nothing newer and left an older copy in place, and `--version` could not say which release
+  anyone had. Verified 2026-09-30 with pip 26.2: an upgrade takes a newer commit when its
+  version rose, and does not when it did not. `pipx upgrade` never takes one from a git
+  install ("no package index was checked"); `pipx install --force git+...` does.
+- **A stale command line tool is warned about, not prevented, and only from 0.2.260 on.**
+  Skills and the tool update separately, so the plugin can be newer than the installed tool.
+  The session-start hook compares the plugin's version (read from
+  `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`) with the tool's and says so once, with the
+  upgrade command, and blocks nothing. It says nothing when the variable is unset, the file
+  is unreadable, or the version is not plain dotted digits. The comparison lives in the
+  tool's own handler, so a tool older than 0.2.260, which is every copy installed before it,
+  runs the old handler and never warns: its first upgrade has to be made by hand, as the
+  README says. Making the check from the plugin's `hooks.json` instead would reach them,
+  since that updates with the plugin. Not observed in a live Claude Code session. The
+  plugins reference lists `CLAUDE_PLUGIN_ROOT` among the variables exported to a hook's
+  process, and the hooks reference describes `systemMessage` as a field any hook event can
+  return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
+  model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
+  a plugin never updated: nothing tells anyone to run `claude plugin update`.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

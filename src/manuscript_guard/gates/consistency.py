@@ -24,16 +24,26 @@ GATE = "G8"
 
 def check_consistency(results: Results) -> Report:
     report = Report()
-    by_value: dict[str, list[str]] = defaultdict(list)
+    # Keyed on the value AND its unit. A count of 56 sources and a share of 56.0% are not
+    # the same quantity, and before this they collided: the check saw one number written two
+    # ways and failed the build, which left the author no fix except to distort the paper
+    # until the arithmetic coincidence went away. Two keys are candidates for being the same
+    # quantity only if they measure the same kind of thing, and the unit is what says so.
+    #
+    # The cost is real and worth naming: a percentage emitted once with unit="%" and once
+    # with the unit forgotten no longer collides. That is a narrower miss than failing on
+    # coincidence, and `same_as` exists for the author who wants two keys held together
+    # regardless.
+    by_value: dict[tuple[str, str | None], list[str]] = defaultdict(list)
 
     for key, value in results.values.items():
         if not value.quoted:
             continue
         if isinstance(value.value, (int, float)) and not isinstance(value.value, bool):
-            by_value[f"{float(value.value):.12g}"].append(key)
+            by_value[(f"{float(value.value):.12g}", value.unit)].append(key)
 
     collisions = 0
-    for literal, keys in sorted(by_value.items()):
+    for (literal, _unit), keys in sorted(by_value.items(), key=lambda kv: kv[0][0]):
         if len(keys) < 2:
             continue
         collisions += 1

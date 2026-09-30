@@ -2472,10 +2472,77 @@ matter is split with `splitlines` still, in the masking and in the build's title
 that is right: pandoc's YAML breaks a line at U+0085, U+2028 and U+2029 as well, and
 refuses the document outright over a vertical tab, a form feed or U+001C.
 
+## The digest chain did not survive a checkout
+
+`.gitattributes` normalises what git stores. The digests were taken over what sits on disk.
+Between those two facts, a project whose analysis writes CSVs on Windows recorded CRLF digests
+for every declared input, and a fresh clone — on any platform, including the one the digests
+were computed on — mismatched all of them.
+
+Measured on the project that found it: **0 failing in the author's working copy, 35 failing in
+a clone of the same commit**, every one of them `input-changed` on a file nobody had touched.
+The `.gitattributes` had been added to prevent exactly this, and its comment records the
+symptom it was written for. It made the input case certain instead, because it fixed the half
+of the problem that was visible from inside the repository.
+
+The fix is the one `source_digest` already applied to scripts, extended to the data an analysis
+READS: hash the content, not the line endings, for suffixes where a line ending is formatting
+(`.csv .tsv .json .yaml .md .bib` and the rest of `_DATA_SUFFIXES`). Everything else stays
+byte-exact, because in a `.xlsx` or a `.zip` a CR is content.
+
+Three decisions worth recording:
+
+- **The fragment's own digest is still byte-exact, and must stay that way.** It is a
+  cross-language contract — an R-written fragment and a Python-written one have to describe the
+  same file the same way — and "hash the bytes you just wrote" is the only operation meaning
+  the same thing in every language. An input is different: nobody reproduces it, they check it
+  has not changed.
+- **Checking tries the file's actual bytes first, then every canonical spelling.** The first
+  version tried only the canonical three — all-LF, all-CRLF, all-CR — and that was a
+  regression, not a fix: a file with MIXED endings, which is what you get from appending CRLF
+  rows to an LF header, matches none of them, so untouched inputs that had been passing began
+  to fail. Including the raw bytes makes the old behaviour a floor: nothing that passed before
+  can fail now. A file whose *content* changed matches no candidate.
+
+- **The suffix list is narrower than it first was, and the boundary is a judgement.**
+  Normalisation rewrites every CR in the stream, not only the ones ending lines, so any format
+  that can carry a CR *inside a value* would collide two different contents. `.sql` and `.txt`
+  were listed and were removed on that ground — a verified collision between two INSERT
+  statements settled the first. The same argument applies to `.csv`, whose quoted fields can
+  contain a bare CR, and `.csv` stays: it is the format the entire problem is about, and
+  excluding it would leave the gate broken for the ordinary case. That asymmetry is recorded
+  rather than hidden.
+
+- **UTF-16 with a BOM is never normalised.** There 0x0D and 0x0A appear as bytes of ordinary
+  characters, so rewriting them corrupts text rather than reformatting it: U+340D and U+340A
+  become the same file. A BOM settles it cheaply; without one, see Known gaps. Excel's
+  "Unicode Text" export and many Japanese-Windows CSV exports are UTF-16, so this is in the
+  path of the projects the toolkit is for.
+- **Both emitters moved together, and there is now a test that says so.** `mg_input_digest`
+  mirrors `input_digest`. There was no such test when this first shipped, and the R side
+  consequently crashed on any text-suffixed file containing a NUL byte — it converted to a
+  string before normalising, which R refuses — so a UTF-16 CSV that `digest::digest(file=)`
+  had handled fine died inside the emitter. It now works on raw vectors. Ten cases,
+  including embedded NULs, UTF-16 and the byte-exact `.txt` and `.sql`, are asserted
+  byte-identical across the two languages.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
 
+- **G8 compares only values whose units agree.** A count of 56 and a share of 56.0% are two
+  quantities, and keying on the unit is what tells them apart. The cost: one quantity emitted
+  once with `unit="%"` and once with no unit, or with the unit spelt two ways ("percent" and
+  "%", "years" and "y"), is no longer reported as written two ways.
+- **A UTF-16 input without a BOM is normalised as if it were 8-bit text.** Its 0x0D and 0x0A
+  bytes can belong to ordinary characters, so an edit that swaps one such character for
+  another (U+4E0D for U+4E0A) can leave the digest unchanged and pass G1. Exports that write
+  UTF-16 carry a BOM; a file without one is taken for 8-bit text.
+- **Checking a declared input reads the whole file into memory.** Before input digests
+  normalised line endings they were streamed; a 300 MB CSV now peaks at about 1.2 GB while G1
+  checks it. The R emitter peaks at about twenty times the file (600 MB for a 28 MB CSV), since
+  its line-ending masks are logical vectors of four bytes a byte. Large binary inputs are
+  affected too, because the file is read before its suffix is tested.
 - **One pandoc version is tested.** CI pins one, in `.github/workflows/ci.yml`: the version
   the tests that assert on pandoc's output were written against. It refuses to run the
   suite with any other. An author's pandoc may be older or newer, and nothing here checks

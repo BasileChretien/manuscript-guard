@@ -2398,7 +2398,8 @@ plain form, a listing opened at the margin under a blank line, the first line or
 listing's closer, outside any comment or raw block, with its word and attributes on the
 opening line, and closed; any other line starting with three backticks or tildes, behind
 up to three spaces, behind a list marker, or behind whitespace other than spaces or a
-zero-width mark, is refused (`unclear-fence`), by `check` and by the build. The second
+zero-width mark, is refused (`unclear-fence`), by `check` and by the build, and `audit
+--strict` fails on one in a Markdown paper. The second
 review found why the margin: in a list item pandoc takes the item's indentation off before
 it looks for the closer, and closed a listing the gates read on through the prose after it;
 and why raw blocks: inside a comment, a `<pre>` or a TeX environment a fence is raw text to
@@ -3256,10 +3257,23 @@ Closed since, and why each mattered:
   And it reads a backtick or a `<!--` in a link destination, an autolink, an HTML attribute
   or TeX maths as its own, where pandoc reads the enclosing construct first. So
   ``[a](http://x/`y) `<!--` 9.99 -->`` and `$a <!-- b$ 9.99 -->` both hide a 9.99 pandoc
-  prints, as a stray backtick in one list item does when it pairs with the one opening
-  `` `<!--` `` in the next. The same boundaries let a comment run out of a blockquote or a
-  list item, and a `<!--` in an indented code block is read as a comment, though pandoc
+  prints, and a `<!--` in an indented code block is read as a comment, though pandoc
   prints it as code. The old regex did all of this and more.
+
+  A comment that runs out of a list item, a quotation, a definition or its term, a footnote
+  or a line of a line block is now refused (`unclear-comment`, by `check`, the build and
+  `audit`), and so is one that a stray backtick in one item, pairing with the one opening
+  `` `<!--` `` in the next, made to the gates. Pandoc reads each such block on its own, so
+  a `<!--` straight under an item's line is text continuing the item, and with its `-->`
+  past a blank line pandoc printed the comment the gates had masked. The refusal reads each
+  block alone and refuses a comment it does not find there
+  (`comments.unclear_comment_lines`). Its blocks are cut short where pandoc's are not worth
+  modelling, so some comments pandoc drops are refused too: one across a blank line in an
+  item's indented lines, a sub-item commented out under a blank line in its item, one
+  across a quotation's paragraphs, one on the line after a div's closing `:::` under a
+  list, and one opened on a line of a paragraph that only looks like a marker, `> 65 years`
+  or `- 5`. A comment on its own line under a blank line, one in a paragraph at the margin,
+  and one closed on its item's own lines are not refused.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they
@@ -4586,6 +4600,11 @@ Closed since, and why each mattered:
   the conventional thresholds are. A corrected threshold goes in the project's own
   `conventions:` with a justification, which is the right amount of ceremony for a value
   that depends on how many comparisons this particular paper made.
+- **`mask()` is quadratic on two inputs no manuscript holds.** A run of `{{` with no `}}`
+  on its line, which the placeholder pattern tries from each `{{` to the line's end (2.7 s
+  at 32,000 characters), and a long run of backslashes with no `<` or `>` after it, which
+  `comparison_escapes` backtracks through from each backslash (about 74 s at 80,000, on one
+  machine). Low priority, and not fixed.
 - **The linear-time tests measure time, so they see a quadratic only once it shows.** Each
   times a scan on eight times its input, taking each size's best of three in alternation,
   and fails at sixteen times the time (`check_linear` in `tests/conftest.py`). A scan whose

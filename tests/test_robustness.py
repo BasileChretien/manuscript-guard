@@ -318,6 +318,17 @@ def test_quotation_marks_before_a_bracket_are_read_in_linear_time(assert_linear)
     assert_linear(lambda count: "> " * count + "x[t]: a\n", link_text_spans, 2000, "quote marks")
 
 
+def test_brackets_after_quotation_marks_are_read_in_linear_time(assert_linear) -> None:
+    """Each `[a]:` read the line's quotation marks again, from the line's start: 8,000 marks
+    and 8,000 brackets on one line took 17 seconds in `build --annotated`."""
+    from manuscript_guard.text.inline import link_text_spans
+
+    def line(count: int) -> str:
+        return "> " * count + "x" + "[a]:" * count + "\n"
+
+    assert_linear(line, link_text_spans, 500, "brackets after quotation marks")
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the

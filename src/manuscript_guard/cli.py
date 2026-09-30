@@ -517,10 +517,20 @@ def cmd_import(args: argparse.Namespace) -> int:
     # the source twice.
     untagged_then = building - set(numbered.sent) if numbered.recorded else set()
     now_named = named_now(followed)
+    # Where each bookmark sits goes by the same names: read under the old ones, a block
+    # holding two identifiers could not say whose text either held.
+    renamed = [
+        replace(
+            block,
+            names=tuple(map(now_named, block.names)),
+            at=tuple((now_named(name), offset) for name, offset in block.at),
+        )
+        for block in returned
+    ]
     plan = plan_import(
         known,
         sent,
-        [replace(block, names=tuple(map(now_named, block.names))) for block in returned],
+        renamed,
         marked,
         abbreviated,
         every=every,

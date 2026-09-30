@@ -1697,8 +1697,12 @@ and the fixes are main's (#116, #119):
 The fix-only review found the first rule still missed what Word 16 does. A cut paragraph's
 identifier stays in front of the next paragraph's own, or on the emptied line, and the
 paragraph counted as having come back. #119 counts it as gone wherever the text its
-identifier is on is not its own (`merge._came_back_whole`). That also covers a followed
-value whose identifier slid onto a paragraph not compared, which had read as a join.
+identifier holds, from its bookmark to the next one's, is not its own
+(`merge._came_back_whole`). That also covers a followed value whose identifier slid onto a
+paragraph not compared, which had read as a join. Where each bookmark sits is read under
+the names the returned document is read under (`roundtrip.named_now`): under the old ones,
+a block holding a followed identifier or a renamed one could not say whose text either
+held, and a paragraph standing there untouched counted as gone.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has

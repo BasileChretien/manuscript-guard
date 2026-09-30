@@ -1621,6 +1621,41 @@ def test_a_followed_value_whose_identifier_slid_onto_one_not_compared_is_not_mer
 
 
 @needs_pandoc
+@pytest.mark.parametrize("shape", ["deleted", "joined"])
+def test_an_edit_merges_beside_a_change_in_word_below_paragraphs_added(
+    project: Path, tmp_path: Path, shape: str
+) -> None:
+    """#119's first review, with identifiers followed: two paragraphs added at the top since
+    the build, so that Alpha, followed, has Romeo's old identifier now; Romeo reworded; and
+    Papa deleted or joined with Romeo in Word. The returned document is read under the
+    identifiers its paragraphs have now, Romeo's under a name no paragraph has, while where
+    each bookmark sits was still read under the old ones: the block holding Papa's and
+    Romeo's could not say which text either held, Romeo counted as gone, and a clause added
+    to Charlie, followed, was refused."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _reworded, _word_joined
+
+    charlie = "Charlie paragraph notes the reporting period of the database."
+    delta = "Delta paragraph closes the section on the sources used."
+    built = ("# Intro", "Zero paragraph opens the section.", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    built += (charlie, delta)
+    added = ("# Intro", _ADDED, "Another paragraph added since the build.")
+    now = (*added, *built[1:4], _reworded(_ROMEO), *built[5:])
+    grown = charlie[:-1] + ", which ran from the first to the last dose."
+
+    def change(xml: str) -> str:
+        from test_corruption import _word_paragraph
+
+        if shape == "deleted":
+            xml = _word_delete(xml, _word_paragraph(xml, "Papa paragraph"))
+        else:
+            xml = _word_joined("Papa paragraph", "Romeo paragraph")(xml)
+        return xml.replace(charlie, grown, 1)
+
+    after, before = _imported(project, tmp_path, built, now, change)
+    assert after == before.replace(charlie, grown, 1)
+
+
+@needs_pandoc
 def test_a_discussion_paragraph_cut_below_one_added_is_not_merged_into_another(
     project: Path, tmp_path: Path
 ) -> None:

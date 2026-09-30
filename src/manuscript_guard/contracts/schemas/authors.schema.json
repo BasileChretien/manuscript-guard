@@ -43,7 +43,7 @@
         "degrees": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "e.g. ['PharmD', 'MSc', 'MPH']"
+          "description": "e.g. ['MD', 'PhD']"
         },
         "orcid": {
           "type": "string",

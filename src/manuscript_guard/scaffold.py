@@ -27,7 +27,7 @@ english_variant: en-GB
 stage: design
 
 # Set once you have chosen a journal; enables the journal gate.
-# target_journal: drug-safety
+# target_journal: journal-of-examples
 
 reporting_guideline: []
 
@@ -54,7 +54,7 @@ authors:
     corresponding: true
     equal_contribution: false
     # Optional, and omitted until you have them. Many journals now require both.
-    # degrees: [PharmD, MSc]
+    # degrees: [MD, PhD]
     # orcid: 0000-0000-0000-0000
     # email: you@institution.example
     # credit: [Conceptualization, Formal analysis, Writing – original draft]

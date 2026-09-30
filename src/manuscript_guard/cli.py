@@ -268,14 +268,22 @@ def cmd_bind(args: argparse.Namespace) -> int:
         # Real selectors from this list, not a fixed example: the example said `main.md:12`,
         # a selector is the path from the project root, and the one command the tool
         # suggested was refused.
-        chosen = [label(item, project.root) for item in certain[:2]]
-        only = " ".join(f"--only {selector}" for selector in chosen)
-        which = "just that one" if len(chosen) == 1 else "just those two"
-        print(
+        # A selector names a line, so two suggestions on one line are one selector: naming
+        # it twice read as two suggestions and promised "just those two" for one line. And
+        # `--only` refuses a line that also holds a number with no single answer, so such a
+        # line is not offered.
+        undecided = {label(item, project.root) for item in items if not item.certain}
+        offered = dict.fromkeys(label(item, project.root) for item in certain)
+        chosen = [selector for selector in offered if selector not in undecided][:2]
+        message = (
             f"\n{len(certain)} of {len(items)} match exactly one published value. "
-            f"`manuscript-guard bind --apply` replaces all of those; "
-            f"`--apply {only}` replaces {which}."
+            f"`manuscript-guard bind --apply` replaces all of those"
         )
+        if chosen:
+            only = " ".join(f"--only {selector}" for selector in chosen)
+            which = "just that line" if len(chosen) == 1 else "just those two lines"
+            message += f"; `--apply {only}` replaces {which}"
+        print(message + ".")
     return 1
 
 

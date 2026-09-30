@@ -290,6 +290,22 @@ def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     assert_linear(attributes, read, 4000, "unclosed attributes")
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [
+        lambda count: "- a " + "<!-- x --> " * count + "\n",
+        lambda count: "- a `x\n- b `<!-- y -->\n" * count,
+    ],
+    ids=["many in one item", "one refused in each of many items"],
+)
+def test_comments_in_list_items_are_read_in_linear_time(shape, assert_linear) -> None:
+    """Each comment in an item is looked up among those the item alone holds, and each
+    refused one is numbered, without reading the item or the text again."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert_linear(shape, unclear_comment_lines, 1000, "comments in list items")
+
+
 def test_link_texts_on_one_long_line_are_read_in_linear_time(assert_linear) -> None:
     """`build --annotated` finds link texts. Looking back to each bracket's line start took
     74 seconds for 160,000 `[1]` on one line, against 0.06 before #106."""

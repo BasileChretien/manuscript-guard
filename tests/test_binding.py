@@ -191,6 +191,53 @@ def test_the_advice_names_selectors_that_work(project: Path, capsys) -> None:
     assert unbound(*loaded(project)) == []
 
 
+def test_the_advice_names_a_line_once_when_two_suggestions_share_it(project: Path, capsys) -> None:
+    """Two typed numbers on one line made the advice read `--only main.md:13 --only
+    main.md:13` and promise to replace "just those two", which was one line."""
+    import re
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    both = "{{results.ror.ci_low}} to {{results.ror.ci_high}})"
+    assert both in text
+    path.write_text(text.replace(both, "2.89 to 5.12)", 1), encoding="utf-8")
+
+    assert main(["bind", str(project)]) == 1
+    advice = capsys.readouterr().out.strip().splitlines()[-1]
+    selectors = re.findall(r"--only ([^\s`]+)", advice)
+    assert len(selectors) == 1, advice
+    assert "just those two" not in advice, advice
+
+    assert main(["bind", str(project), "--apply", "--only", selectors[0]]) == 0
+    assert "{{results.ror.ci_low}}" in path.read_text(encoding="utf-8")
+
+
+def test_the_advice_does_not_name_a_line_that_the_command_would_refuse(
+    project: Path, capsys
+) -> None:
+    """`--only` refuses a line holding a number with no single answer, so advice naming
+    that line offered a command that exited 2."""
+    import re
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text + "\nThe ratio was 3.84 in 77 of these.\n", encoding="utf-8")
+    items = unbound(*loaded(project))
+    assert {i.text: bool(i.certain) for i in items if i.text in {"3.84", "77"}} == {
+        "3.84": True,
+        "77": False,
+    }, "the line needs one suggestion with an answer and one without"
+
+    assert main(["bind", str(project)]) == 1
+    advice = capsys.readouterr().out.strip().splitlines()[-1]
+    assert not re.findall(r"--only ([^\s`]+)", advice), advice
+    assert "manuscript-guard bind --apply" in advice
+
+
 def test_the_command_refuses_an_unknown_selector(project: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

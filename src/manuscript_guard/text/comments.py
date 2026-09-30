@@ -42,7 +42,7 @@ What counts, as pandoc 3.9.0.2 reads it (`-f markdown -t native`):
 from __future__ import annotations
 
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 
 from manuscript_guard.text.fences import Fence, fenced_spans
@@ -163,4 +163,206 @@ def comment_spans(text: str, fences: Sequence[Fence] | None = None) -> list[tupl
             position = close + 3
 
 
-__all__ = ["comment_spans"]
+# The start of a block pandoc reads apart from the text around it, comments and code spans
+# included: a list item, an example, a definition, a footnote, a line of a line block, each
+# behind any quotation marks. Its first line, and the lines under it up to a blank line.
+_QUOTES = re.compile(r"(?:[ \t]*>)+")
+_ITEM = re.compile(
+    r"[ \t]*(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]|$)|\|)"
+)
+# A line that ends such a block, or may: blank, or blank but for quotation marks, a fence,
+# a div's `:::` or a closing tag.
+_BREAK = re.compile(r"[ \t>]*(?:$|```|~~~|:::|</)")
+# A list item's marker, its tabs expanded: the item's text starts past the spaces after it.
+_LIST = re.compile(r" *(?:[*+-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)])(?= |$)")
+
+
+def _text_column(body: str) -> int | None:
+    """The column a list item's text starts at, as pandoc's `rawListItem` places it: past
+    the marker and the spaces after it, or one space past the marker when more than four
+    follow; None when `body` is not a list item's line."""
+    expanded = body.expandtabs(4)
+    marker = _LIST.match(expanded)
+    if marker is None:
+        return None
+    rest = expanded[marker.end() :]
+    gap = len(rest) - len(rest.lstrip(" "))
+    return marker.end() + (gap if rest.strip(" ") and gap <= 4 else min(gap, 1))
+
+
+def _indent(text: str) -> int:
+    expanded = text.expandtabs(4)
+    return len(expanded) - len(expanded.lstrip(" "))
+
+
+def _blocks(lines: list[str], held: list[int | None]) -> list[tuple[int, int]]:
+    """The runs of `lines`, as [first, last), that pandoc may read apart from the rest. They
+    are cut short rather than long wherever pandoc's reading was not worth modelling: every
+    marker starts one, even where pandoc reads the line as text, and a blank line ends one,
+    even where an item's indented lines go on. A term, the line over a definition, is one.
+
+    Two exceptions, each where pandoc's reading is known. Inside a comment a list item
+    opened, `held[i]` being the line it opened on, a line at or past the item's text is the
+    item's: pandoc ends the item only at a marker short of it, so a sub-list commented out
+    stays in the item. Not for an item on a line that may continue a deeper quotation since
+    the last blank line, which is an item of the quotation's list. And the `|` lines of a
+    table or a line block end at a line at the margin, which at the top level starts
+    afresh: a `<!--` under a table's last row is not the table's."""
+    blocks: list[tuple[int, int]] = []
+    start: int | None = None
+    kind = ""  # "list" for a list item, "bar" for a `|` line, "tail" for lines under one
+    top = False  # the `|` lines stand at the top level, where the margin starts afresh
+    column = 0  # where the list item's text starts
+    depth = 0  # the `>` the open block starts behind; a `>` line goes on with a quoted one
+    context = 0  # the deepest quotation since the last blank line, which lines may continue
+    resumes = False  # an item's lines may go on, indented, after a blank line
+    blank = True  # the line above is blank, or there is none
+    last = -1  # the last line that is not a break
+
+    def close(at: int) -> None:
+        nonlocal start, kind
+        if start is not None and start < at:
+            blocks.append((start, at))
+        start, kind = None, ""
+
+    def goes_on(line: str, quotes: re.Match[str] | None, deep: int) -> bool:
+        if not depth:
+            return _indent(line) >= column
+        return deep == depth and quotes is not None and _indent(line[quotes.end() :]) >= column
+
+    for index, line in enumerate(lines):
+        quotes = _QUOTES.match(line)
+        deep = line[: quotes.end()].count(">") if quotes else 0
+        alone = deep > 0 and not line.strip(" \t>")
+        if _BREAK.match(line) and not alone:
+            was_open = start is not None
+            close(index)
+            blank = not line.strip(" \t")
+            if was_open and not blank:
+                start = index + 1  # the lines after a fence or a tag may go on with the item
+            context = 0 if blank else context
+            continue
+        context = max(context, deep)
+        indented = line[:1] in (" ", "\t")
+        body = line[quotes.end() :] if quotes else line
+        pipe = body.lstrip(" \t")[:1] == "|"
+        if kind == "tail" and indented and not pipe and not _ITEM.match(body):
+            blank, last = False, index
+            continue
+        if alone or (kind in ("bar", "tail") and indented and not pipe):
+            # A `>` alone is a blank line in a quotation, which ends an item there, or text
+            # continuing an item; and a line indented under a `|` line goes on with a line
+            # block, or opens a block after a table, a marker an item. Either way what came
+            # before ends here, and what follows is read as a block the margin ends.
+            close(index)
+            start, depth, kind = index, deep, "tail" if not alone else ""
+            blank, last = False, index
+            continue
+        opened = held[index]
+        inside = kind == "list" and start is not None and opened is not None and opened >= start
+        if inside and goes_on(line, quotes, deep):
+            blank, last = False, index
+            continue
+        if pipe:
+            # A line block or a table's row, which a line at the margin ends. At the top
+            # level that line starts afresh; after a `|` line that may be text continuing
+            # an item, it may be the item's too.
+            if kind not in ("bar", "tail"):
+                top = start is None and not (resumes and indented)
+            close(index)
+            start, kind, depth = index, "bar", deep
+            resumes = False if top else resumes
+            blank, last = False, index
+            continue
+        if _ITEM.match(body):
+            if body.lstrip(" \t")[:1] in ":~" and last >= 0:
+                close(last)
+                if blocks and blocks[-1][0] <= last < blocks[-1][1]:
+                    first, _end = blocks.pop()
+                    blocks += [(first, last)] if first < last else []
+                blocks.append((last, last + 1))
+            # A marker on a line continuing a deeper quotation is an item of its list.
+            text = _text_column(body) if deep >= context else None
+            close(index)
+            start, depth, resumes = index, deep, True
+            kind, column = ("list", text) if text is not None else ("", 0)
+        elif quotes:
+            if start is None or not depth:
+                close(index)
+                start, depth, resumes = index, deep, False
+        elif kind == "bar" and not indented:
+            close(index)
+            if top:
+                resumes = False
+            else:
+                start = index  # it may continue the item the `|` line was text in
+        elif kind == "tail" and not indented:
+            close(index)
+            start = index  # it ends a line block, or goes on with what followed a table
+        elif blank:
+            close(index)
+            if resumes and indented:
+                start, depth = index, 0
+            else:
+                resumes = False
+        blank, last = False, index
+    close(len(lines))
+    return blocks
+
+
+def unclear_comment_lines(text: str) -> list[int]:
+    """The lines, numbered from 1, where a comment the gates mask opens in a block pandoc
+    reads on its own, and reading that block alone does not find it.
+
+    Pandoc reads a list item, a quotation, a definition, a footnote and a line block apart,
+    to where the block ends, and a comment or a code span opened in one ends with it. So a
+    `<!--` straight under a list item's line is text continuing the item, and when its
+    `-->` lies past a blank line pandoc prints the comment, numbers and all, where the
+    gates had masked it. And a backtick in one item pairs, to the gates, with one opening
+    `` `<!--` `` in the next, where pandoc prints the comment as text after the code. The
+    blocks are found as `_blocks` finds them, cut short where unsure, so a comment the
+    gates read on past one is refused rather than guessed at, even where pandoc reads on too.
+    """
+    from manuscript_guard.text.masking import front_matter_end, html_comments
+
+    comments = html_comments(text)
+    if not comments:
+        return []
+    begin = front_matter_end(text)
+    lines = text[begin:].split("\n")
+    starts = [begin]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    # For each line a comment is open at the start of, the line it opened on.
+    held: list[int | None] = [None] * len(lines)
+    for start, end in comments:
+        if start >= begin:
+            first = bisect_right(starts, start) - 1
+            for inside in range(first + 1, min(bisect_left(starts, end), len(lines))):
+                held[inside] = first
+    blocks = [
+        (starts[first], starts[last] - 1)
+        for first, last in _blocks([line.replace("\r", "") for line in lines], held)
+    ]
+    firsts = [first for first, _last in blocks]
+    above = text.count("\n", 0, begin)
+    read: dict[int, list[tuple[int, int]]] = {}
+    found: list[int] = []
+    for start, end in comments:
+        index = bisect_right(firsts, start) - 1
+        if index < 0 or start >= blocks[index][1]:
+            continue
+        low, high = blocks[index]
+        if index not in read:
+            read[index] = [(low + a, low + b) for a, b in comment_spans(text[low:high])]
+        # The comments found in the block alone are sorted and apart: the one that could
+        # hold this one is the last to open at or before it.
+        alone = read[index]
+        holder = bisect_right(alone, (start, len(text))) - 1
+        if holder < 0 or end > alone[holder][1]:
+            found.append(above + bisect_right(starts, start))
+    return sorted(set(found))
+
+
+__all__ = ["comment_spans", "unclear_comment_lines"]

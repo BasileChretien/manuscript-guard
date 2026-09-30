@@ -4620,13 +4620,10 @@ Closed since, and why each mattered:
   within about a minute passes, where the old 20 s budget failed one of 30 s; one that
   never returns hangs the suite, as it always did. At the sizes these inputs are written
   at, the heaviest linear ones already cost ten times a plain `check` (up to eleven in a
-  Linux VM), so a quadratic that adds a few seconds passes among them. One does, on main:
-  `BRACKETED`, the citation pattern, reads on to the next `]` or blank line from every `[`
-  (5,000 of them cost three seconds a call, two calls a `check`, G6's and G7's). Seeing it
-  is `check_linear`'s job, one scan at a time, and it is left to a change of its own. Two
-  costs fall outside the CPU ratio too: a scan whose result is cached by content runs once,
-  on the untimed first check, and garbage collection is off while timing. Both are left to
-  the wall clock.
+  Linux VM), so a quadratic that adds a few seconds passes among them. Seeing one is
+  `check_linear`'s job, one scan at a time. Two costs fall outside the CPU ratio too: a
+  scan whose result is cached by content runs once, on the untimed first check, and garbage
+  collection is off while timing. Both are left to the wall clock.
 
 ## Still open
 

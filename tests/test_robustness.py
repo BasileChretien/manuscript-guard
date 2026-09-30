@@ -36,9 +36,9 @@ import pytest
 BUDGET_SECONDS = 20.0
 
 #: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
-#: same project, both in CPU time. The heaviest linear input here read up to 10.0 (one long
-#: run of backticks), and the quadratic one known on main up to 12.3 (nested brackets,
-#: `BRACKETED`). A ratio, so the same bound holds on a runner of any speed.
+#: same project, both in CPU time. The heaviest input here, one long run of backticks, read
+#: up to 10.0, and no other over 7. A ratio, so the same bound holds on a runner of any
+#: speed.
 CHECK_OVERHEAD = 30.0
 #: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
 #: on a read or a network call that takes its time and then returns. A wait under about a

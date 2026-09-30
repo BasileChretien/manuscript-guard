@@ -167,11 +167,11 @@ reads:
       over one scan cannot see. At these sizes the heaviest linear input already reads ten,
       so it cannot tell a quadratic that adds a few seconds: that is `assert_linear`'s job.
     headroom: >-
-      0.97 to 12.3 against 30, three rounds on Windows with thirteen other suites running. The
-      heaviest linear input, one long run of backticks, read up to 10.0: 3x. Nested brackets
-      read up to 12.3, because `BRACKETED` is quadratic on main: 2.4x. Review measured a
-      Linux VM on the same host: up to 11 for a linear input and 13.9 for nested brackets,
-      with CPU time there doubling between rounds as the host's load changed.
+      0.7 to 10.0 against 30, over five rounds on Windows with thirteen other suites running,
+      and review's own. The heaviest input, one long run of backticks, read up to 10.0: 3x.
+      Nested brackets read 12.3 while `BRACKETED` was quadratic, and 1.4 once it read in one
+      pass. Review measured a Linux VM on the same host: up to 11 for a linear input, with
+      CPU time there doubling between rounds as the host's load changed.
 
   - where: tests/test_robustness.py::check_overhead
     kind: budget

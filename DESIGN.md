@@ -3183,9 +3183,11 @@ Closed since, and why each mattered:
   the rendered figure first. Closed — a figure that could not be read no longer softens the
   check on the script behind it, and the PDF reader now has the same poppler-then-pypdf
   chain the literature reader uses.
-- **The hooks depend on `manuscript-guard` being on PATH.** Installed in a virtualenv the
-  editor does not share, they silently do nothing — which is the safe direction, but it is
-  silent.
+- **The hooks depend on `manuscript-guard-hook` being on PATH.** Installed in a virtualenv
+  the editor does not share, they cannot run, which is the safe direction: nothing is blocked
+  and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
+  command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
+  non-blocking `hook error` notice in the transcript. Not observed in a live session.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -3193,6 +3195,26 @@ Closed since, and why each mattered:
   version in `plugin.json` and the marketplace entry: a skill edited without a bump is
   reported as "already at the latest version" and never reaches anyone. Verified 2026-09-24
   with Claude Code 2.1.119.
+- **The package and the plugin are one release with one number.** `pyproject.toml`,
+  `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
+  version, and every plugin bump bumps all four (`tests/test_version.py` fails when they
+  differ; CLAUDE.md and CONTRIBUTING.md say so). Before that the package sat at 0.1.0 while
+  the plugin moved, so `pip install --upgrade git+...` found nothing newer and left an older
+  copy in place, and `--version` could not say which release anyone had. Verified 2026-09-30
+  with pip 26.2: an upgrade takes a newer commit when its version rose, and does not when it
+  did not. `pipx upgrade` never takes one from a git install ("no package index was
+  checked"); `pipx install --force git+...` does.
+- **A stale command line tool is warned about, not prevented.** Skills and the tool update
+  separately, so the plugin can be newer than the installed tool. The session-start hook
+  compares the plugin's version (read from `$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json`)
+  with the tool's and says so once, with the upgrade command, and blocks nothing. It says
+  nothing when the variable is unset, the file is unreadable, or the version is not plain
+  dotted digits. Not verified against a live Claude Code session: the hooks documentation
+  lists `${CLAUDE_PLUGIN_ROOT}` as a placeholder in hook commands and does not say it is also
+  exported to the hook's environment, nor that a top-level `systemMessage` is shown for a
+  SessionStart hook. The same JSON carries `additionalContext`, so the model is told either
+  way. The reverse, a tool newer than its plugin, is silent, and so is a plugin never
+  updated: nothing tells anyone to run `claude plugin update`.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

@@ -22,6 +22,7 @@ never denied.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -240,8 +241,7 @@ def guard_submission(payload: dict) -> int:
     )
 
 
-def session_start(payload: dict) -> int:
-    """One line on where the manuscript stands, so nobody has to remember."""
+def _status_line(payload: dict) -> str:
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.policy import DESCRIPTIONS
 
@@ -259,7 +259,92 @@ def session_start(payload: dict) -> int:
         parts.append(f"{sum(deferred.values())} more become due at '{upcoming}'.")
     if failing:
         parts.append("Run `manuscript-guard check`.")
-    return _context("SessionStart", " ".join(parts))
+    return " ".join(parts)
+
+
+# `pip install --upgrade` is enough for a pip install now that the package version moves with
+# the plugin. pipx is the exception: `pipx upgrade` refuses a git install ("no package index
+# was checked"), so it has to be reinstalled.
+UPGRADE_COMMAND = (
+    "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard "
+    "(with pipx: pipx install --force git+https://github.com/BasileChretien/manuscript-guard)"
+)
+
+# A clear or a compact happens inside a session that already heard it at its start.
+QUIET_SOURCES = ("clear", "compact")
+
+
+def _version_tuple(text: object) -> tuple[int, ...] | None:
+    """`0.2.260` as (0, 2, 260); None for anything that is not plain dotted digits."""
+    if not isinstance(text, str) or not re.fullmatch(r"\d+(?:\.\d+)*", text.strip()):
+        return None
+    return tuple(int(part) for part in text.strip().split("."))
+
+
+def _plugin_version() -> str | None:
+    """The version of the plugin this hook was started from, if Claude Code says where it is.
+
+    `CLAUDE_PLUGIN_ROOT` names the installed copy of the plugin. Unset, as it is anywhere but
+    under Claude Code, there is nothing to compare and the answer is None.
+    """
+    root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if not root:
+        return None
+    try:
+        document = json.loads((Path(root) / ".claude-plugin" / "plugin.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+    version = document.get("version") if isinstance(document, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def stale_cli_notice() -> str | None:
+    """A sentence, when the plugin is newer than this command line tool; otherwise None.
+
+    The plugin's skills name commands and options of the release they were written against,
+    and an installed copy of the plugin updates on its own schedule, not with the package. The
+    two carry one version number, so older here means a skill may name something this copy
+    lacks. It only says so: nothing is blocked, because a stale tool still guards.
+    """
+    from manuscript_guard import __version__
+
+    plugin = _plugin_version()
+    wanted = _version_tuple(plugin)
+    have = _version_tuple(__version__)
+    if wanted is None or have is None or have >= wanted:
+        return None
+    return (
+        f"manuscript-guard: the plugin is at {plugin} but the installed command line tool is "
+        f"at {__version__}, so a skill may name a command or option this copy lacks. "
+        f"Upgrade it with: {UPGRADE_COMMAND}."
+    )
+
+
+def session_start(payload: dict) -> int:
+    """One line on where the manuscript stands, so nobody has to remember.
+
+    Also, once at the start of a session, the notice that the installed command line tool is
+    older than the plugin. It is said here, where it is heard once, and not by the hooks that
+    fire on every edit and every shell command.
+    """
+    source = payload.get("source")
+    notice = None if source in QUIET_SOURCES else stale_cli_notice()
+    try:
+        status = _status_line(payload)
+    except Exception:  # noqa: BLE001 - outside a project there is no line, and no error
+        status = None
+    if status is None and notice is None:
+        return 0
+
+    output: dict = {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": " ".join(part for part in (status, notice) if part),
+        }
+    }
+    if notice:
+        output["systemMessage"] = notice
+    return _emit(output)
 
 
 HANDLERS = {

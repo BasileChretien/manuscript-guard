@@ -1587,13 +1587,9 @@ def _recipe_paths(workspace: Path, name: str | None) -> list[Path]:
     A project's own recipe wins, the way its own journal and checklist profiles already do:
     a guideline can be revised, or extended locally, without waiting for a release.
     """
-    from manuscript_guard.paths import SHIPPED_RECIPES
+    from manuscript_guard.paths import recipes
 
-    by_name: dict[str, Path] = {}
-    for directory in (SHIPPED_RECIPES, workspace / "profiles" / "reporting" / "recipes"):
-        if directory.exists():
-            for path in sorted(directory.glob("*.recipe.yaml")):
-                by_name[path.name.split(".recipe")[0]] = path
+    by_name = recipes(workspace)
     if name:
         return [by_name[name]] if name in by_name else []
     return [by_name[key] for key in sorted(by_name)]

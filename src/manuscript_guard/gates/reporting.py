@@ -23,7 +23,7 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.paths import SHIPPED_CHECKLISTS, SHIPPED_RECIPES
+from manuscript_guard.paths import SHIPPED_CHECKLISTS, recipes
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import headings
 
@@ -52,11 +52,7 @@ def available_checklists(project: Project) -> list[str]:
 
 def recipe_names(project: Project) -> list[str]:
     """The guidelines a recipe exists for: those the package ships and any the project wrote."""
-    found = set()
-    for directory in (SHIPPED_RECIPES, project.root / "profiles" / "reporting" / "recipes"):
-        if directory.exists():
-            found.update(p.name.split(".recipe")[0] for p in directory.glob("*.recipe.yaml"))
-    return sorted(found)
+    return sorted(recipes(project.root))
 
 
 def retrieval_advice(project: Project, name: str) -> str:
@@ -65,14 +61,15 @@ def retrieval_advice(project: Project, name: str) -> str:
     `fetch` and `transcribe` work from a recipe, so naming them for a guideline that has none
     sent the author to a command that answers "no recipe for ...".
     """
-    if name in recipe_names(project):
+    known = recipe_names(project)
+    if name in known:
         return (
             f"`manuscript-guard fetch {name}` then `manuscript-guard transcribe {name}` "
             "retrieve it from the guideline's own site and build it from that copy, and the "
             "reporting-checklist skill walks through it"
         )
     return (
-        f"there is no recipe for {name} (recipes: {', '.join(recipe_names(project)) or 'none'}), "
+        f"there is no recipe for {name} (recipes: {', '.join(known) or 'none'}), "
         "so `fetch` and `transcribe` cannot retrieve it; the reporting-checklist skill "
         "explains how to write one"
     )

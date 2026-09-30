@@ -80,3 +80,65 @@ jobs:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pip install -e ".[dev]"
       - run: pytest -q tests/test_r_emitter.py
+
+  wheel:
+    # Every other job installs editable, which reads src/ where it stands. A data file, a schema
+    # or a recipe that git ignores or the build leaves out is present there and missing from
+    # `pip install git+https://...`, which is what a user runs. So build the wheel, install it
+    # into a fresh venv, run from a directory that is not the checkout, and use the new project
+    # the way the README does.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
+      - run: pandoc --version
+      - name: Build the wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip wheel . --no-deps --wheel-dir "$RUNNER_TEMP/wheelhouse"
+      - name: Install it into a fresh venv and use it
+        shell: bash
+        run: |
+          wheel=$(python -c "import glob, os; print(glob.glob(os.path.join(os.environ['RUNNER_TEMP'], 'wheelhouse', '*.whl'))[0])")
+          expected=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])" | tr -d '\r')
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          if [ -d "$RUNNER_TEMP/wheel-venv/Scripts" ]; then
+            BIN="$RUNNER_TEMP/wheel-venv/Scripts"
+          else
+            BIN="$RUNNER_TEMP/wheel-venv/bin"
+          fi
+          "$BIN/python" -m pip install "$wheel"
+
+          # Away from the checkout, so nothing can be imported from src/.
+          cd "$RUNNER_TEMP"
+          "$BIN/python" -c "import manuscript_guard as m; assert 'site-packages' in m.__file__, m.__file__"
+          installed=$("$BIN/manuscript-guard" --version | tr -d '\r')
+          [ "$installed" = "$expected" ] || { echo "installed $installed, pyproject says $expected"; exit 1; }
+          "$BIN/manuscript-guard" --help > /dev/null
+
+          "$BIN/manuscript-guard" init smoke --title "Smoke test"
+          cd smoke
+          "$BIN/manuscript-guard" check
+          "$BIN/manuscript-guard" build --offline
+          test -s build/manuscript.docx
+
+          # Package data an editable install never misses: the journal template and the checklist
+          # recipes, asked for directly (`journal --template` refuses a project whose authors
+          # are still the placeholder), and a recipe found by the command that uses it
+          # (transcribe then fails on the missing document, which is after it found the
+          # recipe). The schemas were read by `check` above.
+          "$BIN/python" -c "from manuscript_guard.paths import SHIPPED_JOURNALS as J, SHIPPED_RECIPES as R; assert (J / 'TEMPLATE.yaml').is_file(); assert len(list(R.glob('*.recipe.yaml'))) >= 13"
+          out=$("$BIN/manuscript-guard" transcribe STROBE 2>&1 || true)
+          [[ "$out" == *STROBE.recipe.yaml* ]] || { echo "$out"; exit 1; }
+          hook=$(echo '{}' | "$BIN/manuscript-guard-hook" session-start)
+          [[ "$hook" == *SessionStart* ]] || { echo "hook said: $hook"; exit 1; }

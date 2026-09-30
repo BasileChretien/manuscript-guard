@@ -29,6 +29,17 @@ request against an interface that will change.
 - **No absolute paths, no author-specific configuration**, and no assumption that Claude
   Code is present.
 
+## Versions
+
+The package and the plugin are one release with one number. A change to a skill or a hook
+bumps it, and it is written in four places, all of which `tests/test_version.py` checks:
+`version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
+`version` in `plugin/.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+Bumping only the plugin is the mistake that test exists for: `pip install --upgrade` decides
+on the package's number, so an installed tool would stay behind the skills that call it. Two
+open pull requests must not take the same number, or git merges them without a conflict and
+the second ships under a number that has already been released.
+
 ## Running it
 
 ```bash

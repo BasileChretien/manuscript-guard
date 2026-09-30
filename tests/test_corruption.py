@@ -5302,6 +5302,37 @@ def test_a_split_beside_a_moved_paragraph_left_empty_is_not_merged(
     assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
+@pytest.mark.parametrize("shape", ["spacer joined in", "cut in between", "maths cut in between"])
+def test_a_split_that_nothing_in_the_markup_shows_is_not_merged(
+    tmp_path: Path, shape: str
+) -> None:
+    """A paragraph split in Word whose second half no identifier sits beside: taken into the
+    spacer line under it, whose identifier it then carries, or pushed past a paragraph cut
+    and pasted between the halves without Track Changes, which keeps its identifier. Import
+    merged the paragraph as its first half and only listed the second."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import apply_plan, plan_import
+
+    y, z, o = "Yankee one is here. Yankee two is there.", "Zulu is moved.", "Oscar closes it."
+    between = "$$x = y$$" if shape.startswith("maths") else "&nbsp;"
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{y}\n\n{between}\n\n{z}\n\n{o}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = [("y", y), ("z", z), ("o", o)] + ([("s", between)] if between == "&nbsp;" else [])
+    known = {name: (path, words, text.index(words)) for name, words in lines}
+    line = Block(kind="equation", key="x=y") if between != "&nbsp;" else Block(("s",), "")
+    sent = [Block((), "Methods"), Block(("y",), y), line, Block(("z",), z), Block(("o",), o)]
+    first, second = Block(("y",), "Yankee one is here."), "Yankee two is there."
+    if shape == "spacer joined in":
+        returned = [sent[0], first, Block(("s",), second), sent[3], sent[4]]
+    else:
+        landed = line if between != "&nbsp;" else Block((), "")
+        oscar = Block(("o",), o) if between != "&nbsp;" else Block(("s", "o"), o)
+        returned = [sent[0], first, landed, sent[3], Block((), second), oscar]
+    apply_plan(known, plan_import(known, sent, returned))
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
+
+
 def _unmarked(node):
     """Pandoc's reading with every annotation mark, a styled span around a link to an
     `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""

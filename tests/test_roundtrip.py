@@ -11332,6 +11332,137 @@ def test_a_spacer_moved_into_a_split_does_not_vouch_for_it(tmp_path: Path, space
     assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
+_YANKEE = "Yankee one is here. Yankee two is there."
+_ZULU, _OSCAR = "Zulu is moved.", "Oscar closes it."
+#: A display equation as the build writes one: its own paragraph, with no identifier.
+_EQUATION = "<w:p><m:oMathPara><m:oMath><m:r><m:t>x=y</m:t></m:r></m:oMath></m:oMathPara></w:p>"
+
+
+def _yankee_section(tmp_path: Path, between: str) -> tuple[Path, str, dict]:
+    """The .md of a section Y / `between` / Z / O, and the identifiers it knows."""
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{_YANKEE}\n\n{between}\n\n{_ZULU}\n\n{_OSCAR}\n"
+    path.write_text(text, encoding="utf-8")
+    lines = [("y", _YANKEE), ("z", _ZULU), ("o", _OSCAR)]
+    if between in _SPACERS:
+        lines.append(("s", between))
+    return path, text, {f"mg-p-{n}-0": (path, line, text.index(line)) for n, line in lines}
+
+
+def _bookmarked(name: str) -> str:
+    at = next(_WORD_IDS)
+    return f'<w:bookmarkStart w:id="{at}" w:name="{name}"/><w:bookmarkEnd w:id="{at}"/>'
+
+
+@pytest.mark.parametrize("tracked", [False, True], ids=["untracked", "tracked"])
+@pytest.mark.parametrize("spacer", list(_SPACERS))
+def test_a_split_whose_second_half_took_in_the_spacer_under_it_is_not_merged(
+    tmp_path: Path, spacer: str, tracked: bool
+) -> None:
+    """A paragraph split in Word, then Delete pressed at the end of its second half, which
+    takes in the spacer line under it: the second half carries the spacer's identifier, and
+    as a paragraph with an identifier it vouched that nothing beside the first half was new.
+    `--apply` wrote the paragraph as its first half. Text on a line sent empty came from
+    somewhere, and is new text. Word 365's own file for each (2026-09-28)."""
+    from manuscript_guard.merge import apply_plan
+
+    path, text, known = _yankee_section(tmp_path, spacer)
+    runs = _SPACERS[spacer]
+    rest = _tagged("mg-p-z-0", text_run(_ZULU)) + _tagged("mg-p-o-0", text_run(_OSCAR))
+    sent = _HEADING + _tagged("mg-p-y-0", text_run(_YANKEE)) + _tagged("mg-p-s-0", runs) + rest
+    second = text_run("Yankee two is there.")
+    if tracked:
+        entered = f'<w:pPr><w:rPr><w:ins w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr></w:pPr>'
+        deleted = f'<w:pPr><w:rPr><w:del w:id="{next(_WORD_IDS)}" {_BY}/></w:rPr></w:pPr>'
+        first = f"<w:p>{entered}{_bookmarked('mg-p-y-0')}{text_run('Yankee one is here. ')}</w:p>"
+        halves = first + f"<w:p>{deleted}{second}</w:p>"
+        halves += f"<w:p>{_bookmarked('mg-p-s-0')}{runs}</w:p>"
+    else:
+        halves = _tagged("mg-p-y-0", text_run("Yankee one is here. "))
+        halves += f"<w:p>{second}{_bookmarked('mg-p-s-0')}{runs}</w:p>"
+    plan = _import(tmp_path, known, sent, _HEADING + halves + rest)
+    assert "mg-p-y-0" in [refusal.name for refusal in plan.refused], plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
+
+
+@pytest.mark.parametrize("between", ["&nbsp;", "$$x = y$$"])
+def test_a_split_with_paragraphs_cut_in_between_without_track_changes_is_not_merged(
+    tmp_path: Path, between: str
+) -> None:
+    """A paragraph split in Word, then the line under it and the paragraph after that cut
+    together, without Track Changes, and pasted between the halves. Word keeps the bookmark
+    of every paragraph but the first in a cut: the pasted paragraph stood beside the first
+    half with its identifier, as if nothing had moved, and vouched for it. The second half,
+    past it, was only listed as new text, and `--apply` wrote the paragraph as its first
+    half. Where the line cut first is an equation, nothing in the markup says anything
+    moved, so the words decide: most of what the paragraph lost came back as new text.
+    Word 365's own files for both (2026-09-28)."""
+    from manuscript_guard.merge import apply_plan
+
+    path, text, known = _yankee_section(tmp_path, between)
+    line = _EQUATION if between == "$$x = y$$" else _tagged("mg-p-s-0", _SPACERS[between])
+    zulu, oscar = _tagged("mg-p-z-0", text_run(_ZULU)), _tagged("mg-p-o-0", text_run(_OSCAR))
+    sent = _HEADING + _tagged("mg-p-y-0", text_run(_YANKEE)) + line + zulu + oscar
+    # The first line of the cut lands without its identifier, which stays behind on the
+    # paragraph after the cut.
+    landed = _EQUATION if between == "$$x = y$$" else f"<w:p>{_SPACERS[between]}</w:p>"
+    left = _bookmarked("mg-p-s-0") if between in _SPACERS else ""
+    back = _HEADING + _tagged("mg-p-y-0", text_run("Yankee one is here. ")) + landed + zulu
+    back += f"<w:p>{text_run('Yankee two is there.')}</w:p>"
+    back += f"<w:p>{left}{_bookmarked('mg-p-o-0')}{text_run(_OSCAR)}</w:p>"
+    plan = _import(tmp_path, known, sent, back)
+    assert "mg-p-y-0" in [refusal.name for refusal in plan.refused], plan
+    apply_plan(known, plan)
+    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
+
+
+@pytest.mark.parametrize(
+    ("role", "added"),
+    [
+        ("heading", "Reports of hepatic injury"),
+        ("caption", "Reports of hepatic injury"),
+        ("", "Reporting of hepatic injury"),
+        # A bold subtitle without a heading style: compared in any case, its capital
+        # matched the lowercase word the rewording dropped, and made the fourth.
+        ("", "Reports of hepatic injury"),
+    ],
+    ids=["heading", "caption", "body", "body capitalised"],
+)
+def test_new_text_sharing_a_few_words_a_rewording_dropped_does_not_refuse_it(
+    tmp_path: Path, role: str, added: str
+) -> None:
+    """A rewording that dropped "reports of hepatic injury", and a heading "Reporting of
+    hepatic injury" added under Results in the same round (Word 365, the example's build):
+    three of the heading's four words were among the words the paragraph lost, and it was
+    refused as split off - a split that never happened, where `main` merged it. A heading or
+    a caption is never a split's second half, which Word gives the body style, whatever
+    words it shares; and a short text shares its words with a paragraph by its "of" and
+    "the" as much as by what it says, so three are not enough."""
+    from manuscript_guard.merge import plan_import
+
+    was = (
+        "The reporting odds ratio was computed from a 2 x 2 table contrasting reports of "
+        "hepatic injury with all other reported events, for example-drug against all other "
+        "drugs in the database."
+    )
+    now = (
+        "We computed the reporting odds ratio from a 2 x 2 table, for example-drug against all "
+        "other drugs."
+    )
+    words = {"m": was, "r": "We found 77 cases."}
+    path = tmp_path / "main.md"
+    text = f"# Methods\n\n{was}\n\n# Results\n\n{words['r']}\n"
+    path.write_text(text, encoding="utf-8")
+    known = {name: (path, line, text.index(line)) for name, line in words.items()}
+    methods, results = Block((), "Methods", role="heading"), Block((), "Results", role="heading")
+    sent = [methods, Block(("m",), was), results, Block(("r",), words["r"])]
+    new = Block((), added, role=role)
+    plan = plan_import(known, sent, [methods, Block(("m",), now), results, sent[3], new])
+    assert not plan.refused, plan.refused
+    assert "m" in plan.merged, plan
+
+
 @needs_pandoc
 @pytest.mark.parametrize("returned", CUT_DOWN)
 def test_a_paragraph_cut_down_to_a_rule_prints_as_typed(returned: str) -> None:

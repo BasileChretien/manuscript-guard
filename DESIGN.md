@@ -114,7 +114,9 @@ These were tested, not assumed, and they determine the architecture.
 - **Word does not carry a paragraph's identifier when it cuts the paragraph** (Word 365,
   driven over COM on the example's build, 2026-09-24). The identifier is an empty bookmark,
   and Word leaves an empty bookmark where it stood. With Track Changes on, it stays in the
-  moved-from copy; without, it moves onto the next paragraph. Text pasted or typed at the
+  moved-from copy; without, it moves onto the next paragraph. That is the first paragraph
+  of what it cuts: the bookmarks of the paragraphs after it go with them (2026-09-28).
+  Text pasted or typed at the
   start of a paragraph, Enter included, goes in behind that paragraph's bookmark. And
   pandoc's reference document sets `w:doNotTrackMoves`, so a move made with Track Changes on
   came back as a deletion and an unrelated insertion. See "A move, the way Word makes one".
@@ -2307,12 +2309,32 @@ The checks that came out of the review rounds guard the tracked path as well:
   vouches for nothing whatever it still holds: with its moved text deleted, or replaced by a
   symbol with no text, it was looked past as an empty line is, and the split merged as its
   first half. Only an arrived line that holds nothing, and carries no identifier or only
-  those of paragraphs sent with no text - a `&nbsp;` or `<br>` spacer - is looked past, as
-  the empty line it is, and what lies beyond it decides. Enter pressed on a spacer reads as
-  arrived, and treated as a paragraph that vouches for nothing it had the rewording beside
-  it refused. A spacer and the paragraph under it cut together and pasted between the halves
-  of a split are one move to Word, and treated as a neighbour, the spacer vouched for the
-  split; looked past, the moved paragraph beyond it does not.
+  those of paragraphs sent with no text - a `&nbsp;` or `<br>` spacer, or a line holding only
+  maths or a picture - is looked past, as the empty line it is, and what lies beyond it
+  decides. Enter pressed on a spacer reads as arrived, and treated as a paragraph that
+  vouches for nothing it had the rewording beside it refused. A spacer and the paragraph
+  under it cut together and pasted between the halves of a split are one move to Word, and
+  treated as a neighbour, the spacer vouched for the split; looked past, the moved paragraph
+  beyond it does not.
+- Text on a line sent empty is new text. Delete pressed at the end of a split's second half
+  takes in the spacer line under it, and the second half then carries the spacer's
+  identifier: as a paragraph with an identifier, it vouched for the split, and the paragraph
+  was merged as its first half, on `main` too. The cost: a rewording beside a spacer line
+  that anything was typed on, or that an untracked deletion left its identifier on, is
+  refused as a split with it, where `main` refused only the spacer line. With the neighbour
+  shortened, that cannot be told from the join.
+- A paragraph is refused when new body text without an identifier is made mostly of words
+  it lost: four of them at least, in order. A split with a paragraph cut in between
+  without Track Changes shows nothing else: Word keeps the identifier of every paragraph but
+  the first of a cut, so the pasted paragraph stood beside the first half as if nothing had
+  moved, and the first line of the cut, a spacer or an equation, landed without one. A
+  sentence cut out and pasted as a paragraph of its own is the same loss. A heading, a
+  caption or a reference entry is not weighed: Word gives a split's second half the body
+  style, and a heading added in the same round, sharing "of hepatic injury" with a
+  rewording that dropped it, had that rewording refused. Three words are never enough:
+  "of" and "the" are often two of them. Words are compared as written, so a four-word
+  second half that gained a capital, as a sentence of its own, is one word short: compared
+  in any case, a body line "Reports of hepatic injury" refused the same rewording.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -4370,11 +4392,18 @@ Closed since, and why each mattered:
   That is the price of refusing a split, and it does not refuse every one. The search for
   new text stops at the first untagged text the document already had. A table moved with
   its caption between the halves of a split, or a heading dragged there, puts that text
-  first, so the paragraph is merged as its first half and the rest is gone from the source,
-  as on main. Exit 1, because the caption or heading is reported out of place, but the
-  merge is written. A tagged paragraph moved between the halves does the same, but only
-  when Word keeps its bookmark; real Word drops it on a cut and paste, and the split is
-  refused. A table, figure or equation the
+  first, and a tagged paragraph moved there does the same when Word keeps its bookmark -
+  which it does for every paragraph but the first of a cut: a line and the paragraph under
+  it, cut together without Track Changes and pasted between the halves, stood there with
+  the second one's identifier (Word 365, 2026-09-28). Each of these is refused by the
+  second half's words instead (see "A move, the way Word makes one"): four words or more
+  it lost. That is a judgement. A second half of under four words, or one reworded in the
+  same round, still has the paragraph merged as its first half and the rest gone from the
+  source, as on main; exit 1, because the second half is listed, but the merge is written.
+  `main` merges a sentence deleted while a paragraph of the same words is added elsewhere,
+  on purpose, and so does this check under four words; from four on it refuses that pair,
+  which is left to the maintainer to settle. A table, figure or
+  equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the
   first block that was not prose. One the document did have is looked past, as an empty line

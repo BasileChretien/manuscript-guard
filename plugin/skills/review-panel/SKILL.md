@@ -43,24 +43,30 @@ Read the whole manuscript once before writing anything. Then, per reviewer, revi
 within that remit** — the value of a panel is that its members are not interchangeable, and
 a reviewer who comments on everything is a reviewer who has stopped being a specialist.
 
-Get the digest the record must carry:
+When a reviewer has finished reading, have the toolkit start their record, so that nobody
+types a digest:
 
 ```bash
-manuscript-guard review --digest
+manuscript-guard review --record <reviewer-id> --round <n> --remit "<what they noticed>" \
+    --verdict <pass|minor-revision|major-revision|reject> --summary "<their overall comment>"
 ```
 
-If the manuscript is split across several files, record instead which of them this reviewer
-read, so a later edit elsewhere does not void their work:
+That writes `review/round-<n>/<reviewer-id>.yaml` with the digest of the manuscript and of
+each of its files filled in. It adds the reviewer to `review/panel-<n>.yaml`, and creates the
+panel if there is none, so put the panel's `rationale` and each reviewer's `why` there
+(step 1). The verdict is required, because a record with a placeholder verdict is a claim
+that somebody looked. `--by` names who did the reading and defaults to the reviewer id. The
+command refuses to overwrite a record, so a second reading of a changed manuscript is a
+further round (step 3).
 
-```bash
-manuscript-guard review --files
-```
+Then add the findings to the file. If the manuscript is split across several files and this
+reviewer read only some of them, delete the other files' lines under `file_sha256`, so that a
+later edit elsewhere does not void their work. `manuscript-guard review --files` prints those
+lines, and `--digest` prints the digest of the whole manuscript, if you want to compare.
+List honestly: a round stays incomplete while some manuscript file is on nobody's list, so
+trimming the map moves work to another reviewer rather than making it disappear.
 
-Paste the block, then delete the lines for files outside the remit. List honestly: a round
-stays incomplete while some manuscript file is on nobody's list, so trimming the map moves
-work to another reviewer rather than making it disappear.
-
-Write `review/round-<n>/<reviewer-id>.yaml`. Severity means something:
+Severity means something:
 
 - **major** — blocks a submission build until answered. The paper's claim does not follow,
   a method is wrong or unreported, a number cannot be reconstructed.

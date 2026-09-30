@@ -17,8 +17,10 @@ the paper.
 
 ## 1. Get the source
 
-Use the Claude-in-Chrome tools, so the user's institutional session applies and paywalled
-full texts are reachable. Save what you can actually read:
+Use a browser the user is signed in to, such as the Claude-in-Chrome tools where they are
+connected, so the user's institutional session applies and paywalled full texts are
+reachable. If there is none, ask the user to save the files. Save what you can actually
+read:
 
 - **Full text** — the PDF, or the article page saved as HTML.
 - **Abstract only** — when the full text is genuinely unreachable. Save the abstract page.
@@ -59,7 +61,7 @@ In `literature/ledger.yaml`:
   value: 12.4
   display: "12.4"
   unit: "%"
-  citekey: smith2020Prevalence          # pinned in Zotero
+  citekey: smith2020Prevalence          # pinned, if the project uses Zotero
   depth: full-text                       # or abstract-only
   source_file: sources/smith2020Prevalence.pdf
   locator: "Table 2, p. 415"
@@ -67,9 +69,11 @@ In `literature/ledger.yaml`:
   verified_on: 2026-08-03
 ```
 
-The item must be **in Zotero with a pinned citation key**. An unpinned key is regenerated
-from metadata, so correcting an author's initials silently renames it and every citation
-using it stops resolving.
+In a project that uses Zotero, the item must be **in Zotero with a pinned citation key**. An
+unpinned key is regenerated from metadata, so correcting an author's initials silently
+renames it and every citation using it stops resolving. Without Zotero the key comes from
+`literature/references.bib`, and `check` warns that it could not tell whether keys are
+pinned.
 
 Then confirm the chain holds:
 

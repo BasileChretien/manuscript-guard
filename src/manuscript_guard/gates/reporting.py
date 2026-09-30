@@ -146,8 +146,9 @@ def check_reporting(project: Project) -> Report:
                     gate=GATE,
                     code="checklist-not-retrieved",
                     message=f"{name} is required but its item list has not been retrieved",
-                    hint="the reporting-checklist skill fetches it from the guideline's own "
-                    "site and records the source; available: "
+                    hint=f"`manuscript-guard fetch {name}` then `manuscript-guard transcribe "
+                    f"{name}` retrieve it from the guideline's own site and build it from that "
+                    "copy, and the reporting-checklist skill walks through it; available: "
                     + (", ".join(available_checklists(project)) or "none"),
                 )
             )
@@ -286,7 +287,9 @@ def scaffold_completion(project: Project, name: str) -> tuple[Path, int, int]:
     source = checklist_path(project, name)
     if source is None:
         raise FileNotFoundError(
-            f"no checklist for {name}; retrieve it first with the reporting-checklist skill"
+            f"no checklist for {name}; retrieve it first with `manuscript-guard fetch {name}` "
+            f"and `manuscript-guard transcribe {name}` (the reporting-checklist skill walks "
+            "through it)"
         )
     checklist = read_structured(source)
     path = completion_path(project, name)

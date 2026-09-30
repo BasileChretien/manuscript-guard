@@ -230,6 +230,17 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
+The package's own version is fixed, so `pip install --upgrade` finds nothing newer and leaves
+an older copy in place, and so does `pipx upgrade`. To take the latest commit, reinstall it:
+
+```bash
+pip install --force-reinstall --no-deps git+https://github.com/BasileChretien/manuscript-guard
+pipx install --force git+https://github.com/BasileChretien/manuscript-guard   # if you use pipx
+```
+
+The plugin's skills describe the commands of the current toolkit, so update the two together
+(see [the plugin](#the-claude-code-plugin-optional) below).
+
 To work on the toolkit itself, install it editable with the test dependencies:
 
 ```bash
@@ -253,6 +264,30 @@ particular thing, and the tool tells you which when you reach it.
 Nothing is fetched during installation. Reporting checklists are downloaded on request by
 `manuscript-guard fetch`, never as an install side effect — see
 [ATTRIBUTION.md](ATTRIBUTION.md) for why.
+
+### The R emitter (only if your analysis is in R)
+
+An analysis in R publishes its results through a small package that lives in this repository,
+`r/manuscriptguard`. It is not on CRAN:
+
+```r
+install.packages("remotes")    # if you do not have it
+remotes::install_github("BasileChretien/manuscript-guard", subdir = "r/manuscriptguard")
+```
+
+`install_github` also installs `jsonlite` and `digest`. From a clone,
+`R CMD INSTALL r/manuscriptguard` does the same once those two are installed. Then, run from
+the project root:
+
+```r
+library(manuscriptguard)
+em <- mg_emitter("analysis/02_model.R", inputs = "data/cohort.csv")
+em$value("model.n", 412L)
+em$interval("model.or", 2.5, 1.8, 3.4, digits = 2)
+em$write()
+```
+
+The fragment lands in `results/`, and `manuscript-guard check` reads it like one from Python.
 
 ### The Claude Code plugin (optional)
 
@@ -406,6 +441,21 @@ Then look at [`example/`](example/), a synthetic pharmacovigilance study that ex
 every gate, including a deliberately awkward case: a value the author read in a printed
 agency report that no longer exists online, recorded as an attestation in
 `literature/attested.yaml` rather than pretending to a stored source.
+
+The example is in the repository, not in the installed package, so it needs a clone. Copy it
+out and run the whole loop there. Its figure is drawn with matplotlib (`pip install
+matplotlib`):
+
+```bash
+cp -r manuscript-guard/example my-example && cd my-example
+python analysis/00_simulate.py && python analysis/01_disproportionality.py && python figures/forest.py
+manuscript-guard check
+manuscript-guard build --offline     # writes build/manuscript.docx and build/supplementary.docx
+```
+
+A different matplotlib version draws a slightly different figure, and then `check` lists the
+figure's recorded review as stale. That is `INFO` until the `internal-review` stage, as the
+stage ladder above describes.
 
 Useful when a finding surprises you:
 

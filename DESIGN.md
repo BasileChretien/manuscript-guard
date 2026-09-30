@@ -4540,9 +4540,43 @@ Closed since, and why each mattered:
   after the other), or on a budget, and a busy runner decided one of them. A quadratic at C
   speed shows only at a size where it outweighs the per-item work, and one in Python fails
   quickly from a small size but takes minutes from a large one, so the size a test starts
-  from is its sensitivity as well as its cost. Paragraph tagging is checked twice, from 10
-  blocks and from 1,000. They are tripwires for the scans that went quadratic before, not a
-  proof that nothing else does.
+  from is its sensitivity as well as its cost. Three scans are checked twice, from a small
+  start and a large one: paragraph tagging (10 blocks and 1,000), the comment scanner (1,000
+  characters and 20,000) and fences whose openers each narrow (5 openers and 25). They are
+  tripwires for the scans that went quadratic before, not a proof that nothing else does.
+- **A test that times something is found by its syntax, and only in `tests/`.**
+  `tests/test_timing_budgets.py` fails when a test reads a clock in `time`, or uses
+  `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a
+  budget on a fixed input, saying why a ratio would not do and how much headroom it was
+  measured to have, or as a timestamp that times nothing. Like the exemption inventory it
+  runs both ways. It also checks that each listed budget is still the number the test holds
+  its timing to, as a tripwire for a changed number or constant, not a proof: whether a test
+  holds a timing to a number cannot be read completely from its syntax, and four rounds of
+  review each found another way past it. It reads comparisons with the timing on either
+  side, through names the timing is assigned to, annotated or added to, and a helper's
+  timing through every function in its module that calls it by name. Some of what it cannot
+  read fails: a caller that holds the timing to nothing it reads, a helper whose timing is
+  used from another test module, and a listed constant bound more than once at module
+  level. The rest passes unseen: arithmetic done to a timing before it is compared
+  (`elapsed / 3 < BUDGET`), a constant shadowed inside the test, a comparison in an `if`
+  that only warns or asserted beside an `or`, an assertion made only under an `if`, a test
+  defined under a module-level `if`, a method of a nested class, a helper passed as a value,
+  and a module imported as `from tests import test_robustness`. It does not see a clock read
+  any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
+  `importlib`, a module bound to a second name (`clock = time`), one in `src/` that a test
+  calls, or a timing a subprocess reports. It judges each top-level function whole, so a
+  second timing added to a listed test is excused with the first. And a ratio has a blind
+  spot that a budget does not: a part of the input that does not grow. If that part alone
+  reaches the 20 ms floor, the input is never grown, and the ratio compares two times made
+  mostly of the same constant. The attribute-block lines hid `_escaped` scanning back from
+  the start of the line that way, behind the one line of eighteen whose run of backslashes
+  is as long at any size. So eleven of the seventeen that grow are timed by `check_linear`,
+  and all eighteen keep a 5 s budget. The other six are `k=` values whose cost per
+  character steps up at a size between the two a ratio compares, so they read 5 to 90 times
+  the time while linear, often past a quadratic's 64, and failed correct code one run in
+  six. The headroom was measured on one laptop under load. The budgets on a whole `check`
+  run have 1.8 to 3.5 times, which is thin, and most of what they time is `check` itself
+  rather than the hostile input.
 
 ## Still open
 

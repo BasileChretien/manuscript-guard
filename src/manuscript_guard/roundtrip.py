@@ -1664,6 +1664,11 @@ class Numbering:
     #: now, where the source around it reads as at the build (`_followed`). Compared, moved
     #: and anchored under that one, as a trusted identifier is under its own.
     followed: dict[str, str] = field(default_factory=dict)
+    #: Each identifier it was built with, mapped to one naming a paragraph whose source reads
+    #: now as that one's read at the build (`_same_text`), where there is one. What a
+    #: paragraph that did not come back said as sent is known from it: see
+    #: `merge.plan_import`.
+    same_text: dict[str, str] = field(default_factory=dict)
 
 
 def _followed(
@@ -1754,6 +1759,23 @@ def named_now(followed: dict[str, str]):
 AS_SENT = "#as-sent"
 
 
+def _same_text(recorded: dict[str, str], now: dict[str, str]) -> dict[str, str]:
+    """For each recorded identifier, one naming a paragraph whose text now hashes as its did
+    at the build: its own where it still does, or any other. Text alone decides, since it is
+    the words that are asked about, not the place."""
+    holding: dict[str, str] = {}
+    for name, value in now.items():
+        holding.setdefault(value.partition(".")[0], name)
+    found = {}
+    for name, value in recorded.items():
+        text = value.partition(".")[0]
+        if name in now and now[name].partition(".")[0] == text:
+            found[name] = name
+        elif text in holding:
+            found[name] = holding[text]
+    return found
+
+
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
     """The identifiers whose paragraph reads now as it read at the build.
 
@@ -1815,6 +1837,7 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
             sent=tuple(recorded),
             beside_changed=_beside_changed(recorded, now, trusted),
             followed=_followed(recorded, now, printed, trusted),
+            same_text=_same_text(recorded, now),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.

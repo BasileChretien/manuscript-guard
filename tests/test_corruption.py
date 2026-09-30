@@ -317,6 +317,31 @@ def test_same_quantity_under_two_keys_is_caught(project: Path) -> None:
     assert "divergent-display" in codes(gate_report(project))
 
 
+def test_a_count_and_a_percentage_that_coincide_are_not_one_quantity(project: Path) -> None:
+    """56 sources and 56.0 per cent are two quantities that happen to share a number.
+
+    G8 used to key collisions on the bare value, so this pair reported one quantity written
+    two ways and failed the build. There was no fix available to the author except to change
+    the paper until the coincidence went away, which is the tool corrupting the manuscript
+    rather than protecting it. Units are what distinguish the two, and they are recorded.
+    """
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    point = document["values"]["ror.point"]
+    document["values"]["ror.point"] = {
+        **point, "value": 56.0, "display": "56.0%", "digits": 1, "unit": "%",
+    }
+    document["values"]["sources.n"] = {
+        **point, "value": 56, "display": "56", "digits": 0,
+    }
+    document["values"]["sources.n"].pop("unit", None)
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    # Verified to fail without the unit key: with G8 grouping on the bare value, this
+    # fragment reports divergent-display and the build stops.
+    assert "divergent-display" not in codes(gate_report(project))
+
+
 def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     """A bonus from checking displays at emit time: the read path checks them too.
 
@@ -5389,6 +5414,183 @@ def test_a_heading_run_into_a_paragraph_is_not_merged_where_it_prints_otherwise_
 
     main(["import", str(returned), str(project), "--apply", "--force"])
     assert path.read_text(encoding="utf-8") == source, "a run-in heading was merged"
+
+
+# --------------------------------- a paste or a move beside what the source changed since
+
+#: A paragraph that is only a value: 4000 reports at the build, re-run to 4100 in some tests.
+_REPORTS = "{{results.cohort.n_reports}}"
+
+
+def _forced_import(
+    project: Path,
+    tmp_path: Path,
+    built: tuple[str, ...],
+    now: tuple[str, ...],
+    change,
+    *,
+    reports: int | None = None,
+) -> tuple[str, str, str]:
+    """The main text built as `built`, returned with `change` made to it in Word, rewritten as
+    `now` in the `.md` - and with the analysis re-run to count `reports` reports, if given -
+    then imported with --force: the source after, the source before, and what was printed."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from manuscript_guard.cli import main
+
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(project, tmp_path, change, document=_UNCHECKED)
+    _paper(project, *now)
+    if reports is not None:
+        fragment = project / "results" / "01_disproportionality.json"
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["values"]["cohort.n_reports"].update(value=reports, display=str(reports))
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+    before = path.read_text(encoding="utf-8")
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["import", str(returned), str(project), "--apply", "--force"])
+    return path.read_text(encoding="utf-8"), before, printed.getvalue()
+
+
+def _paragraph_runs(paragraph: str) -> str:
+    """A Word paragraph's runs, without its properties or its bookmarks."""
+    runs = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
+    return re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", runs[: -len("</w:p>")])
+
+
+def _pasted(words: str, into: str, *, cut: bool = True):
+    """The paragraph holding `words` pasted onto the end of the one holding `into`, after a
+    space, as a paste without Track Changes leaves it: the runs, and no bookmark. Cut, the
+    paragraph is gone from where it stood; copied, it is still there."""
+
+    def change(xml: str) -> str:
+        pasted = _word_paragraph(xml, words)
+        target = _word_paragraph(xml, into)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        grown = target[: -len("</w:p>")] + space + _paragraph_runs(pasted) + "</w:p>"
+        if cut:
+            xml = xml.replace(pasted, "", 1)
+        return xml.replace(target, grown, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_pasted_into_another_is_not_merged_once_the_value_is_rerun(
+    project: Path, tmp_path: Path
+) -> None:
+    """A paragraph that is only a value, printing 4000, cut and pasted onto the end of
+    another in Word; the analysis re-run to 4100 before the import. The paste check weighed
+    the words the paragraph gained against the value's paragraph as the fresh build prints
+    it, "4100", found nothing, and "...dates. 4000" was merged: a number typed into prose
+    beside the binding that prints it. Only the words it printed outside its bindings and
+    citations are known of what a paragraph printed at the build, and a value alone has
+    none."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _REPORTS, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks, _pasted(">4000<", "Papa paragraph"), reports=4100
+    )
+    assert after == before, "a number was typed into the source"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_paragraph_joined_into_the_one_above_is_not_merged_once_the_value_is_rerun(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same, joined: "None." and the value after it, retyped across the break so the
+    value's identifier goes. Weighed against "4100", "None. 4000" read no more like the two
+    together than like "None." alone, and merged as a rewording."""
+
+    def joined(xml: str) -> str:
+        return _pasted(">4000<", ">None.<")(xml)
+
+    blocks = ("# Notes", _ALPHA, "None.", _REPORTS, _BRAVO)
+    after, before, _out = _forced_import(project, tmp_path, blocks, blocks, joined, reports=4100)
+    assert after == before, "a number was typed into the source"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rerun_paragraph_deleted_in_word_leaves_a_rewording_elsewhere_to_merge(
+    project: Path, tmp_path: Path
+) -> None:
+    """What a paragraph printed at the build is known outside its bindings: its words there
+    are weighed, and a rewording that holds none of them merges, as on main."""
+    counted = f"Of {_REPORTS} reports screened, twelve were duplicates of earlier ones."
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, counted, _BRAVO)
+
+    def edited(xml: str) -> str:
+        xml = xml.replace(_word_paragraph(xml, "reports screened"), "", 1)
+        return xml.replace("were excluded for missing dates", "were dropped for missing dates", 1)
+
+    after, before, _out = _forced_import(project, tmp_path, blocks, blocks, edited, reports=4100)
+    assert after == before.replace("were excluded for missing", "were dropped for missing", 1)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "reworded",
+    [("the cohort of", "the group of"), (_ALPHA, "Another sentence altogether, rewritten.")],
+    ids=["a word", "all of it"],
+)
+@pytest.mark.parametrize("cut", [True, False], ids=["cut", "copied"])
+def test_a_paragraph_the_source_changed_pasted_into_another_is_not_merged(
+    project: Path, tmp_path: Path, reworded: tuple[str, str], cut: bool
+) -> None:
+    """A paragraph the author reworded since the build is not compared, so the paste check,
+    which weighed only the paragraphs compared, did not see it pasted onto the end of
+    another: that one merged holding the paragraph's old words, and the source had them
+    twice. Cut, what the paragraph said at the build is not known when the author changed
+    it; copied, it is what came back."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace(*reworded) for block in blocks)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, now, _pasted("Alpha paragraph", "Romeo paragraph", cut=cut)
+    )
+    assert after == before, "a paragraph's words went into the source twice"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_move_past_a_paragraph_not_compared_is_not_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """The author reworded Papa since the build, so it is not compared, and the co-author
+    moved Bravo above it in Word. Moves are worked out among the paragraphs compared, where
+    Bravo only passed Romeo, and it was written between Papa and Romeo, where nobody put
+    it. DESIGN.md said such a move is not applied; it is now withheld and named."""
+
+    def moved(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        papa = _word_paragraph(xml, "Papa paragraph")
+        return xml.replace(bravo, "", 1).replace(papa, bravo + papa, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, out = _forced_import(project, tmp_path, blocks, now, moved)
+    assert after == before, "a move was written where nobody put it"
+    assert "not applied" in out and "Bravo paragraph" in out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_move_beside_a_paragraph_not_compared_that_does_not_pass_it_is_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """Only a move past such a paragraph is withheld: two paragraphs swapped below it are
+    moved, as on main."""
+    delta = "Delta paragraph closes the section after Bravo."
+
+    def swapped(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        delta_ = _word_paragraph(xml, "Delta paragraph")
+        return xml.replace(bravo, "", 1).replace(delta_, delta_ + bravo, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO, delta)
+    now = tuple(block.replace("twelve reports", "twelve records") for block in blocks)
+    after, before, _out = _forced_import(project, tmp_path, blocks, now, swapped)
+    assert after == before.replace(f"{_BRAVO}\n\n{delta}", f"{delta}\n\n{_BRAVO}", 1)
 
 
 @pytest.mark.parametrize("left", [(), ("Wingdings character F04A",)], ids=["nothing", "symbol"])

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from manuscript_guard.contracts.values import DisplayError
-from manuscript_guard.emit import Emitter, read_digest, sha256_of
+from manuscript_guard.emit import Emitter, input_digest, read_digest, sha256_of
 
 
 @pytest.fixture
@@ -394,7 +394,10 @@ def test_provenance_records_the_inputs_it_read(scratch: Path) -> None:
     document = json.loads(em.write().read_text(encoding="utf-8"))
     inputs = document["provenance"]["inputs"]
     assert len(inputs) == 1
-    assert inputs[0]["sha256"] == sha256_of(data)
+    # `input_digest`, not `sha256_of`: a .csv is text, so its digest is over content rather
+    # than over line endings. Asserting the raw byte digest here was asserting that a
+    # declared input breaks on checkout, which is what it did. See test_input_digests.py.
+    assert inputs[0]["sha256"] == input_digest(data)
 
 
 # ------------------------------------------------- what an ordinary clinical table needs

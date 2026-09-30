@@ -418,6 +418,28 @@ def test_paragraph_tagging_is_linear(assert_linear, opener: str) -> None:
         )
 
 
+def test_taking_identifiers_off_headings_is_linear(assert_linear) -> None:
+    """Whether a heading had been run into a block was asked of every block on import, and
+    each asking scanned the document as sent for the block's paragraph: 4,000 paragraphs
+    took four seconds. Only a block with a heading's or caption's style can be one."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import _recovered
+
+    def document(count: int) -> tuple[dict, list, list]:
+        rendered: dict[str, str] = {}
+        reference: list[Block] = []
+        for i in range(count):
+            if i % 5 == 0:
+                reference.append(Block((), f"Heading {i}"))
+            rendered[f"p{i}"] = f"Paragraph {i} says something about the data."
+            reference.append(Block((f"p{i}",), rendered[f"p{i}"]))
+        return rendered, reference, list(reference)
+
+    assert_linear(
+        document, lambda parts: _recovered(*parts), 50, "taking identifiers off headings"
+    )
+
+
 # The check itself, on a clock that only the job below moves: that it fails a quadratic,
 # and how it handles noise. Each test catches a change to the check that the real scans
 # above cannot see, because a real machine is neither quadratic nor noisy on cue. A real

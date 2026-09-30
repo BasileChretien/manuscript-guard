@@ -4101,7 +4101,30 @@ Closed since, and why each mattered:
     longer known as a join once the heading's old title is gone from the block. When the new
     title and the paragraph still share most of their words ("Ethics approval" with "Not
     applicable."), the block merges into the paragraph's slot, title and all, and the
-    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted.
+    heading stays in the source, as on `main`; otherwise the paragraph is reported deleted,
+    and Word's joined text listed as a changed heading ("Conflicts of interestNone
+    declared."). Read together, those two say to delete the paragraph and retype Word's copy
+    into the heading, and neither is meant: the paragraph is there. Undo the join in Word, or
+    make the retitle in the .md. A copy of the heading's old title standing elsewhere in the
+    document - typed as a heading of its own, say - hides the join in the same way, since
+    the join is known by that title going missing, and gives the same report.
+  - *A section deleted whole, with the heading after it retitled around the deleted title*
+    ("Funding and competing interests", once the Funding heading and its paragraph are gone)
+    is refused as a join with the deleted heading: its title gone from the document and
+    turned up beside the deleted paragraph's identifier reads as one. Nothing is written,
+    and the advice to undo a join points at one that was not made. Delete the section and
+    retitle the heading in the .md.
+  - *A heading run into a paragraph that opens with the heading's own words* ("Statistical
+    analysis" over "Statistical analysis used...", joined and edited into "Statistical
+    analysis: we used...") merges, heading text and all, and the heading stays in the
+    source, as on `main`. A join is known by the heading's title appearing once more than it
+    did, and here it appears once before and once after. Check such a paragraph in the .md
+    after an import.
+  - *A heading carrying a slid identifier, then joined into its paragraph* - the paragraph
+    before the heading deleted without Track Changes, then Delete pressed at the end of the
+    heading - comes back as one block with both identifiers, and is reported as those two
+    paragraphs joined into one. The deletion is not reported, and the join named is not the
+    one made. Nothing is written.
   - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
     identifier on any caption. Deleted without Track Changes just above a table whose
     caption was edited, it has the caption's new text written over it, as on `main`.

@@ -89,8 +89,8 @@ class Plan:
     lost: tuple[str, ...] = ()
     #: Headings, tables, figures and equations that came back in another place, as (kind,
     #: text): kind is "table", "figure", "equation", or "text" for a heading, caption, list
-    #: item, quotation or any other paragraph without an identifier. None of them moves in
-    #: the .md.
+    #: item, quotation or any other paragraph without an identifier, whose text is as
+    #: `reordered` lists it, with what in it has no text named. None of them moves in the .md.
     strayed: tuple[tuple[str, str], ...] = ()
     #: Text of paragraphs without an identifier - a heading, a list item, a quotation, a
     #: caption, a new paragraph - that the document did not have when it was sent.
@@ -169,25 +169,77 @@ def _untagged_counts(reference: list[Block]) -> Counter:
     return Counter(_squashed(b.text) for b in reference if not b.names and not b.table and b.text)
 
 
+def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
+    """Text without an identifier that the document as sent held and the returned one does
+    not - a heading, a caption - by text, as many times as it went."""
+    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
+    return +untagged
+
+
 def _off_headings(
-    rendered: dict[str, str], returned: list[Block], expected: Counter
+    rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
-    """Identifiers taken off a heading or caption they slid onto.
+    """Identifiers taken off a heading, caption or reference entry they slid onto.
 
     Deleted or cut without Track Changes, the last paragraph of a section leaves its
-    identifier on the heading after it. Read as the paragraph's text, the heading was merged
-    into it wherever the paragraph named the heading - "Methods", bindings intact. A block
-    that reads exactly as a heading or caption of the document as sent is that heading, and
-    an identifier on it names a paragraph that is no longer there.
+    identifier on the heading after it - above a table, on its caption; after the last
+    paragraph of all, on the first entry of the reference list. Read as the paragraph's text,
+    the heading was merged into it: "Methods", bindings intact. Recognised by its text alone,
+    a heading retitled in the same round was merged too - "Study design" - so it is
+    recognised by its style as well, and an identifier on it names a paragraph that is no
+    longer there.
+
+    Unless the block is plainly that paragraph, and reported deleted it would invite deleting
+    it: one restyled as a heading in Word, its words mostly its own; one the heading before it
+    was joined into, which keeps the heading's style and is refused as a join; or one sent
+    with the role it has, such as a note the source styles as a caption. The join is read as
+    `_took_in` reads it, by the heading gone from before the paragraph and its text turned up
+    here: whether the paragraph's own text survived whole did not say, since a paragraph
+    reworded in the same round - or made the heading's run-in text - was reported deleted.
+    Only the heading before: one after it, retitled around its old title, is the heading an
+    identifier slid onto.
+
+    Which headings are gone is read as `plan_import` reads it, after the identifiers taken off
+    by exact text. Read before, a heading that still stood but carried an identifier slid onto
+    it counted as gone, a join into the paragraph after it was read, and the next heading,
+    retitled to take in its words ("Funding and competing interests"), merged into the slot
+    of the paragraph deleted under it.
     """
+    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
+
+    def by_text(block: Block) -> bool:
+        # It reads exactly as a heading or caption the document was sent with, and not as
+        # its own paragraph.
+        text = _squashed(block.text)
+        return (
+            bool(block.names)
+            and not block.table
+            and bool(expected[text])
+            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+        )
+
+    missing = _untagged_missing(
+        reference, [replace(b, names=()) if by_text(b) else b for b in returned]
+    )
     out = []
     for block in returned:
         text = _squashed(block.text)
-        if (
+        own = [rendered.get(name, "") for name in block.names]
+        joined = any(
+            name in rendered
+            and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
+            for name in block.names
+        )
+        restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
+        sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
+        if by_text(block) or (
             block.names
             and not block.table
-            and expected[text]
-            and not any(_squashed(rendered.get(name, "")) == text for name in block.names)
+            and block.role
+            and not restyled
+            and not sent_so
+            and not any(_squashed(was) == text for was in own)
         ):
             block = replace(block, names=())
         out.append(block)
@@ -226,7 +278,9 @@ def _given_back(
             continue
         text = _squashed(out[after].text)
         theirs = [n for n in block.names if n in rendered and _squashed(rendered[n]) == text]
-        if len(theirs) != 1 or expected[text]:
+        # Not to a line with no text: one holding only a symbol read as the empty line a
+        # `&nbsp;` spacer renders as, and took that spacer's identifier.
+        if not text or len(theirs) != 1 or expected[text]:
             continue
         # Only the one it matched: another identifier on the line - the note an HTML comment
         # renders as, say - is that line's, and taken with it was reported deleted.
@@ -241,7 +295,8 @@ def _recovered(
     """The returned document with identifiers put back where only exact text can say.
     `docxtext` has already put them back where the tracked changes say."""
     expected = _untagged_counts(reference)
-    return _given_back(rendered, _off_headings(rendered, returned, expected), expected)
+    off = _off_headings(rendered, reference, returned, expected)
+    return _given_back(rendered, off, expected)
 
 
 def _signature(block: Block) -> tuple[str, str]:
@@ -447,7 +502,9 @@ def _kept_in_place(
     return out
 
 
-#: Most of the words, in order: a judgement, used only to choose the words of a refusal.
+#: Most of the words, in order: a judgement. It chooses the words of a refusal, and one more
+#: thing: whether a paragraph restyled as a heading or caption keeps its identifier, and so
+#: whether its rewording can merge (see `_off_headings`).
 _ALIKE = 0.6
 
 
@@ -519,6 +576,9 @@ def _beside_new_text(
         return block.text, block.unread
 
     unchanged = Counter(content(b) for b in sent if not b.table and not b.names and any(content(b)))
+    # Paragraphs sent with no text: a `&nbsp;` or `<br>` spacer, or any line whose identifier
+    # is on something that is not text, such as maths alone. Nothing was split around one.
+    spacers = {n for b in sent if b.names and not b.table and not any(content(b)) for n in b.names}
     new: set[int] = set()
     for index, block in enumerate(returned):
         if block.table or block.names or not any(content(block)):
@@ -533,7 +593,16 @@ def _beside_new_text(
             block = returned[i]
             # A paragraph moved here, identifier and all, is no neighbour to vouch for: it
             # stood where the second half of a split had, and the split merged as the whole.
-            if block.arrived and block.text:
+            # Whatever it still holds: its moved text deleted, or replaced by a symbol with no
+            # text, it was looked past as an empty line, and vouched for the split again.
+            # One that holds nothing and names only paragraphs sent empty - a spacer - is an
+            # empty line wherever it came from, and is looked past as one: Enter pressed on a
+            # spacer reads as arrived, and as a paragraph that vouches for nothing it had the
+            # rewording beside it refused; as a neighbour, a spacer moved in with the paragraph
+            # under it vouched for the split whose halves it stood between.
+            if block.arrived and not any(content(block)) and set(block.names) <= spacers:
+                continue
+            if block.arrived and (any(content(block)) or block.names):
                 return True
             if block.table:
                 if counterparts is None or i not in counterparts:
@@ -870,7 +939,9 @@ def _misplaced(
                 if name in ordered
             ]
         elif block.text and boundaries.get(key := ("text", texts.get(index))):
-            sequence.append((("text", block.text), boundaries[key].popleft(), 2))
+            # As the untagged texts are listed, so that the report folds it in with them: by
+            # its text alone, a heading holding a symbol with no text was named twice.
+            sequence.append((("text", _listed(block)), boundaries[key].popleft(), 2))
 
     # The heaviest subsequence whose ranks never decrease. A paragraph weighs 3 if the diff
     # called it moved and 4 otherwise, a held one 5, and a boundary more than all of them:
@@ -927,7 +998,14 @@ def _in_parts(reference: list[Block], sections: dict) -> set[str]:
     return found
 
 
-def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Counter) -> str:
+def _took_in(
+    name: str,
+    now: str,
+    was: str,
+    reference: list[Block],
+    missing: Counter,
+    steps: tuple[int, ...] = (-1, 1),
+) -> str:
     """The heading or caption beside this paragraph that it absorbed, if it absorbed one.
 
     Delete at the end of a heading makes a run-in heading: one paragraph, carrying the
@@ -939,20 +1017,22 @@ def _took_in(name: str, now: str, was: str, reference: list[Block], missing: Cou
     "Statistical analysisStatistical analysis used...".
     """
     squashed_now, squashed_was = " ".join(now.split()), " ".join(was.split())
-    for block in _headings_beside(name, reference):
+    for block in _headings_beside(name, reference, steps):
         text = " ".join(block.text.split())
         if missing[block.text] and squashed_now.count(text) > squashed_was.count(text):
             return block.text
     return ""
 
 
-def _headings_beside(name: str, reference: list[Block]) -> list[Block]:
-    """The blocks without an identifier directly above and below this paragraph, past
-    empty ones: a heading, a caption, anything a run-in could take. A paragraph or a table
-    there takes nothing in."""
+def _headings_beside(
+    name: str, reference: list[Block], steps: tuple[int, ...] = (-1, 1)
+) -> list[Block]:
+    """The blocks without an identifier directly above and below this paragraph - only
+    above, with `steps` of (-1,) - past empty ones: a heading, a caption, anything a
+    run-in could take. A paragraph or a table there takes nothing in."""
     at = next(i for i, b in enumerate(reference) if b.names and b.names[0] == name)
     found = []
-    for step in (-1, 1):
+    for step in steps:
         i = at + step
         while 0 <= i < len(reference) and not (
             reference[i].names or reference[i].table or reference[i].text
@@ -1146,7 +1226,10 @@ def plan_import(
         for b in reference
         if b.names and not b.table and b.names[0] in known
     }
+    carried_by = {n: b.text for b in returned if not b.table for n in b.names}
     returned = _recovered(rendered, reference, returned)
+    # Identifiers taken off a heading or caption they slid onto: see the refusal below.
+    taken_off = set(carried_by) - {n for b in returned if not b.table for n in b.names}
 
     def fits(text: str, name: str) -> bool:
         sent = rendered.get(name)
@@ -1198,9 +1281,7 @@ def plan_import(
     beside_new = _beside_new_text(reference, returned, counterparts)
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
-    untagged = Counter(b.text for b in reference if not b.names and not b.table and b.text)
-    untagged.subtract(b.text for b in returned if not b.names and not b.table and b.text)
-    missing = +untagged
+    missing = _untagged_missing(reference, returned)
     gone_from_place = [
         name
         for name in rendered
@@ -1226,6 +1307,22 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
+        elif (
+            now is None
+            and name in taken_off
+            and not expected[_squashed(carried_by[name])]
+            and (name in beside_changed or (stale and _printed_otherwise(name, reference, missing)))
+        ):
+            # Its identifier came back on a heading beside it and was taken off by that
+            # heading's style, and that heading is not the one the document was sent with, so
+            # a heading joined into the paragraph could not be told from one it slid onto.
+            # Not one taken off by its exact text: that heading reads as it was sent, no join
+            # can be in it, and the paragraph is deleted or moved as on main.
+            # Reported deleted, beside Word's heading listed as changed, it read as advice to
+            # delete the paragraph and retype Word's copy. Kept on the heading instead, it
+            # gave the paragraph text again, and a paragraph it was pasted onto merged
+            # holding its words. Refused, as main refuses it; still missing, for the rest.
+            refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now) or (

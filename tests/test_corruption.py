@@ -5513,6 +5513,129 @@ def test_a_value_paragraph_joined_into_the_one_above_is_not_merged_once_the_valu
     assert after == before, "a number was typed into the source"
 
 
+def _elsewhere(blocks: tuple[str, ...]) -> tuple[str, ...]:
+    """The `.md` edited since the build where Word left it alone: stale, nothing re-run."""
+    return tuple(block.replace("exposure window", "exposure period") for block in blocks)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        (f"{_REPORTS}.", ">4000.<"),
+        ("{{results.ror.ci_low}}\N{EN DASH}{{results.ror.ci_high}}", "5.12<"),
+    ],
+    ids=["full stop", "range"],
+)
+def test_a_value_with_punctuation_pasted_in_a_stale_document_is_not_merged(
+    project: Path, tmp_path: Path, value: str, shown: str
+) -> None:
+    """Round 1 of #116's review. Only the words outside a paragraph's bindings were taken as
+    what it printed at the build, and a full stop or a dash beside a value was kept as a word
+    of its own: "." and "–", never found among "4000." or "2.89–5.12". The value paragraph
+    counted as known, and pasted into Papa it merged, where main, weighing the fresh
+    rendering, which is what was sent when nothing was re-run, refused it."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, value, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, _elsewhere(blocks), _pasted(shown, "Papa paragraph")
+    )
+    assert after == before, "numbers were typed into Papa"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_interval_joined_in_a_stale_document_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same, joined: "(" and ")" beside the interval's values were words of their own,
+    and "...was as follows. 3.84 (2.89 to 5.12)" merged as a rewording."""
+    lead = "The reporting odds ratio for the main model, with its interval, was as follows."
+    trio = "{{results.ror.point}} ({{results.ror.ci_low}} to {{results.ror.ci_high}})"
+    blocks = ("# Results", _ALPHA, _PAPA, _ROMEO, lead, trio, _BRAVO)
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, _elsewhere(blocks), _pasted("(2.89", "was as follows.")
+    )
+    assert after == before, "numbers were typed into the paragraph above"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("blocks", "into"),
+    [
+        (("# Intro", _ALPHA, _PAPA, _ROMEO, f"{_REPORTS}.", _BRAVO), "Papa paragraph"),
+        (("# Notes", _ALPHA, "None.", f"{_REPORTS}.", _BRAVO), ">None.<"),
+    ],
+    ids=["pasted", "joined"],
+)
+def test_a_value_with_a_full_stop_is_not_merged_once_rerun(
+    project: Path, tmp_path: Path, blocks: tuple[str, ...], into: str
+) -> None:
+    """The first two tests above, with a full stop after the value: re-run to 4100, "4000."
+    was weighed as the word "." and merged."""
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, blocks, _pasted(">4000.<", into), reports=4100
+    )
+    assert after == before, "a stale number was typed into the source"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("twelve reports were excluded", "twelve of the reports were excluded"),
+        ("were excluded for missing dates.", "were excluded."),
+    ],
+    ids=["a word added", "a sentence's end cut"],
+)
+@pytest.mark.parametrize("author", ["reworded", "dropped"])
+def test_an_edit_merges_when_word_deletes_a_paragraph_the_author_also_changed(
+    project: Path, tmp_path: Path, old: str, new: str, author: str
+) -> None:
+    """Round 1 of #116's review: with a paragraph the author also changed, or dropped,
+    deleted in Word, every rewording in the document that gained a word was refused, since
+    what the deleted one said could not be known. Only a rewording that gained five words in
+    a row, or a word with a digit in it, could hold such a paragraph pasted in; a word added
+    and a clause cut merge, as on main."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = _elsewhere(blocks) if author == "reworded" else blocks[:-1]
+
+    def change(xml: str) -> str:
+        return xml.replace(_word_paragraph(xml, "Bravo paragraph"), "", 1).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(old, new, 1), out
+
+
+def test_what_a_paragraph_printed_is_read_past_a_no_break_space_the_marked_build_lacks() -> None:
+    """Pandoc puts a no-break space after "et al." before a citation, and not before the
+    bookmark the marked build puts around it. Compared character for character, the two
+    builds differed, and in a document built from other inputs every such paragraph read as
+    saying nothing known. The words that touch no binding or citation are what was sent."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import _as_sent
+
+    fresh = f"As Smith et al.{chr(0xA0)}(2020) found, 4100 reports were screened."
+    plain = fresh.replace(chr(0xA0), " ")
+    spans = tuple((plain.index(t), plain.index(t) + len(t)) for t in ("(2020)", "4100"))
+    words = _as_sent(fresh, Block(("p",), plain, tokens=spans), stale=True)
+    assert words == ["As", "Smith", "et", "al.", "found,", "reports", "were", "screened."]
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_whose_words_are_not_known_is_named_by_where_it_stood(
+    project: Path, tmp_path: Path
+) -> None:
+    """The refusal quoted the paragraph's identifier, 'mg-p-...', which the author cannot
+    find anywhere. It names the paragraph before it in the document as sent instead."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = (*blocks[:2], "A paragraph the author wrote in place of Papa.", *blocks[3:])
+    _after, _before, out = _forced_import(
+        project, tmp_path, blocks, now, _pasted("Papa paragraph", "Bravo paragraph")
+    )
+    refusal = next(line for line in out.splitlines() if "did not come back (" in line)
+    assert "the one after 'Alpha paragraph talks about" in refusal
+    assert "mg-p-" not in refusal
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_rerun_paragraph_deleted_in_word_leaves_a_rewording_elsewhere_to_merge(
     project: Path, tmp_path: Path

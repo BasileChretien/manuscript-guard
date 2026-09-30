@@ -31,6 +31,7 @@ from collections import Counter, deque
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import NamedTuple
 
 from manuscript_guard.docxtext import Block, spaced
 from manuscript_guard.roundtrip import (
@@ -360,24 +361,39 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     return ""
 
 
-#: What is known of the words a paragraph printed at the build: all of them, those outside
-#: its bindings and citations, or, as None, none.
+#: What is known of the words a paragraph printed at the build: all of them, those that touch
+#: none of its bindings and citations, or, as None, none.
 Sent = list[str] | None
 
+#: The fewest words a paragraph is looked for with when it may have been pasted whole into
+#: another: `_swallowed`'s floor, and `_took_unknown`'s. Shorter, "None declared." quoted in
+#: a rewording refused it.
+_WHOLE_WORDS = 5
 
-def _gained(was: str, now: str) -> list[str]:
-    """The words a paragraph has now that it did not have as sent, in order."""
+
+class _Gone(NamedTuple):
+    """A paragraph the document was sent with that did not come back where it stood."""
+
+    #: What a refusal names it by: its text, or, where that is not known, where it stood.
+    shown: str
+    #: The fresh build's rendering of its source, where it has one: main weighed this.
+    fresh: str | None
+    #: Its words as it printed at the build, as far as they are known (`_as_sent`).
+    sent: Sent
+
+
+def _gained_runs(was: str, now: str) -> list[list[str]]:
+    """The stretches of words a paragraph has now that it did not have as sent, in order."""
     before, after = was.split(), now.split()
     matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
     return [
-        word
+        after[j1:j2]
         for tag, _i1, _i2, j1, j2 in matcher.get_opcodes()
         if tag in ("insert", "replace")
-        for word in after[j1:j2]
     ]
 
 
-def _took_vanished(was: str, now: str, vanished: Sequence[tuple[str, Sent]]) -> str:
+def _took_vanished(was: str, now: str, vanished: Sequence[_Gone]) -> str:
     """The text of a paragraph gone from its place, most of it now added to this one.
 
     Pasted onto the end of a paragraph elsewhere, with a word typed to join them, a paragraph
@@ -385,35 +401,44 @@ def _took_vanished(was: str, now: str, vanished: Sequence[tuple[str, Sent]]) -> 
     joined merged holding it, and it was then in the source twice. A judgement - most of its
     words, in order, among the words this paragraph gained - and it only refuses.
 
-    Its words as it printed at the build (`_as_sent`), which are not always the fresh build's:
-    weighed against a value re-run since, "4000" pasted in did not read as "4100", and a
+    Its words are weighed as it printed at the build, as far as they are known (`_as_sent`),
+    and as the fresh build prints it, as main weighed them; either reading refuses. Weighed
+    only as printed now, a value re-run since, "4000" pasted in, did not read as "4100", and a
     number was typed into the source. One whose words then are not known at all is
     `_took_unknown`'s.
     """
-    gained = _gained(was, now)
-    for text, words in vanished if gained else ():
-        if not words:
-            continue
-        shared = difflib.SequenceMatcher(a=words, b=gained, autojunk=False).get_matching_blocks()
-        if sum(block.size for block in shared) >= _ALIKE * len(words):
-            return text
+    gained = [word for run in _gained_runs(was, now) for word in run]
+    for gone in vanished if gained else ():
+        for words in (gone.sent, gone.fresh.split() if gone.fresh else None):
+            if not words:
+                continue
+            blocks = difflib.SequenceMatcher(a=words, b=gained, autojunk=False)
+            if sum(block.size for block in blocks.get_matching_blocks()) >= _ALIKE * len(words):
+                return gone.shown
     return ""
 
 
-def _took_unknown(was: str, now: str, vanished: Sequence[tuple[str, Sent]]) -> str:
+def _took_unknown(was: str, now: str, vanished: Sequence[_Gone]) -> _Gone | None:
     """A paragraph gone from its place whose words as sent are not known, when this one
     gained words that could be it.
 
     One the `.md` changed since the build is not compared, and what it said then is not in
-    the source any more; one that is only a value, in a document built from other inputs,
-    printed a number that may be anything. Pasted into another paragraph, it could not be
+    the source any more; one that is only values, in a document built from other inputs,
+    printed numbers that may be anything. Pasted into another paragraph, it could not be
     looked for, and it merged: the old paragraph's words were in the source twice, or a
-    number typed beside the binding that prints it. That the words gained are it cannot be
-    ruled out, so the rewording is refused.
+    number typed beside the binding that prints it.
+
+    Only a rewording that gained five words in a row or more, or a word with a digit in it,
+    is refused: a paragraph pasted whole is looked for from five words, as `_swallowed` looks
+    for one, and a value from its digits. Refused whenever it gained a word, every ordinary
+    edit in a document was held back once Word deleted a paragraph the author had also
+    changed. This is the rule until the build records what each paragraph said.
     """
-    if not _gained(was, now):
-        return ""
-    return next((text for text, words in vanished if words is None), "")
+    runs = _gained_runs(was, now)
+    could_be = any(len(run) >= _WHOLE_WORDS for run in runs) or any(
+        any(character.isdigit() for character in word) for run in runs for word in run
+    )
+    return next((gone for gone in vanished if gone.sent is None), None) if could_be else None
 
 
 def _as_sent(text: str, marked: Block | None, stale: bool) -> Sent:
@@ -421,19 +446,22 @@ def _as_sent(text: str, marked: Block | None, stale: bool) -> Sent:
 
     All of them, from a document built from the inputs on disk and a source that reads as it
     did. In a document built from other inputs a value or a citation may print otherwise,
-    and only the words outside them are known, read from the marked build's extents
-    (`marked`); a paragraph that is only values and citations has none. Where the marked
-    build does not read as the fresh one, which words are whose is not known either.
+    and only the words that touch none of them are known, read from the marked build's
+    extents (`marked`). A word with a value in it is not one: kept apart, the full stop after
+    "4000." and the dash in "2.89–5.12" were words of their own, found nowhere among the
+    words that came back, and a paragraph that is only values read as known. One with no
+    such word has none known. Where the marked build does not read as the fresh one, which
+    words are whose is not known either.
     """
     if not stale:
         return text.split()
-    if marked is None or marked.text.replace(" ", " ") != text.replace(" ", " "):
+    if marked is None or marked.text.replace(_NBSP, " ") != text.replace(_NBSP, " "):
         return None
-    words, at = [], 0
-    for start, end in marked.tokens:
-        words += text[at:start].split()
-        at = end
-    words += text[at:].split()
+    words = [
+        found.group()
+        for found in re.finditer(r"\S+", text)
+        if not any(found.start() < end and start < found.end() for start, end in marked.tokens)
+    ]
     return words if words or not marked.tokens else None
 
 
@@ -483,7 +511,7 @@ def _swallowed(
     others += [b.text for b in returned if b.names and not b.table and name not in b.names]
     for text in others:
         whole = _squashed(text)
-        if len(whole.split()) >= 5 and whole in here and whole not in before:
+        if len(whole.split()) >= _WHOLE_WORDS and whole in here and whole not in before:
             return text
     return ""
 
@@ -1202,10 +1230,11 @@ def _joined_without_bookmark(
 ) -> list[tuple[str, str]]:
     """Pairs whose second paragraph vanished into the first; see `_absorbed`.
 
-    The second is weighed by its words as it printed at the build, `sent` (`_as_sent`): by
-    the fresh build's, "None." joined with a value that printed 4000 then and 4100 now read
-    as a rewording, and merged as "None. 4000". One whose words then are not known at all is
-    not weighed here; `_beside_lost` refuses the paragraph before it.
+    The second is weighed by its words as it printed at the build, `sent` (`_as_sent`), and
+    as the fresh build prints it, as main weighed it; either reading makes a join. Weighed by
+    the fresh build's alone, "None." joined with a value that printed 4000 then and 4100 now
+    read as a rewording, and merged as "None. 4000". One whose words then are not known at
+    all is not weighed here; `_beside_lost` refuses the paragraph before it.
     """
     found = []
     sequence = list(rendered)
@@ -1220,7 +1249,10 @@ def _joined_without_bookmark(
             and now
             and not {name, before} & in_join
             and not _same(rendered[before], now)
-            and _absorbed(now, " ".join(words), rendered[before])
+            and (
+                _absorbed(now, " ".join(words), rendered[before])
+                or _absorbed(now, rendered[name], rendered[before])
+            )
         ):
             found.append((before, name))
             in_join.update((before, name))
@@ -1435,15 +1467,20 @@ def plan_import(
     ]
     # Each as it printed at the build, as far as that is known. And those the document was
     # sent with that are not compared and did not come back: left out, one pasted into a
-    # paragraph compared merged there, and its words were in the source twice.
-    vanished = [(rendered[name], sent[name]) for name in gone_from_place]
+    # paragraph compared merged there, and its words were in the source twice. One whose
+    # words are nowhere is named by where it stood, after a paragraph the author can find:
+    # its identifier meant nothing to them.
+    vanished = [_Gone(rendered[name], rendered[name], sent[name]) for name in gone_from_place]
+    last = ""
     for name in built:
+        holder = (same_text or {}).get(name)
         if name not in rendered and name not in present:
-            holder = (same_text or {}).get(name)
             if holder in printed_now:
-                vanished.append((printed_now[holder], as_sent(holder)))
+                vanished.append(_Gone(printed_now[holder], printed_now[holder], as_sent(holder)))
             else:
-                vanished.append((name, None))
+                where = f"the one after '{_squashed(last)[:50]}'" if last.strip() else "the first"
+                vanished.append(_Gone(f"{where} in the document as sent", None, None))
+        last = rendered.get(name) or carried_by.get(name) or printed_now.get(holder, "") or last
 
     def printed_otherwise(name: str) -> bool:
         # What stood beside it may have printed otherwise at the build: see `stale` and
@@ -1511,8 +1548,11 @@ def plan_import(
             was, now, vanished
         ):
             refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
-        elif other := _took_unknown(was, now, vanished):
-            refused.append(Refusal(name, now, (_MAY_HOLD.format(text=_squashed(other)[:60]),)))
+        elif unknown_one := _took_unknown(was, now, vanished):
+            what = unknown_one.shown
+            if unknown_one.fresh:
+                what = f"'{_squashed(unknown_one.fresh)[:60]}' as it prints now"
+            refused.append(Refusal(name, now, (_MAY_HOLD.format(what=what),)))
         elif part := _split_off(was, now, fresh):
             refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
         else:
@@ -1669,10 +1709,10 @@ _SWALLOWED = (
     "in the .md, and move or join that paragraph there if that was meant."
 )
 _MAY_HOLD = (
-    "a paragraph the document was sent with did not come back ('{text}'), and what it said "
-    "then is not known: the .md changed it since the build, or it prints a value or "
-    "citation that changed since. The words added here could be it, pasted in, and merged "
-    "they would be in the source twice. Make the edit in the .md."
+    "a paragraph the document was sent with did not come back ({what}), and what it said "
+    "then is not known: the .md changed or removed it since the build, or it prints a value "
+    "or citation that may have changed since. The words added here could be it, pasted in, "
+    "and merged they would be in the source twice. Make the edit in the .md."
 )
 _SPLIT_OFF = (
     "new text without an identifier ('{text}') is mostly words it lost: its second half, split "

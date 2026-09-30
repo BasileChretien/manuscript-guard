@@ -1119,6 +1119,41 @@ BLOCK_COMMENT_CASES = {
     "on an item's line": "- item <!-- hidden 9.99 -->\n",
     "on an item's lines": "- item\n<!-- hidden 9.99\nstill -->\n",
     "on a quoted item's lines": "> - a\n> - b <!-- x\n> 9.99 -->\n",
+    # Round 1 of #115. Inside a comment an item opened, a marker at or past the item's text
+    # is the item's, and one short of it ends the item; a table or a line block ends at a
+    # line at the margin.
+    "sub-list commented out": "- Reporting bias\n  <!--\n  - notoriety bias 9.99\n"
+    "  - duplicates\n  -->\n- Missing data\n",
+    "note with bullets on an item": "- Reporting bias. <!-- note to self:\n"
+    "  - check notoriety bias 9.99\n  - ask the second reviewer -->\n- Missing data.\n",
+    "numbered step, sub-step commented": "1. Step one\n   <!--\n   a. detail 9.99\n   -->\n"
+    "2. Step two\n",
+    "sub-item at a wide number's text": "10. Step <!-- x\n    - y 9.99 -->\n",
+    "sub-item short of a wide number's text": "10. Step <!-- x\n   - y 9.99 -->\n",
+    "sub-item short of its item's text": "- A\n  - A.1 <!-- x\n   - y 9.99 -->\n",
+    "sub-item commented out among sub-items": "- A\n  - A.1\n  <!--\n  - A.2 9.99\n  -->\n"
+    "- B\n",
+    "item commented out between items": "- A\n<!--\n- B 9.99\n-->\n- C\n",
+    "code paired across a sub-item": "- a `x\n  - b `<!--` 9.99 -->\n",
+    "table rows commented out": "| Analysis | Included |\n|---|---|\n| Primary | yes |\n"
+    "<!--\n| Excluding duplicates | 9.99 |\n-->\n\nText after.\n",
+    "a table in an item, then the margin": "- a\n\n  | x |\n<!-- y\n\nz 9.99 -->\n",
+    "line block spilling onto the margin": "| Department of Pharmacology\n"
+    "| University Hospital <!-- old address\nRoom 9.99 -->\n",
+    "under an empty quotation": ">\n<!-- x 9.99\n\n-->\n",
+    "under a `>` in an item": "(@) ex\n>\n<!-- 9.99\n   - sub3\n\n  -->\n",
+    "an item continuing a quoted list": ">   - qsub\nx -->\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "items continuing a quoted list": "> - qitem\n10. ten\n- a <!-- x 9.99\n  - b\n  -->\n",
+    "a line block's indented line, then the margin": "| a | b |\n  - a <!-- x\ntext 9.99\n"
+    "x -->\n",
+    "under a `>` that is an item's text": "- item\n>   - q\n</div>\n>\n<!-- 9.99\n"
+    "  - a <!-- x\nx -->\n",
+    "a line block's indented marker, then the margin": "| a | b |\n    - sub\n  - a <!-- x\n"
+    "`tick 9.99\n  -->\n",
+    "a line block after a closing tag": "(@) ex\n</div>\n| a | b |\n  <!--\n9.99\n  -->\n",
+    "an item's text past a `|` line": "- a\n| b\nc <!-- x\n\n9.99 -->\n",
+    "sub-items under a paragraph line": "Results\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "quoted sub-items after a lazy line": "> - q\n> x\n> - a <!-- x 9.99\n>   - sub\n>   -->\n",
 }
 
 

@@ -179,7 +179,7 @@ def fence_findings(path: Path, text: str) -> tuple[Finding, ...]:
 
 def comment_findings(path: Path, text: str) -> tuple[Finding, ...]:
     """A refusal for each comment the gates mask that opens in a list item, a quotation, a
-    definition or a footnote, and that reading the item alone does not find
+    definition, a footnote or a line block, and that reading the item alone does not find
     (`comments.unclear_comment_lines`). Pandoc reads the item on its own, and prints the
     comment there, or the part of it the gates hid."""
     lines = text.split("\n")
@@ -188,15 +188,15 @@ def comment_findings(path: Path, text: str) -> tuple[Finding, ...]:
             gate=GATE,
             code="unclear-comment",
             message=f"{path.name}: an HTML comment opened in a list item, a quotation, a "
-            "definition or a footnote that the gates read past the item, or across items; "
-            "pandoc may print it as text",
+            "definition, a footnote or a line block that the gates read past the item, or "
+            "across items; pandoc may print it as text",
             path=path,
             line=line,
             context=lines[line - 1].strip()[:120],
             hint="put the `<!--` at the margin under a blank line, outside the list, "
             "quotation or definition, or close the comment on the item's own lines, before "
-            "a blank line or the next item; a backtick left unpaired in an item above can "
-            "pair with one before the `<!--`",
+            "a blank line or a marker short of the item's text; a backtick left unpaired in "
+            "an item above can pair with one before the `<!--`",
         )
         for line in unclear_comment_lines(text)
     )

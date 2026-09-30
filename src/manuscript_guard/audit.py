@@ -578,7 +578,8 @@ def unread_shapes(path: Path, text: str) -> list[str]:
         ),
         *(
             f"{path.name}: line {line} opens an HTML comment in a list item, a quotation, a "
-            "definition or a footnote, which pandoc may print as text where it was not audited"
+            "definition, a footnote or a line block, which pandoc may print as text where it "
+            "was not audited"
             for line in unclear_comment_lines(text)
         ),
     ]

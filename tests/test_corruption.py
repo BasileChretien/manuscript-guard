@@ -3626,6 +3626,34 @@ _UNREAD_COMMENTS = {
     "in a line block": "| line <!-- x\n| b 9.99 -->\n",
     "in an item's second paragraph": "- item\n\n  para <!-- x\n\ny 9.99 -->\n",
     "past a stray div fence": "- item\n:::\nlazy <!-- x\n\n9.99 -->\n",
+    # Round 1 of #115: a line block ends at a line at the margin, and pandoc's item ends at
+    # a marker short of the item's text, a comment open or not.
+    "a line block spilling onto the margin": "| Department of Pharmacology\n"
+    "| University Hospital <!-- old address\nRoom 9.99 -->\n",
+    "an item commented out between items": "- A\n<!--\n- B 9.99\n-->\n- C\n",
+    "a comment run on to the next item": "- A <!--\n- B 9.99 -->\n- C\n",
+    "a sub-item commented out among sub-items": "- A\n  - A.1\n  <!--\n  - A.2 9.99\n"
+    "  -->\n- B\n",
+    "a marker short of the item's text": "- A\n  - A.1 <!-- x\n   - y 9.99 -->\n",
+    "a marker short of a wide number's text": "10. Step <!-- x\n   - y 9.99 -->\n",
+    "code paired across a sub-item": "- a `x\n  - b `<!--` 9.99 -->\n",
+    "a table in an item, then the margin": "- a\n\n  | x |\n<!-- y\n\nz 9.99 -->\n",
+    # Found fuzzing round 1's fix: a `>` alone opens a quotation, or is text in an item,
+    # and was read as a blank line.
+    "under an empty quotation": ">\n<!-- x 9.99\n\n-->\n",
+    "under a `>` in an item": "(@) ex\n>\n<!-- 9.99\n   - sub3\n\n  -->\n",
+    # An item on a line continuing a quotation is an item of the quotation's list, whose
+    # other items start where the sub-item does.
+    "an item continuing a quoted list": ">   - qsub\nx -->\n- a <!-- x 9.99\n  - sub\n  -->\n",
+    "items continuing a quoted list": "> - qitem\n10. ten\n- a <!-- x 9.99\n  - b\n  -->\n",
+    "a line block's indented line, then the margin": "| a | b |\n  - a <!-- x\ntext 9.99\n"
+    "x -->\n",
+    "under a `>` that is an item's text": "- item\n>   - q\n</div>\n>\n<!-- 9.99\n"
+    "  - a <!-- x\nx -->\n",
+    "a line block's indented marker, then the margin": "| a | b |\n    - sub\n  - a <!-- x\n"
+    "`tick 9.99\n  -->\n",
+    "a line block after a closing tag": "(@) ex\n</div>\n| a | b |\n  <!--\n9.99\n  -->\n",
+    "an item's text past a `|` line": "- a\n| b\nc <!-- x\n\n9.99 -->\n",
 }
 
 
@@ -3653,11 +3681,29 @@ def test_a_comment_pandoc_ends_with_its_block_is_refused(paper: str) -> None:
         "> - a\n> - b <!-- x\n> 9.99 -->\n",
         "# Results <!-- draft\n\nThe ROR was 9.99 -->\n",
         "---\ntitle: A study\n---\n\n- item\n\n<!-- 9.99 -->\n",
+        # Round 1 of #115: sub-items inside a comment the item opened, at or past the
+        # item's text, are the item's to pandoc, and a table ends at a line at the margin.
+        "- Reporting bias\n  <!--\n  - notoriety bias 9.99\n  - duplicates\n  -->\n"
+        "- Missing data\n",
+        "- Reporting bias. <!-- note to self:\n  - check notoriety bias 9.99\n"
+        "  - ask the second reviewer -->\n- Missing data.\n",
+        "1. Step one\n   <!--\n   a. detail 9.99\n   -->\n2. Step two\n",
+        "1. Step one\n    <!--\n    a. detail 9.99\n    -->\n2. Step two\n",
+        "10. Step <!-- x\n    - y 9.99 -->\n",
+        "- A\n<!--\n  - A.1 9.99\n-->\n- B\n",
+        "- a\n  - b <!-- x\n    - c 9.99 -->\n",
+        "- A <!-- x\n  > q 9.99\n  -->\n",
+        "> - a <!-- x\n>   - b 9.99 -->\n",
+        "| Analysis | Included |\n|---|---|\n| Primary | yes |\n<!--\n"
+        "| Excluding duplicates | 9.99 |\n-->\n\nText after.\n",
+        "## Results\n| a | b |\n|---|---|\n| 1 | 2 |\n<!--\nx 9.99\n\n-->\n",
+        "Text\n| a |\n<!--\nx 9.99\n\n-->\n",
     ],
 )
 def test_a_comment_pandoc_drops_as_the_gates_do_is_not_refused(paper: str) -> None:
     """On its own line under a blank line, in a paragraph at the margin, whose comment pandoc
-    reads on over blank lines, or opened and closed on an item's own lines."""
+    reads on over blank lines, opened and closed on an item's own lines, sub-items and all,
+    or under a table."""
     from manuscript_guard.text.comments import unclear_comment_lines
 
     assert unclear_comment_lines(paper) == []
@@ -3684,6 +3730,29 @@ def test_a_comment_under_a_list_item_is_refused_by_check_and_the_build(
     }
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     assert "HTML comment" in capsys.readouterr().out
+
+
+def test_a_sub_list_or_table_rows_commented_out_pass_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #115: pandoc drops each comment, and main passed them, where the refusal
+    failed check and the build on ordinary list and table editing."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    source.write_text(
+        source.read_text(encoding="utf-8")
+        + "\n## Limitations\n\n- Reporting bias\n  <!--\n  - notoriety bias\n  - duplicates\n"
+        "  -->\n- Missing data. <!-- note to self:\n  - check the imputation\n"
+        "  - ask the second reviewer -->\n- Channelling.\n\n| Analysis | Included |\n"
+        "|---|---|\n| Primary | yes |\n<!--\n| Excluding duplicates | pending |\n-->\n\n"
+        "Text after.\n",
+        encoding="utf-8",
+    )
+    assert main(["check", str(project), "--json"]) == 0
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert "unclear-comment" not in {f["code"] for f in findings}
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
 
 
 @pytest.mark.parametrize(

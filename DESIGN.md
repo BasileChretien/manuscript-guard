@@ -4624,7 +4624,7 @@ Closed since, and why each mattered:
   more, a plain check then the hostile one each time, and the median of those pairs' ratios
   decides it; the lowest, used before, passed a blow-up of 1.3 to 1.6 times the bound
   whenever one plain run was slowed as much. The median fails a linear input when two of the
-  three plain runs fall in a lull deep enough to lift its ratio past 30, about 3 times for
+  three plain runs fall in a lull deep enough to lift its ratio past 30, about 2.6 times for
   the heaviest. A wall clock backs it up at 60 s, for a `check` that waits instead of
   working, so a wait that returns within about a minute passes, where the old 20 s budget
   failed one of 30 s; one that never returns hangs the suite, as it always did. At the sizes

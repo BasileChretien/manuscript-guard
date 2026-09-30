@@ -4430,6 +4430,29 @@ def test_the_comment_scanner_hides_nothing_the_old_rule_did_not(tmp_path: Path, 
     assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
 
 
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "The ROR\n~~~\nwas 9.99.\n~~~\n",
+        "Set `x\n```\ny`.\n\nThe ROR was 9.99.\n\n```\n",
+        "<!--\n```r\nold\n-->\n\nThe ROR was 9.99.\n\n```r\nnew\n```\n",
+    ],
+    ids=["tilde fence under text", "fence in a code span", "fence opened in a comment"],
+)
+def test_audit_strict_refuses_a_fence_pandoc_may_not_open(
+    tmp_path: Path, paper: str, capsys
+) -> None:
+    """Pandoc prints 9.99 in each. The audit read a listing over it, reported 0 numeric
+    tokens, and `--strict` exited 0, where check and the build refuse the fence line."""
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_bytes(paper.encode("utf-8"))
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+    assert "not a plain fenced listing" in capsys.readouterr().out
+
+
 def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:
     """The old binding parser got this right and the first version of the shared scanner
     did not: it read with the fences blanked, so the comment ran on over the binding."""

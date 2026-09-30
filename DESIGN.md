@@ -476,8 +476,10 @@ name stopping at any letter, and an optional argument that was a footnote's mark
 line of a few hundred markers took minutes. Each now reads a line one way, and the dashes
 are split off from the end of the line before the rest is matched. The eighth round's fix
 took every `[^` after a command for a footnote's marker, and the ninth found pandoc taking
-`\newpage[^1]` whole, the YAML under it read: a bracket after a command is its argument
-unless a colon follows, and `[^1]:` there is a footnote's marker.
+`\newpage[^1]` whole, the YAML under it read. A bracket is a command's argument before its
+groups, colon or not: `\newpage[^1]: ---` is the command and then text, no footnote's
+marker. After a group a bracket is text, and `\vspace{1em}[^x] ---` opens no block; the
+review of #65's fix-only round found it refused, and it passes now.
 
 **The build asks pandoc.** Every shape in those refusals was found by a review, a round at a
 time, and the fifth still found five that put another title on the title page, and shapes
@@ -507,8 +509,9 @@ standing in for a `# Methods` the gates misread straight under a line of text, t
 between passing under the wrong heading. The header's metadata is read on its own: read
 with the titles and the definitions they refer to, a footnote's definition holding a YAML
 block set a title there too, and the whole text matched it (the eighth). The definitions
-are copied from the text pandoc reads, not from code or a comment, and when the header or
-the titles cannot be read on their own while the document can, the build refuses: the
+are copied from the text the gates do not take for code or a comment (`scannable`), and
+when the header or the titles cannot be read on their own while the document can, the
+build refuses (see Known gaps for a definition in a `<pre>`): the
 ninth review found a commented-out footnote holding broken YAML failing that run, which
 switched the check off. The lists are aligned, so a refusal names the heading, with the
 file and line of one the gates read. Pandoc's reading is walked without recursion, and a
@@ -1339,7 +1342,8 @@ so a finding referenced from Results and defined under Methods, `p < 0.001`, pas
 alpha chosen in advance, while the document printed it as a footnote to a Results sentence
 (found reviewing #65). `sections.footnote_index` finds each definition's text and its
 references, and a number in it must pass under the section where it stands and under the
-section of every reference (`chains_at`, `Classifier.classify_under`): a note referenced
+section of every reference in the same file (`chains_at`, `Classifier.classify_under`; see
+Known gaps for another file): a note referenced
 from Results fails there, and one referenced from Methods and from Results must pass in
 both. `explain`, `bind` and the annotated copy read it the same way. A number is judged in
 no fewer places than before, so nothing that failed passes. The first version judged it at
@@ -1351,8 +1355,9 @@ claim pass at a Methods reference. Judged where it stands as well, each fails as
 The note's text is the definition's line, the lines under it up to a blank one or one that
 may start a block, then each block after blank lines indented four spaces or a tab; where
 that misreads pandoc, it only adds a section to pass in. Each note's reference chains are
-found once, so a note referenced a thousand times costs no more than one referenced from
-every section.
+found once, one in Methods and one elsewhere at most, since a verdict reads nothing else
+of a section: judged under every section referencing it, a note of a thousand numbers
+referenced from a thousand sections took two minutes (the fix-only review of #77).
 
 **And the worked example named the wrong guideline.** It claimed STROBE and RECORD-PE;
 RECORD-PE is for routinely collected health data and the example is a spontaneous-report
@@ -1433,22 +1438,28 @@ inside the span, where the link printed as text. So the annotator places each ma
   faced each other across the marks between, and a backslash before a number goes
   inside it, where it escaped the mark's own bracket (the fix-only review of #76). An
   escaped dollar is text: `\$10-\$50` is marked whole, and `5\$` leaves its `\$` outside.
-  So is anything else a backslash escapes in a number read across several runs, which
-  for pandoc is any character but a letter or a digit, save a space, a bracket or a
-  backslash: `5\%-10\%`, `\~5-\~7` and `5\°-10\°` are marked whole (the rounds after the
-  extra one). A link's text, the target a URL or an anchor, can't hold a mark,
-  which is itself a link. A bracket before another is taken for a link's text only when
-  the file defines the second one's label, or, the second empty, the first one's: pandoc
-  reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and `[12][13]` as text, and their
-  numbers are marked (the extra round of #76).
-  A binding in a link's text is put in as its value, unmarked.
+  So is a backslash before anything but a space, a bracket or a backslash, in a number
+  read across several runs: pandoc makes text of a symbol after one, and keeps it before
+  a letter or a digit, as text or a TeX command, the same inside a mark as outside, so
+  `5\%-10\%`, `\~5-\~7`, `5\°-10\°`, `1.2\pm0.3` and `data\2021\05` are marked whole (the
+  rounds after the extra one, and the follow-ups). A link's text, the target a URL or an
+  anchor, can't hold a mark, which is itself a link. A bracket is a link's text when a
+  target follows it; when a second bracket follows, by that one's label, or, the second
+  empty or holding a citation or a footnote's marker, by its own text, which pandoc falls
+  back to; and alone, by its own text. A label is a link's definition, where pandoc reads
+  one, or a heading's title: pandoc reads `[95% CI 1.2-3.4][@smith2021]`, `[…][^2]` and
+  `[12][13]` as text, and their numbers are marked (the extra round of #76, and the
+  follow-ups). A number in a link's definition takes no mark, and a binding in a link's
+  text is put in as its value, unmarked.
 - **Inside other markup, the mark goes around the digits.** The mark goes around the one
   run free of markup that holds a digit, inside the subscript or the span, where pandoc
   reads a mark as well as anywhere: around `1c`, inside `HbA~1c~`. When several runs hold
   digits, `10^-3^`, it goes around the whole of what was found, if every sub- and
   superscript in it opens and closes there; brackets in it are escaped in the mark and
-  read as text, `12][13`. No mark opens straight after a `]`, where pandoc read the two
-  brackets as a reference. Otherwise the number is left unmarked.
+  read as text, `12][13`, and a `@` makes a citation, so none goes there. No mark opens
+  straight after a `]`, where pandoc read two brackets as a reference, nor after a TeX
+  command, which took it for its argument. An ordered list's own numbers take none: marked, the list was a paragraph.
+  Otherwise the number is left unmarked.
 
 That rule is a model of pandoc's inline reader, and models of pandoc's readers have been
 found wrong round after round in this repository. So the build then asks pandoc: each file
@@ -3351,10 +3362,13 @@ Closed since, and why each mattered:
   and a comment on one line, in the fence reader, which reads before any comment is known.
   So it stays refused, and the hint says to put the comment's `-->` on a line of its own,
   which is accepted.
-- **Three more listings commented out whole are refused.** A tilde listing straight under
-  the `<!--` line; a listing inside a commented-out list item; and a backtick listing
-  straight under a line of text that opens the comment, `Text <!-- aside`. Pandoc prints
-  nothing of any, and #65's build did. A listing a comment holds is let be only where
+- **More listings commented out whole are refused.** A tilde listing straight under the
+  `<!--` line; a listing inside a commented-out list item; a backtick listing straight
+  under a line of text that opens the comment, `Text <!-- aside`; and, found by the fourth
+  round, one straight under comment text wrapped onto the line above it, one under a
+  `<!--` straight under a paragraph or a heading, a second listing with text between it and
+  the first in one comment, and one under a `<!--` indented a space. Pandoc prints nothing
+  of any, and #65's build did. A listing a comment holds is let be only where
   pandoc would read it as the gates do without the comment: a tilde fence does not open
   under a line of text, and a list item's listing ends at pandoc's closer, not the gates'.
   A backtick fence does open under a line of text, but under a footnote's line, or a list
@@ -3382,7 +3396,9 @@ Closed since, and why each mattered:
   and a real `# Methods` hidden by a misread comment later, lines up with pandoc's list, and
   a claim between the two passes G2 under the wrong heading. It takes two misreads, each of
   a shape above, of headings with the same title. A heading pandoc makes in a list, a
-  definition or a table never lines up, since the gates read none there.
+  definition or a table never lines up. The gates read none there but a setext title in a
+  list item, `- Results` over `===`, which they take marker and all; it is refused as one
+  pandoc reads as text or in a list.
 - **Values that move a heading pass the build's comparison.** A file's headings as written
   and as built, values in, are paired by index, and refused only when their number or
   levels differ. Values whose text holds markup can move one while both stay the same: the
@@ -3398,6 +3414,20 @@ Closed since, and why each mattered:
   setext `===` title starting with a placeholder whose value starts with `#`, `#1 ranked
   drugs`: pandoc prints the heading, and the gates, reading the built line, do not. Both
   are refused, not passed.
+- **Some lines of dashes after a TeX command are refused that open nothing.** The refusal
+  takes any command for one pandoc starts a block behind, where pandoc does so only for a
+  block-level command, `\newpage` or `\vspace{1em}`: behind `\foo[x]{1em}`, which it reads
+  inline, the dashes are text. And a colon after a command is read as a definition's
+  marker, where pandoc reads `\newpage[^1]: ---` and `\foo[x]: ---` as the command, then
+  text. Each is refused though it prints as it reads; putting the command on a line of its
+  own clears it. Telling the block-level commands from the rest would mean keeping pandoc's
+  list of them.
+- **A footnote-shaped line in a `<pre>` or a TeX environment is copied to the titles.** The
+  definitions the titles may refer to are taken from the text the gates do not take for
+  code or a comment, and a `<pre>` or `\begin{verbatim}` is neither to them. A line there
+  shaped `[^n1]:` over YAML pandoc cannot read makes the titles' run fail while the document
+  reads, and the build refuses the document, where pandoc reads the block as raw markup and
+  no footnote. Refused, not passed.
 - **A title continuing a paragraph over `===` is read as a heading by `check`.** Pandoc
   reads `We also saw\nMethods\n=======` as one paragraph and the heading scan as a level-1
   Methods heading, so `check` puts the paragraph's numbers under Methods. The build compares
@@ -3419,6 +3449,19 @@ Closed since, and why each mattered:
   section a number must pass in. A line shaped like a heading that pandoc prints as text
   refuses a definition and ends a note's text only where `main` read a heading: a setext
   title does, and an empty heading's title, or a title starting `#`, `>` or `|`, does not.
+- **A footnote defined in one file and referenced from another is read where it stands.**
+  Notes are indexed a file at a time, and the build joins the files, so a Results sentence
+  in main.md referencing `[^n]`, defined under a Methods heading in `appendix.md`, prints
+  the note's `p < 0.001` under Results while G2 reads it under Methods, as the alpha, as on
+  `main` (the fix-only review of #77). Indexing notes over the joined text would close it.
+- **A note's text the gates misread is judged where it stands, and can fail there.** A
+  number must pass where it stands as well as at each reference, which is what keeps a
+  misread note from passing a Results claim; the other side is an alpha in Methods failing
+  when the gates take it for the text of a note referenced from Results, which pandoc prints
+  where it stands. The fix-only review of #77 found five such shapes, each contrived: an
+  alpha after a note's definition in a list item, after a comment, after a line of no-break
+  spaces, on a lazy `[^n]:` line under a paragraph, and in a note nested in another. Each
+  is reported unbound, not passed.
 - **Fences are found without knowing what a comment or a code span swallowed.**
   `text/fences.py` reads the file for fences before anything else. So a fence line that
   pandoc reads as part of a comment or of an open code span is still an opener there, and
@@ -4459,42 +4502,38 @@ Closed since, and why each mattered:
   colour is not on the page. Two code-span edges leave a number unmarked as "in code" that
   pandoc prints outside code: a backslash before a closing backtick, which pandoc does not
   read as an escape, and a backtick left unpaired in one list item that pairs with one in
-  the next. The extra round of #76 left these, each rare or no worse than on `main`:
+  the next. Rounds of review of #76 left these, each rare or no worse than on `main`:
   - a link's text across a line break is not found, so its paragraph loses every mark,
-    as `main`'s copy misreads it;
+    as `main`'s copy misreads it (the extra round);
   - a link's text holding `@` and a number, `[a@b.org room 5](mailto:a@b.org)`, loses its
-    paragraph, which `main`'s copy also misreads;
-  - a number in a reference definition, `[tbl]: #tbl-2` or `[Table 2]: #t`, is marked, which
-    breaks the definition and costs the paragraphs that use it their marks;
+    paragraph, which `main`'s copy also misreads (the extra round);
   - an escaped `\$` closes an equation to the annotator and not to pandoc, so in
-    `from $5 to 7\$` both numbers go unmarked as "in an equation";
-  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5 times`, or
-    a lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
-    reference two brackets make, and it reaches past them;
-  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked;
-  - so is a number read across several runs with a backslash pandoc keeps, before a letter
-    or a digit: a TeX command, `1.2\pm0.3` or `5\times10^3^`, a path, `data\2021\05`, or
-    `\é5-\é10`; and one before a character Python counts as a digit, even in one run,
-    `12\²`. `main` marks each, and its copy reads the same. Word drops the command, so
-    `1.2\pm0.3` prints "1.2" (the final round of #76);
-  - a mark straight after a TeX command, `\a`, is taken for its argument, and the
-    paragraph loses every mark;
-  - an ordered list loses every mark: its `1.` and `2.` are marked, which breaks the list,
-    as `main`'s copy does.
-
-  And its fix-only round these, each contrived or no worse than on `main`:
+    `from $5 to 7\$` both numbers go unmarked as "in an equation" (the extra round);
+  - a number straight after a `]`, `Fees [B]7`, a footnote's marker, `seen[^1]5`, or a
+    lone `]`, `x]5`, is left unmarked, where `main` marks it; the rule is for the
+    reference two brackets make, and it reaches past them (the extra round). Narrowed,
+    it let a mark open on `[^1]$5 `df$a``, where pandoc reads an equation from the `$`
+    to one inside the code span, which the annotator does not find: it looks for
+    equations outside code (the follow-ups);
+  - a range whose backslash is itself escaped, `\\$10-\\$50`, is left unmarked (the extra
+    round);
+  - a number straight after a TeX command, `\a 5`, is left unmarked: the command took the
+    mark for its argument, and the paragraph lost every mark (the final round);
   - reference definitions are looked for one file at a time, so `[Table 2][tbl]` in one
     file, with `[tbl]: #results` in another, has its 2 marked, and the copy the build joins
     prints `Table [2](#mg-n1)` as text, as `main`'s does; "never reads otherwise than the
-    manuscript" holds file by file;
-  - a link the annotator does not know pandoc reads costs its paragraph every mark: a
-    definition inside a quotation or a list item, an implicit reference to a heading,
-    `[the 3 steps][Methods]`, and `[Table 2][@a]` where only `[table 2]:` is defined, since
-    pandoc falls back to the first bracket's label; `main`'s copy misreads each;
-  - definitions are read in the raw text, so one in a listing or a comment, or straight
-    under a line of a paragraph, where pandoc reads none, takes the number in
-    `[Table 2][t]` for a link's and leaves it unmarked; and labels are matched with
-    `casefold`, which differs from pandoc's lower-casing for ß.
+    manuscript" holds file by file (the fix-only round);
+  - a definition on a list item's own line, `- [t]: #x`, which pandoc reads, is not
+    found, and a paragraph using it loses every mark, as `main`'s copy misreads it (the
+    fix-only round).
+
+  The follow-ups of #76 closed the rest: a number in a link's definition takes no mark;
+  definitions are read where pandoc reads one, outside listings and comments, not under a
+  paragraph's line, and in a quotation; a bracket alone is a link when its text is defined,
+  or a heading's title, and falls back to that over a citation or a note's marker; labels
+  are lower-cased as pandoc does, `ß` kept apart from `ss`; a backslash before a letter or
+  a digit, `1.2\pm0.3`, `data\2021\05`, `12\²`, reads the same inside a mark; and an
+  ordered list's own numbers take none, where marked they made the list a paragraph.
 - **The annotated copy prints a manuscript file's own front matter.** The annotated build
   re-reads each source whole, where the build strips its YAML block, so whatever pandoc
   prints from that block prints in the annotated copy and not in the manuscript, its

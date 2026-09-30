@@ -22,9 +22,9 @@ from __future__ import annotations
 import bisect
 import re
 from bisect import bisect_right
-from collections.abc import Iterable
 from dataclasses import dataclass
 
+from manuscript_guard.classify import is_methods
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import (
     _OLD_SCAN_SKIPPED,
@@ -228,7 +228,8 @@ class Note:
     start: int
     end: int
     references: tuple[int, ...]
-    # The heading chain of each reference, each once, found when the note is.
+    # A heading chain of the references, found when the note is: the first in Methods and
+    # the first elsewhere, since a verdict turns on its section only through `is_methods`.
     chains: tuple[tuple[str, ...], ...] = ()
 
 
@@ -322,11 +323,24 @@ def footnote_index(text: str) -> list[Note]:
             low,
             high,
             tuple(references[label]),
-            _distinct(chain_at(found_headings, at) for at in references[label]),
+            _one_of_each_kind(chain_at(found_headings, at) for at in references[label]),
         )
         for low, high, label in spans
         if label in references
     ]
+
+
+def _one_of_each_kind(chains) -> tuple[tuple[str, ...], ...]:
+    """The first of `chains` in Methods and the first elsewhere. A number's verdict turns on
+    its section only through `classify.is_methods`, so one chain of each kind is judged as
+    all of them would be; a note referenced from a thousand sections, each judged, made a
+    note of a thousand numbers take minutes (the fix-only review of #77)."""
+    kinds: dict[bool, tuple[str, ...]] = {}
+    for chain in chains:
+        kinds.setdefault(is_methods(chain), chain)
+        if len(kinds) == 2:
+            break
+    return tuple(kinds.values())
 
 
 def _containing(notes: list[Note], offset: int) -> Note | None:
@@ -346,24 +360,16 @@ def chains_at(
     pandoc prints where it stands passed: a `[^n]:` line under a paragraph's last line, which
     pandoc reads as that paragraph's, or a paragraph a list item or a comment holds (review
     of #77). Judged in both places, a number can only fail more than it did, never pass what
-    it failed before, however the note's end is misread. One chain per heading at most, so a
-    note referenced a thousand times costs no more than one referenced from every section."""
+    it failed before, however the note's end is misread. A reference's chain is added only
+    when it is of the other kind than where the number stands, Methods or not, since that
+    is all a verdict reads of a section: two chains at most, however often the note is
+    referenced and from however many sections."""
     here = chain_at(index, offset)
     note = _containing(notes, offset)
     if note is None:
         return (here,)
-    return _distinct([here, *note.chains])
-
-
-def _distinct(chains: Iterable[Chain]) -> tuple[Chain, ...]:
-    """`chains` without repeats, in order. A chain is its titles and its printed reading, and
-    a title printed as text (`Unprinted`) is not the same title printed: `is_methods` reads
-    them differently, where `==` on the tuples does not tell them apart."""
-    kept: dict[tuple, Chain] = {}
-    for chain in chains:
-        key = tuple((type(t), t) for t in (*chain, None, *getattr(chain, "printed", ())))
-        kept.setdefault(key, chain)
-    return tuple(kept.values())
+    kind = is_methods(here)
+    return (here, *(chain for chain in note.chains if is_methods(chain) != kind))
 
 
 def section_chain(text: str, offset: int) -> tuple[str, ...]:
@@ -459,13 +465,16 @@ _BLOCK_TAGS = (
 )
 # One thing a line may open with that pandoc starts a block behind: a list, definition or
 # footnote marker, a task's box after it; a block-level tag, a comment or a processing
-# instruction; a TeX command, starred or not, with its groups three deep. The alternatives
-# read any text one way only: a roman numeral has two letters or more, since one is a
-# letter's; a comment ends at its first `-->`; a command's name takes every letter, as TeX
-# reads it; and `[^1]:` after a command is a footnote's marker, where `[^1]` with no colon
-# after it is the command's optional argument, as pandoc reads it, and `[x]:` an argument
-# before a definition's colon. Where one line could be read two ways, a line of a few
-# hundred items took minutes.
+# instruction; a TeX command, starred or not, with its bracketed arguments and then its
+# groups, three deep. The alternatives read any text one way only: a roman numeral has two
+# letters or more, since one is a letter's; a comment ends at its first `-->`; and a
+# command's name takes every letter, as TeX reads it. Pandoc takes brackets as a command's
+# argument only before its groups: `\vspace{1em}[^x] ---` is the command, then text. It
+# takes `[^1]` as one colon or not, and `\newpage[^1]: ---` is the command, then text; the
+# pattern reads `[^1]:` there as a footnote's marker instead, so that the marker's
+# alternative and the argument's never both match, and the line is refused either way.
+# Where one line could be read two ways, a line of a few hundred items took minutes, and
+# reading `[^1]:` both ways made the follow-ups' first version hang.
 _GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
 _ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
 _OPENER_ITEM = (
@@ -473,7 +482,7 @@ _OPENER_ITEM = (
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
     r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
     r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
-    r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*)"
+    r"(?:[ \t]*(?:" + _ARGUMENT + r"))*(?:[ \t]*" + _GROUP + r")*[ \t]*)"
 )
 _OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)
 
@@ -512,8 +521,8 @@ def rules_opening_blocks(text: str) -> list[int]:
     lines, where pandoc reads nothing but a thematic break, and a heading is written with
     `#`. Dashes ending a line after markup or a list marker are refused wherever they are:
     pandoc starts a block behind either. A line in code, a comment or the front matter is
-    not read. A YAML block of the body is: its dashes are what is refused, and blanked with
-    it, as the heading reads blank it (#85), it passed `check`.
+    not read. A YAML block of the body is read: its dashes are what is refused. Blanked as
+    the heading reads blank it (#85), it passed `check`.
     """
     shown = scannable(text, metadata=False).split("\n")
     source = text.split("\n")

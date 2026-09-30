@@ -44,6 +44,7 @@ from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.values import RESULTS, Value
 from manuscript_guard.text.inline import (
     code_spans,
+    definition_spans,
     equation_spans,
     link_text_spans,
     markable_core,
@@ -102,7 +103,12 @@ IN_EQUATION = "in an equation, which a mark would break"
 IN_MARKUP = "inside markup a mark would break"
 IN_LINK = "in a link's text, where a mark, itself a link, cannot go"
 IN_FRONT_MATTER = "in the front matter"
+IN_LIST = "an ordered list's number, which a mark would make text"
+IN_DEFINITION = "in a link's definition, which a mark would break"
 READ_OTHERWISE = "with a mark there, pandoc read the paragraph differently"
+# The structural rule for an ordered list's own numbers, `1.` and `2)`: marked, the list was
+# a paragraph to pandoc, and every mark in it was taken out.
+_LIST_MARKER = "ordered-list-marker"
 
 
 @dataclass(frozen=True)
@@ -232,6 +238,7 @@ class _Unmarkable:
             IN_CODE: code,
             IN_EQUATION: equation_spans(masked, code),
             IN_LINK: link_text_spans(text),
+            IN_DEFINITION: definition_spans(text),
         }
 
     def reason(self, start: int, end: int) -> str:
@@ -324,7 +331,11 @@ def _number_pieces(text, masked, classifier, counter, unmarkable) -> list[_Piece
             mark = Mark(
                 anchor, EXEMPT, shown, f"{verdict.kind}: {verdict.rule}", verdict.detail or ""
             )
-        reason = unmarkable.reason(start, end) or ("" if core else IN_MARKUP)
+        reason = (
+            unmarkable.reason(start, end)
+            or (IN_LIST if verdict.rule == _LIST_MARKER else "")
+            or ("" if core else IN_MARKUP)
+        )
         pieces.append(_Piece(start, end, shown, replace(mark, unmarked=reason)))
     return pieces
 

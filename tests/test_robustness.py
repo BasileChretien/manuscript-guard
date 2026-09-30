@@ -861,3 +861,37 @@ def test_a_note_referenced_many_times_is_judged_in_linear_time(assert_linear) ->
             chains_at(headings, notes, offset)
 
     assert_linear(one_note, judge, 100, "judging a note referenced many times")
+
+
+def test_a_note_referenced_from_many_sections_is_judged_in_linear_time(assert_linear) -> None:
+    """The fix-only review of #77: deduplicated by chain, a note referenced from a thousand
+    sections, holding a thousand numbers, was judged a million times, and took two minutes
+    where main took two seconds. A number's verdict turns on its section only through
+    whether it is Methods, so each note keeps a chain of each kind at most. The note is
+    indexed and scanned off the clock, and only judging its numbers is timed."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+    from manuscript_guard.text.tokens import find_atoms
+
+    classifier = Classifier.load()
+
+    def one_note(count: int) -> tuple:
+        text = (
+            "".join(f"# Results {i}\n\nText.[^n]\n\n" for i in range(count))
+            + "# Methods\n\nText.[^n]\n\n[^n]: "
+            + " ".join(f"{i}.5" for i in range(count))
+            + "\n"
+        )
+        notes, headings = footnote_index(text), heading_index(text)
+        atoms = [
+            atom for atom in find_atoms(text, mask(text)) if notes[0].start <= atom.start
+        ]
+        return headings, notes, atoms, classifier.scan(text)
+
+    def judge(given: tuple) -> None:
+        headings, notes, atoms, scan = given
+        for atom in atoms:
+            classifier.classify_under(atom, chains_at(headings, notes, atom.start), scan)
+
+    assert_linear(one_note, judge, 50, "judging a note referenced from many sections")

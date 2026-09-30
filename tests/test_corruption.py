@@ -2423,8 +2423,9 @@ def test_the_build_refuses_what_its_reading_used_to_let_through(
 def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
     """Found reviewing #71: six hundred nested divs overflowed the recursive walk of
     pandoc's reading, and the build stopped on a traceback. Where Python's own JSON reader
-    gives up depends on its version, before 600 on 3.10 and past 2000 on 3.13, so either
-    depth may be compared or refused; neither may crash."""
+    gives up depends on its version and system, before 600 on 3.10, at 2000 on 3.13 on
+    Windows and past it on Linux and macOS, so either depth may be compared or refused;
+    neither may crash. The walks themselves are tested apart, below the JSON reader."""
     import shutil
 
     from manuscript_guard.build.reading import misreading
@@ -2444,6 +2445,85 @@ def test_deeply_nested_divs_are_compared_or_refused_not_a_crash() -> None:
             depth,
             found,
         )
+
+
+def test_the_walks_of_pandoc_s_reading_take_any_depth() -> None:
+    """The review of #65's CI fix: the test above accepts a refusal at any depth, so a walk
+    made recursive again would pass it wherever the JSON reader overflows first. A tree
+    built in Python, twenty thousand divs deep, is walked on every system alike."""
+    from manuscript_guard.build.reading import _headers, _nodes
+
+    depth = 20_000
+    tree: list = [{"t": "Header", "c": [2, ["deep", [], []], [{"t": "Str", "c": "Deep"}]]}]
+    for _ in range(depth):
+        tree = [{"t": "Div", "c": [["", [], []], tree]}]
+    tree = [{"t": "BulletList", "c": [tree]}]
+    assert [(found.level, found.listed) for found in _headers(tree)] == [(2, True)]
+    assert sum(1 for _ in _nodes(tree, lambda node: True)) == depth + 3
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_definition_in_a_comment_is_not_copied_to_the_titles() -> None:
+    """Round nine of #65: a commented-out footnote holding YAML pandoc cannot read, copied
+    to the titles' run, made it fail. The definitions come from the text the gates do not
+    take for code or a comment, so this one is not copied, and the reading agrees."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Results\n\nThe excess was significant.\n\n"
+        "<!--\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n-->\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is None, found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_titles_that_cannot_be_read_while_the_document_can_are_refused() -> None:
+    """Round nine of #65's other half: when the titles' run fails and the document reads,
+    passing switched the check off for every heading. A footnote-shaped line in a `<pre>`,
+    which pandoc prints as raw HTML and the gates copy, holds broken YAML; the heading the
+    gates misread under a line of text must not pass with it."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = (
+        "# Methods\n\nWe also saw it.\n# Results\n\nThe excess was significant.\n\n"
+        "<pre>\n[^n1]:\n    ---\n    sites: [Caen\n    ...\n</pre>\n"
+    )
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is not None and found.startswith("the document, but not"), found
+
+
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+def test_a_setext_title_in_a_list_item_is_refused_for_what_pandoc_reads() -> None:
+    """Reviewing #65's fixes: the gates read `- Results` over `===` as a heading, marker
+    and all, and pandoc a heading inside the list. The build refused it, saying pandoc read
+    the line as text."""
+    import shutil
+
+    from manuscript_guard.build.reading import misreading
+
+    header = "---\ntitle: A study\n---\n"
+    body = "# Methods\n\nText.\n\n- Results\n=========\n\nThe excess was 9.87.\n"
+    found = misreading(
+        header + body, header, [("main.md", body)], shutil.which("pandoc"), Path()
+    )
+    assert found is not None and "in a list" in found, found
 
 
 def test_opener_lines_are_read_in_linear_time() -> None:
@@ -2691,10 +2771,10 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n<area> ---\ntitle: Evil\n...\n",
         "## Note\n<frameset> ---\ntitle: Evil\n...\n",
         "## Note\n<isindex> ---\ntitle: Evil\n...\n",
-        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc,
-        # and a footnote's marker only with a colon after it.
+        # Found by the ninth: after a command, `[^1]` is its optional argument to pandoc.
         "## Note\n\\newpage[^1]---\ntitle: Evil\n...\n",
-        "## Note\n\\vspace{1em}[^x] ---\ntitle: Evil\n...\n",
+        "## Note\n\\newpage[^1] ---\ntitle: Evil\n...\n",
+        "## Note\n\\foo[x][y]{1em} ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
@@ -2726,6 +2806,11 @@ def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:
         "> Para one.\n>\n> ---\n>\n> Para two.\n",
         # An item that is an en dash: no YAML opens on two dashes.
         "1. a\n2. --\n3. b\n",
+        # Found reviewing #65's fixes: pandoc takes brackets as a command's argument only
+        # before its groups, and the text after them starts no block.
+        "\\vspace{1em}[^x] ---\nnote: v\n...\n",
+        "\\textsuperscript{a}[^9] ---\nnext.\n",
+        "\\foo[x]{1em}[y] ---\nnext.\n",
     ],
 )
 def test_a_rule_that_opens_nothing_is_not_refused(block: str) -> None:
@@ -3543,8 +3628,23 @@ def test_a_plain_fence_is_not_refused(block: str) -> None:
         "<!--\n~~~r\nx\n~~~\n-->\n",
         f"<!--\n- Fit the model:\n\n  {_TICKS}r\n  x\n  {_TICKS}\n-->\n",
         f"Text <!-- aside\n{_TICKS}r\nx\n{_TICKS}\nend of the aside -->\n",
+        # Found by round 4 of #71: each follows from round 3's rule.
+        f"<!-- An earlier\nmodel:\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"Text.\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"## Note\n<!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
+        f"<!--\n{_TICKS}r\nx\n{_TICKS}\nand then\n{_TICKS}r\ny\n{_TICKS}\n-->\n",
+        f" <!--\n{_TICKS}r\nx\n{_TICKS}\n-->\n",
     ],
-    ids=["tilde-under-comment", "in-a-list-item", "under-text-opening-it"],
+    ids=[
+        "tilde-under-comment",
+        "in-a-list-item",
+        "under-text-opening-it",
+        "under-wrapped-comment-text",
+        "comment-under-a-paragraph",
+        "comment-under-a-heading",
+        "text-between-two-listings",
+        "comment-indented-a-space",
+    ],
 )
 def test_a_listing_commented_out_in_these_shapes_is_refused(block: str) -> None:
     """Known gaps: pandoc prints nothing of these, and they are refused. A listing a comment
@@ -5572,6 +5672,24 @@ def test_a_mark_pandoc_reads_otherwise_is_taken_out() -> None:
             {"120", "14"},
             {"2": "IN_LINK"},
         ),
+        # The follow-ups of #76. A backslash pandoc keeps, before a letter or a digit, is
+        # text inside the mark as outside it.
+        ("It was 1.2\\pm0.3 at 40 sites.", {"1.2\\pm0.3", "40"}, {}),
+        ("Between 5\\²-10\\² of 40 sites.", {"5\\²-10\\²", "40"}, {}),
+        ("It was 12\\² at 40 sites.", {"12\\²", "40"}, {}),
+        ("Files in data\\2021\\05 for 40 sites.", {"data\\2021\\05", "40"}, {}),
+        # Around a number read across several runs, a `@` is a citation's.
+        ("It was 5$\\5@a in 40 sites.", {"40"}, {"5$\\5@a": "IN_MARKUP"}),
+        # A mark straight after a TeX command is taken for its argument.
+        ("Of 12 patients, \\a 5 were seen.", {"12"}, {"5": "IN_MARKUP"}),
+        # An ordered list's numbers are the list's: marked, they broke it.
+        ("1. First 12 patients\n2. Then 14 more", {"12", "14"}, {"1": "IN_LIST"}),
+        # A heading's title is a label (a link pandoc reads without a second bracket is
+        # tested apart, below).
+        ("As in [the 3 steps][Results] for 40 sites.", {"40"}, {"3": "IN_LINK"}),
+        # Definitions pandoc does not read: under a paragraph's line, or in a listing.
+        ("As in [Table 2][t] for 40 sites.\n\nText\n[t]: #x", {"2", "40"}, {}),
+        ("As in [Table 2][t] for 40 sites.\n\n```\n[t]: #x\n```", {"2", "40"}, {}),
     ],
 )
 def test_the_annotated_copy_marks_what_main_marked(
@@ -5595,6 +5713,40 @@ def test_the_annotated_copy_marks_what_main_marked(
         assert shown.get(number) == getattr(module, reason), shown
 
 
+@pytest.mark.skipif(
+    __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
+)
+@pytest.mark.parametrize(
+    "text",
+    [
+        "As in [Table 2] for 40 sites.\n\n[table 2]: #t",
+        "As in [Table 2][@smith2021] for 40 sites.\n\n[table 2]: #t",
+    ],
+)
+def test_a_shortcut_link_and_its_definition_take_no_mark(text: str) -> None:
+    """The follow-ups of #76: a bracket pandoc reads as a link with no second bracket, or
+    falling back to its own text over a citation, is a link's text; and a number in a
+    link's definition, marked, broke the definition, and every paragraph using it lost its
+    marks."""
+    import shutil
+
+    from manuscript_guard import annotate as module
+    from manuscript_guard.classify import Classifier
+
+    _annotated, marks = module.annotate(
+        f"# Results\n\n{text}\n",
+        {},
+        Classifier.load([], []),
+        counter=[0],
+        pandoc=shutil.which("pandoc"),
+    )
+    assert [(mark.shown, mark.unmarked) for mark in marks] == [
+        ("2", module.IN_LINK),
+        ("40", ""),
+        ("2", module.IN_DEFINITION),
+    ]
+
+
 @pytest.mark.parametrize(
     ("text", "links"),
     [
@@ -5609,6 +5761,26 @@ def test_the_annotated_copy_marks_what_main_marked(
         ("See [Table 2][@smith2021].\n", []),
         ("See [Table 2][t].\n", []),
         ("See [Table 2][].\n\n[^table 2]: A note.\n", []),
+        # The follow-ups of #76, each as pandoc 3.9 reads it. A bracket on its own is a link
+        # when its text is defined, and falls back to that over a citation or a note's
+        # marker, but not over a label nothing defines; not before a span's attributes.
+        ("See [Table 2] here.\n\n[table 2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][@smith2021].\n\n[table 2]: #t\n", ["[Table 2]"]),
+        ("See [Table 2][^1].\n\n[table 2]: #t\n\n[^1]: A note.\n", ["[Table 2]"]),
+        ("See [Table 2][t].\n\n[table 2]: #t\n", []),
+        ("See [Table 2]{.smallcaps} here.\n\n[table 2]: #t\n", []),
+        # A heading's title is a label, case aside; a line pandoc prints as text is none.
+        ("# Methods\n\nSee [the 3 steps][Methods].\n", ["[the 3 steps]"]),
+        ("# Methods\n\nSee [methods] here.\n", ["[methods]"]),
+        ("Text.\n# Methods\n\nSee [the 3 steps][Methods].\n", []),
+        # A definition under a paragraph's line, in a listing or in a comment is none; in a
+        # quotation it is.
+        ("Text\n[t]: #x\n\nSee [Table 2][t].\n", []),
+        ("```\n[t]: #x\n```\n\nSee [Table 2][t].\n", []),
+        ("<!--\n[t]: #x\n-->\n\nSee [Table 2][t].\n", []),
+        ("> [t]: #x\n\nSee [Table 2][t].\n", ["[Table 2]"]),
+        # Pandoc lower-cases a label; it does not fold `ß` into `ss`.
+        ("See [x][Straße].\n\n[STRASSE]: #x\n", []),
     ],
 )
 def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(

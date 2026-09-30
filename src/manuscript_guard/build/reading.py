@@ -31,7 +31,8 @@ every heading. Raw markup and
 footnotes print no words in a heading, and a heading in a quotation, a note or a figure is
 left out on both sides: the gates read none there, by design (see
 `test_a_quoted_heading_is_deliberately_not_a_section`). A heading in a list, a definition
-or a table is the document's, and matches none the gates read, since they read none there.
+or a table is the document's, and matches none the gates read: they read none there but a
+setext title in a list item, `- Results` over `===`, which they take marker and all.
 It takes four runs of pandoc's reader a document with listings, one of them on the header
 alone and kept for the next document with the same header.
 """
@@ -141,7 +142,8 @@ def _words(text: str) -> str:
 @dataclass(frozen=True)
 class _Printed:
     """A heading pandoc makes: its level, its words, its text for a message, and whether it
-    stands in a list, a definition or a table, where the gates read no heading."""
+    stands in a list, a definition or a table, where the gates read none but a setext title
+    in a list item, which they take whole, marker and all."""
 
     level: int
     words: str
@@ -214,8 +216,9 @@ def _titles(
     paragraphs: list[str] = []
     definitions: list[str] = []
     for (name, written), made in zip(sources, built, strict=True):
-        # From the text pandoc reads, not from code or a comment: a commented-out footnote
-        # holding YAML pandoc cannot read, copied, made the titles' own run fail.
+        # From the text the gates do not take for code or a comment (`scannable`): a
+        # commented-out footnote holding YAML pandoc cannot read, copied, made the titles'
+        # own run fail. One in a `<pre>` is still copied (see Known gaps).
         definitions += (
             made[match.start() : match.end()] for match in _DEFINITION.finditer(scannable(made))
         )
@@ -277,9 +280,11 @@ def _first_difference(read: list[_Read], printed: list[_Printed]) -> str | None:
             )
 
     def only_read(i: int) -> str:
+        # As text, or as a heading in a list, a definition or a table, which is never
+        # paired: the gates take `- Results` over `===` whole, marker and all.
         return (
-            f"as text the level-{read[i].level} heading {read[i].title!r} at "
-            f"{read[i].where}, which the gates read as a heading"
+            f"as text, or in a list, a definition or a table, the level-{read[i].level} "
+            f"heading {read[i].title!r} at {read[i].where}, which the gates read as a heading"
         )
 
     def only_printed(j: int) -> str:

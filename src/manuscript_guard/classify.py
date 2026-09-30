@@ -329,6 +329,9 @@ def _without_emphasis_end(title: str) -> str:
 
 
 def _applies(rule: Rule, section: Sequence[str] | None) -> bool:
+    # A verdict reads a section only here, and only whether it is Methods: a footnote's
+    # numbers are judged under one chain of each kind (`sections.chains_at`), which holds
+    # while that is so.
     return not rule.methods_only or section is None or is_methods(section)
 
 

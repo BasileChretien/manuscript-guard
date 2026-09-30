@@ -38,8 +38,10 @@ BUDGET_SECONDS = 20.0
 
 #: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
 #: same project, both in CPU time. The heaviest input here, one long run of backticks, read
-#: up to 10.3, and no other over 8. A ratio, so the same bound holds on a runner of any
-#: speed.
+#: up to 11.6 on most rounds, and no other over 9. One round with other sessions' suites
+#: running read 24.3 for it and 23.9 for setext underlines, which usually read about 5.5;
+#: a reading over the bound is measured again (see `CONFIRM`). A ratio, so the same bound
+#: holds on a runner of any speed.
 CHECK_OVERHEAD = 30.0
 #: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
 #: on a read or a network call that takes its time and then returns. A wait under about a
@@ -52,12 +54,13 @@ HANG_SECONDS = 60.0
 #: stands. A plain check takes about half a second, and load moved one of its runs by up to
 #: 1.6 times where a hostile check of 13 s or more moved a fifth at most, so a pair reads
 #: high when a lull falls on its plain run and low when load does. The median takes two
-#: such pairs to move, where the lowest pair's ratio took one to pass a blow-up. One at
-#: twice the bound or more fails at once. Unlike `check_linear`, which decides that on a
-#: best of three, this is one timed run against the baseline: in a VM with 72 busy
-#: processes on the host's 24 logical CPUs, one read 55, within 9% of twice the bound,
-#: where about 12 was usual; on Windows, 48 busy processes on 24 raised readings from
-#: about 10 to 18.7.
+#: such pairs to move, where the lowest pair's ratio took one to pass a blow-up; so it also
+#: fails a linear input when two of the three plain runs fall in a lull deep enough to lift
+#: its ratio past the bound, about 3 times for the heaviest. One at twice the bound or more
+#: fails at once. Unlike `check_linear`, which decides that on a best of three, this is one
+#: timed run against the baseline: in a VM with 72 busy processes on the host's 24 logical
+#: CPUs, one read 55, within 9% of twice the bound, where about 12 was usual; on Windows,
+#: 48 busy processes on 24 raised readings from about 10 to 18.7.
 CONFIRM = 3
 
 

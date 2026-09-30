@@ -170,8 +170,11 @@ reads:
       input already reads ten, so it cannot tell a quadratic that adds a few seconds: that
       is `assert_linear`'s job.
     headroom: >-
-      0.7 to 10.3 against 30, over five rounds on Windows with thirteen other suites running,
-      and review's own. The heaviest input, one long run of backticks, read up to 10.3: 3x.
+      0.7 to 11.6 against 30 on most rounds, on Windows with other suites running, and
+      review's own. The heaviest input, one long run of backticks, read up to 11.6: about
+      2.6x. One review round, with other sessions' suites running, read 24.3 for it and 23.9
+      for setext underlines (usually about 5.5): 1.2x, and a first reading over 30 is
+      measured again (`CONFIRM`).
       Nested brackets read 12.3 while `BRACKETED` was quadratic, and 1.4 once it read in one
       pass. Review measured a Linux VM on the same host: up to 11 for a linear input, with
       CPU time there doubling between rounds as the host's load changed.

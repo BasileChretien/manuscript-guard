@@ -260,3 +260,98 @@ def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> No
     )
     text = context(run("session-start", {"cwd": str(root)}, capsys))
     assert "become due at 'drafting'" in text
+
+
+# ---------------------------------------------------------------- a CLI older than its plugin
+
+UPGRADE_PIP = "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard"
+UPGRADE_PIPX = "pipx install --force git+https://github.com/BasileChretien/manuscript-guard"
+
+
+def plugin_at(root: Path, version: object) -> Path:
+    """A plugin directory as Claude Code's cache holds one, at the given version."""
+    (root / ".claude-plugin").mkdir(parents=True)
+    (root / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps({"name": "manuscript-guard", "version": version}), encoding="utf-8"
+    )
+    return root
+
+
+def test_a_plugin_newer_than_the_cli_says_so_with_the_upgrade_command(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard import __version__
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
+    assert result is not None
+    shown = result["systemMessage"]
+    # Both versions and both upgrade commands: pipx has no `upgrade` for a git install.
+    for needle in ("99.0.0", __version__, UPGRADE_PIP, UPGRADE_PIPX):
+        assert needle in shown, needle
+    assert shown in context(result), "the model is told as well as the person"
+    assert decision(result) is None, "a stale CLI blocks nothing"
+
+
+def test_the_notice_comes_alongside_the_status_line_in_a_project(
+    project: Path, monkeypatch, tmp_path: Path, capsys
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    text = context(run("session-start", {"cwd": str(project), "source": "startup"}, capsys))
+    assert "stage 'drafting'" in text
+    assert "99.0.0" in text
+
+
+@pytest.mark.parametrize("version", ["0.0.1", None])
+def test_a_cli_at_or_past_the_plugin_says_nothing(
+    version: str | None, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard import __version__
+
+    shipped = __version__ if version is None else version  # None: exactly equal
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", shipped)))
+    assert run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys) is None
+
+
+def test_without_a_plugin_root_it_stays_silent(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    assert run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "broken",
+    ["no-such-directory", "empty", "not-json", "list", "no-version", "number", "prerelease"],
+)
+def test_a_plugin_root_it_cannot_read_stays_silent(
+    broken: str, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    root = tmp_path / "cache"
+    if broken != "no-such-directory":
+        (root / ".claude-plugin").mkdir(parents=True)
+        body = {
+            "empty": "",
+            "not-json": "{",
+            "list": "[]",
+            "no-version": '{"name": "manuscript-guard"}',
+            "number": '{"version": 99}',
+            "prerelease": '{"version": "99.0.0-rc1"}',
+        }[broken]
+        (root / ".claude-plugin" / "plugin.json").write_text(body, encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(root))
+    assert run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys) is None
+
+
+@pytest.mark.parametrize("source", ["clear", "compact"])
+def test_it_is_said_once_per_session_not_again_after_a_clear_or_a_compact(
+    source: str, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    assert run("session-start", {"cwd": str(tmp_path), "source": source}, capsys) is None
+
+
+@pytest.mark.parametrize("handler", sorted(set(HANDLERS) - {"session-start"}))
+def test_no_other_hook_repeats_it(handler: str, tmp_path: Path, monkeypatch, capsys) -> None:
+    """These fire on every edit and every shell command; the notice is for the start."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    payload = {"cwd": str(tmp_path), "tool_input": {"command": "ls", "file_path": ""}}
+    assert run(handler, payload, capsys) is None

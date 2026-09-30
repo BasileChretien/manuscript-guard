@@ -37,8 +37,9 @@ def ignored_by_git(root: Path, files: list[Path]) -> list[str]:
     return result.stdout.split()
 
 
-# Left in a source tree by a file browser. Git ignores them, and so does the wheel build.
-DESKTOP_LITTER = {".DS_Store", "Thumbs.db", "desktop.ini"}
+# Left in a source tree by a file browser, and named in .gitignore, so the wheel build leaves
+# them out too. Only names that file lists: another would hide a file that does ship.
+DESKTOP_LITTER = {".DS_Store", "Thumbs.db"}
 
 
 def shipped_files() -> list[Path]:

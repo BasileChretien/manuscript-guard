@@ -4505,6 +4505,12 @@ Closed since, and why each mattered:
   start and a large one: paragraph tagging (10 blocks and 1,000), the comment scanner (1,000
   characters and 20,000) and fences whose openers each narrow (5 openers and 25). They are
   tripwires for the scans that went quadratic before, not a proof that nothing else does.
+  Each sees only the code its input reaches, and a change elsewhere can route the input
+  around that code. Once code spans were read only on a line with a comment or raw-block
+  mark, the long run of backticks never reached them, and it passed with the quadratic
+  pattern put back. That test now checks that its line is read for code spans. With twice
+  as many busy processes as logical CPUs, a scan timed in tens of milliseconds can read
+  over the bound: the backtick test did once in five runs, with its comment and without it.
 - **A test that times something is found by its syntax, and only in `tests/`.**
   `tests/test_timing_budgets.py` fails when a test reads a clock in `time`, or uses
   `timeit`, outside `check_linear`, unless `tests/data/timing_budgets.yaml` lists it: as a

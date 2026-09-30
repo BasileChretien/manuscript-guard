@@ -51,27 +51,37 @@ promising "against the comparators" beside a single-row plot is the archetype.
 
 ## Recording it
 
-Write `figures/<name>.review.yaml`. The digest must be the toolkit's, not a plain file
-hash, because it deliberately ignores render metadata and generated element ids:
+Once you have looked at the figure, have the toolkit start the record:
 
 ```bash
-python -c "from manuscript_guard.gates import content_digest; from pathlib import Path; print(content_digest(Path('figures/forest.svg')))"
+manuscript-guard review --record-figure forest --by "<who looked at it>" --verdict pass
 ```
+
+That writes `figures/<name>.review.yaml` with the figure's content digest, which has to be
+the toolkit's and not a plain file hash, because it deliberately ignores render metadata and
+generated element ids. It also lists all seven checks as `ok: false`, each with the question
+it asks, so the file is a to-do list. `--by` is required, because the record's whole content
+is that a particular person or model looked at a particular rendering. The verdict is `pass`
+or `concerns`. The command refuses to overwrite a record; to record a fresh reading, delete
+the old file first.
+
+Then finish the file by hand. Set each check to `ok: true` and replace its question with what
+you saw. A check left `ok: false` fails the gate, and the gate names each one.
 
 ```yaml
 schema: manuscript-guard/figure-review/1
 figure: forest.svg
-content_sha256: <from the command above>
+content_sha256: <written by the command>
 reviewed_by: <your model identifier, or a person's name>
 reviewed_on: <YYYY-MM-DD>
-caption_checked_against: manuscript/main.md
+caption_checked_against: manuscript/main.md    # optional, not written by the command
 verdict: pass          # or: concerns
 checks:
   - id: values-match-results
     ok: true
     note: What you saw, specifically.
   # ... all seven
-findings:
+findings:              # optional, not written by the command
   - severity: warn     # fail | warn | info
     message: What is wrong and what would fix it.
     where: Which part of the figure.

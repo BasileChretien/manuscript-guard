@@ -31,8 +31,10 @@ the check: the pack is the version you send anywhere.
 | `title-page.md` | `authors.yaml` and `paper.yaml` |
 | `credit-statement.md` | the `credit` roles in `authors.yaml` |
 | `declarations.md` | funding and competing interests, per author |
-| `checklist-*.yaml` | the completed reporting checklists |
-| `figures/` | the raster and vector exports |
+| `supplementary.docx` | built from `manuscript/supplementary/*.md`, when the project has any |
+| `checklist-*.yaml`, `checklist-*.md` | the completed reporting checklists, as data and as a table to read |
+| `response-to-reviewers.md` | the point-by-point response, when a revision round has been opened |
+| `figures/` | the `.png`, `.pdf`, `.tif`, `.tiff` and `.eps` files in `figures/`; an `.svg` is not copied |
 | `MANIFEST.yaml` | every file with its sha256 |
 
 The manifest matters more than it looks. Six months later, "which version did the journal
@@ -66,8 +68,10 @@ Do not summarise the abstract. The editor has it.
 ## Before you send
 
 - Read the pack, not the source. It is a different document once it is assembled.
-- Open the .docx and confirm the Zotero citations resolved and the figures are where you
-  expect them, at the resolution the journal wants.
+- Open the .docx and confirm the citations resolved and the figures are where you expect
+  them, at the resolution the journal wants. `--offline` formats citations from
+  `references.bib`, in the style given with `--csl` or else the default; without it, and
+  with Zotero open, the document carries live Zotero fields.
 - Check the journal profile's `notes` field. That is where the requirements no build can
   check were recorded — suggested reviewers, portal quirks, figure formats — and it exists
   because otherwise you rediscover them at 23:00 on the deadline.

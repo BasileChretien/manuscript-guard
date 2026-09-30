@@ -8,6 +8,7 @@ marketplace manifest carried keys Claude Code refuses, so nobody could install t
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
@@ -17,6 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from manuscript_guard.cli import build_parser
 from manuscript_guard.hooks import HANDLERS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -135,3 +137,142 @@ def test_claude_code_accepts_the_manifest(target):
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ---------------------------------------------------------------- what the skills tell you to run
+#
+# A skill is read by a model that then types what it says. A command or option that the CLI
+# does not have is a failed call at best, and at worst the model works around it by writing
+# the file by hand, which is how a record acquires digests nobody computed.
+
+FENCED = re.compile(r"^```.*?^```", re.DOTALL | re.MULTILINE)
+INLINE_SPAN = re.compile(r"`([^`]+)`")
+MENTION = re.compile(r"(?:manuscript-guard|mguard)\s+(?P<sub>[a-z][a-z-]*)(?P<rest>[^|&;#]*)")
+BARE = re.compile(r"^(?P<sub>[a-z][a-z-]*)\s+(?P<rest>--?[A-Za-z].*)$")
+OPTION = re.compile(r"(?<![\w-])(--?[A-Za-z][\w-]*)")
+CONTINUATION = re.compile(r"\\\n\s*")
+PLACEHOLDER = re.compile(r"<[^<>\n]*>")
+
+
+def cli_options() -> dict[str, set[str]]:
+    """Every subcommand the CLI has, and every option each one accepts."""
+    parser = build_parser()
+    (subparsers,) = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
+    return {
+        name: {opt for action in sub._actions for opt in action.option_strings}
+        for name, sub in subparsers.choices.items()
+    }
+
+
+def command_fragments(text: str) -> list[str]:
+    """The pieces of a skill that can name a command: each line of a fenced block, with
+    backslash continuations joined, and each inline code span, across line breaks."""
+    fragments: list[str] = []
+    for block in FENCED.findall(text):
+        joined = CONTINUATION.sub(" ", block)
+        fragments.extend(line.strip() for line in joined.splitlines()[1:-1])
+    prose = FENCED.sub("", text)
+    fragments.extend(" ".join(span.split()) for span in INLINE_SPAN.findall(prose))
+    return fragments
+
+
+def command_problems(text: str, options: dict[str, set[str]]) -> list[str]:
+    """Subcommands and options a skill names that the CLI does not have."""
+    found: list[str] = []
+    for fragment in command_fragments(text):
+        # `<pass|reject>` holds a pipe, which would end the command there and leave every
+        # option after it unchecked.
+        fragment = PLACEHOLDER.sub("", fragment)
+        mentions = [(m["sub"], m["rest"]) for m in MENTION.finditer(fragment)]
+        bare = BARE.match(fragment)
+        if bare and bare["sub"] in options:
+            mentions.append((bare["sub"], bare["rest"]))
+        for sub, rest in mentions:
+            if sub not in options:
+                found.append(f"manuscript-guard {sub}: there is no such subcommand")
+                continue
+            found.extend(
+                f"{sub} {option}: {sub} has no such option"
+                for option in OPTION.findall(rest)
+                if option not in options[sub]
+            )
+    return found
+
+
+def test_every_command_a_skill_tells_you_to_run_exists():
+    options = cli_options()
+    named = 0
+    wrong: dict[str, list[str]] = {}
+    for skill in sorted(SKILLS.glob("*/SKILL.md")):
+        text = skill.read_text(encoding="utf-8")
+        named += sum(bool(MENTION.search(f)) for f in command_fragments(text))
+        if problems := command_problems(text, options):
+            wrong[skill.parent.name] = problems
+    assert named > 30, "the skills name no commands; the pattern no longer matches"
+    assert not wrong, wrong
+
+
+def test_the_command_check_catches_a_command_or_option_that_does_not_exist():
+    text = (
+        "Run `manuscript-guard frobnicate`, then\n\n```bash\n"
+        "manuscript-guard check --nope        # a comment\n"
+        "manuscript-guard audit paper.docx \\\n    --against out/ --nonsense\n"
+        "manuscript-guard review --record a --round 2 --verdict pass\n"
+        "manuscript-guard review --record a --verdict <pass|reject> --typo x\n```\n\n"
+        "and `bind --apply --nothing`, but `bind --apply --only main.md:3` is fine."
+    )
+    assert command_problems(text, cli_options()) == [
+        "check --nope: check has no such option",
+        "audit --nonsense: audit has no such option",
+        "review --typo: review has no such option",
+        "manuscript-guard frobnicate: there is no such subcommand",
+        "bind --nothing: bind has no such option",
+    ]
+
+
+def test_the_skills_name_the_commands_that_write_a_record_rather_than_a_hand_computed_digest():
+    """A record carries a digest of what was read. `review --record` and `--record-figure`
+    fill it in; the skills that describe those records once told the reader to compute it
+    and type it, and one told them to write a generated file by hand."""
+    review = (SKILLS / "review-panel" / "SKILL.md").read_text(encoding="utf-8")
+    assert "--record" in review.split("## 3.")[0], "step 2 does not mention `review --record`"
+    figure = (SKILLS / "figure-review" / "SKILL.md").read_text(encoding="utf-8")
+    assert "--record-figure" in figure
+
+
+def test_the_checklist_skill_retrieves_a_checklist_with_the_commands_that_do_it():
+    """The skill told the reader to type a profile into `profiles/reporting/`, which the
+    plugin's own write guard refuses, and never mentioned `fetch` and `transcribe`, which
+    are how a profile is made and what makes it verbatim."""
+    text = (SKILLS / "reporting-checklist" / "SKILL.md").read_text(encoding="utf-8")
+    for command in ("manuscript-guard fetch", "manuscript-guard transcribe"):
+        assert command in text, command
+    assert "schema: manuscript-guard/reporting/1" not in text, (
+        "the skill shows a generated profile as something to write"
+    )
+
+
+def test_the_checklist_skill_lists_the_guidelines_a_recipe_says_go_together():
+    """RECORD-PE holds only its own items. The skill said RECORD and RECORD-PE both extend
+    STROBE, so a study following it declared two guidelines and RECORD's items were never
+    checked."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+
+    recipe = (SHIPPED_RECIPES / "RECORD-PE.recipe.yaml").read_text(encoding="utf-8")
+    assert "list STROBE, RECORD and RECORD-PE together" in recipe
+    text = (SKILLS / "reporting-checklist" / "SKILL.md").read_text(encoding="utf-8")
+    assert "STROBE, RECORD and RECORD-PE" in text
+
+
+def test_nothing_in_the_plugin_names_a_path_on_one_machine():
+    drive = re.compile(r"(?<![A-Za-z])[A-Za-z]:[\\/]")
+    home = re.compile(r"/Users/|/home/|~/")
+    offenders = {}
+    for path in sorted(PLUGIN.rglob("*")):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        hits = drive.findall(text) + home.findall(text)
+        if hits:
+            offenders[str(path.relative_to(REPO))] = hits
+    assert not offenders, offenders

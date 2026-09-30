@@ -65,10 +65,10 @@ not a journal that forbids the statement, and the difference belongs in `notes`.
 ## 3. Fill the template
 
 ```bash
-manuscript-guard journal --template drug-safety
+manuscript-guard journal --template journal-of-examples
 ```
 
-That copies an annotated template to `profiles/journals/drug-safety.yaml`. Every field
+That copies an annotated template to `profiles/journals/journal-of-examples.yaml`. Every field
 carries a comment saying what it means, where on a typical guidelines page to find it, and
 what to do when the page is silent — the answer to the last being always to delete the line.
 Fill it in against the page, delete what the journal does not state, and delete the comments
@@ -81,8 +81,8 @@ The shape it ends up as:
 
 ```yaml
 schema: manuscript-guard/journal/1
-name: "Drug Safety"
-publisher: Springer
+name: "Journal of Examples"
+publisher: Example Press
 source_url: https://...        # the page you actually read
 retrieved_on: 2026-08-03
 article_type: "Original Research Article"
@@ -108,7 +108,7 @@ required_statements:
 references:
   style_name: Vancouver
   numbered: true
-  csl: springer-vancouver       # used by offline builds
+  csl: vancouver                # the style Zotero applies in a live build; offline needs --csl
 
 reporting_guidelines: [STROBE]
 
@@ -125,12 +125,13 @@ rediscover at 23:00 on the deadline.
 
 ```yaml
 # paper.yaml
-target_journal: drug-safety
+target_journal: journal-of-examples
 ```
 
 Then `manuscript-guard check`. Expect failures the first time: that is the profile doing
 its job. Word counts are reported alongside the limit, and the counting rule is documented
-in `text/sections.py` — citations, tables, images and markup are excluded. Where the
+in the package's `manuscript_guard/text/sections.py` — citations, tables, images and markup
+are excluded. Where the
 journal counts differently, say so rather than arguing with the tool.
 
 ## Changing journals after a rejection

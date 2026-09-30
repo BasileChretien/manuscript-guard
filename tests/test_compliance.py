@@ -274,6 +274,31 @@ def test_a_guideline_with_no_retrieved_checklist_fails_loudly(project: Path) -> 
     report = reporting_report(project)
     assert "checklist-not-retrieved" in codes(report)
     assert any("reporting-checklist skill" in (f.hint or "") for f in report.failures)
+    # Not `fetch NOT-A-GUIDELINE`: no recipe of that name exists, so that command would fail.
+    hints = " ".join(f.hint or "" for f in report.failures)
+    assert "no recipe for NOT-A-GUIDELINE" in hints
+    assert "manuscript-guard fetch NOT-A-GUIDELINE" not in hints
+    assert "STROBE" in hints, "the recipes that do exist are listed"
+
+
+def test_a_guideline_with_a_recipe_is_told_the_commands_that_retrieve_it(project: Path) -> None:
+    """Someone without the plugin has no skill to open, and a hint that named `fetch` for a
+    guideline with no recipe sent them to a command that answers "no recipe"."""
+    edit_yaml(project / "paper.yaml", lambda d: d.update(reporting_guideline=["STROBE"]))
+    report = reporting_report(project)
+    assert "checklist-not-retrieved" in codes(report)
+    hints = " ".join(f.hint or "" for f in report.failures)
+    assert "manuscript-guard fetch STROBE" in hints
+    assert "manuscript-guard transcribe STROBE" in hints
+    assert "no recipe" not in hints
+
+
+def test_the_checklist_command_names_the_retrieval_commands(project: Path) -> None:
+    project_obj, _ = load_project(project)
+    with pytest.raises(FileNotFoundError, match="manuscript-guard fetch STROBE"):
+        scaffold_completion(project_obj, "STROBE")
+    with pytest.raises(FileNotFoundError, match="no recipe for NOT-A-GUIDELINE"):
+        scaffold_completion(project_obj, "NOT-A-GUIDELINE")
 
 
 def test_an_unanswered_item_is_caught(project: Path) -> None:

@@ -9,8 +9,6 @@ native`); `test_pandoc_agreement.py` asks pandoc directly wherever it is install
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from manuscript_guard.text.masking import mask
@@ -212,21 +210,19 @@ def _unmatched_runs(size: int) -> str:
         ("listings between openers", lambda size: "<!--\n```\nx\n```\n" * (size // 16)),
     ],
 )
-def test_the_comment_scanner_is_linear(name: str, build) -> None:
+def test_the_comment_scanner_is_linear(name: str, build, assert_linear) -> None:
     """`<!--.*?-->` read to the end of the text for every opener that never closed: 5,000
     of them kept `mask` busy for over two minutes, and the first version of this scanner
     re-read a long backtick run once per backtick it gave up. Every input here holds a
-    `<!--`, or the scanner returns before reading anything. Four times the input must not
-    take much more than four times as long."""
+    `<!--`, or the scanner returns before reading anything.
+
+    Checked twice, because no one start sees both kinds of quadratic. One running in Python,
+    like the regex or the re-read run, fails in seconds from 1,000 characters and takes up to
+    twelve minutes from 20,000. One running at C speed, like a `find` to the end of the text
+    for each opener's closer, hides under the fence scanning in the listings from 1,000,
+    so only the start of 20,000 catches it there. A failure in the first pass ends the test.
+    It was timed once per size at 20,000 and 80,000 characters."""
     from manuscript_guard.text.comments import comment_spans
 
-    def measure(size: int) -> float:
-        text = build(size)
-        started = time.perf_counter()
-        comment_spans(text)
-        return time.perf_counter() - started
-
-    measure(5_000)  # warm the caches
-    small = max(measure(20_000), 1e-3)
-    large = measure(80_000)
-    assert large / small < 12, f"{name}: 4x the input took {large / small:.1f}x the time"
+    for start in (1_000, 20_000):
+        assert_linear(build, comment_spans, start, f"{name} from {start}")

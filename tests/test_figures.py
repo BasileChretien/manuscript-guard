@@ -392,3 +392,18 @@ def test_review_notes_survive_a_round_trip(project: Path) -> None:
     assert not any(f.code == "schema-violation" for f in report.findings), report.render(project)
     text = review_path(project / "figures" / "forest.svg").read_text(encoding="utf-8")
     assert re.search(r"reviewed_by:\s*\S", text)
+
+
+def test_numbered_labels_in_a_figure_are_still_numbering(project: Path) -> None:
+    """A figure's text is one text element per line, not Markdown, so every line starts a
+    block of its own. Read as Markdown, the lines after the first would be the wrapped lines
+    of one paragraph, and "8. Hepatic" in a legend would stop counting as numbering when
+    `ordered-list-marker` learned that a list cannot interrupt a paragraph."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    legend = "<text>7. Renal</text><text>8. Hepatic</text>"
+    svg.write_text(text.replace("</svg>", legend + "</svg>", 1), encoding="utf-8")
+    unbound = [
+        f.message for f in figure_report(project).findings if f.code == "figure-number-unbound"
+    ]
+    assert not any("'7'" in m or "'8'" in m for m in unbound), unbound

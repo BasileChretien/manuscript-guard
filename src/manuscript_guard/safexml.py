@@ -49,7 +49,10 @@ def parse_xml(data: bytes, *, what: str = "XML") -> ET.Element:
         )
     try:
         return ET.fromstring(data)
-    except ET.ParseError as exc:
+    except (ET.ParseError, ValueError, LookupError) as exc:
+        # An XML declaration naming an encoding the parser cannot read raises ValueError
+        # for a multi-byte one, LookupError for an unknown name: not ParseError, and each
+        # crashed the reader. A part in either is malformed as far as this reader goes.
         raise UnsafeDocument(f"{what} is malformed: {exc}") from exc
 
 
@@ -83,10 +86,21 @@ def open_archive(path: Path) -> zipfile.ZipFile:
     return archive
 
 
+def read_member(archive: zipfile.ZipFile, name: str) -> bytes:
+    """One archive member's bytes, or `UnsafeDocument` if it cannot be read.
+
+    A member that cannot be decompressed cannot be read either. Each decompressor fails in
+    its own way - `NotImplementedError` for a method zipfile lacks, such as the Deflate64
+    other zip tools write, `RuntimeError` for an encrypted member, `zlib.error`, `EOFError`
+    - and a list of them let those through: the reader crashed, where every one of them
+    refuses a document, or reads on without a part, that it cannot read safely.
+    """
+    try:
+        return archive.read(name)
+    except Exception as exc:
+        raise UnsafeDocument(f"cannot read {name} ({exc})") from exc
+
+
 def read_part(archive: zipfile.ZipFile, name: str, *, what: str | None = None) -> ET.Element:
     """Read one archive member and parse it safely."""
-    try:
-        data = archive.read(name)
-    except (KeyError, zipfile.BadZipFile, OSError) as exc:
-        raise UnsafeDocument(f"cannot read {name} ({exc})") from exc
-    return parse_xml(data, what=what or name)
+    return parse_xml(read_member(archive, name), what=what or name)

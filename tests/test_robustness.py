@@ -123,9 +123,9 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear)
 def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear, monkeypatch) -> None:
     """Code spans were found with a pattern that retried from every position inside a run
     of backticks: one line of 20,000 took seven seconds to read for comments. They are now
-    read only on a line that opens a comment or raw block. A line without one never reached
-    them, and the test passed with that pattern put back, so this line holds a comment and
-    the test first checks that it is read for code spans."""
+    read only on a line holding a mark that could open a comment or raw block. A line
+    without one never reached them, and the test passed with that pattern put back, so this
+    line holds a comment and the test first checks that it is read for code spans."""
     from manuscript_guard.text import fences
 
     def backticks(count: int) -> str:

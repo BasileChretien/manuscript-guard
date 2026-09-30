@@ -1687,10 +1687,18 @@ paragraphs compared: its words went into the source twice, or, as a value, were 
 number beside the binding that prints it. A followed paragraph moved in Word above it was
 written below it. And a value re-run since the build, pasted into a followed paragraph, was
 weighed as it prints now. Main did each of these beside a paragraph the author had reworded,
-and the fixes are main's (#116): every paragraph the document was sent with is looked for,
-one not compared by a paragraph whose source reads now as its did then, a paragraph's
-bindings and citations are not taken to print as they did, a followed paragraph's
-included, and a move past a paragraph not compared is withheld.
+and the fixes are main's (#116, #119):
+- a paragraph the document was sent with that did not come back with text of its own is
+  looked for, one not compared by a paragraph whose source reads now as its did then;
+- a paragraph's bindings and citations are not taken to print as they did, and a followed
+  paragraph's are treated so too;
+- a move past a paragraph not compared is withheld.
+
+The fix-only review found the first rule still missed what Word 16 does. A cut paragraph's
+identifier stays in front of the next paragraph's own, or on the emptied line, and the
+paragraph counted as having come back. #119 counts it as gone wherever the text its
+identifier is on is not its own (`merge._came_back_whole`). That also covers a followed
+value whose identifier slid onto a paragraph not compared, which had read as a join.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has

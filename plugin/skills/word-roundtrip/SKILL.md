@@ -49,7 +49,7 @@ manuscript-guard build --offline
   copy without `--force`, and with it every paragraph you changed is listed as not
   compared, its co-author edit to port by hand. Below a paragraph you added or removed, a
   paragraph is still compared where the text around it reads as at the build (step 6), but
-  the one directly beside your change is not. Keep new wording aside and apply it after the
+  the one directly below your change is not. Keep new wording aside and apply it after the
   import.
 
 Tell the co-author, in these words or better ones:
@@ -263,20 +263,27 @@ did at the build:
 - that whole stretch is found once in its file;
 - the paragraphs compared keep their order.
 
-A followed paragraph is compared, moved and anchored like any other. Two edits beside it are
-still refused, though either may be only a deletion: a rewording beside a heading or caption
-that is missing from the returned document, and one beside a paragraph that did not come
-back.
+A followed paragraph is compared, moved and anchored like any other. Its rewording is still
+refused beside a heading or caption missing from the returned document, and when the
+paragraph after it as sent did not come back; so is the rewording of the paragraph just
+before a followed one that did not come back. Either may be only a deletion.
 
-Any other paragraph is listed as `were not compared`, because its identifier now names
-other text, and has to be carried over by hand. That covers:
-- the paragraph directly beside what you added, removed or reworded, or beside a heading,
-  caption, table or comment you changed;
-- one whose stretch repeats in its file;
-- one you moved;
-- every one where the source changed since the build;
-- every one after an upgrade that numbers or tags paragraphs differently;
-- every one in a document built before the record held the blocks around each paragraph.
+These are listed as `were not compared`, because the identifier now names other text, and
+have to be carried over by hand:
+- a paragraph whose own text you changed since the build;
+- below a paragraph you added or removed: the one directly below it, and one with a
+  heading, caption, table or comment beside it changed too, or the paragraph before or
+  after it changed;
+- below such a change, one whose text and surroundings are found more than once in its
+  file, then or now, and one out of order with the paragraphs compared: of two runs of
+  paragraphs you swapped, the middle of one is followed and the rest is not;
+- a paragraph you moved into another file;
+- in a document built before the record held the blocks around each paragraph, every one
+  below a paragraph you added or removed.
+
+A paragraph beside one you reworded, or directly above one you added, keeps its
+identifier and is compared as usual. So is the middle of a run of three or more that you
+moved together within a file: it stands between the same paragraphs, and is followed.
 
 A paragraph that reads word for word like another in its file, such as "Not applicable."
 under two declarations, is also listed once the block before it changed. One of these

@@ -1487,29 +1487,43 @@ def test_a_value_paragraph_joined_to_a_shifted_one_is_not_merged_once_it_prints_
     assert after == before, "a number was typed into the source"
 
 
-def _pasted_in(words: str, into: str, *, start: bool = False):
+def _pasted_in(words: str, into: str, *, start: bool = False, left: str | None = None):
     """The paragraph holding `words` cut in Word and pasted into the one holding `into`, at
     its end or its `start`, as a paste without Track Changes leaves it: the runs, and a
-    space, and no bookmark."""
+    space, and no bookmark.
+
+    Word 16 does not delete the cut paragraph's identifier: `left` puts it where Word leaves
+    it, in front of the next paragraph's own ("next", `_word_delete`) or on the line the cut
+    emptied ("emptied"). Left out, the paragraph and its identifier go together, which Word
+    does only with Track Changes on."""
     from test_corruption import _word_paragraph
 
     def change(xml: str) -> str:
         pasted = _word_paragraph(xml, words)
+        runs = _body_runs(pasted)
+        if left == "next":
+            xml = _word_delete(xml, pasted)
+        elif left == "emptied":
+            _props, mark, _runs = _parts(pasted)
+            xml = xml.replace(pasted, pasted[: pasted.index(mark) + len(mark)] + "</w:p>", 1)
+        else:
+            xml = xml.replace(pasted, "", 1)
         target = _word_paragraph(xml, into)
         space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
         if start:
             opening = re.match(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", target, re.DOTALL)
-            grown = opening.group(0) + _body_runs(pasted) + space + target[opening.end() :]
+            grown = opening.group(0) + runs + space + target[opening.end() :]
         else:
-            grown = target[: -len("</w:p>")] + space + _body_runs(pasted) + "</w:p>"
-        return xml.replace(pasted, "", 1).replace(target, grown, 1)
+            grown = target[: -len("</w:p>")] + space + runs + "</w:p>"
+        return xml.replace(target, grown, 1)
 
     return change
 
 
-def _review_one():
+def _review_one(left: str | None = None):
     """The shapes #114's first review wrote into the source, each as (built, now, change,
-    the analysis re-run to this many reports or None)."""
+    the analysis re-run to this many reports or None), with the cut paragraph's identifier
+    `left` where Word leaves it (see `_pasted_in`)."""
     from test_corruption import _ALPHA as A
     from test_corruption import _BRAVO as B
     from test_corruption import _PAPA as P
@@ -1520,46 +1534,49 @@ def _review_one():
         "B1 pasted at the end": (
             ("# Intro", A, P, R, B),
             ("# Intro", _ADDED, A, P, R, B),
-            _pasted_in("Alpha paragraph", "Romeo paragraph"),
+            _pasted_in("Alpha paragraph", "Romeo paragraph", left=left),
             None,
         ),
         "B1 below one removed": (
             ("# Intro", _ADDED, A, P, R, B),
             ("# Intro", A, P, R, B),
-            _pasted_in("Alpha paragraph", "Bravo paragraph"),
+            _pasted_in("Alpha paragraph", "Bravo paragraph", left=left),
             None,
         ),
         "B1 pasted at the start": (
             ("# Intro", A, P, R, B),
             ("# Intro", _ADDED, A, P, R, B),
-            _pasted_in("Alpha paragraph", "Romeo paragraph", start=True),
+            _pasted_in("Alpha paragraph", "Romeo paragraph", start=True, left=left),
             None,
         ),
         "B1 pasted past a heading": (
             ("# Intro", A, P, "# Methods", R, B),
             ("# Intro", _ADDED, A, P, "# Methods", R, B),
-            _pasted_in("Alpha paragraph", "Bravo paragraph"),
+            _pasted_in("Alpha paragraph", "Bravo paragraph", left=left),
             None,
         ),
         "B1 a value below the change": (
             ("# Intro", value, P, R, B),
             ("# Intro", _ADDED, value, P, R, B),
-            _pasted_in(">4000<", "Romeo paragraph"),
+            _pasted_in(">4000<", "Romeo paragraph", left=left),
             None,
         ),
         "B2 a value re-run": (
             ("# Intro", A, P, R, value, B),
             ("# Intro", _ADDED, A, P, R, value, B),
-            _pasted_in(">4000<", "Papa paragraph"),
+            _pasted_in(">4000<", "Papa paragraph", left=left),
             4100,
         ),
     }
 
 
 @needs_pandoc
+@pytest.mark.parametrize(
+    "left", [None, "next", "emptied"], ids=["gone", "left on the next", "left on the emptied line"]
+)
 @pytest.mark.parametrize("shape", list(_review_one()))
 def test_a_paragraph_pasted_into_a_followed_one_is_not_merged(
-    project: Path, tmp_path: Path, shape: str
+    project: Path, tmp_path: Path, shape: str, left: str | None
 ) -> None:
     """#114's first review. B1: the paragraph directly below the change is never followed,
     and the paste checks looked only at the paragraphs compared, so pasted into a followed
@@ -1567,10 +1584,67 @@ def test_a_paragraph_pasted_into_a_followed_one_is_not_merged(
     number beside the binding that prints it. B2: a value re-run since the build, pasted
     into a followed paragraph, was weighed as it prints now and merged as "...dates. 4000".
     Each paragraph that did not come back is weighed as it printed at the build, or, where
-    that is not known, the rewording is refused."""
-    built, now, change, reports = _review_one()[shape]
+    that is not known, the rewording is refused.
+
+    Its fix-only review: Word 16 leaves a cut paragraph's identifier in front of the next
+    paragraph's own or on the emptied line, and the paragraph then counted as having come
+    back and was never looked for. It counts as gone where the text its identifier is on is
+    not its own."""
+    built, now, change, reports = _review_one(left)[shape]
     after, before = _imported(project, tmp_path, built, now, change, reprinted=reports)
     assert after == before, "a pasted paragraph was merged"
+
+
+@needs_pandoc
+def test_a_followed_value_whose_identifier_slid_onto_one_not_compared_is_not_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """#114's fix-only review: the value is followed below the paragraph added and Romeo,
+    past it, is not, its heading below renamed. Cut into Papa in Word, with its identifier
+    left in front of Romeo's and the analysis re-run, the value's block read as a join with
+    Romeo, the value as not gone, and "...dates. 4000" merged. In a join whose text does not
+    hold its paragraph's whole, an identifier did not come back."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO
+
+    value = "{{results.cohort.n_reports}}"
+    built = ("# Intro", _ALPHA, _PAPA, value, _ROMEO, "# Methods", _BRAVO)
+    now = ("# Intro", _ADDED, _ALPHA, _PAPA, value, _ROMEO, "# Design", _BRAVO)
+    after, before = _imported(
+        project,
+        tmp_path,
+        built,
+        now,
+        _pasted_in(">4000<", "Papa paragraph", left="next"),
+        reprinted=4100,
+    )
+    assert after == before, "a stale number was typed into the source"
+
+
+@needs_pandoc
+def test_a_discussion_paragraph_cut_below_one_added_is_not_merged_into_another(
+    project: Path, tmp_path: Path
+) -> None:
+    """#114's fix-only review, on the example as it is: a paragraph added at the top of the
+    Discussion, then, in Word, the Discussion's first paragraph cut, its identifier left in
+    front of the next one's, and pasted onto the end of the third. It merged, writing a
+    literal "2.6" and the citation as it prints into the source."""
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    returned = rewrite(
+        built(project),
+        tmp_path / "back.docx",
+        _pasted_in("exceeds the class-level estimate", "Several limitations follow", left="next"),
+    )
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "# Discussion\n\n", f"# Discussion\n\n{_ADDED}\n\n", 1
+        ),
+        encoding="utf-8",
+    )
+    before = path.read_text(encoding="utf-8")
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == before, "a pasted paragraph was merged"
 
 
 @needs_pandoc

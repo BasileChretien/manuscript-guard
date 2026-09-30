@@ -3334,13 +3334,40 @@ Closed since, and why each mattered:
   a `<!--` straight under an item's line is text continuing the item, and with its `-->`
   past a blank line pandoc printed the comment the gates had masked. The refusal reads each
   block alone and refuses a comment it does not find there
-  (`comments.unclear_comment_lines`). Its blocks are cut short where pandoc's are not worth
-  modelling, so some comments pandoc drops are refused too: one across a blank line in an
-  item's indented lines, a sub-item commented out under a blank line in its item, one
-  across a quotation's paragraphs, one on the line after a div's closing `:::` under a
-  list, and one opened on a line of a paragraph that only looks like a marker, `> 65 years`
-  or `- 5`. A comment on its own line under a blank line, one in a paragraph at the margin,
-  and one closed on its item's own lines are not refused.
+  (`comments.unclear_comment_lines`). Two readings are pandoc's own, found by the first
+  review: inside a comment an item opened, a marker at or past the item's text is the
+  item's, and one short of it ends the item, so a sub-list commented out on the item's lines
+  is not refused; and a table or a line block ends at a line at the margin that is not one
+  of its `|` lines, so a `<!--` under a table's last row is not refused. A comment on its
+  own line under a blank line, and one in a paragraph at the margin, are not refused
+  either.
+
+  Elsewhere the blocks are cut short where pandoc's are not worth modelling, so some
+  comments pandoc drops are refused too:
+  - one across a blank line in an item's indented lines or a footnote's paragraphs, and a
+    `<!--` under a blank line after a list, indented less than the item's text;
+  - a sub-item commented out under a blank line in its item, or indented past its item's
+    marker and short of its text, as `    - sub` under `   - item`, which pandoc reads as
+    the item's because a marker four spaces in starts no item;
+  - one across a quotation's paragraphs, a `>` line between them, and one across a `>`
+    alone or a `|` line that pandoc reads as text continuing an item;
+  - one on the line after a div's closing `:::` under a list, or after a line indented
+    under a table;
+  - a multi-line one straight after a listing whose code has a line starting `+ `, `- `,
+    `* `, `> ` or `| `, since the blocks are read inside listings: ggplot's `+ geom_point()`;
+  - one across a blank line in a `: Caption` under a table;
+  - one opened on a line of a paragraph that only looks like a marker, `> 65 years` or `- 5`.
+
+  And it does not close the gap whole. Some comments pandoc prints are still masked and not
+  refused:
+  - a `<!--` on a line the refusal takes for the end of a block, under an item:
+    `</div> <!-- x`, `</span> <!-- x`, or `::: <!-- x`, with the `-->` past a blank line or
+    in the next item;
+  - one in an item whose ordered marker has ten digits or more, or on a first line behind a
+    byte-order mark, which the refusal does not take for an item;
+  - one on a line with a line of dashes under it, which pandoc reads as a setext title or,
+    under an item's line, a table in the item: `Results <!-- x` over `-------`, or
+    `- a <!-- x` over `---`, as on main.
 - **G2 reads an escaped comparison by a pattern, not as pandoc does.** A backslash before
   `<` or `>` is read as the character it prints, so `p \< 0.05` and `ROR \> 2`, which
   pandoc's own Markdown writer produces and `import` can write, are the thresholds they

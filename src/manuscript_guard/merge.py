@@ -441,6 +441,40 @@ def _took_unknown(was: str, now: str, vanished: Sequence[_Gone]) -> _Gone | None
     return next((gone for gone in vanished if gone.sent is None), None) if could_be else None
 
 
+def _came_back_whole(
+    returned: Sequence[Block], said: dict[str, str | None], taken: Counter
+) -> set[str]:
+    """Of the identifiers in `said`, those that came back on their own paragraph's text.
+
+    `said` maps each to what its paragraph said as sent, where that is known. Word 16 does
+    not delete a cut paragraph's identifier with its text: it goes in front of the next
+    paragraph's own, or stays on the line the cut emptied. Counted as having come back, a
+    paragraph cut and pasted onto the end of another was never looked for there, and the one
+    it went into merged holding it: its words in the source twice, or a number typed beside
+    the binding that prints it. So an identifier comes back with its paragraph only on a
+    block of its own that holds text, and not text that reads exactly as something else
+    sent, `taken` (a heading, or another paragraph); or beside other identifiers, on a block
+    that holds its paragraph's text whole. Where that text is not known, it did not come
+    back beside another's: whose text the block holds cannot be told, and a paste could have
+    carried it off.
+    """
+    found: set[str] = set()
+    for block in returned:
+        if block.table or not block.names:
+            continue
+        text = _squashed(block.text)
+        for name in block.names:
+            if name not in said:
+                continue
+            own = _squashed(said[name]) if said[name] else None
+            if len(block.names) == 1:
+                if text and (own == text or not taken[text]):
+                    found.add(name)
+            elif own and own in text:
+                found.add(name)
+    return found
+
+
 def _as_sent(text: str, marked: Block | None, stale: bool) -> Sent:
     """The words a paragraph's fresh rendering, `text`, printed at the build too.
 
@@ -1457,24 +1491,35 @@ def plan_import(
     not_its_own = _not_its_own(rendered, texts, returned, expected)
     missing = _untagged_missing(reference, returned)
     fresh = _untagged_new(reference, returned)
+    # What each paragraph the document was sent with said, where that is known, for telling
+    # whether its identifier came back on its own text: see `_came_back_whole`.
+    said = {name: rendered[name] for name in in_join if name in rendered}
+    for name in built:
+        if name not in rendered:
+            holder = (same_text or {}).get(name)
+            said[name] = printed_now.get(holder) if holder else None
+    whole = _came_back_whole(returned, said, expected + Counter(map(_squashed, rendered.values())))
     gone_from_place = [
         name
         for name in rendered
-        if name not in in_join
-        and counts[name] <= 1
+        if counts[name] <= 1
         and name not in not_its_own
-        and (texts.get(name) is None or (not texts[name].strip() and rendered[name].strip()))
+        and (
+            name not in whole
+            if name in in_join
+            else texts.get(name) is None or (not texts[name].strip() and rendered[name].strip())
+        )
     ]
     # Each as it printed at the build, as far as that is known. And those the document was
-    # sent with that are not compared and did not come back: left out, one pasted into a
-    # paragraph compared merged there, and its words were in the source twice. One whose
-    # words are nowhere is named by where it stood, after a paragraph the author can find:
-    # its identifier meant nothing to them.
+    # sent with that are not compared and did not come back with text of their own: left
+    # out, one pasted into a paragraph compared merged there, and its words were in the
+    # source twice. One whose words are nowhere is named by where it stood, after a paragraph
+    # the author can find: its identifier meant nothing to them.
     vanished = [_Gone(rendered[name], rendered[name], sent[name]) for name in gone_from_place]
     last = ""
     for name in built:
         holder = (same_text or {}).get(name)
-        if name not in rendered and name not in present:
+        if name not in rendered and name not in whole:
             if holder in printed_now:
                 vanished.append(_Gone(printed_now[holder], printed_now[holder], as_sent(holder)))
             else:

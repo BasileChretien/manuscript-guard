@@ -1665,10 +1665,12 @@ removed since; and a heading holding a value re-run since the build, whose sourc
 changed while what it printed had. The window above answers the first. For the second, a
 followed paragraph is treated as one in a document built from other inputs, whatever the
 stamp says, since its record vouches for the source around it and not for what that
-printed: a rewording is refused beside a heading or caption missing from the returned
+printed: its rewording is refused beside a heading or caption missing from the returned
 document, and when its next paragraph as sent did not come back. "None." joined in Word with
 a value paragraph printing 4000 then and 4100 now read as a rewording, not a join, and
-"None. 4000" merged, a number typed beside the binding that prints it.
+"None. 4000" merged, a number typed beside the binding that prints it. The paragraph before a
+followed one that did not come back is refused too, compared or not: main left the followed
+one out, and refused the rewording beside it for that.
 
 A followed paragraph is read under the identifier it has now: the returned document is
 renamed, not the source. The identifier it had can be carried in the returned document by
@@ -4050,8 +4052,9 @@ Closed since, and why each mattered:
     record held the blocks around each paragraph.
 
   A followed paragraph's rewording is also refused beside a heading or caption missing from
-  the returned document, and when the paragraph after it as sent did not come back, though
-  either may be the co-author's own deletion. A heading the author moved in the `.md` past a
+  the returned document, and when the paragraph after it as sent did not come back, as is
+  that of the paragraph before a followed one that did not, though each may be the
+  co-author's own deletion. A heading the author moved in the `.md` past a
   followed paragraph, or past a run around it, leaves the paragraph where Word has it on the
   other side of the heading: reported as moved into another section, not applied, and marked
   as changed in the `.md` above it. A run of three paragraphs or more deleted and written
@@ -4063,9 +4066,9 @@ Closed since, and why each mattered:
   said, not what it printed. A value paragraph printing 4000 at the build and 4100 now, cut
   and pasted onto the end of another paragraph, reads as new words, and "…dates. 4000"
   merges, a number typed into prose. That happens to a paragraph trusted in place, as on
-  `main`, and to a followed one. The join of such a value paragraph into the followed
-  paragraph directly above it is refused, as the paragraph after it did not come back; into
-  a paragraph trusted in place it merges, as on `main`.
+  `main`, and to a followed one. The join of such a value paragraph into the paragraph
+  directly above it is refused where either is followed, as the one after did not come
+  back; where both are trusted in place it merges, as on `main`.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

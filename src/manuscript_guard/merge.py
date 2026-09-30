@@ -1160,17 +1160,19 @@ def _beside_lost(
     across the boundary loses it, and `_absorbed` cannot weigh a text it does not know:
     merged, the lost paragraph's words went into the source a second time.
 
-    Beside a paragraph `followed` (`roundtrip.Numbering.followed`), `_absorbed` does not know
-    the next paragraph's text either, compared or not: the record says its source reads as
-    it did, not that it prints as it did. With a value in it re-run since the build, "None."
-    joined in Word with 4000 did not read like "None." and 4100, and merged as a rewording.
+    And those whose next paragraph did not come back where either of the two is `followed`
+    (`roundtrip.Numbering.followed`), the next one compared or not. A followed paragraph's
+    record says the source around it reads as it did, not that it prints as it did: with a
+    value in the next re-run since the build, "None." joined in Word with 4000 did not read
+    like "None." and 4100, and merged as a rewording. And a followed next paragraph is one
+    main left out of the comparison, refusing the rewording before it.
     """
     found = set()
     for before, name in zip(built, built[1:], strict=False):
         now = texts.get(before)
         if (
             before in rendered
-            and (name not in rendered or before in followed)
+            and (name not in rendered or before in followed or name in followed)
             and name not in present
             and now is not None
             and not _same(rendered[before], now)
@@ -1227,7 +1229,8 @@ def plan_import(
     or the rules that number them. Their record says the source around them reads as the
     co-author had it, not that it prints so. So a rewording is not merged into one beside a
     heading or caption missing from the returned document, stale or not, nor into one whose
-    next paragraph as sent did not come back (`_beside_lost`).
+    next paragraph as sent did not come back, nor into the paragraph before one that did not
+    (`_beside_lost`).
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither

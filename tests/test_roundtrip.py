@@ -961,12 +961,17 @@ def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its
 
 
 def _follow(
-    then: str | dict[str, str], now: str | dict[str, str], *, beside: bool = True
+    then: str | dict[str, str],
+    now: str | dict[str, str],
+    *,
+    beside: bool = True,
+    supplement: bool = False,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Which identifier each paragraph of the document built from `then` is followed to in
     the source `now`, and each one's text at the build. A source is one file of the main
     text, or several as {path: text}. Without `beside`, the record is as releases before the
-    blocks beside each paragraph were hashed wrote it."""
+    blocks beside each paragraph were hashed wrote it. The document is the main text's, or
+    with `supplement` the supplement's."""
     from manuscript_guard.roundtrip import (
         _beside_of,
         _followed,
@@ -988,8 +993,8 @@ def _follow(
         return record, texts, [names for names, _runs in _printed(sources)]
 
     record, texts, printed = read(then, beside)
-    # The document records the paragraphs of the main text, in the order it prints them.
-    recorded = {name: record[name] for name in printed[0]}
+    # The document records its own paragraphs, in the order it prints them.
+    recorded = {name: record[name] for name in printed[1 if supplement else 0]}
     current, now_texts, now_printed = read(now)
     followed = _followed(recorded, current, now_printed, _trusted(recorded, current))
     for old, new in followed.items():
@@ -1129,6 +1134,17 @@ def test_the_last_paragraph_of_a_file_is_followed_only_where_the_next_file_opens
     ]
     renamed = {"main.md": main_now, "results.md": results.replace("Results", "Findings")}
     assert _followed_texts(then, renamed) == ["Bravo."]
+
+
+def test_a_supplement_is_followed_within_itself() -> None:
+    """The supplement is a document of its own: its first paragraph stands under nothing of
+    the main text's, and the main text's last above nothing of the supplement's."""
+    main = "# A\n\nAlpha.\n"
+    then = {"main.md": main, "supplementary/S1.md": _FOUR}
+    now = {"main.md": main + "\nOmega, added.\n", "supplementary/S1.md": _FOUR.replace(*_ZERO)}
+    followed, texts = _follow(then, now, supplement=True)
+    assert sorted(texts[old] for old in followed) == ["Bravo two.", "Charlie three.", "Delta four."]
+    assert _follow(then, now)[0] == {}
 
 
 # The same, end to end: a document built, edited as Word edits it, and imported with --force
@@ -1271,8 +1287,9 @@ def _round_four():
 
 @needs_pandoc
 @pytest.mark.parametrize(
-    "case", range(4), ids=["glued below renamed", "glued above removed", "glued above renamed",
-                           "glued above added"]
+    "case",
+    range(4),
+    ids=["glued below renamed", "glued above removed", "glued above renamed", "glued above added"],
 )
 def test_a_heading_glued_beside_a_shifted_paragraph_is_not_merged_when_run_in(
     project: Path, tmp_path: Path, case: int
@@ -1471,28 +1488,41 @@ def test_a_value_paragraph_joined_to_a_shifted_one_is_not_merged_once_it_prints_
 
 
 @pytest.mark.parametrize(
-    ("sent", "returned"),
+    ("sent", "returned", "follow"),
     [
         (
             [("", "Results in 4100 reports"), ("p", "None."), ("q", "Bravo.")],
             [("p", "Nothing to declare."), ("q", "Bravo.")],
+            "p",
         ),
         (
             [("p", "None."), ("q", "4100"), ("r", "Bravo.")],
             [("p", "None. 4000"), ("r", "Bravo.")],
+            "p",
+        ),
+        (
+            [("p", "None."), ("q", "4100"), ("r", "Bravo.")],
+            [("p", "None. 4000"), ("r", "Bravo.")],
+            "q",
         ),
     ],
-    ids=["a heading beside it missing", "the paragraph after it missing"],
+    ids=[
+        "a heading beside it missing",
+        "the paragraph after it missing",
+        "the followed paragraph after one trusted missing",
+    ],
 )
 def test_what_a_followed_paragraph_stood_beside_is_not_taken_to_print_as_it_did(
-    tmp_path: Path, sent: list[tuple[str, str]], returned: list[tuple[str, str]]
+    tmp_path: Path, sent: list[tuple[str, str]], returned: list[tuple[str, str]], follow: str
 ) -> None:
     """A followed paragraph's record says the source around it reads as the co-author had it,
     not that it prints so: a heading holding a value re-run since the build, or a paragraph
     that is one, printed otherwise then. Beside a heading missing from the returned document,
-    or before a paragraph that did not come back, its rewording is refused, whether or not
-    the document was built from other inputs. The same paragraph trusted where it stands, in
-    a document built from these inputs, is merged, as on main: "None. 4000" is a rewording
+    or beside a paragraph after it that did not come back, a rewording of it is refused,
+    whether or not the document was built from other inputs. So is one of the paragraph
+    before a followed one that did not come back: on main that one was not compared, and
+    `_beside_lost` refused the rewording. The same paragraphs trusted where they stand, in a
+    document built from these inputs, are merged, as on main: "None. 4000" is a rewording
     beside a paragraph printing 4100 then too."""
     from manuscript_guard.merge import plan_import
 
@@ -1512,7 +1542,7 @@ def test_what_a_followed_paragraph_stood_beside_is_not_taken_to_print_as_it_did(
         )
 
     assert "p" in plan(frozenset()).merged
-    followed = plan(frozenset({"p"}))
+    followed = plan(frozenset({follow}))
     assert "p" not in followed.merged
     assert [refusal.name for refusal in followed.refused] == ["p"]
 
@@ -1579,7 +1609,7 @@ def test_a_move_in_word_below_a_paragraph_added_since_the_build_is_applied(
 
 
 @needs_pandoc
-def test_a_heading_moved_past_a_followed_paragraph_is_not_passed_off_as_a_move_in_word(
+def test_a_heading_the_author_moved_past_a_followed_paragraph_is_named_as_a_change_in_the_md(
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The author moved a heading up past three paragraphs since the build. The middle one

@@ -369,12 +369,14 @@ def cmd_import(args: argparse.Namespace) -> int:
     pass from one reading of the file.
     """
     import tempfile
+    from dataclasses import replace
 
     from manuscript_guard.gates.review import document_digest
     from manuscript_guard.merge import apply_plan, plan_import
     from manuscript_guard.roundtrip import (
         RoundTripError,
         comments_in,
+        named_now,
         numbering,
         numbering_refusal,
         read_blocks,
@@ -494,24 +496,30 @@ def cmd_import(args: argparse.Namespace) -> int:
     building = {n for b in sent for n in b.names}
     unsure = numbered.unsure & building
     trusted = numbered.trusted | (unsure & present)
+    # And those followed to where their paragraph stands now, compared under the identifier
+    # it has now: the returned document is read under those, and the source is not renamed.
+    followed = numbered.followed
+    vouched, compared = trusted | set(followed), trusted | set(followed.values())
     every = known
-    known = {name: entry for name, entry in every.items() if name in trusted}
+    known = {name: entry for name, entry in every.items() if name in compared}
     # And one the document's record does not hold: its block had no identifier when it was
     # built - a list item made a paragraph since, or a release that tags more kinds of block.
     # Never compared, it is still weighed as a join into the paragraph above it, as main
     # weighs every paragraph; left out, the join merged as a rewording and its text was in
     # the source twice.
     untagged_then = building - set(numbered.sent) if numbered.recorded else set()
+    now_named = named_now(followed)
     plan = plan_import(
         known,
         sent,
-        returned,
+        [replace(block, names=tuple(map(now_named, block.names))) for block in returned],
         marked,
         abbreviated,
         every=every,
-        built=numbered.sent,
+        built=tuple(map(now_named, numbered.sent)),
         unsure=unsure | untagged_then,
         beside_changed=numbered.beside_changed,
+        followed=frozenset(followed.values()),
         stale=stale,
     )
 
@@ -540,12 +548,12 @@ def cmd_import(args: argparse.Namespace) -> int:
             for b in returned
             if not b.table and (numbered.recorded or b.text.strip())
             for n in b.names
-            if n not in known
+            if n not in vouched
         }
     )
     # And one that did not come back, deleted or joined in Word. Looked for among those that
     # came back only, its deletion left no trace, and the import said nothing came back.
-    unaccounted = [n for n in numbered.sent if n not in trusted and n not in present]
+    unaccounted = [n for n in numbered.sent if n not in vouched and n not in present]
     values = sorted(unsure - present)
     said = _not_compared(edited, strangers, unaccounted, values)
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
@@ -558,7 +566,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"  {unexamined}")
         return 0
 
-    _report_plan(project, known, plan, applying=args.apply)
+    _report_plan(project, known, plan, applying=args.apply, followed=set(followed.values()))
     if not records_moves(edited):
         print(
             f"\n{edited.name} was built before manuscript-guard let Word record moves: its "
@@ -650,26 +658,31 @@ def _report_comments(comments) -> None:
         )
 
 
-def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
+def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozenset()) -> None:
     """Say what the returned document changed and what will, or will not, be applied.
 
     `known` holds the paragraphs compared. A join can take in one that was not, which is
     named by its identifier: what the source now has under it is another paragraph.
+    `followed` names those compared where they stand now, their identifier having shifted.
     """
+    from manuscript_guard.roundtrip import AS_SENT
 
     def where(name: str) -> str:
         return known[name][0].relative_to(project.root).as_posix()
 
     def opening(name: str) -> str:
         if name not in known:
-            return f"({name}, not compared)"
+            return f"({name.removesuffix(AS_SENT)}, not compared)"
         # On one line: a held comment's source runs over several.
         return " ".join(known[name][1].split())[:80]
 
     if plan.misplaced:
         print(f"{len(plan.misplaced)} paragraph(s) were moved into a different section or file:")
         for name in sorted(plan.misplaced):
-            print(f"    {opening(name)}")
+            # Its identifier shifted, so the .md changed above it since the build, and a
+            # heading moved past it there reads the same as a move in Word.
+            since = " (the .md changed above it since the build: check before moving it)"
+            print(f"    {opening(name)}{since if name in followed else ''}")
         print(
             "    Not applied: import only reorders paragraphs within a section, and a heading, "
             "a table, a figure, a list, a quotation or anything else without an identifier, "
@@ -825,12 +838,16 @@ def _report_plan(project, known: dict, plan, *, applying: bool) -> None:
         )
 
 
-def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
+def _seeded(
+    source: Path, trusted: frozenset[str], followed: dict[str, str] | None = None
+) -> list[dict]:
     """Reviewers and their points, read from the comments in a returned document.
 
     A comment keeps its paragraph only where the identifier is in `trusted`, still naming
-    the text it named at the build. Anywhere else it would anchor the point to whatever
-    paragraph sits there now, and G13 would then check the revision against the wrong one.
+    the text it named at the build, or `followed` to the identifier naming that text now
+    (`roundtrip.Numbering.followed`), which is what G13 looks up. Anywhere else it would
+    anchor the point to whatever paragraph sits there now, and G13 would then check the
+    revision against the wrong one.
 
     A journal usually sends a PDF or an email and the points get typed in, which is where
     a point quietly becomes the easier point next to it. When the reviewer commented in a
@@ -842,6 +859,7 @@ def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
     # Grouped by the slug, not the raw author. "Reviewer 2" and "REVIEWER 2" are two
     # buckets and one id, which put two people's points under one heading in the letter that
     # goes to the journal.
+    anchors = {name: name for name in trusted} | (followed or {})
     by_author: dict[str, list[dict]] = {}
     for comment in comments_in(source):
         slug = re.sub(r"[^a-z0-9]+", "-", comment.author.lower()).strip("-")
@@ -850,7 +868,7 @@ def _seeded(source: Path, trusted: frozenset[str]) -> list[dict]:
                 "id": "",
                 "comment": comment.text,
                 "response": "",
-                **({"where": comment.where} if comment.where in trusted else {}),
+                **({"where": anchors[comment.where]} if comment.where in anchors else {}),
             }
         )
 
@@ -947,7 +965,7 @@ def cmd_respond(args: argparse.Namespace) -> int:
             "journal": project.paper.get("target_journal", "the journal"),
             "received_on": date.today().isoformat(),
             "submitted_files": file_digests(project),
-            "reviewers": _seeded(args.source, trusted) if args.source else [
+            "reviewers": _seeded(args.source, trusted, numbered.followed) if args.source else [
                 {
                     "id": "reviewer-1",
                     "points": [

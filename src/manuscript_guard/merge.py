@@ -1147,7 +1147,11 @@ def _unread(
 
 
 def _beside_lost(
-    rendered: dict[str, str], texts: dict[str, str], built: Sequence[str], present: set[str]
+    rendered: dict[str, str],
+    texts: dict[str, str],
+    built: Sequence[str],
+    present: set[str],
+    followed: Collection[str] = (),
 ) -> set[str]:
     """Paragraphs changed in Word whose next paragraph in the document as sent is left out
     of the comparison and did not come back.
@@ -1155,13 +1159,18 @@ def _beside_lost(
     That one may have been joined into this one with its bookmark lost, as a join retyped
     across the boundary loses it, and `_absorbed` cannot weigh a text it does not know:
     merged, the lost paragraph's words went into the source a second time.
+
+    Beside a paragraph `followed` (`roundtrip.Numbering.followed`), `_absorbed` does not know
+    the next paragraph's text either, compared or not: the record says its source reads as
+    it did, not that it prints as it did. With a value in it re-run since the build, "None."
+    joined in Word with 4000 did not read like "None." and 4100, and merged as a rewording.
     """
     found = set()
     for before, name in zip(built, built[1:], strict=False):
         now = texts.get(before)
         if (
             before in rendered
-            and name not in rendered
+            and (name not in rendered or before in followed)
             and name not in present
             and now is not None
             and not _same(rendered[before], now)
@@ -1181,6 +1190,7 @@ def plan_import(
     built: Sequence[str] = (),
     unsure: frozenset[str] = frozenset(),
     beside_changed: frozenset[str] = frozenset(),
+    followed: frozenset[str] = frozenset(),
     stale: bool = False,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
@@ -1211,6 +1221,13 @@ def plan_import(
     wrong text. A rewording is not merged into a paragraph whose record says a block beside
     it changed since (`beside_changed`, from `roundtrip.Numbering`), nor, when `stale`, into
     one beside a heading or caption missing from the returned document.
+
+    `followed` names paragraphs compared under the identifier they have now, theirs having
+    shifted since the build (`roundtrip.Numbering.followed`): the source changed above them,
+    or the rules that number them. Their record says the source around them reads as the
+    co-author had it, not that it prints so. So a rewording is not merged into one beside a
+    heading or caption missing from the returned document, stale or not, nor into one whose
+    next paragraph as sent did not come back (`_beside_lost`).
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1250,7 +1267,7 @@ def plan_import(
         and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
     }
     joined += _joined_without_bookmark(weighed, texts, in_join)
-    beside_lost = _beside_lost(rendered, texts, built, present)
+    beside_lost = _beside_lost(rendered, texts, built, present, followed)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:
     # left in, its first copy decided where it went, wherever that copy had been pasted.
@@ -1285,6 +1302,12 @@ def plan_import(
         and name not in not_its_own
         and (texts.get(name) is None or (not texts[name].strip() and rendered[name].strip()))
     ]
+
+    def printed_otherwise(name: str) -> bool:
+        # What stood beside it may have printed otherwise at the build: see `stale` and
+        # `followed` above.
+        return (stale or name in followed) and _printed_otherwise(name, reference, missing)
+
     merged: dict[str, str] = {}
     refused: list[Refusal] = []
     gone: list[str] = []
@@ -1306,7 +1329,7 @@ def plan_import(
             now is None
             and name in taken_off
             and not expected[_squashed(carried_by[name])]
-            and (name in beside_changed or (stale and _printed_otherwise(name, reference, missing)))
+            and (name in beside_changed or printed_otherwise(name))
         ):
             # Its identifier came back on a heading beside it and was taken off by that
             # heading's style, and that heading is not the one the document was sent with, so
@@ -1336,7 +1359,7 @@ def plan_import(
             refused.append(Refusal(name, now, (_IN_PARTS,)))
         elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
-        elif name in beside_changed or (stale and _printed_otherwise(name, reference, missing)):
+        elif name in beside_changed or printed_otherwise(name):
             refused.append(Refusal(name, now, (_BESIDE_CHANGED,)))
         elif name in beside_new:
             refused.append(Refusal(name, now, (_SPLIT,)))

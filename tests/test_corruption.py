@@ -3061,14 +3061,25 @@ def test_a_document_numbered_under_older_rules_is_not_merged(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("was", "now"),
+    [
+        ("# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n"),
+        ("examined.\n\n# Methods", "examined.\n\nA paragraph added after the build.\n\n# Methods"),
+        ("Whether the signal extends to example-drug specifically has not been examined.\n\n", ""),
+    ],
+    ids=["added above", "added directly above a heading", "removed above"],
+)
 def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
-    project: Path, tmp_path: Path
+    project: Path, tmp_path: Path, was: str, now: str
 ) -> None:
     """Identifiers are positional. With a paragraph added to the source since the build,
     above the one a co-author edited, every identifier after it named the paragraph before,
     and `import --apply --force` wrote three edits over their neighbours and printed "merged
     3 reworded paragraph(s), bindings intact". The plan showed what each edit became, never
-    which paragraph it replaced, so reading every hunk could not have caught it."""
+    which paragraph it replaced, so reading every hunk could not have caught it. Refused,
+    every edit below the change had to be carried over by hand; followed to where it stands
+    now, among the same blocks as at the build, the edit lands in its own paragraph."""
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
@@ -3082,16 +3093,15 @@ def test_a_forced_import_does_not_write_over_a_neighbouring_paragraph(
                 data = data.replace(b"received no funding", b"received no external funding")
             zout.writestr(item, data)
     path = main_md(project)
-    path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            "# Introduction\n\n", "# Introduction\n\nA paragraph added after the build.\n\n", 1
-        ),
-        encoding="utf-8",
+    text = path.read_text(encoding="utf-8")
+    assert was in text
+    path.write_text(text.replace(was, now, 1), encoding="utf-8")
+    edited = path.read_text(encoding="utf-8").replace(
+        "received no funding", "received no external funding"
     )
-    source = path.read_text(encoding="utf-8")
 
-    assert main(["import", str(returned), str(project), "--apply", "--force"]) == 1
-    assert path.read_text(encoding="utf-8") == source, "an edit landed in another paragraph"
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    assert path.read_text(encoding="utf-8") == edited, "the edit is not where it was made"
 
 
 def _sent_back(

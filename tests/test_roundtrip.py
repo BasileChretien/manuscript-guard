@@ -957,6 +957,679 @@ def test_a_comment_on_a_value_paragraph_an_unrecorded_document_carries_keeps_its
     assert [p.get("where") for r in document["reviewers"] for p in r["points"]] == [value]
 
 
+# ------------------------------------------------ a paragraph whose identifier shifted
+
+
+def _follow(
+    then: str | dict[str, str], now: str | dict[str, str], *, beside: bool = True
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Which identifier each paragraph of the document built from `then` is followed to in
+    the source `now`, and each one's text at the build. A source is one file of the main
+    text, or several as {path: text}. Without `beside`, the record is as releases before the
+    blocks beside each paragraph were hashed wrote it."""
+    from manuscript_guard.roundtrip import (
+        _beside_of,
+        _followed,
+        _printed,
+        _recorded_as,
+        _trusted,
+        _walk,
+    )
+
+    def read(files: str | dict[str, str], beside: bool = True):
+        files = files if isinstance(files, dict) else {"main.md": files}
+        sources = [(Path(relative), relative, raw) for relative, raw in files.items()]
+        around = _beside_of(sources)
+        record, texts = {}, {}
+        for _path, relative, raw in sources:
+            for name, text, _start, before in _walk(raw, relative):
+                record[name] = _recorded_as(text, before, around[name] if beside else None)
+                texts[name] = text
+        return record, texts, [names for names, _runs in _printed(sources)]
+
+    record, texts, printed = read(then, beside)
+    # The document records the paragraphs of the main text, in the order it prints them.
+    recorded = {name: record[name] for name in printed[0]}
+    current, now_texts, now_printed = read(now)
+    followed = _followed(recorded, current, now_printed, _trusted(recorded, current))
+    for old, new in followed.items():
+        assert old != new and texts[old] == now_texts[new], (old, new)
+    return followed, texts
+
+
+def _followed_texts(then: str | dict[str, str], now: str | dict[str, str]) -> list[str]:
+    followed, texts = _follow(then, now)
+    return sorted(texts[old] for old in followed)
+
+
+_FOUR = "# Intro\n\nAlpha one.\n\nBravo two.\n\nCharlie three.\n\nDelta four.\n"
+_ZERO = ("# Intro\n\n", "# Intro\n\nZero, added since the build.\n\n")
+
+
+def test_a_paragraph_below_one_added_since_the_build_is_followed() -> None:
+    """Identifiers are positional: a paragraph added moves every one below it by a block,
+    each then names its neighbour, and every co-author edit below it had to be carried over
+    by hand. One that stands among the same blocks, between the same paragraphs, as at the
+    build is followed to where it stands now. The one directly below the addition is not:
+    the paragraph before it is another."""
+    now = _FOUR.replace(*_ZERO)
+    assert _followed_texts(_FOUR, now) == ["Bravo two.", "Charlie three.", "Delta four."]
+
+
+def test_a_paragraph_below_one_removed_since_the_build_is_followed() -> None:
+    now = _FOUR.replace("Alpha one.\n\n", "")
+    assert _followed_texts(_FOUR, now) == ["Charlie three.", "Delta four."]
+
+
+def test_a_paragraph_with_another_paragraph_after_it_now_is_not_followed() -> None:
+    """The record hashes the blocks without an identifier beside a paragraph, not the
+    paragraphs beside it, and `import` weighs a join in Word against the paragraph after it
+    in the source. With one added there since the build, the join was weighed against text
+    the co-author never had."""
+    now = _FOUR.replace(*_ZERO).replace("Bravo two.\n\n", "Bravo two.\n\nNovel, added.\n\n")
+    assert _followed_texts(_FOUR, now) == ["Delta four."]
+
+
+_BESIDE = (
+    "# Intro\n\nAlpha.\n\nBravo.\n\n## Methods\nCharlie.\n\n<!-- a note -->\n\n## Data\n\n"
+    "Delta.\n\nEcho.\n\nFoxtrot.\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("was", "now", "followed"),
+    [
+        ("", "", ["Bravo.", "Charlie.", "Delta.", "Echo.", "Foxtrot."]),
+        ("## Methods\n", "## Design\n", ["Delta.", "Echo.", "Foxtrot."]),
+        ("## Methods\n", "", ["Delta.", "Echo.", "Foxtrot."]),
+        ("Bravo.\n\n", "Bravo.\n\n## Added\n", ["Delta.", "Echo.", "Foxtrot."]),
+        ("## Data", "## Sources", ["Bravo.", "Echo.", "Foxtrot."]),
+        ("<!-- a note -->", "<!-- another -->", ["Bravo.", "Echo.", "Foxtrot."]),
+        ("Echo.\n\n", "Echo.\n\n## Added\n\n", ["Bravo.", "Charlie.", "Delta."]),
+    ],
+    ids=[
+        "nothing else",
+        "glued heading renamed",
+        "glued heading removed",
+        "glued heading added",
+        "heading past a comment renamed",
+        "comment changed",
+        "heading added between",
+    ],
+)
+def test_a_paragraph_beside_a_changed_block_is_not_followed(
+    was: str, now: str, followed: list[str]
+) -> None:
+    """A heading run into a paragraph in Word is looked for beside it in the source as it is
+    now. Changed since the build, it was not the heading the co-author ran in, and the run-in
+    merged: past a paragraph, a list, a sub-heading, a table, and a heading written straight
+    above the paragraph with no blank line, which the text hash does not cover, each found
+    in a round of review of #84. A paragraph is followed only where the blocks without an
+    identifier around it, up to the paragraphs on either side, read as at the build."""
+    source = _BESIDE.replace(*_ZERO)
+    assert _followed_texts(_BESIDE, source.replace(was, now, 1)) == followed
+
+
+def test_a_record_without_the_blocks_beside_follows_nothing() -> None:
+    """A document built before the record hashed the blocks beside each paragraph cannot say
+    that a heading beside one is still the heading the co-author had."""
+    followed, _texts_then = _follow(_FOUR, _FOUR.replace(*_ZERO), beside=False)
+    assert followed == {}
+
+
+def test_repeated_text_is_followed_by_what_stands_around_it() -> None:
+    """"Not applicable." under one declaration after another: the heading above each and the
+    paragraphs either side tell them apart. With another added above both since the build,
+    the one under "Consent" is followed, and the one under "Ethics", below the addition, is
+    not."""
+    then = "# Ethics\n\nNot applicable.\n\n# Consent\n\nNot applicable.\n\n# Funding\n\nNone.\n"
+    now = "# Participation\n\nNot applicable.\n\n" + then
+    followed, texts = _follow(then, now)
+    assert sorted(texts[old] for old in followed) == ["None.", "Not applicable."]
+    consent = [name for name, text in texts.items() if text == "Not applicable."][1]
+    assert consent in followed
+
+
+def test_paragraphs_that_stand_alike_are_not_followed() -> None:
+    """Two paragraphs with the same text, under the same headings and between paragraphs
+    that read the same, cannot be told apart once they move: followed, an edit to one could
+    land in the other."""
+    declared = "# D\n\nNone.\n\n" * 4
+    then = f"# A\n\nFirst.\n\n{declared}# B\n\nLast.\n"
+    followed, texts = _follow(then, then.replace("# A\n\n", "# A\n\nZero.\n\n"))
+    nones = [name for name, text in texts.items() if text == "None."]
+    assert set(followed) == {nones[0], nones[3], *(n for n, t in texts.items() if t == "Last.")}
+
+
+def test_paragraphs_the_author_reordered_are_not_followed_out_of_order() -> None:
+    """Followed to where the author moved it, a paragraph comes back from Word in its old
+    place, which `import` reads as the co-author moving it back, and `--apply` would undo the
+    author's move. Of two runs swapped since the build, the middle of each stands among the
+    same paragraphs, and only one of them is followed: the paragraphs compared keep their
+    order."""
+    runs = {"c": "C one.\n\nC two.\n\nC three.\n\n", "f": "F one.\n\nF two.\n\nF three.\n\n"}
+    then = f"# A\n\nAlpha.\n\n{runs['c']}{runs['f']}Omega.\n"
+    now = f"# A\n\nAlpha.\n\n{runs['f']}{runs['c']}Omega.\n"
+    followed, texts = _follow(then, now)
+    assert len(followed) == 1
+    assert {texts[old] for old in followed} <= {"C two.", "F two."}
+
+
+def test_the_last_paragraph_of_a_file_is_followed_only_where_the_next_file_opens_as_it_did(
+) -> None:
+    """The main text's files are one document: the heading opening the next file stands
+    directly under the last paragraph of this one in Word."""
+    main_then = "# A\n\nAlpha.\n\nBravo.\n\nCharlie.\n"
+    results = "# Results\n\nRomeo.\n"
+    main_now = main_then.replace("# A\n\n", "# A\n\nZero.\n\n")
+    then = {"main.md": main_then, "results.md": results}
+    assert _followed_texts(then, {"main.md": main_now, "results.md": results}) == [
+        "Bravo.",
+        "Charlie.",
+    ]
+    renamed = {"main.md": main_now, "results.md": results.replace("Results", "Findings")}
+    assert _followed_texts(then, renamed) == ["Bravo."]
+
+
+# The same, end to end: a document built, edited as Word edits it, and imported with --force
+# after the source changed above the paragraph edited.
+
+_ADDED = "A paragraph added since the build."
+
+
+def _imported(
+    project: Path,
+    tmp_path: Path,
+    built: tuple[str, ...],
+    now: tuple[str, ...],
+    change,
+    *,
+    reprinted: int | None = None,
+) -> tuple[str, str]:
+    """The source of `project` after `built` was built, `change` made to the document in Word,
+    the main text rewritten as `now`, and the document imported with --force; and the source
+    as it stood before the import. With `reprinted`, the analysis was re-run since the build
+    and prints that many reports."""
+    from test_corruption import _UNCHECKED, _paper, _sent_back
+
+    from manuscript_guard.cli import main
+
+    path = _paper(project, *built)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    returned = _sent_back(project, tmp_path, change, document=_UNCHECKED)
+    _paper(project, *now)
+    if reprinted is not None:
+        _reprinted(project, reprinted)
+    before = path.read_text(encoding="utf-8")
+    main(["import", str(returned), str(project), "--apply", "--force"])
+    return path.read_text(encoding="utf-8"), before
+
+
+def _reworded(was: str, now: str):
+    return lambda xml: xml.replace(was, now, 1)
+
+
+@needs_pandoc
+def test_a_rewording_below_a_paragraph_added_since_the_build_is_merged(
+    project: Path, tmp_path: Path
+) -> None:
+    """Refused, every edit below the addition had to be carried over by hand; followed, the
+    edit lands in its own paragraph."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    after, before = _imported(
+        project,
+        tmp_path,
+        blocks,
+        ("# Intro", _ADDED, *blocks[1:]),
+        _reworded("were excluded for missing dates", "were dropped for missing dates"),
+    )
+    assert after == before.replace("were excluded for", "were dropped for", 1)
+
+
+@needs_pandoc
+def test_an_edit_under_the_identifier_a_followed_paragraph_has_now_stays_out_of_it(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With a paragraph removed since the build, the one below it is not followed, the
+    block before it being another, and the one below that is followed to the identifier the
+    first carried. The document still carries that identifier on the first: read under it,
+    with the second deleted in Word, the co-author's rewording of the first would be merged
+    into the second."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _word_paragraph
+
+    from manuscript_guard.roundtrip import AS_SENT
+
+    def edited(xml: str) -> str:
+        xml = xml.replace(_word_paragraph(xml, "Romeo paragraph"), "", 1)
+        return xml.replace("Papa paragraph reports", "Papa paragraph, reworded, reports", 1)
+
+    blocks = ("# Intro", _ALPHA, _ADDED, _PAPA, _ROMEO, _BRAVO)
+    capsys.readouterr()
+    after, before = _imported(
+        project, tmp_path, blocks, tuple(block for block in blocks if block != _ADDED), edited
+    )
+    assert after == before, "an edit went into the paragraph after it"
+    out = capsys.readouterr().out
+    assert "were not compared" in out
+    assert AS_SENT not in out
+
+
+@needs_pandoc
+def test_a_heading_run_into_a_followed_paragraph_beside_it_as_built_is_refused(
+    project: Path, tmp_path: Path
+) -> None:
+    """The heading beside a followed paragraph is the one the co-author had, so a run-in is
+    seen as it is beside a paragraph trusted in place."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _run_into_papa
+
+    blocks = ("# Intro", _ALPHA, "## Methods", _PAPA, _ROMEO, _BRAVO)
+    after, before = _imported(
+        project,
+        tmp_path,
+        blocks,
+        ("# Intro", _ADDED, *blocks[1:]),
+        _run_into_papa("Methods", below=False),
+    )
+    assert after == before, "a run-in heading was merged"
+
+
+def _round_four():
+    from test_corruption import _ALPHA as A
+    from test_corruption import _BRAVO as B
+    from test_corruption import _PAPA as P
+    from test_corruption import _ROMEO as R
+
+    return [
+        (
+            ("# Intro", A, P, "## Results\n" + R, B),
+            ("# Intro", _ADDED, A, P, "## Findings\n" + R, B),
+            "Results",
+            True,
+        ),
+        (
+            ("# Intro", A, "## Methods\n" + P, "## Data", R, B),
+            ("# Intro", _ADDED, A, P, "## Data", R, B),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", A, "## Methods\n" + P, "## Data", R, B),
+            ("# Intro", _ADDED, A, "## Study design\n" + P, "## Data", R, B),
+            "Methods",
+            False,
+        ),
+        (
+            ("# Intro", A, "## Methods", P, "## Data", R, B),
+            ("# Intro", _ADDED, A, "## Methods", "## Sub\n" + P, "## Data", R, B),
+            "Methods",
+            False,
+        ),
+    ]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "case", range(4), ids=["glued below renamed", "glued above removed", "glued above renamed",
+                           "glued above added"]
+)
+def test_a_heading_glued_beside_a_shifted_paragraph_is_not_merged_when_run_in(
+    project: Path, tmp_path: Path, case: int
+) -> None:
+    """#84's fourth review: a heading written straight above a paragraph, with no blank line,
+    shares its block and is outside the paragraph's text hash. Renamed, removed or added
+    beside a paragraph followed below an addition, the heading looked at was not the one
+    the co-author ran in, and "MethodsPapa..." or "...dates.Results" merged."""
+    from test_corruption import _run_into_papa
+
+    built, now, heading, below = _round_four()[case]
+    after, before = _imported(
+        project, tmp_path, built, now, _run_into_papa(heading, below=below)
+    )
+    assert after == before, "a run-in heading was merged"
+
+
+@needs_pandoc
+def test_a_heading_beside_a_shifted_paragraph_that_prints_otherwise_is_not_merged_when_run_in(
+    project: Path, tmp_path: Path
+) -> None:
+    """#84's fourth review: every hash is of source, and a heading holding a binding prints
+    otherwise once its value changes. The co-author ran in "Results in 4000 reports", the
+    fresh build printed 4100, the run-in went unseen, and 4000 was typed into the paragraph."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _run_into_papa
+
+    heading = "## Results in {{results.cohort.n_reports}} reports"
+    built = ("# Intro", _ALPHA, _PAPA, heading, _ROMEO, _BRAVO)
+    after, before = _imported(
+        project,
+        tmp_path,
+        built,
+        ("# Intro", _ADDED, *built[1:]),
+        _run_into_papa("Results in 4000 reports", below=True),
+        reprinted=4100,
+    )
+    assert after == before, "a run-in heading was merged"
+
+
+def _reprinted(project: Path, reports: int) -> None:
+    """The analysis re-run since the build, counting `reports` reports."""
+    import json
+
+    from manuscript_guard.emit import write_digest
+
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_reports"].update(value=reports, display=str(reports))
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+_BETWEEN = [
+    "Novel paragraph inserted by the author after the build.",
+    "- A list item added since the build.",
+    "> A quotation added since the build.",
+    "## Data sources",
+    "$$y = x$$",
+    "| a | b |\n|---|---|\n| 1 | 2 |",
+]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "between", _BETWEEN, ids=["paragraph", "list", "quotation", "sub-heading", "equation", "table"]
+)
+@pytest.mark.parametrize("below", [False, True], ids=["heading above", "heading below"])
+def test_a_heading_run_into_a_shifted_paragraph_past_an_added_block_is_not_merged(
+    project: Path, tmp_path: Path, below: bool, between: str
+) -> None:
+    """#84's first three reviews: a block added since the build between a heading and the
+    paragraph beside it hid the heading from the run-in check, which looks beside the
+    paragraph in the source as it is now, and "MethodsPapa..." merged under the `# Methods`
+    still in the file. Looking past each kind of block the co-author never had opened the
+    next hole; a paragraph with a block added beside it is not followed."""
+    from test_corruption import _ALPHA, _PAPA, _ROMEO, _run_into_papa
+
+    if below:
+        built = ("# Intro", _ALPHA, _PAPA, "# Methods", _ROMEO)
+        second = between.replace("Novel", "Second")
+        now = ("# Intro", _ADDED, _ALPHA, _PAPA, second, "# Methods", _ROMEO)
+    else:
+        built = ("# Intro", _ALPHA, "# Methods", _PAPA, _ROMEO)
+        now = ("# Intro", _ALPHA, "# Methods", between, _PAPA, _ROMEO)
+    after, before = _imported(
+        project, tmp_path, built, now, _run_into_papa("Methods", below=below)
+    )
+    assert after == before, "a run-in heading was merged"
+
+
+def _body_runs(paragraph: str) -> str:
+    """A Word paragraph's runs, without its properties or bookmarks."""
+    body = re.sub(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", "", paragraph, flags=re.DOTALL)
+    return re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", body[: -len("</w:p>")])
+
+
+def _joined(first_words: str, second_words: str, *, space: str = " "):
+    """Two paragraphs joined in Word by retyping across the break: the second's bookmark goes
+    with the selection."""
+    from test_corruption import _word_paragraph
+
+    def change(xml: str) -> str:
+        first = _word_paragraph(xml, first_words)
+        second = _word_paragraph(xml, second_words)
+        gap = f'<w:r><w:t xml:space="preserve">{space}</w:t></w:r>'
+        return xml.replace(second, "", 1).replace(
+            first, first[: -len("</w:p>")] + gap + _body_runs(second) + "</w:p>", 1
+        )
+
+    return change
+
+
+@needs_pandoc
+@pytest.mark.parametrize("moved", [False, True], ids=["added between", "moved between"])
+def test_a_join_across_a_paragraph_the_source_put_between_is_not_merged(
+    project: Path, tmp_path: Path, moved: bool
+) -> None:
+    """#84's first review: two paragraphs joined in Word, with a paragraph the author put
+    between them since the build, were compared as neighbours the co-author never had. The
+    join merged as a rewording of the first, and the second's text was in the source twice."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO
+
+    now = (
+        ("# Methods", _ALPHA, _PAPA, _BRAVO, _ROMEO)
+        if moved
+        else ("# Methods", _ALPHA, _PAPA, _ADDED, _ROMEO, _BRAVO)
+    )
+    after, before = _imported(
+        project,
+        tmp_path,
+        ("# Methods", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+        now,
+        _joined("Papa paragraph", "Romeo paragraph"),
+    )
+    assert after == before, "a join was merged as a rewording"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("second", "retyped"),
+    [
+        ("Unfunded.", "None.Unfunded."),
+        ("Unfunded.", "Nil.Unfunded."),
+        ("Unfunded.", "NoneUnfunded."),
+        ("Unfunded.", "None; unfunded."),
+        ("{{results.cohort.n_reports}}", "None.{value}"),
+        ("{{results.cohort.n_reports}}", "None:{value}"),
+    ],
+    ids=["no space", "first word retyped", "stop taken", "lower case", "value", "value, colon"],
+)
+def test_one_word_paragraphs_joined_below_a_paragraph_added_since_the_build_are_not_merged(
+    project: Path, tmp_path: Path, second: str, retyped: str
+) -> None:
+    """#84's first and third reviews: joined with no space, or retyped across the break, two
+    one-word paragraphs read as one word sharing none with either, and a narrower join check
+    merged them as a rewording, a value typed as a number above the binding that prints it.
+    Followed below an addition, they are weighed as they are in place."""
+    from test_corruption import _ALPHA, _BRAVO
+
+    def joined(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        first = next(p for p in paragraphs if ">None.<" in p)
+        after = paragraphs[paragraphs.index(first) + 1]
+        value = "".join(re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", after, re.DOTALL))
+        text = retyped.format(value=value)
+        return xml.replace(after, "", 1).replace(first, first.replace(">None.<", f">{text}<", 1))
+
+    blocks = ("# Notes", _ALPHA, "None.", second, _BRAVO)
+    after, before = _imported(
+        project, tmp_path, blocks, ("# Notes", _ADDED, *blocks[1:]), joined
+    )
+    assert after == before, "a join was merged as a rewording"
+
+
+@needs_pandoc
+def test_a_value_paragraph_joined_to_a_shifted_one_is_not_merged_once_it_prints_otherwise(
+    project: Path, tmp_path: Path
+) -> None:
+    """The join check weighs the returned paragraph against the paragraph after it as the
+    fresh build prints it. Re-run since the build, a value there printed 4100, the co-author
+    had joined "None." with 4000, the two did not read alike, and "None. 4000" merged: a
+    number typed into prose beside the binding that prints it. What a followed paragraph's
+    neighbour printed at the build is not known, so one that did not come back refuses it."""
+    from test_corruption import _ALPHA, _BRAVO
+
+    blocks = ("# Notes", _ALPHA, "None.", "{{results.cohort.n_reports}}", _BRAVO)
+    after, before = _imported(
+        project,
+        tmp_path,
+        blocks,
+        ("# Notes", _ADDED, *blocks[1:]),
+        _joined("None.", ">4000<"),
+        reprinted=4100,
+    )
+    assert after == before, "a number was typed into the source"
+
+
+@pytest.mark.parametrize(
+    ("sent", "returned"),
+    [
+        (
+            [("", "Results in 4100 reports"), ("p", "None."), ("q", "Bravo.")],
+            [("p", "Nothing to declare."), ("q", "Bravo.")],
+        ),
+        (
+            [("p", "None."), ("q", "4100"), ("r", "Bravo.")],
+            [("p", "None. 4000"), ("r", "Bravo.")],
+        ),
+    ],
+    ids=["a heading beside it missing", "the paragraph after it missing"],
+)
+def test_what_a_followed_paragraph_stood_beside_is_not_taken_to_print_as_it_did(
+    tmp_path: Path, sent: list[tuple[str, str]], returned: list[tuple[str, str]]
+) -> None:
+    """A followed paragraph's record says the source around it reads as the co-author had it,
+    not that it prints so: a heading holding a value re-run since the build, or a paragraph
+    that is one, printed otherwise then. Beside a heading missing from the returned document,
+    or before a paragraph that did not come back, its rewording is refused, whether or not
+    the document was built from other inputs. The same paragraph trusted where it stands, in
+    a document built from these inputs, is merged, as on main: "None. 4000" is a rewording
+    beside a paragraph printing 4100 then too."""
+    from manuscript_guard.merge import plan_import
+
+    path = tmp_path / "main.md"
+    paragraphs = [(name, text) for name, text in sent if name]
+    path.write_text("\n\n".join(text for _name, text in paragraphs) + "\n", encoding="utf-8")
+    raw, every = path.read_text(encoding="utf-8"), {}
+    for name, text in paragraphs:
+        every[name] = (path, text, raw.index(text))
+
+    def blocks(pairs: list[tuple[str, str]]) -> list[Block]:
+        return [Block((name,) if name else (), text) for name, text in pairs]
+
+    def plan(followed: frozenset[str]):
+        return plan_import(
+            every, blocks(sent), blocks(returned), built=tuple(every), followed=followed
+        )
+
+    assert "p" in plan(frozenset()).merged
+    followed = plan(frozenset({"p"}))
+    assert "p" not in followed.merged
+    assert [refusal.name for refusal in followed.refused] == ["p"]
+
+
+@needs_pandoc
+def test_repeated_declarations_take_an_edit_only_in_their_own_place(
+    project: Path, tmp_path: Path
+) -> None:
+    """Two "None." under two "Declarations" headings. Followed below an addition, the edit to
+    the first lands in the first or nowhere, never in the second."""
+    from test_corruption import _ALPHA, _BRAVO
+
+    blocks = ("# Intro", _ALPHA, "# Declarations", "None.", "# Declarations", "None.", _BRAVO)
+
+    def edited(xml: str) -> str:
+        paragraphs = re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL)
+        first = next(p for p in paragraphs if ">None.<" in p)
+        return xml.replace(first, first.replace(">None.<", ">None whatsoever.<", 1), 1)
+
+    after, before = _imported(
+        project, tmp_path, blocks, ("# Intro", _ADDED, *blocks[1:]), edited
+    )
+    assert after in {before, before.replace("None.", "None whatsoever.", 1)}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("which", [0, 1], ids=["first reworded", "second reworded"])
+def test_paragraphs_the_author_swapped_take_an_edit_only_in_themselves(
+    project: Path, tmp_path: Path, which: int
+) -> None:
+    """The author swapped two paragraphs since the build, and the co-author reworded one:
+    the edit lands in that paragraph or nowhere."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO
+
+    words = ("twelve reports", "duplicates were removed")[which]
+    after, before = _imported(
+        project,
+        tmp_path,
+        ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO),
+        ("# Intro", _ALPHA, _ROMEO, _PAPA, _BRAVO),
+        _reworded(words, words.upper()),
+    )
+    assert after in {before, before.replace(words, words.upper(), 1)}
+
+
+@needs_pandoc
+def test_a_move_in_word_below_a_paragraph_added_since_the_build_is_applied(
+    project: Path, tmp_path: Path
+) -> None:
+    """Followed, the paragraphs below an addition are compared as any others: a co-author's
+    move among them is applied where they now stand."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _word_paragraph
+
+    def swapped(xml: str) -> str:
+        papa = _word_paragraph(xml, "Papa paragraph")
+        romeo = _word_paragraph(xml, "Romeo paragraph")
+        return xml.replace(papa, "", 1).replace(romeo, romeo + papa, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    after, before = _imported(
+        project, tmp_path, blocks, ("# Intro", _ADDED, *blocks[1:]), swapped
+    )
+    assert after == before.replace(f"{_PAPA}\n\n{_ROMEO}", f"{_ROMEO}\n\n{_PAPA}", 1)
+
+
+@needs_pandoc
+def test_a_heading_moved_past_a_followed_paragraph_is_not_passed_off_as_a_move_in_word(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The author moved a heading up past three paragraphs since the build. The middle one
+    stands between the same paragraphs as before and is followed, and in the document the
+    co-author returned untouched it is still above the heading: it reads as moved into
+    another section in Word. Nothing is moved, and the report says the .md changed there."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO
+
+    runs = ("Charlie paragraph opens it.", _PAPA, "Echo paragraph closes it.")
+    capsys.readouterr()
+    after, before = _imported(
+        project,
+        tmp_path,
+        ("# One", _ALPHA, _BRAVO, *runs, "# Two", _ROMEO),
+        ("# One", _ALPHA, _BRAVO, "# Two", *runs, _ROMEO),
+        lambda xml: xml,
+    )
+    assert after == before
+    moved = [line for line in capsys.readouterr().out.splitlines() if "Papa paragraph" in line]
+    assert moved and all("the .md changed above it since the build" in line for line in moved)
+
+
+@needs_pandoc
+def test_a_comment_below_a_paragraph_added_since_the_build_keeps_its_anchor(
+    project: Path, tmp_path: Path
+) -> None:
+    """The anchor names the paragraph where it now stands, which is what G13 looks up. The
+    paragraph directly below the addition is not followed, and its comment has no anchor."""
+    import yaml
+    from test_seed_revision import commented
+
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    texts = [t for n, t in _texts(project).items() if n.startswith("mg-p-main")][:3]
+    notes = [("Reviewer 2", "Why?"), ("Reviewer 2", "How?"), ("Reviewer 2", "Where?")]
+    returned = commented(project / "build" / "manuscript.docx", tmp_path / "back.docx", notes)
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("# Abstract\n\n", f"# Abstract\n\n{_ADDED}\n\n"),
+        encoding="utf-8",
+    )
+    now = {text: name for name, text in _texts(project).items()}
+
+    assert main(["respond", str(project), "--open", "--from", str(returned), "--force"]) == 0
+    document = yaml.safe_load((project / "revision" / "round-1.yaml").read_text(encoding="utf-8"))
+    where = [p.get("where") for r in document["reviewers"] for p in r["points"]]
+    assert where == [None, now[texts[1]], now[texts[2]]]
+
+
 def test_a_paragraph_in_parts_is_refused_beside_one_not_compared(tmp_path: Path) -> None:
     """Whether a paragraph reached Word in parts was judged by the section of the identified
     paragraph after it, and one left out of the comparison had none: the rewording of the

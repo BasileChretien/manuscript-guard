@@ -36,7 +36,7 @@ import unicodedata
 import zipfile
 from collections import Counter
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.docxtext import TOKEN, spaced
@@ -1562,9 +1562,20 @@ def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
     no identifier: a paragraph reworded beside it could not have been a heading the
     co-author ran into it.
     """
+    return {
+        name: repr((runs[position], runs[position + 1]))
+        for names, runs in _printed(sources)
+        for position, name in enumerate(names)
+    }
+
+
+def _printed(sources: list[tuple[Path, str, str]]) -> list[tuple[list[str], list[list[str]]]]:
+    """Each document's paragraphs, the main text's and then the supplement's, in the order
+    the build prints them, and the blocks without an identifier in each stretch around them:
+    before the first, between each two, and after the last. See `_beside_of`."""
     from manuscript_guard.gates.numbers import SUPPLEMENTARY, printed_order
 
-    around: dict[str, str] = {}
+    documents: list[tuple[list[str], list[list[str]]]] = []
     for supplement in (False, True):
         files = {
             path: (relative, raw)
@@ -1583,9 +1594,8 @@ def _beside_of(sources: list[tuple[Path, str, str]]) -> dict[str, str]:
                 if at is not None:
                     names.append(_TAG.format(slug=slug, index=index))
                     runs.append([])
-        for position, name in enumerate(names):
-            around[name] = repr((runs[position], runs[position + 1]))
-    return around
+        documents.append((names, runs))
+    return documents
 
 
 def paragraph_record(project) -> dict[str, str]:
@@ -1633,7 +1643,7 @@ class Numbering:
     #: Why the document cannot be read against this manuscript at all, or None.
     refusal: str | None = None
     #: The identifiers that name, in the source on disk, the paragraph they named when the
-    #: document was built. Only these are compared, moved or anchored.
+    #: document was built. Only these, and those `followed`, are compared, moved or anchored.
     trusted: frozenset[str] = frozenset()
     #: Whether the document records its paragraphs.
     recorded: bool = False
@@ -1650,6 +1660,98 @@ class Numbering:
     #: now, so no rewording is merged into it. Known only of a document that records them,
     #: as releases from this one do.
     beside_changed: frozenset[str] = frozenset()
+    #: Identifiers not trusted where they stand, each mapped to the one naming its paragraph
+    #: now, where the source around it reads as at the build (`_followed`). Compared, moved
+    #: and anchored under that one, as a trusted identifier is under its own.
+    followed: dict[str, str] = field(default_factory=dict)
+
+
+def _followed(
+    recorded: dict[str, str],
+    now: dict[str, str],
+    printed: list[list[str]],
+    trusted: frozenset[str],
+) -> dict[str, str]:
+    """Recorded identifiers not `trusted`, each mapped to the identifier of the paragraph
+    standing now among what it stood among at the build, where that is certain.
+
+    Identifiers are positional, so a paragraph added to the source since the build, or one
+    removed, moves every identifier below it by a block: each then names its neighbour, and
+    every co-author edit below it had to be carried over by hand. What `import` asks beside
+    a paragraph - a heading run into it, a paragraph joined to it - it asks of the source as
+    it is now, so a paragraph is followed only where that is what the co-author had: its own
+    record, which holds its text, the block before it and the blocks without an identifier
+    around it up to the paragraphs on either side (`_beside_of`); and the text of those two
+    paragraphs, before and after it in the document as the build prints it. The record holds
+    nothing of the paragraphs beside, and with one added directly after it since the build,
+    a join made in Word was weighed against text the co-author never had. #84 looked past
+    each kind of block added beside a paragraph instead, and each of three rounds of review
+    found another; a heading written straight above the paragraph, outside its text hash,
+    was the fourth. That whole window must be found once in its file, then and now, or an
+    edit could land in a look-alike. So the paragraph directly beside what the author added,
+    removed or changed is not followed, nor any in a document whose record holds no blocks
+    beside its paragraphs, as releases before #93 wrote it.
+
+    And only where the paragraphs compared keep their order. Followed to where the author
+    moved it, a paragraph comes back from Word in its old place, which `import` reads as the
+    co-author moving it back, and `--apply` would undo the author's move.
+    """
+
+    def windows(record: dict[str, str], documents: list[list[str]]) -> dict[str, tuple]:
+        found = {}
+        for names in documents:
+            for at, name in enumerate(names):
+                before = record[names[at - 1]].partition(".")[0] if at else None
+                after = record[names[at + 1]].partition(".")[0] if at + 1 < len(names) else None
+                found[name] = (_slug_of(name), record[name], before, after)
+        return found
+
+    then, here = windows(recorded, [list(recorded)]), windows(now, printed)
+    once_then, once_now = Counter(then.values()), Counter(here.values())
+    standing = {window: name for name, window in here.items()}
+    followed = {
+        old: standing[window]
+        for old, window in then.items()
+        if old not in trusted
+        and once_then[window] == 1
+        and once_now[window] == 1
+        and standing[window] not in trusted
+    }
+
+    def orders(pairs: dict[str, str]) -> tuple[list[str], list[str]]:
+        compared = {name: name for name in trusted} | pairs
+        kept = set(compared.values())
+        return (
+            [compared[name] for name in recorded if name in compared],
+            [name for names in printed for name in names if name in kept],
+        )
+
+    sent, shown = orders(followed)
+    if sent != shown:
+        matcher = difflib.SequenceMatcher(a=sent, b=shown, autojunk=False)
+        kept = {sent[m.a + k] for m in matcher.get_matching_blocks() for k in range(m.size)}
+        followed = {old: new for old, new in followed.items() if new in kept}
+        sent, shown = orders(followed)
+    return followed if sent == shown else {}
+
+
+def named_now(followed: dict[str, str]):
+    """How `import` reads an identifier a returned document carries: a followed one as the
+    identifier naming its paragraph now (`Numbering.followed`), and one carried for another
+    paragraph, which a followed paragraph has now, under a name no paragraph has."""
+    taken = set(followed.values())
+
+    def named(name: str) -> str:
+        if name in followed:
+            return followed[name]
+        return f"{name}{AS_SENT}" if name in taken else name
+
+    return named
+
+
+#: What `named_now` puts after an identifier that a followed paragraph has now. A bookmark
+#: name holds no `#`, so no paragraph has the name it makes.
+AS_SENT = "#as-sent"
 
 
 def _trusted(recorded: dict[str, str], now: dict[str, str]) -> frozenset[str]:
@@ -1697,19 +1799,22 @@ def numbering(project, document: Path, *, stale: bool) -> Numbering:
     A document that records its paragraphs is read paragraph by paragraph: an identifier
     whose paragraph on disk no longer reads as it did at the build, because the source
     changed there or a release numbers paragraphs by other rules, is left out, and nothing
-    is merged into it. One that records nothing was built before paragraphs were recorded;
-    it is refused whole where its numbering cannot be vouched for.
+    is merged into it, unless its paragraph is followed to where it stands now
+    (`_followed`). One that records nothing was built before paragraphs were recorded; it is
+    refused whole where its numbering cannot be vouched for.
     """
     known = tagged_paragraphs(project)
     recorded = paragraphs_of(document)
     if recorded is not None:
         now = paragraph_record(project)
         trusted = _trusted(recorded, now)
+        printed = [names for names, _runs in _printed(_sources(project))]
         return Numbering(
             trusted=trusted,
             recorded=True,
             sent=tuple(recorded),
             beside_changed=_beside_changed(recorded, now, trusted),
+            followed=_followed(recorded, now, printed, trusted),
         )
     # Whether the old rules and these number its files alike can only be asked of the text
     # it was built from, and a stale document was built from other text.

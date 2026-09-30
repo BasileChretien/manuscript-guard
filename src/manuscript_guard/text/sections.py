@@ -469,7 +469,10 @@ _BLOCK_TAGS = (
 # groups, three deep. The alternatives read any text one way only: a roman numeral has two
 # letters or more, since one is a letter's; a comment ends at its first `-->`; and a
 # command's name takes every letter, as TeX reads it. Pandoc takes brackets as a command's
-# argument only before its groups: `\vspace{1em}[^x] ---` is the command, then text. It
+# argument only before its groups: `\vspace{1em}[^x] ---` is the command, then text. The
+# definitions it reads by their own shape, `\newcommand{\foo}[1]{bar}` or
+# `\newtheorem{thm}{Theorem}[section]`, take brackets between and after their groups too,
+# and are read that way; no other command matches their alternative. It
 # takes `[^1]` as one colon or not, and `\newpage[^1]: ---` is the command, then text; the
 # pattern reads `[^1]:` there as a footnote's marker instead, so that the marker's
 # alternative and the argument's never both match, and the line is refused either way.
@@ -477,11 +480,16 @@ _BLOCK_TAGS = (
 # reading `[^1]:` both ways made the follow-ups' first version hang.
 _GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
 _ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
+_DEFINITION = (
+    r"(?:(?:re)?newcommand|providecommand|(?:re)?newenvironment|newtheorem|titleformat)"
+    r"(?![A-Za-z@])"
+)
 _OPENER_ITEM = (
     r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
     r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
-    r"|\\[A-Za-z@]+(?![A-Za-z@])\*?"
+    r"|\\" + _DEFINITION + r"\*?(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*"
+    r"|\\(?!" + _DEFINITION + r")[A-Za-z@]+(?![A-Za-z@])\*?"
     r"(?:[ \t]*(?:" + _ARGUMENT + r"))*(?:[ \t]*" + _GROUP + r")*[ \t]*)"
 )
 _OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)

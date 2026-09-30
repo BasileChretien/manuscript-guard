@@ -268,10 +268,13 @@ def link_text_spans(text: str) -> list[tuple[int, int]]:
     labels = _labels(text)
     spans: list[tuple[int, int]] = []
     label_at = -1
+    line = read_to = 0
     for found in _LINK_TEXT.finditer(text):
         # A bracket that is the label of the one before it, `[t]` in `[Table 2][t]`, or a
-        # definition's own, `[t]: #x`, is no link's text.
-        line = text.rfind("\n", 0, found.start()) + 1
+        # definition's own, `[t]: #x`, is no link's text. The line's start is read on from
+        # the last bracket's, not back from each: on one long line that was quadratic.
+        line = text.rfind("\n", read_to, found.start()) + 1 or line
+        read_to = found.start()
         defines = text.startswith(":", found.end()) and _QUOTE_MARKS.fullmatch(
             text, line, found.start()
         )

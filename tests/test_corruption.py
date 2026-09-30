@@ -2775,6 +2775,11 @@ _EVIL = "---\ntitle: Evil\nnote: |\n  Methods\n---\n"
         "## Note\n\\newpage[^1]---\ntitle: Evil\n...\n",
         "## Note\n\\newpage[^1] ---\ntitle: Evil\n...\n",
         "## Note\n\\foo[x][y]{1em} ---\ntitle: Evil\n...\n",
+        # Found reviewing #106: pandoc reads a definition's brackets after its groups too.
+        "## Note\n\\newcommand{\\foo}[1]{bar} ---\ntitle: Evil\n...\n",
+        "## Note\n\\newenvironment{x}[1]{a}{b} ---\ntitle: Evil\n...\n",
+        "## Note\n\\newtheorem{thm}{Theorem}[section] ---\ntitle: Evil\n...\n",
+        "## Note\n\\titleformat{a}[b]{c}{d}{e}{f} ---\ntitle: Evil\n...\n",
     ],
 )
 def test_every_way_a_rule_can_open_a_block_is_refused(block: str) -> None:

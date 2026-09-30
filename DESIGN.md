@@ -3417,7 +3417,9 @@ Closed since, and why each mattered:
   marker, where pandoc reads `\newpage[^1]: ---` and `\foo[x]: ---` as the command, then
   text. Each is refused though it prints as it reads; putting the command on a line of its
   own clears it. Telling the block-level commands from the rest would mean keeping pandoc's
-  list of them.
+  list of them. A definition, `\newcommand` and its kin, takes brackets after its groups
+  too, so `\newcommand{\foo}{bar}[x] ---` and `\newcommand{a}[^x] ---` are refused, where
+  pandoc reads the brackets as text and no YAML under them.
 - **A footnote-shaped line in a `<pre>` or a TeX environment is copied to the titles.** The
   definitions the titles may refer to are taken from the text the gates do not take for
   code or a comment, and a `<pre>` or `\begin{verbatim}` is neither to them. A line there

@@ -477,19 +477,21 @@ _BLOCK_TAGS = (
 # pattern reads `[^1]:` there as a footnote's marker instead, so that the marker's
 # alternative and the argument's never both match, and the line is refused either way.
 # Where one line could be read two ways, a line of a few hundred items took minutes, and
-# reading `[^1]:` both ways made the follow-ups' first version hang.
+# reading `[^1]:` both ways made the follow-ups' first version hang. A command's star is
+# taken whenever it is there, since `\newcommand* ` is not the command and a `* ` marker.
 _GROUP = r"\{(?:[^{}\n]|\{(?:[^{}\n]|\{[^{}\n]*\})*\})*\}"
 _ARGUMENT = r"\[[^\]\n]*\](?!:)|\[(?!\^)[^\]\n]*\](?=:)"
 _DEFINITION = (
-    r"(?:(?:re)?newcommand|providecommand|(?:re)?newenvironment|newtheorem|titleformat)"
-    r"(?![A-Za-z@])"
+    r"(?:(?:re)?newcommand|providecommand|DeclareRobustCommand|DeclareMathOperator"
+    r"|(?:re)?newenvironment|provideenvironment|newtheorem|titleformat)(?![A-Za-z@])"
 )
+_STAR = r"(?:\*|(?!\*))"
 _OPENER_ITEM = (
     r"(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]{2,})[.)]"
     r"|\[\^[^\]\n]*\]:)(?:[ \t]+\[[ xX]\])?[ \t]+"
     r"|<(?:/?(?:" + _BLOCK_TAGS + r")\b[^>\n]*|!--(?:[^-]|-(?!->))*--|\?[^>\n]*\?)>[ \t]*"
-    r"|\\" + _DEFINITION + r"\*?(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*"
-    r"|\\(?!" + _DEFINITION + r")[A-Za-z@]+(?![A-Za-z@])\*?"
+    r"|\\" + _DEFINITION + _STAR + r"(?:[ \t]*(?:" + _GROUP + r"|" + _ARGUMENT + r"))*[ \t]*"
+    r"|\\(?!" + _DEFINITION + r")[A-Za-z@]+(?![A-Za-z@])" + _STAR +
     r"(?:[ \t]*(?:" + _ARGUMENT + r"))*(?:[ \t]*" + _GROUP + r")*[ \t]*)"
 )
 _OPENERS = re.compile(r"[ ]{0,3}" + _OPENER_ITEM + r"+", re.IGNORECASE)

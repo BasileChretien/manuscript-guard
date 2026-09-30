@@ -195,8 +195,11 @@ _LINK_TEXT = re.compile(
 )
 # A link's definition, at the margin or in a quotation, which pandoc reads only where a
 # block may start: under a blank line or another definition, not under a paragraph's line.
-_DEFINITION = re.compile(r"(?:[ ]{0,3}>[ ]?)*[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
-_QUOTE_MARKS = re.compile(r"(?:[ ]{0,3}>[ ]?)*")
+# The spaces between two marks are read in one piece: split between the first mark's own
+# and the next one's, a line of `> ` that was no definition was read every way.
+_MARKS = r"(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?"
+_DEFINITION = re.compile(_MARKS + r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
+_QUOTE_MARKS = re.compile(_MARKS)
 
 
 def _label(text: str) -> str:

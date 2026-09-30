@@ -2363,13 +2363,20 @@ The checks that came out of the review rounds guard the tracked path as well:
   joined into "None." above it, "None. 4000" read as no join and merged the same way.
   Weighing only the paragraphs compared, a paragraph the `.md` reworded since the build,
   pasted into another, merged there with its old words, and the source had them twice. So
-  in a document built from other inputs only a paragraph's words outside its bindings and
-  citations are taken as sent (`merge._as_sent`), and one that is not compared is read from
-  a paragraph whose source reads now as its did then (`roundtrip.Numbering.same_text`).
-  Where nothing it said is known - a value alone, or a paragraph the `.md` changed or dropped
-  - a rewording that gained words is refused, since those words could be it; and a
-  paragraph whose next as sent is such a one and did not come back is refused, as a join
-  cannot be weighed. A copy is looked for in the paragraphs as they came back too.
+  in a document built from other inputs only a paragraph's words that touch none of its
+  bindings and citations are taken as sent (`merge._as_sent`), and it is weighed as the
+  fresh build prints it too, as before; either reading refuses. A word with a value in it
+  is not taken: kept apart, the full stop in "4000." and the dash in "2.89–5.12" were words
+  of their own, found nowhere among the words that came back, and a paragraph of values read
+  as known. One that is not compared is read from a paragraph whose source reads now as its
+  did then (`roundtrip.Numbering.same_text`). Where nothing it said is known - values alone,
+  or a paragraph the `.md` changed or dropped - a rewording that gained five words in a row,
+  or a word with a digit in it, is refused, since those words could be it; and a paragraph
+  whose next as sent is such a one and did not come back is refused, as a join cannot be
+  weighed. Five is the floor a paragraph pasted whole is looked for from. Refusing any
+  rewording that gained a word held back every ordinary edit in the document once Word
+  deleted a paragraph the author had also changed. A copy is looked for in the paragraphs as
+  they came back too.
 - A move is not applied in a section with a paragraph that is not compared standing between
   two of its paragraphs as returned. Such a paragraph has no slot, and stands between
   sections in the source; standing inside one in Word, a move passed it, and filling the
@@ -4125,13 +4132,37 @@ Closed since, and why each mattered:
   passed one left out is named as not applied, with every other move in its section; it
   used to be applied, and the moved paragraph landed on the other side of the one it
   passed.
-- **A rewording is refused whenever a paragraph that did not come back said something not
-  known.** A paragraph the `.md` changed or dropped since the build, deleted in Word too, or
-  one that is only a value or citation in a document built from other inputs, leaves nothing
-  to look for in the words another paragraph gained. So every rewording in the document
-  that gained words is refused, and named, though most of them would have merged cleanly:
-  deleting in Word a paragraph the author also changed holds back the other edits in a
-  forced import. A rewording that only removed words still merges.
+- **A rewording that gained five words in a row, or a number, is refused whenever a
+  paragraph that did not come back said something not known.** A paragraph the `.md`
+  changed or dropped since the build, deleted in Word too, or one that is only values or
+  citations in a document built from other inputs, leaves nothing to look for in the words
+  another paragraph gained. Every rewording in the document that gained a run of five words
+  or more, or a word with a digit in it, is refused and named, though most would have
+  merged cleanly: deleting in Word a paragraph the author also changed holds such edits
+  back in a forced import. One that gained less, as a word added, a word fixed or a clause
+  cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
+  another, as `_swallowed` lets one through: its words go into the source twice.
+- **The five-word rule is the interim one.** The build's record keeps a hash of each
+  paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
+  not known at import when the `.md` changed it since. Recording each paragraph's text, or
+  its five-word shingles, in the build's record would make the question exact for documents
+  built after that change, and is the follow-up; the narrowed refusal stays for documents
+  built before it.
+- **A copy of a re-run value, or a partial copy of under five words, merges.** A value
+  paragraph copied rather than cut in Word, or a stretch of under five words copied from a
+  paragraph ("Of 4000 reports screened"), in a document whose analysis was re-run since:
+  the copy stays where it was, so nothing vanished, and `_swallowed` looks for a copy of
+  five words or more. "...dates. 4000" merges, as on `main`, and `check` reports the typed
+  number as unbound.
+- **A sentence cut from a paragraph the `.md` changed since, and pasted into another,
+  merges.** The paragraph it went into gained it; the paragraph it left is not compared, so
+  what it lost is not seen. The sentence is in the source twice, as on `main`, and with no
+  number in it `check` cannot see it. This is the sibling of the tracked case below, where
+  the paragraph the sentence left is refused because a binding went with it.
+- **A paragraph cut from the supplement and pasted into the main text merges.** Each
+  document is imported on its own and its record covers only itself, so the main text's
+  import sees new words in a paragraph and the supplement's sees a deletion, which it
+  reports and does not apply. As on `main`.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still

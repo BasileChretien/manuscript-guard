@@ -1668,13 +1668,13 @@ stamp says, since its record vouches for the source around it and not for what t
 printed: its rewording is refused beside a heading or caption missing from the returned
 document, and when its next paragraph as sent did not come back. "None." joined in Word with
 a value paragraph printing 4000 then and 4100 now read as a rewording, not a join, and
-"None. 4000" merged, a number typed beside the binding that prints it. The paragraph before a
-followed one that did not come back is refused too, compared or not: main left the followed
-one out, and refused the rewording beside it for that.
+"None. 4000" merged, a number typed beside the binding that prints it. A rewording of the
+paragraph before a followed one that did not come back is refused too: main left the
+followed one out of the comparison, and refused that rewording for it.
 
 A followed paragraph is read under the identifier it has now: the returned document is
-renamed, not the source. The identifier it had can be carried in the returned document by
-another paragraph, one not followed, since the paragraphs moved: that one is read under a
+renamed, not the source. The identifier it has now can be carried in the returned document
+by another paragraph, one not followed, since the paragraphs moved: that one is read under a
 name no paragraph has (`roundtrip.named_now`). Read under its own, with the followed
 paragraph deleted in Word, its rewording merged into the followed one. `respond --open`
 anchors a comment on a followed paragraph at the identifier it has now, which is what G13

@@ -188,7 +188,7 @@ MG_SOURCE_SUFFIXES <- c("py", "r", "rmd", "qmd", "jl", "do", "sas", "sh")
 #' byte, which is the right default wherever a CR is content.
 #' @noRd
 MG_DATA_SUFFIXES <- c("csv", "tsv", "psv", "json", "jsonl", "yaml", "yml", "toml",
-                      "md", "txt", "bib", "xml", "sql")
+                      "md", "bib", "xml")
 
 #' The digest of a script, ignoring line endings
 #'

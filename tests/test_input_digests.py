@@ -240,6 +240,9 @@ CASES = {
     "embedded_nul.csv": b"a\x00b\r\n",
     "utf16.csv": b"\xff\xfe" + "a,b\r\n".encode("utf-16-le"),
     "binary.xlsx": b"PK\x03\x04\r\n\x00rest",
+    # Hashed byte for byte on both sides; R once still normalised them (#113's review).
+    "notes.txt": b"a\r\nb\r\n",
+    "query.sql": b"select 1;\r\n",
 }
 
 

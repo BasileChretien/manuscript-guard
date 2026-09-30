@@ -49,8 +49,6 @@ __all__ = [
     "input_digest",
     "input_digest_matches",
     "read_digest",
-    "input_digest",
-    "input_digest_matches",
     "sha256_of",
     "source_digest",
     "source_digest_matches",

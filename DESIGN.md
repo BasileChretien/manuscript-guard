@@ -2356,7 +2356,27 @@ The checks that came out of the review rounds guard the tracked path as well:
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
 - The paragraph gone from its place is weighed as it printed at the build, not as the fresh
-  build prints it, and every paragraph the document was sent with counts, compared or not.
+  build prints it, and every paragraph the document was sent with counts, compared or not,
+  that did not come back with text of its own. Word 16 does not delete a cut paragraph's
+  identifier with its text: it goes in front of the next paragraph's own, or stays on the
+  line the cut emptied. Taken for the paragraph having come back, a paragraph cut and pasted
+  onto the end of another was never looked for there, and the one it went into merged
+  holding it, when the `.md` had reworded it since, or beside a paragraph it had reworded,
+  which the identifier's block then read as a join with. So each identifier is read with
+  the text it holds, from its bookmark to the next one's (`merge._held`, from
+  `docxtext.Block.at`): Word keeps a joined paragraph's bookmark where its text began, and
+  one left in front of another's holds nothing. A paragraph whose text is known came back
+  where its identifier holds that text; one whose text is not known, where its identifier
+  holds text that does not read exactly as another paragraph or a heading as the fresh build
+  prints them (`merge._came_back_whole`). Read by the block instead, a paragraph deleted,
+  joined or moved in front of one the author had reworded left two identifiers on text
+  neither could be told to hold, the reworded one, standing there untouched, counted as gone,
+  and every rewording that gained five words or a digit was refused. Where a bookmark's
+  place is not known, as for one Word's tracked changes carried from another paragraph, only
+  a paragraph whose text is known, and in the block, came back there. An identifier on a list
+  item or a block quotation is taken off, as one on a heading is (`merge._off_headings`):
+  the build gives neither one, and a lead-in sentence cut from before a list left its
+  identifier on the first item, which, edited, merged over the lead-in.
   Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
   re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
   one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
@@ -4214,6 +4234,26 @@ Closed since, and why each mattered:
   back in a forced import. One that gained less, as a word added, a word fixed or a clause
   cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
   another, as `_swallowed` lets one through: its words go into the source twice.
+- **An identifier Word left behind counts as the paragraph gone only where the text it holds
+  says so.** It counts as gone where it holds nothing - in front of another's, on an empty
+  line, at the end of a paragraph that line was joined onto - where its paragraph's text is
+  known and is not in what it holds, and where it holds text that reads exactly as another
+  paragraph or a heading. Where its paragraph's text is not known, holding text that reads as
+  nothing sent - a sentence typed where the cut one stood, say - it counts as the paragraph,
+  reworded, and a paste of its old text elsewhere is not looked for. Nor is it where the text
+  it holds is a block the build gave no identifier, changed in the `.md` since the build and
+  not a heading, caption, reference entry, list item or quotation, which are known by their
+  style: what such a block printed as sent is not known. The record keeps a hash of each
+  source block, not what it printed, so the text read as "something else the document was
+  sent with" is the fresh build's; asking the record whether the blocks beside each
+  paragraph changed since would refuse every rewording that gained five words whenever the
+  author had changed a paragraph and the heading beside it. Recording what each block
+  printed would close all three. An untracked deletion in Word of a paragraph the author also
+  changed holds back a rewording elsewhere that gained five words in a row or a number, as a
+  tracked one did, and so does a block holding two identifiers where the place of either
+  bookmark is not known and one's paragraph is not. And a paragraph compared whose identifier
+  came back on other text is refused itself (`_not_its_own`) but not looked for in the words
+  another paragraph gained, as on `main`.
 - **The five-word rule is the interim one.** The build's record keeps a hash of each
   paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
   not known at import when the `.md` changed it since. Recording each paragraph's text, or

@@ -360,28 +360,81 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     return ""
 
 
-def _took_vanished(was: str, now: str, rendered: dict[str, str], vanished: list[str]) -> str:
+#: What is known of the words a paragraph printed at the build: all of them, those outside
+#: its bindings and citations, or, as None, none.
+Sent = list[str] | None
+
+
+def _gained(was: str, now: str) -> list[str]:
+    """The words a paragraph has now that it did not have as sent, in order."""
+    before, after = was.split(), now.split()
+    matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    return [
+        word
+        for tag, _i1, _i2, j1, j2 in matcher.get_opcodes()
+        if tag in ("insert", "replace")
+        for word in after[j1:j2]
+    ]
+
+
+def _took_vanished(was: str, now: str, vanished: Sequence[tuple[str, Sent]]) -> str:
     """The text of a paragraph gone from its place, most of it now added to this one.
 
     Pasted onto the end of a paragraph elsewhere, with a word typed to join them, a paragraph
     has no identifier of its own left and does not read exactly as anything. The paragraph it
     joined merged holding it, and it was then in the source twice. A judgement - most of its
     words, in order, among the words this paragraph gained - and it only refuses.
+
+    Its words as it printed at the build (`_as_sent`), which are not always the fresh build's:
+    weighed against a value re-run since, "4000" pasted in did not read as "4100", and a
+    number was typed into the source. One whose words then are not known at all is
+    `_took_unknown`'s.
     """
-    before, after = was.split(), now.split()
-    matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
-    gained = [
-        word
-        for tag, _i1, _i2, j1, j2 in matcher.get_opcodes()
-        if tag in ("insert", "replace")
-        for word in after[j1:j2]
-    ]
-    for name in vanished if gained else ():
-        words = rendered[name].split()
+    gained = _gained(was, now)
+    for text, words in vanished if gained else ():
+        if not words:
+            continue
         shared = difflib.SequenceMatcher(a=words, b=gained, autojunk=False).get_matching_blocks()
-        if words and sum(block.size for block in shared) >= _ALIKE * len(words):
-            return rendered[name]
+        if sum(block.size for block in shared) >= _ALIKE * len(words):
+            return text
     return ""
+
+
+def _took_unknown(was: str, now: str, vanished: Sequence[tuple[str, Sent]]) -> str:
+    """A paragraph gone from its place whose words as sent are not known, when this one
+    gained words that could be it.
+
+    One the `.md` changed since the build is not compared, and what it said then is not in
+    the source any more; one that is only a value, in a document built from other inputs,
+    printed a number that may be anything. Pasted into another paragraph, it could not be
+    looked for, and it merged: the old paragraph's words were in the source twice, or a
+    number typed beside the binding that prints it. That the words gained are it cannot be
+    ruled out, so the rewording is refused.
+    """
+    if not _gained(was, now):
+        return ""
+    return next((text for text, words in vanished if words is None), "")
+
+
+def _as_sent(text: str, marked: Block | None, stale: bool) -> Sent:
+    """The words a paragraph's fresh rendering, `text`, printed at the build too.
+
+    All of them, from a document built from the inputs on disk and a source that reads as it
+    did. In a document built from other inputs a value or a citation may print otherwise,
+    and only the words outside them are known, read from the marked build's extents
+    (`marked`); a paragraph that is only values and citations has none. Where the marked
+    build does not read as the fresh one, which words are whose is not known either.
+    """
+    if not stale:
+        return text.split()
+    if marked is None or marked.text.replace(" ", " ") != text.replace(" ", " "):
+        return None
+    words, at = [], 0
+    for start, end in marked.tokens:
+        words += text[at:start].split()
+        at = end
+    words += text[at:].split()
+    return words if words or not marked.tokens else None
 
 
 def _not_its_own(
@@ -410,18 +463,27 @@ def _not_its_own(
     return found
 
 
-def _swallowed(name: str, was: str, now: str, rendered: dict[str, str]) -> str:
+def _swallowed(
+    name: str, was: str, now: str, rendered: dict[str, str], returned: Sequence[Block] = ()
+) -> str:
     """The whole of another paragraph, now inside this one and not before.
 
     A join that lost the second paragraph's bookmark, or a paragraph pasted into another,
     and not beside it: the paragraph came back holding the other's text, and merged, the
     other's text was in the source twice. Only a paragraph of five words or more, so that a
     short one ("None declared.") quoted in a rewording does not refuse it.
+
+    Another paragraph as sent, and each paragraph with an identifier as it came back. Asked
+    only of the paragraphs compared as sent, a copy of one the `.md` changed since the build,
+    which is not compared, merged, and its old words were in the source twice; so did a copy
+    of one printing a value re-run since, sent as it printed then.
     """
     here, before = _squashed(now), _squashed(was)
-    for other, text in rendered.items():
+    others = [text for other, text in rendered.items() if other != name]
+    others += [b.text for b in returned if b.names and not b.table and name not in b.names]
+    for text in others:
         whole = _squashed(text)
-        if other != name and len(whole.split()) >= 5 and whole in here and whole not in before:
+        if len(whole.split()) >= 5 and whole in here and whole not in before:
             return text
     return ""
 
@@ -477,6 +539,35 @@ def _unsettled(
         found |= these
         because.append((_listed(block), frozenset(these)))
     return found, because
+
+
+def _passed_over(returned: list[Block], sections: dict) -> set:
+    """Sections with a paragraph that is not compared standing between two of theirs in the
+    returned document.
+
+    A section's paragraphs are filled into its slots in their returned order, and a paragraph
+    that is not compared has no slot: the source changed it since the build, so it stands
+    between sections, never inside one. Standing inside one as returned, it was passed by a
+    move in Word, and filling the slots put the moved paragraph on the wrong side of it: the
+    author reworded Papa, the co-author moved Bravo above it, and Bravo was written between
+    Papa and Romeo, where nobody had put it.
+    """
+    at: dict = {}
+    between: list[int] = []
+    for index, block in enumerate(returned):
+        if block.table or not block.names:
+            continue
+        ours = [sections[name] for name in block.names if name in sections]
+        if not ours:
+            between.append(index)
+        for section in ours:
+            first, _last = at.get(section, (index, index))
+            at[section] = (first, index)
+    return {
+        section
+        for section, (first, last) in at.items()
+        if any(first < index < last for index in between)
+    }
 
 
 def _kept_in_place(
@@ -1104,20 +1195,32 @@ def _absorbed(now: str, other: str, was: str) -> bool:
 
 
 def _joined_without_bookmark(
-    rendered: dict[str, str], texts: dict[str, str], in_join: set[str]
+    rendered: dict[str, str],
+    texts: dict[str, str],
+    in_join: set[str],
+    sent: dict[str, Sent] | None = None,
 ) -> list[tuple[str, str]]:
-    """Pairs whose second paragraph vanished into the first; see `_absorbed`."""
+    """Pairs whose second paragraph vanished into the first; see `_absorbed`.
+
+    The second is weighed by its words as it printed at the build, `sent` (`_as_sent`): by
+    the fresh build's, "None." joined with a value that printed 4000 then and 4100 now read
+    as a rewording, and merged as "None. 4000". One whose words then are not known at all is
+    not weighed here; `_beside_lost` refuses the paragraph before it.
+    """
     found = []
     sequence = list(rendered)
     for position, name in enumerate(sequence[1:], start=1):
         before = sequence[position - 1]
         now = texts.get(before)
+        words = rendered[name].split() if sent is None else sent.get(name, rendered[name].split())
+        if words is None:
+            continue
         if (
             name not in texts
             and now
             and not {name, before} & in_join
             and not _same(rendered[before], now)
-            and _absorbed(now, rendered[name], rendered[before])
+            and _absorbed(now, " ".join(words), rendered[before])
         ):
             found.append((before, name))
             in_join.update((before, name))
@@ -1147,10 +1250,15 @@ def _unread(
 
 
 def _beside_lost(
-    rendered: dict[str, str], texts: dict[str, str], built: Sequence[str], present: set[str]
+    rendered: dict[str, str],
+    texts: dict[str, str],
+    built: Sequence[str],
+    present: set[str],
+    unknown: Collection[str] = (),
 ) -> set[str]:
     """Paragraphs changed in Word whose next paragraph in the document as sent is left out
-    of the comparison and did not come back.
+    of the comparison and did not come back, or is `unknown`: compared, but what it printed
+    at the build is not (`_as_sent`).
 
     That one may have been joined into this one with its bookmark lost, as a join retyped
     across the boundary loses it, and `_absorbed` cannot weigh a text it does not know:
@@ -1161,7 +1269,7 @@ def _beside_lost(
         now = texts.get(before)
         if (
             before in rendered
-            and name not in rendered
+            and (name not in rendered or name in unknown)
             and name not in present
             and now is not None
             and not _same(rendered[before], now)
@@ -1181,6 +1289,7 @@ def plan_import(
     built: Sequence[str] = (),
     unsure: frozenset[str] = frozenset(),
     beside_changed: frozenset[str] = frozenset(),
+    same_text: dict[str, str] | None = None,
     stale: bool = False,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
@@ -1211,6 +1320,13 @@ def plan_import(
     wrong text. A rewording is not merged into a paragraph whose record says a block beside
     it changed since (`beside_changed`, from `roundtrip.Numbering`), nor, when `stale`, into
     one beside a heading or caption missing from the returned document.
+
+    A paragraph pasted or joined into another is looked for by what it printed at the build
+    (`_as_sent`): when `stale`, only its words outside its bindings and citations are known.
+    One `built` names that is not compared and did not come back is looked for by the text of
+    a paragraph whose source reads now as its did then, `same_text` (from
+    `roundtrip.Numbering`), and where there is none, what it said is not known, and a
+    rewording that gained words is refused (`_took_unknown`).
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1249,8 +1365,16 @@ def plan_import(
         and not b.table
         and (b.names[0] in rendered or (b.names[0] in unsure and b.names[0] not in present))
     }
-    joined += _joined_without_bookmark(weighed, texts, in_join)
-    beside_lost = _beside_lost(rendered, texts, built, present)
+    printed_now = {b.names[0]: b.text for b in reference if b.names and not b.table}
+    marked_by = {b.names[0]: b for b in marked or () if b.names and not b.table}
+
+    def as_sent(current: str) -> Sent:
+        return _as_sent(printed_now[current], marked_by.get(current), stale)
+
+    sent = {name: as_sent(name) for name in weighed}
+    joined += _joined_without_bookmark(weighed, texts, in_join, sent)
+    unknown = {name for name in rendered if sent.get(name, []) is None}
+    beside_lost = _beside_lost(rendered, texts, built, present, unknown)
     counts = Counter(n for b in returned if not b.table for n in b.names if n in rendered)
     # A paragraph that came back twice has no one position, so it keeps the one it had:
     # left in, its first copy decided where it went, wherever that copy had been pasted.
@@ -1285,6 +1409,17 @@ def plan_import(
         and name not in not_its_own
         and (texts.get(name) is None or (not texts[name].strip() and rendered[name].strip()))
     ]
+    # Each as it printed at the build, as far as that is known. And those the document was
+    # sent with that are not compared and did not come back: left out, one pasted into a
+    # paragraph compared merged there, and its words were in the source twice.
+    vanished = [(rendered[name], sent[name]) for name in gone_from_place]
+    for name in built:
+        if name not in rendered and name not in present:
+            holder = (same_text or {}).get(name)
+            if holder in printed_now:
+                vanished.append((printed_now[holder], as_sent(holder)))
+            else:
+                vanished.append((name, None))
     merged: dict[str, str] = {}
     refused: list[Refusal] = []
     gone: list[str] = []
@@ -1342,10 +1477,12 @@ def plan_import(
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
             refused.append(Refusal(name, now, (_BESIDE_LOST,)))
-        elif other := _swallowed(name, was, now, rendered) or _took_vanished(
-            was, now, rendered, gone_from_place
+        elif other := _swallowed(name, was, now, rendered, returned) or _took_vanished(
+            was, now, vanished
         ):
             refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
+        elif other := _took_unknown(was, now, vanished):
+            refused.append(Refusal(name, now, (_MAY_HOLD.format(text=_squashed(other)[:60]),)))
         elif part := _split_off(was, now, fresh):
             refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
         else:
@@ -1387,6 +1524,7 @@ def plan_import(
     unsettled, because = _unsettled(
         returned, sections, shown, not_its_own, set(misplaced)
     )
+    unsettled |= _passed_over(returned, sections)
     withheld = [entry[0] for entry in moved if sections[entry[0]] in unsettled]
     moved = [entry for entry in moved if entry[0] not in set(withheld)]
     order = _kept_in_place(order, rendered, sections, unsettled)
@@ -1499,6 +1637,12 @@ _SWALLOWED = (
     "it came back holding another paragraph ('{text}'): joined to it, or pasted into it, in "
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
+)
+_MAY_HOLD = (
+    "a paragraph the document was sent with did not come back ('{text}'), and what it said "
+    "then is not known: the .md changed it since the build, or it prints a value or "
+    "citation that changed since. The words added here could be it, pasted in, and merged "
+    "they would be in the source twice. Make the edit in the .md."
 )
 _SPLIT_OFF = (
     "new text without an identifier ('{text}') is mostly words it lost: its second half, split "

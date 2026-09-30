@@ -2355,6 +2355,26 @@ The checks that came out of the review rounds guard the tracked path as well:
 - A rewording that holds the whole of another paragraph is refused, and so is one that
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
+- The paragraph gone from its place is weighed as it printed at the build, not as the fresh
+  build prints it, and every paragraph the document was sent with counts, compared or not.
+  Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
+  re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
+  one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
+  joined into "None." above it, "None. 4000" read as no join and merged the same way.
+  Weighing only the paragraphs compared, a paragraph the `.md` reworded since the build,
+  pasted into another, merged there with its old words, and the source had them twice. So
+  in a document built from other inputs only a paragraph's words outside its bindings and
+  citations are taken as sent (`merge._as_sent`), and one that is not compared is read from
+  a paragraph whose source reads now as its did then (`roundtrip.Numbering.same_text`).
+  Where nothing it said is known - a value alone, or a paragraph the `.md` changed or dropped
+  - a rewording that gained words is refused, since those words could be it; and a
+  paragraph whose next as sent is such a one and did not come back is refused, as a join
+  cannot be weighed. A copy is looked for in the paragraphs as they came back too.
+- A move is not applied in a section with a paragraph that is not compared standing between
+  two of its paragraphs as returned. Such a paragraph has no slot, and stands between
+  sections in the source; standing inside one in Word, a move passed it, and filling the
+  slots put the moved paragraph on its other side: the author reworded Papa, the co-author
+  moved Bravo above it, and Bravo was written below Papa.
 
 A fourth round, on the tracked path alone, found the display-maths move above, the hidden
 section, and a paragraph pasted onto the end of another merged with it while the report
@@ -4101,7 +4121,17 @@ Closed since, and why each mattered:
 - **A paragraph moved in Word past one left out of the comparison may not be reported as
   moved.** Moves are worked out among the paragraphs compared, and passing one that is not
   changes nothing in their order. The import names the paragraphs left out and exits 1, and
-  says this of them; the move is not applied.
+  says this of them; the move is not applied. A move among the paragraphs compared that
+  passed one left out is named as not applied, with every other move in its section; it
+  used to be applied, and the moved paragraph landed on the other side of the one it
+  passed.
+- **A rewording is refused whenever a paragraph that did not come back said something not
+  known.** A paragraph the `.md` changed or dropped since the build, deleted in Word too, or
+  one that is only a value or citation in a document built from other inputs, leaves nothing
+  to look for in the words another paragraph gained. So every rewording in the document
+  that gained words is refused, and named, though most of them would have merged cleanly:
+  deleting in Word a paragraph the author also changed holds back the other edits in a
+  forced import. A rewording that only removed words still merges.
 - **G13 takes a surviving copy for the paragraph the reviewer read.** The commented
   paragraph counts as unrevised while the manuscript holds its exact text anywhere, so if a
   paper repeats a paragraph word for word and the author revises one copy, the other still

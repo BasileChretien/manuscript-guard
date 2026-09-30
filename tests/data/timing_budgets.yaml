@@ -1,0 +1,200 @@
+# Every place a test reads a clock, outside `check_linear` in tests/conftest.py.
+#
+# A claim that something runs in linear time belongs in `check_linear` (the `assert_linear`
+# fixture): it times each size several times, in alternation, and cannot be decided by one
+# slow sample. A budget is right only for a fixed input, where the failure it guards against
+# is a hang or catastrophic backtracking many times over the budget, and where the budget
+# has room to spare. Each budget says why it is not a ratio and how much headroom it has, as
+# measured. A timestamp is not timing at all.
+#
+# tests/test_timing_budgets.py checks this list against the tests, both ways.
+#
+# Headroom measured 2026-09-26 on a Windows laptop (i7-12800HX) while other test suites ran:
+# the worst of five runs against the budget. The three budgets from #41, #54 and #70 were
+# measured idle and beside one full suite, and the worse is given; #75's beside four. CI's
+# runners were up to about four times faster.
+
+reads:
+  - where: tests/test_audit.py::test_a_long_run_of_spaces_does_not_stall_the_heading_check
+    kind: budget
+    budget: 0.5
+    why: >-
+      Two fixed lines of the kind `pdftotext -layout` writes. The regression was catastrophic
+      backtracking, 26 s for one line, not a slide from linear.
+    headroom: 0.06 to 0.71 ms against 0.5 s, 700x or more.
+
+  - where: tests/test_audit.py::test_a_long_attribute_block_does_not_stall_the_heading_check
+    kind: budget
+    budget: 5.0
+    why: >-
+      Eighteen fixed lines: seventeen of 20,000 characters and a run of 999 backslashes that
+      is as long at any size, which only a budget can hold. Timed among the growing lines,
+      that one took the ratio's 20 ms floor by itself under `_escaped` scanning back from the
+      start of the line, so the input never grew and the ratio passed. Eleven of the seventeen
+      are also timed as they grow, by
+      `test_the_heading_check_reads_an_attribute_block_in_linear_time`; the other six are `k=`
+      values whose cost per character steps up between the two sizes a ratio compares, which
+      read 5 to 90 times the time while linear, often past a quadratic's 64. The rescan takes
+      24 to 35 s here, which this budget fails.
+    headroom: 297 to 398 ms against 5 s, about 13x. At its old budget of 0.5 s it had 1.3x.
+
+  - where: tests/test_audit.py::test_a_long_chain_of_numbers_does_not_stall_the_interval_split
+    kind: budget
+    budget: 0.5
+    why: >-
+      Three fixed tokens. The regression multiplied the work per segment, 100 s for a
+      72-character token: exponential, far past any budget, not a slide from linear.
+    headroom: 0.75 to 1.42 ms against 0.5 s, about 350x.
+
+  - where: tests/test_robustness.py::test_deeply_nested_front_matter_is_not_composed
+    kind: budget
+    budget: 1.0
+    why: >-
+      Two fixed front matters nested thousands deep, which are refused unread. The regression
+      was the YAML loader taking seconds to give up on them.
+    headroom: 0.5 to 16 ms against 1 s, 63x or more.
+
+  - where: tests/test_robustness.py::test_a_link_definition_is_recognised_quickly
+    kind: budget
+    budget: 2.0
+    why: >-
+      Seven fixed blocks, each the shape one of `tag`'s earlier readings of a link definition
+      stalled on: exponential in `{a=ba=b...` and in quoted values (a minute and a half for
+      18), six seconds for a run of 1,000 spaces, and a quote opening each line read to the
+      end of the block. The exponential two are no slide from linear that a ratio measures,
+      and all four were caught in review taking seconds to minutes.
+    headroom: >-
+      0.2 to 230 ms against 2 s across the seven, measured idle and beside a full suite. The
+      slowest, 8,000 definitions, has about 9x; the rest 17x or more.
+
+  - where: tests/test_robustness.py::test_table_alignment_row_does_not_stall_on_whitespace
+    kind: budget
+    budget: 2.0
+    why: >-
+      Four fixed lines of whitespace, the rule scan's worst case. The regression was the old
+      pattern backtracking through every way of sharing the spaces out between its pieces:
+      restored, it takes 4.7 to 18 s on these lines, so the budget fails it on each of them
+      here, and on the line of spaces and pipes on a runner four times faster. A ratio would
+      grow the whole rule scan to the floor, about 3 s a case, to see the same thing.
+    headroom: 10 to 110 ms against 2 s, measured idle and beside a full suite, 18x or more.
+
+  - where: tests/test_robustness.py::test_the_rule_scan_does_not_stall_on_a_word_and_spaces
+    kind: budget
+    budget: 2.0
+    why: >-
+      Fifteen fixed texts, each a word a rule reads followed by what the rule backtracked on,
+      scanned for the source and for the audit. Each run is sized so the old pattern took 4 to
+      60 s, and one of them was exponential: a stall many times the budget, not a slide from
+      linear.
+    headroom: >-
+      0.2 to 345 ms against 2 s across the thirty, with four other suites running. The
+      slowest, "A-" repeated for the audit, has 5.8x; the rest 16x or more.
+
+  - where: tests/test_corruption.py::test_opener_lines_are_read_in_linear_time
+    kind: budget
+    budget: 2
+    why: >-
+      Five fixed lines of 8,000 to 44,000 characters, each a shape that a pattern for rules
+      opening blocks could read more ways than one: Roman numerals that were single letters
+      too, a comment's pattern that ran across later comments, a TeX argument that was also
+      a footnote marker, and a command's name that could stop at any letter. Each took
+      minutes, not a slide from linear.
+    headroom: >-
+      1.3 to 142 ms against 2 s each, with seven other suites running. The slowest, comments
+      run together, has 14x; the rest 29x or more.
+
+  - where: tests/test_corruption.py::test_placeholders_in_a_listing_are_matched_in_linear_time
+    kind: budget
+    budget: 20
+    why: >-
+      One fixed listing of placeholders after an 80-line comment, read through pandoc. A
+      pattern joined by `.*?` and tried against every block pandoc made ran past two minutes
+      on it. A ratio would run pandoc on growing inputs for what the budget already fails
+      six times over.
+    headroom: >-
+      0.8 to 1.2 s against 20 s, pandoc included, with seven other suites running: 17x.
+
+  - where: tests/test_robustness.py::test_one_long_line_does_not_stall_the_heading_scan
+    kind: budget
+    budget: 2.0
+    why: >-
+      Three fixed heading-shaped lines. Two patterns backtracked on one line: a heading of
+      2,000 spaces took 67 s, and 1,000 colons 20 s. A stall many times the budget, not a
+      slide from linear.
+    headroom: >-
+      0.2 to 33 ms against 2 s, with seven other suites running: 60x or more.
+
+  - where: tests/test_robustness.py::test_a_long_heading_title_does_not_stall_the_methods_check
+    kind: budget
+    budget: 0.5
+    why: >-
+      Two fixed heading titles ending in a long run of spaces or of ` *_`. The patterns that
+      trimmed a title's emphasis and attribute block backtracked from every character of the
+      run: 36 s of G2 for five numbers under one such heading.
+    headroom: >-
+      0.2 ms against 0.5 s, with seven other suites running: over 2,000x.
+
+  - where: tests/test_corruption.py::test_a_merge_key_bomb_in_the_front_matter_does_not_hold_up_check
+    kind: budget
+    budget: 5
+    why: >-
+      One fixed front matter of 22 lines in which each mapping merges the one before it
+      twice, so the work of expanding it doubles with every line: exponential in the input,
+      38 s when the block was built into Python values. No ratio is linear in it.
+    headroom: >-
+      0.1 to 91 ms against 5 s, measured idle and beside a full suite; the first, cold run is
+      the slowest. 55x or more.
+
+  - where: tests/test_robustness.py::test_an_enormous_figure_sibling_is_not_read_whole
+    kind: budget
+    budget: 20.0
+    constant: BUDGET_SECONDS
+    why: >-
+      One fixed 16 MB sibling file, which must not be read whole. A size cap, not a scan: the
+      failure it guards against is memory and time without limit.
+    headroom: 0.83 s against 20 s, about 24x.
+
+  - where: tests/test_robustness.py::timed_check
+    kind: budget
+    budget: 30.0
+    constant: CHECK_OVERHEAD
+    why: >-
+      A whole `check` on a hostile project, for fourteen tests (twelve kinds of pathological
+      prose, an enormous source stamp and a FIFO), as a multiple of a plain `check` on the
+      same project. A ratio, so it holds on a runner of any speed, and of CPU time, so it
+      leaves out G7's wait for Zotero to refuse its ping (2 s on Windows, none on Linux) and
+      every other process. It guards against a blow-up anywhere in the gates, which a ratio
+      over one scan cannot see. At these sizes the heaviest linear input already reads ten,
+      so it cannot tell a quadratic that adds a few seconds: that is `assert_linear`'s job.
+    headroom: >-
+      0.97 to 12.3 against 30, three rounds on Windows with thirteen other suites running. The
+      heaviest linear input, one long run of backticks, read up to 10.0: 3x. Nested brackets
+      read up to 12.3, because `BRACKETED` is quadratic on main: 2.4x. Review measured a
+      Linux VM on the same host: up to 11 for a linear input and 13.9 for nested brackets,
+      with CPU time there doubling between rounds as the host's load changed.
+
+  - where: tests/test_robustness.py::check_overhead
+    kind: budget
+    budget: 60.0
+    constant: HANG_SECONDS
+    why: >-
+      The wall-clock backstop for the same tests. A `check` that waits instead of working, on
+      a read or a call that takes its time and then returns, spends no CPU time and would
+      pass the ratio; a gate made to wait 70 s on the hostile file fails this. A wait that
+      returns within about a minute passes, where the old 20 s budget failed one of 30 s, and
+      a wait that never returns hangs the suite, as it always did.
+    headroom: >-
+      The first check on a hostile project and the timed one after it took at most 21 s
+      together, with thirteen other suites running: about 3x.
+
+  - where: tests/test_corruption.py::test_modified_analysis_script_is_caught
+    kind: timestamp
+    why: Sets a script's modification time ten seconds ahead. Times nothing.
+
+  - where: tests/test_corruption.py::test_touching_a_script_without_changing_it_is_not_a_change
+    kind: timestamp
+    why: Sets a script's modification time ten seconds ahead. Times nothing.
+
+  - where: tests/test_methods.py::test_touching_a_file_without_changing_it_is_not_drift
+    kind: timestamp
+    why: Sets a file's modification time a hundred seconds ahead. Times nothing.

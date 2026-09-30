@@ -13,14 +13,19 @@ A security review found three ways in, all reachable by accident rather than onl
 * a FIFO in `figures/` blocks a read forever on Linux and macOS, which is where CI runs, and
   nothing in the gate runner bounds wall-clock time.
 
-The budget here is deliberately loose. It is not a benchmark; it is a tripwire for a change
-that turns a linear scan into a quadratic one, which has now happened twice in this file's
-subject matter.
+What a hostile input adds to `check` is measured against a plain `check` on the same project,
+in the process's own CPU time. It is a tripwire for a hang or a blow-up, not a benchmark,
+and not the test that a scan is linear: at these sizes some inputs cost `check` ten times
+its plain run while being linear, which leaves no room to tell a quadratic that adds a few
+seconds from them. That is `assert_linear`'s job, one scan at a time.
 """
 
 from __future__ import annotations
 
+import functools
+import gc
 import os
+import shutil
 import sys
 import time
 from collections.abc import Callable
@@ -30,13 +35,80 @@ import pytest
 
 BUDGET_SECONDS = 20.0
 
+#: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
+#: same project, both in CPU time. The heaviest linear input here read up to 10.0 (one long
+#: run of backticks), and the quadratic one known on main up to 12.3 (nested brackets,
+#: `BRACKETED`). A ratio, so the same bound holds on a runner of any speed.
+CHECK_OVERHEAD = 30.0
+#: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
+#: on a read or a network call that takes its time and then returns. A wait under about a
+#: minute passes, and one that never ends hangs the suite, as it always did. The first check
+#: on a hostile project and the timed one after it took at most 21 s together, on a loaded
+#: laptop.
+HANG_SECONDS = 60.0
+#: A ratio between the bound and twice it is measured again this many times before it
+#: fails, each time a plain check then the hostile one, and the lowest pair's ratio stands:
+#: a slow spell falls on both runs of a pair, where the best of each could fall in different
+#: lulls. One at twice the bound or more fails at once. Unlike `check_linear`, which decides
+#: that on a best of three, this is one timed run against the baseline: under host load in a
+#: VM, one read 55, within 9% of it, and on Windows twice the cores busy raised them to 19.
+CONFIRM = 3
 
-def timed_check(project: Path) -> float:
+
+def run_check(project: Path) -> None:
+    """One `check` on `project`, untimed."""
     from manuscript_guard.cli import _run_gates
 
-    started = time.perf_counter()
     _run_gates(project, stage="drafting")
-    return time.perf_counter() - started
+
+
+def timed_check(project: Path) -> float:
+    """The CPU time of one `check` on `project`, with the garbage collector off as
+    `check_linear` has it. CPU time is `check`'s own work: not G7 waiting for Zotero to refuse
+    its ping, 2 s on Windows and none on Linux, nor another process's."""
+    collecting = gc.isenabled()
+    gc.disable()
+    try:
+        started = time.process_time()
+        run_check(project)
+        return time.process_time() - started
+    finally:
+        if collecting:
+            gc.enable()
+
+
+@functools.cache
+def plain_baseline(plain: Path) -> float:
+    """The best of three checks on a plain copy of the example, once for each copy."""
+    run_check(plain)  # imports, compiled patterns and first opens, off the clock
+    return min(timed_check(plain) for _ in range(3))
+
+
+@pytest.fixture(scope="module")
+def plain_project(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A plain copy of the example, for the module's hostile checks to be measured against."""
+    root = tmp_path_factory.mktemp("plain") / "paper"
+    shutil.copytree(built_example, root, ignore=shutil.ignore_patterns("build", "__pycache__"))
+    return root
+
+
+def check_overhead(project: Path, plain: Path) -> float:
+    """How many times a plain `check`'s CPU time `check` takes on `project`.
+
+    The first run opens every file of a fresh copy for the first time, which costs Windows
+    seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
+    run decides a ratio under the bound, and one at twice the bound or more. One between is
+    measured again, a plain check then the hostile one each time, and the lowest pair's
+    ratio stands: a slow spell falls on both runs of a pair."""
+    started = time.perf_counter()
+    run_check(project)
+    waited = time.perf_counter() - started
+    assert waited < HANG_SECONDS, f"check took {waited:.0f} s by the wall clock"
+    overhead = timed_check(project) / plain_baseline(plain)
+    if overhead < CHECK_OVERHEAD or overhead / 2 >= CHECK_OVERHEAD:
+        return overhead
+    pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
+    return min(second / first for first, second in pairs)
 
 
 # ---------------------------------------------------------------- pathological text
@@ -66,11 +138,14 @@ def timed_check(project: Path) -> float:
     # turns every case in this table into a collection error rather than a test.
     ids=lambda value: value if isinstance(value, str) and len(value) < 60 else "",
 )
-def test_check_finishes_on_pathological_prose(project: Path, name: str, body: str) -> None:
-    """The specific regression this catches: a linear scan quietly becoming quadratic."""
+def test_check_finishes_on_pathological_prose(
+    project: Path, name: str, body: str, plain_project: Path
+) -> None:
+    """A scan that blows up on prose someone might write, or a wait of a minute or more that
+    ends: one that never does hangs the suite."""
     (project / "manuscript" / "pathological.md").write_text(body, encoding="utf-8")
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS, f"{name}: check took {elapsed:.1f}s"
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"{name}: check took {overhead:.1f} times a plain one"
 
 
 def opener_lines(count: int) -> str:
@@ -96,41 +171,39 @@ def test_the_linear_check_refuses_work_too_quick_to_time(assert_linear) -> None:
         assert_linear(opener_lines, len, 10, "len")
 
 
-def test_the_fence_scanner_is_linear_when_each_opener_is_narrower() -> None:
+def narrowing_openers(openers: int) -> str:
+    """Unclosed openers, each narrower than the last, with a long listing's worth of lines
+    under each."""
+    return "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
+
+
+def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear) -> None:
     """The shortcut that fixed the test above rejected only openers *wider* than one already
     known to have no closer. Openers each narrower than the last still read to the end of
     the file, and 400 KB of them took 33 seconds: the binding parser now reads fences
-    whenever a paper holds `<!--`, so that reached `parse` too."""
+    whenever a paper holds `<!--`, so that reached `parse` too.
+
+    Checked twice, like paragraph tagging. That reading, in Python, fails in ten seconds
+    from 5 openers and takes three and a half minutes from 25. The same reading done by one
+    regex search per opener, at C speed, passes from 5 and fails from 25. It was timed once
+    per size at 25 and 200 openers."""
     from manuscript_guard.text.fences import fenced_spans
 
-    def measure(openers: int) -> float:
-        text = "".join("`" * (width + 3) + "\n" + "x\n" * 2000 for width in range(openers, 0, -1))
-        started = time.perf_counter()
-        fenced_spans(text)
-        return time.perf_counter() - started
-
-    # Eight times the input, because at four the quadratic scanner's constant overhead kept
-    # its ratio near 12-16, too close to a linear one's for a threshold to tell them apart.
-    measure(5)  # warm the caches
-    small = max(measure(25), 1e-3)
-    large = measure(200)
-    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+    for start in (5, 25):
+        assert_linear(
+            narrowing_openers, fenced_spans, start, f"narrowing fence openers from {start}"
+        )
 
 
-def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
+def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear) -> None:
     """Code spans were found with a pattern that retried from every position inside a run
     of backticks: one line of 20,000 took seven seconds to read for comments."""
     from manuscript_guard.text.fences import unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = "# Results\n\nSee " + "`" * count + " there.\n"
-        started = time.perf_counter()
-        unclear_fence_lines(text)
-        return time.perf_counter() - started
+    def backticks(count: int) -> str:
+        return "# Results\n\nSee " + "`" * count + " there.\n"
 
-    small = max(measure(5000), 1e-4)
-    large = measure(20000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(backticks, unclear_fence_lines, 5000, "a long run of backticks")
 
 
 @pytest.mark.parametrize(
@@ -142,43 +215,36 @@ def test_a_long_run_of_backticks_is_read_in_linear_time() -> None:
     ],
     ids=["tags", "environments", "distinct names"],
 )
-def test_marks_inside_a_raw_block_are_read_in_linear_time(block) -> None:
+def test_marks_inside_a_raw_block_are_read_in_linear_time(block, assert_linear) -> None:
     """Inside a raw block, its closer and another of its name were each searched for from
     the last mark to the end of the line, mark by mark: a line of 300,000 characters took
     eighteen seconds. Every mark on a line is now found in one pass."""
     from manuscript_guard.text.fences import unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
-        started = time.perf_counter()
-        unclear_fence_lines(text)
-        return time.perf_counter() - started
+    def raw(count: int) -> str:
+        return "# R\n\n" + block(count) + "\n\n```r\nx\n```\n"
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(raw, unclear_fence_lines, 4000, "marks inside a raw block")
 
 
-def test_narrowing_openers_are_read_in_linear_time() -> None:
+def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
     """A run of openers each one backtick narrower than the last, with no closer: skipping
     only openers at least as wide as one known unclosed, each read to the end of the text,
     and a hundred over 85 KB took seconds a pass. The widest closer still to come is now
     read from the end once."""
     from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 
-    def measure(lines: int) -> float:
-        text = "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
-        started = time.perf_counter()
+    def openers_over(lines: int) -> str:
+        return "".join("`" * (103 - i) + "\n" for i in range(100)) + "x\n" * lines
+
+    def read(text: str) -> None:
         fenced_spans(text)
         unclear_fence_lines(text)
-        return time.perf_counter() - started
 
-    small = max(measure(10000), 1e-4)
-    large = measure(40000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
 
 
-def test_unclosed_attributes_are_read_in_linear_time() -> None:
+def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
     backslash before each newline read as an escape, took every opener to the end of the
     text: 8.8 seconds for 2,000 of them and 173 for 8,000. The gates now read an opener's
@@ -186,21 +252,19 @@ def test_unclosed_attributes_are_read_in_linear_time() -> None:
     more than double the time, and the refusal is read in the same pass."""
     from manuscript_guard.text.fences import fenced_spans, unclear_fence_lines
 
-    def measure(count: int) -> float:
-        text = (
+    def attributes(count: int) -> str:
+        return (
             "```{k=a\\\n" * count
             + "```{.r\n"
             + ".x k=v\n" * count
             + "".join(f"```{{k='{i}\n" for i in range(count))
         )
-        started = time.perf_counter()
+
+    def read(text: str) -> None:
         fenced_spans(text)
         unclear_fence_lines(text)
-        return time.perf_counter() - started
 
-    small = max(measure(4000), 1e-4)
-    large = measure(16000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(attributes, read, 4000, "unclosed attributes")
 
 
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
@@ -435,21 +499,16 @@ def test_the_garbage_collector_is_off_while_timing_and_on_after(assert_linear) -
         "one line of tags",
     ],
 )
-def test_the_heading_scan_is_linear(line: str) -> None:
+def test_the_heading_scan_is_linear(line: str, assert_linear) -> None:
     """`<!--.*?-->` read to the end of the text for every comment that never closed: 19 s
     for 20,000 such lines, and the heading scan runs once per file in G2, `explain` and the
     classifier's heading rules alike."""
     from manuscript_guard.text.blocks import find_headings
 
-    def measure(count: int) -> float:
-        text = line * count
-        started = time.perf_counter()
-        find_headings(text)
-        return time.perf_counter() - started
+    def lines(count: int) -> str:
+        return line * count
 
-    small = max(measure(2000), 1e-3)
-    large = measure(8000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(lines, find_headings, 2000, "the heading scan")
 
 
 @pytest.mark.parametrize(
@@ -469,23 +528,22 @@ def test_one_long_line_does_not_stall_the_heading_scan(line: str) -> None:
     assert time.perf_counter() - started < 2.0
 
 
-def test_the_section_chain_is_looked_up_not_rebuilt() -> None:
+def test_the_section_chain_is_looked_up_not_rebuilt(assert_linear) -> None:
     """`chain_at` walked every heading before a number, for every number: 4,000 headings and
-    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry."""
+    12,000 numbers took 50 s in G2, and every line shaped like a heading is now an entry.
+    The index is built off the clock; only the lookups are timed."""
     from manuscript_guard.text.sections import chain_at, heading_index
 
-    def measure(count: int) -> float:
+    def parts(count: int) -> tuple[list, range]:
         text = "".join(f"## Part {i}\n\nValues 1, 2 and 3.\n\n" for i in range(count))
-        index = heading_index(text)
-        step = max(1, len(text) // (3 * count))
-        started = time.perf_counter()
-        for offset in range(0, len(text), step):
-            chain_at(index, offset)
-        return time.perf_counter() - started
+        return heading_index(text), range(0, len(text), max(1, len(text) // (3 * count)))
 
-    small = max(measure(250), 1e-3)
-    large = measure(2000)
-    assert large / small < 24, f"8x the input took {large / small:.1f}x the time; not linear"
+    def look_up(given: tuple[list, range]) -> None:
+        index, offsets = given
+        for offset in offsets:
+            chain_at(index, offset)
+
+    assert_linear(parts, look_up, 250, "the section chain at every offset")
 
 
 @pytest.mark.parametrize(
@@ -574,7 +632,7 @@ def test_the_rule_scan_does_not_stall_on_a_word_and_spaces(text: str, rendered: 
 # ---------------------------------------------------------------- hostile files
 
 
-def test_an_enormous_source_stamp_is_not_read_whole(project: Path) -> None:
+def test_an_enormous_source_stamp_is_not_read_whole(project: Path, plain_project: Path) -> None:
     """`build/*.docx.source.sha256` is read by G1 and had no size cap.
 
     A digest line is 80 bytes. Anything larger is not a digest, and reading it whole is a
@@ -587,8 +645,8 @@ def test_an_enormous_source_stamp_is_not_read_whole(project: Path) -> None:
     (build / "manuscript.docx").write_bytes(b"PK\x03\x04not really a docx")
     (build / f"manuscript.docx{SOURCE_STAMP}").write_text("0" * (8 * 1024 * 1024), encoding="utf-8")
 
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 
 def test_a_figure_stem_with_glob_characters_still_finds_its_siblings(project: Path) -> None:
@@ -614,14 +672,16 @@ def test_a_figure_stem_with_glob_characters_still_finds_its_siblings(project: Pa
 
 
 @pytest.mark.skipif(os.name == "nt", reason="FIFOs do not exist on Windows")
-def test_a_fifo_in_the_figures_directory_does_not_hang_check(project: Path) -> None:
+def test_a_fifo_in_the_figures_directory_does_not_hang_check(
+    project: Path, plain_project: Path
+) -> None:
     """Nothing bounds wall-clock time in the gate runner, so a blocking read is forever.
 
     CI runs Ubuntu and macOS, where an unprivileged `mkfifo` in `figures/` was enough.
     """
     os.mkfifo(project / "figures" / "trap.svg")
-    elapsed = timed_check(project)
-    assert elapsed < BUDGET_SECONDS
+    overhead = check_overhead(project, plain_project)
+    assert overhead < CHECK_OVERHEAD, f"check took {overhead:.1f} times a plain one"
 
 
 def test_an_enormous_figure_sibling_is_not_read_whole(project: Path) -> None:
@@ -751,33 +811,38 @@ def test_an_interrupted_stamp_does_not_leave_an_empty_one(tmp_path: Path) -> Non
     assert "os.replace(pending, stamp)" in source
 
 
-def test_footnotes_are_indexed_in_linear_time() -> None:
+def notes_each_referenced_once(count: int) -> str:
+    """`count` paragraphs, each referencing a note of its own, and the notes' definitions."""
+    return "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
+        f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
+    )
+
+
+def test_footnotes_are_indexed_in_linear_time(assert_linear) -> None:
     """Each footnote's references, and each number's note, are found by bisection: read
-    against every definition in turn, a paper of many notes took time in their square."""
+    against every definition in turn, a paper of many notes took time in their square. From
+    500 notes that reading fails in seconds; from 2,000, where it was once timed once per
+    size, it takes two and a half minutes."""
     from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
-    def measure(count: int) -> float:
-        text = "".join(f"Text {i}.[^n{i}]\n\n" for i in range(count)) + "".join(
-            f"[^n{i}]: Note {i}\n    with more.\n\n" for i in range(count)
-        )
-        started = time.perf_counter()
+    def index(text: str) -> None:
         notes = footnote_index(text)
         headings = heading_index(text)
-        for note in notes[:: max(1, count // 100)]:
+        for note in notes[:: max(1, len(notes) // 100)]:
             chains_at(headings, notes, note.start)
-        return time.perf_counter() - started
 
-    small = max(measure(2000), 1e-4)
-    large = measure(8000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    assert_linear(notes_each_referenced_once, index, 500, "indexing footnotes")
 
 
-def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
+def test_a_note_referenced_many_times_is_judged_in_linear_time(assert_linear) -> None:
     """A number in a note was judged once per reference: a note with a thousand references
-    and a thousand numbers took two minutes. Its sections are judged once each now."""
+    and a thousand numbers took two minutes. Its sections are judged once each now. The note
+    is indexed off the clock, and only judging its numbers is timed. From 100 numbers the
+    old judging fails in seconds; from 500, where it was once timed once per size, it takes
+    six minutes."""
     from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
-    def measure(count: int) -> float:
+    def one_note(count: int) -> tuple[list, list, range]:
         paragraphs = "Text.[^n]\n\n" * (count // 10)
         text = (
             "".join(f"# S{i}\n\n{paragraphs}" for i in range(10))
@@ -787,11 +852,12 @@ def test_a_note_referenced_many_times_is_judged_in_linear_time() -> None:
         )
         notes, headings = footnote_index(text), heading_index(text)
         note = notes[0]
-        started = time.perf_counter()
-        for offset in range(note.start, note.end, max(1, (note.end - note.start) // count)):
-            chains_at(headings, notes, offset)
-        return time.perf_counter() - started
+        step = max(1, (note.end - note.start) // count)
+        return headings, notes, range(note.start, note.end, step)
 
-    small = max(measure(500), 1e-4)
-    large = measure(2000)
-    assert large / small < 12, f"4x the input took {large / small:.1f}x the time; not linear"
+    def judge(given: tuple[list, list, range]) -> None:
+        headings, notes, offsets = given
+        for offset in offsets:
+            chains_at(headings, notes, offset)
+
+    assert_linear(one_note, judge, 100, "judging a note referenced many times")

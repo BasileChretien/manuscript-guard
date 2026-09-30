@@ -177,6 +177,26 @@ def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
     return +untagged
 
 
+def _untagged_new(reference: list[Block], returned: list[Block]) -> list[str]:
+    """Body text without an identifier that the returned document holds and the one as sent
+    did not - a new paragraph, a split's second half - in document order.
+
+    Not a heading, a caption or a reference entry: Word gives a split's second half the
+    body style, and a heading added in the same round as a rewording, sharing a phrase with
+    what the rewording dropped, had it refused as split off.
+    """
+    left = Counter(b.text for b in reference if not b.names and not b.table and b.text)
+    out: list[str] = []
+    for block in returned:
+        if block.names or block.table or not block.text or block.role:
+            continue
+        if left[block.text]:
+            left[block.text] -= 1
+        else:
+            out.append(block.text)
+    return out
+
+
 def _off_headings(
     rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
@@ -297,6 +317,44 @@ def _recovered(
     expected = _untagged_counts(reference)
     off = _off_headings(rendered, reference, returned, expected)
     return _given_back(rendered, off, expected)
+
+
+#: The fewest of its words new text must share with what a paragraph lost for `_split_off`
+#: to weigh it: shorter, "of the" and one topical word made a rewording look split.
+_SPLIT_OFF_WORDS = 4
+
+
+def _split_off(was: str, now: str, fresh: list[str]) -> str:
+    """New body text without an identifier made mostly of words this paragraph lost.
+
+    A paragraph split in Word, and something moved in between its halves: its first half
+    kept the identifier, and a paragraph that stood beside it as sent still stood beside it,
+    so nothing said the second half was its own. It merged as its first half, the second
+    half past the moved paragraph only listed as new text. Nothing in the markup says so
+    when the move was not recorded - Word keeps the identifier of every paragraph but the
+    first in a cut - or when what moved in has none to show it moved, as an equation has
+    none. A sentence cut out and pasted as a paragraph of its own is the same loss.
+
+    A judgement - most of the new text's words, in order and four at least, among the words
+    the paragraph lost - and it only refuses. Not shorter: a sentence of three words
+    deleted while a paragraph of the same words is added elsewhere merges, as `main`
+    decided, and a split's second half that short merges the paragraph as its first half.
+    """
+    before, after = was.split(), now.split()
+    matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    lost = [
+        word
+        for tag, i1, i2, _j1, _j2 in matcher.get_opcodes()
+        if tag in ("delete", "replace")
+        for word in before[i1:i2]
+    ]
+    for text in fresh if lost else ():
+        words = text.split()
+        shared = difflib.SequenceMatcher(a=words, b=lost, autojunk=False).get_matching_blocks()
+        matched = sum(block.size for block in shared)
+        if matched >= max(_SPLIT_OFF_WORDS, _ALIKE * len(words)):
+            return text
+    return ""
 
 
 def _took_vanished(was: str, now: str, rendered: dict[str, str], vanished: list[str]) -> str:
@@ -540,7 +598,11 @@ def _beside_new_text(
                 # moved in between the halves of a split paragraph hid the second half.
                 continue
             if block.names:
-                return False
+                # Text on a line sent empty came from somewhere. Delete pressed at the end
+                # of a split's second half takes in the spacer line under it, and the second
+                # half then carries the spacer's identifier: as a paragraph with an
+                # identifier, it vouched for the split.
+                return any(content(block)) and set(block.names) <= spacers
             if i in new:
                 return True
             if any(content(block)):
@@ -1211,6 +1273,7 @@ def plan_import(
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
     missing = _untagged_missing(reference, returned)
+    fresh = _untagged_new(reference, returned)
     gone_from_place = [
         name
         for name in rendered
@@ -1280,6 +1343,8 @@ def plan_import(
             was, now, rendered, gone_from_place
         ):
             refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
+        elif part := _split_off(was, now, fresh):
+            refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
         else:
             aligned = align(source, was, now, extents.get(name), abbreviations)
             if aligned.rebuilt == source:
@@ -1431,6 +1496,12 @@ _SWALLOWED = (
     "it came back holding another paragraph ('{text}'): joined to it, or pasted into it, in "
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
+)
+_SPLIT_OFF = (
+    "new text without an identifier ('{text}') is mostly words it lost: its second half, split "
+    "off in Word with a paragraph moved in between the halves, or a part cut out and pasted "
+    "elsewhere. Merging would drop those words from the source, where the new text is only "
+    "listed. Make the split or the move in the .md."
 )
 _UNREAD = (
     "Word draws something in it that has no text the source can hold: {what}. Merging would "

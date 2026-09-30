@@ -4595,10 +4595,12 @@ Closed since, and why each mattered:
   used from another test module, and a listed constant bound more than once at module
   level. The rest passes unseen: arithmetic done to a timing before it is compared
   (`elapsed / 3 < BUDGET`), a constant shadowed inside the test, a comparison in an `if`
-  that only warns or asserted beside an `or`, an assertion made only under an `if`, a test
-  defined under a module-level `if`, a method of a nested class, a helper passed as a value,
-  and a module imported as `from tests import test_robustness`. It does not see a clock read
-  any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
+  that only warns or asserted beside an `or`, an assertion made only under an `if`, a
+  helper's caller defined under a module-level `if` (a listed test there fails, as no such
+  function), a method of a nested class, a helper passed as a value, and a module imported
+  from its package (`from tests import test_robustness`, `from . import test_robustness`) or
+  by its dotted name without `as` (`import tests.test_robustness`). It does not see a clock
+  read any other way: `datetime.now()`, `os.times()`, a clock fetched with `getattr` or
   `importlib`, a module bound to a second name (`clock = time`), one in `src/` that a test
   calls, or a timing a subprocess reports. It judges each top-level function whole, so a
   second timing added to a listed test is excused with the first. And a ratio has a blind
@@ -4607,23 +4609,28 @@ Closed since, and why each mattered:
   mostly of the same constant. The attribute-block lines hid `_escaped` scanning back from
   the start of the line that way, behind the one line of eighteen whose run of backslashes
   is as long at any size. So eleven of the seventeen that grow are timed by `check_linear`,
-  and all eighteen keep a 5 s budget. The other six are `k=` values whose cost per
-  character steps up at a size between the two a ratio compares, so they read 5 to 90 times
-  the time while linear, often past a quadratic's 64, and failed correct code one run in
-  six. The headroom was measured on one laptop under load.
+  and all eighteen keep a 5 s budget. The other six are `k=` values whose cost per character
+  steps up at a size between the two a ratio compares, so they read 5 to 90 times the time
+  while linear, often past a quadratic's 64, and failed correct code one run in six. The
+  headroom was measured on one laptop under load.
 - **The whole-`check` tests catch a hang or a blow-up, not a scan gone quadratic.** Each
   holds `check` on a hostile project to 30 times a plain `check` on the same project, in
   CPU time, which leaves out G7's wait for Zotero to refuse its ping (2 s on Windows, none
-  on Linux) and the other processes on the machine. Inside a VM it does not leave out what
-  the host takes: with three times the host's cores busy, one sample read 55. A wall clock
-  backs it up at 60 s, for a `check` that waits instead of working, so a wait that returns
-  within about a minute passes, where the old 20 s budget failed one of 30 s; one that
-  never returns hangs the suite, as it always did. At the sizes these inputs are written
-  at, the heaviest linear ones already cost ten times a plain `check` (up to eleven in a
-  Linux VM), so a quadratic that adds a few seconds passes among them. Seeing one is
-  `check_linear`'s job, one scan at a time. Two costs fall outside the CPU ratio too: a
-  scan whose result is cached by content runs once, on the untimed first check, and garbage
-  collection is off while timing. Both are left to the wall clock.
+  on Linux) and the time other processes hold the CPU. Load still raises it: on Windows, 48
+  busy processes on 24 logical CPUs took readings from about 10 to 18.7, and inside a VM the
+  host's load counts as the guest's own, so with 72 busy processes on the host's 24, one
+  sample read 55 where about 12 was usual. A ratio between 30 and 60 is measured three times
+  more, a plain check then the hostile one each time, and the median of those pairs' ratios
+  decides it; the lowest, used before, passed a blow-up of 1.3 to 1.6 times the bound
+  whenever one plain run was slowed as much. A wall clock backs it up at 60 s, for a `check`
+  that waits instead of working, so a wait that returns within about a minute passes, where
+  the old 20 s budget failed one of 30 s; one that never returns hangs the suite, as it
+  always did. At the sizes these inputs are written at, the heaviest linear ones already
+  cost ten times a plain `check` (up to eleven in a Linux VM), so a quadratic that adds a
+  few seconds passes among them. Seeing one is `check_linear`'s job, one scan at a time. Two
+  costs fall outside the CPU ratio too: a scan whose result is cached by content runs once,
+  on the untimed first check, and garbage collection is off while timing. Both are left to
+  the wall clock.
 
 ## Still open
 

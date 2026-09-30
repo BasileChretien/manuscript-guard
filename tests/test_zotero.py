@@ -290,7 +290,7 @@ def brackets_over_a_blank_line(count: int) -> str:
 def test_brackets_over_a_blank_line_are_read_in_linear_time(assert_linear) -> None:
     """A blank line ends a group, so none of these brackets opens one, though an `@` and a
     `]` come after them. Only the stop at the blank line tells them apart from brackets
-    that do: read without it, each is tried against the pattern, which reads back to the
+    that do: read without it, each is tried against the pattern, which reads on to the
     blank line and fails, and the run takes time in its square again."""
 
     def cite(text: str) -> None:

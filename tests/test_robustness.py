@@ -26,6 +26,7 @@ import functools
 import gc
 import os
 import shutil
+import statistics
 import sys
 import time
 from collections.abc import Callable
@@ -37,7 +38,7 @@ BUDGET_SECONDS = 20.0
 
 #: The most `check` may take on a hostile project, as a multiple of a plain `check` on the
 #: same project, both in CPU time. The heaviest input here, one long run of backticks, read
-#: up to 10.0, and no other over 7. A ratio, so the same bound holds on a runner of any
+#: up to 10.3, and no other over 8. A ratio, so the same bound holds on a runner of any
 #: speed.
 CHECK_OVERHEAD = 30.0
 #: By the wall clock, which CPU time does not see: a `check` that waits instead of working,
@@ -47,11 +48,16 @@ CHECK_OVERHEAD = 30.0
 #: laptop.
 HANG_SECONDS = 60.0
 #: A ratio between the bound and twice it is measured again this many times before it
-#: fails, each time a plain check then the hostile one, and the lowest pair's ratio stands:
-#: a slow spell falls on both runs of a pair, where the best of each could fall in different
-#: lulls. One at twice the bound or more fails at once. Unlike `check_linear`, which decides
-#: that on a best of three, this is one timed run against the baseline: under host load in a
-#: VM, one read 55, within 9% of it, and on Windows twice the cores busy raised them to 19.
+#: fails, each time a plain check then the hostile one, and the median of the pairs' ratios
+#: stands. A plain check takes about half a second, and load moved one of its runs by up to
+#: 1.6 times where a hostile check of 13 s or more moved a fifth at most, so a pair reads
+#: high when a lull falls on its plain run and low when load does. The median takes two
+#: such pairs to move, where the lowest pair's ratio took one to pass a blow-up. One at
+#: twice the bound or more fails at once. Unlike `check_linear`, which decides that on a
+#: best of three, this is one timed run against the baseline: in a VM with 72 busy
+#: processes on the host's 24 logical CPUs, one read 55, within 9% of twice the bound,
+#: where about 12 was usual; on Windows, 48 busy processes on 24 raised readings from
+#: about 10 to 18.7.
 CONFIRM = 3
 
 
@@ -98,8 +104,8 @@ def check_overhead(project: Path, plain: Path) -> float:
     The first run opens every file of a fresh copy for the first time, which costs Windows
     seconds, so it is off the ratio's clock; it is the one held to `HANG_SECONDS`. One more
     run decides a ratio under the bound, and one at twice the bound or more. One between is
-    measured again, a plain check then the hostile one each time, and the lowest pair's
-    ratio stands: a slow spell falls on both runs of a pair."""
+    measured again, a plain check then the hostile one each time, and the median of the
+    pairs' ratios stands (see `CONFIRM`)."""
     started = time.perf_counter()
     run_check(project)
     waited = time.perf_counter() - started
@@ -108,7 +114,7 @@ def check_overhead(project: Path, plain: Path) -> float:
     if overhead < CHECK_OVERHEAD or overhead / 2 >= CHECK_OVERHEAD:
         return overhead
     pairs = [(timed_check(plain), timed_check(project)) for _ in range(CONFIRM)]
-    return min(second / first for first, second in pairs)
+    return statistics.median(second / first for first, second in pairs)
 
 
 # ---------------------------------------------------------------- pathological text

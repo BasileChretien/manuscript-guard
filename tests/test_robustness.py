@@ -120,15 +120,29 @@ def test_the_fence_scanner_is_linear_when_each_opener_is_narrower(assert_linear)
         )
 
 
-def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear) -> None:
+def test_a_long_run_of_backticks_is_read_in_linear_time(assert_linear, monkeypatch) -> None:
     """Code spans were found with a pattern that retried from every position inside a run
-    of backticks: one line of 20,000 took seven seconds to read for comments."""
-    from manuscript_guard.text.fences import unclear_fence_lines
+    of backticks: one line of 20,000 took seven seconds to read for comments. They are now
+    read only on a line that opens a comment or raw block. A line without one never reached
+    them, and the test passed with that pattern put back, so this line holds a comment and
+    the test first checks that it is read for code spans."""
+    from manuscript_guard.text import fences
 
     def backticks(count: int) -> str:
-        return "# Results\n\nSee " + "`" * count + " there.\n"
+        return "# Results\n\nSee " + "`" * count + " there. <!-- a note -->\n"
 
-    assert_linear(backticks, unclear_fence_lines, 5000, "a long run of backticks")
+    read: list[str] = []
+    spans = fences._without_code_spans
+
+    def spy(line: str) -> str:
+        read.append(line)
+        return spans(line)
+
+    monkeypatch.setattr(fences, "_without_code_spans", spy)
+    fences.unclear_fence_lines(backticks(10))
+    monkeypatch.undo()
+    assert read, "the line is never read for code spans"
+    assert_linear(backticks, fences.unclear_fence_lines, 5000, "a long run of backticks")
 
 
 @pytest.mark.parametrize(

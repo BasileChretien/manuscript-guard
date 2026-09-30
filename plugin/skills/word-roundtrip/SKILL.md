@@ -46,9 +46,11 @@ manuscript-guard build --offline
   needs to see where each number came from.
 - While the document is out, change nothing it was built from: the manuscript, the
   results, the ledger or `references.bib`. Any change makes `import` refuse the returned
-  copy without `--force`, and with it every paragraph you changed, and every one below a
-  paragraph you added or removed, is listed as not compared, its co-author edit to port by
-  hand. Keep new wording aside and apply it after the import.
+  copy without `--force`, and with it every paragraph you changed is listed as not
+  compared, its co-author edit to port by hand. Below a paragraph you added or removed, a
+  paragraph is still compared where the text around it reads as at the build (step 6), but
+  the one directly beside your change is not. Keep new wording aside and apply it after the
+  import.
 
 Tell the co-author, in these words or better ones:
 
@@ -250,16 +252,39 @@ Comments are printed, never stored. Recording them is the reader's job:
   applying changes the source the comments point at. See
   [reviewer-response](../reviewer-response/SKILL.md).
 
-A built document records what each of its paragraphs said in the source, and what came
-before it. `import` merges an edit only into a paragraph that still reads that way; any
-other is listed as `were not compared`, because its identifier now names other text, and
-has to be carried over by hand. One of those deleted in Word usually leaves its identifier
-on the paragraph after it and is listed there; deleted as a tracked change, cut, or joined
-by retyping across the break, it is listed as `did not come back`. That happens where the
-source changed since the build, below any paragraph added or removed there since, and
-across an upgrade that numbers or tags paragraphs differently. A paragraph that reads word for word like another
-in its file, such as "Not applicable." under two declarations, is also listed once the block
-before it changed.
+A built document records what each of its paragraphs said in the source, what came before
+it, and the headings, captions, tables and comments around it. `import` merges an edit only
+into a paragraph that still reads that way where it stands. Below a paragraph added or
+removed since the build, identifiers move by one block and name their neighbours. A
+paragraph there is followed to where it stands now when all of the following read as they
+did at the build:
+- its text, the block before it and the blocks around it;
+- the paragraphs directly before and after it;
+- that whole stretch is found once in its file;
+- the paragraphs compared keep their order.
+
+A followed paragraph is compared, moved and anchored like any other. Two edits beside it are
+still refused, though either may be only a deletion: a rewording beside a heading or caption
+that is missing from the returned document, and one beside a paragraph that did not come
+back.
+
+Any other paragraph is listed as `were not compared`, because its identifier now names
+other text, and has to be carried over by hand. That covers:
+- the paragraph directly beside what you added, removed or reworded, or beside a heading,
+  caption, table or comment you changed;
+- one whose stretch repeats in its file;
+- one you moved;
+- every one where the source changed since the build;
+- every one after an upgrade that numbers or tags paragraphs differently;
+- every one in a document built before the record held the blocks around each paragraph.
+
+A paragraph that reads word for word like another in its file, such as "Not applicable."
+under two declarations, is also listed once the block before it changed. One of these
+deleted in Word usually leaves its identifier on the paragraph after it and is listed
+there. Deleted as a tracked change, cut, or joined by retyping across the break, it is
+listed as `did not come back`. A followed paragraph reported as moved into another section
+is marked as having the `.md` changed above it: a heading you moved past it reads the same
+as a move in Word, so check before moving it back.
 
 When several people edited copies of the same build, dry-run every copy before applying any.
 Apply one, then `--force` the others: each merges only into paragraphs the earlier imports

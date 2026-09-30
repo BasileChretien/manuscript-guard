@@ -5,7 +5,7 @@ returns the same verdict, with no language model involved. Anything that constit
 guarantee lives here; the Claude Code plugin layered on top only helps an author write.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.270"
 
 from manuscript_guard.findings import Finding, Report
 

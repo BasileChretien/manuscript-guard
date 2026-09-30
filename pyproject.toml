@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "manuscript-guard"
-version = "0.1.0"
+version = "0.2.270"
 description = "Make every number in a scientific manuscript traceable to its source."
 readme = "README.md"
 requires-python = ">=3.10"

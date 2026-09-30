@@ -5,6 +5,9 @@ copy lacks fails at the user's keyboard. Two version numbers made that invisible
 moved with every change and the package sat at 0.1.0, so `pip install --upgrade` found
 nothing newer and left an older copy in place, and `--version` could not say which release
 anyone had. Now they are the same number, and each place that carries it is checked here.
+
+What this cannot see is a change that left the number alone. The policy for that is that every
+pull request that changes `src/` or `plugin/` takes the next shared number (CONTRIBUTING.md).
 """
 
 from __future__ import annotations

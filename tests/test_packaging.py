@@ -62,6 +62,82 @@ def test_no_file_the_package_ships_is_ignored_by_git():
     assert ignored_by_git(REPO, files) == []
 
 
+# ---------------------------------------------------------------- the wheel's own file list
+#
+# `.github/scripts/check_wheel_files.py` is what CI's wheel job runs on the built wheel. A
+# fresh project reads only some of the package's data, so using the wheel notices some
+# missing files and not others (ten of the 32 data files could be dropped from it and the job
+# still passed). Comparing the two lists notices every one.
+
+
+def load_wheel_check():
+    import importlib.util
+
+    path = REPO / ".github" / "scripts" / "check_wheel_files.py"
+    spec = importlib.util.spec_from_file_location("check_wheel_files", path)
+    assert spec and spec.loader, path
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def fake_wheel(directory: Path, names: list[str]) -> Path:
+    import zipfile
+
+    path = directory / "manuscript_guard-9.9.9-py3-none-any.whl"
+    with zipfile.ZipFile(path, "w") as archive:
+        for name in names:
+            archive.writestr(name, "")
+        archive.writestr("manuscript_guard-9.9.9.dist-info/METADATA", "")
+    return path
+
+
+TRACKED = [
+    "manuscript_guard/__init__.py",
+    "manuscript_guard/build/zotero_word.lua",
+    "manuscript_guard/data/plot_params.yaml",
+]
+
+
+def test_a_wheel_holding_every_tracked_file_passes(tmp_path: Path):
+    check = load_wheel_check()
+    wheel = fake_wheel(tmp_path, TRACKED)
+    assert check.compare(check.wheel_files(wheel), set(TRACKED)) == ([], [])
+
+
+@pytest.mark.parametrize("dropped", TRACKED)
+def test_a_wheel_missing_one_file_fails_and_names_it(dropped: str, tmp_path: Path, capsys):
+    """Each of these was a file the fresh-project run never reads."""
+    check = load_wheel_check()
+    wheel = fake_wheel(tmp_path, [name for name in TRACKED if name != dropped])
+    missing, unexpected = check.compare(check.wheel_files(wheel), set(TRACKED))
+    assert (missing, unexpected) == ([dropped], [])
+    assert check.report(missing, unexpected) != 0
+    assert dropped in capsys.readouterr().out
+
+
+def test_a_wheel_holding_a_file_git_does_not_track_fails_too(tmp_path: Path, capsys):
+    """A generated checklist profile is such a file, and it carries text that may not be
+    redistributed."""
+    check = load_wheel_check()
+    stray = "manuscript_guard/profiles/reporting/STROBE.yaml"
+    wheel = fake_wheel(tmp_path, [*TRACKED, stray])
+    missing, unexpected = check.compare(check.wheel_files(wheel), set(TRACKED))
+    assert (missing, unexpected) == ([], [stray])
+    assert check.report(missing, unexpected) != 0
+    assert stray in capsys.readouterr().out
+
+
+@needs_git
+def test_the_tracked_files_are_what_git_lists_for_the_package():
+    if not (REPO / ".git").exists():
+        pytest.skip("not a git checkout")
+    tracked = load_wheel_check().tracked_files(REPO)
+    assert "manuscript_guard/__init__.py" in tracked
+    assert "manuscript_guard/build/zotero_word.lua" in tracked
+    assert not any(name.startswith("src/") for name in tracked), "paths are the wheel's"
+
+
 @needs_git
 def test_the_check_catches_a_directory_an_ignore_rule_swallows(tmp_path: Path):
     """A bare `build/` in .gitignore matches `pkg/build/` too, which is how the package lost

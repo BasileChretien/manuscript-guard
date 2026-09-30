@@ -349,6 +349,74 @@ def test_it_is_said_once_per_session_not_again_after_a_clear_or_a_compact(
     assert run("session-start", {"cwd": str(tmp_path), "source": source}, capsys) is None
 
 
+@pytest.mark.parametrize(
+    ("plugin", "warns"),
+    [
+        ("0.2.99", False),  # older: 99 < 260, though "99" sorts after "260" as text
+        ("0.2.9", False),
+        ("0.2.260", False),
+        ("0.2.259", False),
+        ("0.2.261", True),
+        ("0.10.0", True),  # newer: 10 > 2, though "10" sorts before "2" as text
+        ("0.2.1000", True),  # newer: 1000 > 260, though "1000" sorts before "260" as text
+        ("0.2.260.1", True),
+        ("1.0", True),
+    ],
+)
+def test_versions_are_compared_as_numbers_not_as_text(
+    plugin: str, warns: bool, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A comparison of the strings gets 0.2.99 against 0.2.260 and 0.10.0 against 0.2.260
+    the wrong way round, and every other test here would still pass."""
+    monkeypatch.setattr("manuscript_guard.__version__", "0.2.260")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", plugin)))
+    result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
+    assert (result is not None) == warns
+
+
+def test_the_notice_names_the_version_without_the_spaces_around_it(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", " 99.0.0 ")))
+    result = run("session-start", {"cwd": str(tmp_path), "source": "startup"}, capsys)
+    assert result is not None
+    assert "at 99.0.0 but" in result["systemMessage"]
+
+
+def absurd_plugin_root(kind: str, root: Path) -> Path:
+    (root / ".claude-plugin").mkdir(parents=True)
+    body = {
+        # int() refuses more than 4300 digits, and json.loads gives up on deep nesting.
+        "endless-version": json.dumps({"version": "9" * 5000}),
+        "deep-nesting": "[" * 100_000 + "]" * 100_000,
+    }[kind]
+    (root / ".claude-plugin" / "plugin.json").write_text(body, encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize("kind", ["endless-version", "deep-nesting"])
+def test_an_absurd_plugin_manifest_never_costs_the_status_line(
+    kind: str, project: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(absurd_plugin_root(kind, tmp_path / "cache")))
+    result = run("session-start", {"cwd": str(project), "source": "startup"}, capsys)
+    assert "stage 'drafting'" in context(result)
+    assert "systemMessage" not in result
+
+
+def test_a_failing_check_for_the_notice_never_costs_the_status_line(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Whatever the check does, the line about the project is still said."""
+
+    def broken() -> str:
+        raise RuntimeError("anything at all")
+
+    monkeypatch.setattr("manuscript_guard.hooks.stale_cli_notice", broken)
+    result = run("session-start", {"cwd": str(project), "source": "startup"}, capsys)
+    assert "stage 'drafting'" in context(result)
+
+
 @pytest.mark.parametrize("handler", sorted(set(HANDLERS) - {"session-start"}))
 def test_no_other_hook_repeats_it(handler: str, tmp_path: Path, monkeypatch, capsys) -> None:
     """These fire on every edit and every shell command; the notice is for the start."""

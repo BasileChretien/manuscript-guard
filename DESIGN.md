@@ -2356,7 +2356,16 @@ The checks that came out of the review rounds guard the tracked path as well:
   gained most of the words of a paragraph gone from its place, and an identifier on text
   that reads exactly as another paragraph, a heading or a caption did.
 - The paragraph gone from its place is weighed as it printed at the build, not as the fresh
-  build prints it, and every paragraph the document was sent with counts, compared or not.
+  build prints it, and every paragraph the document was sent with counts, compared or not,
+  that did not come back with text of its own. An identifier comes back with its paragraph
+  only on a block of its own holding text, and not text that reads exactly as another
+  paragraph or a heading as sent; or beside other identifiers, on a block holding that
+  paragraph's text whole (`merge._came_back_whole`). Word 16 does not delete a cut
+  paragraph's identifier with its text: it goes in front of the next paragraph's own, or
+  stays on the line the cut emptied. Taken for the paragraph having come back, a paragraph
+  cut and pasted onto the end of another was never looked for there, and the one it went into
+  merged holding it, when the `.md` had reworded it since, or beside a paragraph it had
+  reworded, which the identifier's block then read as a join with.
   Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
   re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
   one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
@@ -4214,6 +4223,16 @@ Closed since, and why each mattered:
   back in a forced import. One that gained less, as a word added, a word fixed or a clause
   cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
   another, as `_swallowed` lets one through: its words go into the source twice.
+- **An identifier Word left behind counts as the paragraph gone only where the text it is on
+  says so.** It counts as gone beside another paragraph's identifier, on an empty line, on
+  text that reads exactly as another paragraph or a heading as sent, or in a join whose
+  text does not hold its paragraph's whole. Alone on text that reads as nothing sent - a new
+  paragraph typed where the cut one stood, say - it counts as the paragraph, reworded, and
+  when that paragraph is not compared a paste of its old text elsewhere is not looked for. So an
+  untracked deletion in Word of a paragraph the author also changed now holds back a
+  rewording elsewhere that gained five words in a row or a number, as a tracked one already
+  did. And a paragraph compared whose identifier came back on other text is refused itself
+  (`_not_its_own`) but not looked for in the words another paragraph gained, as on `main`.
 - **The five-word rule is the interim one.** The build's record keeps a hash of each
   paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
   not known at import when the `.md` changed it since. Recording each paragraph's text, or

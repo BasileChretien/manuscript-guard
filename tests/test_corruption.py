@@ -5644,19 +5644,34 @@ def _paragraph_runs(paragraph: str) -> str:
     return re.sub(r"<w:bookmark(?:Start|End)[^>]*/>", "", runs[: -len("</w:p>")])
 
 
-def _pasted(words: str, into: str, *, cut: bool = True):
+def _pasted(words: str, into: str, *, cut: bool = True, left: str | None = None):
     """The paragraph holding `words` pasted onto the end of the one holding `into`, after a
     space, as a paste without Track Changes leaves it: the runs, and no bookmark. Cut, the
-    paragraph is gone from where it stood; copied, it is still there."""
+    paragraph is gone from where it stood; copied, it is still there.
+
+    Word 16 does not delete a cut paragraph's identifier with its text: `left` puts it where
+    Word leaves it, in front of the next paragraph's own ("next", as `_word_delete` in
+    tests/test_roundtrip.py does) or on the emptied line ("emptied")."""
 
     def change(xml: str) -> str:
         pasted = _word_paragraph(xml, words)
+        runs = _paragraph_runs(pasted)
+        if cut and left == "next":
+            from test_roundtrip import _word_delete
+
+            xml = _word_delete(xml, pasted)
+        elif cut and left == "emptied":
+            opening = re.match(
+                r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?(?:<w:bookmark(?:Start|End)\b[^>]*/>)*",
+                pasted,
+                re.DOTALL,
+            )
+            xml = xml.replace(pasted, opening.group(0) + "</w:p>", 1)
+        elif cut:
+            xml = xml.replace(pasted, "", 1)
         target = _word_paragraph(xml, into)
         space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
-        grown = target[: -len("</w:p>")] + space + _paragraph_runs(pasted) + "</w:p>"
-        if cut:
-            xml = xml.replace(pasted, "", 1)
-        return xml.replace(target, grown, 1)
+        return xml.replace(target, target[: -len("</w:p>")] + space + runs + "</w:p>", 1)
 
     return change
 
@@ -5816,6 +5831,67 @@ def test_a_paragraph_whose_words_are_not_known_is_named_by_where_it_stood(
     refusal = next(line for line in out.splitlines() if "did not come back (" in line)
     assert "the one after 'Alpha paragraph talks about" in refusal
     assert "mg-p-" not in refusal
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("reworded", "left"),
+    [(_ALPHA, "next"), (_ALPHA, "emptied"), (_PAPA, "next")],
+    ids=[
+        "the pasted one reworded, identifier left on the next",
+        "the pasted one reworded, identifier left on the emptied line",
+        "a guard: the next one reworded, identifier left on it",
+    ],
+)
+def test_a_paragraph_cut_in_word_whose_identifier_stayed_is_looked_for(
+    project: Path, tmp_path: Path, reworded: str, left: str
+) -> None:
+    """Word 16 does not delete a cut paragraph's identifier: it goes in front of the next
+    paragraph's own, or stays on the emptied line. Alpha, reworded in the `.md` since the
+    build and so not compared, was cut and pasted onto the end of Romeo; its identifier left
+    behind was taken for the paragraph having come back, so it was never looked for in
+    Romeo's new words, and Romeo merged holding Alpha's old sentence, twice in the source. A
+    paragraph whose identifier came back only on other text - beside another's, on an empty
+    line, in a join that does not hold its text - did not come back. The last case, with
+    Papa reworded instead and Alpha compared, main already refuses: Alpha's text is looked
+    for whole in Romeo."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(
+        block.replace(" paragraph ", " paragraph, reworded, ", 1) if block == reworded else block
+        for block in blocks
+    )
+    after, before, _out = _forced_import(
+        project, tmp_path, blocks, now, _pasted("Alpha paragraph", "Romeo paragraph", left=left)
+    )
+    assert after == before, "a paragraph's words went into the source twice"
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("was", "now"),
+    [
+        (_REPORTS, f"{_REPORTS} reports"),
+        (_ROMEO, _ROMEO.replace(" paragraph ", " paragraph, reworded, ", 1)),
+    ],
+    ids=["the value reworded", "the next one reworded"],
+)
+def test_a_value_cut_in_word_whose_identifier_stayed_is_not_merged_as_a_number(
+    project: Path, tmp_path: Path, was: str, now: str
+) -> None:
+    """The same with a paragraph that is only a value, printing 4000, cut and pasted onto the
+    end of Papa, and the analysis re-run to 4100: "...dates. 4000" merged, a number typed
+    beside the binding that prints it. The value reworded in the `.md`, its identifier on
+    Romeo's was taken for the paragraph; Romeo reworded, the two read as a join."""
+    blocks = ("# Intro", _ALPHA, _PAPA, _REPORTS, _ROMEO, _BRAVO)
+    after, before, _out = _forced_import(
+        project,
+        tmp_path,
+        blocks,
+        tuple(now if block == was else block for block in blocks),
+        _pasted(">4000<", "Papa paragraph", left="next"),
+        reports=4100,
+    )
+    assert after == before, "a stale number was typed into the source"
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

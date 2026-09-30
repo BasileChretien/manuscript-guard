@@ -419,17 +419,15 @@ def _split_off(was: str, now: str, fresh: list[str]) -> str:
     """
     before, after = was.split(), now.split()
     matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
-    # In any case: a sentence split off into a paragraph of its own is capitalised there.
     lost = [
-        word.casefold()
+        word
         for tag, i1, i2, _j1, _j2 in matcher.get_opcodes()
         if tag in ("delete", "replace")
         for word in before[i1:i2]
     ]
     for text in fresh if lost else ():
         words = text.split()
-        folded = [word.casefold() for word in words]
-        shared = difflib.SequenceMatcher(a=folded, b=lost, autojunk=False).get_matching_blocks()
+        shared = difflib.SequenceMatcher(a=words, b=lost, autojunk=False).get_matching_blocks()
         matched = sum(block.size for block in shared)
         if matched >= max(_SPLIT_OFF_WORDS, _ALIKE * len(words)):
             return text

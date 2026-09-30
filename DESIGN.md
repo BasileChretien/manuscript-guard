@@ -2324,15 +2324,17 @@ The checks that came out of the review rounds guard the tracked path as well:
   refused as a split with it, where `main` refused only the spacer line. With the neighbour
   shortened, that cannot be told from the join.
 - A paragraph is refused when new body text without an identifier is made mostly of words
-  it lost: four of them at least, in order, in any case. A split with a paragraph cut in between
+  it lost: four of them at least, in order. A split with a paragraph cut in between
   without Track Changes shows nothing else: Word keeps the identifier of every paragraph but
   the first of a cut, so the pasted paragraph stood beside the first half as if nothing had
   moved, and the first line of the cut, a spacer or an equation, landed without one. A
   sentence cut out and pasted as a paragraph of its own is the same loss. A heading, a
   caption or a reference entry is not weighed: Word gives a split's second half the body
   style, and a heading added in the same round, sharing "of hepatic injury" with a
-  rewording that dropped it, had that rewording refused. Three words are not enough either,
-  when "of" and "the" are two of them.
+  rewording that dropped it, had that rewording refused. Three words are never enough:
+  "of" and "the" are often two of them. Words are compared as written, so a four-word
+  second half that gained a capital, as a sentence of its own, is one word short: compared
+  in any case, a body line "Reports of hepatic injury" refused the same rewording.
 - A move is not applied in a section that gained text the document as sent did not have
   (a split's second half, a new paragraph, an edited heading or caption, which the report
   quotes), or that holds an identifier on text that is not its own: where its paragraphs now
@@ -4398,8 +4400,9 @@ Closed since, and why each mattered:
   it lost. That is a judgement. A second half of under four words, or one reworded in the
   same round, still has the paragraph merged as its first half and the rest gone from the
   source, as on main; exit 1, because the second half is listed, but the merge is written.
-  Refusing a short one by its exact words would refuse a sentence deleted while a paragraph
-  of the same words is added elsewhere, which `main` merges on purpose. A table, figure or
+  `main` merges a sentence deleted while a paragraph of the same words is added elsewhere,
+  on purpose, and so does this check under four words; from four on it refuses that pair,
+  which is left to the maintainer to settle. A table, figure or
   equation the
   document as sent did not have counts as new text: a paragraph split around a pasted
   picture or a new equation was merged as its first half, because the search stopped at the

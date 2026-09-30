@@ -5333,32 +5333,6 @@ def test_a_split_that_nothing_in_the_markup_shows_is_not_merged(
     assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
 
 
-def test_a_second_half_capitalised_as_a_paragraph_of_its_own_is_still_its_second_half(
-    tmp_path: Path,
-) -> None:
-    """Split mid-sentence, the second half becomes a sentence of its own and gains a capital
-    - "and all drugs were excluded." to "All drugs were excluded." - and the first half
-    ends in a full stop. Compared case by case, the capital cost the one word that made four,
-    and the paragraph, with a paragraph cut in between its halves, merged as its first
-    half."""
-    from manuscript_guard.docxtext import Block
-    from manuscript_guard.merge import apply_plan, plan_import
-
-    y, z, o = "Yankee one is here, and all drugs were excluded.", "Zulu is moved.", "Oscar ends."
-    path = tmp_path / "main.md"
-    text = f"# Methods\n\n{y}\n\n&nbsp;\n\n{z}\n\n{o}\n"
-    path.write_text(text, encoding="utf-8")
-    lines = (("y", y), ("s", "&nbsp;"), ("z", z), ("o", o))
-    known = {name: (path, words, text.index(words)) for name, words in lines}
-    sent = [Block((), "Methods"), Block(("y",), y), Block(("s",), ""), Block(("z",), z)]
-    sent.append(Block(("o",), o))
-    second = Block((), "All drugs were excluded.")
-    first, landed = Block(("y",), "Yankee one is here."), Block((), "")
-    returned = [sent[0], first, landed, sent[3], second, Block(("s", "o"), o)]
-    apply_plan(known, plan_import(known, sent, returned))
-    assert path.read_text(encoding="utf-8") == text, "a split was merged as its first half"
-
-
 def _unmarked(node):
     """Pandoc's reading with every annotation mark, a styled span around a link to an
     `#mg-n` anchor, replaced by what it holds, and neighbouring words joined."""

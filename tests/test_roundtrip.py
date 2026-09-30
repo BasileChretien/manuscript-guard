@@ -11419,8 +11419,11 @@ def test_a_split_with_paragraphs_cut_in_between_without_track_changes_is_not_mer
         ("heading", "Reports of hepatic injury"),
         ("caption", "Reports of hepatic injury"),
         ("", "Reporting of hepatic injury"),
+        # A bold subtitle without a heading style: compared in any case, its capital
+        # matched the lowercase word the rewording dropped, and made the fourth.
+        ("", "Reports of hepatic injury"),
     ],
-    ids=["heading", "caption", "body"],
+    ids=["heading", "caption", "body", "body capitalised"],
 )
 def test_new_text_sharing_a_few_words_a_rewording_dropped_does_not_refuse_it(
     tmp_path: Path, role: str, added: str

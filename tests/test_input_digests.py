@@ -259,13 +259,20 @@ def test_the_r_emitter_agrees_byte_for_byte(tmp_path: Path) -> None:
         (tmp_path / name).write_bytes(data)
     emit_r = Path(__file__).resolve().parent.parent / "r" / "manuscriptguard" / "R" / "emit.R"
     script = tmp_path / "probe.R"
+    # The MISSING_DEPS guard of test_r_emitter.py: CI's windows-latest runners have R but not
+    # `digest`. Only that condition skips; any other failure of emit.R still fails the test.
     script.write_text(
+        'if (!requireNamespace("digest", quietly = TRUE)) {\n'
+        '  cat("MISSING_DEPS\\n"); quit(status = 3)\n'
+        "}\n"
         f'source({str(emit_r)!r})\n'
         f'for (n in c({", ".join(repr(n) for n in CASES)})) '
         f'cat(n, mg_input_digest(file.path({str(tmp_path)!r}, n)), "\n")\n',
         encoding="utf-8",
     )
     out = subprocess.run([_rscript(), str(script)], capture_output=True, text=True, timeout=180)
+    if "MISSING_DEPS" in out.stdout:
+        pytest.skip("R is present but digest is not installed")
     assert out.returncode == 0, out.stderr
     from_r = dict(line.split() for line in out.stdout.strip().splitlines() if line.strip())
     for name in CASES:

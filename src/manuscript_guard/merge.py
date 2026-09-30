@@ -246,7 +246,10 @@ def _off_headings(
     for block in returned:
         text = _squashed(block.text)
         own = [rendered.get(name, "") for name in block.names]
-        joined = any(
+        # Only a block with a heading's or caption's style is asked: asked of every block,
+        # each `_took_in` scanning the document as sent, 4,000 paragraphs took four seconds.
+        # Whether one was joined is read below only for a block with a role.
+        joined = bool(block.role) and any(
             name in rendered
             and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
             for name in block.names

@@ -3583,6 +3583,84 @@ def test_an_r_markdown_chunk_is_refused_by_check_and_the_build(project: Path, ca
     assert "not a plain fenced listing" in capsys.readouterr().out
 
 
+#: Comments the gates mask that pandoc prints, or partly prints: it reads a list item, a
+#: quotation, a definition and its term, a footnote and a line block on their own, and a
+#: comment opened in one ends there. Checked against pandoc in test_pandoc_agreement.py.
+_UNREAD_COMMENTS = {
+    "under a list item": "Intro.\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\n"
+    "more -->\n\nAfter 3.33.\n",
+    "code across list items": "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    "under a quotation": "> quote\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under a definition": "Term\n:   def\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an example": "(@) ex\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an empty item": "-\n<!-- x\n\n9.99 -->\n",
+    "across list items": "- a\n- b <!-- x\n- c 9.99 -->\n",
+    "across quoted items": "> - a <!-- x\n> - b 9.99 -->\n",
+    "in a term": "Term <!-- x\n\n:   def 9.99 -->\n",
+    "in a footnote": "Text.[^1]\n\n[^1]: note <!-- x\n\nmore 9.99 -->\n",
+    "in a line block": "| line <!-- x\n| b 9.99 -->\n",
+    "in an item's second paragraph": "- item\n\n  para <!-- x\n\ny 9.99 -->\n",
+    "past a stray div fence": "- item\n:::\nlazy <!-- x\n\n9.99 -->\n",
+}
+
+
+@pytest.mark.parametrize("paper", _UNREAD_COMMENTS.values(), ids=_UNREAD_COMMENTS.keys())
+def test_a_comment_pandoc_ends_with_its_block_is_refused(paper: str) -> None:
+    """The gates read the comment to its `-->`, past the end of the block pandoc reads it
+    in, or pair a backtick across the blocks and see a comment pandoc prints as code. The
+    refusal names the line of the `<!--`."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines(paper) == [paper[: paper.index("<!--")].count("\n") + 1]
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "Intro.\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "Intro.\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "Intro <!--\nhidden 9.99.\n\nmore -->\n",
+        "- item\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+        "<!--\n- item 9.99\n- item\n-->\n",
+        "- item <!-- hidden 9.99 -->\n",
+        "- item\n<!-- hidden 9.99\nstill -->\n",
+        "- a\n  - b <!-- x\n  9.99 -->\n",
+        "> - a\n> - b <!-- x\n> 9.99 -->\n",
+        "# Results <!-- draft\n\nThe ROR was 9.99 -->\n",
+        "---\ntitle: A study\n---\n\n- item\n\n<!-- 9.99 -->\n",
+    ],
+)
+def test_a_comment_pandoc_drops_as_the_gates_do_is_not_refused(paper: str) -> None:
+    """On its own line under a blank line, in a paragraph at the margin, whose comment pandoc
+    reads on over blank lines, or opened and closed on an item's own lines."""
+    from manuscript_guard.text.comments import unclear_comment_lines
+
+    assert unclear_comment_lines(paper) == []
+
+
+def test_a_comment_under_a_list_item_is_refused_by_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """Pandoc reads the `<!--` as text continuing the item, ends the item at the blank line
+    and prints the comment's 9.99, which the gates had masked: check and the build passed."""
+    from manuscript_guard.cli import main
+
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(
+        f"{text}\n## Results\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\nmore -->\n",
+        encoding="utf-8",
+    )
+    line = source.read_text(encoding="utf-8").split("\n").index("- item above") + 2
+    assert main(["check", str(project), "--json"]) == 1
+    findings = json.loads(capsys.readouterr().out)["findings"]
+    assert {(f["code"], f["line"]) for f in findings if f["severity"] == "fail"} == {
+        ("unclear-comment", line)
+    }
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    assert "HTML comment" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     "block",
     [
@@ -4451,6 +4529,28 @@ def test_audit_strict_refuses_a_fence_pandoc_may_not_open(
     path.write_bytes(paper.encode("utf-8"))
     assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
     assert "not a plain fenced listing" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "- item above\n<!--\nThe hidden odds ratio was 9.99.\n\nmore -->\n",
+        "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    ],
+    ids=["under a list item", "code across list items"],
+)
+def test_audit_strict_refuses_a_comment_pandoc_ends_with_its_item(
+    tmp_path: Path, paper: str, capsys
+) -> None:
+    """Pandoc prints 9.99 in each, and the audit, masking the comment as check does, read
+    no number at all: `--strict` exited 0."""
+    from manuscript_guard.cli import main
+
+    outputs = _outputs(tmp_path, '{"n": 1}')
+    path = tmp_path / "paper.md"
+    path.write_bytes(paper.encode("utf-8"))
+    assert main(["audit", str(path), "--against", str(outputs), "--strict"]) == 1
+    assert "HTML comment" in capsys.readouterr().out
 
 
 def test_a_bad_binding_after_a_comment_closed_in_a_listing_is_caught(project: Path) -> None:

@@ -35,6 +35,7 @@ from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, section_breaks
+from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import front_matter_end, mask
@@ -565,12 +566,21 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]]]:
 def unread_shapes(path: Path, text: str) -> list[str]:
     """The lines of a Markdown paper that `check` and the build refuse, since the audit reads
     them as they do and pandoc may not: a line of backticks or tildes that is not a plain
-    listing's (`fences.unclear_fence_lines`). Around one the audit read code where pandoc
-    printed prose, reported no numbers, and `--strict` passed."""
+    listing's (`fences.unclear_fence_lines`), and a comment opened in a list item or the
+    like that pandoc ends with the item (`comments.unclear_comment_lines`). Around either
+    the audit read code or a comment where pandoc printed prose, reported no numbers, and
+    `--strict` passed."""
     return [
-        f"{path.name}: line {line} is a line of backticks or tildes that is not a plain "
-        "fenced listing, so what pandoc prints around it may not be what was audited"
-        for line in unclear_fence_lines(text, front_matter_end(text))
+        *(
+            f"{path.name}: line {line} is a line of backticks or tildes that is not a plain "
+            "fenced listing, so what pandoc prints around it may not be what was audited"
+            for line in unclear_fence_lines(text, front_matter_end(text))
+        ),
+        *(
+            f"{path.name}: line {line} opens an HTML comment in a list item, a quotation, a "
+            "definition or a footnote, which pandoc may print as text where it was not audited"
+            for line in unclear_comment_lines(text)
+        ),
     ]
 
 

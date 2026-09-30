@@ -1099,6 +1099,47 @@ def test_a_number_is_in_a_comment_for_both_or_for_neither(name: str) -> None:
     )
 
 
+#: Comments in and around the blocks pandoc reads on their own: a list item, a quotation, a
+#: definition, a footnote. Where pandoc prints 9.99 the gates mask, `check` refuses the line
+#: of the `<!--`; where it drops 9.99 as the gates do, nothing is refused.
+BLOCK_COMMENT_CASES = {
+    "under a list item": "Intro.\n\n- item above\n<!--\nThe hidden odds ratio was 9.99.\n\n"
+    "more -->\n\nAfter 3.33.\n",
+    "code across list items": "- a stray ` tick\n- b `<!--` note 9.99 -->\n",
+    "under a quotation": "> quote\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under a definition": "Term\n:   def\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "under an example": "(@) ex\n<!--\nhidden 9.99.\n\nmore -->\n",
+    "in a term": "Term <!-- x\n\n:   def 9.99 -->\n",
+    "in a footnote": "Text.[^1]\n\n[^1]: note <!-- x\n\nmore 9.99 -->\n",
+    "past a stray div fence": "- item\n:::\nlazy <!-- x\n\n9.99 -->\n",
+    "on its own line after a blank line": "Intro.\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "under a paragraph": "Intro.\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "after a list and a blank line": "- item\n\n<!--\nhidden 9.99.\n\nmore -->\n\nAfter.\n",
+    "a list commented out": "<!--\n- item 9.99\n- item\n-->\n",
+    "on an item's line": "- item <!-- hidden 9.99 -->\n",
+    "on an item's lines": "- item\n<!-- hidden 9.99\nstill -->\n",
+    "on a quoted item's lines": "> - a\n> - b <!-- x\n> 9.99 -->\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(BLOCK_COMMENT_CASES))
+def test_a_comment_in_a_block_is_read_as_pandoc_reads_it_or_refused(name: str) -> None:
+    from manuscript_guard.text.comments import unclear_comment_lines
+    from manuscript_guard.text.masking import masked_spans
+
+    markdown = BLOCK_COMMENT_CASES[name]
+    at = markdown.index("9.99")
+    spans = masked_spans(markdown).get("html-comment", [])
+    in_comment_for_toolkit = any(start <= at < end for start, end in spans)
+    in_comment_for_pandoc = "9.99" in pandoc_comment_text(markdown)
+    refused = unclear_comment_lines(markdown)
+    if in_comment_for_toolkit and not in_comment_for_pandoc:
+        assert refused == [markdown[: markdown.index("<!--")].count("\n") + 1], name
+    else:
+        assert in_comment_for_toolkit == in_comment_for_pandoc, name
+        assert refused == [], f"{name}: pandoc drops the comment as the gates do"
+
+
 # ---------------------------------------------------------------- paragraph identifiers
 
 #: Every block construct pandoc's markdown reader distinguishes, and prose openings that

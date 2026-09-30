@@ -42,7 +42,7 @@ What counts, as pandoc 3.9.0.2 reads it (`-f markdown -t native`):
 from __future__ import annotations
 
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 
 from manuscript_guard.text.fences import Fence, fenced_spans
@@ -163,4 +163,116 @@ def comment_spans(text: str, fences: Sequence[Fence] | None = None) -> list[tupl
             position = close + 3
 
 
-__all__ = ["comment_spans"]
+# The start of a block pandoc reads apart from the text around it, comments and code spans
+# included: a list item, an example, a definition, a footnote, a line of a line block, each
+# behind any quotation marks. Its first line, and the lines under it up to a blank line.
+_QUOTES = re.compile(r"(?:[ \t]*>)+")
+_ITEM = re.compile(
+    r"[ \t]*(?:(?:[*+:~-]|\(?(?:\d{1,9}|#|@[\w-]*|[A-Za-z]|[ivxlcdmIVXLCDM]+)[.)]"
+    r"|\[\^[^\]\n]*\]:)(?:[ \t]|$)|\|)"
+)
+# A line that ends such a block, or may: blank, or blank but for quotation marks, a fence,
+# a div's `:::` or a closing tag.
+_BREAK = re.compile(r"[ \t>]*(?:$|```|~~~|:::|</)")
+
+
+def _blocks(lines: list[str]) -> list[tuple[int, int]]:
+    """The runs of `lines`, as [first, last), that pandoc may read apart from the rest. They
+    are cut short rather than long wherever pandoc's reading was not worth modelling: every
+    marker starts one, even where pandoc reads the line as text, and a blank line ends one,
+    even where an item's indented lines go on. A term, the line over a definition, is one."""
+    blocks: list[tuple[int, int]] = []
+    start: int | None = None
+    quoted = False  # the open block starts behind `>`, and a `>` line goes on with it
+    resumes = False  # an item's lines may go on, indented, after a blank line
+    blank = True  # the line above is blank, or there is none
+    last = -1  # the last line that is not a break
+
+    def close(at: int) -> None:
+        nonlocal start
+        if start is not None and start < at:
+            blocks.append((start, at))
+        start = None
+
+    for index, line in enumerate(lines):
+        if _BREAK.match(line):
+            was_open = start is not None
+            close(index)
+            blank = not line.strip(" \t>")
+            if was_open and not blank:
+                start = index + 1  # the lines after a fence or a tag may go on with the item
+            continue
+        quotes = _QUOTES.match(line)
+        body = line[quotes.end() :] if quotes else line
+        if _ITEM.match(body):
+            if body.lstrip(" \t")[:1] in ":~" and last >= 0:
+                close(last)
+                if blocks and blocks[-1][0] <= last < blocks[-1][1]:
+                    first, _end = blocks.pop()
+                    blocks += [(first, last)] if first < last else []
+                blocks.append((last, last + 1))
+            close(index)
+            start, quoted, resumes = index, quotes is not None, True
+        elif quotes:
+            if start is None or not quoted:
+                close(index)
+                start, quoted, resumes = index, True, False
+        elif blank:
+            close(index)
+            if resumes and line[:1] in " \t":
+                start, quoted = index, False
+            else:
+                resumes = False
+        blank, last = False, index
+    close(len(lines))
+    return blocks
+
+
+def unclear_comment_lines(text: str) -> list[int]:
+    """The lines, numbered from 1, where a comment the gates mask opens in a block pandoc
+    reads on its own, and reading that block alone does not find it.
+
+    Pandoc reads a list item, a quotation, a definition, a footnote and a line block apart,
+    to where the block ends, and a comment or a code span opened in one ends with it. So a
+    `<!--` straight under a list item's line is text continuing the item, and when its
+    `-->` lies past a blank line pandoc prints the comment, numbers and all, where the
+    gates had masked it. And a backtick in one item pairs, to the gates, with one opening
+    `` `<!--` `` in the next, where pandoc prints the comment as text after the code. The
+    blocks are found as `_blocks` finds them, cut short where unsure, so a comment the
+    gates read on past one is refused rather than guessed at, even where pandoc reads on too.
+    """
+    from manuscript_guard.text.masking import front_matter_end, html_comments
+
+    comments = html_comments(text)
+    if not comments:
+        return []
+    begin = front_matter_end(text)
+    lines = text[begin:].split("\n")
+    starts = [begin]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    blocks = [
+        (starts[first], starts[last] - 1)
+        for first, last in _blocks([line.replace("\r", "") for line in lines])
+    ]
+    firsts = [first for first, _last in blocks]
+    above = text.count("\n", 0, begin)
+    read: dict[int, list[tuple[int, int]]] = {}
+    found: list[int] = []
+    for start, end in comments:
+        index = bisect_right(firsts, start) - 1
+        if index < 0 or start >= blocks[index][1]:
+            continue
+        low, high = blocks[index]
+        if index not in read:
+            read[index] = [(low + a, low + b) for a, b in comment_spans(text[low:high])]
+        # The comments found in the block alone are sorted and apart: the one that could
+        # hold this one is the last to open at or before it.
+        alone = read[index]
+        holder = bisect_right(alone, (start, len(text))) - 1
+        if holder < 0 or end > alone[holder][1]:
+            found.append(above + bisect_right(starts, start))
+    return sorted(set(found))
+
+
+__all__ = ["comment_spans", "unclear_comment_lines"]

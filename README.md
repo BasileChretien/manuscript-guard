@@ -234,7 +234,7 @@ The package's own version is fixed, so `pip install --upgrade` finds nothing new
 an older copy in place, and so does `pipx upgrade`. To take the latest commit, reinstall it:
 
 ```bash
-pip install --force-reinstall --no-deps git+https://github.com/BasileChretien/manuscript-guard
+pip install --force-reinstall git+https://github.com/BasileChretien/manuscript-guard
 pipx install --force git+https://github.com/BasileChretien/manuscript-guard   # if you use pipx
 ```
 
@@ -443,8 +443,9 @@ agency report that no longer exists online, recorded as an attestation in
 `literature/attested.yaml` rather than pretending to a stored source.
 
 The example is in the repository, not in the installed package, so it needs a clone. Copy it
-out and run the whole loop there. Its figure is drawn with matplotlib (`pip install
-matplotlib`):
+out and run the whole loop there. Its scripts import `manuscript_guard`, so use a Python that
+has it installed (a `pipx` install gives you the commands only), and its figure is drawn with
+matplotlib (`pip install matplotlib`):
 
 ```bash
 cp -r manuscript-guard/example my-example && cd my-example

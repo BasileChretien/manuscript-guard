@@ -151,6 +151,7 @@ MENTION = re.compile(r"(?:manuscript-guard|mguard)\s+(?P<sub>[a-z][a-z-]*)(?P<re
 BARE = re.compile(r"^(?P<sub>[a-z][a-z-]*)\s+(?P<rest>--?[A-Za-z].*)$")
 OPTION = re.compile(r"(?<![\w-])(--?[A-Za-z][\w-]*)")
 CONTINUATION = re.compile(r"\\\n\s*")
+PLACEHOLDER = re.compile(r"<[^<>\n]*>")
 
 
 def cli_options() -> dict[str, set[str]]:
@@ -179,6 +180,9 @@ def command_problems(text: str, options: dict[str, set[str]]) -> list[str]:
     """Subcommands and options a skill names that the CLI does not have."""
     found: list[str] = []
     for fragment in command_fragments(text):
+        # `<pass|reject>` holds a pipe, which would end the command there and leave every
+        # option after it unchecked.
+        fragment = PLACEHOLDER.sub("", fragment)
         mentions = [(m["sub"], m["rest"]) for m in MENTION.finditer(fragment)]
         bare = BARE.match(fragment)
         if bare and bare["sub"] in options:
@@ -213,12 +217,14 @@ def test_the_command_check_catches_a_command_or_option_that_does_not_exist():
         "Run `manuscript-guard frobnicate`, then\n\n```bash\n"
         "manuscript-guard check --nope        # a comment\n"
         "manuscript-guard audit paper.docx \\\n    --against out/ --nonsense\n"
-        "manuscript-guard review --record a --round 2 --verdict pass\n```\n\n"
+        "manuscript-guard review --record a --round 2 --verdict pass\n"
+        "manuscript-guard review --record a --verdict <pass|reject> --typo x\n```\n\n"
         "and `bind --apply --nothing`, but `bind --apply --only main.md:3` is fine."
     )
     assert command_problems(text, cli_options()) == [
         "check --nope: check has no such option",
         "audit --nonsense: audit has no such option",
+        "review --typo: review has no such option",
         "manuscript-guard frobnicate: there is no such subcommand",
         "bind --nothing: bind has no such option",
     ]
@@ -244,6 +250,18 @@ def test_the_checklist_skill_retrieves_a_checklist_with_the_commands_that_do_it(
     assert "schema: manuscript-guard/reporting/1" not in text, (
         "the skill shows a generated profile as something to write"
     )
+
+
+def test_the_checklist_skill_lists_the_guidelines_a_recipe_says_go_together():
+    """RECORD-PE holds only its own items. The skill said RECORD and RECORD-PE both extend
+    STROBE, so a study following it declared two guidelines and RECORD's items were never
+    checked."""
+    from manuscript_guard.paths import SHIPPED_RECIPES
+
+    recipe = (SHIPPED_RECIPES / "RECORD-PE.recipe.yaml").read_text(encoding="utf-8")
+    assert "list STROBE, RECORD and RECORD-PE together" in recipe
+    text = (SKILLS / "reporting-checklist" / "SKILL.md").read_text(encoding="utf-8")
+    assert "STROBE, RECORD and RECORD-PE" in text
 
 
 def test_nothing_in_the_plugin_names_a_path_on_one_machine():

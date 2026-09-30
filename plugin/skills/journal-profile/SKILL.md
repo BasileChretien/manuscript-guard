@@ -108,7 +108,7 @@ required_statements:
 references:
   style_name: Vancouver
   numbered: true
-  csl: vancouver                # used by offline builds
+  csl: vancouver                # the style Zotero applies in a live build; offline needs --csl
 
 reporting_guidelines: [STROBE]
 

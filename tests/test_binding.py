@@ -214,6 +214,30 @@ def test_the_advice_names_a_line_once_when_two_suggestions_share_it(project: Pat
     assert "{{results.ror.ci_low}}" in path.read_text(encoding="utf-8")
 
 
+def test_the_advice_does_not_name_a_line_that_the_command_would_refuse(
+    project: Path, capsys
+) -> None:
+    """`--only` refuses a line holding a number with no single answer, so advice naming
+    that line offered a command that exited 2."""
+    import re
+
+    from manuscript_guard.cli import main
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text + "\nThe ratio was 3.84 in 77 of these.\n", encoding="utf-8")
+    items = unbound(*loaded(project))
+    assert {i.text: bool(i.certain) for i in items if i.text in {"3.84", "77"}} == {
+        "3.84": True,
+        "77": False,
+    }, "the line needs one suggestion with an answer and one without"
+
+    assert main(["bind", str(project)]) == 1
+    advice = capsys.readouterr().out.strip().splitlines()[-1]
+    assert not re.findall(r"--only ([^\s`]+)", advice), advice
+    assert "manuscript-guard bind --apply" in advice
+
+
 def test_the_command_refuses_an_unknown_selector(project: Path, capsys) -> None:
     from manuscript_guard.cli import main
 

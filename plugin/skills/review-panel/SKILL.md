@@ -47,7 +47,8 @@ When a reviewer has finished reading, have the toolkit start their record, so th
 types a digest:
 
 ```bash
-manuscript-guard review --record <reviewer-id> --round <n> --remit "<what they noticed>" \
+manuscript-guard review --record <reviewer-id> --round <n> \
+    --remit "<what they are responsible for noticing>" \
     --verdict <pass|minor-revision|major-revision|reject> --summary "<their overall comment>"
 ```
 

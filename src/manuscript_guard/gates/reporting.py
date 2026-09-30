@@ -23,7 +23,7 @@ from manuscript_guard.contracts._schema import read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.paths import SHIPPED_CHECKLISTS
+from manuscript_guard.paths import SHIPPED_CHECKLISTS, SHIPPED_RECIPES
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import headings
 
@@ -48,6 +48,34 @@ def available_checklists(project: Project) -> list[str]:
         if directory.exists():
             found.update(p.stem for p in directory.glob("*.yaml"))
     return sorted(found)
+
+
+def recipe_names(project: Project) -> list[str]:
+    """The guidelines a recipe exists for: those the package ships and any the project wrote."""
+    found = set()
+    for directory in (SHIPPED_RECIPES, project.root / "profiles" / "reporting" / "recipes"):
+        if directory.exists():
+            found.update(p.name.split(".recipe")[0] for p in directory.glob("*.recipe.yaml"))
+    return sorted(found)
+
+
+def retrieval_advice(project: Project, name: str) -> str:
+    """How to get a checklist that has not been retrieved.
+
+    `fetch` and `transcribe` work from a recipe, so naming them for a guideline that has none
+    sent the author to a command that answers "no recipe for ...".
+    """
+    if name in recipe_names(project):
+        return (
+            f"`manuscript-guard fetch {name}` then `manuscript-guard transcribe {name}` "
+            "retrieve it from the guideline's own site and build it from that copy, and the "
+            "reporting-checklist skill walks through it"
+        )
+    return (
+        f"there is no recipe for {name} (recipes: {', '.join(recipe_names(project)) or 'none'}), "
+        "so `fetch` and `transcribe` cannot retrieve it; the reporting-checklist skill "
+        "explains how to write one"
+    )
 
 
 def completion_path(project: Project, name: str) -> Path:
@@ -146,9 +174,7 @@ def check_reporting(project: Project) -> Report:
                     gate=GATE,
                     code="checklist-not-retrieved",
                     message=f"{name} is required but its item list has not been retrieved",
-                    hint=f"`manuscript-guard fetch {name}` then `manuscript-guard transcribe "
-                    f"{name}` retrieve it from the guideline's own site and build it from that "
-                    "copy, and the reporting-checklist skill walks through it; available: "
+                    hint=f"{retrieval_advice(project, name)}; available: "
                     + (", ".join(available_checklists(project)) or "none"),
                 )
             )
@@ -286,11 +312,7 @@ def scaffold_completion(project: Project, name: str) -> tuple[Path, int, int]:
 
     source = checklist_path(project, name)
     if source is None:
-        raise FileNotFoundError(
-            f"no checklist for {name}; retrieve it first with `manuscript-guard fetch {name}` "
-            f"and `manuscript-guard transcribe {name}` (the reporting-checklist skill walks "
-            "through it)"
-        )
+        raise FileNotFoundError(f"no checklist for {name}; {retrieval_advice(project, name)}")
     checklist = read_structured(source)
     path = completion_path(project, name)
 

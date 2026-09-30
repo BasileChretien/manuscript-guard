@@ -21,8 +21,9 @@ quote can be checked against its source.
 Recipes ship for STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT-2025, PRISMA-2020,
 PRISMA-2020-abstracts, READUS-PV, READUS-PV-abstracts, TRIPOD-development,
 TRIPOD-validation, TRIPOD-development-validation and ARRIVE-2.0. Name the guideline in
-`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). RECORD and
-RECORD-PE extend STROBE, so a study that follows them lists both.
+`paper.yaml` as the recipe is named (`reporting_guideline: [STROBE]`, a list). Extensions
+hold only their own items. RECORD adds to STROBE, so a study that follows RECORD lists both,
+and RECORD-PE adds to RECORD, so one that follows it lists STROBE, RECORD and RECORD-PE.
 
 ```bash
 manuscript-guard fetch STROBE
@@ -36,8 +37,8 @@ you run it. READUS-PV is licensed for non-commercial use only, and the command s
 - If the recipe records no download address, `fetch` says so. Open the guideline's page,
   save the file into `profiles/reporting/sources/` yourself, or pass
   `--url <direct link> --save-url` to record the address for next time.
-- If the checksum does not match, the published checklist has been revised and the recipe's
-  column layout may no longer fit it. Read what changed before going on.
+- If the checksum does not match, the published checklist may have been revised, and the
+  recipe's column layout may no longer fit it. Read what changed before going on.
 - If the checklist is only available as a scanned table or an image, say so and ask the user
   for a copy they can read. Do not reconstruct it.
 
@@ -68,6 +69,10 @@ starting from the shipped recipe whose document looks most like yours:
 ```bash
 python -c "from manuscript_guard.paths import SHIPPED_RECIPES; print(SHIPPED_RECIPES)"
 ```
+
+That needs the Python that has manuscript-guard installed. Under pipx, run
+`pip show -f manuscript-guard` through `pipx runpip manuscript-guard`, and it lists the same
+files.
 
 A recipe names the document and says which table and columns hold each item's number, topic
 and text. Its `meta` block needs `name`, `source_url`, `retrieved_on` and `licence`, and

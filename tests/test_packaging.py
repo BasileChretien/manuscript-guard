@@ -37,11 +37,18 @@ def ignored_by_git(root: Path, files: list[Path]) -> list[str]:
     return result.stdout.split()
 
 
+# Left in a source tree by a file browser. Git ignores them, and so does the wheel build.
+DESKTOP_LITTER = {".DS_Store", "Thumbs.db", "desktop.ini"}
+
+
 def shipped_files() -> list[Path]:
     return [
         path
         for path in sorted(PACKAGE.rglob("*"))
-        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix != ".pyc"
+        and path.name not in DESKTOP_LITTER
     ]
 
 

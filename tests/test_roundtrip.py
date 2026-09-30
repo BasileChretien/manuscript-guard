@@ -11028,6 +11028,90 @@ def test_a_paragraphs_role_is_read_from_its_style_name_not_its_id(tmp_path: Path
     assert [block.role for block in read(bare)] == [""]
 
 
+def _raw_docx(target: Path, body: str, styles: str = "") -> Path:
+    """A minimal document with `body` as its body's XML, and `styles` as word/styles.xml."""
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    document = f"<w:document {w}><w:body>{body}</w:body></w:document>"
+    with zipfile.ZipFile(target, "w") as archive:
+        archive.writestr("word/document.xml", document)
+        if styles:
+            archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
+    return target
+
+
+def test_a_list_item_and_a_quotation_are_read_as_such(tmp_path: Path) -> None:
+    """Pandoc numbers each list item itself, in the body text's style, and styles a block
+    quotation "Block Text". A style can number its paragraphs too, and a numbering of 0 is
+    none. The build gives neither an identifier, so one found on them slid there
+    (`merge._off_headings`)."""
+    from manuscript_guard.docxtext import blocks as read
+
+    numbered = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="{}"/></w:numPr>'
+    styles = "".join(
+        [
+            _paragraph_style("Compact", "Compact"),
+            _paragraph_style("BlockText", "Block Text"),
+            _paragraph_style("Quoted", "My quotation", "BlockText"),
+            '<w:style w:type="paragraph" w:styleId="Bullet"><w:name w:val="List Bullet"/>'
+            f"<w:pPr>{numbered.format(3)}</w:pPr></w:style>",
+        ]
+    )
+    paragraphs = [
+        ('<w:pStyle w:val="Compact"/>' + numbered.format(1), "An item"),
+        ('<w:pStyle w:val="BlockText"/>', "A quotation"),
+        ('<w:pStyle w:val="Quoted"/>', "Another"),
+        ('<w:pStyle w:val="Bullet"/>', "A styled item"),
+        ('<w:pStyle w:val="Bullet"/>' + numbered.format(0), "Its numbering taken off"),
+        ('<w:pStyle w:val="Compact"/>', "Plain"),
+    ]
+    body = "".join(
+        f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>{text}</w:t></w:r></w:p>"
+        for props, text in paragraphs
+    )
+    document = _raw_docx(tmp_path / "lists.docx", body, styles)
+    assert [block.role for block in read(document)] == ["list", "quote", "quote", "list", "", ""]
+
+
+def test_each_identifier_is_read_with_the_text_it_holds(tmp_path: Path) -> None:
+    """Word 16 puts the bookmark of a paragraph deleted with Track Changes off in front of
+    the next paragraph's own, keeps a joined paragraph's where its text began, and leaves a
+    cut one on the line it emptied, which can be joined onto the end of another; a tracked
+    join folds two paragraphs into one. Each identifier holds the text from its bookmark to
+    the next one's. Where a bookmark's place is not known, nothing is said of it."""
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.docxtext import blocks as read
+    from manuscript_guard.merge import _held
+
+    def mark(name: str) -> str:
+        start = f'<w:bookmarkStart w:id="{name}" w:name="mg-p-x-{name}"/>'
+        return f'{start}<w:bookmarkEnd w:id="{name}"/>'
+
+    def run(text: str) -> str:
+        return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+    deleted = '<w:pPr><w:rPr><w:del w:id="9" w:author="A"/></w:rPr></w:pPr>'
+    body = "".join(
+        [
+            f"<w:p>{mark('1')}{mark('2')}{run('Kept text.')}</w:p>",
+            f"<w:p>{mark('3')}{run('First half.')}{run(' ')}{mark('4')}{run('Second half.')}</w:p>",
+            f"<w:p>{deleted}{mark('5')}{run('Joined one.')}</w:p>",
+            f"<w:p>{mark('6')}{run('Joined two.')}</w:p>",
+            f"<w:p>{mark('7')}{run('Text before.')}{mark('8')}</w:p>",
+        ]
+    )
+    held = [
+        {name.removeprefix("mg-p-x-"): text for name, text in _held(block).items()}
+        for block in read(_raw_docx(tmp_path / "held.docx", body))
+    ]
+    assert held == [
+        {"1": "", "2": "Kept text."},
+        {"3": "First half.", "4": " Second half."},
+        {"5": "Joined one. ", "6": "Joined two."},
+        {"7": "Text before.", "8": ""},
+    ]
+    assert _held(Block(("a", "b"), "Text.")) == {"a": None, "b": None}
+
+
 @needs_pandoc
 def test_a_rewording_into_a_definitions_shape_is_escaped_and_kept(
     project: Path, tmp_path: Path

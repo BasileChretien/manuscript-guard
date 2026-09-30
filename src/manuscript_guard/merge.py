@@ -178,18 +178,24 @@ def _untagged_missing(reference: list[Block], returned: list[Block]) -> Counter:
     return +untagged
 
 
+#: The roles of a block that titles something (`docxtext.Block.role`): not a list item or a
+#: quotation, which hold body text.
+_TITLES = frozenset({"heading", "caption", "reference"})
+
+
 def _untagged_new(reference: list[Block], returned: list[Block]) -> list[str]:
     """Body text without an identifier that the returned document holds and the one as sent
     did not - a new paragraph, a split's second half - in document order.
 
     Not a heading, a caption or a reference entry: Word gives a split's second half the
     body style, and a heading added in the same round as a rewording, sharing a phrase with
-    what the rewording dropped, had it refused as split off.
+    what the rewording dropped, had it refused as split off. A list item or a quotation is
+    body text: a sentence cut out of a paragraph can be pasted as one.
     """
     left = Counter(b.text for b in reference if not b.names and not b.table and b.text)
     out: list[str] = []
     for block in returned:
-        if block.names or block.table or not block.text or block.role:
+        if block.names or block.table or not block.text or block.role in _TITLES:
             continue
         if left[block.text]:
             left[block.text] -= 1
@@ -201,7 +207,8 @@ def _untagged_new(reference: list[Block], returned: list[Block]) -> list[str]:
 def _off_headings(
     rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
-    """Identifiers taken off a heading, caption or reference entry they slid onto.
+    """Identifiers taken off a heading, caption, reference entry, list item or quotation they
+    slid onto.
 
     Deleted or cut without Track Changes, the last paragraph of a section leaves its
     identifier on the heading after it - above a table, on its caption; after the last
@@ -209,7 +216,9 @@ def _off_headings(
     the heading was merged into it: "Methods", bindings intact. Recognised by its text alone,
     a heading retitled in the same round was merged too - "Study design" - so it is
     recognised by its style as well, and an identifier on it names a paragraph that is no
-    longer there.
+    longer there. A paragraph before a list or a block quotation leaves its identifier on
+    the first item or on the quotation, which the build gives none either; edited there, the
+    item was merged over the lead-in sentence cut from before it.
 
     Unless the block is plainly that paragraph, and reported deleted it would invite deleting
     it: one restyled as a heading in Word, its words mostly its own; one the heading before it
@@ -380,6 +389,8 @@ class _Gone(NamedTuple):
     fresh: str | None
     #: Its words as it printed at the build, as far as they are known (`_as_sent`).
     sent: Sent
+    #: Its identifier came back, on text that cannot be told for its own (`_came_back_whole`).
+    unsure: bool = False
 
 
 def _gained_runs(was: str, now: str) -> list[list[str]]:
@@ -441,37 +452,56 @@ def _took_unknown(was: str, now: str, vanished: Sequence[_Gone]) -> _Gone | None
     return next((gone for gone in vanished if gone.sent is None), None) if could_be else None
 
 
+def _held(block: Block) -> dict[str, str | None]:
+    """The text each identifier on a block holds: from its bookmark to the next one's
+    (`docxtext.Block.at`). A join holds both paragraphs, one after the other; an identifier
+    left in front of another's holds nothing. None where a bookmark's place is not known."""
+    if len(block.names) < 2:
+        return dict.fromkeys(block.names, block.text)
+    at = dict(block.at)
+    if any(name not in at for name in block.names):
+        return dict.fromkeys(block.names)
+    order = sorted(block.names, key=lambda name: at[name])
+    ends = [at[name] for name in order[1:]] + [len(block.text)]
+    return {name: block.text[at[name] : end] for name, end in zip(order, ends, strict=True)}
+
+
 def _came_back_whole(
     returned: Sequence[Block], said: dict[str, str | None], taken: Counter
-) -> set[str]:
-    """Of the identifiers in `said`, those that came back on their own paragraph's text.
+) -> dict[str, str]:
+    """Of the identifiers in `said`, those that came back on their own paragraph's text,
+    with that text.
 
     `said` maps each to what its paragraph said as sent, where that is known. Word 16 does
     not delete a cut paragraph's identifier with its text: it goes in front of the next
-    paragraph's own, or stays on the line the cut emptied. Counted as having come back, a
-    paragraph cut and pasted onto the end of another was never looked for there, and the one
-    it went into merged holding it: its words in the source twice, or a number typed beside
-    the binding that prints it. So an identifier comes back with its paragraph only on a
-    block of its own that holds text, and not text that reads exactly as something else
-    sent, `taken` (a heading, or another paragraph); or beside other identifiers, on a block
-    that holds its paragraph's text whole. Where that text is not known, it did not come
-    back beside another's: whose text the block holds cannot be told, and a paste could have
-    carried it off.
+    paragraph's own, or stays on the line the cut emptied, where a sentence may then be
+    typed. Counted as having come back, a paragraph cut and pasted onto the end of another
+    was never looked for there, and the one it went into merged holding it: its words in the
+    source twice, or a number typed beside the binding that prints it.
+
+    So each identifier is read with the text it holds (`_held`). A paragraph whose text is
+    known came back where its identifier holds that text. One whose text is not known came
+    back where its identifier holds text that does not read exactly as something else the
+    document was sent with, `taken`: a heading, or another paragraph, as the fresh build
+    prints them. Read by the block instead, a paragraph deleted in front of one the author
+    had reworded left two identifiers on text neither could be told to hold, and the one
+    standing there untouched counted as gone. Where a bookmark's place is not known, only a
+    paragraph whose text is known, and in the block, came back there.
     """
-    found: set[str] = set()
+    found: dict[str, str] = {}
     for block in returned:
         if block.table or not block.names:
             continue
-        text = _squashed(block.text)
+        held = _held(block)
         for name in block.names:
             if name not in said:
                 continue
             own = _squashed(said[name]) if said[name] else None
-            if len(block.names) == 1:
-                if text and (own == text or not taken[text]):
-                    found.add(name)
-            elif own and own in text:
-                found.add(name)
+            here = held[name]
+            text = _squashed(block.text if here is None else here)
+            known = own is not None and own in text
+            if known or (own is None and here is not None and text and not taken[text]):
+                found[name] = text
     return found
 
 
@@ -1498,7 +1528,17 @@ def plan_import(
         if name not in rendered:
             holder = (same_text or {}).get(name)
             said[name] = printed_now.get(holder) if holder else None
-    whole = _came_back_whole(returned, said, expected + Counter(map(_squashed, rendered.values())))
+    taken = expected + Counter(map(_squashed, [*rendered.values(), *filter(None, said.values())]))
+    whole = _came_back_whole(returned, said, taken)
+    # Those whose identifier holds some text, or text that cannot be told: they may have come
+    # back where it is. The rest, if gone, did not come back.
+    holding = {
+        name
+        for block in returned
+        if not block.table
+        for name, text in _held(block).items()
+        if text is None or _squashed(text)
+    }
     gone_from_place = [
         name
         for name in rendered
@@ -1524,8 +1564,10 @@ def plan_import(
                 vanished.append(_Gone(printed_now[holder], printed_now[holder], as_sent(holder)))
             else:
                 where = f"the one after '{_squashed(last)[:50]}'" if last.strip() else "the first"
-                vanished.append(_Gone(f"{where} in the document as sent", None, None))
-        last = rendered.get(name) or carried_by.get(name) or printed_now.get(holder, "") or last
+                shown = f"{where} in the document as sent"
+                vanished.append(_Gone(shown, None, None, unsure=name in holding))
+        # Named by its own text: the block its identifier is on can hold another's too.
+        last = rendered.get(name) or printed_now.get(holder, "") or whole.get(name) or last
 
     def printed_otherwise(name: str) -> bool:
         # What stood beside it may have printed otherwise at the build: see `stale` and
@@ -1597,7 +1639,8 @@ def plan_import(
             what = unknown_one.shown
             if unknown_one.fresh:
                 what = f"'{_squashed(unknown_one.fresh)[:60]}' as it prints now"
-            refused.append(Refusal(name, now, (_MAY_HOLD.format(what=what),)))
+            how = (_UNSURE if unknown_one.unsure else _NOT_BACK).format(what=what)
+            refused.append(Refusal(name, now, (_MAY_HOLD.format(how=how),)))
         elif part := _split_off(was, now, fresh):
             refused.append(Refusal(name, now, (_SPLIT_OFF.format(text=_squashed(part)[:60]),)))
         else:
@@ -1753,8 +1796,13 @@ _SWALLOWED = (
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
 )
+_NOT_BACK = "did not come back ({what})"
+_UNSURE = (
+    "may not have come back ({what}): its identifier came back on text that cannot be told "
+    "for its own"
+)
 _MAY_HOLD = (
-    "a paragraph the document was sent with did not come back ({what}), and what it said "
+    "a paragraph the document was sent with {how}, and what it said "
     "then is not known: the .md changed or removed it since the build, or it prints a value "
     "or citation that may have changed since. The words added here could be it, pasted in, "
     "and merged they would be in the source twice. Make the edit in the .md."

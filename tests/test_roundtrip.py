@@ -1487,6 +1487,122 @@ def test_a_value_paragraph_joined_to_a_shifted_one_is_not_merged_once_it_prints_
     assert after == before, "a number was typed into the source"
 
 
+def _pasted_in(words: str, into: str, *, start: bool = False):
+    """The paragraph holding `words` cut in Word and pasted into the one holding `into`, at
+    its end or its `start`, as a paste without Track Changes leaves it: the runs, and a
+    space, and no bookmark."""
+    from test_corruption import _word_paragraph
+
+    def change(xml: str) -> str:
+        pasted = _word_paragraph(xml, words)
+        target = _word_paragraph(xml, into)
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        if start:
+            opening = re.match(r"^<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", target, re.DOTALL)
+            grown = opening.group(0) + _body_runs(pasted) + space + target[opening.end() :]
+        else:
+            grown = target[: -len("</w:p>")] + space + _body_runs(pasted) + "</w:p>"
+        return xml.replace(pasted, "", 1).replace(target, grown, 1)
+
+    return change
+
+
+def _review_one():
+    """The shapes #114's first review wrote into the source, each as (built, now, change,
+    the analysis re-run to this many reports or None)."""
+    from test_corruption import _ALPHA as A
+    from test_corruption import _BRAVO as B
+    from test_corruption import _PAPA as P
+    from test_corruption import _ROMEO as R
+
+    value = "{{results.cohort.n_reports}}"
+    return {
+        "B1 pasted at the end": (
+            ("# Intro", A, P, R, B),
+            ("# Intro", _ADDED, A, P, R, B),
+            _pasted_in("Alpha paragraph", "Romeo paragraph"),
+            None,
+        ),
+        "B1 below one removed": (
+            ("# Intro", _ADDED, A, P, R, B),
+            ("# Intro", A, P, R, B),
+            _pasted_in("Alpha paragraph", "Bravo paragraph"),
+            None,
+        ),
+        "B1 pasted at the start": (
+            ("# Intro", A, P, R, B),
+            ("# Intro", _ADDED, A, P, R, B),
+            _pasted_in("Alpha paragraph", "Romeo paragraph", start=True),
+            None,
+        ),
+        "B1 pasted past a heading": (
+            ("# Intro", A, P, "# Methods", R, B),
+            ("# Intro", _ADDED, A, P, "# Methods", R, B),
+            _pasted_in("Alpha paragraph", "Bravo paragraph"),
+            None,
+        ),
+        "B1 a value below the change": (
+            ("# Intro", value, P, R, B),
+            ("# Intro", _ADDED, value, P, R, B),
+            _pasted_in(">4000<", "Romeo paragraph"),
+            None,
+        ),
+        "B2 a value re-run": (
+            ("# Intro", A, P, R, value, B),
+            ("# Intro", _ADDED, A, P, R, value, B),
+            _pasted_in(">4000<", "Papa paragraph"),
+            4100,
+        ),
+    }
+
+
+@needs_pandoc
+@pytest.mark.parametrize("shape", list(_review_one()))
+def test_a_paragraph_pasted_into_a_followed_one_is_not_merged(
+    project: Path, tmp_path: Path, shape: str
+) -> None:
+    """#114's first review. B1: the paragraph directly below the change is never followed,
+    and the paste checks looked only at the paragraphs compared, so pasted into a followed
+    one it merged there and its words were in the source twice, or a value typed as a
+    number beside the binding that prints it. B2: a value re-run since the build, pasted
+    into a followed paragraph, was weighed as it prints now and merged as "...dates. 4000".
+    Each paragraph that did not come back is weighed as it printed at the build, or, where
+    that is not known, the rewording is refused."""
+    built, now, change, reports = _review_one()[shape]
+    after, before = _imported(project, tmp_path, built, now, change, reprinted=reports)
+    assert after == before, "a pasted paragraph was merged"
+
+
+@needs_pandoc
+@pytest.mark.parametrize("added_between", [False, True], ids=["added above", "added between"])
+def test_a_followed_paragraph_moved_up_past_one_not_followed_is_not_applied(
+    project: Path, tmp_path: Path, added_between: bool
+) -> None:
+    """#114's first review, B3: in Word Bravo was moved above Alpha, which stands directly
+    below the paragraph added and is not followed. Moves are filled into slots among the
+    paragraphs compared, where Bravo had passed only Papa and Romeo, and it was written below
+    Alpha, where nobody put it. With the paragraph added between Alpha and Papa instead, and
+    Bravo moved above Papa, it was written below Papa. A move past a paragraph not compared
+    is withheld."""
+    from test_corruption import _ALPHA, _BRAVO, _PAPA, _ROMEO, _word_paragraph
+
+    above = "Papa paragraph" if added_between else "Alpha paragraph"
+
+    def moved(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        target = _word_paragraph(xml, above)
+        return xml.replace(bravo, "", 1).replace(target, bravo + target, 1)
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = (
+        ("# Intro", _ALPHA, _ADDED, _PAPA, _ROMEO, _BRAVO)
+        if added_between
+        else ("# Intro", _ADDED, *blocks[1:])
+    )
+    after, before = _imported(project, tmp_path, blocks, now, moved)
+    assert after == before, "a move was written where nobody put it"
+
+
 @pytest.mark.parametrize(
     ("sent", "returned", "follow"),
     [

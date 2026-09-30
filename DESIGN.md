@@ -1680,6 +1680,18 @@ paragraph deleted in Word, its rewording merged into the followed one. `respond 
 anchors a comment on a followed paragraph at the identifier it has now, which is what G13
 looks up.
 
+The paragraph directly below what changed is never followed, and so not compared, and the
+first review of #114 found what that did beside the paragraphs that are. Cut and pasted into
+a followed paragraph in Word, it was not looked for, since the paste checks weighed only the
+paragraphs compared: its words went into the source twice, or, as a value, were typed as a
+number beside the binding that prints it. A followed paragraph moved in Word above it was
+written below it. And a value re-run since the build, pasted into a followed paragraph, was
+weighed as it prints now. Main did each of these beside a paragraph the author had reworded,
+and the fixes are main's (#116): every paragraph the document was sent with is looked for,
+one not compared by a paragraph whose source reads now as its did then, a paragraph's
+bindings and citations are not taken to print as they did, a followed paragraph's
+included, and a move past a paragraph not compared is withheld.
+
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
 changed since, it is refused, whatever is passed. If not, it is refused when a file it
@@ -4147,15 +4159,6 @@ Closed since, and why each mattered:
   as changed in the `.md` above it. A run of three paragraphs or more deleted and written
   again word for word elsewhere in the same file, in the same order, is taken for the one
   sent, as trust in place assumes the same of a paragraph that reads as it did.
-- **A paragraph pasted into another in Word, printing a value re-run since the build, can be
-  merged in a forced import.** The paste and join checks weigh the returned paragraph against
-  the other paragraphs as the fresh build prints them, and the record holds what their source
-  said, not what it printed. A value paragraph printing 4000 at the build and 4100 now, cut
-  and pasted onto the end of another paragraph, reads as new words, and "…dates. 4000"
-  merges, a number typed into prose. That happens to a paragraph trusted in place, as on
-  `main`, and to a followed one. The join of such a value paragraph into the paragraph
-  directly above it is refused where either is followed, as the one after did not come
-  back; where both are trusted in place it merges, as on `main`.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

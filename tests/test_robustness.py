@@ -281,6 +281,14 @@ def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     assert_linear(attributes, read, 4000, "unclosed attributes")
 
 
+def test_link_texts_on_one_long_line_are_read_in_linear_time(assert_linear) -> None:
+    """`build --annotated` finds link texts. Looking back to each bracket's line start took
+    74 seconds for 160,000 `[1]` on one line, against 0.06 before #106."""
+    from manuscript_guard.text.inline import link_text_spans
+
+    assert_linear(lambda count: "See [1] " * count + "\n", link_text_spans, 4000, "link texts")
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the

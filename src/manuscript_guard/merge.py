@@ -246,15 +246,6 @@ def _off_headings(
     it counted as gone, a join into the paragraph after it was read, and the next heading,
     retitled to take in its words ("Funding and competing interests"), merged into the slot
     of the paragraph deleted under it.
-
-    And an identifier alone on a block that reads mostly like text without an identifier
-    that did not come back is taken off, whatever the block's kind and whatever it shares
-    with the paragraph: it is that text, edited. "Keeps most of its words" kept a sentence's
-    identifier on the caption under it that says the same thing, on the heading it repeats,
-    on the term it introduces; and the kind says nothing of a block of the paragraph's own,
-    such as the body text beside a displayed equation or a line block. Deleted in Word, the
-    sentence was written over with the block's new text. A paragraph restyled as a heading
-    leaves nothing missing, and one a heading was joined into is still read as that join.
     """
     built_as = {b.names[0]: (b.style, b.role) for b in reference if b.names and not b.table}
     identified = set(built_as.values())
@@ -301,18 +292,7 @@ def _off_headings(
                 for name in block.names
             )
         )
-        like_gone = (
-            len(block.names) == 1
-            and not block.table
-            and not any(_squashed(was) == text for was in own)
-            and any(_alike(gone, block.text) for gone in missing)
-            and not any(
-                name in rendered
-                and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
-                for name in block.names
-            )
-        )
-        if by_text(block) or slid or like_gone:
+        if by_text(block) or slid:
             block = replace(block, names=())
         out.append(block)
     return out
@@ -721,14 +701,7 @@ _ALIKE = 0.6
 
 
 def _alike(a: str, b: str) -> bool:
-    # The two quick ratios are upper bounds on the ratio: asked first, they spare most of
-    # the pairs that do not read alike the full comparison.
-    matcher = difflib.SequenceMatcher(a=a.split(), b=b.split(), autojunk=False)
-    return (
-        matcher.real_quick_ratio() >= _ALIKE
-        and matcher.quick_ratio() >= _ALIKE
-        and matcher.ratio() >= _ALIKE
-    )
+    return difflib.SequenceMatcher(a=a.split(), b=b.split(), autojunk=False).ratio() >= _ALIKE
 
 
 def _displaced(
@@ -1653,21 +1626,6 @@ def plan_import(
             # gave the paragraph text again, and a paragraph it was pasted onto merged
             # holding its words. Refused, as main refuses it; still missing, for the rest.
             refused.append(Refusal(name, carried_by[name], (_BESIDE_CHANGED,)))
-        elif (
-            now is None
-            and name in taken_off
-            and not expected[_squashed(carried_by[name])]
-            and was.strip()
-            and _alike(was, carried_by[name])
-        ):
-            # Its identifier was taken off text that reads mostly like it, and mostly like
-            # text without an identifier that did not come back (`_off_headings`): that
-            # text, edited, with the paragraph deleted in front of it, or the paragraph
-            # reworded. Reported deleted, a paragraph only reworded was to be deleted in the
-            # .md; nothing says which, so it is refused, and still missing for the rest.
-            like = next(gone for gone in missing if _alike(gone, carried_by[name]))
-            told = _LIKE_GONE.format(text=_squashed(like)[:60])
-            refused.append(Refusal(name, carried_by[name], (told,)))
         elif now is None or (not now.strip() and was.strip()):
             gone.append(name)
         elif _same(was, now) or (
@@ -1856,13 +1814,6 @@ _SWALLOWED = (
     "it came back holding another paragraph ('{text}'): joined to it, or pasted into it, in "
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
-)
-_LIKE_GONE = (
-    "what its identifier came back on reads mostly like text without an identifier that did "
-    "not come back ('{text}'): a heading, caption, list item or the like, edited in Word with "
-    "this paragraph deleted in front of it, or this paragraph reworded to read like it. "
-    "Nothing says which. If the paragraph was deleted, delete it in the .md; if it was "
-    "reworded, make the edit there."
 )
 _NOT_BACK = "did not come back ({what})"
 _UNSURE = (

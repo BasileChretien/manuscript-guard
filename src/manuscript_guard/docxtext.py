@@ -126,8 +126,12 @@ class Block:
     arrived: bool = False
     #: What its style says it is: "heading", "caption", "reference" (an entry of the reference
     #: list), "quote" (a block quotation), "list" (a list item, by its numbering too), or ""
-    #: for anything else. See `_roles` and `_role`.
+    #: for anything else. See `_styles` and `_role`.
     role: str = ""
+    #: The kind of paragraph it was made as: its style's name, lower-cased, then "+item" where
+    #: its numbering draws a marker and "+blank" where it draws none. "" is the default style,
+    #: not numbered. Compared with what the build made, never shown. See `_style`.
+    style: str = ""
     #: Where each identifier's bookmark sits in `text`, as (identifier, offset), where that is
     #: known: not for one Word's tracked changes say belongs here from another paragraph (see
     #: `_settled`). Word keeps a joined paragraph's bookmark where its text begins, and puts a
@@ -174,6 +178,8 @@ class _Paragraph:
     #: What its style says it is; see `Block.role`.
     role: str = ""
     unread: tuple[str, ...] = ()
+    #: See `Block.style`.
+    style: str = ""
     #: See `Block.at`.
     at: tuple[tuple[str, int], ...] = ()
 
@@ -183,8 +189,24 @@ _HEADING_LEVELS = frozenset("012345678")
 _HEADING_NAME = re.compile(r"heading [1-9]")
 
 
-def _roles(archive, what: str) -> dict[str, str]:
-    """Each paragraph style's role, by style id.
+class _Styles(NamedTuple):
+    """What a document's styles and numberings say of its paragraphs."""
+
+    #: Each paragraph style's role, by style id.
+    roles: dict[str, str]
+    #: Each paragraph style's name, by style id: lower-cased, and "" for the default style.
+    names: dict[str, str]
+    #: Whether each numbering draws a marker at each level, by numbering id, then level.
+    markers: dict[str, dict[str, bool]]
+
+
+#: Pandoc styles a paragraph "First Paragraph" after a heading, a list or a table and "Body
+#: Text" after another paragraph: one kind of paragraph, by what stands before it.
+_SAME_STYLE = {"first paragraph": "body text"}
+
+
+def _styles(archive, what: str) -> _Styles:
+    """Each paragraph style's role and name, by style id, and what each numbering draws.
 
     By name and outline level, never by id: Word renames the ids when it saves in another
     language - a Japanese Word saved pandoc's `Heading1` as `1` and `BodyText` as `a0` - and
@@ -195,12 +217,16 @@ def _roles(archive, what: str) -> dict[str, str]:
     quotation, which pandoc styles "Block Text". A list item is a style that numbers its
     paragraphs, or based on one; pandoc numbers each item itself instead (`_role`).
     """
+    markers = _markers(archive, what)
     if "word/styles.xml" not in archive.namelist():
-        return {}
+        return _Styles({}, {}, markers)
     styles: dict[str, tuple[str, str, str | None, str | None]] = {}
+    default: set[str] = set()
     for style in read_part(archive, "word/styles.xml", what=f"{what}:styles").iter(W + "style"):
         if style.get(W + "type") != "paragraph":
             continue
+        if style.get(W + "default") in ("1", "true"):
+            default.add(style.get(W + "styleId", ""))
         name, based = style.find(W + "name"), style.find(W + "basedOn")
         level = style.find(f"{W}pPr/{W}outlineLvl")
         numbering = style.find(f"{W}pPr/{W}numPr/{W}numId")
@@ -235,25 +261,88 @@ def _roles(archive, what: str) -> dict[str, str]:
             return "quote"
         return "list" if numbered not in (None, "0") else ""
 
-    return {style_id: role(style_id) for style_id in styles}
+    names = {
+        style_id: "" if style_id in default else _SAME_STYLE.get(name, name)
+        for style_id, (name, _based, _level, _numbering) in styles.items()
+    }
+    return _Styles({style_id: role(style_id) for style_id in styles}, names, markers)
 
 
-def _role(element: ET.Element, roles: dict[str, str]) -> str:
+def _markers(archive, what: str) -> dict[str, dict[str, bool]]:
+    """Whether each numbering draws a marker at each level, by numbering id, then level.
+
+    By what the level says, never by its id: Word 16 renumbers when it saves, and pandoc's
+    numberings 1000 and 1001 came back as 1 and 2. A level whose text is only spaces, or
+    whose format is "none", draws nothing: pandoc numbers a list item's further paragraphs
+    so, to indent them with the item, and gives each an identifier, which it gives no item.
+    A level a numbering overrides is read in its place.
+    """
+    if "word/numbering.xml" not in archive.namelist():
+        return {}
+    root = read_part(archive, "word/numbering.xml", what=f"{what}:numbering")
+
+    def levels(parent: ET.Element) -> dict[str, bool]:
+        found = {}
+        for level in parent.iter(W + "lvl"):
+            form, text = level.find(W + "numFmt"), level.find(W + "lvlText")
+            shown = text is None or bool((text.get(W + "val") or "").strip())
+            found[level.get(W + "ilvl", "")] = shown and (
+                form is None or form.get(W + "val") != "none"
+            )
+        return found
+
+    abstracts = {
+        abstract.get(W + "abstractNumId", ""): levels(abstract)
+        for abstract in root.iter(W + "abstractNum")
+    }
+    drawn = {}
+    for num in root.iter(W + "num"):
+        of = num.find(W + "abstractNumId")
+        base = abstracts.get(of.get(W + "val", ""), {}) if of is not None else {}
+        drawn[num.get(W + "numId", "")] = {**base, **levels(num)}
+    return drawn
+
+
+def _numbered(element: ET.Element, styles: _Styles) -> str:
+    """How a paragraph is numbered itself: "item" where its numbering draws a marker, "blank"
+    where it draws none, "" where it has none. A numbering of 0 is none: Word writes it to
+    take a style's numbering off a paragraph. One that cannot be read is taken to draw a
+    marker, as an item's does."""
+    numbering = element.find(f"{W}pPr/{W}numPr/{W}numId")
+    if numbering is None or numbering.get(W + "val") == "0":
+        return ""
+    level = element.find(f"{W}pPr/{W}numPr/{W}ilvl")
+    at = level.get(W + "val", "0") if level is not None else "0"
+    drawn = styles.markers.get(numbering.get(W + "val", ""), {}).get(at, True)
+    return "item" if drawn else "blank"
+
+
+def _role(element: ET.Element, styles: _Styles) -> str:
     """A paragraph's role: its style's, unless an outline level set on the paragraph itself
-    says otherwise; and a list item's where it is numbered itself, as pandoc numbers each
-    item, with its style the body text's ("Compact", or "Body Text" in a loose list). A
-    numbering of 0 is none: Word writes it to take a style's numbering off a paragraph."""
+    says otherwise; and a list item's where it is numbered itself with a marker, as pandoc
+    numbers each item, with its style the body text's ("Compact", or none in a loose list).
+    A further paragraph of an item, numbered with no marker, is not a list item."""
     style = element.find(f"{W}pPr/{W}pStyle")
-    found = roles.get(style.get(W + "val", ""), "") if style is not None else ""
+    found = styles.roles.get(style.get(W + "val", ""), "") if style is not None else ""
     level = element.find(f"{W}pPr/{W}outlineLvl")
     if level is not None and level.get(W + "val") in _HEADING_LEVELS:
         return "heading"
     if level is not None and found == "heading":
         found = ""
-    numbering = element.find(f"{W}pPr/{W}numPr/{W}numId")
-    if numbering is not None and found in ("", "list"):
-        return "" if numbering.get(W + "val") == "0" else "list"
+    if element.find(f"{W}pPr/{W}numPr/{W}numId") is not None and found in ("", "list"):
+        return "list" if _numbered(element, styles) == "item" else ""
     return found
+
+
+def _style(element: ET.Element, styles: _Styles) -> str:
+    """The kind of paragraph this was made as (`Block.style`): its style by name, as
+    `_styles` reads it, and how it is numbered itself (`_numbered`). A style the document
+    does not define is known by its id."""
+    style = element.find(f"{W}pPr/{W}pStyle")
+    ident = style.get(W + "val", "") if style is not None else ""
+    name = styles.names.get(ident, ident.lower())
+    numbered = _numbered(element, styles)
+    return f"{name}+{numbered}" if numbered else name
 
 
 def _text(element: ET.Element, fonts: Fonts | None = None) -> str:
@@ -432,7 +521,7 @@ def _paragraph(
     table: bool,
     moves: tuple[str, ...],
     fonts: Fonts,
-    roles: dict[str, str],
+    styles: _Styles,
 ) -> _Paragraph:
     names: list[str] = []
     comments: list[str] = []
@@ -492,8 +581,9 @@ def _paragraph(
         arrived=arrived,
         retracted=retracted,
         moves=moves,
-        role=_role(element, roles),
+        role=_role(element, styles),
         unread=unread,
+        style=_style(element, styles),
         at=tuple(at.items()),
     )
 
@@ -510,7 +600,7 @@ def _visible(element: ET.Element):
 def _walk_body(
     node: ET.Element,
     moves: dict[int, tuple[str, ...]],
-    roles: dict[str, str],
+    styles: _Styles,
     *,
     fonts: Fonts,
     table: bool = False,
@@ -522,13 +612,13 @@ def _walk_body(
             continue
         if child.tag == W + "p":
             found = moves.get(id(child), ())
-            out.append(_paragraph(child, table=table, moves=found, fonts=fonts, roles=roles))
+            out.append(_paragraph(child, table=table, moves=found, fonts=fonts, styles=styles))
         elif child.tag == W + "tbl":
-            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=True))
+            out.extend(_walk_body(child, moves, styles, fonts=fonts, table=True))
         elif child.tag not in _UNSEEN and child.tag != W + "sectPr":
             # Content controls, custom XML, table rows and cells: look inside.
             inside = table or child.tag == W + "tc"
-            out.extend(_walk_body(child, moves, roles, fonts=fonts, table=inside))
+            out.extend(_walk_body(child, moves, styles, fonts=fonts, table=inside))
     return out
 
 
@@ -631,14 +721,14 @@ def paragraphs_of(document: Path, part: str = "word/document.xml") -> list[_Para
             if part not in archive.namelist():
                 return []
             root = read_part(archive, part, what=f"{document.name}:{part}")
-            roles = _roles(archive, document.name)
+            styles = _styles(archive, document.name)
             # Which font a run is in decides what its text is; see `wordfonts`.
             fonts = Fonts.of(archive, document.name)
     except UnsafeDocument as exc:
         raise DocumentUnreadable(str(exc)) from exc
     body = root.find(W + "body")
     body = body if body is not None else root
-    return _settled(_walk_body(body, _move_names(body), roles, fonts=fonts))
+    return _settled(_walk_body(body, _move_names(body), styles, fonts=fonts))
 
 
 def blocks(document: Path) -> list[Block]:
@@ -765,6 +855,7 @@ def _fold(run: list[_Paragraph]) -> list[Block]:
             unread=unread,
             arrived=arrived,
             role=role,
+            style=kept[0].style,
             at=_places(kept, text),
         )
     ]

@@ -2441,7 +2441,15 @@ The checks that came out of the review rounds guard the tracked path as well:
   a paragraph whose text is known, and in the block, came back there. An identifier on a list
   item or a block quotation is taken off, as one on a heading is (`merge._off_headings`):
   the build gives neither one, and a lead-in sentence cut from before a list left its
-  identifier on the first item, which, edited, merged over the lead-in.
+  identifier on the first item, which, edited, merged over the lead-in. So is one on any
+  other kind of block the build gives no identifier, read from the fresh build and not
+  listed: the term of a tight definition list, a div with a style of its own, a code block.
+  A block's kind is its style's name and what its numbering draws (`docxtext.Block.style`),
+  never an id: Word 16 saved pandoc's `BodyText` as `a0` and its numberings 1000 and 1001
+  as 1 and 2. An identifier stays on a block of such a kind only where that is the kind its
+  own paragraph was built as. The second paragraph of a list item has an identifier and is
+  numbered with no marker; kept on the item after it because some identified paragraph
+  was numbered too, the item was written over it.
   Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
   re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
   one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
@@ -4326,10 +4334,16 @@ Closed since, and why each mattered:
   known and is not in what it holds, and where it holds text that reads exactly as another
   paragraph or a heading. Where its paragraph's text is not known, holding text that reads as
   nothing sent - a sentence typed where the cut one stood, say - it counts as the paragraph,
-  reworded, and a paste of its old text elsewhere is not looked for. Nor is it where the text
-  it holds is a block the build gave no identifier, changed in the `.md` since the build and
-  not a heading, caption, reference entry, list item or quotation, which are known by their
-  style: what such a block printed as sent is not known. The record keeps a hash of each
+  reworded, and a paste of its old text elsewhere is not looked for. Text typed after an
+  identifier is that identifier's, wherever the identifier went: with the emptied line
+  joined onto the end of the paragraph before it, by Backspace, a sentence typed there next
+  is held by the cut paragraph's identifier, and counts as that paragraph the same way. Nor
+  is a paste looked for where the text the identifier holds is a block the build gave no
+  identifier, changed in the `.md` since the build and of the kind the identifier's own
+  paragraph was built as: body text beside body text, such as a paragraph with a code fence
+  directly under it, or the term of a tight definition list after a loose one deleted whole.
+  Blocks of every other kind are known by their kind (`merge._off_headings`); what one of
+  the same kind printed as sent is not known. The record keeps a hash of each
   source block, not what it printed, so the text read as "something else the document was
   sent with" is the fresh build's; asking the record whether the blocks beside each
   paragraph changed since would refuse every rewording that gained five words whenever the
@@ -4452,12 +4466,15 @@ Closed since, and why each mattered:
     paragraphs joined into one. The deletion is not reported, and the join named is not the
     one made. Nothing is written.
   - *A paragraph sent with a caption's style* - a note in a custom-style div - keeps its
-    identifier on any caption. Deleted without Track Changes just above a table whose
-    caption was edited, it has the caption's new text written over it, as on `main`.
-    Nothing in the toolkit writes such a div.
-  - *A paragraph restyled as a heading and reworded past most of its words* is reported
-    deleted, and the heading as new text. One restyled that keeps most of its words merges
-    its rewording, and the style change is dropped without a word, as on `main`.
+    identifier on a caption of that same style. Deleted without Track Changes just above a
+    table whose caption was edited, it has the caption's new text written over it, as on
+    `main`. Nothing in the toolkit writes such a div.
+  - *A paragraph restyled as a heading, a list item or a quotation, or given the style of
+    any other block the build leaves without an identifier, and reworded past most of its
+    words* is reported deleted, and the restyled block as new text. One restyled that keeps
+    most of its words merges its rewording, and the style change is dropped without a word,
+    as on `main`. So does one given a style the build uses nowhere, however much of it was
+    reworded.
   - *A subheading typed above a paragraph without Track Changes* takes that paragraph's
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its

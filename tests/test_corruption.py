@@ -6156,6 +6156,118 @@ def test_a_paragraph_the_author_changed_cut_before_a_quotation_is_looked_for(
     assert after == before, out
 
 
+#: A loose list: its first item has a second paragraph, which the build gives an identifier
+#: and pandoc numbers with no marker, in front of an item, which has none.
+_LOOSE = (
+    "- zulu item one\n\n"
+    "  Papa continuation paragraph reports that twelve reports were excluded.\n\n"
+    "- zulu item two"
+)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("how", ["deleted", "cut"])
+def test_a_list_items_second_paragraph_is_not_the_next_item(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """Round 2 of #119's review, on main too. The second paragraph of a loose list item has
+    an identifier, and being numbered it read as a list item, like the item after it.
+    Deleted or cut in Word, it left its identifier on that item, which, "sent with the role
+    it has", kept it: edited, the item was written over the paragraph's source line and the
+    item left as it was. The paragraph was built with no marker and the item with one, so
+    the item is not a block the build gave that identifier."""
+    from test_roundtrip import _word_delete
+
+    blocks = ("# Intro", _ALPHA, _LOOSE, _ROMEO, _BRAVO)
+
+    def change(xml: str) -> str:
+        if how == "cut":
+            xml = _pasted("Papa continuation", "Romeo paragraph", left="next")(xml)
+        else:
+            xml = _word_delete(xml, _word_paragraph(xml, "Papa continuation"))
+        return xml.replace("zulu item two", "zulu item number two", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("block", "edit"),
+    [
+        (
+            "Zulu ratio of the reports\n:   the zulu definition of the ratio",
+            ("Zulu ratio of the reports", "Zulu ratio of all the reports"),
+        ),
+        (
+            '::: {custom-style="Zulu Note"}\nzulu styled note text here.\n:::',
+            ("zulu styled note text", "zulu styled note words"),
+        ),
+        ("```\nzulu code line one\n```", ("zulu code line one", "zulu code line two")),
+    ],
+    ids=["definition list", "custom-style div", "code block"],
+)
+def test_a_paragraph_cut_before_another_block_without_an_identifier_is_not_that_block(
+    project: Path, tmp_path: Path, block: str, edit: tuple[str, str]
+) -> None:
+    """Round 2 of #119's review, on main too. An identifier was taken off the blocks known
+    by a role: a heading, a caption, a reference entry, a list item, a quotation. A paragraph
+    cut before the term of a tight definition list, a div with a style of its own or a code
+    block left its identifier there, and edited, that block was written over the paragraph.
+    The build gives none of them an identifier, and an identifier left on a block of a kind
+    the build gives none, which is not the kind its own paragraph was built as, is taken
+    off, whatever the kind."""
+    blocks = ("# Intro", _ALPHA, _LEAD, block, _ROMEO, _BRAVO)
+
+    def change(xml: str) -> str:
+        return _pasted("Papa paragraph", "Romeo paragraph", left="next")(xml).replace(*edit, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+
+
+_CONTINUED = "Papa continuation paragraph reports that twelve reports were excluded."
+
+
+def _restyled(was: str, now: str):
+    """The paragraph reading `was` given a style the build uses nowhere, and rewritten as
+    `now`."""
+
+    def change(xml: str) -> str:
+        paragraph = _word_paragraph(xml, was)
+        styled = re.sub(r'<w:pStyle w:val="[^"]*"\s*/>', '<w:pStyle w:val="ZuluOwn"/>', paragraph)
+        assert styled != paragraph, "the paragraph has no style to change"
+        return xml.replace(paragraph, styled.replace(was, now, 1), 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("block", "was", "now", "restyle"),
+    [
+        (_LOOSE, _CONTINUED, "Twelve reports had no date and were left out.", False),
+        (_BRAVO, _BRAVO, "Exposure was counted for thirty days from the first dose.", True),
+    ],
+    ids=["a list item's second paragraph", "given a style the build uses nowhere"],
+)
+def test_a_paragraph_still_takes_a_rewording_where_no_block_without_an_identifier_is_like_it(
+    project: Path, tmp_path: Path, block: str, was: str, now: str, restyle: bool
+) -> None:
+    """Guards for the rule above, each reworded past most of its words, as main merges
+    them. A list item's second paragraph is still the kind of block it was built as. And a
+    paragraph the co-author gave a style the build uses nowhere is not on a block the build
+    gave no identifier."""
+    blocks = ("# Intro", _ALPHA, _ROMEO, block)
+
+    def change(xml: str) -> str:
+        assert was in xml
+        return _restyled(was, now)(xml) if restyle else xml.replace(was, now, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before.replace(was, now, 1) != before, out
+
+
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_a_paragraph_whose_text_is_known_is_looked_for_past_new_text_on_its_line(
     project: Path, tmp_path: Path

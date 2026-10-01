@@ -334,6 +334,20 @@ def test_quotation_marks_before_a_bracket_are_read_in_linear_time(assert_linear)
     assert_linear(lambda count: "> " * count + "x[t]: a\n", link_text_spans, 2000, "quote marks")
 
 
+def test_quotation_marks_on_many_lines_are_read_in_linear_time(assert_linear) -> None:
+    """The pattern that read a line's quotation marks kept a position for each mark, and its
+    cost a mark rose once they outgrew the cache: on forty lines, eight times the marks took
+    18 to 25 times as long, on every run. One long line does not show it: there both sizes
+    are past the cache, the pattern passed, and where the cliff falls depends on the machine,
+    so that test failed on main's macOS job at 17.5 and 21.7 with nothing wrong in the scan."""
+    from manuscript_guard.text.inline import link_text_spans
+
+    def quoted(count: int) -> str:
+        return ("> " * count + "x[t]: a\n") * 40
+
+    assert_linear(quoted, link_text_spans, 500, "quote marks on forty lines")
+
+
 def test_brackets_after_quotation_marks_are_read_in_linear_time(assert_linear) -> None:
     """Each `[a]:` read the line's quotation marks again, from the line's start: 8,000 marks
     and 8,000 brackets on one line took 17 seconds in `build --annotated`."""
@@ -343,6 +357,37 @@ def test_brackets_after_quotation_marks_are_read_in_linear_time(assert_linear) -
         return "> " * count + "x" + "[a]:" * count + "\n"
 
     assert_linear(line, link_text_spans, 500, "brackets after quotation marks")
+
+
+def test_quotation_marks_are_read_as_their_pattern_reads_them() -> None:
+    """`_marks_end` and `_defined` read a line's quotation marks without the pattern that
+    states them, which kept a position for each mark. They have to agree with it on every
+    line of every text: where the marks end, from the line's own start and from its place in
+    the text, and which label a definition has. A tab or a carriage return is no mark's
+    space, to the pattern or to them."""
+    import random
+    import re
+
+    from manuscript_guard.text.inline import _defined, _marks_end
+
+    marks = r"(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?"
+    stated = re.compile(marks)
+    definition = re.compile(marks + r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
+    chance = random.Random(20261001)
+    tab, carriage_return = chr(9), chr(13)
+    pieces = [" ", " ", ">", ">", "> ", "    ", "     ", "[t]:", "[^n]:", "[", "]", ":", "x",
+              "\n", tab, carriage_return]
+    for _ in range(40000):
+        text = "".join(chance.choice(pieces) for _ in range(chance.randint(0, 14)))
+        at = 0
+        for line in text.split("\n"):
+            assert _marks_end(line) == stated.match(line).end(), repr(line)
+            assert _marks_end(text, at) == stated.match(text, at).end(), repr((text, at))
+            mine, theirs = _defined(line), definition.match(line)
+            assert (mine is None) == (theirs is None), repr(line)
+            if mine is not None:
+                assert (mine.end(), mine.group(1)) == (theirs.end(), theirs.group(1)), repr(line)
+            at += len(line) + 1
 
 
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])

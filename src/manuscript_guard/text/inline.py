@@ -195,11 +195,37 @@ _LINK_TEXT = re.compile(
 )
 # A link's definition, at the margin or in a quotation, which pandoc reads only where a
 # block may start: under a blank line or another definition, not under a paragraph's line.
-# The spaces between two marks are read in one piece: split between the first mark's own
-# and the next one's, a line of `> ` that was no definition was read every way.
-_MARKS = r"(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?"
-_DEFINITION = re.compile(_MARKS + r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
-_QUOTE_MARKS = re.compile(_MARKS)
+# Its quotation marks follow the pattern `(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?`, but that pattern
+# is not what reads them. Two earlier ways of reading them were slow on a line of `> `:
+# - with a space of its own after each mark, a line that was no definition was read every way;
+# - as written above, the pattern kept a position for each mark. The number of steps was
+#   linear, but each mark cost more once the positions outgrew the cache, and by how much
+#   depended on the machine.
+# `_marks_end` reads the run of spaces and `>` in one piece and keeps nothing for each mark.
+_MARK_RUN = re.compile(r"[ >]*")
+_DEFINED = re.compile(r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
+_TOO_FAR = " " * 5
+
+
+def _marks_end(text: str, start: int = 0) -> int:
+    """Where the quotation marks that open the line at `start` end: `start` where there
+    are none. A mark stands at most three spaces from the margin and four from the mark
+    before it, and the last one takes one space after it."""
+    run = text[start : _MARK_RUN.match(text, start).end()]
+    apart = run.find(_TOO_FAR)
+    if apart != -1:
+        run = run[:apart]
+    last = run.rfind(">")
+    if last == -1 or len(run) - len(run.lstrip(" ")) > 3:
+        return start
+    end = start + last + 1
+    return end + 1 if text.startswith(" ", end) else end
+
+
+def _defined(line: str) -> re.Match[str] | None:
+    """The link definition `line` opens, its label in group 1, or None. The label's
+    bracket follows the marks: after fewer of them there is another mark, and no bracket."""
+    return _DEFINED.match(line, _marks_end(line))
 
 
 def _label(text: str) -> str:
@@ -217,10 +243,10 @@ def _definitions(text: str) -> list[tuple[int, int, str]]:
     starts = True
     offset = 0
     for line in scannable(text).split("\n"):
-        defined = _DEFINITION.match(line)
+        defined = _defined(line)
         if defined is not None and starts:
             found.append((offset, offset + len(line), defined.group(1)))
-        starts = defined is not None or not line[_QUOTE_MARKS.match(line).end() :].strip()
+        starts = defined is not None or not line[_marks_end(line) :].strip()
         offset += len(line) + 1
     return found
 
@@ -284,7 +310,7 @@ def link_text_spans(text: str) -> list[tuple[int, int]]:
         defines = False
         if text.startswith(":", found.end()):
             if marks_of != line:
-                marks_of, marks_end = line, _QUOTE_MARKS.match(text, line).end()
+                marks_of, marks_end = line, _marks_end(text, line)
             defines = marks_end == found.start()
         if found.start() != label_at and not defines and _is_link(found, labels):
             spans.append(found.span())

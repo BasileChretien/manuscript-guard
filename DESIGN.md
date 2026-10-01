@@ -1622,10 +1622,11 @@ and its text not, with a value or a citation in it: "Results in 4000 reports", r
 typed into prose where a binding now prints 4100.
 
 `import` compares, moves and merges only the paragraphs whose identifier passes that test,
-and names the rest as not compared, whether they came back or not; `respond --open` keeps a
-comment's anchor only on such a paragraph. It does not matter why an identifier came to name
-other text, a source edited since, a release that numbers or tags paragraphs by other rules:
-each is caught the same way, one paragraph at a time. What is left out still counts for what
+or that are followed (below), and names the rest as not compared, whether they came back or
+not; `respond --open` keeps a comment's anchor only on such a paragraph. It does not matter
+why an identifier came to name other text, a source edited since, a release that numbers or
+tags paragraphs by other rules: each is caught the same way, one paragraph at a time. What
+is left out still counts for what
 is compared beside it. A paragraph joined in Word to one left out is refused as a join, as
 is one whose next paragraph as sent is left out and did not come back, which a join retyped
 across the boundary looks like: merged as a rewording, either put the other paragraph's
@@ -1638,6 +1639,70 @@ document that records nothing has no order as sent, and the one paragraph it can
 without trusting the rest less, a value it may never have carried, is weighed the same way.
 A number for the rules was tried first and had to be bumped by every change to them; three
 reviews each found a change that would not have.
+
+**A paragraph whose identifier shifted is followed where nothing beside it changed.** One
+paragraph added to the source since the build, or removed, moves every identifier below it
+by a block, and refused, every co-author edit below it had to be carried over by hand. So an
+identifier that no longer names its paragraph is followed to the one that does
+(`roundtrip._followed`) when what stood around the paragraph at the build stands around it
+now: its whole record - its text, the block before it, the blocks without an identifier on
+either side up to the next paragraphs - and the text of those two paragraphs, before and
+after it as the build prints the document, across files. The record holds nothing of the
+paragraphs beside, and `import` weighs a join against the paragraph after: with one added
+there since the build, the join was weighed against text the co-author never had. That
+window has to be found once in its file then and now, and the paragraphs compared have to
+keep their order, or a move the author made reads as the co-author moving the paragraph
+back. The paragraph directly beside what changed is not followed, and nothing is in a
+document built before the record held the blocks beside each paragraph.
+
+#84 tried this first on the record as it was, which hashed the text from the marker on and
+the block before, and looked past each kind of block a co-author never had to find the
+heading run into a paragraph or the paragraph joined to it: past an added paragraph, then a
+list, a quotation or a sub-heading, then a table or an equation. Each of three rounds of
+review found the next kind. The fourth found two that no such looking could reach: a heading
+written straight above the paragraph with no blank line, outside every hash, renamed or
+removed since; and a heading holding a value re-run since the build, whose source had not
+changed while what it printed had. The window above answers the first. For the second, a
+followed paragraph is treated as one in a document built from other inputs, whatever the
+stamp says, since its record vouches for the source around it and not for what that
+printed: its rewording is refused beside a heading or caption missing from the returned
+document, and when its next paragraph as sent did not come back. "None." joined in Word with
+a value paragraph printing 4000 then and 4100 now read as a rewording, not a join, and
+"None. 4000" merged, a number typed beside the binding that prints it. A rewording of the
+paragraph before a followed one that did not come back is refused too: main left the
+followed one out of the comparison, and refused that rewording for it.
+
+A followed paragraph is read under the identifier it has now: the returned document is
+renamed, not the source. The identifier it has now can be carried in the returned document
+by another paragraph, one not followed, since the paragraphs moved: that one is read under a
+name no paragraph has (`roundtrip.named_now`). Read under its own, with the followed
+paragraph deleted in Word, its rewording merged into the followed one. `respond --open`
+anchors a comment on a followed paragraph at the identifier it has now, which is what G13
+looks up.
+
+The paragraph directly below what changed is never followed, and so not compared, and the
+first review of #114 found what that did beside the paragraphs that are. Cut and pasted into
+a followed paragraph in Word, it was not looked for, since the paste checks weighed only the
+paragraphs compared: its words went into the source twice, or, as a value, were typed as a
+number beside the binding that prints it. A followed paragraph moved in Word above it was
+written below it. And a value re-run since the build, pasted into a followed paragraph, was
+weighed as it prints now. Main did each of these beside a paragraph the author had reworded,
+and the fixes are main's (#116, #119):
+- a paragraph the document was sent with that did not come back with text of its own is
+  looked for, one not compared by a paragraph whose source reads now as its did then;
+- a paragraph's bindings and citations are not taken to print as they did, and a followed
+  paragraph's are treated so too;
+- a move past a paragraph not compared is withheld.
+
+The fix-only review found the first rule still missed what Word 16 does. A cut paragraph's
+identifier stays in front of the next paragraph's own, or on the emptied line, and the
+paragraph counted as having come back. #119 counts it as gone wherever the text its
+identifier holds, from its bookmark to the next one's, is not its own
+(`merge._came_back_whole`). That also covers a followed value whose identifier slid onto a
+paragraph not compared, which had read as a join. Where each bookmark sits is read under
+the names the returned document is read under (`roundtrip.named_now`): under the old ones,
+a block holding a followed identifier or a renamed one could not say whose text either
+held, and a paragraph standing there untouched counted as gone.
 
 A document from before paragraphs were recorded is refused only where it matters, which
 can only be judged against the text it was built from. If anything it was built from has
@@ -4176,14 +4241,35 @@ Closed since, and why each mattered:
   advice is the way through: rebuild and resend.
 - **A paragraph the source changed since the build takes no co-author edit, even under
   `--force`.** Its identifier no longer names the text they edited, so the edit is named and
-  left, to be carried over by hand, even when it would have merged cleanly. Nor does every
-  paragraph below one the source added or removed since the build, whose identifiers all
-  moved by one block and now name their neighbours: an author who inserts a paragraph near
-  the top before importing ports every co-author edit below it by hand. Re-pointing an
-  identifier to the paragraph now holding its recorded text would recover most of them, and
-  it is not done. So is an edit to a paragraph that reads word for word like another in its
-  file once the block before it changed, and to the paragraph before one that is left out
-  of the comparison and did not come back, which may be a join.
+  left, to be carried over by hand, even when it would have merged cleanly. So is an edit to
+  a paragraph that reads word for word like another in its file once the block before it
+  changed, and to the paragraph before one that is left out of the comparison and did not
+  come back, which may be a join.
+- **A paragraph whose identifier shifted is followed only where nothing beside it
+  changed.** Below a paragraph the source added or removed since the build, identifiers
+  moved by a block and name their neighbours; a paragraph is followed to where it stands now
+  only as `_followed` allows, and the rest are named as not compared, their edits carried
+  over by hand:
+  - the paragraph directly beside what the author added, removed, moved or reworded, and
+    any beside a heading, caption, table or comment changed since, since its record or the
+    text of the paragraph before or after it differs;
+  - a paragraph whose text, the blocks around it and the text of the paragraphs either side
+    of it are found more than once in its file, then or now, such as "None." under the same
+    heading between two others that read "None.";
+  - a paragraph out of order with the others compared, the author having moved it or a run
+    around it: of two runs swapped, the middle of only one is followed;
+  - a paragraph moved into another file, and every one in a document built before the
+    record held the blocks around each paragraph.
+
+  A followed paragraph's rewording is also refused beside a heading or caption missing from
+  the returned document, and when the paragraph after it as sent did not come back, as is
+  that of the paragraph before a followed one that did not, though each may be the
+  co-author's own deletion. A heading the author moved in the `.md` past a
+  followed paragraph, or past a run around it, leaves the paragraph where Word has it on the
+  other side of the heading: reported as moved into another section, not applied, and marked
+  as changed in the `.md` above it. A run of three paragraphs or more deleted and written
+  again word for word elsewhere in the same file, in the same order, is taken for the one
+  sent, as trust in place assumes the same of a paragraph that reads as it did.
 - **A join retyped from a paragraph left out of the comparison into the next reads as a
   deletion.** With the first paragraph not compared and the second's bookmark lost, the
   second is reported deleted in Word, and the first not compared. Nothing is written, but

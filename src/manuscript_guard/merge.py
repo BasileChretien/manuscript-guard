@@ -378,27 +378,22 @@ def _gone_beside(
 
 
 class _Untold(NamedTuple):
-    """What the record says of a paragraph whose identifier came back on a block that is
-    not, or may not be, that paragraph alone."""
+    """A paragraph whose identifier came back on a block that cannot be told from it."""
 
-    #: What the author is told, where the block cannot be told from the paragraph: its
-    #: identifier is taken off, and the paragraph refused.
+    #: What the author is told.
     why: str
     #: Whether the block may be the paragraph by itself, reworded. It is then no new text
     #: beside the paragraphs around it: see `plan_import`.
     alone: bool = False
-    #: The heading or other block above that was run into the paragraph, where that is
-    #: what the block is: it keeps its identifier, and is refused as that join.
-    joined: str = ""
 
 
 def _off_as_sent(
     printed: Sequence[Block], returned: list[Block], expected: Counter
 ) -> tuple[list[Block], dict[str, _Untold]]:
     """`_off_headings` for a document whose record says what it printed (`printed`, from
-    `roundtrip.read_printed`): the identifiers taken off a block they slid onto, and what
-    is known of those that may as well be on their own paragraph, or are on it with the
-    block above run in (`_Untold`).
+    `roundtrip.read_printed`): the identifiers taken off a block they slid onto, and, of
+    those, the ones that may as well be on their own paragraph, each with what the author
+    is told.
 
     Without the record the question was put to the block: of what kind it is, and whether it
     keeps most of the paragraph's words. Both guess. A sentence announcing a table reads
@@ -488,8 +483,8 @@ def _off_as_sent(
             head, held = _squashed(block.text[:behind]), _squashed(block.text[behind:])
             if not held:
                 return "off", None
-            if took := _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
-                return "kept", _Untold("", joined=took)
+            if _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
+                return "kept", None
             return "untold", _Untold(_BEHIND.format(head=head[-60:], held=held[:60]))
         above = _gone_beside(sent, place[name], -1, missing, lost)
         gone = above + _gone_beside(sent, place[name], 1, missing, lost)
@@ -504,8 +499,8 @@ def _off_as_sent(
         theirs = {(b.style, b.role) for b in gone}
         if kind == mine and kind not in theirs:
             return "kept", None
-        if took := _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
-            return "kept", _Untold("", joined=took)
+        if _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
+            return "kept", None
         if own in text and (kind == mine or any(_squashed(b.text) in text for b in gone)):
             return "kept", None
         if like_it is None:
@@ -1861,7 +1856,7 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
-        elif now is None and name in untold and untold[name].why:
+        elif now is None and name in untold:
             # Reported deleted, a paragraph that may only have been reworded was to be
             # deleted in the .md. Refused, and still missing for the checks below.
             refused.append(Refusal(name, carried_by[name], (untold[name].why,)))
@@ -1897,11 +1892,7 @@ def plan_import(
             refused.append(Refusal(name, now, (_GLUED,)))
         elif name in in_parts or held.get(name) == "in-parts":
             refused.append(Refusal(name, now, (_IN_PARTS,)))
-        elif took := _took_in(name, now, was, reference, missing) or (
-            # As the document was sent, where its record says: the fresh build may print
-            # the heading otherwise, and the join was then not found, and merged.
-            untold[name].joined if name in untold else ""
-        ):
+        elif took := _took_in(name, now, was, reference, missing):
             refused.append(Refusal(name, now, (_TOOK_IN.format(text=took[:60]),)))
         elif name in beside_changed or printed_otherwise(name):
             refused.append(Refusal(name, now, (_BESIDE_CHANGED,)))

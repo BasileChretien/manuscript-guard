@@ -254,8 +254,20 @@ Comments are printed, never stored. Recording them is the reader's job:
 
 A built document records what each of its paragraphs said in the source, what came before
 it, and the headings, captions, tables and comments around it. `import` merges an edit only
-into a paragraph that still reads that way where it stands. Below a paragraph added or
-removed since the build, identifiers move by one block and name their neighbours. A
+into a paragraph that still reads that way where it stands.
+
+The build also writes what the document printed, block by block, to a file under
+`build/records/`, and the document carries that file's name. `import` reads it to know
+what a paragraph deleted or cut in Word had said, and which heading, caption or list item
+stood under a paragraph, even after the source changed or the analysis was re-run. The file
+stays on the machine that built the document and is never sent. If `import` says the
+document `names a record of what it printed ... which is not here`, it is being imported
+on another machine or after `build/` was cleaned: nothing wrong is written, but more edits
+are refused. Import where the document was built, or carry the refused edits over by hand.
+Old records are small and safe to delete once every document built from them is back.
+
+Below a paragraph added or removed since the build, identifiers move by one block and name
+their neighbours. A
 paragraph there is followed to where it stands now when all of the following read as they
 did at the build:
 - its text, the block before it and the blocks around it;

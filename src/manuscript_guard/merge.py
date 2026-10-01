@@ -341,14 +341,147 @@ def _given_back(
     return out
 
 
+def _under(printed: Sequence[Block]) -> dict[str, list[Block]]:
+    """For each paragraph of the document as sent, the text without an identifier that stood
+    directly under it, in order, up to the next paragraph with one or the next table, figure
+    or equation. An identifier left behind goes onto the paragraph after its own, so this is
+    all it can be on that is not a paragraph with an identifier of its own."""
+    under: dict[str, list[Block]] = {}
+    last: str | None = None
+    for block in printed:
+        if block.table:
+            last = None
+        elif block.names:
+            last = block.names[0]
+            under[last] = []
+        elif block.text and last is not None:
+            under[last].append(block)
+    return under
+
+
+def _off_as_sent(
+    printed: Sequence[Block], returned: list[Block], expected: Counter
+) -> tuple[list[Block], dict[str, str]]:
+    """`_off_headings` for a document whose record says what it printed (`printed`, from
+    `roundtrip.read_printed`): the identifiers taken off a block they slid onto, and, of
+    those, the ones that may as well be on their own paragraph, each with the text as sent of
+    the block it may be on instead.
+
+    Without the record the question was put to the block: of what kind it is, and whether it
+    keeps most of the paragraph's words. Both guess. A sentence announcing a table reads
+    like the caption under it, and deleted in Word with the caption edited, the caption was
+    written over it; asked instead whether the block reads like any text without an
+    identifier that is gone, a paragraph resembling a block elsewhere in the paper lost its
+    identifier whenever that block was touched. The record says what stood under each
+    paragraph (`_under`), and an identifier alone on a block can only be on its own
+    paragraph or on one of those. So:
+
+    - A block that reads exactly as its paragraph did is that paragraph. So is one where
+      nothing that stood under the paragraph is gone, whatever style it was given and
+      however far it was reworded: there is nothing else for it to be.
+    - Otherwise something under it is gone, each block of the run that leads it. The block
+      is the paragraph where it is of the paragraph's kind and none of them is; where the
+      heading above was run into it (`_took_in`); where it holds the paragraph's text whole
+      in the paragraph's kind, or with one of them whole beside it, which is a join.
+    - Then by the words. Reading mostly like one of them and not like the paragraph, it is
+      that block, edited, and the paragraph was deleted. Reading mostly like the paragraph
+      and like none of them, in a kind that is not theirs, it is the paragraph. Reading like
+      neither in a kind only they had, it is one of them, as a retitled heading is.
+    - What is left cannot be told: it reads like both, or like neither in a kind both had,
+      or like the paragraph in a kind only they had. The identifier is taken off, so nothing
+      is written, and the paragraph is refused rather than reported deleted.
+
+    A block with several identifiers, or with one the record does not hold, is judged as
+    `_off_headings` judges it, by its kind and its words, against the document as sent.
+    Which identifier holds what there is `_came_back_whole`'s to say.
+    """
+    sent = list(printed)
+    said = {b.names[0]: b.text for b in sent if b.names and not b.table}
+    kinds = {b.names[0]: (b.style, b.role) for b in sent if b.names and not b.table}
+    under = _under(sent)
+    bare = {(b.style, b.role) for b in sent if not (b.names or b.table) and b.text}
+    by_kind = _off_headings(said, sent, returned, expected)
+
+    def by_text(block: Block) -> bool:
+        text = _squashed(block.text)
+        return (
+            bool(block.names)
+            and not block.table
+            and bool(expected[text])
+            and not any(_squashed(said.get(name, "")) == text for name in block.names)
+        )
+
+    missing = _untagged_missing(
+        sent, [replace(b, names=()) if by_text(b) else b for b in returned]
+    )
+
+    def whose(block: Block, name: str) -> tuple[str, str]:
+        own, text = _squashed(said[name]), _squashed(block.text)
+        if not own or text == own:
+            return "kept", ""
+        left, gone = Counter(missing), []
+        for below in under.get(name, ()):
+            if not left[below.text]:
+                break
+            left[below.text] -= 1
+            gone.append(below)
+        if not gone:
+            return "kept", ""
+        kind, mine = (block.style, block.role), kinds[name]
+        theirs = {(b.style, b.role) for b in gone}
+        if kind == mine and kind not in theirs:
+            return "kept", ""
+        if _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
+            return "kept", ""
+        if own in text and (kind == mine or any(_squashed(b.text) in text for b in gone)):
+            return "kept", ""
+        like_it = _alike(said[name], block.text)
+        like = next((b.text for b in gone if _alike(b.text, block.text)), "")
+        if like and not like_it:
+            return "off", ""
+        if like_it and not like and (kind == mine or kind not in theirs):
+            return "kept", ""
+        if not like and not like_it and kind != mine:
+            if kind in theirs or block.role or kind in bare:
+                return "off", ""
+            return "kept", ""
+        return "untold", like or gone[0].text
+
+    out: list[Block] = []
+    untold: dict[str, str] = {}
+    for block, judged in zip(returned, by_kind, strict=True):
+        verdict, like = ("off", "") if by_text(block) else ("kept", "")
+        if verdict == "kept" and block.names and not block.table:
+            if len(block.names) == 1 and block.names[0] in said:
+                verdict, like = whose(block, block.names[0])
+                if verdict == "untold":
+                    untold[block.names[0]] = like
+            elif not judged.names:
+                verdict = "off"
+        out.append(block if verdict == "kept" else replace(block, names=()))
+    return out, untold
+
+
 def _recovered(
-    rendered: dict[str, str], reference: list[Block], returned: list[Block]
-) -> list[Block]:
-    """The returned document with identifiers put back where only exact text can say.
-    `docxtext` has already put them back where the tracked changes say."""
-    expected = _untagged_counts(reference)
-    off = _off_headings(rendered, reference, returned, expected)
-    return _given_back(rendered, off, expected)
+    rendered: dict[str, str],
+    reference: list[Block],
+    returned: list[Block],
+    printed: Sequence[Block] | None = None,
+) -> tuple[list[Block], dict[str, str]]:
+    """The returned document with identifiers put back where only exact text can say, and
+    those of them that could not be told from their own paragraph (`_off_as_sent`).
+    `docxtext` has already put them back where the tracked changes say. With `printed`, what
+    the document's record says it printed, the text is the document's as sent; without, the
+    fresh build's."""
+    if printed is None:
+        expected = _untagged_counts(reference)
+        off = _off_headings(rendered, reference, returned, expected)
+        return _given_back(rendered, off, expected), {}
+    expected = _untagged_counts(list(printed))
+    then = {b.names[0]: b.text for b in printed if b.names and not b.table}
+    off, untold = _off_as_sent(printed, returned, expected)
+    as_sent = {name: then.get(name, text) for name, text in rendered.items()}
+    return _given_back(as_sent, off, expected), untold
 
 
 #: The fewest of its words new text must share with what a paragraph lost for `_split_off`
@@ -1420,6 +1553,7 @@ def plan_import(
     followed: frozenset[str] = frozenset(),
     same_text: dict[str, str] | None = None,
     stale: bool = False,
+    printed: Sequence[Block] | None = None,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -1464,6 +1598,14 @@ def plan_import(
     come back is looked for by the text of a paragraph whose source reads now as its did
     then, `same_text` (from `roundtrip.Numbering`), and where there is none, what it said is
     not known, and a rewording that gained words is refused (`_took_unknown`).
+
+    `printed` is what the document printed when it was built, block by block, from the
+    record the build wrote beside it (`roundtrip.read_printed`), under the identifiers the
+    returned document is read under. With it nothing in the last paragraph is guessed: what
+    each paragraph said, compared or not, re-run since or not, is what it printed; what a
+    paragraph gained is counted from what it printed; and an identifier left on another
+    block is told by what stood under its paragraph (`_off_as_sent`). Without it, for a
+    document built before the record or imported away from it, the rules above stand.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1474,7 +1616,9 @@ def plan_import(
         if b.names and not b.table and b.names[0] in known
     }
     carried_by = {n: b.text for b in returned if not b.table for n in b.names}
-    returned = _recovered(rendered, reference, returned)
+    returned, untold = _recovered(rendered, reference, returned, printed)
+    # What each paragraph the document was sent with printed, where its record says.
+    then = {b.names[0]: b.text for b in printed or () if b.names and not b.table}
     # Identifiers taken off a heading or caption they slid onto: see the refusal below.
     taken_off = set(carried_by) - {n for b in returned if not b.table for n in b.names}
 
@@ -1510,7 +1654,7 @@ def plan_import(
         unsure_of_values = stale or current in followed
         return _as_sent(printed_now[current], marked_by.get(current), unsure_of_values)
 
-    sent = {name: as_sent(name) for name in weighed}
+    sent = {name: then[name].split() if name in then else as_sent(name) for name in weighed}
     joined += _joined_without_bookmark(weighed, texts, in_join, sent)
     unknown = {name for name in rendered if sent.get(name, []) is None}
     beside_lost = _beside_lost(rendered, texts, built, present, followed, unknown)
@@ -1542,12 +1686,14 @@ def plan_import(
     fresh = _untagged_new(reference, returned)
     # What each paragraph the document was sent with said, where that is known, for telling
     # whether its identifier came back on its own text: see `_came_back_whole`.
-    said = {name: rendered[name] for name in in_join if name in rendered}
+    said = {name: then.get(name, rendered[name]) for name in in_join if name in rendered}
     for name in built:
         if name not in rendered:
             holder = (same_text or {}).get(name)
-            said[name] = printed_now.get(holder) if holder else None
+            said[name] = then[name] if name in then else printed_now.get(holder) if holder else None
     taken = expected + Counter(map(_squashed, [*rendered.values(), *filter(None, said.values())]))
+    if printed is not None:
+        taken = Counter(_squashed(b.text) for b in printed if b.text and not b.table)
     whole = _came_back_whole(returned, said, taken)
     # Those whose identifier holds some text, or text that cannot be told: they may have come
     # back where it is. The rest, if gone, did not come back.
@@ -1574,19 +1720,32 @@ def plan_import(
     # out, one pasted into a paragraph compared merged there, and its words were in the
     # source twice. One whose words are nowhere is named by where it stood, after a paragraph
     # the author can find: its identifier meant nothing to them.
-    vanished = [_Gone(rendered[name], rendered[name], sent[name]) for name in gone_from_place]
+    vanished = [
+        _Gone(then[name], None, sent[name])
+        if name in then
+        else _Gone(rendered[name], rendered[name], sent[name])
+        for name in gone_from_place
+    ]
     last = ""
     for name in built:
         holder = (same_text or {}).get(name)
         if name not in rendered and name not in whole:
-            if holder in printed_now:
+            if name in then:
+                vanished.append(_Gone(then[name], None, then[name].split()))
+            elif holder in printed_now:
                 vanished.append(_Gone(printed_now[holder], printed_now[holder], as_sent(holder)))
             else:
                 where = f"the one after '{_squashed(last)[:50]}'" if last.strip() else "the first"
                 shown = f"{where} in the document as sent"
                 vanished.append(_Gone(shown, None, None, unsure=name in holding))
         # Named by its own text: the block its identifier is on can hold another's too.
-        last = rendered.get(name) or printed_now.get(holder, "") or whole.get(name) or last
+        last = (
+            rendered.get(name)
+            or then.get(name)
+            or printed_now.get(holder, "")
+            or whole.get(name)
+            or last
+        )
 
     def printed_otherwise(name: str) -> bool:
         # What stood beside it may have printed otherwise at the build: see `stale` and
@@ -1610,6 +1769,11 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
+        elif now is None and name in untold:
+            # Reported deleted, a paragraph that may only have been reworded was to be
+            # deleted in the .md. Refused, and still missing for the checks below.
+            told = _EITHER.format(text=_squashed(untold[name])[:60])
+            refused.append(Refusal(name, carried_by[name], (told,)))
         elif (
             now is None
             and name in taken_off
@@ -1650,11 +1814,11 @@ def plan_import(
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
             refused.append(Refusal(name, now, (_BESIDE_LOST,)))
-        elif other := _swallowed(name, was, now, rendered, returned) or _took_vanished(
-            was, now, vanished
-        ):
+        elif other := _swallowed(
+            name, then.get(name, was), now, {**rendered, **then}, returned
+        ) or _took_vanished(then.get(name, was), now, vanished):
             refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
-        elif unknown_one := _took_unknown(was, now, vanished):
+        elif unknown_one := _took_unknown(then.get(name, was), now, vanished):
             what = unknown_one.shown
             if unknown_one.fresh:
                 what = f"'{_squashed(unknown_one.fresh)[:60]}' as it prints now"
@@ -1814,6 +1978,12 @@ _SWALLOWED = (
     "it came back holding another paragraph ('{text}'): joined to it, or pasted into it, in "
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
+)
+_EITHER = (
+    "its identifier came back on text that is either this paragraph, reworded, or the text "
+    "that stood under it when the document was sent ('{text}'), edited in Word with this "
+    "paragraph deleted. Nothing in the document says which, so nothing is written. If the "
+    "paragraph was deleted, delete it in the .md; if it was reworded, make the edit there."
 )
 _NOT_BACK = "did not come back ({what})"
 _UNSURE = (

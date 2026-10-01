@@ -384,13 +384,27 @@ def build_document(
         # the document comes back was deleted in Word, and a supplement's are elsewhere.
         with contextlib.suppress(Exception):
             from manuscript_guard.gates.review import document_digest
-            from manuscript_guard.roundtrip import paragraph_order, paragraph_record, stamp_into
+            from manuscript_guard.roundtrip import (
+                paragraph_order,
+                paragraph_record,
+                stamp_into,
+                write_printed,
+            )
 
             record = paragraph_record(project)
             paragraphs = {
                 name: record[name] for name in paragraph_order(output) if name in record
             }
-            stamp_into(output, document_digest(project), paragraphs)
+            digest = document_digest(project)
+            # And what each block printed, in a file beside the build that the document
+            # names: see `roundtrip.PRINTED_PROPERTY`. Only of a document built into build/,
+            # which is one that may be sent: `import` builds the source to compare with, into
+            # a scratch folder, and recorded, every import left two files behind.
+            printed = None
+            if output.resolve().is_relative_to(build_dir.resolve()):
+                with contextlib.suppress(Exception):
+                    printed = write_printed(build_dir, output, digest)
+            stamp_into(output, digest, paragraphs, printed)
     return BuildResult(output=output, mode=mode, report=report)
 
 

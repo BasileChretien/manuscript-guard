@@ -2487,6 +2487,84 @@ documents read the same as Word's own saved files, checked block by block. The p
 the one this file keeps finding: the tests simulated what the code assumed an editor does,
 not what the editor does.
 
+## The build records what each paragraph printed
+
+`import` compares the returned document with a fresh build of the source. That is what the
+co-author had only while the source and its results stand as they did, and the author goes
+on working while a draft is out. Three reviews in a row found the same thing under
+different names: what a paragraph deleted in Word had said, once the `.md` changed it;
+what a value printed before the analysis was re-run; which caption stood under a sentence.
+Each was guessed at, by a rule that refused too much (#116's five words or a digit, which
+held back five of twenty ordinary sessions) or wrote the wrong thing (a caption over the
+sentence above it, #120). The record written in #56 and #93 keeps hashes of the source,
+which say whether a paragraph changed and never what it said.
+
+So the build writes down what it printed. After pandoc has made a document, the build reads
+it as `import` will read it when it comes back (`docxtext.blocks`) and writes every block,
+in order, to `build/records/<name>.json` (`roundtrip.write_printed`):
+
+- a paragraph with its identifier, its text as printed, values and citations as they
+  print, and its kind (`Block.style`, `Block.role`);
+- a heading, caption, list item, quotation or any other text without an identifier, the
+  same way without one;
+- a table, a figure or a displayed equation as a marker with no text;
+- the source stamp of the build, so that the record serves no document built from other
+  sources.
+
+The name is the SHA-256 of the file's bytes, and the document carries that name in one
+property (`manuscript-guard-printed`) and none of the text. `import` uses a record only if
+the file's bytes hash to the name the document carries and its stamp is the document's
+(`roundtrip.read_printed`). The name comes from a returned document, which anyone may have
+written, so only 64 hexadecimal digits are taken for one.
+
+**Where it lives, and why not in the document.** The first plan was to put the text beside
+the hashes, in the document's properties. Measured on `example/`, whose main text is 751
+words in 32 blocks: the text as JSON is 6.5 kB, a hash for each word 4.3 kB, a hash for
+each run of five words 5.2 kB. Shingles are no smaller than the text and cannot answer what
+is asked: "most of its words, in order" is counted over words, and "reads exactly as" needs
+the text. A hash for each word is undone with a dictionary. That left the text, and text
+in a document's properties stays there through everything a co-author deletes before
+sending the file on. So the record is a file beside the build and the document names it.
+It is the paper's own text and nothing else, it is on the disk that already holds the
+source and `build/manuscript.md`, and `init` puts `build/` in `.gitignore`, so it is not
+committed and not sent. The supplement's record is its own file (2.1 kB on the example).
+
+**What that costs.** The record is on the machine that built the document. Imported
+anywhere else, or after `build/` was cleaned, the document is read by the rules it was
+read by before, and the import says so in one line that names the file it looked for. A
+build never removes a record: a document sent last week must still import exactly after
+ten rebuilds. A build that prints the same text names the same record, so the folder grows
+by one small file for each build that printed something new, a few kilobytes each. They
+are safe to delete; a document whose record is deleted is one built before the record.
+`import` builds the source twice to compare with, into a scratch folder, and records
+neither.
+
+**What the import reads from it** (`merge.plan_import`, `printed`):
+
+- What every paragraph the document was sent with said, compared or not, re-run since or
+  not. A paragraph gone from its place is looked for by those words and no others, so
+  #116's five-word rule is not asked, and a paragraph printing a re-run value is no longer
+  taken for one that gained a number (`_took_vanished`, `_swallowed`, counted from what the
+  paragraph printed and not from the fresh build).
+- Whether an identifier came back on its own paragraph (`_came_back_whole`): it holds what
+  the paragraph printed, or it does not. A sentence typed where a cut paragraph stood, or
+  after its identifier once Backspace had joined the emptied line onto the paragraph
+  before, is not that paragraph, and the paste of its old text elsewhere is refused.
+- What stood under each paragraph (`_under`, `_off_as_sent`). An identifier alone on a
+  block is on its own paragraph or on text without an identifier that stood directly under
+  it and is gone as it was, and on nothing else. Where nothing under it is gone, the block
+  is the paragraph, whatever style it was given and however far it was reworded. Where
+  something is, the kind and the words decide, and what they cannot decide is refused and
+  not reported deleted: the caption under a deleted sentence that reads like it, a block of
+  the paragraph's own kind reworded past most of its words.
+
+A document without the record keeps every rule it had (`_off_headings`, `_as_sent`,
+`_took_unknown`). `tests/test_ordinary_sessions.py` holds the sessions the reviews of #116,
+#119 and #120 measured against main, 102 of them, so that the next change is measured by
+the suite and not by a script in a scratch folder. With the record, ten of them merge
+something main held back and none holds back anything main merged; without it, all 102
+read as on main.
+
 ## A fence is a line pandoc reads as one
 
 The fence reader split lines with Python's `splitlines`, which also breaks at a vertical
@@ -4318,6 +4396,29 @@ Closed since, and why each mattered:
   passed one left out is named as not applied, with every other move in its section; it
   used to be applied, and the moved paragraph landed on the other side of the one it
   passed.
+- **Without its record of what it printed, a document is read by the older rules**, as one
+  built before the record is: the entries below on the five-word rule and on an identifier
+  Word left behind describe them. The record is a file beside the
+  build (`build/records/`, see "The build records what each paragraph printed"): on another
+  machine, or once `build/` is cleaned, it is not there. The import says so in one line and
+  refuses more; nothing more is written. Committing `build/records/` or copying it with the
+  project would carry it, at the price of keeping each build's text in the repository.
+- **With the record, three things are still refused that are not wrong.** A paragraph
+  deleted in Word whose identifier went onto the block under it, edited so that it reads
+  like the paragraph too, cannot be told from the paragraph reworded with that block gone,
+  and is refused either way: a sentence above the caption that repeats it. A paragraph
+  reworded past most of its words in the same round as a block of its own kind directly
+  under it was edited or deleted (the text beside a displayed equation, a line block, a
+  div with no style) is refused, since it reads like neither as sent. And the refusals
+  that rest on hashes are not lifted: a rewording beside a heading or caption the `.md`
+  changed since the build (`beside_changed`), in a stale document beside one that is
+  missing (`_printed_otherwise`), or just before a paragraph left out of the comparison
+  that did not come back (`_beside_lost`). The record could settle each; none is read
+  from it yet.
+- **The record is read as this release reads a document.** It holds each block's text as
+  `docxtext.blocks` read it at the build. A release that reads a document otherwise - a
+  symbol, a space - would find a paragraph's recorded text different from the text it
+  reads back, and count that paragraph gone: a refusal, not a write.
 - **A rewording that gained five words in a row, or a number, is refused whenever a
   paragraph that did not come back said something not known.** A paragraph the `.md`
   changed or dropped since the build, deleted in Word too, or one that is only values or
@@ -4329,7 +4430,10 @@ Closed since, and why each mattered:
   cut does, merges. So does a paragraph of four words or fewer, with no digit, pasted into
   another, as `_swallowed` lets one through: its words go into the source twice.
 - **An identifier Word left behind counts as the paragraph gone only where the text it holds
-  says so.** It counts as gone where it holds nothing - in front of another's, on an empty
+  says so.** This is the reading of a document without its record of what it printed; with
+  the record, what the paragraph said is known, and the gaps of this entry are closed
+  but for what the entry above names. It counts as gone where it holds nothing - in front
+  of another's, on an empty
   line, at the end of a paragraph that line was joined onto - where its paragraph's text is
   known and is not in what it holds, and where it holds text that reads exactly as another
   paragraph or a heading. Where its paragraph's text is not known, holding text that reads as
@@ -4354,12 +4458,11 @@ Closed since, and why each mattered:
   bookmark is not known and one's paragraph is not. And a paragraph compared whose identifier
   came back on other text is refused itself (`_not_its_own`) but not looked for in the words
   another paragraph gained, as on `main`.
-- **The five-word rule is the interim one.** The build's record keeps a hash of each
-  paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
-  not known at import when the `.md` changed it since. Recording each paragraph's text, or
-  its five-word shingles, in the build's record would make the question exact for documents
-  built after that change, and is the follow-up; the narrowed refusal stays for documents
-  built before it.
+- **The five-word rule is the rule for a document without its record.** The hashes of #56
+  and #93 say whether a paragraph's source changed, not what it said, so what a paragraph
+  deleted or cut in Word said is not known when the `.md` changed it since. The build now
+  records what each paragraph printed, and for a document with that record the question
+  is exact; the narrowed refusal stays for one built before it or imported away from it.
 - **A copy of a re-run value, or a partial copy of under five words, merges.** A value
   paragraph copied rather than cut in Word, or a stretch of under five words copied from a
   paragraph ("Of 4000 reports screened"), in a document whose analysis was re-run since:
@@ -4471,7 +4574,9 @@ Closed since, and why each mattered:
     `main`. Nothing in the toolkit writes such a div.
   - *A paragraph restyled as a heading, a list item or a quotation, or given the style of
     any other block the build leaves without an identifier, and reworded past most of its
-    words* is reported deleted, and the restyled block as new text. One restyled that keeps
+    words* is reported deleted, and the restyled block as new text, in a document without
+    its record of what it printed. With the record it merges, unless the text that stood
+    under it is gone too. One restyled that keeps
     most of its words merges its rewording, and the style change is dropped without a word,
     as on `main`. So does one given a style the build uses nowhere, however much of it was
     reworded.

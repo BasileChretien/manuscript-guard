@@ -438,7 +438,6 @@ def cmd_import(args: argparse.Namespace) -> int:
     try:
         returned = read_blocks(edited)
         comments = comments_in(edited)
-        printed, record = read_printed(project.path("build"), edited)
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -449,6 +448,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         # document: refusing the edits is no reason to drop them.
         _report_comments(comments)
         return 1
+    try:
+        # Its record is the one written for the document it is, the paper or the supplement:
+        # both carry the same source stamp, and the supplement's record passed for the
+        # paper's.
+        printed, record = read_printed(
+            project.path("build"), edited, supplementary=supplementary
+        )
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
 
     namespace, results, _literature, _r = load_namespace(project)
     # What the assembly reports is not import's to enforce: a source the build refuses is
@@ -529,8 +538,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(
             f"{edited.name} names a record of what it printed when it was built, {where}, "
             f"which is not here or is not this document's: it is written beside the build, on "
-            f"the machine that built it. The import goes by the rules for a document built "
-            f"before that record, which refuse more.\n"
+            f"the machine that built it, and that build says so where it could not write it. "
+            f"The import goes by the rules for a document built before that record, which "
+            f"refuse more.\n"
         )
     if printed is not None:
         printed = [replace(b, names=tuple(map(now_named, b.names))) for b in printed]

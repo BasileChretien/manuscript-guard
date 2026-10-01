@@ -264,7 +264,18 @@ stays on the machine that built the document and is never sent. If `import` says
 document `names a record of what it printed ... which is not here`, it is being imported
 on another machine or after `build/` was cleaned: nothing wrong is written, but more edits
 are refused. Import where the document was built, or carry the refused edits over by hand.
+A build that warns `the record of what manuscript.docx printed could not be written` made
+such a document: rebuild once `build/` can be written to, and send that one.
 Old records are small and safe to delete once every document built from them is back.
+
+Two refusals come from that record. `its identifier came back on text that is either this
+paragraph, reworded, or the text that stood above (or under) it` means a paragraph was
+rewritten past most of its words in the same round as a block beside it with no identifier
+(a caption, a line block, the text after an equation) was deleted or edited, or that the
+paragraph was deleted and that block edited: the document is the same either way. `its
+identifier came back inside another block, behind '...'` means the paragraph's line was
+joined up to the block above it. In both, look at the document: delete the paragraph in
+the `.md` if the co-author deleted it, or make the rewording there.
 
 Below a paragraph added or removed since the build, identifiers move by one block and name
 their neighbours. A

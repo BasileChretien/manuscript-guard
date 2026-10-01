@@ -13,6 +13,10 @@ went with it. They are rebuilt here from the review comments, so the next change
   example with a list and a quotation added, each with its lead-in.
 - #120, rounds 1 and 2: sessions on the example with two lists, a quotation and a
   definition list, and sentences that read like a caption or a heading elsewhere.
+- #121, round 1: sessions on the example with blocks of a paragraph's own kind (a line
+  block, the text after a displayed equation, a div with no style), and sessions that
+  empty a line and join it up to the block above. The first sets had neither, so they
+  could not see the one refusal the record adds, nor a heading written over a paragraph.
 
 A session says what the co-author did, what the author did, and which of the co-author's
 rewordings and moves are held back. Everything else must land in the source, and nothing
@@ -30,7 +34,16 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
-from test_corruption import _paragraph_runs, _sent_back, _word_joined, _word_paragraph, main_md
+from test_corruption import (
+    _WORD_BLOCK,
+    _joined_up,
+    _paragraph_runs,
+    _sent_back,
+    _without_its_equation,
+    _word_joined,
+    _word_paragraph,
+    main_md,
+)
 from test_roundtrip import (
     _parts,
     _reprinted,
@@ -192,6 +205,17 @@ def _item_deleted(text: str) -> Edit:
     return Edit(change)
 
 
+def _equation_deleted(text: str) -> Edit:
+    """The displayed equation deleted, with the text that runs on after it."""
+
+    def change(xml: str) -> str:
+        equation = next(p for p in _WORD_BLOCK.findall(xml) if "<m:oMathPara>" in p)
+        after = next(p for p in _WORD_BLOCK.findall(xml) if "mg-p-" not in p and text in p)
+        return xml.replace(equation, "", 1).replace(after, "", 1)
+
+    return Edit(change)
+
+
 def _pasted_into(opening: str, into: str) -> Edit:
     """The paragraph cut whole with Track Changes off and pasted onto the end of another."""
 
@@ -239,6 +263,36 @@ CI
 :   confidence interval
 """
 _CALLOUT = "Table 3 shows the contingency table underlying the reporting odds ratio."
+#: Blocks the build gives no identifier that are of the kind a paragraph is, each between
+#: two paragraphs: a line block, the text after a displayed equation, a div with no style.
+_LINES_LEAD = "The search terms were entered one per line, exactly as follows:"
+_BROAD = "drug-induced liver injury (broad)"
+_TERMS = "Terms were matched without regard to letter case."
+_ODDS = "The odds ratio compares the two groups of reports directly."
+_WHERE = "where a and c count the reports of the event and b and d all the others."
+_CELLS = "Cells with fewer than five reports were left as they are."
+_NOTE = "Counts are of reports and not of patients."
+_HOLDS = "That holds for every table in this paper."
+_OWN = f"""{_LINES_LEAD}
+
+| hepatic injury (narrow)
+| {_BROAD}
+
+{_TERMS}
+
+{_ODDS}
+
+$$ROR = (a / b) / (c / d)$$
+{_WHERE}
+
+{_CELLS}
+
+::: {{.note}}
+{_NOTE}
+:::
+
+{_HOLDS}
+"""
 
 
 def _with(text: str, anchor: str, added: str) -> str:
@@ -257,6 +311,8 @@ def _paper(root: Path, name: str) -> None:
         text = _with(text, "Reporting follows the checklist", _STEPS)
     if name == "callout":
         text = _with(text, "Reporting of hepatic injury was disproportionate", f"{_CALLOUT}\n")
+    if name == "own":
+        text = _with(text, "Reporting follows the checklist", _OWN)
     path.write_text(text, encoding="utf-8")
 
 
@@ -266,7 +322,7 @@ def papers(built_example: Path, tmp_path_factory: pytest.TempPathFactory) -> dic
     from manuscript_guard.cli import main
 
     built = {}
-    for name in ("example", "lists", "kinds", "callout"):
+    for name in ("example", "lists", "kinds", "callout", "own"):
         root = tmp_path_factory.mktemp(name) / "paper"
         shutil.copytree(built_example, root, ignore=shutil.ignore_patterns("build"))
         _paper(root, name)
@@ -396,6 +452,57 @@ EDITS = {
     "as term": _restyled("Reports left out were counted", '<w:pStyle w:val="DefinitionTerm" />'),
     "as compact": _restyled("Reports left out were counted", '<w:pStyle w:val="Compact" />'),
     "as own style": _restyled("Reports left out were counted", '<w:pStyle w:val="ZuluOwn" />'),
+    # The paragraphs around blocks of their own kind, reworded and rewritten.
+    "reword criterion": _reworded("the classical criterion", "the usual criterion"),
+    "reword lines lead": _reworded(_LINES_LEAD, _LINES_LEAD.replace("exactly as", "as")),
+    "rewrite lines lead": _reworded(_LINES_LEAD, "Table S1 lists the search terms."),
+    "reword terms": _reworded(_TERMS, _TERMS.replace("letter case", "case")),
+    "rewrite terms": _reworded(_TERMS, "Upper and lower case were treated alike."),
+    "reword odds": _reworded(_ODDS, _ODDS.replace("directly", "head to head")),
+    "rewrite odds": _reworded(_ODDS, "Each group is set against the other, as odds."),
+    "reword cells": _reworded(_CELLS, _CELLS.replace("left as they are", "left unchanged")),
+    "rewrite cells": _reworded(_CELLS, "Small counts were kept and not pooled."),
+    "reword holds": _reworded(_HOLDS, _HOLDS.replace("every table", "each table")),
+    # Those blocks edited and deleted.
+    "line edited": _in_word(_BROAD, "drug-induced liver injury (wide)"),
+    "lines deleted": _item_deleted(_BROAD),
+    "where edited": _in_word("reports of the event and b", "reports of the event, and b"),
+    "equation deleted": _equation_deleted(_WHERE),
+    "note edited": _in_word(_NOTE, "Counts are of reports, not patients."),
+    "note deleted": _item_deleted(_NOTE),
+    "odds deleted with its equation": Edit(
+        _without_its_equation("The odds ratio compares", (_WHERE, _WHERE))
+    ),
+    "odds deleted with its equation, the text after edited": Edit(
+        _without_its_equation(
+            "The odds ratio compares", ("reports of the event and b", "reports of the event, and b")
+        )
+    ),
+    # A paragraph's text deleted and Backspace pressed on the emptied line, then the block
+    # above edited: at its end, which Word types after the identifier, or typed over whole.
+    "funding joined up, the heading edited": Edit(
+        _joined_up("This work received no funding.", ">Funding<", ">Funding sources and role<")
+    ),
+    "funding joined up, the heading's end retyped": Edit(
+        _joined_up("This work received no funding.", ">Funding<", ">Fund<", typed="ers")
+    ),
+    "left out joined up, the item's end retyped": Edit(
+        _joined_up(
+            "Reports left out were counted",
+            "no drug name was recorded",
+            "no drug name was ",
+            typed="given",
+        )
+    ),
+    "terms joined up, a line's end retyped": Edit(
+        _joined_up("Terms were matched", "(broad)", "(", typed="wide)")
+    ),
+    "terms joined up, the lines typed over": Edit(
+        _joined_up("Terms were matched", _BROAD, "liver injury of any kind", whole=True)
+    ),
+    "holds joined up, the note edited": Edit(
+        _joined_up("That holds for every table", "not of patients", "never of patients")
+    ),
 }
 
 SESSIONS = {
@@ -626,6 +733,86 @@ SESSIONS = {
     ),
     "120 lists: five rewordings, the list and the quotation edited": Session(
         "lists", ("typo", "reword", "cut", "clause", "item", "quotation"), held=("cut",)
+    ),
+    # ---- #121 round 1: the example with a line block, text after an equation and a div.
+    "121 own: a typo": Session("own", ("typo",)),
+    "121 own: the paragraphs around the blocks reworded": Session(
+        "own", ("reword lines lead", "reword terms", "reword odds", "reword cells", "reword holds")
+    ),
+    "121 own: the paragraphs around the blocks rewritten": Session(
+        "own", ("rewrite lines lead", "rewrite terms", "rewrite odds", "rewrite cells")
+    ),
+    "121 own: a line edited": Session("own", ("line edited", "typo")),
+    "121 own: the text after the equation edited": Session("own", ("where edited", "typo")),
+    "121 own: the note edited": Session("own", ("note edited", "clause")),
+    "121 own: the line block deleted": Session("own", ("lines deleted", "typo")),
+    "121 own: the equation deleted with its text": Session("own", ("equation deleted", "typo")),
+    # A block of the paragraph's own kind deleted, and the paragraph beside it reworded:
+    # most of its words still its own, it is the paragraph.
+    "121 own: the line block deleted, the paragraphs beside it reworded": Session(
+        "own", ("lines deleted", "reword lines lead", "reword terms")
+    ),
+    "121 own: the equation deleted, the paragraphs beside it reworded": Session(
+        "own", ("equation deleted", "reword odds", "reword cells")
+    ),
+    "121 own: the note deleted, the paragraphs beside it reworded": Session(
+        "own", ("note deleted", "reword cells", "reword holds")
+    ),
+    # The refusal the record adds, which main merges. Rewritten past most of its words
+    # beside a block of its own kind deleted in the same round, a paragraph is byte for
+    # byte that block typed over with the paragraph deleted. It is refused; the paragraphs
+    # on either side of it still merge.
+    "121 own: the line block deleted, its lead-in rewritten": Session(
+        "own",
+        ("lines deleted", "rewrite lines lead", "reword terms", "reword criterion"),
+        held=("rewrite lines lead",),
+        unrecorded=(),
+    ),
+    "121 own: the line block deleted, the paragraph after it rewritten": Session(
+        "own",
+        ("lines deleted", "rewrite terms", "reword lines lead", "reword odds"),
+        held=("rewrite terms",),
+        unrecorded=(),
+    ),
+    "121 own: the equation deleted, the sentence before it rewritten": Session(
+        "own",
+        ("equation deleted", "rewrite odds", "reword terms", "reword cells"),
+        held=("rewrite odds",),
+        unrecorded=(),
+    ),
+    "121 own: the note deleted, the paragraph before it rewritten": Session(
+        "own",
+        ("note deleted", "rewrite cells", "reword holds"),
+        held=("rewrite cells",),
+        unrecorded=(),
+    ),
+    # A paragraph deleted with the equation under it: its identifier goes onto the text
+    # after the equation, which merges nothing, edited or not.
+    "121 own: a sentence deleted with its equation": Session(
+        "own", ("odds deleted with its equation", "typo")
+    ),
+    "121 own: a sentence deleted with its equation, the text after edited": Session(
+        "own", ("odds deleted with its equation, the text after edited", "typo")
+    ),
+    # A line emptied and joined up to the block above, which is then edited. Nothing of
+    # that block may be written over the paragraph.
+    "121 a line joined up to its heading, the heading edited": Session(
+        "example", ("funding joined up, the heading edited", "clause")
+    ),
+    "121 a line joined up to its heading, the heading's end retyped": Session(
+        "example", ("funding joined up, the heading's end retyped", "clause")
+    ),
+    "121 lists: a line joined up to the last item, its end retyped": Session(
+        "lists", ("left out joined up, the item's end retyped", "clause")
+    ),
+    "121 own: a line joined up to the line block, a line's end retyped": Session(
+        "own", ("terms joined up, a line's end retyped", "typo")
+    ),
+    "121 own: a line joined up to the line block, typed over": Session(
+        "own", ("terms joined up, the lines typed over", "typo")
+    ),
+    "121 own: a line joined up to the note, the note edited": Session(
+        "own", ("holds joined up, the note edited", "typo")
     ),
 }
 

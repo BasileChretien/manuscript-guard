@@ -385,6 +385,7 @@ def build_document(
         with contextlib.suppress(Exception):
             from manuscript_guard.gates.review import document_digest
             from manuscript_guard.roundtrip import (
+                RecordNotWritten,
                 paragraph_order,
                 paragraph_record,
                 stamp_into,
@@ -402,10 +403,45 @@ def build_document(
             # a scratch folder, and recorded, every import left two files behind.
             printed = None
             if output.resolve().is_relative_to(build_dir.resolve()):
-                with contextlib.suppress(Exception):
-                    printed = write_printed(build_dir, output, digest)
+                # A build that produced the document must not fail over its record, and must
+                # not keep quiet about it either: without it the import refuses more, and
+                # nothing said why. The document names the record all the same where its
+                # name is known, so that the import of it says the record is missing.
+                try:
+                    printed = write_printed(
+                        build_dir, output, digest, supplementary=supplementary
+                    )
+                except RecordNotWritten as exc:
+                    printed = exc.name
+                    report = report.merge(_record_not_written(output, exc))
+                except Exception as exc:
+                    report = report.merge(_record_not_written(output, exc))
             stamp_into(output, digest, paragraphs, printed)
     return BuildResult(output=output, mode=mode, report=report)
+
+
+def _record_not_written(output: Path, reason: Exception) -> Report:
+    """What the build says when it could not write the record of what a document printed
+    (`roundtrip.write_printed`): a warning, since the document itself is as it should be."""
+    return Report(
+        (
+            Finding(
+                gate=GATE,
+                code="record-not-written",
+                severity=WARN,
+                message=(
+                    f"the record of what {output.name} printed could not be written beside "
+                    f"it, under records/: {reason}"
+                ),
+                path=output,
+                hint=(
+                    "`import` reads a document less exactly without its record, and refuses "
+                    "more; rebuild once the build folder can be written to, and send that "
+                    "document"
+                ),
+            ),
+        )
+    )
 
 
 SOURCE_STAMP = ".source.sha256"

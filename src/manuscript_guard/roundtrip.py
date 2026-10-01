@@ -27,6 +27,7 @@ possible: a paragraph can be reworded around its bindings without them being tou
 from __future__ import annotations
 
 import bisect
+import contextlib
 import difflib
 import hashlib
 import html
@@ -34,7 +35,9 @@ import itertools
 import json
 import os
 import re
+import time
 import unicodedata
+import uuid
 import zipfile
 from collections import Counter
 from collections.abc import Iterator, Sequence
@@ -351,20 +354,79 @@ def paragraphs_of(document: Path) -> dict[str, str] | None:
     return recorded
 
 
-_PRINTED_FIELDS = ("text", "kind", "role", "style")
+_PRINTED_FIELDS = ("text", "kind", "key", "role", "style")
+#: Which of a project's two documents a record describes. Both carry the same source
+#: stamp, so the stamp alone let the supplement's record pass for the paper's.
+_DOCUMENTS = {False: "manuscript", True: "supplementary"}
 
 
-def write_printed(build_dir: Path, document: Path, digest: str) -> str:
+class RecordNotWritten(Exception):
+    """The record of what a document printed could not be written beside its build."""
+
+    def __init__(self, name: str, reason: OSError) -> None:
+        super().__init__(str(reason))
+        #: The name it would have had, which the document still carries: an import then
+        #: looks for the record, does not find it, and says so.
+        self.name = name
+
+
+#: How many times a record is put in place before the build gives up on it.
+_PUT_ATTEMPTS = 5
+
+
+def _put(path: Path, written: bytes) -> None:
+    """`written` as the file at `path`, unless that file holds exactly it already.
+
+    Compared by its bytes, not by its being there: a record cut short was left alone under
+    its name, and every later build of the same text named a file no import would trust.
+    Written under a name of this writer's own and renamed into place: two builds of one
+    project at once shared `<name>.json.tmp`, and one of them failed on it.
+    """
+    with contextlib.suppress(OSError):
+        if path.read_bytes() == written:
+            return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Not `tempfile.mkstemp`, which would leave the record readable by its owner alone.
+    pending = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        pending.write_bytes(written)
+        for attempt in range(_PUT_ATTEMPTS):
+            try:
+                os.replace(pending, path)
+                return
+            except OSError:
+                # Another build is putting the same record there in the same moment, and
+                # Windows will not replace a file that is open, nor read one being replaced:
+                # nothing is missing once it reads as this one.
+                with contextlib.suppress(OSError):
+                    if path.read_bytes() == written:
+                        return
+                if attempt == _PUT_ATTEMPTS - 1:
+                    raise
+                time.sleep(0.05)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(pending)
+
+
+def write_printed(
+    build_dir: Path, document: Path, digest: str, *, supplementary: bool = False
+) -> str:
     """Write the record of what `document` printed under `build_dir`, and return its name
     (`PRINTED_PROPERTY`). `digest` is the source stamp the document carries, which the
-    record names in turn, so that it serves no document built from other sources.
+    record names in turn, so that it serves no document built from other sources; and it
+    names which of the project's documents it describes, the paper or its supplement.
 
     Every block as `docxtext.blocks` reads it, which is how `import` reads the document
     when it comes back, in the document's order: its identifier, its text, what it is and
-    what it holds that is not read as text. Each field is left out where it is empty.
-    A record already there is left alone: it is named by its content, so it is the same,
-    and records of earlier builds are never removed, a document sent last week being still
-    out there.
+    what it holds that is not read as text; for a table, figure or equation, the digest that
+    tells it from the others; and where its identifier's bookmark sits, when that is not the
+    start of the block, where a build puts it. Each field is left out where it is empty. A
+    record already there and whole is left alone: it is named by its content, so it is the
+    same, and records of earlier builds are never removed, a document sent last week being
+    still out there.
+
+    Raises `RecordNotWritten`, with the record's name, where the file cannot be written.
     """
     from manuscript_guard.docxtext import blocks
 
@@ -374,16 +436,22 @@ def write_printed(build_dir: Path, document: Path, digest: str) -> str:
         entry |= {name: getattr(block, name) for name in _PRINTED_FIELDS if getattr(block, name)}
         if block.unread:
             entry["unread"] = list(block.unread)
+        # Where its identifier's bookmark sits, where that is not the start of the block.
+        if block.names and dict(block.at).get(block.names[0]):
+            entry["at"] = dict(block.at)[block.names[0]]
         kept.append(entry)
-    record = {"manuscript-guard-printed": _PRINTED_FORMAT, "source": digest, "blocks": kept}
+    record = {
+        "manuscript-guard-printed": _PRINTED_FORMAT,
+        "source": digest,
+        "document": _DOCUMENTS[supplementary],
+        "blocks": kept,
+    }
     written = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     name = hashlib.sha256(written).hexdigest()
-    path = build_dir / RECORDS / f"{name}.json"
-    if not path.is_file():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        pending = path.with_name(path.name + ".tmp")
-        pending.write_bytes(written)
-        os.replace(pending, path)
+    try:
+        _put(build_dir / RECORDS / f"{name}.json", written)
+    except OSError as exc:
+        raise RecordNotWritten(name, exc) from exc
     return name
 
 
@@ -403,18 +471,84 @@ def printed_of(document: Path) -> str | None:
     return found.group(1) if found and _RECORD_NAME.fullmatch(found.group(1)) else None
 
 
-def read_printed(build_dir: Path, document: Path) -> tuple[list | None, Path | None]:
+_RECORD_KEYS = frozenset({"manuscript-guard-printed", "source", "document", "blocks"})
+_ENTRY_KEYS = frozenset({"id", "unread", "at", *_PRINTED_FIELDS})
+
+
+def _writable(value: object) -> bool:
+    """Whether a value read from a record is text that can be written out again: a JSON
+    string may escape half of a surrogate pair, which no file or terminal takes."""
+    if not isinstance(value, str):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _blocks_of(record: object, stamp: str | None, supplementary: bool) -> list | None:
+    """The blocks a record holds, or None where it is not one this release wrote for this
+    document: anything but the shape `write_printed` gives it.
+
+    A record is a file, and its name is in a document anyone may have edited: bytes that
+    hash to that name say they are the file named, not that a build wrote it. One written
+    by hand with a list for an identifier passed, and the import ended in a traceback where
+    the identifiers are looked up. So every value is of the type written, and nothing is
+    there that is not written.
+    """
+    from manuscript_guard.docxtext import Block
+
+    if not isinstance(record, dict) or set(record) != _RECORD_KEYS:
+        return None
+    version, entries = record["manuscript-guard-printed"], record["blocks"]
+    if type(version) is not int or version != _PRINTED_FORMAT:
+        return None
+    if not _writable(record["source"]) or record["source"] != stamp:
+        return None
+    if record["document"] != _DOCUMENTS[supplementary]:
+        return None
+    if not isinstance(entries, list):
+        return None
+    found = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not set(entry) <= _ENTRY_KEYS:
+            return None
+        unread = entry.get("unread", [])
+        texts = [entry[field] for field in ("id", *_PRINTED_FIELDS) if field in entry]
+        if not isinstance(unread, list) or not all(map(_writable, [*texts, *unread])):
+            return None
+        if "id" in entry and not entry["id"]:
+            return None
+        behind = entry.get("at", 0)
+        if type(behind) is not int or behind < 0 or ("at" in entry and "id" not in entry):
+            return None
+        found.append(
+            Block(
+                names=(entry["id"],) if "id" in entry else (),
+                at=((entry["id"], behind),) if "id" in entry else (),
+                unread=tuple(unread),
+                **{field: entry.get(field, "") for field in _PRINTED_FIELDS},
+            )
+        )
+    return found
+
+
+def read_printed(
+    build_dir: Path, document: Path, *, supplementary: bool = False
+) -> tuple[list | None, Path | None]:
     """What `document` printed when it was built, as `docxtext.Block`s in its order, and the
     file that is its record: (None, None) for a document that names no record, and (None,
     the file) where the record it names is not there or is not to be trusted.
 
-    A record is used only if its bytes hash to the name the document carries, and only if
-    it was written for the source stamp the document carries: a file edited since, or the
-    record of another build named by a document that was tampered with, is no record of
-    this one. Nothing else in it is trusted further than a returned document is.
+    A record is used only if its bytes hash to the name the document carries, only if it
+    was written for the source stamp the document carries, and only if it describes this
+    document, the paper or the supplement (`supplementary`, which the document's
+    identifiers say): a file edited since, the record of another build, or the supplement's
+    record named by the paper, is no record of this one. And only if it has the shape a
+    build writes (`_blocks_of`). Nothing else in it is trusted further than a returned
+    document is.
     """
-    from manuscript_guard.docxtext import Block
-
     name = printed_of(document)
     if name is None:
         return None, None
@@ -427,21 +561,10 @@ def read_printed(build_dir: Path, document: Path) -> tuple[list | None, Path | N
         return None, path
     try:
         record = json.loads(written.decode("utf-8"))
-        if record["manuscript-guard-printed"] != _PRINTED_FORMAT:
-            return None, path
-        if record["source"] != stamp_of(document):
-            return None, path
-        found = [
-            Block(
-                names=(entry["id"],) if entry.get("id") else (),
-                unread=tuple(map(str, entry.get("unread", ()))),
-                **{field: str(entry.get(field, "")) for field in _PRINTED_FIELDS},
-            )
-            for entry in record["blocks"]
-        ]
-    except (ValueError, KeyError, TypeError, AttributeError):
+    except (ValueError, RecursionError):
+        # Not JSON, or JSON nested deeper than Python will read.
         return None, path
-    return found, path
+    return _blocks_of(record, stamp_of(document), supplementary), path
 
 
 def comments_in(document: Path) -> list[Comment]:

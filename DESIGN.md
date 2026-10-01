@@ -2449,7 +2449,14 @@ The checks that came out of the review rounds guard the tracked path as well:
   as 1 and 2. An identifier stays on a block of such a kind only where that is the kind its
   own paragraph was built as. The second paragraph of a list item has an identifier and is
   numbered with no marker; kept on the item after it because some identified paragraph
-  was numbered too, the item was written over it.
+  was numbered too, the item was written over it. And an identifier alone on a block that
+  reads mostly like text without an identifier that did not come back is taken off,
+  whatever the block's kind: it is that text, edited. A block that "keeps most of its
+  words" kept the paragraph's identifier, which is how a paragraph restyled as a heading
+  stays itself, and a sentence announcing a table reads like the caption under it: deleted
+  in Word, with the caption edited, the sentence was written over. Where the block also
+  reads mostly like the paragraph, the paragraph is refused and not reported deleted, since
+  it may only have been reworded (`merge._LIKE_GONE`).
   Weighed as printed now, a paragraph that is only a value, printing 4000 at the build and
   re-run to 4100 since, cut and pasted onto the end of another, was nowhere in the words that
   one gained, and "...dates. 4000" merged, a number typed beside the binding that prints it;
@@ -4339,11 +4346,9 @@ Closed since, and why each mattered:
   joined onto the end of the paragraph before it, by Backspace, a sentence typed there next
   is held by the cut paragraph's identifier, and counts as that paragraph the same way. Nor
   is a paste looked for where the text the identifier holds is a block the build gave no
-  identifier, changed in the `.md` since the build and of the kind the identifier's own
-  paragraph was built as: body text beside body text, such as a paragraph with a code fence
-  directly under it, or the term of a tight definition list after a loose one deleted whole.
-  Blocks of every other kind are known by their kind (`merge._off_headings`); what one of
-  the same kind printed as sent is not known. The record keeps a hash of each
+  identifier, of the kind the identifier's own paragraph was built as, that reads mostly
+  like no such block of the fresh build: one the `.md` changed since the build, or one
+  reworded in Word past most of its words (the next entry). The record keeps a hash of each
   source block, not what it printed, so the text read as "something else the document was
   sent with" is the fresh build's; asking the record whether the blocks beside each
   paragraph changed since would refuse every rewording that gained five words whenever the
@@ -4354,6 +4359,29 @@ Closed since, and why each mattered:
   bookmark is not known and one's paragraph is not. And a paragraph compared whose identifier
   came back on other text is refused itself (`_not_its_own`) but not looked for in the words
   another paragraph gained, as on `main`.
+- **A paragraph deleted in Word in front of a block of its own kind, reworded past most of
+  its words, is written over with that block's new text.** Some blocks the build gives no
+  identifier are body text, the kind a paragraph is: the text either side of an equation
+  displayed inside a paragraph (`... computed as $$x = y$$ where ...`, which Word shows as
+  two paragraphs around the equation), a line block, a paragraph in a div with no
+  `custom-style`; and, under a list item's further paragraph, a line block in the same
+  item. Deleted or cut with Track Changes off, the paragraph before one leaves its
+  identifier on it. Edited so that it still reads mostly like the block as sent, the block
+  is known for that block, and nothing is written (`merge._off_headings`). Reworded past
+  that, nothing tells it from the paragraph reworded, and its text is merged into the
+  paragraph's source line while the block is left as it was. A block of another kind - a
+  caption, a heading, a term - is written over the paragraph the same way only where its
+  new text reads mostly like the paragraph and no longer mostly like itself. Recording what
+  each block printed would close both. The other side of the rule: a paragraph reworded
+  until it reads mostly like a block without an identifier that was deleted or edited in the
+  same round is refused, or, where it no longer reads like itself either, reported deleted.
+- **The kind of a list item's further paragraph is read as Word saves it.** Whether a
+  numbering draws a marker is read from its text: pandoc writes one space for a further
+  paragraph, and Word 16 keeps it. LibreOffice 26.2 saves that marker as U+F020 in the
+  Symbol font, which is not a space, so in a document it saved a further paragraph reads as
+  a list item. Reworded there past most of its words, it is reported deleted, where `main`
+  merged it; saved only, or reworded keeping most of its words, it merges. Nothing is
+  written.
 - **The five-word rule is the interim one.** The build's record keeps a hash of each
   paragraph's source, not what it said, so what a paragraph deleted or cut in Word said is
   not known at import when the `.md` changed it since. Recording each paragraph's text, or
@@ -4474,7 +4502,9 @@ Closed since, and why each mattered:
     words* is reported deleted, and the restyled block as new text. One restyled that keeps
     most of its words merges its rewording, and the style change is dropped without a word,
     as on `main`. So does one given a style the build uses nowhere, however much of it was
-    reworded.
+    reworded. A list item's further paragraph that Word made an item - a numbered list
+    switched to bullets with that paragraph selected - is restyled so, and reworded past
+    most of its words is reported deleted too.
   - *A subheading typed above a paragraph without Track Changes* takes that paragraph's
     identifier, as any text typed at its start does, and the paragraph is reported as moved
     in Word, though it never moved. Nothing is written. Only an empty line is given its

@@ -2579,8 +2579,7 @@ import says which file it looked for and did not find.
     that stood beside it and is gone as it was. Under it: deleted, a paragraph leaves its
     identifier on the block after its own, past any table, figure or equation deleted with
     it. Above it: its line joined up and the block above selected whole and typed over, the
-    bookmark is in front of what was typed. Where none of these is gone, the block is the
-    paragraph, whatever style it was given and however far it was reworded. Where one is,
+    bookmark is in front of what was typed. Where one of these is gone,
     the kind and the words decide, and what they cannot decide is refused and not reported
     deleted: the caption under a deleted sentence that reads like it, a block of the
     paragraph's own kind reworded past most of its words. A block of another kind than the
@@ -2588,30 +2587,46 @@ import says which file it looked for and did not find.
     anywhere in the document too: a heading cut and pasted onto the line the paragraph's
     text was deleted from, and retitled there, is that heading, as main reads it by its
     style.
+  - *At the start of its block, with nothing beside the paragraph gone.* The block is the
+    paragraph, or a new block typed where its identifier slid: the paragraph deleted whole,
+    then a heading typed in front of the next one, which goes after the bookmark and takes
+    that heading's style. Nothing the document was sent with is gone, and it is byte for
+    byte the paragraph given a heading's style and rewritten. One reading has to give, and
+    the one that writes a heading's text over a deleted paragraph gives: the block is read
+    as `main` reads it (`_off_headings`). Of a kind the build gives no identifier, and not
+    reading like the paragraph, it is not the paragraph, which is reported deleted. So a
+    paragraph restyled as a heading, a list item or a quotation and rewritten past most of
+    its words is reported deleted with the record as without it. Of the paragraph's own
+    kind, or reading like the paragraph, it is the paragraph.
 
   The first version read only the text under a paragraph, up to the next table, figure or
   equation, and took a block for the paragraph where nothing there was gone. Round 1 of
   #121's review joined an emptied line up to the heading above and retitled it: "Funders"
-  was written over "This work received no funding.", which main reports deleted.
+  was written over "This work received no funding.", which main reports deleted. Round 2
+  deleted "Reporting follows the checklist..." and typed "Reporting" as a new heading in
+  front of "Results": with nothing gone, "there is nothing else for it to be" made the new
+  heading the paragraph, and the source line became `Reporting`.
 - A block refused because it cannot be told from its paragraph is no new text beside the
   paragraphs around it: a rewording in the one before it or after it merges, as on main.
 
 A document without the record keeps every rule it had (`_off_headings`, `_as_sent`,
 `_took_unknown`). `tests/test_ordinary_sessions.py` holds the sessions the reviews of #116,
 #119 and #120 measured against main, 102 of them, so that the next change is measured by
-the suite and not by a script in a scratch folder. With the record, ten of them merge
+the suite and not by a script in a scratch folder. With the record, six of them merge
 something main held back and none holds back anything main merged; without it, all 102
-read as on main.
+read as on main. (Four more merged at first, each a paragraph given a heading's, a list
+item's, a quotation's or a term's properties and rewritten. They are the same bytes as the
+new heading of round 2 above, and are held back again, as on main.)
 
 That was true of the 102 and said without that limit. None of their four papers has a block
 of a paragraph's own kind, and none joins an emptied line up, so they could see neither the
 refusal the record adds nor the heading written over a paragraph. Round 1 of #121's review
 added a fifth paper, with a line block, the text after a displayed equation and a div with
-no style, each between two paragraphs, and 23 sessions. Of the 125, with the record: ten
+no style, each between two paragraphs, and 23 sessions. Of the 125, with the record: six
 merge something main held back; four hold back a rewording main merges, each a paragraph
 rewritten past most of its words beside a block of its own kind deleted in the same round
 (see Known gaps); four write nothing where main writes a block's text over a deleted
-paragraph; and 107 read as on main. Under the first version of this change, ten of the 23
+paragraph; and 111 read as on main. Under the first version of this change, ten of the 23
 failed.
 
 ## A fence is a line pandoc reads as one
@@ -4452,7 +4467,7 @@ Closed since, and why each mattered:
   machine, or once `build/` is cleaned, it is not there. The import says so in one line and
   refuses more; nothing more is written. Committing `build/records/` or copying it with the
   project would carry it, at the price of keeping each build's text in the repository.
-- **With the record, four things are still refused that are not wrong.** A paragraph
+- **With the record, five things are still refused that are not wrong.** A paragraph
   deleted in Word whose identifier went onto the block under it, edited so that it reads
   like the paragraph too, cannot be told from the paragraph reworded with that block gone,
   and is refused either way: a sentence above the caption that repeats it. A paragraph
@@ -4464,7 +4479,12 @@ Closed since, and why each mattered:
   line was joined up, and after whose identifier something was then typed (the end of the
   heading above retyped, say) is refused and not reported deleted, as main reports it under
   a heading: what its identifier holds was typed after the join or is what is left of the
-  paragraph, and the document does not say which. Nothing is written either way. And the
+  paragraph, and the document does not say which. Nothing is written either way. The
+  paragraph after such a joined-up line, reworded in the same round as the block above
+  was edited, is refused as beside new text: that block has no identifier, it is edited,
+  and it now stands directly above the paragraph, as an edited heading would. `main`
+  merged the rewording only where it took the block for the deleted paragraph and wrote
+  it over that one (a div with no style; under a quotation it refuses too). And the
   refusals that rest on hashes are not lifted: a rewording beside a heading or caption the
   `.md` changed since the build (`beside_changed`), in a stale document beside one that is
   missing (`_printed_otherwise`), or just before a paragraph left out of the comparison
@@ -4646,9 +4666,11 @@ Closed since, and why each mattered:
     `main`. Nothing in the toolkit writes such a div.
   - *A paragraph restyled as a heading, a list item or a quotation, or given the style of
     any other block the build leaves without an identifier, and reworded past most of its
-    words* is reported deleted, and the restyled block as new text, in a document without
-    its record of what it printed. With the record it merges, unless the text that stood
-    under it is gone too. One restyled that keeps
+    words* is reported deleted, and the restyled block as new text, with the document's
+    record of what it printed as without it: the record cannot tell it from a new block of
+    that kind typed where a deleted paragraph's identifier slid, which is the same bytes,
+    and merged, that block was written over the deleted paragraph. Make the rewording in
+    the .md. One restyled that keeps
     most of its words merges its rewording, and the style change is dropped without a word,
     as on `main`. So does one given a style the build uses nowhere, however much of it was
     reworded.

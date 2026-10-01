@@ -416,13 +416,19 @@ def _off_as_sent(
     - An identifier at the start of its block is on its own paragraph, or on text without
       one that stood beside it and is gone as it was (`_gone_beside`): under it, where the
       paragraph was deleted, or above it, where the line was joined up and that block typed
-      over whole. Where none is gone the block is the paragraph, whatever style it was given
-      and however far it was reworded: there is nothing else for it to be.
-    - Unless it is of another kind than the paragraph and does not read like it, and text of
-      that kind is gone from anywhere in the document: a heading or a list item cut and
-      pasted onto the line the paragraph's text was deleted from, and edited there. That
-      text is weighed with the rest, and the block is then that heading, as a document
-      without the record reads it by its kind.
+      over whole.
+    - Where none is gone, the block is the paragraph, or a new block typed where its
+      identifier slid: the paragraph deleted whole, and a heading typed in front of the next
+      one, which goes after the bookmark and takes that heading's style. That is byte for
+      byte the paragraph given a heading's style and rewritten. The first version took it
+      for the paragraph, "there being nothing else for it to be", and "Reporting" was
+      written over the paragraph deleted above "Results". So it is read as a document
+      without the record reads it (`_off_headings`): of a kind the build gives no
+      identifier, and not reading like the paragraph, it is not the paragraph.
+    - A block of another kind than the paragraph's that does not read like it is weighed
+      against text of that kind gone from anywhere in the document too: a heading or a list
+      item cut and pasted onto the line the paragraph's text was deleted from, and edited
+      there.
     - Otherwise the block is the paragraph where it is of the paragraph's kind and none of
       those is; where the heading above was run into it (`_took_in`); where it holds the
       paragraph's text whole in the paragraph's kind, or with one of them whole beside it,
@@ -474,7 +480,7 @@ def _off_as_sent(
             left[sent_block.text] -= 1
             elsewhere.setdefault((sent_block.style, sent_block.role), []).append(sent_block)
 
-    def whose(block: Block, name: str) -> tuple[str, _Untold | None]:
+    def whose(block: Block, name: str, slid: bool) -> tuple[str, _Untold | None]:
         own, text = _squashed(said[name]), _squashed(block.text)
         if not own or text == own:
             return "kept", None
@@ -495,7 +501,7 @@ def _off_as_sent(
             if not like_it:
                 gone += [b for b in elsewhere[kind] if not any(b is g for g in gone)]
         if not gone:
-            return "kept", None
+            return ("off" if slid else "kept"), None
         theirs = {(b.style, b.role) for b in gone}
         if kind == mine and kind not in theirs:
             return "kept", None
@@ -525,7 +531,7 @@ def _off_as_sent(
         verdict, unsure = ("off", None) if by_text(block) else ("kept", None)
         if verdict == "kept" and block.names and not block.table:
             if len(block.names) == 1 and block.names[0] in said:
-                verdict, unsure = whose(block, block.names[0])
+                verdict, unsure = whose(block, block.names[0], not judged.names)
                 if unsure is not None:
                     untold[block.names[0]] = unsure
             elif not judged.names:

@@ -6892,6 +6892,97 @@ def test_a_block_moved_onto_a_cut_paragraph_s_line_and_edited_is_not_that_paragr
     assert "deleted in Word" in out, out
 
 
+def _typed_in_front(paragraph: str, under: str, typed: str):
+    """Word 16, Track Changes off: the paragraph deleted whole, which leaves its identifier
+    at the start of the block under it, and a new block typed there, then Enter. What is
+    typed goes after the bookmark, in that block's style; the block follows as it was."""
+    from test_roundtrip import _word_delete
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, paragraph))
+        carrying = next(p for p in _WORD_BLOCK.findall(xml) if under in p)
+        as_sent = re.sub(
+            r'<w:bookmarkStart [^>]*w:name="mg-p-[^>]*/><w:bookmarkEnd [^>]*/>', "", carrying
+        )
+        assert as_sent != carrying and under in as_sent
+        return xml.replace(carrying, carrying.replace(under, typed, 1) + as_sent, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_heading_typed_in_front_of_the_next_one_is_not_the_paragraph_deleted_above_it(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 2 of #121's review, a regression against main, made in Word on the example as
+    shipped and imported without --force. "Reporting follows the checklist..." deleted
+    whole, then "Reporting" and Enter typed in front of "Results": the new heading carries
+    the paragraph's identifier at its start, and nothing the document was sent with is gone.
+    By "there is nothing else for it to be" it was the paragraph, and the source line became
+    `Reporting`, "merged 1 reworded paragraph(s)". It is the same bytes as the paragraph
+    given a heading's style and rewritten, so one reading has to give: a block of a kind the
+    build gives no identifier, not reading like the paragraph, is not the paragraph, as
+    main reads it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    change = _typed_in_front("Reporting follows the checklist", ">Results<", ">Reporting<")
+    returned = _sent_back(project, tmp_path, change)
+    before = main_md(project).read_text(encoding="utf-8")
+    main(["import", str(returned), str(project), "--apply"])
+    assert main_md(project).read_text(encoding="utf-8") == before
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("under", "was", "typed"),
+    [
+        ("# Zulu results", ">Zulu results<", ">Zulu screening<"),
+        ("- zulu item one\n- zulu item two", "zulu item one", "a new first item"),
+        (
+            "> zulu quotation from the protocol.",
+            "zulu quotation from the protocol.",
+            "a new quotation.",
+        ),
+    ],
+    ids=["heading", "list item", "quotation"],
+)
+def test_a_block_typed_where_a_deleted_paragraph_s_identifier_slid_is_not_that_paragraph(
+    project: Path, tmp_path: Path, under: str, was: str, typed: str
+) -> None:
+    """Round 2 of #121's review, a regression against main. The same in front of a list
+    and a quotation: a new first item typed where the lead-in was deleted was written over
+    the lead-in, a body paragraph above a list that kept its items."""
+    blocks = ("# Intro", _ALPHA, _ROMEO, under, _BRAVO)
+    change = _typed_in_front("Romeo paragraph", was, typed)
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_retitled_heading_is_not_the_paragraph_deleted_above_it_where_its_title_is_typed_again(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 2 of #121's review, a regression against main. The heading under a deleted
+    paragraph retitled, and its old title typed as a new heading elsewhere. What is gone is
+    counted over the whole document, the old title is there to count, and so nothing was
+    gone: the retitled heading was written over the paragraph."""
+    from test_roundtrip import _word_delete
+
+    blocks = ("# Intro", _ALPHA, _ROMEO, "# Zulu results", _BRAVO)
+
+    def change(xml: str) -> str:
+        heading = next(p for p in _WORD_BLOCK.findall(xml) if ">Zulu results<" in p)
+        xml = _word_delete(xml, _word_paragraph(xml, "Romeo paragraph"))
+        xml = xml.replace(">Zulu results<", ">Zulu findings<", 1)
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        return xml.replace(bravo, bravo + heading, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+
+
 def test_an_identifier_a_build_put_behind_text_is_not_read_as_joined_up() -> None:
     """Where a bookmark sits says how it came there only because a build puts it at the
     start of its block. The record says where it was, and one a build put behind text of

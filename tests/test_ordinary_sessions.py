@@ -678,30 +678,32 @@ SESSIONS = {
     "120 kinds: the quotation's lead-in deleted": Session("kinds", ("delete plainly", "clause")),
     # Nothing of a paste is written: the paragraph it went into is refused.
     "120 kinds: a paragraph cut into another": Session("kinds", ("paste gone",)),
-    # A paragraph given another kind's properties and rewritten was reported deleted, since
-    # nothing told it from a block of that kind. Nothing that stood under it is gone, so
-    # with the record it is the paragraph, and its rewording merges.
+    # A paragraph given another kind's properties and rewritten is reported deleted, since
+    # nothing tells it from a block of that kind. The record's first version merged it,
+    # nothing beside it being gone; but it is byte for byte a new heading typed where a
+    # deleted paragraph's identifier slid, which was then written over that paragraph
+    # (round 2 of #121's review). Held back, as on main.
     "120 kinds: an item's numbering, lightly edited": Session(
         "kinds", ("as item", "reword left out")
     ),
     "120 kinds: an item's numbering, rewritten": Session(
-        "kinds", ("as item", "rewrite left out"), unrecorded=("rewrite left out",)
+        "kinds", ("as item", "rewrite left out"), held=("rewrite left out",)
     ),
     "120 kinds: a quotation's style, lightly edited": Session(
         "kinds", ("as quotation", "reword left out")
     ),
     "120 kinds: a quotation's style, rewritten": Session(
-        "kinds", ("as quotation", "rewrite left out"), unrecorded=("rewrite left out",)
+        "kinds", ("as quotation", "rewrite left out"), held=("rewrite left out",)
     ),
     "120 kinds: a heading's style, lightly edited": Session(
         "kinds", ("as heading", "reword left out")
     ),
     "120 kinds: a heading's style, rewritten": Session(
-        "kinds", ("as heading", "rewrite left out"), unrecorded=("rewrite left out",)
+        "kinds", ("as heading", "rewrite left out"), held=("rewrite left out",)
     ),
     "120 kinds: a term's style, lightly edited": Session("kinds", ("as term", "reword left out")),
     "120 kinds: a term's style, rewritten": Session(
-        "kinds", ("as term", "rewrite left out"), unrecorded=("rewrite left out",)
+        "kinds", ("as term", "rewrite left out"), held=("rewrite left out",)
     ),
     "120 kinds: the compact style, rewritten": Session(
         "kinds", ("as compact", "rewrite left out")

@@ -195,12 +195,13 @@ _LINK_TEXT = re.compile(
 )
 # A link's definition, at the margin or in a quotation, which pandoc reads only where a
 # block may start: under a blank line or another definition, not under a paragraph's line.
-# Its quotation marks are `(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?`, and are not read with that
-# pattern. Written with a space of its own after each mark, a line of `> ` that was no
-# definition was read every way. Written as it is here, the pattern kept a position for each
-# mark, and its cost a mark rose once those no longer fit the cache: read in a number of
-# steps that is linear, a line of marks still timed as worse, by an amount that depended on
-# the machine. `_marks_end` reads the run of spaces and `>` in one piece and keeps nothing.
+# Its quotation marks follow the pattern `(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?`, but that pattern
+# is not what reads them. Two earlier ways of reading them were slow on a line of `> `:
+# - with a space of its own after each mark, a line that was no definition was read every way;
+# - as written above, the pattern kept a position for each mark. The number of steps was
+#   linear, but each mark cost more once the positions outgrew the cache, and by how much
+#   depended on the machine.
+# `_marks_end` reads the run of spaces and `>` in one piece and keeps nothing for each mark.
 _MARK_RUN = re.compile(r"[ >]*")
 _DEFINED = re.compile(r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
 _TOO_FAR = " " * 5

@@ -345,6 +345,34 @@ def test_brackets_after_quotation_marks_are_read_in_linear_time(assert_linear) -
     assert_linear(line, link_text_spans, 500, "brackets after quotation marks")
 
 
+def test_quotation_marks_are_read_as_their_pattern_reads_them() -> None:
+    """`_marks_end` and `_defined` read a line's quotation marks without the pattern that
+    states them, which kept a position for each mark. They have to agree with it on every
+    line: where the marks end, from the line's start or from a place in a longer text, and
+    which label a definition has."""
+    import random
+    import re
+
+    from manuscript_guard.text.inline import _defined, _marks_end
+
+    marks = r"(?:[ ]{0,3}>(?:[ ]{0,4}>)*[ ]?)?"
+    stated = re.compile(marks)
+    definition = re.compile(marks + r"[ ]{0,3}\[(?!\^)([^\[\]\n]+)\]:")
+    random.seed(20261001)
+    pieces = [" ", " ", ">", ">", "> ", "    ", "     ", "[t]:", "[^n]:", "[", "]", ":", "x", "\n"]
+    for _ in range(60000):
+        text = "".join(random.choice(pieces) for _ in range(random.randint(0, 12)))
+        line = text.split("\n")[0]
+        assert _marks_end(line) == stated.match(line).end(), repr(line)
+        at = random.randint(0, len(text))
+        if at == 0 or text[at - 1] == "\n":
+            assert _marks_end(text, at) == stated.match(text, at).end(), repr((text, at))
+        mine, theirs = _defined(line), definition.match(line)
+        assert (mine is None) == (theirs is None), repr(line)
+        if mine is not None:
+            assert (mine.end(), mine.group(1)) == (theirs.end(), theirs.group(1)), repr(line)
+
+
 @pytest.mark.parametrize("value", ["[" * 6000, "- " * 20000], ids=["brackets", "sequences"])
 def test_deeply_nested_front_matter_is_not_composed(value: str) -> None:
     """Front matter counts only where pandoc keeps it as metadata, which means reading the

@@ -388,6 +388,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         numbering,
         numbering_refusal,
         read_blocks,
+        read_printed,
         records_moves,
         stamp_of,
         tagged_paragraphs,
@@ -447,6 +448,16 @@ def cmd_import(args: argparse.Namespace) -> int:
         # document: refusing the edits is no reason to drop them.
         _report_comments(comments)
         return 1
+    try:
+        # Its record is the one written for the document it is, the paper or the supplement:
+        # both carry the same source stamp, and the supplement's record passed for the
+        # paper's.
+        printed, record = read_printed(
+            project.path("build"), edited, supplementary=supplementary
+        )
+    except RoundTripError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
 
     namespace, results, _literature, _r = load_namespace(project)
     # What the assembly reports is not import's to enforce: a source the build refuses is
@@ -517,6 +528,22 @@ def cmd_import(args: argparse.Namespace) -> int:
     # the source twice.
     untagged_then = building - set(numbered.sent) if numbered.recorded else set()
     now_named = named_now(followed)
+    # What the document printed when it was built, read under the same names. Its record is
+    # a file beside the build that built it: on another machine, or with build/ cleaned, it
+    # is not there, and the import says so rather than read the document less exactly
+    # without a word.
+    if printed is None and record is not None:
+        build = project.path("build")
+        where = f"{build.name}/{record.parent.name}/{record.name}"
+        print(
+            f"{edited.name} names a record of what it printed when it was built, {where}, "
+            f"which is not here or is not this document's: it is written beside the build, on "
+            f"the machine that built it, and that build says so where it could not write it. "
+            f"The import goes by the rules for a document built before that record, which "
+            f"refuse more.\n"
+        )
+    if printed is not None:
+        printed = [replace(b, names=tuple(map(now_named, b.names))) for b in printed]
     # Where each bookmark sits goes by the same names: read under the old ones, a block
     # holding two identifiers could not say whose text either held.
     renamed = [
@@ -540,6 +567,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         followed=frozenset(followed.values()),
         same_text={now_named(was): now for was, now in numbered.same_text.items()},
         stale=stale,
+        printed=printed,
     )
 
     # Only paragraphs carrying an identifier are compared at all. Everything else - table

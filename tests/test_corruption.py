@@ -5832,12 +5832,21 @@ def test_a_paragraph_whose_words_are_not_known_is_named_by_where_it_stood(
     project: Path, tmp_path: Path
 ) -> None:
     """The refusal quoted the paragraph's identifier, 'mg-p-...', which the author cannot
-    find anywhere. It names the paragraph before it in the document as sent instead."""
+    find anywhere. It names the paragraph before it in the document as sent instead. That
+    is for a document without its record of what it printed (`_without_record`, below):
+    with it, the paragraph is named by what it said, which the record holds."""
     blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
     now = (*blocks[:2], "A paragraph the author wrote in place of Papa.", *blocks[3:])
-    _after, _before, out = _forced_import(
-        project, tmp_path, blocks, now, _pasted("Papa paragraph", "Bravo paragraph")
-    )
+    pasted = _pasted("Papa paragraph", "Bravo paragraph")
+    _after, _before, out = _forced_import(project, tmp_path, blocks, now, pasted)
+    assert "it came back holding another paragraph ('Papa paragraph reports" in out
+    assert "did not come back (" not in out
+
+    def unrecorded(xml: str) -> str:
+        _without_record(project)
+        return pasted(xml)
+
+    _after, _before, out = _forced_import(project, tmp_path, blocks, now, unrecorded)
     refusal = next(line for line in out.splitlines() if "did not come back (" in line)
     assert "the one after 'Alpha paragraph talks about" in refusal
     assert "mg-p-" not in refusal
@@ -6266,6 +6275,904 @@ def test_a_paragraph_still_takes_a_rewording_where_no_block_without_an_identifie
 
     after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
     assert after == before.replace(was, now, 1) != before, out
+
+
+# ------------------------------------ what the record of printed text lets the import read
+
+
+def _without_record(project: Path) -> None:
+    """The document's record of what it printed, gone: imported on another machine, or with
+    build/ cleaned."""
+    shutil.rmtree(project / "build" / "records")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("lead", "block", "edit"),
+    [
+        (
+            "Baseline characteristics of the reports are shown below.",
+            _TABLE + "\n\n: Baseline characteristics of the reports.",
+            (
+                "Baseline characteristics of the reports.",
+                "Baseline characteristics of the reports by group.",
+            ),
+        ),
+        (
+            "Statistical analysis was done in R.",
+            "## Statistical analysis",
+            (">Statistical analysis<", ">Statistical analysis in R<"),
+        ),
+        (
+            "Zulu ratio of the reports is defined below:",
+            "Zulu ratio of the reports\n:   the zulu definition of the ratio",
+            ("Zulu ratio of the reports<", "Zulu ratio of all the reports<"),
+        ),
+        (
+            "Statistical analysis was done in R.",
+            "## Statistical analysis",
+            (">Statistical analysis<", ">Statistical analysis was done in R<"),
+        ),
+    ],
+    ids=["caption", "heading", "definition term", "heading retitled as the sentence"],
+)
+def test_a_paragraph_deleted_before_a_block_reading_mostly_like_it_is_not_that_block(
+    project: Path, tmp_path: Path, lead: str, block: str, edit: tuple[str, str]
+) -> None:
+    """Round 1 of #120's review, on main too. An identifier stays on a block that keeps most
+    of its paragraph's words, which is how a paragraph restyled as a heading stays itself.
+    A sentence announcing a table reads like the caption under it, one above a heading like
+    the heading, a lead-in like the term it introduces: deleted in Word, the sentence left
+    its identifier on that block, and edited, the block's new text was written over the
+    sentence's source line. The record says that block stood under the sentence and did not
+    come back as it was; what carries the identifier is that block edited or the sentence
+    reworded, and nothing says which. Refused, and not reported deleted."""
+    from test_roundtrip import _word_delete
+
+    blocks = ("# Intro", _ALPHA, lead, block, _ROMEO, _BRAVO)
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, lead))
+        assert edit[0] in xml
+        return xml.replace(*edit, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" not in out, "either was done: the import cannot say which"
+    assert "is either this paragraph, reworded, or the text that stood under it" in out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_sentence_deleted_above_the_example_s_table_is_not_its_caption(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same on the example, through a build that passes its checks and an import without
+    --force: a sentence announcing the contingency table, deleted in Word, and the caption
+    under it changed. The caption was written over the sentence."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from test_roundtrip import _word_delete
+
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    lead = "The contingency table underlying the reporting odds ratio is given below."
+    table, text = "{{table.two_by_two}}", path.read_text(encoding="utf-8")
+    assert table in text
+    path.write_text(text.replace(table, f"{lead}\n\n{table}", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    caption = "Contingency table underlying the reporting odds ratio."
+    edited = "The contingency table underlying the reporting odds ratio estimate."
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, lead))
+        assert caption in xml
+        return xml.replace(caption, edited, 1)
+
+    returned = _sent_back(project, tmp_path, change)
+    before = path.read_text(encoding="utf-8")
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == before, printed.getvalue()
+
+
+_FURTHER = "Papa continuation paragraph reports that twelve reports were excluded."
+_OWN_KIND = {
+    "display maths": (
+        _LEAD,
+        "The ratio was computed as $$x = y$$ where both are counts of reports.",
+        ("The ratio was computed as", "The ratio was calculated as"),
+        ("The ratio was computed as", "Each count is then divided by the other, which gives"),
+    ),
+    "line block": (
+        _LEAD,
+        "| zulu line block one\n| zulu line block two",
+        ("zulu line block one", "zulu line block uno"),
+        ("zulu line block one", "an address the co-author typed over the old"),
+    ),
+    "div without a style": (
+        _LEAD,
+        "::: {.plain}\nzulu plain div paragraph here.\n:::",
+        ("zulu plain div paragraph", "zulu plain div words"),
+        ("zulu plain div paragraph here.", "A note the co-author wrote here in its place."),
+    ),
+    "line block in a list item": (
+        "Papa continuation",
+        f"- zulu item one\n\n  {_FURTHER}\n\n  | zulu line block one\n  | zulu line block two",
+        ("zulu line block one", "zulu line block uno"),
+        ("zulu line block one", "an address the co-author typed over the old"),
+    ),
+}
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("edited", ["lightly", "past most of its words"])
+@pytest.mark.parametrize("shape", list(_OWN_KIND))
+def test_a_paragraph_deleted_before_a_block_of_its_own_kind_is_not_that_block(
+    project: Path, tmp_path: Path, shape: str, edited: str
+) -> None:
+    """Round 1 of #120's review, on main too. Some blocks the build gives no identifier are
+    of the kind a paragraph is: the body text either side of a displayed equation, a line
+    block, a div with no style of its own; and, under a list item's further paragraph, a line
+    block in the same item. The paragraph before one deleted in Word, its identifier went
+    onto a block its kind cannot tell from it, and edited, that block was written over the
+    paragraph. The record says the block stood under the paragraph and is gone as it was.
+    Edited lightly, it reads like that block and not like the paragraph, which was deleted.
+    Reworded past most of its words, it reads like neither, and is refused."""
+    from test_roundtrip import _word_delete
+
+    lead, block, light, heavy = _OWN_KIND[shape]
+    blocks = ("# Intro", _ALPHA, block, _ROMEO, _BRAVO)
+    if lead == _LEAD:
+        blocks = ("# Intro", _ALPHA, _LEAD, block, _ROMEO, _BRAVO)
+    edit = light if edited == "lightly" else heavy
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, lead))
+        assert edit[0] in xml
+        return xml.replace(*edit, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert ("deleted in Word" in out) == (edited == "lightly"), out
+
+
+_CALLOUT = "Table 1 shows the baseline characteristics of the reports included in the analysis."
+_CAPTION = "Baseline characteristics of the reports included in the analysis."
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "caption", ["edited in Word", "deleted in Word", "changed in the .md since the build"]
+)
+def test_a_sentence_reworded_far_from_the_caption_it_reads_like_still_merges(
+    project: Path, tmp_path: Path, caption: str
+) -> None:
+    """Round 2 of #120's review: a guard, as main merges it. A sentence pointing at a table
+    in the words of its caption, the table at the end of the paper. Asked whether it read
+    like any text without an identifier that was gone, the sentence, reworded, lost its
+    identifier whenever the caption was touched, or changed in the `.md`. Only what stood
+    under a paragraph can carry its identifier, and the caption did not."""
+    now = _CALLOUT.replace("shows", "gives")
+    blocks = ("# Results", _ALPHA, _CALLOUT, _ROMEO, "# Tables", f"{_TABLE}\n\n: {_CAPTION}")
+    later = blocks
+    if caption == "changed in the .md since the build":
+        later = (*blocks[:-1], f"{_TABLE}\n\n: {_CAPTION.replace('of the', 'of all the')}")
+
+    def change(xml: str) -> str:
+        assert _CALLOUT in xml
+        xml = xml.replace(_CALLOUT, now, 1)
+        if caption == "edited in Word":
+            xml = xml.replace(_CAPTION, _CAPTION.replace("the analysis", "the main analysis"), 1)
+        elif caption == "deleted in Word":
+            found = next(
+                p for p in re.findall(r"<w:p\b.*?</w:p>", xml, re.DOTALL) if _CAPTION in p
+            )
+            xml = xml.replace(found, "", 1)
+        return xml
+
+    after, before, out = _forced_import(project, tmp_path, blocks, later, change)
+    assert after == before.replace(_CALLOUT, now, 1) != before, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_callout_reworded_on_the_example_merges_with_its_caption_edited_too(
+    project: Path, tmp_path: Path
+) -> None:
+    """The same on the example, through a checked build and an import without --force."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    from manuscript_guard.cli import main
+
+    path = main_md(project)
+    lead = "Table 3 shows the contingency table underlying the reporting odds ratio."
+    anchor, text = "{{table.baseline}}\n\n", path.read_text(encoding="utf-8")
+    assert anchor in text
+    path.write_text(text.replace(anchor, f"{anchor}{lead}\n\n", 1), encoding="utf-8")
+    assert main(["build", str(project), "--offline"]) == 0
+    caption = "Contingency table underlying the reporting odds ratio."
+    now = lead.replace("shows", "gives")
+
+    def change(xml: str) -> str:
+        assert lead in xml
+        assert caption in xml
+        return xml.replace(lead, now, 1).replace(caption, caption[:-1] + " for example-drug.", 1)
+
+    returned = _sent_back(project, tmp_path, change)
+    before = path.read_text(encoding="utf-8")
+    printed = StringIO()
+    with redirect_stdout(printed):
+        main(["import", str(returned), str(project), "--apply"])
+    assert path.read_text(encoding="utf-8") == before.replace(lead, now, 1), printed.getvalue()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_conclusion_and_the_key_point_repeating_it_reworded_alike_still_merges(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 2 of #120's review: a guard. A list of key points repeats the conclusion, and a
+    word is changed in both."""
+    point = "Reporting of hepatic injury was disproportionate for example-drug."
+    conclusion = "Reporting of hepatic injury was disproportionate for example-drug in these data."
+    blocks = (
+        "# Key points",
+        f"- {point}\n- Disproportionality is not incidence.",
+        "# Abstract",
+        _ALPHA,
+        conclusion,
+        "# Methods",
+        _ROMEO,
+        _BRAVO,
+    )
+
+    def change(xml: str) -> str:
+        assert xml.count("hepatic injury was") == 2
+        return xml.replace("hepatic injury was", "liver injury was")
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before.replace(conclusion, conclusion.replace("hepatic", "liver"), 1), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("lead", "block", "under"),
+    [
+        (
+            "Papa paragraph reports what was excluded:",
+            "- reports whose onset date was missing or fell outside the study period\n"
+            "- duplicate reports",
+            "reports whose onset date was missing or fell outside the study period",
+        ),
+        ("Papa paragraph gives Table 1.", f"{_TABLE}\n\n: {_CAPTION}", _CAPTION),
+    ],
+    ids=["list item", "caption"],
+)
+def test_a_paragraph_joined_with_the_block_under_it_is_not_reported_deleted(
+    project: Path, tmp_path: Path, lead: str, block: str, under: str
+) -> None:
+    """Round 2 of #120's review: a guard. Delete pressed at the end of a lead-in runs the
+    block under it into the paragraph, which then holds that block whole and reads mostly
+    like it. It holds the paragraph whole too, and is the join main reports."""
+    blocks = ("# Intro", _ALPHA, lead, block, _ROMEO, _BRAVO)
+
+    after, before, out = _forced_import(
+        project, tmp_path, blocks, blocks, _run_into_papa(under, below=True)
+    )
+    assert after == before, out
+    assert "deleted in Word" not in out, out
+    assert "came back joined" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rewording_merges_beside_a_deletion_above_a_block_the_md_changed_since(
+    project: Path, tmp_path: Path
+) -> None:
+    """A guard, as main merges it, found by running random sessions under both trees. Papa
+    is reworded in Word and Romeo, under it, deleted, which leaves Romeo's identifier on the
+    div after it; the author changed that div in the `.md` since the build. The record
+    takes the identifier off the div, which reads as it was sent. The div then has no
+    identifier and does not read as the fresh build prints it, and counted as new text
+    beside Papa, it had Papa's rewording refused as a split. It is not new: the document
+    was sent with it."""
+    from test_roundtrip import _word_delete
+
+    div = "::: {.plain}\nzulu plain div paragraph here.\n:::"
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, div, _BRAVO)
+    now = tuple(block.replace("zulu plain div", "zulu ordinary div") for block in blocks)
+    old, new = "twelve reports were excluded", "twelve of the reports were excluded"
+
+    def change(xml: str) -> str:
+        return _word_delete(xml, _word_paragraph(xml, "Romeo paragraph")).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(old, new, 1), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("record", ["beside the build", "gone"])
+def test_a_sentence_typed_after_the_emptied_line_is_joined_up_is_not_the_cut_paragraph(
+    project: Path, tmp_path: Path, record: str
+) -> None:
+    """Round 2 of #119's review. Papa is reworded in the `.md`. In Word its text is cut
+    without its paragraph mark, Backspace joins the emptied line onto the end of Alpha, a
+    sentence is typed there and the text pasted onto the end of Bravo. Word puts the
+    sentence after Papa's bookmark, so the identifier holds it, and what Papa had said was
+    not known: Papa counted as come back, reworded, and Bravo merged its old sentence. The
+    record says what Papa printed, and the sentence is not that. Without the record this is
+    the gap it was."""
+    from test_roundtrip import _parts
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(_reworded(b) if b == _PAPA else b for b in blocks)
+    space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+    typed = "A sentence the co-author added here later."
+    typed = f'<w:r><w:t xml:space="preserve"> {typed}</w:t></w:r>'
+
+    def change(xml: str) -> str:
+        if record == "gone":
+            _without_record(project)
+        papa = _word_paragraph(xml, "Papa paragraph")
+        runs, (_props, mark, _runs) = _paragraph_runs(papa), _parts(papa)
+        xml = xml.replace(papa, "", 1)
+        alpha = _word_paragraph(xml, "Alpha paragraph")
+        xml = xml.replace(alpha, alpha[: -len("</w:p>")] + mark + typed + "</w:p>", 1)
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        return xml.replace(bravo, bravo[: -len("</w:p>")] + space + runs + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert (after == before) == (record == "beside the build"), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("record", ["beside the build", "gone"])
+def test_a_sentence_typed_where_a_paragraph_the_author_changed_was_cut_is_not_that_paragraph(
+    project: Path, tmp_path: Path, record: str
+) -> None:
+    """The gap #119 left open and named. Papa is reworded in the `.md`, so what it said was
+    not known. Its text is cut in Word, a sentence typed on its line, and the text pasted
+    onto the end of Romeo: the identifier alone on text that read as nothing sent counted as
+    Papa, reworded, and Romeo merged Papa's old sentence. The record says what Papa
+    printed."""
+    from test_roundtrip import _parts
+
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = tuple(_reworded(b) if b == _PAPA else b for b in blocks)
+
+    def change(xml: str) -> str:
+        if record == "gone":
+            _without_record(project)
+        cut = _word_paragraph(xml, "Papa paragraph")
+        runs, (props, mark, _runs) = _paragraph_runs(cut), _parts(cut)
+        typed = "A sentence the co-author wrote in its place."
+        typed = f'<w:r><w:t xml:space="preserve">{typed}</w:t></w:r>'
+        xml = xml.replace(cut, f"<w:p>{props}{mark}{typed}</w:p>", 1)
+        romeo = _word_paragraph(xml, "Romeo paragraph")
+        space = '<w:r><w:t xml:space="preserve"> </w:t></w:r>'
+        return xml.replace(romeo, romeo[: -len("</w:p>")] + space + runs + "</w:p>", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert (after == before) == (record == "beside the build"), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("author", ["reworded", "dropped"])
+@pytest.mark.parametrize("record", ["beside the build", "gone"])
+def test_a_rewording_that_gained_five_words_merges_beside_a_paragraph_both_changed(
+    project: Path, tmp_path: Path, author: str, record: str
+) -> None:
+    """Round 2 of #116's review: five of twenty ordinary sessions. The co-author deletes a
+    paragraph the author had changed or dropped, and rewords another so that it gains six
+    words in a row. What the deleted one had said was not known, so the interim rule held
+    the rewording back as a possible paste of it. The record says what it printed, the
+    rewording holds none of it, and it merges, as on main before that rule. Without the
+    record the rule stands."""
+    old = "Papa paragraph reports that twelve reports were excluded for missing dates."
+    new = "Papa paragraph reports that missing dates meant twelve reports had to be left out."
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, _BRAVO)
+    now = _elsewhere(blocks) if author == "reworded" else blocks[:-1]
+
+    def change(xml: str) -> str:
+        if record == "gone":
+            _without_record(project)
+        return xml.replace(_word_paragraph(xml, "Bravo paragraph"), "", 1).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    merged = before.replace(old, new, 1)
+    assert after == (merged if record == "beside the build" else before), out
+    assert ("records/" in out) == (record == "gone"), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rerun_value_is_refused_for_its_own_reason(project: Path, tmp_path: Path) -> None:
+    """Round 2 of #116's review. With the analysis re-run, a paragraph printing the value
+    came back printing 4000 where the fresh build prints 4100. Counted from the fresh build,
+    it had gained "4000", a word with a digit, and with a paragraph whose words were not
+    known deleted in the same round it was refused as a possible paste of that paragraph,
+    which sent the author looking for one. Counted from what it printed, it gained nothing,
+    and is refused for its value, as main refused it."""
+    papa = "Papa paragraph reports that {{results.cohort.n_reports}} reports were screened."
+    blocks = ("# Intro", _ALPHA, papa, _ROMEO, _BRAVO)
+
+    def change(xml: str) -> str:
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        return xml.replace(bravo, "", 1).replace("talks about", "speaks about", 1)
+
+    after, before, out = _forced_import(
+        project, tmp_path, blocks, blocks[:-1], change, reports=4100
+    )
+    assert after == before.replace("talks about", "speaks about", 1), out
+    assert "comes from results.cohort.n_reports" in out, out
+
+
+_WORD_BLOCK = re.compile(r"<w:p\b.*?</w:p>", re.DOTALL)
+
+
+def _joined_up(paragraph: str, above: str, retyped: str, *, typed: str = "", whole: bool = False):
+    """Word 16, Track Changes off: the paragraph's text deleted, Backspace on the emptied
+    line, and the block above it edited. Its identifier is then at the end of that block.
+
+    As Word leaves each, made there over COM. Text typed at the join goes after the
+    bookmark, as does text typed over a selection that ends at it: `typed`, so that
+    "Funding", three Backspaces and "ers" is "Fund", the bookmark, "ers". The block selected
+    whole and typed over, the bookmark is at its start, in front of all of it: `whole`."""
+    from test_roundtrip import _parts
+
+    def change(xml: str) -> str:
+        cut = _word_paragraph(xml, paragraph)
+        _props, mark, _runs = _parts(cut)
+        xml = xml.replace(cut, "", 1)
+        block = next(p for p in _WORD_BLOCK.findall(xml) if "mg-p-" not in p and above in p)
+        after = f'<w:r><w:t xml:space="preserve">{typed}</w:t></w:r>' if typed else ""
+        if whole:
+            opening = re.match(r"<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", block, re.DOTALL)
+            joined = opening.group(0) + mark + f"<w:r><w:t>{retyped}</w:t></w:r></w:p>"
+        else:
+            joined = block.replace(above, retyped)[: -len("</w:p>")] + mark + after + "</w:p>"
+        return xml.replace(block, joined, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("paragraph", "above", "retyped"),
+    [
+        ("This work received no funding.", ">Funding<", ">Funders<"),
+        ("None declared.", ">Competing interests<", ">Conflicts of interest<"),
+    ],
+)
+def test_a_paragraph_cut_and_joined_up_to_the_heading_above_is_not_that_heading(
+    project: Path, tmp_path: Path, paragraph: str, above: str, retyped: str
+) -> None:
+    """Round 1 of #121's review, a regression against main, made in Word on the example as
+    shipped and imported without --force. A paragraph's text deleted and Backspace pressed
+    on the emptied line, its identifier is at the end of the heading above. The record said
+    what stood under the paragraph, nothing there was gone, and so the block was taken for
+    the paragraph: the heading retitled, "Funders" was written over "This work received no
+    funding." Word puts what is typed at a bookmark after it, so the text in front of an
+    identifier is never its paragraph's: behind the block's text and holding none, the
+    paragraph is gone."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _sent_back(project, tmp_path, _joined_up(paragraph, above, retyped))
+    before = main_md(project).read_text(encoding="utf-8")
+    main(["import", str(returned), str(project), "--apply"])
+    assert main_md(project).read_text(encoding="utf-8") == before
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_cut_and_joined_up_to_the_list_item_above_is_not_that_item(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #121's review, a regression against main. The same above a list: one word
+    of the last item retyped, the item was written over the paragraph cut from under it."""
+    blocks = ("# Intro", _ALPHA, "- zulu item one\n- zulu item two", _ROMEO, _BRAVO)
+    change = _joined_up("Romeo paragraph", "zulu item two", "zulu item number 2")
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_cut_and_joined_up_to_the_definition_above_is_not_that_definition(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #121's review, a regression against main. The same under a definition
+    list: the definition edited, it was written over the paragraph cut from under it."""
+    definition = "Zulu ratio of the reports\n:   the zulu definition of the ratio"
+    blocks = ("# Intro", _ALPHA, definition, _ROMEO, _BRAVO)
+    change = _joined_up("Romeo paragraph", "the zulu definition of", "the zulu meaning of")
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("above", "edit"),
+    [
+        ("## Zulu funding", (">Zulu funding<", ">Zulu fund<", "ers")),
+        ("- zulu item one\n- zulu item two", ("zulu item two", "zulu item ", "2")),
+        ("| zulu line block one\n| zulu line block two", ("block two", "block ", "2")),
+    ],
+    ids=["heading", "list item", "line block"],
+)
+def test_text_typed_where_a_cut_paragraph_was_joined_up_is_not_that_paragraph(
+    project: Path, tmp_path: Path, above: str, edit: tuple[str, str, str]
+) -> None:
+    """The same edits as Word 16 leaves them when the end of the block is typed over: three
+    Backspaces and "ers", or the last word selected and typed over. What is typed goes after
+    the bookmark, so the paragraph's identifier holds "ers". That is not the paragraph
+    reworded, since the text in front of it is another block's. Nor can it be told from the
+    block above run into the paragraph and both edited, so the paragraph is refused and not
+    reported deleted. Taken for the paragraph, "Zulu funders" was written over it."""
+    blocks = ("# Intro", _ALPHA, above, _ROMEO, _BRAVO)
+    was, head, typed = edit
+    change = _joined_up("Romeo paragraph", was, head, typed=typed)
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "came back inside another block" in out, out
+    assert "deleted in Word" not in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("above", "was", "now", "told"),
+    [
+        ("## Zulu funding", "Zulu funding", "Sponsors", "deleted in Word"),
+        ("- zulu item one\n- zulu item two", "zulu item two", "a new item", "deleted in Word"),
+        (
+            "| zulu line block one\n| zulu line block two",
+            "zulu line block one",
+            "a line the co-author typed over the old one",
+            "that stood above it",
+        ),
+        (
+            "| zulu line block one\n| zulu line block two",
+            "zulu line block one",
+            "zulu line block uno and zulu line block two",
+            "deleted in Word",
+        ),
+    ],
+    ids=["heading", "list item", "line block", "line block, lightly"],
+)
+def test_a_block_typed_over_whole_after_a_join_up_is_not_the_cut_paragraph(
+    project: Path, tmp_path: Path, above: str, was: str, now: str, told: str
+) -> None:
+    """Made in Word 16: the paragraph's text deleted, Backspace, then the block above
+    selected whole and typed over. The bookmark is then at the start of that block, where a
+    paragraph's own is. So a block that stood directly above the paragraph, gone as it was,
+    is weighed as one under it is: a heading or list item typed over is that block, and the
+    paragraph was deleted; a line block typed over reads like the paragraph rewritten with
+    the line block deleted, and is refused. Taken for the paragraph, each was written over
+    it."""
+    blocks = ("# Intro", _ALPHA, above, _ROMEO, _BRAVO)
+    change = _joined_up("Romeo paragraph", was, now, whole=True)
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert told in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("block", "was", "now"),
+    [
+        ("## Zulu funding", "Zulu funding", "Zulu sponsors and their role"),
+        ("- zulu item one\n- zulu item two", "zulu item two", "a second thing altogether"),
+    ],
+    ids=["heading", "list item"],
+)
+def test_a_block_moved_onto_a_cut_paragraph_s_line_and_edited_is_not_that_paragraph(
+    project: Path, tmp_path: Path, block: str, was: str, now: str
+) -> None:
+    """A guard, as main reads it. A paragraph's text deleted, and a heading from elsewhere
+    cut with its paragraph mark and pasted onto the emptied line, where what is pasted goes
+    after the identifier; then retitled. Nothing beside the paragraph is gone, and by "there
+    is nothing else for it to be" the heading was the paragraph, restyled and rewritten, and
+    was written over it. A block of another kind than the paragraph's, not reading like it,
+    is weighed against text of that kind gone from anywhere."""
+    from test_roundtrip import _parts
+
+    blocks = ("# Intro", _ALPHA, _ROMEO, _BRAVO, block, _PAPA)
+
+    def change(xml: str) -> str:
+        moved = next(p for p in _WORD_BLOCK.findall(xml) if "mg-p-" not in p and was in p)
+        cut = _word_paragraph(xml, "Romeo paragraph")
+        _props, mark, _runs = _parts(cut)
+        opening = re.match(r"<w:p\b[^>]*>\s*(?:<w:pPr>.*?</w:pPr>)?", moved, re.DOTALL)
+        pasted = opening.group(0) + mark + f"<w:r><w:t>{now}</w:t></w:r></w:p>"
+        return xml.replace(moved, "", 1).replace(cut, pasted, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+def _typed_in_front(paragraph: str, under: str, typed: str):
+    """Word 16, Track Changes off: the paragraph deleted whole, which leaves its identifier
+    at the start of the block under it, and a new block typed there, then Enter. What is
+    typed goes after the bookmark, in that block's style; the block follows as it was."""
+    from test_roundtrip import _word_delete
+
+    def change(xml: str) -> str:
+        xml = _word_delete(xml, _word_paragraph(xml, paragraph))
+        carrying = next(p for p in _WORD_BLOCK.findall(xml) if under in p)
+        as_sent = re.sub(
+            r'<w:bookmarkStart [^>]*w:name="mg-p-[^>]*/><w:bookmarkEnd [^>]*/>', "", carrying
+        )
+        assert as_sent != carrying and under in as_sent
+        return xml.replace(carrying, carrying.replace(under, typed, 1) + as_sent, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_heading_typed_in_front_of_the_next_one_is_not_the_paragraph_deleted_above_it(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 2 of #121's review, a regression against main, made in Word on the example as
+    shipped and imported without --force. "Reporting follows the checklist..." deleted
+    whole, then "Reporting" and Enter typed in front of "Results": the new heading carries
+    the paragraph's identifier at its start, and nothing the document was sent with is gone.
+    By "there is nothing else for it to be" it was the paragraph, and the source line became
+    `Reporting`, "merged 1 reworded paragraph(s)". It is the same bytes as the paragraph
+    given a heading's style and rewritten, so one reading has to give: a block of a kind the
+    build gives no identifier, not reading like the paragraph, is not the paragraph, as
+    main reads it."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    change = _typed_in_front("Reporting follows the checklist", ">Results<", ">Reporting<")
+    returned = _sent_back(project, tmp_path, change)
+    before = main_md(project).read_text(encoding="utf-8")
+    main(["import", str(returned), str(project), "--apply"])
+    assert main_md(project).read_text(encoding="utf-8") == before
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("under", "was", "typed"),
+    [
+        ("# Zulu results", ">Zulu results<", ">Zulu screening<"),
+        ("- zulu item one\n- zulu item two", "zulu item one", "a new first item"),
+        (
+            "> zulu quotation from the protocol.",
+            "zulu quotation from the protocol.",
+            "a new quotation.",
+        ),
+    ],
+    ids=["heading", "list item", "quotation"],
+)
+def test_a_block_typed_where_a_deleted_paragraph_s_identifier_slid_is_not_that_paragraph(
+    project: Path, tmp_path: Path, under: str, was: str, typed: str
+) -> None:
+    """Round 2 of #121's review, a regression against main. The same in front of a list
+    and a quotation: a new first item typed where the lead-in was deleted was written over
+    the lead-in, a body paragraph above a list that kept its items."""
+    blocks = ("# Intro", _ALPHA, _ROMEO, under, _BRAVO)
+    change = _typed_in_front("Romeo paragraph", was, typed)
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_retitled_heading_is_not_the_paragraph_deleted_above_it_where_its_title_is_typed_again(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 2 of #121's review, a regression against main. The heading under a deleted
+    paragraph retitled, and its old title typed as a new heading elsewhere. What is gone is
+    counted over the whole document, the old title is there to count, and so nothing was
+    gone: the retitled heading was written over the paragraph."""
+    from test_roundtrip import _word_delete
+
+    blocks = ("# Intro", _ALPHA, _ROMEO, "# Zulu results", _BRAVO)
+
+    def change(xml: str) -> str:
+        heading = next(p for p in _WORD_BLOCK.findall(xml) if ">Zulu results<" in p)
+        xml = _word_delete(xml, _word_paragraph(xml, "Romeo paragraph"))
+        xml = xml.replace(">Zulu results<", ">Zulu findings<", 1)
+        bravo = _word_paragraph(xml, "Bravo paragraph")
+        return xml.replace(bravo, bravo + heading, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+
+
+def test_an_identifier_a_build_put_behind_text_is_not_read_as_joined_up() -> None:
+    """Where a bookmark sits says how it came there only because a build puts it at the
+    start of its block. The record says where it was, and one a build put behind text of
+    its own block, should a build ever do so, is not read as a line joined up."""
+    from collections import Counter
+    from dataclasses import replace
+
+    from manuscript_guard.docxtext import Block
+    from manuscript_guard.merge import _off_as_sent
+
+    place = (("mg-p-main-1", 7),)
+    sent = Block(names=("mg-p-main-1",), text="Label: the paragraph as it was sent.", at=place)
+    back = [replace(sent, text="Label: the paragraph as it came back.")]
+
+    out, untold = _off_as_sent([sent], back, Counter())
+    assert out == back and not untold
+    out, untold = _off_as_sent([replace(sent, at=(("mg-p-main-1", 0),))], back, Counter())
+    assert not out[0].names and "behind 'Label:'" in untold["mg-p-main-1"].why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("heading", "edit"),
+    [
+        ("Zulu approval", (">Zulu approval<", ">Zulu consent<")),
+        ("Papa paragraph", ("Papa paragraph reports that", ": it reports that")),
+    ],
+    ids=["retitled", "opening with the heading's words"],
+)
+def test_a_heading_run_into_its_paragraph_and_edited_is_not_merged_into_it(
+    project: Path, tmp_path: Path, heading: str, edit: tuple[str, str]
+) -> None:
+    """Two Known gaps, as main merges them. A heading run into the paragraph under it is
+    known as a join by its title turning up in the paragraph. Retitled in the same round,
+    the title is gone; and where the paragraph opened with the heading's own words, cut
+    from it after the join, the title appears as often as it did. Either way the block
+    merged, heading text and all, and the heading stayed in the source. The paragraph's
+    identifier is behind the heading's text, which is never the paragraph's own."""
+    blocks = ("# Intro", _ALPHA, f"## {heading}", _PAPA, _BRAVO)
+
+    def change(xml: str) -> str:
+        xml = _run_into_papa(heading, below=False)(xml)
+        assert edit[0] in xml
+        return xml.replace(*edit, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "came back inside another block" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("above", "gone"),
+    [
+        ("## Zulu funding", "Zulu funding"),
+        ("- zulu item one\n- zulu item two", "zulu item two"),
+        ("| zulu line block one\n| zulu line block two", "zulu line block one"),
+    ],
+    ids=["heading", "list item", "line block"],
+)
+@pytest.mark.parametrize("reworded", ["lightly", "past most of its words"])
+def test_a_rewording_merges_under_a_block_deleted_in_the_same_round(
+    project: Path, tmp_path: Path, above: str, gone: str, reworded: str
+) -> None:
+    """Guards for the block above a paragraph, as main merges them. With that block now
+    weighed where it is gone, a paragraph reworded under one deleted in the same round must
+    still merge: by its kind under a heading or a list item, however far it was reworded,
+    and by its words under a block of its own kind. Under one of those, rewritten past most
+    of its words, it is the same bytes as that block typed over whole with the paragraph
+    deleted, and is refused: the one case here that main merges and this does not. (A block
+    edited rather than deleted is new text beside the paragraph, and main refuses the
+    rewording as a split.)"""
+    blocks = ("# Intro", _ALPHA, above, _ROMEO, _BRAVO)
+    old = "explains how duplicates were removed before the analysis."
+    new = (
+        "explains how duplicate reports were removed before the analysis."
+        if reworded == "lightly"
+        else "says which records were dropped as copies, and when."
+    )
+
+    def change(xml: str) -> str:
+        block = next(p for p in _WORD_BLOCK.findall(xml) if "mg-p-" not in p and gone in p)
+        return xml.replace(block, "", 1).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    untold = "line block" in above and reworded != "lightly"
+    assert after == (before if untold else before.replace(old, new, 1)), out
+    assert ("either this paragraph, reworded" in out) == untold, out
+
+
+def _without_its_equation(paragraph: str, edit: tuple[str, str]):
+    """Word 16, Track Changes off: the paragraph and the displayed equation under it deleted
+    in one selection, and the text after the equation edited. The paragraph's identifier is
+    then in front of that text."""
+    from test_roundtrip import _word_delete
+
+    def change(xml: str) -> str:
+        equation = next(p for p in _WORD_BLOCK.findall(xml) if "<m:oMathPara>" in p)
+        xml = _word_delete(xml.replace(equation, "", 1), _word_paragraph(xml, paragraph))
+        assert edit[0] in xml
+        return xml.replace(*edit, 1)
+
+    return change
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_paragraph_deleted_with_the_equation_under_it_is_not_the_heading_after(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #121's review, a regression against main. The text under a paragraph was
+    read up to the next table, figure or equation, since an identifier left behind goes onto
+    the next paragraph. It slides past an equation deleted with its paragraph, onto the
+    heading after, and retitled, the heading was written over the paragraph."""
+    blocks = ("# Intro", _ALPHA, _ROMEO, "$$x = y$$", "# Zulu results", _BRAVO)
+    change = _without_its_equation("Romeo paragraph", (">Zulu results<", ">Zulu findings<"))
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert "deleted in Word" in out, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("edited", ["lightly", "past most of its words"])
+def test_a_paragraph_deleted_with_the_equation_under_it_is_not_the_text_after_the_equation(
+    project: Path, tmp_path: Path, edited: str
+) -> None:
+    """Round 1 of #121's review, on main too, made in Word. A sentence and the equation
+    under it deleted in one selection, the identifier is on the "where" line after the
+    equation, which is body text as the sentence was. A comma typed into that line, it was
+    written over the sentence, and the clause was in the source twice. That line stood under
+    the paragraph past the equation and is gone as it was: edited lightly it is that line
+    and the paragraph was deleted; retyped whole it cannot be told, and is refused."""
+    tail = "where zulu and yankee count the reports in each group."
+    blocks = ("# Intro", _ALPHA, _ROMEO, f"$$x = y$$\n{tail}", _BRAVO)
+    now = (
+        "where zulu and yankee count the reports, in each group."
+        if edited == "lightly"
+        else "Both counts are taken from the table of reports by group."
+    )
+    change = _without_its_equation("Romeo paragraph", (tail, now))
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+    assert ("deleted in Word" in out) == (edited == "lightly"), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    "block",
+    [
+        "| zulu line block one\n| zulu line block two",
+        "::: {.plain}\nzulu plain div paragraph here.\n:::",
+    ],
+    ids=["line block", "div without a style"],
+)
+def test_a_paragraph_cut_and_joined_up_to_a_block_of_its_own_kind_is_not_that_block(
+    project: Path, tmp_path: Path, block: str
+) -> None:
+    """Round 1 of #121's review, on main too. A paragraph's text cut, its emptied line
+    joined up to a line block or a plain div above it, and that block retyped: its new text
+    was written over the paragraph. The block is body text as the paragraph was, so its kind
+    says nothing; the identifier is at its end, where a paragraph's own never is."""
+    blocks = ("# Intro", _ALPHA, block, _ROMEO, _BRAVO)
+    words = "zulu line block two" if "line block" in block else "zulu plain div paragraph here."
+    change = _joined_up("Romeo paragraph", words, "a line the co-author typed over the old one")
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    assert after == before, out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_rewordings_beside_a_paragraph_that_cannot_be_told_are_not_refused_as_split(
+    project: Path, tmp_path: Path
+) -> None:
+    """Round 1 of #121's review, as main merges them. A line block deleted and its lead-in
+    rewritten cannot be told from the lead-in deleted and the block retyped, and is refused.
+    Its identifier taken off, the block counted as new text, and a one-word rewording in the
+    paragraph on either side was refused as "split in two in Word". The refusal is of the
+    paragraph it concerns."""
+    lead = "Papa paragraph lists the search terms one per line, as follows."
+    lines = "| zulu line block one\n| zulu line block two"
+    blocks = ("# Intro", _ALPHA, lead, lines, _ROMEO, _BRAVO)
+
+    def change(xml: str) -> str:
+        gone = next(p for p in _WORD_BLOCK.findall(xml) if "zulu line block one" in p)
+        xml = xml.replace(gone, "", 1).replace(lead, "The search terms are in Table S1.", 1)
+        xml = xml.replace("cohort of patients", "cohort of the patients", 1)
+        return xml.replace("duplicates were removed", "duplicates were dropped", 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, blocks, change)
+    expected = before.replace("cohort of patients", "cohort of the patients", 1)
+    assert after == expected.replace("duplicates were removed", "duplicates were dropped", 1), out
+    assert "either this paragraph, reworded" in out, out
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")

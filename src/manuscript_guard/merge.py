@@ -341,14 +341,225 @@ def _given_back(
     return out
 
 
-def _recovered(
-    rendered: dict[str, str], reference: list[Block], returned: list[Block]
+def _gone_beside(
+    sent: Sequence[Block], at: int, step: int, missing: Counter, lost: Counter
 ) -> list[Block]:
-    """The returned document with identifiers put back where only exact text can say.
-    `docxtext` has already put them back where the tracked changes say."""
-    expected = _untagged_counts(reference)
-    off = _off_headings(rendered, reference, returned, expected)
-    return _given_back(rendered, off, expected)
+    """The text without an identifier that stood beside the paragraph at `at` in the
+    document as sent and is gone as it was: under it with a `step` of 1, above it with -1.
+
+    Each block in turn while it is gone - text that no longer reads as it did (`missing`),
+    or a table, figure or equation the returned document no longer holds (`lost`) - up to
+    the first that is still there, or has an identifier of its own. An identifier at the
+    start of a block that is not its paragraph is on one of these. Deleted, a paragraph
+    leaves it on the block after its own, past whatever was deleted with it: read only up to
+    the next table, figure or equation, the heading after an equation deleted with its
+    paragraph was not among them, and retitled, it was written over the paragraph. Its text
+    deleted and its line joined up, a paragraph leaves it in the block above, at the start
+    of that block once all of it is typed over.
+    """
+    passed: Counter = Counter()
+    found: list[Block] = []
+    index = at + step
+    while 0 <= index < len(sent):
+        block = sent[index]
+        index += step
+        what = (block.kind, block.key) if block.table else block.text
+        if block.table:
+            if passed[what] >= lost[what]:
+                break
+        elif block.names:
+            break
+        elif block.text:
+            if passed[what] >= missing[what]:
+                break
+            found.append(block)
+        passed[what] += 1
+    return found
+
+
+class _Untold(NamedTuple):
+    """A paragraph whose identifier came back on a block that cannot be told from it."""
+
+    #: What the author is told.
+    why: str
+    #: Whether the block may be the paragraph by itself, reworded. It is then no new text
+    #: beside the paragraphs around it: see `plan_import`.
+    alone: bool = False
+
+
+def _off_as_sent(
+    printed: Sequence[Block], returned: list[Block], expected: Counter
+) -> tuple[list[Block], dict[str, _Untold]]:
+    """`_off_headings` for a document whose record says what it printed (`printed`, from
+    `roundtrip.read_printed`): the identifiers taken off a block they slid onto, and, of
+    those, the ones that may as well be on their own paragraph, each with what the author
+    is told.
+
+    Without the record the question was put to the block: of what kind it is, and whether it
+    keeps most of the paragraph's words. Both guess. A sentence announcing a table reads
+    like the caption under it, and deleted in Word with the caption edited, the caption was
+    written over it; asked instead whether the block reads like any text without an
+    identifier that is gone, a paragraph resembling a block elsewhere in the paper lost its
+    identifier whenever that block was touched. The record says what stood beside each
+    paragraph, and where an identifier's bookmark sits in its block (`docxtext.Block.at`)
+    says how it came there. Word puts text typed or pasted at a bookmark after it, so the
+    text in front of one is never its paragraph's:
+
+    - A block that reads exactly as its paragraph did is that paragraph.
+    - An identifier behind other text is in a block joined in front of it. The paragraph's
+      text deleted and Backspace pressed on the emptied line, it is at the end of the block
+      above. Holding no text there, the paragraph is gone, whatever was done to that block:
+      a heading retitled, a list item or a line block retyped. Holding text, that text is
+      the paragraph's with the block above run into it, or was typed after the join. The
+      first is a join, read as `_took_in` reads it where that block came back whole;
+      anything else cannot be told, and no reading of it is one paragraph reworded.
+    - An identifier at the start of its block is on its own paragraph, or on text without
+      one that stood beside it and is gone as it was (`_gone_beside`): under it, where the
+      paragraph was deleted, or above it, where the line was joined up and that block typed
+      over whole.
+    - Where none is gone, the block is the paragraph, or a new block typed where its
+      identifier slid: the paragraph deleted whole, and a heading typed in front of the next
+      one, which goes after the bookmark and takes that heading's style. That is byte for
+      byte the paragraph given a heading's style and rewritten. The first version took it
+      for the paragraph, "there being nothing else for it to be", and "Reporting" was
+      written over the paragraph deleted above "Results". So it is read as a document
+      without the record reads it (`_off_headings`): of a kind the build gives no
+      identifier, and not reading like the paragraph, it is not the paragraph.
+    - A block of another kind than the paragraph's that does not read like it is weighed
+      against text of that kind gone from anywhere in the document too: a heading or a list
+      item cut and pasted onto the line the paragraph's text was deleted from, and edited
+      there.
+    - Otherwise the block is the paragraph where it is of the paragraph's kind and none of
+      those is; where the heading above was run into it (`_took_in`); where it holds the
+      paragraph's text whole in the paragraph's kind, or with one of them whole beside it,
+      which is a join.
+    - Then by the words. Reading mostly like one of them and not like the paragraph, it is
+      that block, edited, and the paragraph was deleted. Reading mostly like the paragraph
+      and like none of them, in a kind that is not theirs, it is the paragraph. Reading like
+      neither in a kind only they had, it is one of them, as a retitled heading is.
+    - What is left cannot be told: it reads like both, or like neither in a kind both had,
+      or like the paragraph in a kind only they had. The identifier is taken off, so nothing
+      is written, and the paragraph is refused rather than reported deleted.
+
+    A block with several identifiers, or with one the record does not hold, is judged as
+    `_off_headings` judges it, by its kind and its words, against the document as sent.
+    Which identifier holds what there is `_came_back_whole`'s to say.
+    """
+    sent = list(printed)
+    said = {b.names[0]: b.text for b in sent if b.names and not b.table}
+    kinds = {b.names[0]: (b.style, b.role) for b in sent if b.names and not b.table}
+    place = {b.names[0]: index for index, b in enumerate(sent) if b.names and not b.table}
+    # Those the build put behind text of their own block, if it ever does: where such a
+    # bookmark sits says nothing.
+    inside = {b.names[0] for b in sent if b.names and not b.table and any(o for _n, o in b.at)}
+    bare = {(b.style, b.role) for b in sent if not (b.names or b.table) and b.text}
+    by_kind = _off_headings(said, sent, returned, expected)
+
+    def by_text(block: Block) -> bool:
+        text = _squashed(block.text)
+        return (
+            bool(block.names)
+            and not block.table
+            and bool(expected[text])
+            and not any(_squashed(said.get(name, "")) == text for name in block.names)
+        )
+
+    missing = _untagged_missing(
+        sent, [replace(b, names=()) if by_text(b) else b for b in returned]
+    )
+    # The tables, figures and equations that are gone, each by what it holds: one edited in
+    # place counts as gone, which weighs more blocks and so refuses more, never less.
+    lost = Counter((b.kind, b.key) for b in sent if b.table)
+    lost.subtract((b.kind, b.key) for b in returned if b.table)
+    lost = +lost
+    # The text without an identifier that is gone as it was, anywhere, by its kind.
+    left = Counter(missing)
+    elsewhere: dict[tuple[str, str], list[Block]] = {}
+    for sent_block in sent:
+        if not (sent_block.names or sent_block.table) and left[sent_block.text]:
+            left[sent_block.text] -= 1
+            elsewhere.setdefault((sent_block.style, sent_block.role), []).append(sent_block)
+
+    def whose(block: Block, name: str, slid: bool) -> tuple[str, _Untold | None]:
+        own, text = _squashed(said[name]), _squashed(block.text)
+        if not own or text == own:
+            return "kept", None
+        behind = dict(block.at).get(name)
+        if behind and name not in inside:
+            head, held = _squashed(block.text[:behind]), _squashed(block.text[behind:])
+            if not held:
+                return "off", None
+            if _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
+                return "kept", None
+            return "untold", _Untold(_BEHIND.format(head=head[-60:], held=held[:60]))
+        above = _gone_beside(sent, place[name], -1, missing, lost)
+        gone = above + _gone_beside(sent, place[name], 1, missing, lost)
+        kind, mine = (block.style, block.role), kinds[name]
+        like_it = None
+        if kind != mine and elsewhere.get(kind):
+            like_it = _alike(said[name], block.text)
+            if not like_it:
+                gone += [b for b in elsewhere[kind] if not any(b is g for g in gone)]
+        if not gone:
+            return ("off" if slid else "kept"), None
+        theirs = {(b.style, b.role) for b in gone}
+        if kind == mine and kind not in theirs:
+            return "kept", None
+        if _took_in(name, block.text, said[name], sent, missing, steps=(-1,)):
+            return "kept", None
+        if own in text and (kind == mine or any(_squashed(b.text) in text for b in gone)):
+            return "kept", None
+        if like_it is None:
+            like_it = _alike(said[name], block.text)
+        like = next((b for b in gone if _alike(b.text, block.text)), None)
+        if like is not None and not like_it:
+            return "off", None
+        if like_it and like is None and (kind == mine or kind not in theirs):
+            return "kept", None
+        if like is None and not like_it and kind != mine:
+            if kind in theirs or block.role or kind in bare:
+                return "off", None
+            return "kept", None
+        shown = like or gone[0]
+        side = "above" if any(shown is b for b in above) else "under"
+        told = _EITHER.format(side=side, text=_squashed(shown.text)[:60])
+        return "untold", _Untold(told, alone=True)
+
+    out: list[Block] = []
+    untold: dict[str, _Untold] = {}
+    for block, judged in zip(returned, by_kind, strict=True):
+        verdict, unsure = ("off", None) if by_text(block) else ("kept", None)
+        if verdict == "kept" and block.names and not block.table:
+            if len(block.names) == 1 and block.names[0] in said:
+                verdict, unsure = whose(block, block.names[0], not judged.names)
+                if unsure is not None:
+                    untold[block.names[0]] = unsure
+            elif not judged.names:
+                verdict = "off"
+        out.append(block if verdict == "kept" else replace(block, names=()))
+    return out, untold
+
+
+def _recovered(
+    rendered: dict[str, str],
+    reference: list[Block],
+    returned: list[Block],
+    printed: Sequence[Block] | None = None,
+) -> tuple[list[Block], dict[str, _Untold]]:
+    """The returned document with identifiers put back where only exact text can say, and
+    those of them that could not be told from their own paragraph (`_off_as_sent`).
+    `docxtext` has already put them back where the tracked changes say. With `printed`, what
+    the document's record says it printed, the text is the document's as sent; without, the
+    fresh build's."""
+    if printed is None:
+        expected = _untagged_counts(reference)
+        off = _off_headings(rendered, reference, returned, expected)
+        return _given_back(rendered, off, expected), {}
+    expected = _untagged_counts(list(printed))
+    then = {b.names[0]: b.text for b in printed if b.names and not b.table}
+    off, untold = _off_as_sent(printed, returned, expected)
+    as_sent = {name: then.get(name, text) for name, text in rendered.items()}
+    return _given_back(as_sent, off, expected), untold
 
 
 #: The fewest of its words new text must share with what a paragraph lost for `_split_off`
@@ -1420,6 +1631,7 @@ def plan_import(
     followed: frozenset[str] = frozenset(),
     same_text: dict[str, str] | None = None,
     stale: bool = False,
+    printed: Sequence[Block] | None = None,
 ) -> Plan:
     """Compare the document as sent with the document as returned, paragraph by paragraph.
 
@@ -1464,6 +1676,15 @@ def plan_import(
     come back is looked for by the text of a paragraph whose source reads now as its did
     then, `same_text` (from `roundtrip.Numbering`), and where there is none, what it said is
     not known, and a rewording that gained words is refused (`_took_unknown`).
+
+    `printed` is what the document printed when it was built, block by block, from the
+    record the build wrote beside it (`roundtrip.read_printed`), under the identifiers the
+    returned document is read under. With it nothing in the last paragraph is guessed: what
+    each paragraph said, compared or not, re-run since or not, is what it printed; what a
+    paragraph gained is counted from what it printed; and an identifier left on another
+    block is told by where its bookmark sits there and by what stood beside its paragraph
+    (`_off_as_sent`). Without it, for a document built before the record or imported away
+    from it, the rules above stand.
     """
     # Only the identifiers in `known`. The import leaves out one that no longer names the
     # paragraph it named when the document was built, and its block is then neither
@@ -1474,7 +1695,18 @@ def plan_import(
         if b.names and not b.table and b.names[0] in known
     }
     carried_by = {n: b.text for b in returned if not b.table for n in b.names}
-    returned = _recovered(rendered, reference, returned)
+    carried = returned
+    returned, untold = _recovered(rendered, reference, returned, printed)
+    # For what is new beside a paragraph, a block that may be its own paragraph, reworded,
+    # is read with its identifier on. Its paragraph is refused for it; read as new text, it
+    # had a rewording in the paragraph on either side refused as "split in two in Word".
+    alone = {name for name, unsure in untold.items() if unsure.alone}
+    beside = [
+        was if set(was.names) & alone and not now.names else now
+        for was, now in zip(carried, returned, strict=True)
+    ]
+    # What each paragraph the document was sent with printed, where its record says.
+    then = {b.names[0]: b.text for b in printed or () if b.names and not b.table}
     # Identifiers taken off a heading or caption they slid onto: see the refusal below.
     taken_off = set(carried_by) - {n for b in returned if not b.table for n in b.names}
 
@@ -1510,7 +1742,7 @@ def plan_import(
         unsure_of_values = stale or current in followed
         return _as_sent(printed_now[current], marked_by.get(current), unsure_of_values)
 
-    sent = {name: as_sent(name) for name in weighed}
+    sent = {name: then[name].split() if name in then else as_sent(name) for name in weighed}
     joined += _joined_without_bookmark(weighed, texts, in_join, sent)
     unknown = {name for name in rendered if sent.get(name, []) is None}
     beside_lost = _beside_lost(rendered, texts, built, present, followed, unknown)
@@ -1535,19 +1767,26 @@ def plan_import(
     sections = _sections(known, held)
     headings = _text_counterparts(reference, returned)
     counterparts, lost = _counterparts(reference, returned, headings)
-    beside_new = _beside_new_text(reference, returned, counterparts)
+    # Text without an identifier is new where the document as sent did not have it. Asked of
+    # the fresh build, a block the .md changed since came back as new text once the record
+    # had taken a deleted paragraph's identifier off it, and the paragraph left beside it
+    # was refused as split.
+    document = reference if printed is None else list(printed)
+    beside_new = _beside_new_text(document, beside, counterparts)
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
     missing = _untagged_missing(reference, returned)
-    fresh = _untagged_new(reference, returned)
+    fresh = _untagged_new(document, beside)
     # What each paragraph the document was sent with said, where that is known, for telling
     # whether its identifier came back on its own text: see `_came_back_whole`.
-    said = {name: rendered[name] for name in in_join if name in rendered}
+    said = {name: then.get(name, rendered[name]) for name in in_join if name in rendered}
     for name in built:
         if name not in rendered:
             holder = (same_text or {}).get(name)
-            said[name] = printed_now.get(holder) if holder else None
+            said[name] = then[name] if name in then else printed_now.get(holder) if holder else None
     taken = expected + Counter(map(_squashed, [*rendered.values(), *filter(None, said.values())]))
+    if printed is not None:
+        taken = Counter(_squashed(b.text) for b in printed if b.text and not b.table)
     whole = _came_back_whole(returned, said, taken)
     # Those whose identifier holds some text, or text that cannot be told: they may have come
     # back where it is. The rest, if gone, did not come back.
@@ -1574,19 +1813,32 @@ def plan_import(
     # out, one pasted into a paragraph compared merged there, and its words were in the
     # source twice. One whose words are nowhere is named by where it stood, after a paragraph
     # the author can find: its identifier meant nothing to them.
-    vanished = [_Gone(rendered[name], rendered[name], sent[name]) for name in gone_from_place]
+    vanished = [
+        _Gone(then[name], None, sent[name])
+        if name in then
+        else _Gone(rendered[name], rendered[name], sent[name])
+        for name in gone_from_place
+    ]
     last = ""
     for name in built:
         holder = (same_text or {}).get(name)
         if name not in rendered and name not in whole:
-            if holder in printed_now:
+            if name in then:
+                vanished.append(_Gone(then[name], None, then[name].split()))
+            elif holder in printed_now:
                 vanished.append(_Gone(printed_now[holder], printed_now[holder], as_sent(holder)))
             else:
                 where = f"the one after '{_squashed(last)[:50]}'" if last.strip() else "the first"
                 shown = f"{where} in the document as sent"
                 vanished.append(_Gone(shown, None, None, unsure=name in holding))
         # Named by its own text: the block its identifier is on can hold another's too.
-        last = rendered.get(name) or printed_now.get(holder, "") or whole.get(name) or last
+        last = (
+            rendered.get(name)
+            or then.get(name)
+            or printed_now.get(holder, "")
+            or whole.get(name)
+            or last
+        )
 
     def printed_otherwise(name: str) -> bool:
         # What stood beside it may have printed otherwise at the build: see `stale` and
@@ -1610,6 +1862,10 @@ def plan_import(
             # unchanged, and the co-author's symbol was dropped without a word. And before
             # a deletion: a paragraph replaced by a symbol alone read as deleted.
             refused.append(Refusal(name, now, _unread_why(unread[name])))
+        elif now is None and name in untold:
+            # Reported deleted, a paragraph that may only have been reworded was to be
+            # deleted in the .md. Refused, and still missing for the checks below.
+            refused.append(Refusal(name, carried_by[name], (untold[name].why,)))
         elif (
             now is None
             and name in taken_off
@@ -1650,11 +1906,11 @@ def plan_import(
             refused.append(Refusal(name, now, (_SPLIT,)))
         elif name in beside_lost:
             refused.append(Refusal(name, now, (_BESIDE_LOST,)))
-        elif other := _swallowed(name, was, now, rendered, returned) or _took_vanished(
-            was, now, vanished
-        ):
+        elif other := _swallowed(
+            name, then.get(name, was), now, {**rendered, **then}, returned
+        ) or _took_vanished(then.get(name, was), now, vanished):
             refused.append(Refusal(name, now, (_SWALLOWED.format(text=_squashed(other)[:60]),)))
-        elif unknown_one := _took_unknown(was, now, vanished):
+        elif unknown_one := _took_unknown(then.get(name, was), now, vanished):
             what = unknown_one.shown
             if unknown_one.fresh:
                 what = f"'{_squashed(unknown_one.fresh)[:60]}' as it prints now"
@@ -1814,6 +2070,19 @@ _SWALLOWED = (
     "it came back holding another paragraph ('{text}'): joined to it, or pasted into it, in "
     "Word. Merging would put that paragraph's text in the source a second time. Make the edit "
     "in the .md, and move or join that paragraph there if that was meant."
+)
+_EITHER = (
+    "its identifier came back on text that is either this paragraph, reworded, or the text "
+    "that stood {side} it when the document was sent ('{text}'), edited in Word with this "
+    "paragraph deleted. Nothing in the document says which, so nothing is written. If the "
+    "paragraph was deleted, delete it in the .md; if it was reworded, make the edit there."
+)
+_BEHIND = (
+    "its identifier came back inside another block, behind '{head}'. Either that text was "
+    "joined onto the front of this paragraph in Word and edited, or this paragraph's text "
+    "was deleted, its emptied line joined up to the block above, and '{held}' typed there. "
+    "Nothing in the document says which, so nothing is written. If the paragraph was "
+    "deleted, delete it in the .md; if it was reworded, make the edit there."
 )
 _NOT_BACK = "did not come back ({what})"
 _UNSURE = (

@@ -207,8 +207,9 @@ def _untagged_new(reference: list[Block], returned: list[Block]) -> list[str]:
 def _off_headings(
     rendered: dict[str, str], reference: list[Block], returned: list[Block], expected: Counter
 ) -> list[Block]:
-    """Identifiers taken off a heading, caption, reference entry, list item or quotation they
-    slid onto.
+    """Identifiers taken off a block they slid onto, which the build gave none of its own: a
+    heading, caption, reference entry, list item or quotation, or any other kind of block the
+    build leaves without one.
 
     Deleted or cut without Track Changes, the last paragraph of a section leaves its
     identifier on the heading after it - above a table, on its caption; after the last
@@ -220,15 +221,25 @@ def _off_headings(
     the first item or on the quotation, which the build gives none either; edited there, the
     item was merged over the lead-in sentence cut from before it.
 
+    Each kind known by a role of its own left the next kind open: the term of a tight
+    definition list, a div with a style of its own, a code block. So the kinds are read from
+    the build. A block is of a kind (`docxtext.Block.style`, with its role), and the fresh
+    build says which kinds it gives no identifier. An identifier on a block of such a kind,
+    or of a kind with a role, is taken off unless that is the kind its own paragraph was
+    built as. Its own paragraph's, not any identified paragraph's: the second paragraph of a
+    list item has an identifier and was numbered like the item after it, and kept on that
+    item as "sent with the role it has", the item was written over the paragraph. For an
+    identifier the build no longer has, any kind the build gives an identifier will do. A
+    kind the build makes nowhere is a style the co-author gave the paragraph, and stays.
+
     Unless the block is plainly that paragraph, and reported deleted it would invite deleting
-    it: one restyled as a heading in Word, its words mostly its own; one the heading before it
-    was joined into, which keeps the heading's style and is refused as a join; or one sent
-    with the role it has, such as a note the source styles as a caption. The join is read as
-    `_took_in` reads it, by the heading gone from before the paragraph and its text turned up
-    here: whether the paragraph's own text survived whole did not say, since a paragraph
-    reworded in the same round - or made the heading's run-in text - was reported deleted.
-    Only the heading before: one after it, retitled around its old title, is the heading an
-    identifier slid onto.
+    it: one restyled as a heading in Word, its words mostly its own; or one the heading before
+    it was joined into, which keeps the heading's style and is refused as a join. The join is
+    read as `_took_in` reads it, by the heading gone from before the paragraph and its text
+    turned up here: whether the paragraph's own text survived whole did not say, since a
+    paragraph reworded in the same round - or made the heading's run-in text - was reported
+    deleted. Only the heading before: one after it, retitled around its old title, is the
+    heading an identifier slid onto.
 
     Which headings are gone is read as `plan_import` reads it, after the identifiers taken off
     by exact text. Read before, a heading that still stood but carried an identifier slid onto
@@ -236,7 +247,16 @@ def _off_headings(
     retitled to take in its words ("Funding and competing interests"), merged into the slot
     of the paragraph deleted under it.
     """
-    sent_roles = {b.names[0]: b.role for b in reference if b.names and not b.table}
+    built_as = {b.names[0]: (b.style, b.role) for b in reference if b.names and not b.table}
+    identified = set(built_as.values())
+    bare = {(b.style, b.role) for b in reference if not (b.names or b.table) and b.text}
+
+    def sent_so(block: Block) -> bool:
+        kind = (block.style, block.role)
+        return any(
+            built_as[name] == kind if name in built_as else kind in identified
+            for name in block.names
+        )
 
     def by_text(block: Block) -> bool:
         # It reads exactly as a heading or caption the document was sent with, and not as
@@ -256,24 +276,23 @@ def _off_headings(
     for block in returned:
         text = _squashed(block.text)
         own = [rendered.get(name, "") for name in block.names]
-        # Only a block with a heading's or caption's style is asked: asked of every block,
-        # each `_took_in` scanning the document as sent, 4,000 paragraphs took four seconds.
-        # Whether one was joined is read below only for a block with a role.
-        joined = bool(block.role) and any(
-            name in rendered
-            and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
-            for name in block.names
-        )
-        restyled = joined or any(was.strip() and _alike(was, block.text) for was in own)
-        sent_so = any(sent_roles.get(name, "") == block.role for name in block.names)
-        if by_text(block) or (
-            block.names
+        # Whether one was joined is asked last, of a block nothing else kept its identifier
+        # on: asked of every block, each `_took_in` scanning the document as sent, 4,000
+        # paragraphs took four seconds.
+        slid = (
+            bool(block.names)
             and not block.table
-            and block.role
-            and not restyled
-            and not sent_so
+            and (bool(block.role) or (block.style, block.role) in bare)
+            and not sent_so(block)
             and not any(_squashed(was) == text for was in own)
-        ):
+            and not any(was.strip() and _alike(was, block.text) for was in own)
+            and not any(
+                name in rendered
+                and _took_in(name, block.text, rendered[name], reference, missing, steps=(-1,))
+                for name in block.names
+            )
+        )
+        if by_text(block) or slid:
             block = replace(block, names=())
         out.append(block)
     return out

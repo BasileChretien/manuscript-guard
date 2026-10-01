@@ -11063,14 +11063,17 @@ def test_a_paragraphs_role_is_read_from_its_style_name_not_its_id(tmp_path: Path
     assert [block.role for block in read(bare)] == [""]
 
 
-def _raw_docx(target: Path, body: str, styles: str = "") -> Path:
-    """A minimal document with `body` as its body's XML, and `styles` as word/styles.xml."""
+def _raw_docx(target: Path, body: str, styles: str = "", numbering: str = "") -> Path:
+    """A minimal document with `body` as its body's XML, `styles` as word/styles.xml and
+    `numbering` as word/numbering.xml."""
     w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
     document = f"<w:document {w}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(target, "w") as archive:
         archive.writestr("word/document.xml", document)
         if styles:
             archive.writestr("word/styles.xml", f"<w:styles {w}>{styles}</w:styles>")
+        if numbering:
+            archive.writestr("word/numbering.xml", f"<w:numbering {w}>{numbering}</w:numbering>")
     return target
 
 
@@ -11105,6 +11108,88 @@ def test_a_list_item_and_a_quotation_are_read_as_such(tmp_path: Path) -> None:
     )
     document = _raw_docx(tmp_path / "lists.docx", body, styles)
     assert [block.role for block in read(document)] == ["list", "quote", "quote", "list", "", ""]
+
+
+def _numbered_docx(target: Path, ids: dict[str, str]) -> Path:
+    """One paragraph of each kind pandoc builds, under the style and numbering ids in `ids`:
+    pandoc's own, or the ones a Word saving in another language gave them."""
+    styles = "".join(
+        [
+            '<w:style w:type="paragraph" w:default="1" w:styleId="{normal}">'
+            '<w:name w:val="Normal"/></w:style>'.format(**ids),
+            _paragraph_style(ids["body"], "Body Text", ids["normal"]),
+            _paragraph_style("FirstParagraph", "First Paragraph", ids["body"]),
+            _paragraph_style("Compact", "Compact", ids["body"]),
+            _paragraph_style("DefinitionTerm", "Definition Term", ids["normal"]),
+        ]
+    )
+
+    def abstract(ident: str, form: str, text: str) -> str:
+        level = f'<w:lvl w:ilvl="0"><w:numFmt w:val="{form}"/><w:lvlText w:val="{text}"/></w:lvl>'
+        return f'<w:abstractNum w:abstractNumId="{ident}">{level}</w:abstractNum>'
+
+    def num(ident: str, of: str) -> str:
+        return f'<w:num w:numId="{ident}"><w:abstractNumId w:val="{of}"/></w:num>'
+
+    numbering = (
+        abstract("90", "bullet", " ")
+        + abstract("91", "bullet", "\N{BULLET}")
+        + abstract("92", "decimal", "%1.")
+        + num(ids["further"], "90")
+        + num(ids["bullet"], "91")
+        + num(ids["decimal"], "92")
+    )
+
+    def numbered(ident: str) -> str:
+        return f'<w:numPr><w:ilvl w:val="0"/><w:numId w:val="{ident}"/></w:numPr>'
+
+    paragraphs = [
+        '<w:pStyle w:val="FirstParagraph"/>',
+        f'<w:pStyle w:val="{ids["body"]}"/>',
+        numbered(ids["bullet"]),
+        numbered(ids["further"]),
+        '<w:pStyle w:val="Compact"/>' + numbered(ids["decimal"]),
+        '<w:pStyle w:val="DefinitionTerm"/>',
+        f'<w:pStyle w:val="{ids["normal"]}"/>',
+        numbered("0"),
+        numbered("77"),
+    ]
+    body = "".join(
+        f"<w:p><w:pPr>{props}</w:pPr><w:r><w:t>Text {at}.</w:t></w:r></w:p>"
+        for at, props in enumerate(paragraphs)
+    )
+    return _raw_docx(target, body, styles, numbering)
+
+
+def test_a_paragraph_is_known_by_its_styles_name_and_what_its_numbering_draws(
+    tmp_path: Path,
+) -> None:
+    """Word 16 renames style ids and renumbers lists when it saves: pandoc's `BodyText` came
+    back as `a0`, and its numberings 1000 and 1001 as 1 and 2. What stays is each style's
+    name and what each numbering draws. Pandoc numbers a list item's further paragraph with
+    a marker of one space, and an item with a bullet or a number: only the item is a list
+    item. First Paragraph and Body Text are one kind, pandoc picking between them by what
+    stands before the paragraph; a numbering of 0 is none, and one that cannot be read is
+    taken to draw a marker."""
+    from manuscript_guard.docxtext import blocks as read
+
+    pandoc = {"normal": "Normal", "body": "BodyText"}
+    pandoc |= {"further": "1000", "bullet": "1001", "decimal": "1002"}
+    word = {"normal": "a", "body": "a0", "further": "1", "bullet": "2", "decimal": "3"}
+    expected = [
+        ("body text", ""),
+        ("body text", ""),
+        ("+item", "list"),
+        ("+blank", ""),
+        ("compact+item", "list"),
+        ("definition term", ""),
+        ("", ""),
+        ("", ""),
+        ("+item", "list"),
+    ]
+    for name, ids in (("pandoc", pandoc), ("word", word)):
+        document = _numbered_docx(tmp_path / f"{name}.docx", ids)
+        assert [(block.style, block.role) for block in read(document)] == expected, name
 
 
 def test_each_identifier_is_read_with_the_text_it_holds(tmp_path: Path) -> None:

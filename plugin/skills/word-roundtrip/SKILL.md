@@ -287,11 +287,12 @@ moved together within a file: it stands between the same paragraphs, and is foll
 
 A paragraph that reads word for word like another in its file, such as "Not applicable."
 under two declarations, is also listed once the block before it changed. One of these
-deleted in Word usually leaves its identifier on the paragraph after it and is listed
-there. Deleted as a tracked change, cut, or joined by retyping across the break, it is
-listed as `did not come back`. A followed paragraph reported as moved into another section
-is marked as having the `.md` changed above it: a heading you moved past it reads the same
-as a move in Word, so check before moving it back.
+deleted or cut with Track Changes off leaves its identifier on the paragraph after it, or
+on the line it emptied, and is listed there. Deleted or cut with Track Changes on, or
+joined by retyping across the break, it is listed as `did not come back`. A followed
+paragraph reported as moved into another section is marked as having the `.md` changed
+above it: a heading you moved past it reads the same as a move in Word, so check before
+moving it back.
 
 When several people edited copies of the same build, dry-run every copy before applying any.
 Apply one, then `--force` the others: each merges only into paragraphs the earlier imports

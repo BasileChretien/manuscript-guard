@@ -8,7 +8,7 @@ name = "manuscript-guard"
 # and as `manuscript_guard.__version__`; tests/test_version.py holds the four equal. The
 # plugin's skills call this tool, and `pip install --upgrade` decides on this number, so a
 # plugin bump that leaves it behind ships skills to a tool that cannot be upgraded to match.
-version = "0.2.320"
+version = "0.2.380"
 description = "Make every number in a scientific manuscript traceable to its source."
 readme = "README.md"
 requires-python = ">=3.10"

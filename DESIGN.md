@@ -987,6 +987,27 @@ that were working go with it.
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 
+**The same hooks read Codex's input.** Codex runs hooks under the event names Claude Code
+uses, takes the same output, and matches a file edit under the names `Edit` and `Write`, so
+`plugin/hooks/hooks.json` is one file for both. Three of the four hooks receive what they
+receive from Claude Code. The difference is a file edit. Codex makes it with one tool,
+`apply_patch`, and hands the hook the text of the patch in `tool_input.command`, with no
+`file_path`. The files are named in the patch's headers, relative to `cwd`, and one patch may
+write several.
+
+`hooks.patch_paths` reads those headers by the rules of Codex's own parser
+(`codex-rs/apply-patch/src/parser.rs` and `streaming_parser.rs`, read 2026-10-02): nothing
+before `*** Begin Patch` or after `*** End Patch`; a header is a whole line of the envelope,
+which inside an update must start at the first column, since a line of the file's text starts
+with a space, `+` or `-`; `*** Move to:` only on the line after the header of the file it
+moves. A looser reading would refuse an edit to a manuscript that quotes a patch, and a
+stricter one would miss a write. The write guard refuses the whole patch when any file it
+adds, updates or moves a file to is generated, and names those files only. After the patch,
+each manuscript file and each analysis file in it gets its line. A file the patch deletes is
+not refused: removing a fragment whose script is gone is the author's decision, and `check`
+reports every binding that pointed at it. And the submission guard leaves a patch alone,
+because a patch that writes `--submission` into a file is an edit, not a command.
+
 ## Auditing existing papers, and saying what the audit is worth
 
 `check` works because manuscript source contains bindings: a results-derived number cannot
@@ -3451,6 +3472,18 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **Under Codex the hooks are tested against its source, not in a session.** The handlers are
+  tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
+  as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a
+  login. What Codex itself does not enforce: a hook is skipped until the user reviews and
+  trusts it with `/hooks`, and again after its definition changes; the write guard sees a
+  patch, not a file written by a shell command, as under Claude Code; and Codex's hooks page
+  says that some tool paths can opt out and calls tool hooks "a useful guardrail, not a
+  complete enforcement boundary". If Codex changes the envelope's markers, `patch_paths`
+  reads no file from it and the write guard guards nothing, in silence; `check` still reports
+  an edited results file afterwards. A patch Codex would reject as malformed after its first
+  header can be refused by the guard first, which costs nothing, since it would not have been
+  applied.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

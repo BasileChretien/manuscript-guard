@@ -89,16 +89,92 @@ def _context(event: str, text: str) -> int:
     return _emit({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
 
 
-def _edited_path(payload: dict) -> Path | None:
-    """The file a Write/Edit/NotebookEdit is about to touch.
+# Codex edits files with one tool, `apply_patch`, and hands a hook the text of the patch where
+# other tools hand it a path. These are the markers of that text as codex-rs spells them
+# (apply-patch/src/parser.rs, read 2026-10-02).
+PATCH_TOOL = "apply_patch"
+_PATCH_BEGIN = "*** Begin Patch"
+_PATCH_END = "*** End Patch"
+_PATCH_ADD = "*** Add File: "
+_PATCH_UPDATE = "*** Update File: "
+_PATCH_DELETE = "*** Delete File: "
+_PATCH_MOVE = "*** Move to: "
+_HEREDOC_OPENERS = ("<<EOF", "<<'EOF'", '<<"EOF"')
 
-    `notebook_path` is here because hooks.json registers NotebookEdit and that tool does not
-    send `file_path` — so the matcher was live and the handler always returned None,
-    making the notebook branch of the write guard dead.
+
+def patch_paths(patch: str) -> list[str]:
+    """The files an `apply_patch` envelope writes, read as Codex's own parser reads it.
+
+    A file added, a file updated, and where an updated file is moved to. A deleted file is
+    not written, so it is not here. The rules are the parser's, because a looser reading
+    refuses an edit to a manuscript that merely quotes a patch, and a stricter one misses a
+    write Codex goes on to make:
+
+    - nothing counts before `*** Begin Patch`, or after `*** End Patch`;
+    - a header is a whole line of the envelope. Inside an update, where a line of the file's
+      text begins with a space, `+` or `-`, only a marker at the very start of the line is
+      one; elsewhere space around it is allowed;
+    - `*** Move to:` is read only on the line straight after the header of the file it moves;
+    - the here-document some models wrap a patch in is taken off first.
+    """
+    lines = [line.removesuffix("\r") for line in patch.strip().split("\n")]
+    if len(lines) >= 4 and lines[0] in _HEREDOC_OPENERS and lines[-1].endswith("EOF"):
+        lines = "\n".join(lines[1:-1]).strip().split("\n")
+    if lines[0].strip() != _PATCH_BEGIN:
+        return []
+
+    written: list[str] = []
+    updating = False
+    may_move = False
+    for line in lines[1:]:
+        header = line.rstrip() if updating else line.strip()
+        moves, may_move = may_move, False
+        if header == _PATCH_END:
+            break
+        if header.startswith(_PATCH_ADD):
+            written.append(header[len(_PATCH_ADD) :])
+            updating = False
+        elif header.startswith(_PATCH_DELETE):
+            updating = False
+        elif header.startswith(_PATCH_UPDATE):
+            written.append(header[len(_PATCH_UPDATE) :])
+            updating = may_move = True
+        elif moves and header.startswith(_PATCH_MOVE):
+            written.append(header[len(_PATCH_MOVE) :])
+    return written
+
+
+def _edited_paths(payload: dict) -> list[Path]:
+    """The files a write is about to touch, or has just touched.
+
+    Most tools name one, in `file_path`. `notebook_path` is here because hooks.json registers
+    NotebookEdit and that tool does not send `file_path` — so the matcher was live and the
+    handler always returned None, making the notebook branch of the write guard dead.
+
+    Codex's `apply_patch` names none: the patch's text arrives in `tool_input.command` and
+    may write several files, each relative to the directory Codex is in.
     """
     tool_input = payload.get("tool_input", {})
     target = tool_input.get("file_path") or tool_input.get("notebook_path")
-    return Path(target) if target else None
+    if target:
+        return [Path(target)]
+    command = tool_input.get("command")
+    if payload.get("tool_name") != PATCH_TOOL or not isinstance(command, str):
+        return []
+    base = Path(payload.get("cwd") or Path.cwd())
+    return [base / name for name in patch_paths(command) if name]
+
+
+def _or_nothing(reader, path: Path) -> str | None:
+    """What `reader` says of one file, or None where it cannot be read.
+
+    A patch names several files. One of them that cannot be read must not cost the others
+    what the hook has to say about them.
+    """
+    try:
+        return reader(path)
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        return None
 
 
 def _project_path(root: Path, name: str) -> Path:
@@ -127,17 +203,26 @@ def _relative_to_project(path: Path) -> tuple[Path, str] | None:
 
 
 def guard_write(payload: dict) -> int:
-    """Refuse edits to files that something else generates."""
-    path = _edited_path(payload)
-    if path is None:
+    """Refuse edits to files that something else generates.
+
+    A patch is applied whole, so one generated file in it refuses all of it, and the reason
+    names each generated file and none of the others.
+    """
+    refusals = [why for path in _edited_paths(payload) if (why := _or_nothing(_refusal, path))]
+    if not refusals:
         return 0
+    return _deny("PreToolUse", "\n".join(refusals))
+
+
+def _refusal(path: Path) -> str | None:
+    """Why this file may not be written by hand, or None where it may."""
     found = _relative_to_project(path)
     if found is None:
-        return 0
+        return None
     root, relative = found
 
     if any(relative.startswith(prefix) for prefix in ALLOWED):
-        return 0
+        return None
 
     # `results/` and `build/` are the defaults, but `paths:` in paper.yaml can move either,
     # and a guard that reads the literal names silently stops guarding when it does. G1
@@ -152,21 +237,28 @@ def guard_write(payload: dict) -> int:
 
     for prefix, suffix, why in FORBIDDEN:
         if relative.startswith(prefix) and relative.endswith(suffix):
-            return _deny(
-                "PreToolUse",
-                f"{relative} is generated, not written. {why}.",
-            )
-    return 0
+            return f"{relative} is generated, not written. {why}."
+    return None
 
 
 def after_edit(payload: dict) -> int:
     """Classify the numbers in a manuscript file the moment it is saved."""
-    path = _edited_path(payload)
-    if path is None or path.suffix.lower() != ".md":
-        return _after_analysis_edit(path)
+    notes = [note for path in _edited_paths(payload) if (note := _or_nothing(_note_on, path))]
+    if not notes:
+        return 0
+    return _context("PostToolUse", "\n".join(notes))
+
+
+def _note_on(path: Path) -> str | None:
+    """What to say about a file that was just written, or None where there is nothing."""
+    if path.suffix.lower() != ".md":
+        return _analysis_note(path)
+    # A patch that moves a file names it where it was, too.
+    if not path.is_file():
+        return None
     found = _relative_to_project(path)
     if found is None:
-        return 0
+        return None
     root, relative = found
 
     from manuscript_guard.classify import UNCLASSIFIED, Classifier
@@ -179,7 +271,7 @@ def after_edit(payload: dict) -> int:
     try:
         path.resolve().relative_to(manuscript.resolve())
     except (ValueError, OSError):
-        return 0
+        return None
 
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -189,36 +281,36 @@ def after_edit(payload: dict) -> int:
         if classifier.classify(atom).kind == UNCLASSIFIED
     ]
     if not loose:
-        return 0
+        return None
 
     listed = "; ".join(f"line {line}: {text!r}" for line, text in loose[:6])
     more = f" (+{len(loose) - 6} more)" if len(loose) > 6 else ""
-    return _context(
-        "PostToolUse",
+    return (
         f"{relative} has {len(loose)} number(s) bound to nothing — {listed}{more}. "
         f"Bind each with {{{{results.<key>}}}} or {{{{lit.<key>}}}}, or add it to "
-        f"`conventions:` in paper.yaml with a reason.",
+        f"`conventions:` in paper.yaml with a reason."
     )
 
 
-def _after_analysis_edit(path: Path | None) -> int:
-    if path is None:
-        return 0
+def _analysis_note(path: Path) -> str | None:
     found = _relative_to_project(path)
     if found is None:
-        return 0
+        return None
     _root, relative = found
     if not relative.startswith("analysis/"):
-        return 0
-    return _context(
-        "PostToolUse",
+        return None
+    return (
         f"{relative} changed. The results it wrote are now stale until it is re-run, and "
-        f"the Methods may no longer describe it (`manuscript-guard methods`).",
+        f"the Methods may no longer describe it (`manuscript-guard methods`)."
     )
 
 
 def guard_submission(payload: dict) -> int:
     """Before anything that looks like a submission, hold the project to that standard."""
+    # Codex puts the text of a patch in the field a shell command arrives in. A patch that
+    # writes the word `--submission` into a file is an edit, which the write guard reads.
+    if payload.get("tool_name") == PATCH_TOOL:
+        return 0
     command = str(payload.get("tool_input", {}).get("command", ""))
     if not SUBMISSION_MARKERS.search(command):
         return 0

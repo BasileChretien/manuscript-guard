@@ -1683,12 +1683,12 @@ def plan_import(
     # the fresh build, a block the .md changed since came back as new text once the record
     # had taken a deleted paragraph's identifier off it, and the paragraph left beside it
     # was refused as split.
-    as_sent = reference if printed is None else list(printed)
-    beside_new = _beside_new_text(as_sent, returned, counterparts)
+    document = reference if printed is None else list(printed)
+    beside_new = _beside_new_text(document, returned, counterparts)
     expected = _untagged_counts(reference)
     not_its_own = _not_its_own(rendered, texts, returned, expected)
     missing = _untagged_missing(reference, returned)
-    fresh = _untagged_new(as_sent, returned)
+    fresh = _untagged_new(document, returned)
     # What each paragraph the document was sent with said, where that is known, for telling
     # whether its identifier came back on its own text: see `_came_back_whole`.
     said = {name: then.get(name, rendered[name]) for name in in_join if name in rendered}

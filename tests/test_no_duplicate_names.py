@@ -14,6 +14,12 @@ different modules, is the same failure. Imports that bind the same object (`impo
 A later assignment that reads the name itself (`X = X + ...`) builds it up in steps and is
 allowed, as are `@overload` stubs. Bindings inside an `if` or `try` at module level (import
 fallbacks) are not read.
+
+And no function assigns to the name of a function it calls. An assignment anywhere in a
+function makes the name local to all of it, so `why = "..."` in one branch of `plan_import`
+turned every `why(aligned)` there into `UnboundLocalError`, and `as_sent = [...]` under a
+helper `def as_sent` made the helper a list for the code below it. Each ran clean through
+ruff, and through every test that did not reach the call.
 """
 
 from __future__ import annotations
@@ -88,6 +94,85 @@ def duplicate_names(source: str) -> dict[str, list[int]]:
         for name, found in bindings.items()
         if len(found) > 1 and (None in {o for _, o in found} or len({o for _, o in found}) > 1)
     }
+
+
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def _own(function: ast.AST, inside: tuple = _SCOPES):
+    """Every node of a function's body that is in its own scope: not in a function, lambda or
+    class written inside it, nor, for what it binds, in a comprehension, whose variables are
+    the comprehension's."""
+    stack = list(ast.iter_child_nodes(function))
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, inside):
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def shadowed_calls(source: str) -> dict[str, list[str]]:
+    """For each function, by name and line, the functions it calls and also assigns to: one
+    defined inside it, or at the top of its module."""
+    tree = ast.parse(source)
+    defined = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    found: dict[str, list[str]] = {}
+    for function in ast.walk(tree):
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        nested = {
+            node.name
+            for node in _own(function)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        assigned = {
+            node.id
+            for node in _own(function, (*_SCOPES, *_COMPREHENSIONS))
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        }
+        called = {
+            node.func.id
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        shadowed = sorted(assigned & called & (nested | defined))
+        if shadowed:
+            found[f"{function.name}:{function.lineno}"] = shadowed
+    return found
+
+
+def test_the_scan_catches_a_helper_assigned_over() -> None:
+    source = (
+        "def why(aligned):\n    return ()\n\n"
+        "def plan(blocks):\n"
+        "    def as_sent(name):\n        return name\n"
+        "    for block in blocks:\n"
+        "        if block:\n            why = 'refused'\n"
+        "        as_sent = list(blocks)\n"
+        "    return why(blocks), as_sent(blocks)\n"
+    )
+    assert shadowed_calls(source) == {"plan:4": ["as_sent", "why"]}
+
+
+def test_the_scan_allows_a_local_that_is_not_called_and_a_comprehension_variable() -> None:
+    source = (
+        "def texts(blocks):\n    return blocks\n\n"
+        "def read(blocks):\n"
+        "    texts = [b for b in blocks]\n"
+        "    return [texts for texts in blocks], texts\n\n"
+        "def other(blocks):\n    return texts(blocks)\n"
+    )
+    assert shadowed_calls(source) == {}
+
+
+def test_no_function_assigns_to_a_function_it_calls() -> None:
+    found = {}
+    for path in sorted([*(ROOT / "src").rglob("*.py"), *(ROOT / "tests").rglob("*.py")]):
+        shadowed = shadowed_calls(path.read_text(encoding="utf-8"))
+        if shadowed:
+            found[str(path.relative_to(ROOT))] = shadowed
+    assert found == {}, f"a function assigns to the name of a function it calls: {found}"
 
 
 def test_the_scan_catches_a_second_binding() -> None:

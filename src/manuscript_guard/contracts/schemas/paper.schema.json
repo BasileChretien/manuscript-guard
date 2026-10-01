@@ -37,6 +37,44 @@
           "minimum": 1,
           "default": 2,
           "description": "Complete review rounds expected before a submission build. Two by default: the second panel is blinded to the first, because a panel that reads the earlier findings inherits their blind spots."
+        },
+        "models": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "The models that read the panel's remits when `manuscript-guard review --run` is used, each as provider/model: [openai/<model>, mistral/<model>]. `manuscript-guard review --providers` lists the providers that are built in. Model names are the author's to supply; none is built in, because they change. API keys are not written here or anywhere: each provider's key is read from its environment variable.",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*/\\S(.*\\S)?$" }
+        },
+        "providers": {
+          "type": "object",
+          "description": "Providers that are not built in, by name. Each needs the base URL its chat endpoint sits under. A built-in name cannot be redefined.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["base_url"],
+            "additionalProperties": false,
+            "properties": {
+              "base_url": {
+                "type": "string",
+                "pattern": "^https?://",
+                "description": "https, or http for this machine only. Without a path beyond the API root: `/chat/completions` (or `/messages`) is added to it."
+              },
+              "key_env": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]*$",
+                "description": "The NAME of the environment variable that holds the key, never the key. Leave it out for a provider that takes none."
+              },
+              "api": {
+                "enum": ["openai", "anthropic"],
+                "default": "openai",
+                "description": "Which request shape the provider speaks: the chat API OpenAI defined, which most offer, or Anthropic's."
+              }
+            }
+          }
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 256,
+          "description": "A cap on each reply. Unset, a provider's own default applies, except where its API requires a cap. A model that reasons before answering spends this on its reasoning first, and a reply cut short is refused."
         }
       }
     },

@@ -360,7 +360,8 @@ def write_printed(build_dir: Path, document: Path, digest: str) -> str:
     record names in turn, so that it serves no document built from other sources.
 
     Every block as `docxtext.blocks` reads it, which is how `import` reads the document
-    when it comes back, in the document's order. Each field is left out where it is empty.
+    when it comes back, in the document's order: its identifier, its text, what it is and
+    what it holds that is not read as text. Each field is left out where it is empty.
     A record already there is left alone: it is named by its content, so it is the same,
     and records of earlier builds are never removed, a document sent last week being still
     out there.
@@ -371,6 +372,8 @@ def write_printed(build_dir: Path, document: Path, digest: str) -> str:
     for block in blocks(document):
         entry = {"id": block.names[0]} if block.names else {}
         entry |= {name: getattr(block, name) for name in _PRINTED_FIELDS if getattr(block, name)}
+        if block.unread:
+            entry["unread"] = list(block.unread)
         kept.append(entry)
     record = {"manuscript-guard-printed": _PRINTED_FORMAT, "source": digest, "blocks": kept}
     written = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
@@ -431,6 +434,7 @@ def read_printed(build_dir: Path, document: Path) -> tuple[list | None, Path | N
         found = [
             Block(
                 names=(entry["id"],) if entry.get("id") else (),
+                unread=tuple(map(str, entry.get("unread", ()))),
                 **{field: str(entry.get(field, "")) for field in _PRINTED_FIELDS},
             )
             for entry in record["blocks"]

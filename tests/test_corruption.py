@@ -6567,6 +6567,31 @@ def test_a_paragraph_joined_with_the_block_under_it_is_not_reported_deleted(
 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_rewording_merges_beside_a_deletion_above_a_block_the_md_changed_since(
+    project: Path, tmp_path: Path
+) -> None:
+    """A guard, as main merges it, found by running random sessions under both trees. Papa
+    is reworded in Word and Romeo, under it, deleted, which leaves Romeo's identifier on the
+    div after it; the author changed that div in the `.md` since the build. The record
+    takes the identifier off the div, which reads as it was sent. The div then has no
+    identifier and does not read as the fresh build prints it, and counted as new text
+    beside Papa, it had Papa's rewording refused as a split. It is not new: the document
+    was sent with it."""
+    from test_roundtrip import _word_delete
+
+    div = "::: {.plain}\nzulu plain div paragraph here.\n:::"
+    blocks = ("# Intro", _ALPHA, _PAPA, _ROMEO, div, _BRAVO)
+    now = tuple(block.replace("zulu plain div", "zulu ordinary div") for block in blocks)
+    old, new = "twelve reports were excluded", "twelve of the reports were excluded"
+
+    def change(xml: str) -> str:
+        return _word_delete(xml, _word_paragraph(xml, "Romeo paragraph")).replace(old, new, 1)
+
+    after, before, out = _forced_import(project, tmp_path, blocks, now, change)
+    assert after == before.replace(old, new, 1), out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize("record", ["beside the build", "gone"])
 def test_a_sentence_typed_after_the_emptied_line_is_joined_up_is_not_the_cut_paragraph(
     project: Path, tmp_path: Path, record: str

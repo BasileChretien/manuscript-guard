@@ -33,11 +33,12 @@ the tool says which when you reach it:
 | poppler (`pdftotext`) or pypdf | reading PDF sources and PDF figures |
 | R with `jsonlite` and `digest` | only if the analysis is in R |
 
-The plugin's hooks run `manuscript-guard-hook`, so the package must be on the `PATH` Claude
-Code sees. Installed in a virtualenv the editor does not use, the hooks cannot run: nothing
-is blocked and nothing is guarded, and Claude Code reports a non-blocking hook error.
-When the plugin is newer than the installed tool, the session-start hook says so once, with
-the upgrade command.
+Some agent tools also run the toolkit's hooks (section 6). The hooks run
+`manuscript-guard-hook`, so the package must be on the `PATH` the agent tool sees. Installed
+in a virtualenv it does not use, the hooks cannot run: nothing is blocked and nothing is
+guarded at the moment of the mistake, and `check` and `build` still run every gate. When the
+skills come from a newer release than the installed tool, the session-start hook says so
+once, with the upgrade command.
 
 ## 2. Scaffold
 
@@ -151,7 +152,12 @@ Each finding names a code. The code says where to go:
 
 ## 6. What the hooks do in a project
 
-With the plugin installed, four hooks act in any directory that has a `paper.yaml` above it:
+Not every agent tool runs hooks, and one that does may ask you to approve them first. Where
+they run, four hooks act in any directory that has a `paper.yaml` above it. Where they do
+not, nothing below happens at the moment of the mistake. `check` still reports an edited or
+stale results file and an unbound number afterwards, every build writes `build/` afresh, and
+`submit` still refuses a manuscript that fails the submission check. A generated checklist
+profile edited by hand is then caught by nothing, so do not edit one.
 
 - At the start of a session, one line of status: the stage, and how many findings fail and
   warn.
@@ -168,8 +174,8 @@ With the plugin installed, four hooks act in any directory that has a `paper.yam
 
 ## If you are a model doing this
 
-Do not edit anything under `results/` or `build/` to make a check pass, even where the hook
-cannot see it. Do not add a convention to `paper.yaml` to silence a number that should have
+Do not edit anything under `results/` or `build/` to make a check pass, even where no hook
+stops you. Do not add a convention to `paper.yaml` to silence a number that should have
 been bound. A pattern that exempts every number is allowed, and it is reported, and it
 defeats the whole project.
 

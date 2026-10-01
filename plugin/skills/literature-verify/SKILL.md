@@ -17,10 +17,9 @@ the paper.
 
 ## 1. Get the source
 
-Use a browser the user is signed in to, such as the Claude-in-Chrome tools where they are
-connected, so the user's institutional session applies and paywalled full texts are
-reachable. If there is none, ask the user to save the files. Save what you can actually
-read:
+Use a browser the user is signed in to, where a tool that drives one is connected, so the
+user's institutional session applies and paywalled full texts are reachable. If there is
+none, ask the user to save the files. Save what you can actually read:
 
 - **Full text** — the PDF, or the article page saved as HTML.
 - **Abstract only** — when the full text is genuinely unreachable. Save the abstract page.

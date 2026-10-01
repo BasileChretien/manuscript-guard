@@ -3487,6 +3487,17 @@ Closed since, and why each mattered:
   return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
   model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
   a plugin never updated: nothing tells anyone to run `claude plugin update`.
+- **The skills are worded for any agent tool, and the test that keeps them so knows a list.**
+  The skills are in the open SKILL.md format, which other agent tools read as well as Claude
+  Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, ChatGPT, Codex,
+  Gemini CLI, Mistral Vibe, Kimi Code, Copilot, Cursor), a tool only one of them has, a plugin,
+  a slash command or one tool's instruction file, and when its frontmatter carries a field the
+  Agent Skills specification does not define. A tool that is not on the list passes. So does
+  wording that assumes one tool without naming it, such as a step only that tool can carry
+  out. Model providers are left off on purpose, because a review panel may name where its
+  models come from, so a provider's name used to mean the reader passes too. Where a skill
+  describes a hook it says "where the hooks run", since an agent tool may have none. Read under
+  Claude Code only so far: no skill has been followed in a session of another tool.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

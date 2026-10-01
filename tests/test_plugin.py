@@ -50,7 +50,7 @@ def test_every_skill_names_itself_and_says_when_it_applies():
         meta = frontmatter(SKILLS / name / "SKILL.md")
         assert meta.get("name") == name, f"{name}/SKILL.md calls itself {meta.get('name')!r}"
         description = meta.get("description") or ""
-        # The description is all Claude sees when deciding whether a skill applies.
+        # The description is all an agent sees when deciding whether a skill applies.
         assert "Use " in description, f"{name}: the description never says when to use it"
         assert len(description) <= 1024, f"{name}: description too long to be loaded"
 
@@ -276,3 +276,84 @@ def test_nothing_in_the_plugin_names_a_path_on_one_machine():
         if hits:
             offenders[str(path.relative_to(REPO))] = hits
     assert not offenders, offenders
+
+
+# ---------------------------------------------------------------- skills any agent can read
+#
+# The skills are in the open SKILL.md format, and Claude Code is one of several agent tools
+# that read it. A sentence that names one of those tools, a tool only it has, or the way it
+# packages the skills is wrong for a reader working under another one, who has no such tool
+# and may have no plugin at all.
+
+# The frontmatter fields the Agent Skills specification defines (agentskills.io). Any other
+# key is one tool's extension, and another tool is free to refuse the file for it.
+SPEC_FIELDS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+SPEC_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+# Model providers are left out on purpose: a review panel may name the providers its models
+# come from, and that is true under any agent tool. `Claude` alone is in, because in a skill
+# it has meant the reader every time it appeared; a model is named by its identifier.
+AGENT_SPECIFIC = (
+    (
+        r"\b(?:Claude|ChatGPT|Codex|Gemini CLI|Mistral Vibe|Kimi Code|Copilot|Cursor)\b",
+        "names one agent tool",
+    ),
+    (
+        r"\b(?:NotebookEdit|AskUserQuestion|WebFetch|WebSearch|TodoWrite|ExitPlanMode|"
+        r"apply_patch|run_shell_command|write_file|search_replace|activate_skill|"
+        r"subagent_type)\b"
+        r"|\bthe (?:Bash|Read|Write|Edit|Grep|Glob|Task|Agent|Skill|Shell) tool\b",
+        "names a tool only one agent has",
+    ),
+    (
+        r"\bplugin|/manuscript-guard:|\bslash commands?\b|\b(?:CLAUDE|GEMINI)\.md\b",
+        "describes how one agent packages or invokes the skills",
+    ),
+)
+
+
+def wording_problems(text: str) -> list[str]:
+    """Phrases in a skill that only a reader under one agent tool can act on."""
+    # Prose is wrapped, and a name split across two lines is still the name.
+    flat = " ".join(text.split())
+    return [
+        f"{match.group(0)!r} {why}"
+        for pattern, why in AGENT_SPECIFIC
+        for match in re.finditer(pattern, flat)
+    ]
+
+
+def test_every_skill_follows_the_open_skill_format():
+    for name in sorted(skill_names()):
+        meta = frontmatter(SKILLS / name / "SKILL.md")
+        extra = sorted(set(meta) - SPEC_FIELDS)
+        assert not extra, f"{name}: {extra} is not a field of the specification"
+        # The directory carries the name, and the first test above holds the two equal.
+        assert SPEC_NAME.fullmatch(name) and len(name) <= 64, name
+        assert isinstance(meta["description"], str) and meta["description"].strip(), name
+
+
+def test_no_skill_speaks_to_the_reader_of_one_agent_tool_only():
+    wrong = {
+        skill.parent.name: problems
+        for skill in sorted(SKILLS.glob("*/SKILL.md"))
+        if (problems := wording_problems(skill.read_text(encoding="utf-8")))
+    }
+    assert not wrong, wrong
+
+
+def test_the_wording_check_catches_what_only_one_agent_tool_understands():
+    text = (
+        "The plugin's hooks need the `PATH` Claude\nCode sees. Use the Claude-in-Chrome tools,\n"
+        "call `AskUserQuestion` or the Bash tool, or type /manuscript-guard:project-setup.\n"
+        "A panel may mix models from OpenAI, Mistral and Anthropic, and `claude-opus` is an\n"
+        "identifier. Write the plan, read AGENTS.md, and run it in bash.\n"
+    )
+    assert wording_problems(text) == [
+        "'Claude' names one agent tool",
+        "'Claude' names one agent tool",
+        "'AskUserQuestion' names a tool only one agent has",
+        "'the Bash tool' names a tool only one agent has",
+        "'plugin' describes how one agent packages or invokes the skills",
+        "'/manuscript-guard:' describes how one agent packages or invokes the skills",
+    ]

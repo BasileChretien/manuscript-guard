@@ -55,8 +55,8 @@ document. Name the guideline: with no name the command tries every recipe. The p
 records how thoroughly it was verified, which differs. A Word table lets every item's full
 text be checked, and a PDF laid out in columns only each item's opening clause.
 
-**Do not write or edit the profile by hand.** It is generated, the plugin's write guard
-refuses edits to `profiles/reporting/*.yaml`, and a hand-edited profile is no longer a
+**Do not write or edit the profile by hand.** It is generated, the write guard refuses edits
+to `profiles/reporting/*.yaml` where the hooks run, and a hand-edited profile is no longer a
 function of the published checklist. If an item is wrong, the recipe is. A recipe in the
 project at `profiles/reporting/recipes/STROBE.recipe.yaml` takes precedence over the shipped
 one and is the one file in that directory you may edit. Then run `transcribe` again.

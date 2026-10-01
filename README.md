@@ -374,6 +374,45 @@ guard in the project this one learned from.
 A hook never breaks a session. Anything unexpected exits silently, because a guard that
 crashes on a half-configured project gets removed, taking the guards that worked with it.
 
+### Codex (optional)
+
+Codex installs the same plugin from this repository, with the same fourteen skills and the
+same four hooks. After the pip package:
+
+```bash
+codex plugin marketplace add BasileChretien/manuscript-guard
+codex plugin add manuscript-guard@manuscript-guard
+```
+
+Neither command needs a login. Start a new Codex session afterwards. Both need the `codex`
+command line tool; the desktop app on its own may not put it on your `PATH`.
+
+**Codex runs a hook only after you have trusted it.** At the start of a session it warns
+that hooks are waiting for review, and `/hooks` lists the four `manuscript-guard-hook`
+commands for you to read and trust. Until you do, nothing is caught at the moment of the
+mistake. `check` and `build` run every gate either way, so the same problems are reported
+later.
+
+| Hook | Under Codex |
+|---|---|
+| session start | As above |
+| before a write | Codex edits files by applying a patch, which may write several files. A patch that adds or changes a file in `results/`, `build/` or a generated checklist profile, or moves a file into one, is refused whole, and the reason names those files. A patch that only deletes one is not refused |
+| after a write | Each manuscript file and each analysis file in the patch gets its line |
+| before a submission-shaped shell command | As above |
+
+What Codex does not enforce, and the gates still catch afterwards:
+
+- A hook you have not trusted, or one whose definition changed since you trusted it, is
+  skipped.
+- The write guard sees a patch. A file written by a shell command is not seen, as under
+  Claude Code.
+- Codex's own documentation calls tool hooks "a useful guardrail, not a complete enforcement
+  boundary", and says some tool paths can opt out of them.
+
+How far this has been checked: the install is run against Codex on every pull request, and
+the hooks are tested with input shaped as Codex's source builds it. A Codex session in which
+a skill is loaded and a hook fires has not been observed yet, because that needs a login.
+
 ## Auditing a paper you already wrote
 
 For a manuscript that was never built this way — no bindings, every number a literal —

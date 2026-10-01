@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -137,6 +138,85 @@ def test_claude_code_accepts_the_manifest(target):
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ---------------------------------------------------------------- the same plugin, in Codex
+#
+# Codex reads the manifests Claude Code reads, so the repository carries no second manifest
+# and no second copy of the skills. `codex plugin` writes only under CODEX_HOME and asks for
+# no login, so the install can be tried wherever Codex is. Skipped where it is not. CI's
+# codex-plugin job installs it and sets the variable below, and there a missing Codex fails.
+
+CODEX = shutil.which("codex")
+REQUIRE_CODEX = "MANUSCRIPT_GUARD_REQUIRE_CODEX"
+
+
+def codex_plugin(home: Path, *arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [CODEX, "plugin", *arguments],
+        env={**os.environ, "CODEX_HOME": str(home)},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
+    )
+
+
+def test_where_codex_is_required_it_is_there():
+    if os.environ.get(REQUIRE_CODEX, "").strip():
+        assert CODEX is not None, f"{REQUIRE_CODEX} is set, but codex is not on PATH"
+
+
+@pytest.mark.skipif(CODEX is None, reason="Codex is not installed")
+def test_codex_installs_the_plugin_from_the_manifests_claude_code_reads(tmp_path):
+    market = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    home = tmp_path / "h"
+    home.mkdir()
+
+    added = codex_plugin(home, "marketplace", "add", str(REPO))
+    assert added.returncode == 0, added.stdout + added.stderr
+    selector = f"{manifest['name']}@{market['name']}"
+    installed = codex_plugin(home, "add", selector)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+
+    # Codex files its copy under the version the manifest states. The copy holds the manifest
+    # too, which is where the session-start hook reads the version back.
+    cache = home / "plugins" / "cache"
+    copy = cache / market["name"] / manifest["name"] / manifest["version"]
+    assert copy.is_dir(), sorted(str(path.relative_to(home)) for path in cache.rglob("*"))
+    shipped = sorted(p.relative_to(PLUGIN).as_posix() for p in PLUGIN.rglob("*") if p.is_file())
+    assert "hooks/hooks.json" in shipped and ".claude-plugin/plugin.json" in shipped
+    assert len([name for name in shipped if name.endswith("/SKILL.md")]) == len(skill_names())
+    for name in shipped:
+        assert (copy / name).read_bytes() == (PLUGIN / name).read_bytes(), name
+
+    listed = codex_plugin(home, "list")
+    (line,) = [line for line in listed.stdout.splitlines() if line.startswith(selector)]
+    assert "installed" in line and "enabled" in line and manifest["version"] in line, line
+
+
+def test_the_hooks_file_holds_only_what_both_tools_read():
+    """One hooks.json serves Claude Code and Codex. Codex has these three events, reads these
+    four fields of a handler, with the timeout in seconds, and matches its one editing tool,
+    `apply_patch`, under the names `Edit` and `Write` (its hooks page, read 2026-10-02)."""
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    assert set(config) == {"hooks"}
+    assert set(config["hooks"]) <= {"PreToolUse", "PostToolUse", "SessionStart"}
+    for groups in config["hooks"].values():
+        for group in groups:
+            assert set(group) <= {"matcher", "hooks"}, group
+            for hook in group["hooks"]:
+                assert set(hook) <= {"type", "command", "timeout", "statusMessage"}, hook
+                assert hook["type"] == "command"
+                assert 0 < hook.get("timeout", 60) <= 600, hook
+            reads_a_file = any(
+                hook["command"].split()[1] in {"guard-write", "after-edit"}
+                for hook in group["hooks"]
+            )
+            if reads_a_file:
+                assert {"Edit", "Write"} & set(group["matcher"].split("|")), group["matcher"]
 
 
 # ---------------------------------------------------------------- what the skills tell you to run

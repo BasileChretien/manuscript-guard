@@ -291,31 +291,45 @@ SPEC_FIELDS = {"name", "description", "license", "compatibility", "metadata", "a
 SPEC_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 # Model providers are left out on purpose: a review panel may name the providers its models
-# come from, and that is true under any agent tool. `Claude` alone is in, because in a skill
-# it has meant the reader every time it appeared; a model is named by its identifier.
+# come from, and that is true under any agent tool. So are ChatGPT, Copilot and Cursor, which
+# a skill may have to name as what a pasted artefact came from, what a co-author used in
+# Word, or where the cursor is. `Claude` alone is in, because in a skill it has meant the
+# reader every time it appeared.
 AGENT_SPECIFIC = (
     (
-        r"\b(?:Claude|ChatGPT|Codex|Gemini CLI|Mistral Vibe|Kimi Code|Copilot|Cursor)\b",
+        r"\b(?:Claude|Codex|Gemini CLI|Mistral Vibe|Kimi Code)\b",
         "names one agent tool",
     ),
     (
         r"\b(?:NotebookEdit|AskUserQuestion|WebFetch|WebSearch|TodoWrite|ExitPlanMode|"
         r"apply_patch|run_shell_command|write_file|search_replace|activate_skill|"
         r"subagent_type)\b"
-        r"|\bthe (?:Bash|Read|Write|Edit|Grep|Glob|Task|Agent|Skill|Shell) tool\b",
+        r"|\bmcp__\w+"
+        r"|\b(?:[Tt]he|[Yy]our|[Aa]) `?(?:Bash|Read|Write|Edit|Grep|Glob|Task|Agent|Skill|Shell)`?"
+        r" tool\b",
         "names a tool only one agent has",
     ),
     (
-        r"\bplugin|/manuscript-guard:|\bslash commands?\b|\b(?:CLAUDE|GEMINI)\.md\b",
+        r"\b[Pp]lug-?in|/manuscript-guard:|\bslash commands?\b|\b(?:CLAUDE|GEMINI)\.md\b"
+        r"|\.claude\b|\bCLAUDE_[A-Z_]+",
         "describes how one agent packages or invokes the skills",
     ),
+)
+
+# What the list above would catch by its spelling and is not about the reader's tool: another
+# product's plugin, which is how this repository names Zotero's in Word, and a model named in
+# prose as a member of a panel. Taken out before the scan.
+NOT_THE_READERS_TOOL = re.compile(
+    r"\b(?:Zotero|Better BibTeX|Word|[Bb]rowser)(?:'s)?(?: Word| Zotero)? plug-?ins?\b"
+    r"|\bAnthropic's Claude\b|\bClaude (?:Opus|Sonnet|Haiku|models?)\b"
+    r"|[\w.]-Codex\b"
 )
 
 
 def wording_problems(text: str) -> list[str]:
     """Phrases in a skill that only a reader under one agent tool can act on."""
     # Prose is wrapped, and a name split across two lines is still the name.
-    flat = " ".join(text.split())
+    flat = NOT_THE_READERS_TOOL.sub(" ", " ".join(text.split()))
     return [
         f"{match.group(0)!r} {why}"
         for pattern, why in AGENT_SPECIFIC
@@ -345,15 +359,47 @@ def test_no_skill_speaks_to_the_reader_of_one_agent_tool_only():
 def test_the_wording_check_catches_what_only_one_agent_tool_understands():
     text = (
         "The plugin's hooks need the `PATH` Claude\nCode sees. Use the Claude-in-Chrome tools,\n"
-        "call `AskUserQuestion` or the Bash tool, or type /manuscript-guard:project-setup.\n"
-        "A panel may mix models from OpenAI, Mistral and Anthropic, and `claude-opus` is an\n"
-        "identifier. Write the plan, read AGENTS.md, and run it in bash.\n"
+        "call `AskUserQuestion`, `mcp__browser__open`, the Bash tool or The `Task` tool, or\n"
+        "type /manuscript-guard:project-setup, a slash command. Read CLAUDE.md and\n"
+        ".claude/skills, set CLAUDE_PLUGIN_ROOT, and install the plug-in.\n"
     )
     assert wording_problems(text) == [
         "'Claude' names one agent tool",
         "'Claude' names one agent tool",
         "'AskUserQuestion' names a tool only one agent has",
+        "'mcp__browser__open' names a tool only one agent has",
         "'the Bash tool' names a tool only one agent has",
+        "'The `Task` tool' names a tool only one agent has",
         "'plugin' describes how one agent packages or invokes the skills",
         "'/manuscript-guard:' describes how one agent packages or invokes the skills",
+        "'slash command' describes how one agent packages or invokes the skills",
+        "'CLAUDE.md' describes how one agent packages or invokes the skills",
+        "'.claude' describes how one agent packages or invokes the skills",
+        "'CLAUDE_PLUGIN_ROOT' describes how one agent packages or invokes the skills",
+        "'plug-in' describes how one agent packages or invokes the skills",
     ]
+
+
+def test_the_wording_check_passes_what_is_true_under_any_agent_tool():
+    """Each of these was flagged by a scan that matched on spelling alone. The first is this
+    repository's own name for what refreshes the citations in Word."""
+    text = (
+        "Open the document in Word and press Refresh in Word's Zotero plugin. Zotero needs\n"
+        "the Better BibTeX plugin, and browser plugins that rewrite a page spoil a saved\n"
+        "source. A panel may mix models from OpenAI, Mistral and Anthropic: Anthropic's Claude\n"
+        "models, Claude Opus and GPT-5-Codex in prose, `anthropic/claude-opus` as an\n"
+        "identifier. `oaicite` is what ChatGPT leaves in pasted text, a co-author may have let\n"
+        "Copilot in Word rewrite a paragraph, and Cursor position in Word does not matter.\n"
+        "Write the plan, read AGENTS.md, and run it in bash.\n"
+    )
+    assert wording_problems(text) == []
+
+
+def test_the_setup_skill_says_what_is_left_without_hooks_and_no_more():
+    """It said every build writes `build/` afresh. A build rewrites its own documents and
+    leaves the rest of the directory: a response letter edited by hand stays as edited until
+    `respond` runs again, and no gate reads it."""
+    text = " ".join((SKILLS / "project-setup" / "SKILL.md").read_text(encoding="utf-8").split())
+    section = text.split("## 6.")[1].split("## If you are a model")[0]
+    assert "afresh" not in section
+    assert "`respond` for the letter" in section

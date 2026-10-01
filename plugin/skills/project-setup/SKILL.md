@@ -36,9 +36,10 @@ the tool says which when you reach it:
 Some agent tools also run the toolkit's hooks (section 6). The hooks run
 `manuscript-guard-hook`, so the package must be on the `PATH` the agent tool sees. Installed
 in a virtualenv it does not use, the hooks cannot run: nothing is blocked and nothing is
-guarded at the moment of the mistake, and `check` and `build` still run every gate. When the
-skills come from a newer release than the installed tool, the session-start hook says so
-once, with the upgrade command.
+guarded at the moment of the mistake, and `check` and `build` still run every gate. The
+agent tool may then report a hook error that blocks nothing, which is the sign to look for.
+Where the agent tool tells the hooks which release the skills are from, the session-start
+hook says once when that release is newer than the installed tool, with the upgrade command.
 
 ## 2. Scaffold
 
@@ -155,9 +156,12 @@ Each finding names a code. The code says where to go:
 Not every agent tool runs hooks, and one that does may ask you to approve them first. Where
 they run, four hooks act in any directory that has a `paper.yaml` above it. Where they do
 not, nothing below happens at the moment of the mistake. `check` still reports an edited or
-stale results file and an unbound number afterwards, every build writes `build/` afresh, and
-`submit` still refuses a manuscript that fails the submission check. A generated checklist
-profile edited by hand is then caught by nothing, so do not edit one.
+stale results file and an unbound number afterwards, and `submit` still refuses a manuscript
+that fails the submission check. Two things are then caught by nothing: a generated
+checklist profile edited by hand, and a file edited in `build/`, which stays as edited until
+the command that writes it runs again (`build` for the documents, `respond` for the letter).
+Do not edit either. And a shell command that copies, zips or pushes a `.docx` is held to no
+check, so run `manuscript-guard check --submission` yourself before a manuscript leaves.
 
 - At the start of a session, one line of status: the stage, and how many findings fail and
   warn.

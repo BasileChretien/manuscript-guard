@@ -984,6 +984,18 @@ the no-op path against roughly 400 ms through the full CLI.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
 
+**A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
+input as UTF-8, and a name outside ASCII goes as its own bytes, with no `\u` escape. Python on
+Windows opens standard input in the ANSI code page, so a handler that read it as text was
+handed `manuscript/méthodes.md` as `mÃ©thodes.md`, a file that does not exist.
+`hooks._event_text` reads the bytes and decodes them itself. Bytes that are not UTF-8 are read
+as they were before, in the encoding standard input was opened with, and a byte that encoding
+cannot read is replaced: the write guard knows a generated file by its folder and its
+extension, which survive a lost letter, and an event read as nothing guards nothing. The answer
+needed no change. `json.dumps` escapes every character outside ASCII, so what the hook prints
+reads the same in the code page it is written in and in the UTF-8 the tool reads it as, and a
+test holds it to ASCII.
+
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 
@@ -3451,6 +3463,32 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **On Windows every hook misread a name outside ASCII.** The event was read from standard
+  input as text, which on Windows is the ANSI code page, and the tools write it as UTF-8
+  without escapes. Under code page 1252 the note after an edit said nothing for
+  `manuscript/méthodes.md`, a refusal named `results/donnÃ©es.json`, and a results directory
+  moved by `paths:` to `résultats` was not guarded. A project kept anywhere under an accented
+  folder, and a home folder named after its owner is enough, had no hook at all: the write
+  guard found no project above the file, and the session start none at its `cwd`. Under code
+  page 932 the bytes of a name such as `日本語.md` cannot be decoded, and with one anywhere
+  in it the whole event was read as empty. Found by the reviewer of #124 on 2026-10-02 with
+  bytes piped by hand, and seen the same day in a session of Claude Code 2.1.286: the
+  installed hook gave its note for `methods.md` and none for `méthodes.md`, written one after
+  the other. With `PYTHONUTF8=1` set the name was read. Closed: the event is read as bytes
+  and decoded as UTF-8 (see "A hook reads its event as UTF-8"), and the tests start the hook
+  as a tool does, with neither `PYTHONUTF8` nor `PYTHONIOENCODING` set, and once more with
+  standard input forced into a code page so that they fail on every platform if the reading
+  comes back. What is known of the tools: a `SessionStart` event of Claude Code 2.1.119, kept
+  by a hook that wrote its input to a file, holds the folder `thèse` with the two bytes
+  `c3 a8`. Codex was not run, which needs a login; its source builds each event with
+  `serde_json::to_string`, which escapes nothing outside ASCII, and writes those bytes to the
+  hook (`codex-rs/hooks/src/events/` and `engine/command_runner.rs`, read 2026-10-02 at
+  8a400e78). Still open: an event in
+  an encoding that is neither UTF-8 nor the one standard input has loses its letters outside
+  ASCII, so the write guard refuses by folder and extension, under a garbled name, and the
+  note after an edit finds no file. A text in a code page that happens to be valid UTF-8 is
+  read as UTF-8. And a name sent in one Unicode normal form and written in `paper.yaml` or on
+  disk in another was not tried; macOS is where that would show.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

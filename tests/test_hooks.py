@@ -10,11 +10,17 @@ fail loudly if it stopped holding:
 
 from __future__ import annotations
 
+import io
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+import manuscript_guard
+from manuscript_guard import hooks
 from manuscript_guard.hooks import HANDLERS, SUBMISSION_MARKERS, dispatch, main
 
 
@@ -67,6 +73,217 @@ def test_an_unknown_event_is_ignored() -> None:
     assert dispatch("not-an-event", {}) == 0
     assert main(["not-an-event"]) == 0
     assert main([]) == 0
+
+
+# ---------------------------------------------------------------- the event as it arrives
+#
+# An agent tool starts the hook as a process of its own and writes the event on its standard
+# input as UTF-8, a name outside ASCII as its own bytes and not as an escape: captured from
+# Claude Code on 2026-10-02, and read in Codex's source. On Windows Python reads standard
+# input in the ANSI code page unless told otherwise, so the handlers above, which are handed a
+# dict, never saw what these do.
+
+#: Either would have Python read standard input as UTF-8 for the hook. An agent tool sets
+#: neither, so the hook is started with neither.
+ENCODING_SWITCHES = ("PYTHONUTF8", "PYTHONIOENCODING")
+
+#: How standard input is read where nobody says: as the platform decides, which on Windows is
+#: the code page, and in a code page on every platform, so that the tests fail everywhere and
+#: not only on Windows if the event is decoded as anything but UTF-8 again.
+READINGS = pytest.mark.parametrize(
+    "environment", [{}, {"PYTHONIOENCODING": "cp1252"}], ids=["platform", "code-page"]
+)
+
+
+def as_sent(payload: dict) -> bytes:
+    """The event as an agent tool writes it: UTF-8, nothing escaped that need not be."""
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def run_installed(
+    handler: str, event: bytes, environment: dict[str, str], cwd: Path | None = None
+) -> dict | None:
+    """Run the entry point as an agent tool does, and read back what it printed.
+
+    The process is given the source these tests import, so that in a git worktree it is the
+    worktree's hooks that run and not an installed copy's.
+    """
+    env = {key: value for key, value in os.environ.items() if key not in ENCODING_SWITCHES}
+    source = str(Path(manuscript_guard.__file__).resolve().parent.parent)
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [source, env.get("PYTHONPATH")]))
+    env.update(environment)
+    finished = subprocess.run(
+        [sys.executable, "-m", "manuscript_guard.hooks", handler],
+        input=event,
+        capture_output=True,
+        env=env,
+        cwd=cwd,
+        timeout=120,
+    )
+    assert finished.returncode == 0, finished.stderr
+    assert finished.stderr == b"", "a hook has nothing to say on standard error"
+    # Printed in ASCII, so whatever reads the answer reads the same in any encoding.
+    assert finished.stdout.isascii(), finished.stdout
+    out = finished.stdout.strip()
+    return json.loads(out) if out else None
+
+
+def standard_input(raw: bytes, encoding: str) -> io.TextIOWrapper:
+    """A standard input holding what a tool wrote, in the encoding Python opened it with."""
+    return io.TextIOWrapper(io.BytesIO(raw), encoding=encoding)
+
+
+@READINGS
+def test_a_results_file_with_an_accented_name_is_refused_under_its_name(
+    project: Path, environment: dict[str, str]
+) -> None:
+    target = project / "results" / "données.json"
+    target.touch()
+    event = as_sent({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
+    assert "é".encode() in event, "the name goes as its own bytes, as the tools send it"
+
+    result = run_installed("guard-write", event, environment)
+    assert decision(result) == "deny"
+    assert "results/données.json is generated" in reason(result)
+
+
+@READINGS
+def test_an_accented_manuscript_file_gets_its_note_after_an_edit(
+    project: Path, environment: dict[str, str]
+) -> None:
+    path = project / "manuscript" / "méthodes.md"
+    path.write_text("It was 3.84.\n", encoding="utf-8")
+    event = as_sent({"tool_name": "Edit", "tool_input": {"file_path": str(path)}})
+
+    result = run_installed("after-edit", event, environment)
+    assert "manuscript/méthodes.md has 1 number(s) bound to nothing" in context(result)
+    assert "'3.84'" in context(result)
+
+
+@READINGS
+def test_a_results_directory_relocated_to_an_accented_name_is_still_guarded(
+    project: Path, environment: dict[str, str]
+) -> None:
+    import yaml
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["paths"] = {"results": "résultats"}
+    paper.write_text(
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+    target = project / "résultats" / "01_disproportionality.json"
+    target.parent.mkdir()
+    target.touch()
+    event = as_sent({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
+
+    result = run_installed("guard-write", event, environment)
+    assert decision(result) == "deny"
+    assert "machine-written" in reason(result)
+
+
+@READINGS
+def test_a_project_under_an_accented_folder_is_guarded_and_gets_its_status_line(
+    project: Path, tmp_path: Path, environment: dict[str, str]
+) -> None:
+    """The commonest shape: nothing in the project is accented, the folder it sits in is.
+
+    A home folder named after its owner is enough, and then every path and the `cwd` of every
+    event carry the name.
+    """
+    home = tmp_path / "thèse"
+    home.mkdir()
+    root = project.rename(home / "paper")
+    target = root / "results" / "01_disproportionality.json"
+    event = as_sent({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
+    assert decision(run_installed("guard-write", event, environment)) == "deny"
+
+    started = as_sent({"hook_event_name": "SessionStart", "source": "startup", "cwd": str(root)})
+    assert "manuscript-guard: paper at stage" in context(
+        run_installed("session-start", started, environment)
+    )
+
+
+def test_a_byte_order_mark_before_the_event_is_not_part_of_it(project: Path) -> None:
+    """Windows PowerShell puts one in front of what it pipes to a program as UTF-8."""
+    target = project / "results" / "hand.json"
+    event = as_sent({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
+    assert decision(run_installed("guard-write", b"\xef\xbb\xbf" + event, {})) == "deny"
+
+
+def test_an_event_that_is_not_utf8_still_guards_by_what_can_be_read(project: Path) -> None:
+    """A wrapper that hands the event on in the code page, which is how main read it.
+
+    Reading nothing from it would switch the guard off for that file. Where the code page is
+    the one standard input has, the name is read whole, as it was before. Elsewhere the letter
+    is lost, and the folder and the extension still say that the file is generated.
+    """
+    target = project / "results" / "données.json"
+    target.touch()
+    payload = {"tool_name": "Write", "tool_input": {"file_path": str(target)}}
+    event = json.dumps(payload, ensure_ascii=False).encode("cp1252")
+
+    result = run_installed("guard-write", event, {"PYTHONIOENCODING": "cp1252"})
+    assert decision(result) == "deny"
+    assert "results/données.json is generated" in reason(result)
+
+    result = run_installed("guard-write", event, {"PYTHONIOENCODING": "utf-8"})
+    assert decision(result) == "deny"
+    assert "results/donn" in reason(result)
+    assert "es.json is generated" in reason(result)
+
+
+#: Bytes that are no event: nothing, no JSON, a code page, no text in any encoding, UTF-8 cut
+#: in the middle of a letter, and JSON that is not an object.
+NO_EVENT = {
+    "empty": b"",
+    "not-json": b"not json",
+    "code-page": b'{"tool_input": {"file_path": "results/donn\xe9es.json"}}',
+    "no-text": b"\xff\xfe\x00\x81",
+    "cut-short": b'{"tool_input": {"file_path": "m\xc3',
+    "a-list": b"[]",
+    "a-string": b'"\xc3\xa9"',
+}
+
+
+@pytest.mark.parametrize("handler", sorted(HANDLERS))
+@pytest.mark.parametrize("encoding", ["cp1252", "utf-8"])
+@pytest.mark.parametrize("event", list(NO_EVENT.values()), ids=list(NO_EVENT))
+def test_no_bytes_break_a_hook(
+    handler: str, encoding: str, event: bytes, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Whatever arrives, in whatever encoding, the hook ends with 0."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdin", standard_input(event, encoding))
+    assert main([handler]) == 0
+
+
+@pytest.mark.parametrize("name", ["not-json", "no-text", "cut-short", "a-list"])
+def test_bytes_that_are_no_event_end_in_silence(name: str, tmp_path: Path) -> None:
+    """The same for the process an agent tool starts: 0, and not a word on either stream."""
+    assert run_installed("guard-write", NO_EVENT[name], {}, cwd=tmp_path) is None
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "utf-8", "ascii", "cp932"])
+def test_the_event_is_read_as_utf8_whatever_encoding_standard_input_has(
+    encoding: str, monkeypatch
+) -> None:
+    payload = {"cwd": "C:\\Users\\Zoé\\thèse", "tool_input": {"file_path": "méthodes 日本語.md"}}
+    monkeypatch.setattr(sys, "stdin", standard_input(as_sent(payload), encoding))
+    assert hooks._read_event() == payload
+
+
+def test_a_standard_input_with_no_bytes_under_it_is_read_as_text(monkeypatch) -> None:
+    """What a test, or a program that calls `dispatch` itself, puts in its place."""
+    payload = {"tool_input": {"file_path": "méthodes.md"}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload, ensure_ascii=False)))
+    assert hooks._read_event() == payload
+
+
+def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
+    """Started with none, as `pythonw` starts a program, there is no event and no error."""
+    monkeypatch.setattr(sys, "stdin", None)
+    assert hooks._read_event() == {}
 
 
 # ---------------------------------------------------------------- the write guard

@@ -796,6 +796,14 @@ labels are bold by journal requirement, so counting them flagged the journal's h
 they are exempt. And technical senses are exempt by pattern, so "robust standard errors"
 does not count towards the vocabulary rate.
 
+A finding's line is counted in the file as read. The phrase and attribution rules match in a
+copy with the comments, the listings and the front matter's machinery blanked, line ends
+included, and an offset is the same in both. Counted in the copy, the line fell short by
+every line blanked above it: a phrase under a four-line comment was reported three lines up,
+on the comment. And the line is the one the matched words begin on, not the match: the rule
+for a chat assistant's opening word reads from the start of a line through any blank lines,
+and its finding was put on the blank line above the paragraph.
+
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.

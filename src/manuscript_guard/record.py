@@ -102,6 +102,7 @@ def write_review(
     reviewed_by: str | None = None,
     remit: str = "",
     summary: str = "",
+    reading: str | None = None,
     today: date | None = None,
 ) -> Written:
     """Record that `reviewer` has read the manuscript as it now stands.
@@ -110,10 +111,19 @@ def write_review(
     a placeholder verdict is a claim that somebody looked. Findings are prose and are added
     by editing the file; the point of this command is the part a person cannot be expected to
     get right by hand, which is the digest of what they read.
+
+    `reading` names who made this reading, where the remit is read more than once: a model
+    and a co-author, or several models. It is a record of its own beside the reviewer's plain
+    one, so a second reader never needs the first one's record to be overwritten.
     """
     import re
 
-    from manuscript_guard.gates.review import file_digests, manuscript_digest, review_root
+    from manuscript_guard.gates.review import (
+        file_digests,
+        manuscript_digest,
+        reading_path,
+        reading_slug,
+    )
 
     if not re.fullmatch(r"[a-z][a-z0-9-]*", reviewer):
         raise RecordError(
@@ -123,9 +133,16 @@ def write_review(
         raise RecordError(f"verdict must be one of {', '.join(VERDICTS)}")
     if round_number < 1:
         raise RecordError("rounds are numbered from 1")
+    if reading is not None:
+        reading = reading.strip()
+        if not reading_slug(reading):
+            raise RecordError(
+                "--reading names who made this reading and becomes part of the file's name, "
+                "so it needs a letter or a digit: openai/<model>, or a person's name"
+            )
 
     today = today or date.today()
-    path = review_root(project) / f"round-{round_number}" / f"{reviewer}.yaml"
+    path = reading_path(project, round_number, reviewer, reading)
     if path.exists():
         raise RecordError(
             f"{path.name} already exists in round {round_number}. If the manuscript has "
@@ -140,7 +157,8 @@ def write_review(
         "schema": "manuscript-guard/review/1",
         "round": round_number,
         "reviewer": reviewer,
-        "reviewed_by": reviewed_by or reviewer,
+        **({"reader": reading} if reading else {}),
+        "reviewed_by": reviewed_by or reading or reviewer,
         "reviewed_on": today.isoformat(),
         "manuscript_sha256": manuscript_digest(project),
         "file_sha256": dict(sorted(file_digests(project).items())),

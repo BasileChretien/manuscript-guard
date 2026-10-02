@@ -46,6 +46,13 @@
           "why": {
             "type": "string",
             "description": "What about this paper or journal called for this reviewer."
+          },
+          "readers": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Who is asked to read this remit, where more than one reading is wanted: provider/model for a model, any name for a person. Each must file a reading (review/round-<n>/<id>.<reader>.yaml, which says the same `reader` inside), and the round is incomplete while one has not, so a provider that failed does not leave a round that looks read. A reading by anyone not listed still counts, and its major findings still have to be answered. Omit the key and one record by anybody answers the remit."
           }
         }
       }

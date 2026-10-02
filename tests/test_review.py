@@ -491,3 +491,313 @@ def test_the_stale_hint_is_a_command_that_runs(project: Path) -> None:
     revise(project)
     stale = next(f for f in report_for(project).findings if f.code == "review-stale")
     assert "--verdict" in stale.hint
+
+
+# ---------------------------------------------------------------- several readings of a remit
+#
+# One reviewer's remit can be read more than once: by several models, by a model and a
+# person. Each reading is a record of its own, `<reviewer>.<reader>.yaml`, beside the plain
+# `<reviewer>.yaml`. A panel may name the readers it expects of a reviewer, and then each of
+# them has to file. A panel that names none is read exactly as before.
+
+MODEL_A = "openai/model-a"
+MODEL_B = "mistral/model-b"
+DESK = Path("review") / "round-2" / "desk-editor.yaml"
+DESK_A = Path("review") / "round-2" / "desk-editor.openai-model-a.yaml"
+DESK_B = Path("review") / "round-2" / "desk-editor.mistral-model-b.yaml"
+
+
+def add_reading(
+    root: Path, reviewer: str, reader: str, *, number: int = 2, verdict: str = "minor-revision"
+) -> Path:
+    from manuscript_guard.record import write_review
+
+    project, _ = load_project(root)
+    return write_review(
+        project, reviewer, verdict=verdict, round_number=number, reading=reader
+    ).path
+
+
+def expect_readers(root: Path, number: int, reviewer: str, *readers: str) -> None:
+    def mutate(document):
+        entry = next(r for r in document["reviewers"] if r["id"] == reviewer)
+        entry["readers"] = list(readers)
+
+    edit_yaml(project_panel(root, number), mutate)
+
+
+def test_a_reading_by_a_model_counts_beside_a_record_filed_by_hand(project: Path) -> None:
+    path = add_reading(project, "desk-editor", MODEL_A)
+    assert path == project / DESK_A
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+    assert report.counts["review_rounds_complete"] == 2
+    assert report.counts["review_readings"] == 6
+
+
+def test_a_remit_needs_one_reading_and_any_kind_will_do(project: Path) -> None:
+    """A panel that names no readers is read as it always was, whoever filed."""
+    (project / DESK).unlink()
+    assert "review-missing" in failures(report_for(project, submission=True))
+    add_reading(project, "desk-editor", MODEL_A)
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+
+
+def test_a_reader_the_panel_names_must_report(project: Path) -> None:
+    """One provider failing must not leave a round that looks complete."""
+    expect_readers(project, 2, "desk-editor", MODEL_A, MODEL_B)
+    add_reading(project, "desk-editor", MODEL_A)
+
+    report = report_for(project, submission=True)
+    missing = [f for f in report.failures if f.code == "reading-missing"]
+    assert len(missing) == 1
+    assert "desk-editor" in missing[0].message and MODEL_B in missing[0].message
+    assert missing[0].path == project / DESK_B
+    assert "rounds-outstanding" in failures(report)
+    assert report.counts["review_rounds_complete"] == 1
+
+
+def test_a_missing_reading_only_warns_on_a_draft(project: Path) -> None:
+    expect_readers(project, 2, "desk-editor", MODEL_A)
+    report = report_for(project)
+    assert report.ok
+    assert "reading-missing" in codes(report)
+
+
+def test_every_named_reader_reporting_completes_the_round(project: Path) -> None:
+    expect_readers(project, 2, "desk-editor", MODEL_A, MODEL_B)
+    add_reading(project, "desk-editor", MODEL_A)
+    add_reading(project, "desk-editor", MODEL_B)
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+    assert report.counts["review_rounds_complete"] == 2
+
+
+def test_a_record_filed_by_hand_does_not_stand_in_for_a_named_reader(project: Path) -> None:
+    expect_readers(project, 2, "desk-editor", MODEL_A)
+    assert (project / DESK).exists()
+    report = report_for(project, submission=True)
+    assert "reading-missing" in failures(report)
+    assert "review-missing" not in codes(report), "the remit was read, only not by that reader"
+
+
+def test_a_person_can_be_a_named_reader(project: Path) -> None:
+    """Mixed panels: a co-author's reading is asked for beside the models'."""
+    expect_readers(project, 2, "desk-editor", MODEL_A, "Dr Tanaka")
+    add_reading(project, "desk-editor", MODEL_A)
+    assert "reading-missing" in failures(report_for(project, submission=True))
+    path = add_reading(project, "desk-editor", "Dr Tanaka")
+    assert path.name == "desk-editor.dr-tanaka.yaml"
+    assert report_for(project, submission=True).ok
+
+
+def test_a_major_finding_from_any_reader_must_be_answered(project: Path) -> None:
+    """Another reader's clean reading of the same remit does not answer it."""
+    path = add_reading(project, "desk-editor", MODEL_A, verdict="major-revision")
+    edit_yaml(
+        path,
+        lambda d: d["findings"].append(
+            {"id": "f1", "severity": "major", "finding": "The abstract claims a risk."}
+        ),
+    )
+    report = report_for(project, submission=True)
+    blocking = [f for f in report.failures if f.code == "open-major-finding"]
+    assert len(blocking) == 1
+    assert "desk-editor" in blocking[0].message and MODEL_A in blocking[0].message
+    assert "The abstract claims a risk." in blocking[0].message
+
+    edit_yaml(path, lambda d: d["findings"][0].update(overridden="It says reporting, not risk."))
+    assert report_for(project, submission=True).ok
+
+
+def test_an_open_finding_from_a_record_filed_by_hand_reads_as_before(project: Path) -> None:
+    def mutate(document):
+        document["findings"][0]["resolution"] = ""
+        document["findings"][0].pop("overridden", None)
+
+    edit_yaml(project / BIOSTAT, mutate)
+    finding = next(f for f in report_for(project).findings if f.code == "open-major-finding")
+    assert finding.message.startswith("biostatistician ")
+    assert "[" not in finding.message.split(":")[0]
+
+
+def test_a_reading_goes_stale_like_any_record(project: Path) -> None:
+    add_reading(project, "desk-editor", MODEL_A)
+    revise(project)
+    stale = [f for f in report_for(project, submission=True).failures if f.code == "review-stale"]
+    assert len(stale) == 6
+    assert any(MODEL_A in f.message for f in stale)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda d: d.update(reader=MODEL_B),
+        lambda d: d.update(reviewer="clinical-reader"),
+        lambda d: d.update(round=1),
+    ],
+    ids=["another reader's name", "another reviewer", "another round"],
+)
+def test_a_reading_that_is_not_what_its_file_name_says_is_refused(project: Path, change) -> None:
+    """The file name is how a reader is asked for and found. A record under one name that
+    says another inside it is one reader's work standing in for another's."""
+    expect_readers(project, 2, "desk-editor", MODEL_A)
+    edit_yaml(add_reading(project, "desk-editor", MODEL_A), change)
+    report = report_for(project, submission=True)
+    assert "reading-misfiled" in failures(report)
+    assert "reading-missing" in failures(report), "a misfiled record answers for nobody"
+    assert report.counts["review_rounds_complete"] == 1
+
+
+def test_a_copy_of_one_readers_record_does_not_answer_for_another(project: Path) -> None:
+    expect_readers(project, 2, "desk-editor", MODEL_A, MODEL_B)
+    shutil.copy(add_reading(project, "desk-editor", MODEL_A), project / DESK_B)
+    report = report_for(project, submission=True)
+    assert "reading-misfiled" in failures(report)
+    assert any(MODEL_B in f.message for f in report.failures if f.code == "reading-missing")
+
+
+def test_two_records_claiming_one_reader_are_reported(project: Path) -> None:
+    add_reading(project, "desk-editor", MODEL_A)
+    edit_yaml(project / DESK, lambda d: d.update(reader=MODEL_A))
+    report = report_for(project, submission=True)
+    duplicate = [f for f in report.failures if f.code == "duplicate-reading"]
+    assert len(duplicate) == 1 and MODEL_A in duplicate[0].message
+
+
+def test_a_malformed_reading_leaves_the_round_unfinished(project: Path) -> None:
+    (project / DESK_A).write_text(
+        f"schema: manuscript-guard/review/1\nround: 2\nreader: {MODEL_A}\n", "utf-8"
+    )
+    report = report_for(project, submission=True)
+    assert "schema-violation" in failures(report)
+    assert report.counts["review_rounds_complete"] == 1
+
+
+def test_a_copy_kept_beside_a_record_does_not_start_failing_a_submission(project: Path) -> None:
+    """Before readings had names, `biostatistician.old.yaml` was nothing to the gate."""
+    shutil.copy(project / BIOSTAT, project / "review" / "round-1" / "biostatistician.old.yaml")
+    (project / "review" / "round-1" / "biostatistician.notes.yaml").write_text("- a note\n")
+    report = report_for(project, submission=True)
+    assert report.ok, report.render(project)
+    assert report.counts["review_readings"] == 5
+    unnamed = [f for f in report.findings if f.code == "reading-unnamed"]
+    assert sorted(f.path.name for f in unnamed) == [
+        "biostatistician.notes.yaml",
+        "biostatistician.old.yaml",
+    ]
+
+
+def test_a_reading_that_lost_its_reader_is_said_and_answers_for_nobody(project: Path) -> None:
+    expect_readers(project, 2, "desk-editor", MODEL_A)
+    edit_yaml(add_reading(project, "desk-editor", MODEL_A), lambda d: d.pop("reader"))
+    report = report_for(project, submission=True)
+    assert "reading-unnamed" in codes(report)
+    assert "reading-missing" in failures(report)
+
+
+def test_a_file_that_only_looks_like_a_reading_of_another_reviewer_is_not_one(
+    project: Path,
+) -> None:
+    """`desk-editor.x.yaml` is a reading for `desk-editor`, and never for `desk`."""
+    edit_yaml(
+        project_panel(project, 2),
+        lambda d: d["reviewers"].append({"id": "desk", "remit": "the desk"}),
+    )
+    add_reading(project, "desk-editor", MODEL_A)
+    report = report_for(project, submission=True)
+    assert [f.message for f in report.failures if f.code == "review-missing"] == [
+        "round 2: desk has not reported"
+    ]
+
+
+def test_the_strictest_verdict_is_reported_and_decides_nothing(project: Path) -> None:
+    """G11 has never gated on a verdict: a record cannot be re-stamped, so a verdict could
+    only be cleared by a further round. What blocks is an unanswered major finding."""
+    from manuscript_guard.gates.review import round_summaries
+
+    add_reading(project, "desk-editor", MODEL_A, verdict="reject")
+    projekt, _ = load_project(project)
+    first, second = round_summaries(projekt)
+    assert (first.number, second.number) == (1, 2)
+    assert second.strictest.verdict == "reject"
+    assert (second.strictest.reviewer, second.strictest.reader) == ("desk-editor", MODEL_A)
+    assert [(r.reviewer, r.reader) for r in second.readings] == [
+        ("desk-editor", None),
+        ("desk-editor", MODEL_A),
+        ("clinical-reader", None),
+    ]
+    assert report_for(project, submission=True).ok
+
+
+def test_the_status_names_each_reading_and_the_strictest_verdict(project: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    add_reading(project, "desk-editor", MODEL_A, verdict="reject")
+    assert main(["review", str(project), "--submission"]) == 0
+    out = capsys.readouterr().out
+    assert "round 2: panel-2.yaml" in out
+    assert "strictest verdict: reject (desk-editor, openai/model-a)" in out
+    line = next(line for line in out.splitlines() if MODEL_A in line and "desk-editor" in line)
+    assert "reject" in line
+
+
+@pytest.mark.parametrize(
+    "reader, slug",
+    [
+        ("openai/model-a", "openai-model-a"),
+        ("openrouter/vendor/Model.4.1:free", "openrouter-vendor-model-4-1-free"),
+        ("Dr Tanaka", "dr-tanaka"),
+        ("--x--", "x"),
+        ("///", ""),
+    ],
+)
+def test_a_readers_name_as_part_of_a_file_name(reader: str, slug: str) -> None:
+    from manuscript_guard.gates.review import reading_slug
+
+    assert reading_slug(reader) == slug
+
+
+def test_a_record_may_say_who_read_and_how_the_reading_was_made(project: Path) -> None:
+    from manuscript_guard.contracts._schema import read_structured, validate
+
+    path = project / DESK
+    document = read_structured(path)
+    document["reader"] = MODEL_A
+    document["rejection_tests"] = [
+        {"test": "The abstract claims more than the paper.", "holds": False, "evidence": "None."}
+    ]
+    document["provenance"] = {
+        "provider": "openai",
+        "model": "model-a",
+        "model_reported": "model-a-2026-09-01",
+        "host": "api.openai.com",
+        "prompt_sha256": "0" * 64,
+        "response_id": "chatcmpl-123",
+        "finish": "stop",
+        "input_tokens": 4000,
+        "output_tokens": 900,
+        "tool_version": "0.2.340",
+    }
+    assert validate(document, "review", path).ok
+
+    for extra in ({"api_key": "x"}, {"authorization": "Bearer x"}, {"prompt": "the text"}):
+        refused = {**document, "provenance": {**document["provenance"], **extra}}
+        assert not validate(refused, "review", path).ok, extra
+    assert not validate({**document, "reader": ""}, "review", path).ok
+    assert not validate(
+        {**document, "provenance": {"provider": "openai"}}, "review", path
+    ).ok, "a provenance that cannot trace the reading is not one"
+
+
+def test_a_panel_may_name_the_readers_of_a_remit(project: Path) -> None:
+    from manuscript_guard.contracts._schema import read_structured, validate
+
+    path = project / PANEL_2
+    document = read_structured(path)
+    document["reviewers"][0]["readers"] = [MODEL_A, MODEL_B]
+    assert validate(document, "panel", path).ok
+    for bad in ([], [MODEL_A, MODEL_A], [""], MODEL_A):
+        document["reviewers"][0]["readers"] = bad
+        assert not validate(document, "panel", path).ok, bad

@@ -7684,3 +7684,160 @@ def test_a_link_s_text_is_found_only_where_pandoc_reads_a_link(
     from manuscript_guard.text.inline import link_text_spans
 
     assert [text[start:end] for start, end in link_text_spans(text)] == links
+
+
+# --------------------------------------------------------------------------------------
+# A round read by several readers. The panel names who reads each remit, and G11 holds the
+# round to it. Each way of losing a reading, or of passing one off as another, must fail a
+# submission: a round where two of three models answered is not a round the panel read.
+# --------------------------------------------------------------------------------------
+
+_READERS = ("openai/model-a", "mistral/model-b")
+
+
+def _round_two(root: Path) -> Path:
+    return root / "review" / "round-2"
+
+
+def _reading(root: Path, reviewer: str, reader: str) -> Path:
+    from manuscript_guard.gates.review import reading_slug
+
+    return _round_two(root) / f"{reviewer}.{reading_slug(reader)}.yaml"
+
+
+def _edit(path: Path, mutate) -> None:
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    mutate(document)
+    path.write_text(
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+
+
+def _review_failures(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_review
+
+    return codes(check_review(load_project(root)[0], submission=True))
+
+
+def _read_by_two_models(root: Path) -> None:
+    """Round two of the example, with both reviewers read by two models as well."""
+    from manuscript_guard.record import write_review
+
+    def name_readers(document):
+        for reviewer in document["reviewers"]:
+            reviewer["readers"] = list(_READERS)
+
+    _edit(root / "review" / "panel-2.yaml", name_readers)
+    for reviewer in ("desk-editor", "clinical-reader"):
+        for reader in _READERS:
+            write_review(
+                load_project(root)[0],
+                reviewer,
+                verdict="minor-revision",
+                round_number=2,
+                reading=reader,
+            )
+
+
+def _lose(root: Path) -> None:
+    _reading(root, "desk-editor", _READERS[1]).unlink()
+
+
+def _empty(root: Path) -> None:
+    _reading(root, "desk-editor", _READERS[1]).write_text("", encoding="utf-8")
+
+
+def _pass_one_reader_off_as_the_other(root: Path) -> None:
+    shutil.copy(
+        _reading(root, "desk-editor", _READERS[0]), _reading(root, "desk-editor", _READERS[1])
+    )
+
+
+def _rename_the_reader_inside(root: Path) -> None:
+    _reading(root, "desk-editor", _READERS[1]).unlink()
+    _edit(_reading(root, "desk-editor", _READERS[0]), lambda d: d.update(reader=_READERS[1]))
+
+
+def _pass_one_remit_off_as_the_other(root: Path) -> None:
+    shutil.copy(
+        _reading(root, "clinical-reader", _READERS[1]),
+        _reading(root, "desk-editor", _READERS[1]),
+    )
+
+
+def _bring_a_reading_from_another_round(root: Path) -> None:
+    _edit(_reading(root, "desk-editor", _READERS[1]), lambda d: d.update(round=1))
+
+
+def _strip_the_reader(root: Path) -> None:
+    _edit(_reading(root, "desk-editor", _READERS[1]), lambda d: d.pop("reader"))
+
+
+def _file_it_by_hand_instead(root: Path) -> None:
+    """The remit is read, by a record nobody named: not the reader the panel asked for."""
+    _reading(root, "desk-editor", _READERS[1]).unlink()
+    assert (_round_two(root) / "desk-editor.yaml").exists()
+
+
+def _leave_a_major_finding_open(root: Path) -> None:
+    _edit(
+        _reading(root, "desk-editor", _READERS[1]),
+        lambda d: d["findings"].append(
+            {"id": "f1", "severity": "major", "finding": "The conclusion does not follow."}
+        ),
+    )
+
+
+def _edit_the_manuscript_afterwards(root: Path) -> None:
+    path = main_md(root)
+    path.write_text(path.read_text(encoding="utf-8") + "\n\nAdded after.\n", encoding="utf-8")
+
+
+_LOST_READINGS = {
+    "a reading is deleted": (_lose, "reading-missing"),
+    "a reading is emptied": (_empty, "reading-missing"),
+    "one reader's record is copied as the other's": (
+        _pass_one_reader_off_as_the_other,
+        "reading-misfiled",
+    ),
+    "the reader named inside is changed": (_rename_the_reader_inside, "reading-misfiled"),
+    "another remit's reading is copied in": (
+        _pass_one_remit_off_as_the_other,
+        "reading-misfiled",
+    ),
+    "a reading says it is of another round": (
+        _bring_a_reading_from_another_round,
+        "reading-misfiled",
+    ),
+    "the reader is taken out of a reading": (_strip_the_reader, "reading-missing"),
+    "the remit is answered by hand instead": (_file_it_by_hand_instead, "reading-missing"),
+    "a model's major finding is left open": (_leave_a_major_finding_open, "open-major-finding"),
+    "the manuscript is edited after the readings": (
+        _edit_the_manuscript_afterwards,
+        "review-stale",
+    ),
+}
+
+
+def test_a_round_read_by_two_models_passes_a_submission(project: Path) -> None:
+    """The baseline. Everything in the next test is meaningless if this fails."""
+    _read_by_two_models(project)
+    assert not _review_failures(project)
+    assert len(list(_round_two(project).glob("*.yaml"))) == 6
+
+
+@pytest.mark.parametrize("name", sorted(_LOST_READINGS))
+def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: str) -> None:
+    corrupt, expected = _LOST_READINGS[name]
+    _read_by_two_models(project)
+    corrupt(project)
+    assert expected in _review_failures(project)
+
+
+def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
+    """One record a reviewer, no readers named: nothing about them changed."""
+    from manuscript_guard.gates import check_review
+
+    report = check_review(load_project(project)[0], submission=True)
+    assert report.ok and not report.findings, report.render(project)
+    assert report.counts["review_rounds_complete"] == 2

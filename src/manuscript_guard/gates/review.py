@@ -27,10 +27,11 @@ findings. So the gate warns during ordinary work and fails for a submission buil
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
@@ -38,6 +39,8 @@ from manuscript_guard.gates.numbers import source_files
 GATE = "G11"
 REVIEW_DIR = "review"
 DEFAULT_ROUNDS_REQUIRED = 2
+#: From the most lenient to the strictest, in the vocabulary a journal uses.
+VERDICT_ORDER = ("pass", "minor-revision", "major-revision", "reject")
 
 
 def manuscript_digest(project: Project) -> str:
@@ -140,6 +143,34 @@ def round_dir(project: Project, round_number: int) -> Path:
     return review_root(project) / f"round-{round_number}"
 
 
+def reading_slug(reader: str) -> str:
+    """A reader's name as the part of a file name: `openai/gpt-x.1` is `openai-gpt-x-1`.
+
+    Empty for a name with no letter or digit in it, which names no file.
+    """
+    return re.sub("[^a-z0-9]+", "-", reader.lower()).strip("-")
+
+
+def reading_path(
+    project: Project, round_number: int, reviewer: str, reader: str | None = None
+) -> Path:
+    """Where one reading of a remit is filed.
+
+    A remit can be read more than once, by several models or by a model and a person. The
+    plain `<reviewer>.yaml` is the reading nobody named, which is every record written before
+    readings had names. A named reading sits beside it as `<reviewer>.<reader>.yaml`. A
+    reviewer's id cannot hold a dot, so the first dot always ends it.
+    """
+    name = reviewer if reader is None else f"{reviewer}.{reading_slug(reader)}"
+    return round_dir(project, round_number) / f"{name}.yaml"
+
+
+def reading_files(directory: Path, reviewer: str) -> list[Path]:
+    """Every record of one remit in a round: the plain one, then the named ones by name."""
+    plain = directory / f"{reviewer}.yaml"
+    return [*([plain] if plain.exists() else []), *sorted(directory.glob(f"{reviewer}.*.yaml"))]
+
+
 def panels(project: Project) -> list[tuple[int, Path]]:
     root = review_root(project)
     if not root.exists():
@@ -156,9 +187,110 @@ def panels(project: Project) -> list[tuple[int, Path]]:
 
 @dataclass(frozen=True)
 class Open:
+    #: The reviewer, and the reader in brackets when the reading has one.
     reviewer: str
     finding_id: str
     text: str
+
+
+@dataclass(frozen=True)
+class _Filed:
+    """One reading of a remit that can be read: it fits the schema and is filed as itself."""
+
+    path: Path
+    reader: str | None
+    document: dict
+
+    def who(self, reviewer: str) -> str:
+        return reviewer if self.reader is None else f"{reviewer} [{self.reader}]"
+
+
+def _misfiled(path: Path, reviewer: str, number: int, document: dict) -> str | None:
+    """Why a named reading is not what its file name says it is, or None when it is.
+
+    The file name is how a reader the panel named is looked for. A record under one reader's
+    name that says another's inside is one reading standing in for two, and the same goes
+    for a record copied from another remit or another round.
+    """
+    named = path.name[len(reviewer) + 1 : -len(".yaml")]
+    reader = str(document["reader"])
+    if reading_slug(reader) != named:
+        return (
+            f"says its reader is {reader}, whose reading is filed as "
+            f"{reviewer}.{reading_slug(reader)}.yaml"
+        )
+    if document["reviewer"] != reviewer:
+        return f"says it is {document['reviewer']}'s remit"
+    if document["round"] != number:
+        return f"says it is of round {document['round']}"
+    return None
+
+
+def _filed(
+    directory: Path, reviewer: str, number: int, severity: str
+) -> tuple[list[_Filed], Report, bool]:
+    """The readings of one remit, what is wrong with those that cannot be read, and whether
+    any was refused."""
+    report = Report()
+    found: list[_Filed] = []
+    refused = False
+    for path in reading_files(directory, reviewer):
+        plain = path.name == f"{reviewer}.yaml"
+        try:
+            document = read_structured(path)
+        except ContractError:
+            if plain:
+                raise
+            document = None
+        if not plain and not (isinstance(document, dict) and document.get("reader")):
+            # Until readings had names, a file such as `biostatistician.old.yaml` beside a
+            # record was nothing to the gate, and a copy kept there must not start failing
+            # a submission. It is said, because a reading that lost its `reader` line would
+            # otherwise drop out of the round in silence, findings and all.
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="reading-unnamed",
+                    severity=WARN,
+                    message=f"round {number}: {path.name} names no reader, so it is not "
+                    f"counted as a reading of {reviewer}",
+                    path=path,
+                    hint="a reading beside a reviewer's record says who made it in "
+                    "`reader:`. If this is a copy or a note, keep it outside the round",
+                )
+            )
+            continue
+        schema_report = validate(document, "review", path, gate=GATE)
+        report = report.merge(schema_report)
+        if not schema_report.ok or not isinstance(document, dict):
+            refused = True
+            continue
+        if not plain:
+            why = _misfiled(path, reviewer, number, document)
+            if why is not None:
+                refused = True
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="reading-misfiled",
+                        severity=severity,
+                        message=f"round {number}: {path.name} {why}",
+                        path=path,
+                        hint="a reading is filed as <reviewer>.<reader>.yaml and says the "
+                        "same inside. It is not counted until it does; a reading by "
+                        "another reader is another record "
+                        "(`manuscript-guard review --record <reviewer> --reading <reader>`)",
+                    )
+                )
+                continue
+        found.append(_Filed(path, document.get("reader") or None, document))
+    return found, report, refused
+
+
+def _answered(finding: dict) -> bool:
+    return bool(
+        str(finding.get("resolution", "")).strip() or str(finding.get("overridden", "")).strip()
+    )
 
 
 #: What a round says when it no longer describes the manuscript: a record is stale, or a
@@ -175,6 +307,8 @@ class _Round:
     #: Finished when it was read, but not of the manuscript as it now stands.
     outdated: bool
     unresolved: tuple[Open, ...]
+    #: Readings that were read: one for each reviewer, more where several read a remit.
+    readings: int = 0
 
     @property
     def current(self) -> bool:
@@ -270,12 +404,14 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
     # remit nobody answered, whenever it was.
     latest = max((r.number for r in checked if r.current), default=0)
     complete_rounds = 0
+    readings = 0
     open_major: list[Open] = []
     for round_ in checked:
         superseded = round_.outdated and round_.number < latest
         report = report.merge(_superseded(round_, latest) if superseded else round_.report)
         complete_rounds += int(round_.current or (superseded and not round_.unfinished))
         open_major.extend(round_.unresolved)
+        readings += round_.readings
 
     if complete_rounds < required:
         report = report.with_findings(
@@ -306,6 +442,7 @@ def check_review(project: Project, *, submission: bool = False) -> Report:
         review_rounds=len(found),
         review_rounds_complete=complete_rounds,
         review_open_major=len(open_major),
+        review_readings=readings,
     )
 
 
@@ -323,70 +460,108 @@ def _check_round(
     records = 0
 
     for reviewer in panel["reviewers"]:
-        path = directory / f"{reviewer['id']}.yaml"
-        if not path.exists():
+        name = reviewer["id"]
+        filed, problems, refused = _filed(directory, name, number, severity)
+        report = report.merge(problems)
+        unfinished = unfinished or refused
+
+        # Who has read this remit. A panel that names the readers of a remit is held to each
+        # of them: with every model reading every remit, one provider failing must not leave
+        # a round that looks complete. A panel that names none needs one reading, by
+        # anybody, which is how every round was read before readings had names.
+        by_reader: dict[str, Path] = {}
+        for reading in filed:
+            if reading.reader is None:
+                continue
+            if reading.reader in by_reader:
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="duplicate-reading",
+                        severity=severity,
+                        message=f"round {number}: {name} has two readings by "
+                        f"{reading.reader} ({by_reader[reading.reader].name} and "
+                        f"{reading.path.name})",
+                        path=reading.path,
+                        hint="one reader reads a remit once in a round; a second reading "
+                        "of a changed manuscript is a further round",
+                    )
+                )
+            else:
+                by_reader[reading.reader] = reading.path
+
+        expected = [str(reader) for reader in reviewer.get("readers") or ()]
+        for reader in expected:
+            if reader not in by_reader:
+                unfinished = True
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="reading-missing",
+                        severity=severity,
+                        message=f"round {number}: {name} has no reading by {reader}",
+                        path=reading_path(project, number, name, reader),
+                        context=reviewer["remit"][:140],
+                        hint="the panel names this reader for the remit. File its reading, "
+                        "or take the reader out of the panel if it is not going to report",
+                    )
+                )
+        if not expected and not filed and not refused:
             unfinished = True
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="review-missing",
                     severity=severity,
-                    message=f"round {number}: {reviewer['id']} has not reported",
-                    path=path,
+                    message=f"round {number}: {name} has not reported",
+                    path=reading_path(project, number, name),
                     context=reviewer["remit"][:140],
                 )
             )
-            continue
 
-        document = read_structured(path)
-        schema_report = validate(document, "review", path, gate=GATE)
-        report = report.merge(schema_report)
-        if not schema_report.ok or not isinstance(document, dict):
-            unfinished = True
-            continue
-
-        # Per file when the record says which files it read, whole-manuscript otherwise.
-        # Hashing every byte of every file meant one comma in the Discussion voided both
-        # completed rounds — and `review-stale` is a hard failure at submission, so the
-        # harshest check in the toolkit fired at the moment an author is copy-editing.
-        records += 1
-        read = document.get("file_sha256")
-        if isinstance(read, dict) and read:
-            changed = stale_files(read, project)
-            outdated = bool(changed)
-            covered |= set(read)
-        else:
-            changed = []
-            outdated = document["manuscript_sha256"] != current
-            read_everything = True
-        if outdated:
-            behind = True
-            named = f" ({', '.join(changed)})" if changed else ""
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="review-stale",
-                    severity=severity,
-                    message=f"round {number}: {reviewer['id']} reviewed an earlier "
-                    f"manuscript{named}",
-                    path=path,
-                    context=f"reviewed {document['reviewed_on']} by {document['reviewed_by']}",
-                    hint="the text has changed since. Record a further round that reads it "
-                    "as it stands (`manuscript-guard review --record <reviewer> --round <n> "
-                    "--verdict <verdict>`); once that round is complete it supersedes this one",
+        for reading in filed:
+            document = reading.document
+            who = reading.who(name)
+            # Per file when the record says which files it read, whole-manuscript otherwise.
+            # Hashing every byte of every file meant one comma in the Discussion voided both
+            # completed rounds — and `review-stale` is a hard failure at submission, so the
+            # harshest check in the toolkit fired at the moment an author is copy-editing.
+            records += 1
+            read = document.get("file_sha256")
+            if isinstance(read, dict) and read:
+                changed = stale_files(read, project)
+                outdated = bool(changed)
+                covered |= set(read)
+            else:
+                changed = []
+                outdated = document["manuscript_sha256"] != current
+                read_everything = True
+            if outdated:
+                behind = True
+                named = f" ({', '.join(changed)})" if changed else ""
+                report = report.with_findings(
+                    Finding(
+                        gate=GATE,
+                        code="review-stale",
+                        severity=severity,
+                        message=f"round {number}: {who} reviewed an earlier manuscript{named}",
+                        path=reading.path,
+                        context=f"reviewed {document['reviewed_on']} by "
+                        f"{document['reviewed_by']}",
+                        hint="the text has changed since. Record a further round that reads "
+                        "it as it stands (`manuscript-guard review --record <reviewer> "
+                        "--round <n> --verdict <verdict>`); once that round is complete it "
+                        "supersedes this one",
+                    )
                 )
-            )
 
-        for finding in document.get("findings", []):
-            if finding["severity"] != "major":
-                continue
-            answered = str(finding.get("resolution", "")).strip() or str(
-                finding.get("overridden", "")
-            ).strip()
-            if not answered:
-                unresolved.append(
-                    Open(reviewer=reviewer["id"], finding_id=finding["id"], text=finding["finding"])
-                )
+            # Every reading's major findings bind, whoever else read the remit: another
+            # reader's clean reading does not answer them.
+            for finding in document.get("findings", []):
+                if finding["severity"] == "major" and not _answered(finding):
+                    unresolved.append(
+                        Open(reviewer=who, finding_id=finding["id"], text=finding["finding"])
+                    )
 
     # What makes per-file scoping honest. A record listing the files it read is judged on
     # those alone, which is only defensible while every manuscript file is on somebody's
@@ -408,7 +583,73 @@ def _check_round(
                 )
             )
 
-    return _Round(number, report, unfinished, behind, tuple(unresolved))
+    return _Round(number, report, unfinished, behind, tuple(unresolved), records)
+
+
+@dataclass(frozen=True)
+class ReadingSummary:
+    reviewer: str
+    reader: str | None
+    verdict: str
+    findings: int
+    major: int
+    open_major: int
+
+
+@dataclass(frozen=True)
+class RoundSummary:
+    number: int
+    panel: Path
+    readings: tuple[ReadingSummary, ...]
+
+    @property
+    def strictest(self) -> ReadingSummary | None:
+        """The reading with the strictest verdict; the first of them when several share it.
+
+        Reported, and nothing more. G11 has never decided anything on a verdict: a record
+        cannot be re-stamped, so a verdict could only be cleared by a further round, and the
+        thing an author can act on is a finding. What blocks a submission is an unanswered
+        major finding, from any reader.
+        """
+        if not self.readings:
+            return None
+        return max(self.readings, key=lambda reading: VERDICT_ORDER.index(reading.verdict))
+
+
+def round_summaries(project: Project) -> list[RoundSummary]:
+    """Who read what in each round and what each concluded, for `manuscript-guard review`.
+
+    Only readings the gate counts: one that fails its schema or is misfiled is in the gate's
+    report, not here.
+    """
+    summaries = []
+    for number, path in panels(project):
+        document = read_structured(path)
+        if not validate(document, "panel", path, gate=GATE).ok or not isinstance(document, dict):
+            continue
+        readings = []
+        for reviewer in document["reviewers"]:
+            filed, _problems, _refused = _filed(
+                round_dir(project, number), reviewer["id"], number, WARN
+            )
+            for reading in filed:
+                majors = [
+                    finding
+                    for finding in reading.document.get("findings", [])
+                    if finding["severity"] == "major"
+                ]
+                readings.append(
+                    ReadingSummary(
+                        reviewer=reviewer["id"],
+                        reader=reading.reader,
+                        verdict=reading.document["verdict"],
+                        findings=len(reading.document.get("findings", [])),
+                        major=len(majors),
+                        open_major=sum(1 for finding in majors if not _answered(finding)),
+                    )
+                )
+        summaries.append(RoundSummary(number, path, tuple(readings)))
+    return summaries
 
 
 def _check_blinding(project: Project, found: list[tuple[int, Path]], severity: str) -> Report:

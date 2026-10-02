@@ -7,10 +7,14 @@ typesetting will do this; the author reading a draft, and the co-author reading 
 get it here.
 
 The caption of a figure is the paragraph that follows it: a paragraph whose text begins
-"Figure 1.", "Figure 2." and so on, directly after the figure it belongs to. That is the
-convention the manuscript already follows, and this filter only reads it — a paragraph that
-does not follow a figure is left alone, whatever it says, and so is a figure whose next
-paragraph is prose.
+"Figure 1.", "Figure 2:", "Figure S1." and so on, directly after the figure it belongs to.
+That is the convention the manuscript already follows, and this filter only reads it — a
+paragraph that does not follow a figure is left alone, whatever it says, and so is a figure
+whose next paragraph is prose.
+
+The number has to end at the full stop or colon, because the argument resumes under a figure
+as often as a caption opens there: "Figure 1 shows the estimate ..." and "Figure 2.5-fold
+higher ..." are prose, and restyling them would be the whole point of the rule lost.
 
 The paragraph is wrapped in a div carrying `custom-style`, which pandoc's docx writer turns
 into a paragraph style. The style itself is defined in the reference document the build
@@ -51,8 +55,10 @@ local function is_caption(block)
   if block.t ~= 'Para' then
     return false
   end
-  local text = pandoc.utils.stringify(block)
-  return text:match('^Figure%s+%d') ~= nil
+  -- The trailing space lets one pattern cover a caption that is only "Figure 1." as well as
+  -- one that goes on, and the %s after the stop is what keeps "Figure 2.5-fold" out.
+  local text = pandoc.utils.stringify(block) .. ' '
+  return text:match('^Figure%s+S?%d+[%.:]%s') ~= nil
 end
 
 function Blocks(blocks)

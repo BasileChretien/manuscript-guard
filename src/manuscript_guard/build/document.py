@@ -348,9 +348,10 @@ def build_document(
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
     # The caller's reference document (the annotated build adds its highlight styles to one),
     # or one generated here for the figure-caption style alone.
-    reference = reference_doc or reference_with(
-        pandoc(), build_dir / ".cache" / f"{output.stem}-reference.docx"
-    )
+    # One generated file for every build that does not bring its own, rather than one per
+    # output: its content does not depend on the document, and `import`, which builds twice
+    # into a temporary folder, was leaving two of them in the project's cache.
+    reference = reference_doc or reference_with(pandoc(), build_dir / ".cache" / "reference.docx")
     command += [
         f"--reference-doc={reference.resolve()}",
         f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",

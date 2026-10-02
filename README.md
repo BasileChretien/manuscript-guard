@@ -377,6 +377,60 @@ A project file that cannot be used, because it does not parse or is not UTF-8, i
 unexpected: `check` names it in a sentence, and the submission guard and the session start
 pass that sentence on. Outside a project they say nothing.
 
+### Codex (optional)
+
+Codex installs the same plugin from this repository, with the same fourteen skills and the
+same four hooks. After the pip package:
+
+```bash
+codex plugin marketplace add BasileChretien/manuscript-guard
+codex plugin add manuscript-guard@manuscript-guard
+```
+
+Neither command needs a login. Start a new Codex session afterwards. Both need the `codex`
+command line tool; the desktop app on its own may not put it on your `PATH`.
+
+Codex keeps a copy of the plugin, as Claude Code does. For the install above, from GitHub,
+one command takes a new release, refreshing the marketplace and the installed plugin with
+it:
+
+```bash
+codex plugin marketplace upgrade manuscript-guard
+```
+
+Upgrade the pip package at the same time. Codex may also refresh the copy without being
+asked: its program carries an automatic upgrade of marketplaces, and when that runs was not
+observed. Either way, when the plugin is the newer of the two, the session-start hook says
+so once.
+
+**Codex runs a hook only after you have trusted it.** By Codex's documentation, it warns at
+the start of a session that hooks are waiting for review, and `/hooks` is where you read and
+trust them: there are four, each a `manuscript-guard-hook` command. Until you do, nothing is
+caught at the moment of the mistake. `check` and `build` run every gate either way.
+
+| Hook | Under Codex |
+|---|---|
+| session start | As above |
+| before a write | Codex edits files by applying a patch, which may write several files. A patch that adds or changes a file in `results/`, `build/` or a generated checklist profile, or moves a file into one, is refused whole, and the reason names those files. A patch that only deletes one is not refused |
+| after a write | Each manuscript file in the patch that holds an unbound number, and each analysis file, gets its line |
+| before a submission-shaped shell command | As above |
+
+What Codex does not enforce. `check`, `build` and `submit` hold whatever the hooks do:
+
+- By its documentation, a hook you have not trusted, or one whose definition changed since
+  you trusted it, is skipped.
+- The write guard sees a patch. A file written by a shell command is not seen, as under
+  Claude Code.
+- Codex's own documentation calls tool hooks "a useful guardrail, not a complete enforcement
+  boundary", and says some tool paths can opt out of them.
+
+How far this has been checked. Seen: the install, from GitHub by hand and from a checkout on
+every pull request; the upgrade taking an installed copy from one release to the next; and
+the hooks answering input shaped as Codex's source builds it. Not seen, because it needs a
+login: a Codex session in which a skill is loaded, a hook is trusted or a hook fires. That
+includes the session-start notice, which depends on Codex telling the hook where the plugin
+is, as its documentation says it does.
+
 ## Auditing a paper you already wrote
 
 For a manuscript that was never built this way — no bindings, every number a literal —
@@ -452,6 +506,13 @@ every deferred finding is printed and counted.
 ```bash
 manuscript-guard init my-paper
 ```
+
+Among the files it writes is an `AGENTS.md`: the rules of the project on one short page, for
+any agent working in it. Going by each tool's own documentation, Codex reads that file on its
+own, Mistral Vibe does in a folder you have trusted, and Claude Code (2.1.277 or later) does
+where there is no `CLAUDE.md` in the project or above it. Gemini CLI reads it once
+`context.fileName` in its settings lists `AGENTS.md`. None of this has been watched in a
+session. It is advice to the reader; the gates are what holds.
 
 Then look at [`example/`](example/), a synthetic pharmacovigilance study that exercises
 every gate, including a deliberately awkward case: a value the author read in a printed

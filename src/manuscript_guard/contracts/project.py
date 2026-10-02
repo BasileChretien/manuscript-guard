@@ -107,6 +107,14 @@ class Project:
     def extra_terms(self) -> tuple[str, ...]:
         return tuple(self.setting("terms") or ())
 
+    @property
+    def known_abbreviations(self) -> tuple[str, ...]:
+        """Short forms this paper uses without defining them. Read past a setting in the
+        wrong shape: the schema reports that, and G14 still has a manuscript to read."""
+        language = self.paper.get("language")
+        listed = language.get("known_abbreviations") if isinstance(language, dict) else None
+        return tuple(str(entry) for entry in listed) if isinstance(listed, list) else ()
+
 
 def _accepted(schema: dict, value: Any) -> Any:
     """`value` as far as `schema` accepts it; see `Project.setting`."""

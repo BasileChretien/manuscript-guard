@@ -453,6 +453,13 @@ every deferred finding is printed and counted.
 manuscript-guard init my-paper
 ```
 
+Among the files it writes is an `AGENTS.md`: the rules of the project on one short page, for
+any agent working in it. Going by each tool's own documentation, Codex reads that file on its
+own, Mistral Vibe does in a folder you have trusted, and Claude Code (2.1.277 or later) does
+where there is no `CLAUDE.md` in the project or above it. Gemini CLI reads it once
+`context.fileName` in its settings lists `AGENTS.md`. None of this has been watched in a
+session. It is advice to the reader; the gates are what holds.
+
 Then look at [`example/`](example/), a synthetic pharmacovigilance study that exercises
 every gate, including a deliberately awkward case: a value the author read in a printed
 agency report that no longer exists online, recorded as an attestation in

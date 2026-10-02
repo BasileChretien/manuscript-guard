@@ -237,6 +237,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
+| G14 | Abbreviations | never: it warns when one is used before it is defined, defined twice, defined for nothing or never defined |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -810,6 +811,94 @@ and its finding was put on the blank line above the paragraph.
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.
 
+## Abbreviations are checked against the manuscript, not against a style guide
+
+G14 is the first check on the language itself, and it is built on one distinction. Whether
+"ROR" has to be defined is a question about a journal: one house style expands "CI" and
+another lets it stand. Whether "ROR" *was* defined, where, how many times, and whether
+anything used it afterwards are questions about the manuscript, and they have the same
+answers in any field. The gate asks only the second kind:
+
+- `abbreviation-used-before-defined`: the short form appears above the sentence that
+  defines it;
+- `abbreviation-redefined`: it is defined a second time, or as two different things;
+- `abbreviation-unused`: it is defined and nothing uses it afterwards;
+- `abbreviation-undefined`: it is used and never defined.
+
+**A definition is read by its shape.** A long form with the short form in brackets after
+it, or the short form with the long form in brackets, where the letters of the short form
+can be found in order in the long one and the first of them begins a word. That is Schwartz
+and Hearst's rule (Pac Symp Biocomput 2003;8:451-62), written out here in thirty lines
+because a gate that runs in CI should not take a dependency for them. The short form may
+also stand in square brackets, "hazard ratio [HR]", which is how a journal writes a
+definition inside a parenthesis. The short form in a definition may be anything with two
+capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
+plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
+defines `mAb`.
+
+**An abbreviation nobody defined is read by its capitals.** A word met with no definition
+is taken for one only when two capitals stand side by side, which keeps `McNemar`,
+`DeLong` and `PhD` out of the report. Three things with two capitals together are not
+abbreviations and are left alone. A numeral, `II` to `XXXIX`. A registration or accession
+number, letters and then five digits or more: `NCT01234567`. And a chemical formula: a
+word that reads from end to end as element symbols and their counts, with a count
+somewhere. The count is what tells the two apart. `CO2`, `H2SO4` and `NaHCO3` are formulas;
+`CO`, `CI` and `HCV` spell elements too and are abbreviations, and so, for the gate, are
+`HCl` and `NaOH`, because nothing distinguishes them from `PCa` (prostate cancer) and `SCr`
+(serum creatinine), which the first version of this rule let through as formulas. A count
+is from two to twelve: nobody writes a count of one, which keeps `HSV1` in the report, and
+none runs to fifty, which keeps `IC50`. A count typeset as pandoc's subscript, `CO~2~`, or
+in subscript digits, is read as the count it is.
+
+**A hyphenated word is one abbreviation where it reads as one.** `SARS-CoV-2` is read
+whole when it is defined or known, and so is a name that holds an ordinary word:
+`RNA-seq`, `non-HDL-C`. Where nothing in it is defined or known, it is reported whole,
+under the name its definition would give it: `LC-MS` and not `LC` and `MS`, `KEYNOTE-189`
+and not `KEYNOTE`. An ordinary word joined on is then no part of it: `ROR-based` is `ROR`.
+The defined or known name is looked for first. The second review found the order reversed:
+the word was split at `seq` before `RNA-seq` was looked for, and its definition was
+reported as unused.
+
+**Three texts are read apart, because each is read apart.** The abstract is indexed and read
+without the paper, so it defines what it uses. The main text does not inherit from the
+abstract, and says so when that is the reason for a finding. The supplement is read after
+the paper, so it inherits the main text's definitions and nothing else. Files are read in
+the order the build prints them, and a file that opens without a heading continues the
+section the one before it ended in.
+
+**What is not a sentence is not read.** Listings, comments, bindings, citation keys and
+link targets go with `mask`, and inline code, equations, image captions, front matter and
+headings go after them: a heading in capitals is not an abbreviation. A reference list is
+not read at all. In a contributions, acknowledgements, funding or competing-interests
+section, capitals are people and institutions, so nothing there is reported as undefined,
+and a funder named once with its acronym is not reported as unused. Those sections are
+found by a word anywhere in their title, since each publisher words the heading its own
+way: "CRediT authorship contribution statement", "Role of the funding source".
+
+**What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
+general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
+two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
+every field at once what its readers know, and an entry with a second meaning hides that
+meaning: `AD`, `BC` and `PM` were in the first version as eras and times of day, and the
+first review took them out, because in clinical prose they are Alzheimer's disease, breast
+cancer and particulate matter. To it are added the names
+G2 already reads as names (`terms.yaml` and the project's `terms:`), the reporting
+guidelines the toolkit has a recipe for, the ones the project declares, and whatever the
+project lists under `language: known_abbreviations:` in `paper.yaml`. A listed abbreviation
+that the manuscript defines anyway is still held to that definition.
+
+**Every finding is a warning, at every stage.** The reading of a definition is good and not
+exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
+undefined abbreviation fail a submission build. Run on the realistic manuscript kept in
+`tests/test_language.py` it gives 22 findings, of which two are names: a trial and a
+statistics package. The first review's probes in chemistry and physics added formulas
+and unit symbols to what it got wrong, and the rules for those are a reading too. A check that is wrong that often may advise; it may not stop a build.
+
+The worked example found its own slip the first time the gate ran: the Introduction writes
+"(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
+records are tied to the text they read, so `check` on the example prints that one warning.
+`CI` is listed in the example's `paper.yaml` to show the setting.
+
 ## Methods drift is a reconciliation ledger
 
 Methods sections go stale in a specific way: the analysis changes, and nothing forces the
@@ -1231,6 +1320,54 @@ markers took the PowerShell and Windows spellings of the verbs they already had 
 time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
+
+**The command is held to the project at the agent's folder, or to the one it names.**
+Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
+in a project, and the guard took the one at the folder the event names as the agent's, or
+above it. An agent started at the root of a repository, with the paper in `example/`, stands
+in a folder that has none: the command was recognised, held to nothing, and went through in
+a project that fails. Where no project is at that folder, the guard now reads the words of
+the command and holds it to each project that one of them is a path into: `example` after
+`cd` or as the argument of `submit`, `example/build/manuscript.docx` after `scp`. A file
+that is not written yet names the project its folder is in. Each project is checked once.
+
+The refusal names the project, says that the command named it, and names the check with the
+project's folder after it, `manuscript-guard check --stage submission "example"`, because
+from where the agent stands the check alone finds no project. The folder comes last on
+purpose. The markers want a verb before the word `submission`, and `copy` is one: a folder
+called `paper-copy`, written after the word, does not make the command submission-shaped,
+where `cd paper-copy && manuscript-guard check --stage submission` is, and would be refused
+with the advice it had just followed.
+
+A word is read as it stands and, where the way it is written hides a path, as that path
+too. curl writes a file to upload after an `@`, `file=@example/build/manuscript.docx`, so a
+word is read from after its last `@` as well. In quotes `=` is not a separator, so a quoted
+word is also read from after its last `=`. Outside quotes a backslash and a space are a
+space in a name, `my\ paper`, as a shell reads them, and that is the only reading. To
+PowerShell a backslash ends a folder's name, so `.\example\ D:\sent` is two paths, and it
+is not found. Reading the pieces as well found it, and twice took a piece of a file's name
+for the project beside it: `paper` in `cp paper\ draft.docx /backup`, which refused a copy
+of an unrelated document and a submission from `paper v2`, which passed; then, once
+narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper\
+\(JD\).docx /backup`, where the other backslash is a shell's escape. Both were found by
+#137's review, and the reading was dropped (Basile, 2026-10-02): a path not found is a
+limit that is written down, and a document refused for a project it has nothing to do with
+is what this change was decided against. A word of more than 4096 characters or 100
+folders is not a path and is not walked: each step down is a look on disk, `..` exists at
+every step, and 5000 of them in one word took 34 s.
+
+This is not reading the command as a shell does. Nothing is expanded and nothing is run, and
+the guard does not know that `cd` changes folder: it asks of each word whether it is a path
+into a project, and a string in quotes is one word. That keeps out a project the command
+does not name (Basile, 2026-10-02). The root of a repository is where every other command is
+sent from, and a paper below it that fails must not stop a copy of an unrelated `.docx`.
+Following a leading `cd` was the other way, and would have left `manuscript-guard submit
+example` and `scp example/build/manuscript.docx host:` uncaught, which need no `cd`. What a
+command does not spell out is not found, and a word that happens to be the folder's name is
+taken for it; both are under Known gaps. A submission-shaped command that names no project
+costs about 10 ms more than it did, one look on disk for each reading of each word, and a
+command that is not submission-shaped costs nothing more. A script of 2000 different words
+written into a file through the shell, if it is submission-shaped, costs about a second.
 
 **A refusal names a command the guard lets through.** The refusal shows the first eight
 failures and says what to run for the rest. It used to say `manuscript-guard check
@@ -4055,10 +4192,12 @@ Closed since, and why each mattered:
   results fragments and the two ledgers under `literature/`. A file that a gate reads was
   never part of this, since a gate that raises is reported as `gate-errored`, which fails at
   every stage. Where no project is found at the folder the event names, or above it, both
-  hooks stay silent, as before. That folder is the only place looked in: a command sent from
-  above a project that enters it, `cd paper && manuscript-guard submit`, is not checked, in
-  a project that fails as in one that cannot be read. True on `main` before this, found in
-  the review of #131, and not decided. The refusal ends by naming
+  hooks stayed silent, as before: a command sent from above a project that enters it, `cd
+  paper && manuscript-guard submit`, was not checked, in a project that fails as in one that
+  cannot be read. True on `main` before this and found in the review of #131. The submission
+  guard has since been given the projects such a command names, and refuses for one that
+  cannot be read in the same words; the session start still says nothing from there. The
+  refusal ends by naming
   `manuscript-guard check --stage submission` and not `check --submission`, whose flag is
   one of the guard's own markers: an agent told to run that one is refused again. It says
   to run it on its own, because the command ends in the word `submission`, which the guard
@@ -4129,16 +4268,79 @@ Closed since, and why each mattered:
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands.
-- **The submission guard looks for the project where the agent is, not where the command
-  goes.** It matches the command, then runs the submission check in the folder the event
-  names as the agent's. From the folder above a project there is no `paper.yaml` to find, the
-  check cannot run, and the hook, which never breaks a session, says nothing. From there
-  `cd example && manuscript-guard submit` and `cd example && scp build/manuscript.docx
-  host:` both go through, in a project that fails. `submit` then refuses on its own account;
-  the copy is held to nothing. The whole-string matching in the hooks section recognises both
-  commands, and from that folder recognising them is all it does. Found in the review of #131
-  on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
-  shell command, which the guard so far does not do.
+- **From a folder with no project, the submission guard finds only a project the command
+  spells out.** It used to find none. It matched the command, then ran the submission check
+  in the folder the event names as the agent's, and from the folder above a project there is
+  no `paper.yaml` to find: the check could not run and the hook said nothing. From there
+  `cd example && manuscript-guard submit`, `manuscript-guard submit example` and `scp
+  example/build/manuscript.docx host:` all went through, in a project that fails. `submit`
+  then refused on its own account; the copy was held to nothing. Found in the review of #131
+  on 2026-10-02 and true before it. Closed for a project the command names (see "The command
+  is held to the project at the agent's folder, or to the one it names"). What is left:
+  - *Not spelt out, so not found.* A folder held in a variable (`cd $PAPER && manuscript-guard
+    submit`, `scp $PWD/example/build/manuscript.docx host:`), a glob that stands for the
+    folder (`scp */build/*.docx host:`; one for the file, `example/build/*.docx`, is found),
+    an option with its value joined on (`tar -Cexample -czf submission.tgz .`,
+    `Copy-Item -Path:example/build/manuscript.docx`), a command inside a quoted string
+    (`bash -c "cd example && manuscript-guard submit"`, `python -c "..."`), and a folder
+    whose name is only partly in quotes (`my" "paper`). A folder with a comma or a brace in
+    its name is found in quotes and not without them (`cd Smith,\ Jones`), since a word
+    ends at either. Three ways curl names a file: quoted inside its own quotes (`-F
+    'file=@"example/build/manuscript.docx"'`), a list in braces inside quotes (`-T
+    "{a.docx,b.docx}"`), and after `<` (`-F "file=<example/manuscript/main.md"`). And a
+    path as PowerShell writes it that ends in a backslash before the next argument,
+    `Copy-Item .\example\ sent/submission -Recurse`: a backslash and a space are read as a
+    space in a name. Without the backslash at the end it is found, on Windows. These go
+    through as before.
+  - *Not looked at, or looked at in the wrong place.* A folder on another machine written
+    `//host/share/...` is not looked at: asking whether it exists waits for the host, and
+    the hook fires on a shell command. The same share under a drive letter is looked at,
+    and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
+    the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
+    the one is not found and one under the other would be taken for it.
+  - *Inside a project, only that project.* Where the agent's folder is in a project the
+    guard checks that one, as it always did, and does not read the words: from a project
+    that passes, `cd ../second && manuscript-guard submit` is let through though `second`
+    fails. Not decided.
+  - *A commit that stages a file of the paper is refused when its message reads as a
+    submission.* `git add paper/manuscript/main.md && git commit -m "copy-edit the abstract
+    before submission"`, sent from the folder above, is refused in a project that fails:
+    the markers match the message, a verb and then the word, and the staged path names the
+    project. Nothing leaves the machine. Inside the project the same commit was always
+    refused; from above it used to go through, and so did `git add paper && git commit -m
+    "..." && git push origin submission-v2`. The message alone, with no path, names nothing
+    and goes through. The remedy is in the markers, which should not read a verb inside a
+    quoted string, and is not this change's. Found in the review of #137.
+  - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
+    `git push origin paper  # submission` from the folder above is held to it, though the
+    word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
+    since Windows drops a dot or a space at the end of a name, and the end of
+    `https://example.org/dl?f=paper`, since a word ends at `=`, at a comma and at a brace.
+    So is what follows the last `@` of any word and the last `=` of a quoted one, which
+    are read for curl's sake: `mail -s "submission" editor@paper`, and a commit message
+    that ends `p=paper` or `thanks @paper`. And on Windows a file called `paper (1).docx`,
+    written `cp paper\ \(1\).docx /backup`: a word ends at a bracket, escaped or not, and
+    Windows drops the space left at the end of `paper `. In quotes it names nothing.
+    A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
+    always was from inside (the word-roundtrip skill says to give the path to `import`).
+  - *The check a refusal names can be refused in two shapes.* Written with the folder last
+    it is let through whatever the folders are called, unless the path itself reads as a
+    submission, a verb and then the word: `copy/my submission/paper`. And an agent that
+    enters the folder on the same line instead, `cd paper-copy && manuscript-guard check
+    --stage submission`, puts the verb before the word: that line now names the project
+    and is refused, where it used to go through unchecked. The folder is written in double
+    quotes, where a shell expands `$`: for a project in `big$money/` the check named finds
+    no project.
+  - *The session start says nothing from the folder above*, in a project that fails or in
+    one that cannot be read.
+  - *A long command costs a look on disk for each different word.* 2000 of them took 1.3 s
+    and 20,000 took 12 s on a busy machine. It is paid only by a submission-shaped command
+    sent from a folder with no project, such as a long script written into a file through
+    the shell that holds a verb and `.docx`.
+  - *Two limits of the markers met on the way, true in any folder and before this.* `git -C
+    example push` is not submission-shaped: `git push` is matched as two words side by
+    side. And a `.docx` more than 120 characters after its verb is not matched, which a
+    whole path can exceed.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -5993,6 +6195,64 @@ Closed since, and why each mattered:
   one scan at a time. Two costs fall outside the CPU ratio too: a scan whose result is
   cached by content runs once, on the untimed first check, and garbage collection is off
   while timing. Both are left to the wall clock.
+
+- **G14 reads a definition by its shape, and an abbreviation by its capitals.**
+  - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
+    ROR", "ROR stands for". Its short form is then reported as undefined.
+  - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
+    a definition; `(ROR; ...)`, `(ROR, ...)` and `(ROR: ...)` are.
+  - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
+    bracket is read and the outer is not, and a definition whose long form holds a bracket
+    is missed.
+  - The long form is matched by letters, so it can start a word late or early: "the ratio
+    as before (ROR)" is read as a definition whose long form is "ratio as before". The
+    definition is still counted; the long form quoted in a message can be wrong, and two
+    definitions of one thing can be reported as two meanings.
+  - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
+    and `Hb` are missed, where `iPSC` and `siRNA` are caught. `Hb` and `Tregs` cannot be
+    defined either, each being the capital of a word, so "haemoglobin (Hb)" is not tracked.
+  - Every entry of `data/terms.yaml` is exempt, in any case: it lists `egfr`, `mtor`,
+    `ecog`, `nyha`, `meddra` and some 170 more as names, so `eGFR` used and never
+    defined is not reported.
+  - `II` to `XXXIX` are read as numerals wherever they stand, so `IV` for intravenous and
+    `VI` are never reported.
+  - A name in capitals is reported like an abbreviation: a trial (`KEYNOTE-189`), a package
+    (`SAS`), an agency. The project lists those it means to leave. So are the initials of
+    a reviewer named in the Methods, "(JB, CD)", and a US state after a manufacturer's
+    town, "Cary, NC". An author's initials are not exempted from `authors.yaml`, because
+    initials are two or three capitals and collide with abbreviations: an author named Ada
+    Example would hide every `AE`.
+  - The formula rule has two edges. A formula with no count is still reported, `HCl`,
+    `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in
+    brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in
+    element symbols with a count from two to twelve is taken for a formula and not
+    reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
+  - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
+  - A short form in square brackets is read as a definition wherever the words before it
+    spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
+    `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since
+    its bracket is masked with its target.
+  - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
+    `HU` are reported: several have a second meaning, and the list is the project's to
+    extend.
+  - Only a section titled "Abstract" is read apart. A `Summary`, a `Key points` box and a
+    `Figure legends` section are main text, so a definition repeated in the Introduction
+    after one of them, or in a legend that has to stand alone, is reported as
+    `abbreviation-redefined`.
+  - A word typed in capitals for emphasis is reported as an undefined abbreviation.
+  - Tables and figures are not read, since both are generated from results. An abbreviation
+    defined in the text for a table's sake is reported as unused, and one used only in a
+    caption is not seen. The hint on `abbreviation-unused` says so.
+  - Title-page text comes from `paper.yaml` and `authors.yaml`, which are not read.
+  - The sections where nothing is reported as undefined are found by English words in
+    their titles: contribution, contributor, acknowledgement, funding, financial support or
+    disclosure, competing interest, conflict of interest, declaration of interest,
+    disclosure, author statement. A section of the paper proper whose title holds one,
+    "Funding of primary care", is quiet too.
+  - There is no cap on the number of findings: a manuscript that defines one abbreviation a
+    thousand times gets a thousand warnings. Making them is linear in the manuscript.
+  - The hook that runs after a manuscript file is saved does not run this gate yet; the
+    findings appear at `check`.
 
 ## Still open
 

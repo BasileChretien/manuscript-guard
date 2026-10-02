@@ -23,6 +23,7 @@ from manuscript_guard.contracts._schema import load_schema
 
 SCHEMA = "review_reply"
 SHOWN_ERRORS = 5
+TOO_DEEP = "the reply is nested too deeply to be a review"
 
 #: The whole reply inside one fence: an opening line, a closing line, and between them what
 #: has to be the one JSON object. Two fenced blocks do not parse as one object, so they are
@@ -49,7 +50,10 @@ def _no_repeats(pairs: list[tuple[str, object]]) -> dict:
 
 def _unwritable(node: object) -> bool:
     """Whether any string in the reply holds a character a record cannot be written with: a
-    NUL, or half of a surrogate pair, which is not text and cannot be encoded as UTF-8."""
+    NUL, or half of a surrogate pair, which is not text and cannot be encoded as UTF-8.
+
+    Called on a reply that already fits the schema, so it is a few levels deep at most.
+    """
     if isinstance(node, str):
         return any(ord(char) == 0 or 0xD800 <= ord(char) <= 0xDFFF for char in node)
     if isinstance(node, dict):
@@ -57,6 +61,30 @@ def _unwritable(node: object) -> bool:
     if isinstance(node, list):
         return any(_unwritable(item) for item in node)
     return False
+
+
+def _checked(document: dict) -> dict:
+    """The parsed reply if it fits the schema and can be written, or `ReplyRefused`."""
+    validator = Draft202012Validator(load_schema(SCHEMA))
+    errors = sorted(validator.iter_errors(document), key=lambda e: list(e.absolute_path))
+    if errors:
+        said = [
+            f"{'/'.join(str(part) for part in error.absolute_path) or '(root)'}: "
+            f"{error.message[:200]}"
+            for error in errors[:SHOWN_ERRORS]
+        ]
+        more = f" (and {len(errors) - SHOWN_ERRORS} more)" if len(errors) > SHOWN_ERRORS else ""
+        raise ReplyRefused("the reply does not fit the review schema: " + "; ".join(said) + more)
+    if _unwritable(document):
+        raise ReplyRefused(
+            "the reply holds a character that is not text (a NUL, or half of a surrogate "
+            "pair), so it cannot be written to a record"
+        )
+    document["findings"] = [
+        {key: value for key, value in finding.items() if not (key == "where" and value is None)}
+        for finding in document["findings"]
+    ]
+    return document
 
 
 def parse_reply(text: str) -> dict:
@@ -70,7 +98,7 @@ def parse_reply(text: str) -> dict:
     try:
         document = json.loads(body, object_pairs_hook=_no_repeats)
     except RecursionError:
-        raise ReplyRefused("the reply is nested too deeply to be a review") from None
+        raise ReplyRefused(TOO_DEEP) from None
     except ValueError as exc:
         raise ReplyRefused(
             f"the reply is not one JSON object and nothing else ({exc}); text before or "
@@ -78,28 +106,14 @@ def parse_reply(text: str) -> dict:
         ) from None
     if not isinstance(document, dict):
         raise ReplyRefused("the reply is JSON, but not an object")
-    if _unwritable(document):
-        raise ReplyRefused(
-            "the reply holds a character that is not text (a NUL, or half of a surrogate "
-            "pair), so it cannot be written to a record"
-        )
-
-    validator = Draft202012Validator(load_schema(SCHEMA))
-    errors = sorted(validator.iter_errors(document), key=lambda e: list(e.absolute_path))
-    if errors:
-        said = [
-            f"{'/'.join(str(part) for part in error.absolute_path) or '(root)'}: "
-            f"{error.message[:200]}"
-            for error in errors[:SHOWN_ERRORS]
-        ]
-        more = f" (and {len(errors) - SHOWN_ERRORS} more)" if len(errors) > SHOWN_ERRORS else ""
-        raise ReplyRefused("the reply does not fit the review schema: " + "; ".join(said) + more)
-
-    document["findings"] = [
-        {key: value for key, value in finding.items() if not (key == "where" and value is None)}
-        for finding in document["findings"]
-    ]
-    return document
+    try:
+        return _checked(document)
+    except RecursionError:
+        # Nesting that closes again parses. With the schema checked before anything walks
+        # the reply, the jsonschema version this was written against refuses such a value
+        # by its type without descending into it, and this is never reached. It is kept for
+        # a version that does descend: the answer must be a refusal there too.
+        raise ReplyRefused(TOO_DEEP) from None
 
 
 __all__ = ["ReplyRefused", "parse_reply"]

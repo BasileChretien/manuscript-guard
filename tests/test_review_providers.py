@@ -905,3 +905,83 @@ def test_a_character_that_cannot_be_written_to_a_record_is_refused(escape: str) 
     assert BACKSLASH + escape in text
     with pytest.raises(ReplyRefused):
         parse_reply(text)
+
+
+# ----------------------------------------------------------------------------------------
+# Found by the fix-only round of the review of #125.
+# ----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://api.openai.com%2e%65%76%69%6c.example/v1",
+        "http://%31%32%37.0.0.1:8080/v1",
+        "https://llm.example.org;evil.example/v1",
+        "https://llm.example.org" + BACKSLASH + "evil.example/v1",
+        "https://llm.example.org,evil.example/v1",
+        "https://llm.example.org/v1#",
+        "https://llm.example.org/v1?",
+        "https://llm.example.org/v1#frag",
+    ],
+)
+def test_a_host_is_written_as_the_host_that_is_connected_to(url: str) -> None:
+    """urllib decodes a percent-encoded host before it connects, so
+    `api.openai.com%2e%65%76%69%6c.example` was shown to the author as written and reached
+    `api.openai.com.evil.example`. A host is letters, digits, dots and hyphens, or a
+    bracketed address, and nothing that has to be decoded to be read."""
+    with pytest.raises(ConfigError, match="base_url"):
+        providers.configured_models(
+            paper(models=["lab/m"], providers={"lab": {"base_url": url}})
+        )
+
+
+@pytest.mark.parametrize(
+    "url, host",
+    [
+        ("https://LLM.Example.org/v1", "LLM.Example.org"),
+        ("https://llm.example.org:8443/v1/", "llm.example.org:8443"),
+        ("https://llm.example.org./v1", "llm.example.org."),
+        ("https://xn--bcher-kva.example/v1", "xn--bcher-kva.example"),
+        ("https://my_service.internal/api/v1.2/~me/%20x", "my_service.internal"),
+        ("http://[::1]:8080/v1", "[::1]:8080"),
+        ("https://[2001:db8::1]/v1", "[2001:db8::1]"),
+        ("https://203.0.113.7/v1", "203.0.113.7"),
+    ],
+)
+def test_an_ordinary_address_is_still_taken(url: str, host: str) -> None:
+    found = model("lab/m", providers={"lab": {"base_url": url}})
+    assert found.provider.host == host
+
+
+def test_what_a_provider_calls_its_reason_for_stopping_is_scrubbed_and_cut() -> None:
+    """`finish_reason` is the provider's text like any other."""
+    said = f"echo {KEY} " + "x" * 50_000
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(openai_answer(finish=said)))
+    assert failed.value.kind == "incomplete"
+    assert not shows(str(failed.value), KEY)
+    assert len(str(failed.value)) < 1000
+    with pytest.raises(CallFailed) as failed:
+        ask("anthropic/m", Answers(anthropic_answer(stop=f"{ESCAPE}[31m{KEY}")))
+    assert not shows(str(failed.value), KEY) and ESCAPE not in str(failed.value)
+
+
+@pytest.mark.parametrize("depth", [600, 2000, 20_000])
+@pytest.mark.parametrize("where", ["summary", "an extra key", "a finding"])
+def test_a_reply_nested_deep_and_closed_again_is_refused_not_a_traceback(
+    depth: int, where: str
+) -> None:
+    """Nesting that never closes fails in the parser. Nesting that closes parses, and was
+    then walked by code that recursed once for every level."""
+    nested = "[" * depth + "]" * depth
+    text = json.dumps(GOOD)
+    if where == "summary":
+        text = text.replace('"The estimator is stated, the case definition is not."', nested)
+    elif where == "an extra key":
+        text = text[:-1] + f', "extra": {nested}' + "}"
+    else:
+        text = text.replace('"The limitations are stated early."', nested)
+    assert nested in text
+    with pytest.raises(ReplyRefused):
+        parse_reply(text)

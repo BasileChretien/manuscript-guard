@@ -162,9 +162,13 @@ def _block(label: str, text: str) -> str:
 
 
 def _label(project: Project, path: Path) -> str:
-    """A path as the author is shown it: relative to the project, or named as shipped."""
+    """A path as the author is shown it: relative to the project, or named as shipped.
+
+    As it is written in the project, links not followed: profiles kept in a directory the
+    project links to are the project's, and were called shipped.
+    """
     try:
-        return path.resolve().relative_to(project.root.resolve()).as_posix()
+        return path.relative_to(project.root).as_posix()
     except ValueError:
         return f"{path.name} (shipped with manuscript-guard)"
 
@@ -254,18 +258,28 @@ def _profile(project: Project, key: str, name: object, kind: str, find) -> Path 
     if found is None:
         return None
     homes = (project.root / "profiles" / kind, SHIPPED / kind)
-    if not any(_inside(found, home) for home in homes):
+    if not any(_inside(found, home) for home in homes) or any(
+        _inside(found, private) for private in _kept_out(project)
+    ):
+        # The second half: `profiles/reporting` itself as a link into `review/round-1`
+        # makes a round-one record a file under `profiles/`.
         raise PromptError(
-            f"{key} in paper.yaml: {name} resolves to a file outside profiles/{kind}/, "
-            "which is not sent"
+            f"{key} in paper.yaml: {name} resolves to a file outside profiles/{kind}/, or "
+            "to one of the review's, which is not sent"
         )
     return found
+
+
+def _kept_out(project: Project) -> list[Path]:
+    """Where the earlier rounds and the response to reviewers live. Nothing under either is
+    ever an input, however it is reached."""
+    return [project.root / "review", project.root / "revision"]
 
 
 def _manuscript_files(project: Project) -> tuple[Path, list[Path]]:
     """The manuscript directory and its files, refused if they take in what is not sent."""
     directory = project.path("manuscript")
-    kept_out = [project.root / "review", project.root / "revision"]
+    kept_out = _kept_out(project)
     if _inside(project.root, directory) or any(
         _inside(directory, private) or _inside(private, directory) for private in kept_out
     ):

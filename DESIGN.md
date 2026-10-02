@@ -910,7 +910,11 @@ that is not built in cannot name a built-in provider's key variable as its own: 
 would let a `paper.yaml` somebody else wrote send the reader's key to a host of its
 choosing. The address must be one host, a port if it needs one, and a path, in plain
 characters; `http://[::1].evil.example` and `http://@localhost` are refused, since what
-decides whether a call stays on this machine is the host.
+decides whether a call stays on this machine is the host. The host itself is letters,
+digits, dots and hyphens, or a bracketed address, with nothing encoded: urllib decodes a
+percent-encoded host before it connects, so `api.openai.com%2e%65%76%69%6c.example` was
+shown to the author as written and reached `api.openai.com.evil.example`. The host the
+statement names has to be the host that is connected to.
 
 **Keys.** A key is read from its environment variable when a call is made and goes into one
 request header. It is not in the request body, so the body can be printed and digested. It
@@ -954,7 +958,9 @@ name into a path without looking at where it led. `reporting_guideline:
 `paths: {manuscript: .}` made the notes beside the review and the response to the reviewers
 into manuscript files. A journal or guideline now has to be a name, and the file it
 resolves to, with links followed, has to sit in the project's `profiles/` or the shipped
-ones. The manuscript directory may not take in `review/` or `revision/`, nor sit inside
+ones and not under `review/` or `revision/`, which a `profiles/` directory that is itself
+a link could otherwise lead to. The manuscript directory may not take in `review/` or
+`revision/`, nor sit inside
 them, and a manuscript file that is a link to somewhere outside it is refused. A
 `paper.yaml` its schema refuses is not planned from at all.
 

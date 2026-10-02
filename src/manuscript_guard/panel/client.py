@@ -410,7 +410,10 @@ def read_reply(model: Model, response: HttpResponse, key: str | None = None) -> 
         )
     if finish not in finished:
         raise CallFailed(
-            "incomplete", f"{who} did not finish its reply (it stopped with {finish!r})", text
+            "incomplete",
+            f"{who} did not finish its reply (it stopped with "
+            f"{_scrub(str(finish), key)[:80]!r})",
+            text,
         )
     if not text.strip():
         raise CallFailed("empty", f"{who} answered with no text")

@@ -15,6 +15,7 @@ whether a variable is set.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 from collections.abc import Mapping
@@ -34,6 +35,8 @@ NAME = re.compile(r"[a-z][a-z0-9-]*")
 KEY_ENV = re.compile(r"[A-Z][A-Z0-9_]*")
 #: Visible ASCII and nothing else: what an address or a key is made of.
 PRINTABLE = re.compile("[!-~]+")
+#: A host name as it is connected to: no percent sign, which urllib would decode.
+HOSTNAME = re.compile("[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9.])?")
 
 
 class ConfigError(Exception):
@@ -154,7 +157,24 @@ def _checked_url(name: str, url: object) -> str:
             f"review.providers.{name}: base_url must name one host, with a port if it needs "
             "one, and nothing else before the path"
         )
-    if parts.query or parts.fragment:
+    # And the host has to be written as the host that is connected to. urllib decodes a
+    # percent-encoded host before it connects, so `api.openai.com%2e%65%76%69%6c.example`
+    # was shown to the author as written and reached `api.openai.com.evil.example`.
+    if ":" in parts.hostname:
+        try:
+            ipaddress.IPv6Address(parts.hostname)
+        except ValueError:
+            written = False
+        else:
+            written = True
+    else:
+        written = HOSTNAME.fullmatch(parts.hostname) is not None
+    if not written:
+        raise ConfigError(
+            f"review.providers.{name}: the host in base_url must be written in letters, "
+            "digits, dots and hyphens, or as a bracketed address, with nothing encoded"
+        )
+    if parts.query or parts.fragment or "?" in url or "#" in url:
         raise ConfigError(
             f"review.providers.{name}: base_url carries a query string; give the address "
             "the chat endpoint sits under and nothing more"

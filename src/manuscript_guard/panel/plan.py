@@ -35,6 +35,7 @@ from manuscript_guard.panel.providers import (
     Model,
     configured_models,
     key_is_set,
+    read_key,
     slug,
 )
 
@@ -350,6 +351,8 @@ def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = N
         state = key_is_set(provider, environ)
         if state is None:
             key = "no key"
+        elif state and not _usable(provider, environ):
+            key = f"key in {provider.key_env}: set, but not a key"
         else:
             key = f"key in {provider.key_env}: {'set' if state else 'unset'}"
         where = "this machine; nothing leaves it" if provider.local else "a third party"
@@ -384,6 +387,15 @@ def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = N
             )
         )
     return "\n".join(lines)
+
+
+def _usable(provider, environ: Mapping[str, str] | None) -> bool:
+    """Whether the key that is set could be sent: a run refuses one that could not."""
+    try:
+        read_key(provider, environ)
+    except ConfigError:
+        return False
+    return True
 
 
 def dry_run_dir(plan: Plan, project: Project) -> Path:

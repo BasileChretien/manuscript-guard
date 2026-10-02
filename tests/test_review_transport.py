@@ -38,7 +38,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_response(status)
             for name, value in headers.items():
                 self.send_header(name, value)
-            if "Content-Length" not in headers:
+            if "Content-Length" not in headers and "Transfer-Encoding" not in headers:
                 self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -191,6 +191,22 @@ def test_an_answer_cut_off_part_way_is_a_failure_not_a_traceback(server) -> None
     with pytest.raises(CallFailed) as failed:
         client.call(model, client.build_body(model, "s", "u"), key=KEY)
     assert failed.value.kind == "network"
+    assert len(server.seen) == 1, "and it is not asked again"
+
+
+def test_a_chunked_answer_cut_off_is_a_failure_not_a_traceback(server) -> None:
+    """With no length declared there is nothing to compare, and `http.client` raises
+    `IncompleteRead`, which is neither a URLError nor an OSError."""
+    server.respond = lambda path: (
+        200,
+        {"Transfer-Encoding": "chunked"},
+        b'14\r\n{"choices": [{"mess\r\n',
+    )
+    model = local_model(server)
+    with pytest.raises(CallFailed) as failed:
+        client.call(model, client.build_body(model, "s", "u"), key=KEY)
+    assert failed.value.kind == "network"
+    assert "IncompleteRead" in str(failed.value)
     assert len(server.seen) == 1, "and it is not asked again"
 
 

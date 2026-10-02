@@ -772,3 +772,77 @@ def test_the_readable_copy_holds_only_the_reviewers_that_would_be_asked(mixed: P
     text = plan.as_text(made)
     assert "instructions to clinical-reader" in text
     assert "instructions to desk-editor" not in text
+
+
+# ----------------------------------------------------------------------------------------
+# Found by the fix-only round of the review of #125: branches that worked and had no test.
+# ----------------------------------------------------------------------------------------
+
+
+def link_directory(link: Path, target: Path) -> None:
+    """Make `link` a directory link to `target`, or skip where the machine will not."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        try:
+            import _winapi
+
+            _winapi.CreateJunction(str(target), str(link))
+        except (ImportError, AttributeError, OSError) as exc:
+            pytest.skip(f"cannot make a directory link here: {exc}")
+
+
+def test_a_link_inside_the_manuscript_does_not_bring_in_the_response(mixed: Path) -> None:
+    """`manuscript/old` as a link to `revision/`. Whether the directory walk follows a link
+    depends on the Python version; either way the response is not sent."""
+    (mixed / "revision").mkdir()
+    (mixed / "revision" / "response.md").write_text(f"Reviewer 1 said {MARK}.\n", "utf-8")
+    link_directory(mixed / "manuscript" / "old", mixed / "revision")
+    try:
+        made = plan.make_plan(loaded(mixed), round_number=2)
+    except PlanError as refused:
+        assert "response.md" in str(refused)
+        return
+    for call in made.calls:
+        assert MARK.encode() not in call.body
+
+
+def test_a_profiles_directory_that_is_a_link_into_the_review_sends_nothing_from_it(
+    mixed: Path,
+) -> None:
+    """The profile's name is a name, and its file is under `profiles/reporting/`, which is
+    round one. Being under `profiles/` is not enough: it must not be the review's."""
+    record = mixed / "review" / "round-1" / "biostatistician.yaml"
+    record.write_text(
+        record.read_text(encoding="utf-8").replace("summary:", f"summary: {MARK}"),
+        encoding="utf-8",
+    )
+    shutil.rmtree(mixed / "profiles" / "reporting")
+    link_directory(mixed / "profiles" / "reporting", mixed / "review" / "round-1")
+    rewrite(mixed, "  - DEMO-OBS", "  - biostatistician")
+    with pytest.raises(PlanError, match="reporting_guideline"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
+def test_profiles_kept_in_a_directory_shared_between_projects_are_still_read(
+    mixed: Path, tmp_path: Path
+) -> None:
+    """A link out of the project is not the problem; a link into the review is."""
+    shared = tmp_path / "shared-profiles"
+    shutil.move(str(mixed / "profiles" / "journals"), str(shared))
+    link_directory(mixed / "profiles" / "journals", shared)
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    assert "main_text_words: 3500" in whole(bodies(made)[("desk-editor", "openai/model-a")])
+
+
+def test_the_statement_says_when_a_key_is_set_to_something_that_is_not_one(
+    mixed: Path, capsys, monkeypatch, no_network
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "two words")
+    monkeypatch.setenv("MISTRAL_API_KEY", KEY)
+    assert main(["review", str(mixed), "--run", "--dry-run", "--round", "2"]) == 0
+    out = capsys.readouterr().out
+    openai = next(line for line in out.splitlines() if "api.openai.com" in line)
+    mistral = next(line for line in out.splitlines() if "api.mistral.ai" in line)
+    assert "OPENAI_API_KEY: set, but not a key" in openai and "two words" not in out
+    assert "MISTRAL_API_KEY: set" in mistral

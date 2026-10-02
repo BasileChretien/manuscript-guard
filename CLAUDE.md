@@ -76,8 +76,8 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `render` (substitute bindings only), `init` (scaffold a project),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
-record: a second reading is a second round. `--reading <reader>` files one of several
-readings of a remit and names its reader in the panel. `review --providers` lists the
+record: a second reading by the same reader is a further round. `--reading <reader>`
+files one of several readers' readings of a remit and names its reader in the panel. `review --providers` lists the
 model providers a panel can be read by and whether each key is set; `review --run` has
 the round's panel read by the models in `paper.yaml`'s `review.models` and files each
 reading (`--dry-run` shows what would be sent and sends nothing; `--one-each` deals one

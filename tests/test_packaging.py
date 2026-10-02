@@ -136,6 +136,23 @@ def test_the_tracked_files_are_what_git_lists_for_the_package():
     assert "manuscript_guard/__init__.py" in tracked
     assert "manuscript_guard/build/zotero_word.lua" in tracked
     assert not any(name.startswith("src/") for name in tracked), "paths are the wheel's"
+    # The skills are tracked under plugin/ and taken into the package when the wheel is built.
+    assert "manuscript_guard/skills/project-setup/SKILL.md" in tracked
+    assert not any(name.startswith("plugin/") for name in tracked)
+
+
+def test_a_wheel_without_the_skills_fails_and_names_one(tmp_path: Path, capsys):
+    """`install-skills` copies them out of the installed package, so a wheel built without
+    them leaves that command with nothing to copy."""
+    check = load_wheel_check()
+    skill = "manuscript_guard/skills/project-setup/SKILL.md"
+    assert check.in_the_wheel("plugin/skills/project-setup/SKILL.md") == skill
+    assert check.in_the_wheel("src/manuscript_guard/__init__.py") == TRACKED[0]
+    wheel = fake_wheel(tmp_path, TRACKED)
+    missing, unexpected = check.compare(check.wheel_files(wheel), {*TRACKED, skill})
+    assert (missing, unexpected) == ([skill], [])
+    assert check.report(missing, unexpected) != 0
+    assert skill in capsys.readouterr().out
 
 
 @needs_git

@@ -431,6 +431,61 @@ login: a Codex session in which a skill is loaded, a hook is trusted or a hook f
 includes the session-start notice, which depends on Codex telling the hook where the plugin
 is, as its documentation says it does.
 
+### Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools (optional)
+
+By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
+home or in a project. After the pip package, one command copies the fourteen skills there:
+
+```bash
+manuscript-guard install-skills              # for you, in every project: ~/.agents/skills
+manuscript-guard install-skills --project    # for one paper: .agents/skills in that project
+```
+
+Start a new session of the agent tool afterwards. `--dir <folder>` copies them anywhere
+else, for a tool that reads another folder.
+
+**It never writes over what it did not write.** The folder in your home is shared with every
+other skill you have. A skill of yours with the same name as one of these is left as it is
+and named, the others are copied, and the command exits 1; `--project` copies into the
+paper's own folder, where nothing else is. A copied skill you have edited since is left too:
+to take the new release of it, delete its folder and run the command again. What the command
+may replace is recorded in a stamp beside the skills, `.manuscript-guard.json`. Leave it
+there, and commit it with the skills if you commit them. If the command cannot read it, it
+stops and touches nothing.
+
+**To update,** upgrade the pip package and run the same command again. Until you do, `check`
+and `build` say so: when a copy in either folder is from another release than the tool, one
+line follows their own output, with the command to run.
+
+**There are no hooks under these tools.** Nothing is caught at the moment of the mistake.
+`check`, `build` and `submit` hold as they do everywhere, so an edited results file or an
+unbound number is reported when one of them next runs.
+
+| | Skills | `AGENTS.md` | Hooks |
+|---|---|---|---|
+| Claude Code | plugin | read where there is no `CLAUDE.md` | four |
+| Codex | plugin | read | four, once you have trusted them |
+| Gemini CLI | copy | read once a setting lists it | none |
+| Mistral Vibe | copy | read in a folder you have trusted | none |
+| Kimi Code CLI | copy | not confirmed | none |
+
+For Gemini CLI the setting is `context.fileName`, in `.gemini/settings.json` of the project
+or of your home:
+
+```json
+{ "context": { "fileName": ["AGENTS.md", "GEMINI.md"] } }
+```
+
+A Codex user without the `codex` command can use the copy in place of the plugin, and then
+has no hooks. With both, Codex has every skill in two places it reads, the plugin and the
+folder. What it then shows was not watched.
+
+How far this has been checked: Gemini CLI 0.58.0 lists the fourteen skills from a project's
+`.agents/skills`. That it reads the folder in your home, and that Mistral Vibe and Kimi Code
+CLI read either, is from their own documentation and has not been watched. What each tool
+does with `AGENTS.md` is from its documentation too, and for Kimi Code CLI that documentation
+was not found to say. No skill has been used in a session of any of the three.
+
 ## Auditing a paper you already wrote
 
 For a manuscript that was never built this way — no bindings, every number a literal —

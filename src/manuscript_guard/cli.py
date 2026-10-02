@@ -1854,6 +1854,73 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_install_skills(args: argparse.Namespace) -> int:
+    """Copy the skills to a folder an agent tool reads."""
+    from manuscript_guard import skillcopy
+    from manuscript_guard.contracts import find_root
+
+    if args.dir is not None:
+        folder = args.dir
+    elif args.project:
+        # A ContractError where there is no paper.yaml above here, which `main` prints.
+        folder = skillcopy.project_folder(find_root(Path.cwd()))
+    else:
+        folder = skillcopy.user_folder()
+
+    try:
+        done = skillcopy.install(folder)
+    except (skillcopy.SkillsMissing, skillcopy.StampUnreadable, OSError) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+
+    there = len(done.written) + len(done.unchanged)
+    already = f" ({len(done.unchanged)} already there)" if done.unchanged else ""
+    print(
+        f"{there} skill{'' if there == 1 else 's'} of manuscript-guard {__version__} in "
+        f"{folder}{already}"
+    )
+    for name in done.removed:
+        print(f"removed {name}, which this release no longer has")
+    if args.dir is None:
+        print(
+            "By their documentation, Codex, Gemini CLI, Mistral Vibe and Kimi Code CLI read "
+            "`.agents/skills`. Start a new session of the agent tool to see them."
+        )
+    shared = args.dir is None and not args.project
+    for name, why in done.left:
+        print(
+            f"manuscript-guard: {folder / name} {why}, so it was left as it is; "
+            f"{skillcopy.way_forward(why, shared=shared)}",
+            file=sys.stderr,
+        )
+    return 1 if done.left else 0
+
+
+def _note_stale_skills(start: Path) -> None:
+    """Say, on stderr, when a copy of the skills is from another release than this tool.
+
+    After `check` and `build`, which are what an agent runs whatever tool it is under. It
+    never changes what the command printed or returned, and anything that goes wrong in
+    finding out is no reason to lose the command's own answer.
+    """
+    try:
+        from manuscript_guard import skillcopy
+        from manuscript_guard.contracts import find_root
+
+        try:
+            root = find_root(Path(start))
+        except (ContractError, OSError):
+            root = None
+        notice = skillcopy.stale_notice(root)
+        # A process started with its error stream closed has none, and `print` then writes
+        # to standard output, after the JSON of `check --json`. With nowhere to say it, it
+        # is not said.
+        if notice and sys.stderr is not None:
+            print(notice, file=sys.stderr)
+    except Exception:  # noqa: BLE001 - a notice must never cost the command its answer
+        return
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
 
@@ -2168,6 +2235,19 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--title", default="Untitled manuscript")
     init.set_defaults(func=cmd_init)
 
+    skills = sub.add_parser(
+        "install-skills",
+        help="copy the skills to a folder an agent tool reads (for one with no plugin)",
+    )
+    where = skills.add_mutually_exclusive_group()
+    where.add_argument(
+        "--project",
+        action="store_true",
+        help="into .agents/skills of the project you are in, not of your home",
+    )
+    where.add_argument("--dir", type=Path, default=None, help="into this folder")
+    skills.set_defaults(func=cmd_install_skills)
+
     return parser
 
 
@@ -2255,6 +2335,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ContractError, BuildError, RoundTripError) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if args.command in ("check", "build"):
+            _note_stale_skills(getattr(args, "path", None) or Path.cwd())
 
 
 if __name__ == "__main__":

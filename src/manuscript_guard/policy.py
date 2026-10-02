@@ -116,6 +116,7 @@ BINDS_AT = {
     "no-review": SUBMISSION,
     "rounds-outstanding": SUBMISSION,
     "review-missing": SUBMISSION,
+    "reading-missing": SUBMISSION,
     "point-unanswered": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,

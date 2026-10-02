@@ -464,6 +464,11 @@ def test_rounds_required_is_read_beside_an_entry_the_schema_refuses(tmp_path: Pa
         ([5, "signal"], ["5", "signal"]),
         (["pharmacovigilance", 2019], ["pharmacovigilance", "2019"]),
         ([False, "cGMP"], ["False", "cGMP"]),
+        # Colons typed where the dashes belong: settings whose names are the keywords.
+        (
+            {"pharmacovigilance": None, "hepatotoxicity": None},
+            ["pharmacovigilance", "hepatotoxicity"],
+        ),
     ],
 )
 def test_keywords_in_the_wrong_shape_do_not_stop_a_build_and_none_is_dropped_from_a_list(

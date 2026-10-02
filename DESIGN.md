@@ -3671,7 +3671,8 @@ Closed since, and why each mattered:
   `keywords` with no gate in front of it under `--skip-checks`. It raised on `keywords: 5`,
   and printed one word, where a list is expected, letter by letter; neither is printed now.
   An entry of the list that is not text is printed as it was, `2019` for one, which YAML
-  reads as a number: a build that was asked not to check prints what was typed.
+  reads as a number, and so are keywords typed with colons where the dashes belong, which
+  YAML reads as settings: a build that was asked not to check prints what was typed.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name

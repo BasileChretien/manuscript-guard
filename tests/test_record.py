@@ -557,3 +557,86 @@ def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> N
     with pytest.raises(RecordError, match="--remit"):
         write_review(loaded(unreviewed), "somebody", verdict="pass")
     assert not (unreviewed / "review").exists()
+
+
+def test_a_writer_that_is_refused_does_not_take_the_folder_from_one_that_waits(
+    tmp_path: Path,
+) -> None:
+    """The holder made `review/` for its lock and was refused inside it. It then removed the
+    folder it had made, from under a writer waiting for the same lock, which ended in a
+    `FileNotFoundError` traceback. Found by the second review round of the run."""
+    import threading
+    import time
+
+    from manuscript_guard.record import panel_lock
+
+    panel = tmp_path / "review" / "panel-1.yaml"
+    waiting: list[str] = []
+
+    def second() -> None:
+        try:
+            with panel_lock(panel):
+                panel.write_text("written by the second\n", encoding="utf-8")
+            waiting.append("wrote")
+        except BaseException as exc:  # noqa: BLE001 - the test reports whatever it was
+            waiting.append(f"{type(exc).__name__}: {exc}")
+
+    thread = threading.Thread(target=second)
+    with pytest.raises(RecordError, match="refused"), panel_lock(panel):
+        thread.start()
+        time.sleep(0.3)
+        raise RecordError("refused: no remit")
+    thread.join(60)
+    assert waiting == ["wrote"], waiting
+
+
+def test_a_folder_removed_while_a_writer_waits_is_made_again(tmp_path: Path) -> None:
+    import threading
+    import time
+
+    from manuscript_guard.record import panel_lock
+
+    panel = tmp_path / "review" / "panel-1.yaml"
+    waiting: list[str] = []
+
+    def second() -> None:
+        try:
+            with panel_lock(panel):
+                panel.write_text("written by the second\n", encoding="utf-8")
+            waiting.append("wrote")
+        except BaseException as exc:  # noqa: BLE001 - the test reports whatever it was
+            waiting.append(f"{type(exc).__name__}: {exc}")
+
+    thread = threading.Thread(target=second)
+    with panel_lock(panel):
+        thread.start()
+        time.sleep(0.3)
+        shutil.rmtree(panel.parent)
+    thread.join(60)
+    assert waiting == ["wrote"], waiting
+    assert panel.read_text(encoding="utf-8") == "written by the second\n"
+
+
+def test_six_records_refused_at_the_same_moment_are_each_refused_in_words(
+    unreviewed: Path,
+) -> None:
+    """No remit, on a project with no `review/` yet: each is refused, and none of them makes
+    the folder, so none can take it from another."""
+    import subprocess
+    import sys
+
+    started = [
+        subprocess.Popen(
+            [sys.executable, "-m", "manuscript_guard.cli", "review", str(unreviewed), "--record",
+             "somebody", "--reading", f"reader-{number}", "--verdict", "pass"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        for number in range(6)
+    ]
+    for process in started:
+        out, err = process.communicate(timeout=300)
+        said = err.decode(errors="replace")
+        assert process.returncode == 2, said
+        assert "--remit" in said and "Traceback" not in said
+    assert not (unreviewed / "review").exists()

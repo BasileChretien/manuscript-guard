@@ -60,26 +60,20 @@ def panel_lock(panel: Path) -> Iterator[None]:
     Every way round the loop pauses and looks at the clock. A folder that cannot be written
     to made no lock and left none to wait for, and the first version waited for it without
     a pause and without an end.
+
+    The folder made for the lock is left where it is, empty or not. A version that took it
+    away again when its writer was refused took it from under a writer waiting for the same
+    lock, which ended in a traceback. What can be refused without writing is refused before
+    the lock is asked for, so that no folder is made for it.
     """
     lock = panel.with_name(panel.name + ".lock")
-    made_folder = not lock.parent.exists()
     lock.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        _take(lock, panel)
-    except BaseException:
-        if made_folder:
-            with contextlib.suppress(OSError):
-                lock.parent.rmdir()
-        raise
+    _take(lock, panel)
     try:
         yield
     finally:
         with contextlib.suppress(OSError):
             lock.unlink()
-        if made_folder:
-            # Made for the lock, and still empty: the writer was refused before it wrote.
-            with contextlib.suppress(OSError):
-                lock.parent.rmdir()
 
 
 def _take(lock: Path, panel: Path) -> None:
@@ -92,6 +86,9 @@ def _take(lock: Path, panel: Path) -> None:
             return
         except FileExistsError:
             pass
+        except FileNotFoundError:
+            # The folder went while this writer waited: somebody tidied it away.
+            lock.parent.mkdir(parents=True, exist_ok=True)
         except PermissionError as exc:
             # Windows says this while another writer is removing its lock, for an instant.
             # Any system says it for a folder that cannot be written to, and goes on
@@ -136,6 +133,30 @@ def _ensure_panel(project, round_number: int, reviewer: str, remit: str, today: 
     A panel names who is responsible for noticing what. Extending an existing one rather than
     replacing it, because the other reviewers' remits are the round's design.
     """
+    path, document, reviewers, joins_with = _joining(project, round_number, reviewer, remit)
+    if joins_with is None:
+        return path
+
+    reviewers.append({"id": reviewer, "remit": joins_with})
+    if document is None:
+        document = {
+            "schema": "manuscript-guard/panel/1",
+            "round": round_number,
+            "opened_on": today.isoformat(),
+        }
+    document["reviewers"] = reviewers
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_yaml_dump(document), encoding="utf-8", newline="\n")
+    return path
+
+
+def _joining(
+    project, round_number: int, reviewer: str, remit: str
+) -> tuple[Path, dict | None, list, str | None]:
+    """The panel as it stands, and the remit this reviewer joins it with: None when the
+    reviewer is on it already. Raises when there is no remit to join with. Writes nothing,
+    so it is also asked before the panel's lock is, where a refusal leaves nothing behind.
+    """
     from manuscript_guard.contracts._schema import read_structured
     from manuscript_guard.gates.review import panel_path
 
@@ -143,7 +164,7 @@ def _ensure_panel(project, round_number: int, reviewer: str, remit: str, today: 
     document = (read_structured(path) or {}) if path.exists() else None
     reviewers = list((document or {}).get("reviewers") or [])
     if any(entry.get("id") == reviewer for entry in reviewers):
-        return path
+        return path, document, reviewers, None
 
     # A reviewer who was on an earlier panel keeps their remit unless the caller states a
     # new one. Asking again for every round is friction that teaches people to type
@@ -157,18 +178,7 @@ def _ensure_panel(project, round_number: int, reviewer: str, remit: str, today: 
             f"responsible for noticing; two reviewers with the same remit are one reviewer, "
             f"which is the question the panel file exists to make somebody answer"
         )
-
-    reviewers.append({"id": reviewer, "remit": remit})
-    if document is None:
-        document = {
-            "schema": "manuscript-guard/panel/1",
-            "round": round_number,
-            "opened_on": today.isoformat(),
-        }
-    document["reviewers"] = reviewers
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_yaml_dump(document), encoding="utf-8", newline="\n")
-    return path
+    return path, document, reviewers, remit
 
 
 def _name_reader(panel: Path, reviewer: str, reader: str) -> None:
@@ -273,6 +283,8 @@ def write_review(
     if path.exists():
         raise exists
 
+    # Refused here, before the lock, a reviewer with no remit leaves no folder behind.
+    _joining(project, round_number, reviewer, remit)
     with panel_lock(panel_path(project, round_number)):
         panel = _ensure_panel(project, round_number, reviewer, remit, today)
         if reading:

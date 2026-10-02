@@ -419,11 +419,27 @@ def _one(
     keys: list[str],
     transport: Transport | None,
     today: date,
+    stop: threading.Event | None = None,
 ) -> Outcome:
     """Make one call and file its reading, or say why not. Never raises."""
+
+    def pause(seconds: float) -> None:
+        # The wait before a provider is tried again. A stop ends it, and the call with it:
+        # the command has said that no further call is sent, and a retry is one.
+        if stop is None:
+            time.sleep(seconds)
+        elif stop.wait(seconds):
+            raise CallFailed(
+                "stopped",
+                f"{call.model.provider.name} asked to be tried again, and the run was "
+                "stopped before it was",
+            )
+
     why, text = "", ""
     try:
-        reply = client.call(call.model, call.body, key=key, transport=transport)
+        reply = client.call(
+            call.model, call.body, key=key, transport=transport, sleep=pause
+        )
         text = reply.text
         parsed = parse_reply(reply.text)
         path = file_reading(project, plan, call, reply, parsed, today, keys)
@@ -488,7 +504,9 @@ def run_plan(
             if stop.is_set():
                 outcomes.append(Outcome(call, failure=NOT_SENT, sent=False))
                 continue
-            outcome = _one(project, plan, call, held[provider], keys, transport, today)
+            outcome = _one(
+                project, plan, call, held[provider], keys, transport, today, stop
+            )
             outcomes.append(outcome)
             if say is not None:
                 with told:

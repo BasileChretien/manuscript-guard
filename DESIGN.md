@@ -3860,9 +3860,10 @@ Closed since, and why each mattered:
   the author's word, and nothing in the command can hold it to that.
 - **A call that has been made cannot be recalled.** Ctrl+C stops further calls; the ones
   in flight, one for each provider at most, have left the machine, and the command waits
-  for them, up to the ten minutes a call may take. A second Ctrl+C leaves at once with a
-  traceback, and a reply that arrives after that is filed if the process is still there
-  to file it.
+  for them, up to the ten minutes a call may take. A call a provider had asked to be
+  tried again is not tried again after the stop. A second Ctrl+C ends the command with
+  a traceback, and the process still stays until the calls in flight come back, and
+  files their replies.
 - **A refused reply is not asked for again by the run that got it.** The reply was paid
   for, the reason is printed, and the text is kept to read; asking again is running the
   command again, which is the author's call and asks only for what is missing. A model that

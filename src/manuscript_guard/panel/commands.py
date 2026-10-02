@@ -166,8 +166,10 @@ def _still_waiting(waiting: Sequence[tuple[str, str]]) -> str:
         "the panel names these readers, and their readings are not on file:\n"
         f"{rows}\n"
         "This run did not ask them: they are not in review.models, or --one-each dealt "
-        "another model to that reviewer. List them and run again, or take each out of its "
-        "reviewer's `readers` in the panel file if it is not going to report."
+        "another model to that reviewer. A model is listed there and the command run again. "
+        "A person files their own reading: `manuscript-guard review --record <reviewer> "
+        "--reading <who> --verdict <verdict>`. A reader that is not going to report is "
+        "taken out of its reviewer's `readers` in the panel file."
     )
 
 

@@ -1008,7 +1008,9 @@ def test_an_interrupt_at_the_question_is_a_no(
     assert everything_under(unreviewed) == before
 
 
-@pytest.mark.parametrize("key", ["test", "none", "dummy", "sk-no-key-required"])
+@pytest.mark.parametrize(
+    "key", ["test", "none", "dummy", "sk-no-key-required", "rejection_tests"]
+)
 def test_a_placeholder_key_for_a_local_server_does_not_refuse_the_reviews(
     project: Path, providers: Providers, monkeypatch, key: str
 ) -> None:
@@ -1157,3 +1159,49 @@ def test_recording_a_reading_and_running_the_models_in_one_command_is_refused(
     assert "--record" in capsys.readouterr().err
     assert providers.requests == []
     assert everything_under(project) == before
+
+
+def test_a_call_a_provider_asked_to_be_tried_again_is_not_sent_again_after_the_stop(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """Both providers answer `429, try again in a second`, and the interrupt arrives during
+    that second. The command had printed that no further call is sent, and then sent each
+    request again. Found by the second review round of the run."""
+    import _thread
+    import threading
+
+    once = threading.Lock()
+    fired: list[bool] = []
+
+    def busy(request):
+        with once:
+            first = not fired
+            fired.append(True)
+        if first:
+            _thread.interrupt_main()
+        return HttpResponse(429, {"Retry-After": "1"}, b'{"message": "slow down"}')
+
+    providers.default = busy
+    assert run(unreviewed, "--yes") == 1
+    out = capsys.readouterr().out
+    assert len(providers.requests) == 2, "one call for each provider, and none sent again"
+    assert "tried again" in out and "6 of 8 calls were not sent" in out
+    assert readings(unreviewed) == []
+
+
+def test_a_person_the_panel_waits_for_is_told_how_a_person_files(
+    project: Path, providers: Providers, capsys
+) -> None:
+    """The panel names a co-author beside the model. The two ways out that were offered,
+    list the model or drop the reader, are not the one that applies."""
+    configure(project, MODEL_A)
+    panel = project / "review" / "panel-2.yaml"
+    document = read_structured(panel)
+    document["reviewers"][0]["readers"] = ["Dr. Tanaka"]
+    panel.write_bytes(
+        yaml.safe_dump(document, sort_keys=False, allow_unicode=True).encode("utf-8")
+    )
+    assert run(project, "--yes", "--round", "2") == 1
+    out = capsys.readouterr().out
+    assert "Filed 2 of 2" in out and "not complete" in out and "Dr. Tanaka" in out
+    assert "--record" in out and "--reading" in out

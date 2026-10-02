@@ -503,7 +503,7 @@ def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> No
 
 # ---------------------------------------------------------------- a project that cannot be read
 #
-# `check` stops on a file of the project's own that it cannot parse, before there is one
+# `check` stops on a file of the project's own that it cannot use, before there is one
 # finding, and says which file in a sentence written for the author. The hooks took that for
 # an unexpected failure and ended in silence, so a submission from such a project went through
 # with nothing checked. They are started here as a tool starts them.
@@ -511,33 +511,44 @@ def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> No
 SUBMIT = {"tool_name": "Bash", "tool_input": {"command": "manuscript-guard submit"}}
 
 #: One file of each kind that is read before any gate runs, left as an author can leave it: a
-#: results file made by hand and never filled, and YAML with a bracket still open.
+#: results file made by hand and never filled, and YAML with a bracket still open. Then the
+#: files that parse and still cannot be used, or cannot be read as text at all: `check` ended
+#: in a traceback on each, so the guard was silent after it had learned to refuse the first
+#: four. With each, what `check` says of it after the name of the file.
 UNREADABLE = {
-    "results": ("results/hand.json", b""),
-    "paper": ("paper.yaml", b"title: [unclosed\n"),
-    "authors": ("authors.yaml", b"authors: [unclosed\n"),
-    "ledger": ("literature/ledger.yaml", b"entries: [unclosed\n"),
+    "results": ("results/hand.json", b"", "cannot parse"),
+    "paper": ("paper.yaml", b"title: [unclosed\n", "cannot parse"),
+    "authors": ("authors.yaml", b"authors: [unclosed\n", "cannot parse"),
+    "ledger": ("literature/ledger.yaml", b"entries: [unclosed\n", "cannot parse"),
+    "utf-16": ("results/hand.json", b"\xff\xfe\x7b", "cannot read as UTF-8: the file is UTF-16"),
+    "code page": (
+        "authors.yaml",
+        b"authors:\n  - name: Ren\xe9e\n",
+        "cannot read as UTF-8: the byte 0xe9 on line 2",
+    ),
+    "list": ("paper.yaml", b"- a\n- b\n", "holds a list where"),
+    "folders": ("paper.yaml", b"paths: [results]\n", "`paths` holds a list where"),
 }
 
 
 @pytest.fixture(params=list(UNREADABLE))
 def unreadable(request, project: Path) -> tuple[Path, str]:
-    """The example with one file `check` cannot parse, and the name of that file."""
-    relative, content = UNREADABLE[request.param]
+    """The example with one file `check` cannot use, and how its sentence about it begins."""
+    relative, content, said = UNREADABLE[request.param]
     (project / relative).write_bytes(content)
-    return project, Path(relative).name
+    return project, f"{Path(relative).name}: {said}"
 
 
 def test_a_submission_from_a_project_that_cannot_be_read_is_refused(
     unreadable: tuple[Path, str],
 ) -> None:
-    project, name = unreadable
+    project, said = unreadable
     event = as_sent({**SUBMIT, "cwd": str(project)})
 
     result = run_installed("guard-submission", event, {})
     assert decision(result) == "deny"
     assert f"cannot check {project.name}" in reason(result)
-    assert f"{name}: cannot parse" in reason(result), "the project's own sentence, file named"
+    assert said in reason(result), "the project's own sentence, file named"
     assert f"`{hooks.FULL_CHECK}`" in reason(result)
 
 
@@ -606,12 +617,12 @@ def test_a_submission_shaped_command_outside_any_project_is_left_alone(
 def test_session_start_says_why_a_project_cannot_be_checked(
     unreadable: tuple[Path, str],
 ) -> None:
-    project, name = unreadable
+    project, said = unreadable
     started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
 
     result = run_installed("session-start", as_sent(started), {})
     assert f"manuscript-guard: {project.name} cannot be checked" in context(result)
-    assert f"{name}: cannot parse" in context(result)
+    assert said in context(result)
     assert "`manuscript-guard check`" in context(result)
     assert decision(result) is None, "it is said, and nothing is blocked"
     assert "systemMessage" not in result

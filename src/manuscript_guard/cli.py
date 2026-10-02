@@ -138,6 +138,20 @@ def _guarded(name: str, gate) -> Report:
 
     try:
         return gate()
+    except ContractError as exc:
+        # A file the gate reads cannot be used, and the error is a sentence for the author
+        # that names it. The same code, which fails at every stage, but not worded as a
+        # fault of the tool: no class name before the sentence, and no bug in the hint.
+        return Report(
+            (
+                Finding(
+                    gate=name,
+                    code="gate-errored",
+                    message=f"{name} could not run: {exc}",
+                    hint="put that file right; the manuscript has not been checked by this gate",
+                ),
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - any gate failure must be visible, not fatal
         return Report(
             (

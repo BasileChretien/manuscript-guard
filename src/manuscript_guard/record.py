@@ -63,8 +63,9 @@ def panel_lock(panel: Path) -> Iterator[None]:
 
     The folder made for the lock is left where it is, empty or not. A version that took it
     away again when its writer was refused took it from under a writer waiting for the same
-    lock, which ended in a traceback. What can be refused without writing is refused before
-    the lock is asked for, so that no folder is made for it.
+    lock, which ended in a traceback. The one refusal that would make a folder, a reviewer
+    with no remit in a project with no `review/` yet, is made before the lock is asked for;
+    everything else that reads the panel reads it while holding the lock.
     """
     lock = panel.with_name(panel.name + ".lock")
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -283,9 +284,15 @@ def write_review(
     if path.exists():
         raise exists
 
-    # Refused here, before the lock, a reviewer with no remit leaves no folder behind.
-    _joining(project, round_number, reviewer, remit)
-    with panel_lock(panel_path(project, round_number)):
+    held = panel_path(project, round_number)
+    if not held.parent.exists():
+        # No `review/` yet: a reviewer with no remit is refused here, before a folder is
+        # made for the lock. Only then. Where the folder exists a panel may, and a writer
+        # that holds it empties the file before filling it: read in that instant, outside
+        # the lock, it named no reviewers, and a reading for a reviewer who was on the
+        # panel was refused for want of a remit it did not need.
+        _joining(project, round_number, reviewer, remit)
+    with panel_lock(held):
         panel = _ensure_panel(project, round_number, reviewer, remit, today)
         if reading:
             _name_reader(panel, reviewer, reading)

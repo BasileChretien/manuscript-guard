@@ -1295,7 +1295,12 @@ is read and written. A writer waits up to thirty seconds for it and then refuses
 that name the file; a lock older than two minutes is taken for one its writer left behind.
 A folder that cannot be written to makes no lock and leaves none to wait for: that is
 refused after two seconds, where the first version tried again without a pause and
-without an end.
+without an end. The panel is read only by a writer that holds it. One version asked
+whether a reviewer was on the panel before asking for the lock, so that a refusal would
+leave no folder behind; a writer rewriting the panel empties the file first, and a
+reading for a reviewer who was on it was refused, about three times in a thousand
+calls made at once. That question is now asked early only where there is no `review/`
+yet, and so no panel anybody could be rewriting.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 

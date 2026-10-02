@@ -250,7 +250,8 @@ cannot be had, because it is not UTF-8 or the system will not open it. Each gate
 the manuscript stops at such a file, so it is reported once for each file, at the file and
 the line, with the gates that did not run. The other gates report as usual. It fails at
 every stage too. Outside `check`, a command that reads the manuscript says the same sentence
-and exits 2.
+and exits 2. The dry run of a review panel is the one that does not: it decodes the files
+itself, names the file and exits 2, with neither the byte and the line nor the encoding.
 
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
@@ -4209,9 +4210,9 @@ Closed since, and why each mattered:
   covered by that, since the gates read it themselves: `check` gave seven `gate-errored`
   findings for one file, one for each gate that read it, none naming it, and `explain`,
   `render`, `bind`, `methods`, `sync-bib` and a build with `--skip-checks` ended in a
-  traceback. Closed the same day, by the author's decision. Every reader of the
-  manuscript's text goes through the reader the project's files use, so those commands say
-  the sentence and exit 2. `check` reports one finding for each such file,
+  traceback. Closed the same day, by the author's decision. Every gate that reads the
+  manuscript's text, and each of those commands, goes through the reader the project's
+  files use, so those commands say the sentence and exit 2. `check` reports one finding for each such file,
   `manuscript-unreadable`, at the file and the line, and its hint names the gates that stopped
   there. It does not stop before the gates, as it does for a project file: the gates that
   do not read the manuscript still report, `--json` carries the finding, and the line drawn
@@ -4225,10 +4226,13 @@ Closed since, and why each mattered:
   findings of their own. The file is refused and not read in the encoding it seems to be
   in, for the reason given above. What is read of a file that is UTF-8 has not changed:
   line endings are folded as they were, and a mark at the top of the file stays in the
-  text. Two readers are left as they were. G11 reads the file's bytes for the digest and
+  text. Three readers are left as they were. G11 reads the file's bytes for the digest and
   still runs, so at submission the records of the earlier text are reported stale beside
-  the finding. And the note after an edit reads with the bytes it cannot decode replaced,
-  since it is a note and gives no verdict.
+  the finding. The note after an edit reads with the bytes it cannot decode replaced,
+  since it is a note and gives no verdict. And the dry run of a review panel, `review --run
+  --dry-run`, which came with #128, decodes the files it would send by itself: it says
+  "manuscript/main.md is not UTF-8, so it cannot be sent as text" and exits 2, which names
+  the file and gives neither the byte and the line nor the encoding.
   A key of `paper.yaml` that only a gate reads, in a shape the schema refuses (`terms: 5`,
   `review: [1]`, `conventions: abc`, `reporting_guideline: 5`), was a `gate-errored`
   finding worded as a fault of the tool, "G2 could not run: TypeError: 'int' object is not
@@ -4261,7 +4265,7 @@ Closed since, and why each mattered:
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
   it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
-  in a traceback on it, as before. And a
+  in a traceback on it, as before, with or without the dry run of a panel. And a
   results fragment with the mark of UTF-8 in front,
   which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
   UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read. Two more are of

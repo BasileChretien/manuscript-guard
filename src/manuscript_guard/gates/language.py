@@ -38,6 +38,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
@@ -626,7 +627,7 @@ def _read(project: Project) -> list[_File]:
     for document, supplementary in ((paper, False), (supplement, True)):
         chain: list[Section] = []
         for path in document:
-            text = path.read_text(encoding="utf-8")
+            text = read_text(path)
             files.append(_file(len(files), path, text, chain, supplementary))
     return files
 

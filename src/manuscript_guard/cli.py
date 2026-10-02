@@ -64,7 +64,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import init_project
+from manuscript_guard.scaffold import init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -1865,6 +1865,13 @@ def cmd_init(args: argparse.Namespace) -> int:
     created = init_project(args.path, title=args.title)
     for path in created:
         print(f"created {path}")
+    rules = rules_to_add(args.path)
+    if rules:
+        print(
+            "\nAGENTS.md was already there and says nothing of manuscript-guard, so it was "
+            "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
+            + rules
+        )
     print(
         "\nnext: describe your authors in authors.yaml, then write an analysis that "
         f"publishes its results with {HOW_TO_EMIT}"

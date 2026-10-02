@@ -10,6 +10,9 @@ than assumed.
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -17,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.cli import main
+from manuscript_guard.cli import build_parser, main
 from manuscript_guard.emit import write_digest
 
 PANDOC = shutil.which("pandoc") is not None
@@ -538,3 +541,92 @@ def test_audit_strict_fails_when_a_paper_could_not_be_read(project: Path) -> Non
     args = ("audit", str(readable), str(locked), "--against", str(project / "results"))
     assert run(*args) == 0
     assert run(*args, "--strict") == 1
+
+
+# ---------------------------------------------------------------- the parser
+
+
+def _commands() -> dict[str, argparse.ArgumentParser]:
+    """The parser of every command, by the command's name."""
+    (commands,) = (
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return dict(commands.choices)
+
+
+def _reads_as_submission(command: str, option: str) -> bool:
+    """Whether `manuscript-guard <command> <option>` asks for the submission standard."""
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return bool(build_parser().parse_args([command, option]).submission)
+    except SystemExit:
+        return False
+
+
+def test_every_spelling_read_as_submission_is_one_the_guard_sees() -> None:
+    """argparse reads any prefix of an option that names one option only, so `build --subm`
+    was a submission build, and the submission guard, whose marker is the whole word, let it
+    through in a project that fails. Taken from the parser, so that a command given the
+    option later is held to the same."""
+    from manuscript_guard.hooks import SUBMISSION_MARKERS
+
+    word = "--submission"
+    taking = [name for name, parser in _commands().items() if word in parser._option_string_actions]
+    assert {"check", "build", "review", "respond"} <= set(taking)
+
+    unseen = [
+        f"manuscript-guard {command} {word[:length]}"
+        for command in taking
+        for length in range(3, len(word) + 1)
+        if _reads_as_submission(command, word[:length])
+        and not SUBMISSION_MARKERS.search(f"manuscript-guard {command} {word[:length]}")
+    ]
+    assert unseen == []
+    # Not by refusing everything: the word itself is still read.
+    assert all(_reads_as_submission(command, word) for command in taking)
+
+
+def test_no_command_reads_an_abbreviated_option() -> None:
+    """The setting is each parser's own: on the top parser alone it leaves every command
+    reading abbreviations, and those are where the options are."""
+    parser = build_parser()
+    abbreviating = [
+        name
+        for name, command in {"manuscript-guard": parser, **_commands()}.items()
+        if command.allow_abbrev
+    ]
+    assert abbreviating == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("build", "--subm", "--offline"),
+        ("check", "--subm"),
+        ("review", "--subm"),
+        ("respond", "--subm"),
+        ("build", "--off"),
+        ("submit", "--skip"),
+    ],
+)
+def test_an_abbreviated_option_is_an_error_that_names_it(argv: tuple, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        run(*argv)
+    assert exit_.value.code == 2
+    assert f"unrecognized arguments: {argv[1]}" in capsys.readouterr().err
+
+
+def test_an_abbreviated_version_prints_no_version(capsys) -> None:
+    """Before any command the error is argparse's for the command that is missing, which
+    does not name the option. It is an error all the same, and prints no version."""
+    with pytest.raises(SystemExit) as exit_:
+        run("--vers")
+    assert exit_.value.code == 2
+    assert capsys.readouterr().out == ""
+
+
+def test_an_option_written_in_full_is_still_read(project: Path, capsys) -> None:
+    assert run("check", str(project), "--submission", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["counts"]

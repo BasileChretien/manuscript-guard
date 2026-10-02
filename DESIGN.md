@@ -1306,6 +1306,54 @@ that the hook fires on every Bash call, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+**The command is held to the project at the agent's folder, or to the one it names.**
+Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
+in a project, and the guard took the one at the folder the event names as the agent's, or
+above it. An agent started at the root of a repository, with the paper in `example/`, stands
+in a folder that has none: the command was recognised, held to nothing, and went through in
+a project that fails. Where no project is at that folder, the guard now reads the words of
+the command and holds it to each project that one of them is a path into: `example` after
+`cd` or as the argument of `submit`, `example/build/manuscript.docx` after `scp`. A file
+that is not written yet names the project its folder is in. Each project is checked once.
+
+The refusal names the project, says that the command named it, and names the check with the
+project's folder after it, `manuscript-guard check --stage submission "example"`, because
+from where the agent stands the check alone finds no project. The folder comes last on
+purpose. The markers want a verb before the word `submission`, and `copy` is one: a folder
+called `paper-copy`, written after the word, does not make the command submission-shaped,
+where `cd paper-copy && manuscript-guard check --stage submission` is, and would be refused
+with the advice it had just followed.
+
+A word is read as it stands and, where the way it is written hides a path, as that path
+too. curl writes a file to upload after an `@`, `file=@example/build/manuscript.docx`, so a
+word is read from after its last `@` as well. In quotes `=` is not a separator, so a quoted
+word is also read from after its last `=`. Outside quotes a backslash and a space are a
+space in a name, `my\ paper`, as a shell reads them, and that is the only reading. To
+PowerShell a backslash ends a folder's name, so `.\example\ D:\sent` is two paths, and it
+is not found. Reading the pieces as well found it, and twice took a piece of a file's name
+for the project beside it: `paper` in `cp paper\ draft.docx /backup`, which refused a copy
+of an unrelated document and a submission from `paper v2`, which passed; then, once
+narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper\
+\(JD\).docx /backup`, where the other backslash is a shell's escape. Both were found by
+#137's review, and the reading was dropped (Basile, 2026-10-02): a path not found is a
+limit that is written down, and a document refused for a project it has nothing to do with
+is what this change was decided against. A word of more than 4096 characters or 100
+folders is not a path and is not walked: each step down is a look on disk, `..` exists at
+every step, and 5000 of them in one word took 34 s.
+
+This is not reading the command as a shell does. Nothing is expanded and nothing is run, and
+the guard does not know that `cd` changes folder: it asks of each word whether it is a path
+into a project, and a string in quotes is one word. That keeps out a project the command
+does not name (Basile, 2026-10-02). The root of a repository is where every other command is
+sent from, and a paper below it that fails must not stop a copy of an unrelated `.docx`.
+Following a leading `cd` was the other way, and would have left `manuscript-guard submit
+example` and `scp example/build/manuscript.docx host:` uncaught, which need no `cd`. What a
+command does not spell out is not found, and a word that happens to be the folder's name is
+taken for it; both are under Known gaps. A submission-shaped command that names no project
+costs about 10 ms more than it did, one look on disk for each reading of each word, and a
+command that is not submission-shaped costs nothing more. A script of 2000 different words
+written into a file through the shell, if it is submission-shaped, costs about a second.
+
 **A refusal names a command the guard lets through.** The refusal shows the first eight
 failures and says what to run for the rest. It used to say `manuscript-guard check
 --submission`, and `--submission` is one of the guard's markers wherever it stands in a
@@ -4102,10 +4150,12 @@ Closed since, and why each mattered:
   results fragments and the two ledgers under `literature/`. A file that a gate reads was
   never part of this, since a gate that raises is reported as `gate-errored`, which fails at
   every stage. Where no project is found at the folder the event names, or above it, both
-  hooks stay silent, as before. That folder is the only place looked in: a command sent from
-  above a project that enters it, `cd paper && manuscript-guard submit`, is not checked, in
-  a project that fails as in one that cannot be read. True on `main` before this, found in
-  the review of #131, and not decided. The refusal ends by naming
+  hooks stayed silent, as before: a command sent from above a project that enters it, `cd
+  paper && manuscript-guard submit`, was not checked, in a project that fails as in one that
+  cannot be read. True on `main` before this and found in the review of #131. The submission
+  guard has since been given the projects such a command names, and refuses for one that
+  cannot be read in the same words; the session start still says nothing from there. The
+  refusal ends by naming
   `manuscript-guard check --stage submission` and not `check --submission`, whose flag is
   one of the guard's own markers: an agent told to run that one is refused again. It says
   to run it on its own, because the command ends in the word `submission`, which the guard
@@ -4176,16 +4226,79 @@ Closed since, and why each mattered:
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands.
-- **The submission guard looks for the project where the agent is, not where the command
-  goes.** It matches the command, then runs the submission check in the folder the event
-  names as the agent's. From the folder above a project there is no `paper.yaml` to find, the
-  check cannot run, and the hook, which never breaks a session, says nothing. From there
-  `cd example && manuscript-guard submit` and `cd example && scp build/manuscript.docx
-  host:` both go through, in a project that fails. `submit` then refuses on its own account;
-  the copy is held to nothing. The whole-string matching in the hooks section recognises both
-  commands, and from that folder recognising them is all it does. Found in the review of #131
-  on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
-  shell command, which the guard so far does not do.
+- **From a folder with no project, the submission guard finds only a project the command
+  spells out.** It used to find none. It matched the command, then ran the submission check
+  in the folder the event names as the agent's, and from the folder above a project there is
+  no `paper.yaml` to find: the check could not run and the hook said nothing. From there
+  `cd example && manuscript-guard submit`, `manuscript-guard submit example` and `scp
+  example/build/manuscript.docx host:` all went through, in a project that fails. `submit`
+  then refused on its own account; the copy was held to nothing. Found in the review of #131
+  on 2026-10-02 and true before it. Closed for a project the command names (see "The command
+  is held to the project at the agent's folder, or to the one it names"). What is left:
+  - *Not spelt out, so not found.* A folder held in a variable (`cd $PAPER && manuscript-guard
+    submit`, `scp $PWD/example/build/manuscript.docx host:`), a glob that stands for the
+    folder (`scp */build/*.docx host:`; one for the file, `example/build/*.docx`, is found),
+    an option with its value joined on (`tar -Cexample -czf submission.tgz .`,
+    `Copy-Item -Path:example/build/manuscript.docx`), a command inside a quoted string
+    (`bash -c "cd example && manuscript-guard submit"`, `python -c "..."`), and a folder
+    whose name is only partly in quotes (`my" "paper`). A folder with a comma or a brace in
+    its name is found in quotes and not without them (`cd Smith,\ Jones`), since a word
+    ends at either. Three ways curl names a file: quoted inside its own quotes (`-F
+    'file=@"example/build/manuscript.docx"'`), a list in braces inside quotes (`-T
+    "{a.docx,b.docx}"`), and after `<` (`-F "file=<example/manuscript/main.md"`). And a
+    path as PowerShell writes it that ends in a backslash before the next argument,
+    `Copy-Item .\example\ sent/submission -Recurse`: a backslash and a space are read as a
+    space in a name. Without the backslash at the end it is found, on Windows. These go
+    through as before.
+  - *Not looked at, or looked at in the wrong place.* A folder on another machine written
+    `//host/share/...` is not looked at: asking whether it exists waits for the host, and
+    the hook fires on a shell command. The same share under a drive letter is looked at,
+    and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
+    the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
+    the one is not found and one under the other would be taken for it.
+  - *Inside a project, only that project.* Where the agent's folder is in a project the
+    guard checks that one, as it always did, and does not read the words: from a project
+    that passes, `cd ../second && manuscript-guard submit` is let through though `second`
+    fails. Not decided.
+  - *A commit that stages a file of the paper is refused when its message reads as a
+    submission.* `git add paper/manuscript/main.md && git commit -m "copy-edit the abstract
+    before submission"`, sent from the folder above, is refused in a project that fails:
+    the markers match the message, a verb and then the word, and the staged path names the
+    project. Nothing leaves the machine. Inside the project the same commit was always
+    refused; from above it used to go through, and so did `git add paper && git commit -m
+    "..." && git push origin submission-v2`. The message alone, with no path, names nothing
+    and goes through. The remedy is in the markers, which should not read a verb inside a
+    quoted string, and is not this change's. Found in the review of #137.
+  - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
+    `git push origin paper  # submission` from the folder above is held to it, though the
+    word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
+    since Windows drops a dot or a space at the end of a name, and the end of
+    `https://example.org/dl?f=paper`, since a word ends at `=`, at a comma and at a brace.
+    So is what follows the last `@` of any word and the last `=` of a quoted one, which
+    are read for curl's sake: `mail -s "submission" editor@paper`, and a commit message
+    that ends `p=paper` or `thanks @paper`. And on Windows a file called `paper (1).docx`,
+    written `cp paper\ \(1\).docx /backup`: a word ends at a bracket, escaped or not, and
+    Windows drops the space left at the end of `paper `. In quotes it names nothing.
+    A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
+    always was from inside (the word-roundtrip skill says to give the path to `import`).
+  - *The check a refusal names can be refused in two shapes.* Written with the folder last
+    it is let through whatever the folders are called, unless the path itself reads as a
+    submission, a verb and then the word: `copy/my submission/paper`. And an agent that
+    enters the folder on the same line instead, `cd paper-copy && manuscript-guard check
+    --stage submission`, puts the verb before the word: that line now names the project
+    and is refused, where it used to go through unchecked. The folder is written in double
+    quotes, where a shell expands `$`: for a project in `big$money/` the check named finds
+    no project.
+  - *The session start says nothing from the folder above*, in a project that fails or in
+    one that cannot be read.
+  - *A long command costs a look on disk for each different word.* 2000 of them took 1.3 s
+    and 20,000 took 12 s on a busy machine. It is paid only by a submission-shaped command
+    sent from a folder with no project, such as a long script written into a file through
+    the shell that holds a verb and `.docx`.
+  - *Two limits of the markers met on the way, true in any folder and before this.* `git -C
+    example push` is not submission-shaped: `git push` is matched as two words side by
+    side. And a `.docx` more than 120 characters after its verb is not matched, which a
+    whole path can exceed.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

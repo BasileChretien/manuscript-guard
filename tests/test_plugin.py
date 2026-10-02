@@ -201,9 +201,10 @@ def test_codex_installs_the_plugin_from_the_manifests_claude_code_reads(tmp_path
     assert entry["version"] == manifest["version"], entry
 
 
-# One hooks.json serves Claude Code and Codex, so it holds only what both read. Of what each
-# offers, that is these events and these fields of a handler (Codex's hooks page and Claude
-# Code's, read 2026-10-02): each tool has more of both, which the other would not know.
+# One hooks.json serves Claude Code and Codex, so it holds only what both read. These are the
+# events and the fields of a handler that the file uses and that both were checked to read
+# (Codex's hooks page and Claude Code's, read 2026-10-02). The two share more than these;
+# another is checked against both before it is added here.
 SHARED_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart"}
 SHARED_FIELDS = {"type", "command", "timeout", "statusMessage"}
 # Both count a timeout in seconds. The longest hook here is the submission check; a figure
@@ -266,8 +267,9 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
     ],
 )
 def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):
-    """Each of these passed while the check asked only that a file-reading hook's matcher
-    held `Edit` or `Write`, and that a timeout was at most 600."""
+    """Six of these passed while the check asked only that a file-reading hook's matcher held
+    `Edit` or `Write`, and that a timeout was at most 600: the first five and the timeout of
+    500. The other four it caught already, and has to go on catching."""
     config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     for groups in config["hooks"].values():
         for group in groups:

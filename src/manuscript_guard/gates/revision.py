@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.review import file_digests
@@ -267,7 +267,7 @@ def _passages(project: Project) -> set[str]:
             found.add(hashlib.sha256(text.encode("utf-8")).hexdigest())
 
     for path in source_files(project.path("manuscript")):
-        text, _title = strip_front_matter(path.read_text(encoding="utf-8"))
+        text, _title = strip_front_matter(read_text(path))
         for block in re.split(r"\n\s*\n", text):
             keep(block.split("\n"))
             # A run starts where a heading could: the block's first line, or straight after a

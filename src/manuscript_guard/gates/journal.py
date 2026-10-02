@@ -16,7 +16,7 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_structured, validate
+from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
@@ -61,7 +61,7 @@ def main_text(project: Project) -> str:
     comment in the YAML no longer stands in for a funding statement either.
     """
     sources = source_files(project.path("manuscript"), main_text_only=True)
-    return "\n\n".join(without_front_matter(p.read_text(encoding="utf-8")) for p in sources)
+    return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
 
 
 def check_journal(project: Project) -> Report:

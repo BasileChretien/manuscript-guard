@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
+from collections.abc import Collection
 from datetime import date
 from pathlib import Path
 
@@ -29,7 +30,13 @@ from manuscript_guard.build import (
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.contracts import ContractError, load_namespace, load_project
+from manuscript_guard.contracts import (
+    ContractError,
+    Unreadable,
+    load_namespace,
+    load_project,
+    read_text,
+)
 from manuscript_guard.findings import Report, merge_all
 from manuscript_guard.gates import (
     check_citations,
@@ -97,6 +104,10 @@ def _run_gates(
     project declaring `stage: submission` in paper.yaml — the natural thing to write once
     you are submitting — never had the review gate enforced at all. The stage is resolved
     first now, and the flag derived from it.
+
+    A manuscript file that cannot be read, one saved in a code page for instance, stops each
+    gate that reads the manuscript, and only those. It is one finding for each such file,
+    which names the gates that did not run; the others report as usual.
     """
     project, contract_report = load_project(start)
     namespace, results, literature, load_report = load_namespace(project)
@@ -104,7 +115,9 @@ def _run_gates(
     chosen = resolve_stage(project, stage, submission)
     at_submission = chosen == SUBMISSION
 
-    reports = [contract_report, load_report]
+    unreadable = _unreadable_sources(project)
+    stopped: list[str] = []
+    gate_reports: list[Report] = []
     for name, gate in (
         ("G11", lambda: check_review(project, submission=at_submission)),
         ("G1", lambda: check_freshness(project, results)),
@@ -123,24 +136,80 @@ def _run_gates(
         ("G14", lambda: check_language(project)),
         ("BUILD", lambda: check_shapes(project)),
     ):
-        reports.append(_guarded(name, gate))
+        report = _guarded(name, gate, unreadable)
+        if report is None:
+            stopped.append(name)
+        else:
+            gate_reports.append(report)
 
-    report, deferred = apply_stage(merge_all(reports), chosen)
+    reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
+    report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
     return report, project, chosen, deferred
 
 
-def _guarded(name: str, gate) -> Report:
+def _unreadable_sources(project) -> dict[Path, Unreadable]:
+    """Each manuscript file whose text cannot be had, with the error that says why.
+
+    Read once before the gates, because a gate stops at the first file it cannot read. Left
+    to the gates, one file was seven findings, a second file went unnamed until the first
+    was put right, and which file was first depended on the gate: G4 does not read the
+    supplement.
+    """
+    found: dict[Path, Unreadable] = {}
+    for path in source_files(project.path("manuscript")):
+        try:
+            read_text(path)
+        except Unreadable as error:
+            found[path] = error
+    return found
+
+
+def _unreadable_report(project, unreadable: dict[Path, Unreadable], stopped: list[str]) -> Report:
+    """One finding for each manuscript file that could not be read, placed at the file.
+
+    It names the gates that stopped there, so that what the run did not check is on the
+    record: a gate left out without a word would read as a gate that passed. Its code is in
+    no stage's deferral list, so it fails everywhere, as `gate-errored` did.
+    """
+    from manuscript_guard.findings import Finding
+
+    listed = " and ".join(part for part in (", ".join(stopped[:-1]), *stopped[-1:]) if part)
+    findings = []
+    for path, error in unreadable.items():
+        try:
+            shown = path.relative_to(project.root).as_posix()
+        except ValueError:  # `paths:` can put the manuscript outside the project
+            shown = str(path)
+        findings.append(
+            Finding(
+                gate="G0",
+                code="manuscript-unreadable",
+                message=f"{shown}: {error.reason}",
+                path=path,
+                line=error.line,
+                hint=f"{listed} read the manuscript and did not run" if stopped else None,
+            )
+        )
+    return Report(tuple(findings))
+
+
+def _guarded(name: str, gate, unreadable: Collection[Path] = ()) -> Report | None:
     """Run one gate; turn a crash into a finding rather than a silent absence.
 
     A gate that raised used to take the whole set down with it. Reporting the crash keeps
     the promise that every gate runs — and `gate-errored` is in no stage's deferral list,
     so it fails everywhere. A checker that could not check is not a pass.
+
+    None where the gate stopped at one of the `unreadable` manuscript files. Those are
+    reported once each by `_unreadable_report`, which names the gates that return None here.
     """
     from manuscript_guard.findings import Finding
 
     try:
         return gate()
     except ContractError as exc:
+        if isinstance(exc, Unreadable) and exc.path in unreadable:
+            return None
         # A file the gate reads cannot be used, and the error is a sentence for the author
         # that names it. The same code, which fails at every stage, but not worded as a
         # fault of the tool: no class name before the sentence, and no bug in the hint.
@@ -1359,7 +1428,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
     """
     project, _ = load_project(args.file.parent)
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
-    text = args.file.read_text(encoding="utf-8")
+    text = read_text(args.file)
     # The same section chain G2 uses. Without it every `methods_only` rule fired everywhere,
     # so `explain` reported a fabricated `p < 0.001` in the Results as a recognised
     # convention while `check` failed it — and this is the command an author reaches for
@@ -1398,7 +1467,7 @@ def cmd_render(args: argparse.Namespace) -> int:
         target = out_dir / path.relative_to(manuscript_dir)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
-            substitute(path.read_text(encoding="utf-8"), rendered),
+            substitute(read_text(path), rendered),
             encoding="utf-8",
             newline="\n",
         )
@@ -1432,7 +1501,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
     marked: list[Assembled] = []
     marks = []
     for item in assembled:
-        source = item.path.read_text(encoding="utf-8") if item.path.exists() else item.text
+        source = read_text(item.path) if item.path.exists() else item.text
         text, found = annotate(
             source,
             namespace,

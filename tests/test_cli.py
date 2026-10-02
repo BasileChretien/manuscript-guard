@@ -127,6 +127,155 @@ def test_check_says_which_stage_is_not_one(project: Path, capsys) -> None:
     assert "'draft' is not one of" in capsys.readouterr().out
 
 
+def in_a_code_page(path: Path) -> int:
+    """Leave a manuscript file as an editor that writes "ANSI" does: one accented letter in
+    code page 1252, on a line of its own at the end. Returns the line it is on."""
+    data = path.read_bytes()
+    assert data.endswith(b"\n")
+    path.write_bytes(data + b"\nCaf\xe9 society.\n")
+    return data.count(b"\n") + 2
+
+
+#: Every command that reads the text of the manuscript and is not `check`. Each ended in a
+#: traceback (`UnicodeDecodeError`) and exit 1 on a file that is not UTF-8.
+READS_THE_MANUSCRIPT = {
+    "explain": lambda root: ("explain", str(root / "manuscript" / "main.md")),
+    "render": lambda root: ("render", str(root)),
+    "bind": lambda root: ("bind", str(root)),
+    "bind --apply": lambda root: ("bind", str(root), "--apply"),
+    "methods": lambda root: ("methods", str(root)),
+    "sync-bib": lambda root: ("sync-bib", str(root)),
+    "build --skip-checks": lambda root: ("build", str(root), "--offline", "--skip-checks"),
+    "submit --skip-checks": lambda root: ("submit", str(root), "--offline", "--skip-checks"),
+}
+
+
+@pytest.mark.parametrize("command", list(READS_THE_MANUSCRIPT))
+def test_a_command_says_in_a_sentence_which_manuscript_file_is_not_utf8(
+    command: str, project: Path, capsys
+) -> None:
+    """Exit 2 and one sentence that names the file and the line, as for any other error the
+    tool raises on purpose."""
+    source = project / "manuscript" / "main.md"
+    line = in_a_code_page(source)
+    before = source.read_bytes()
+
+    assert run(*READS_THE_MANUSCRIPT[command](project)) == 2
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    assert (
+        f"manuscript-guard: {source}: cannot read as UTF-8: the byte 0xe9 on line {line} "
+        "is not UTF-8. Save the file as UTF-8."
+    ) in captured.err
+    assert source.read_bytes() == before, "and the file is left as it was found"
+    assert not list((project / "build").glob("*.docx")), "nothing was built from it"
+
+
+def test_explain_reads_a_file_that_is_utf8_as_before(project: Path, capsys) -> None:
+    """The lines `explain` prints are counted in the text as it was always read: a file with
+    Windows line endings and an accented letter gives the same rows as the file it came from."""
+    source = project / "manuscript" / "main.md"
+    assert run("explain", str(source)) == 0
+    expected = capsys.readouterr().out
+
+    windows = source.read_text(encoding="utf-8").replace("\n", "\r\n") + "\r\nCafé society.\r\n"
+    source.write_bytes(windows.encode("utf-8"))
+    assert run("explain", str(source)) == 0
+    assert capsys.readouterr().out == expected
+
+
+#: What `explain` and `bind` build the classifier from, left so that it cannot be built, the
+#: error each command ended in a traceback with, and what `check` says of the key.
+NO_CLASSIFIER = {
+    "terms: 5": ("terms", 5, "terms: 5 is not of type 'array'"),
+    "a pattern that does not compile": (
+        "conventions",
+        [{"pattern": "[0-9", "why": "a count"}],
+        "conventions/0/pattern: '[0-9' is not a regular expression",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_CLASSIFIER))
+def test_explain_and_bind_run_where_a_setting_cannot_be_used(
+    case: str, project: Path, capsys
+) -> None:
+    """`TypeError: 'int' object is not iterable` and `re.error`. The key is not read, both
+    commands run, and `check` says what is wrong with it."""
+    import yaml
+
+    key, value, said = NO_CLASSIFIER[case]
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document[key] = value
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert run("explain", str(project / "manuscript" / "main.md")) == 0
+    assert run("bind", str(project)) in (0, 1)
+    assert "Traceback" not in capsys.readouterr().err
+    assert run("check", str(project)) == 1
+    assert said in capsys.readouterr().out
+
+
+def test_check_reports_a_manuscript_file_that_is_not_utf8_as_one_finding(
+    project: Path, capsys
+) -> None:
+    """Exit 1 and a report, since the gates that do not read the manuscript still ran. It was
+    seven findings, one for each gate that read the file, and none of them named it."""
+    line = in_a_code_page(project / "manuscript" / "main.md")
+
+    assert run("check", str(project)) == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    where = Path("manuscript") / "main.md"
+    assert f"[FAIL] G0 {where}:{line}\n" in captured.out
+    assert (
+        f"manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line {line} is not UTF-8. "
+        "Save the file as UTF-8."
+    ) in captured.out
+    assert "could not run" not in captured.out
+    assert "bug" not in captured.out
+    assert "\n1 failing, " in captured.out
+
+
+def test_check_json_carries_the_file_and_the_line(project: Path, capsys) -> None:
+    source = project / "manuscript" / "main.md"
+    line = in_a_code_page(source)
+
+    assert run("check", str(project), "--json") == 1
+    document = json.loads(capsys.readouterr().out)
+    failing = [f for f in document["findings"] if f["severity"] == "fail"]
+    assert [(f["code"], f["path"], f["line"]) for f in failing] == [
+        ("manuscript-unreadable", str(source), line)
+    ]
+
+
+def test_build_refuses_a_manuscript_file_that_is_not_utf8(project: Path, capsys) -> None:
+    """The build runs the same gates first, and stops on the same finding."""
+    in_a_code_page(project / "manuscript" / "main.md")
+
+    assert run("build", str(project), "--offline") == 1
+    captured = capsys.readouterr()
+    assert "manuscript/main.md: cannot read as UTF-8: the byte 0xe9" in captured.out
+    assert "could not run" not in captured.out
+    assert not list((project / "build").glob("*.docx"))
+
+
+def test_review_holds_to_the_rounds_asked_for_beside_a_key_the_schema_refuses(
+    project: Path, capsys
+) -> None:
+    """`review` does not print the schema's findings, so what it reads of `review:` is its
+    whole answer. Five rounds asked for, two complete, and one mistyped key beside it."""
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 5\n  typo: 1\n",
+        encoding="utf-8",
+    )
+
+    assert run("review", str(project), "--submission") == 1
+    assert "2 of 5 review round(s) complete" in capsys.readouterr().out
+
+
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:
     shutil.rmtree(project / "review")
     assert run("check", str(project)) == 0

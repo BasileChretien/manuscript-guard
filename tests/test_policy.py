@@ -237,6 +237,157 @@ def test_a_file_a_gate_cannot_read_is_named_and_not_called_a_bug(project: Path) 
     assert "has not been checked by this gate" in failure.hint
 
 
+#: The gates that read the text of the manuscript, in the order they run. G11 reads its
+#: bytes for the digest and G13 reads it only once a revision round is open.
+READ_THE_MANUSCRIPT = "G2, G7, G4, G8r, G6, G9, G14 and BUILD"
+
+
+def in_a_code_page(path: Path) -> int:
+    """One accented letter in code page 1252 on a last line of its own; returns that line."""
+    data = path.read_bytes()
+    path.write_bytes(data + b"\nCaf\xe9 society.\n")
+    return data.count(b"\n") + 2
+
+
+@pytest.mark.parametrize("stage", STAGES)
+def test_a_manuscript_file_that_is_not_utf8_is_one_finding_that_names_it(
+    stage: str, project: Path
+) -> None:
+    """Saved from an editor that writes the code page. Every gate that read the file raised,
+    and each was reported as `gate-errored`: seven findings that read "G2 could not run:
+    UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9 in position 6105", none naming
+    the file, under a hint that began with a bug in the tool. It fails at every stage, as
+    those did."""
+    from manuscript_guard import cli
+
+    source = project / "manuscript" / "main.md"
+    line = in_a_code_page(source)
+
+    report, _project, _chosen, _deferred = cli._run_gates(project, stage=stage)
+    (failure,) = (f for f in report.failures if f.code == "manuscript-unreadable")
+    # G11 reads the bytes, not the text, so it ran: the file changed after the panel read
+    # it, which is a finding of its own once the review binds.
+    others = {f.code for f in report.failures} - {"manuscript-unreadable"}
+    assert others == ({"review-stale", "rounds-outstanding"} if stage == SUBMISSION else set())
+    assert (failure.gate, failure.path, failure.line) == ("G0", source, line)
+    assert failure.message == (
+        f"manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line {line} is not UTF-8. "
+        "Save the file as UTF-8."
+    )
+    assert failure.hint == f"{READ_THE_MANUSCRIPT} read the manuscript and did not run"
+    assert not [f for f in report.findings if f.code == "gate-errored"]
+
+
+def test_each_manuscript_file_that_is_not_utf8_is_named(project: Path) -> None:
+    """A gate stops at the first file it cannot read, so the gates alone would name one file
+    at a time, and which one would depend on the gate: G4 does not read the supplement."""
+    from manuscript_guard import cli
+
+    main = project / "manuscript" / "main.md"
+    extra = project / "manuscript" / "supplementary" / "zz_notes.md"
+    in_a_code_page(main)
+    extra.write_bytes("# Notes\n\nText.\n".encode("utf-16"))
+
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    unread = [f for f in report.failures if f.code == "manuscript-unreadable"]
+    said = {f.path: (f.line, f.message) for f in unread}
+    assert set(said) == {main, extra}
+    assert said[extra] == (
+        None,
+        "manuscript/supplementary/zz_notes.md: cannot read as UTF-8: the file is UTF-16. "
+        "Save the file as UTF-8.",
+    )
+    assert {f.code for f in report.failures} == {"manuscript-unreadable"}
+
+
+def test_the_gates_that_do_not_read_the_manuscript_still_report(project: Path) -> None:
+    """What `check` is for when one file cannot be read: everything else it can still say."""
+    from manuscript_guard import cli
+
+    in_a_code_page(project / "manuscript" / "main.md")
+    shutil.rmtree(project / "review")
+    (project / "figures" / "forest.review.yaml").unlink()
+
+    report, _project, _chosen, _deferred = cli._run_gates(project, submission=True)
+    codes = {f.code for f in report.failures}
+    assert "manuscript-unreadable" in codes
+    assert "no-review" in codes, "G11 did not run"
+    assert "figure-unreviewed" in codes, "G10 did not run"
+    assert "gate-errored" not in codes
+
+
+def test_a_gate_that_reads_a_manuscript_file_reports_it_where_nothing_else_has(
+    project: Path, monkeypatch
+) -> None:
+    """The finding comes from reading every file before the gates run. A file that goes bad
+    after that, or one only a gate finds, is still said by the gate that met it."""
+    from manuscript_guard import cli
+    from manuscript_guard.contracts import Unreadable
+
+    source = project / "manuscript" / "main.md"
+
+    def refuse(*_args, **_kwargs):
+        raise Unreadable(source, "cannot read: Permission denied")
+
+    monkeypatch.setattr(cli, "check_writing", refuse)
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert failure.message == f"G6 could not run: {source}: cannot read: Permission denied"
+    assert "bug" not in failure.hint
+
+
+#: A key of `paper.yaml` that only a gate reads, in a shape the schema refuses, the place the
+#: schema's finding names, and the gate that raised on it.
+NOT_THE_SHAPE = {
+    "terms: 5": ("terms", 5, "terms: ", "G2"),
+    "conventions: abc": ("conventions", "abc", "conventions: ", "G2"),
+    "conventions: [abc]": ("conventions", ["abc"], "conventions/0: ", "G2"),
+    "conventions: a pattern that does not compile": (
+        "conventions",
+        [{"pattern": "[0-9", "why": "a count"}],
+        "conventions/0/pattern: ",
+        "G2",
+    ),
+    "conventions: a pattern the compiler refuses with another error": (
+        "conventions",
+        [{"pattern": "(?a)(?u)x", "why": "pasted"}],
+        "conventions/0/pattern: ",
+        "G2",
+    ),
+    "reporting_guideline: 5": ("reporting_guideline", 5, "reporting_guideline: ", "G8r"),
+    "review: [1]": ("review", [1], "review: ", "G11"),
+    "review: rounds in words": (
+        "review",
+        {"rounds_required": "two"},
+        "review/rounds_required: ",
+        "G11",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_THE_SHAPE))
+def test_a_setting_in_the_wrong_shape_is_one_finding_that_names_the_key(
+    case: str, project: Path
+) -> None:
+    """Beside the schema's finding stood "G2 could not run: TypeError: 'int' object is not
+    iterable", under the hint that begins with a bug in the tool. The gate now runs as if the
+    key were not set, and the schema's finding fails at every stage."""
+    from manuscript_guard import cli
+
+    key, value, where, gate = NOT_THE_SHAPE[case]
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document[key] = value
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    report, _project, _chosen, _deferred = cli._run_gates(project, stage=DESIGN)
+    assert not report.ok
+    assert [f.message for f in report.findings if f.code == "gate-errored"] == [], gate
+    violations = [f for f in report.failures if f.code == "schema-violation"]
+    assert len(violations) == 1
+    assert violations[0].message.startswith(where)
+
+
 def test_a_crash_in_the_literature_chain_is_reported_under_its_own_gate(
     project: Path, monkeypatch
 ) -> None:

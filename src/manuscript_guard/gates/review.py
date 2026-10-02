@@ -505,7 +505,10 @@ def _superseded(round_: _Round, latest: int) -> Report:
 
 
 def rounds_required(project: Project) -> int:
-    return int(project.paper.get("review", {}).get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
+    # `setting`, so a `review:` the schema refuses is the schema's finding and not a crash
+    # here: `review: [1]` has no `get`, and `rounds_required: two` is no number.
+    review = project.setting("review") or {}
+    return int(review.get("rounds_required", DEFAULT_ROUNDS_REQUIRED))
 
 
 def check_review(project: Project, *, submission: bool = False) -> Report:

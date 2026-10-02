@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
@@ -47,7 +48,7 @@ def check_citations(project: Project, literature: Literature) -> Report:
     report = Report()
     uses = []
     for path in source_files(project.path("manuscript")):
-        uses.extend(find_citations(path.read_text(encoding="utf-8"), path))
+        uses.extend(find_citations(read_text(path), path))
 
     seen: set[str] = {use.citekey for use in uses}
     committed = bib_keys(project)
@@ -202,7 +203,7 @@ def sync_bib(project: Project) -> tuple[Path, int]:
 
     uses = []
     for path in source_files(project.path("manuscript")):
-        uses.extend(find_citations(path.read_text(encoding="utf-8"), path))
+        uses.extend(find_citations(read_text(path), path))
     citekeys = sorted({use.citekey for use in uses})
     if not citekeys:
         raise ZoteroUnavailable("the manuscript cites nothing, so there is no bibliography")

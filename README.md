@@ -392,7 +392,8 @@ A hook never breaks a session. Anything unexpected exits silently, because a gua
 crashes on a half-configured project gets removed, taking the guards that worked with it.
 A project file that cannot be used, because it does not parse or is not UTF-8, is not
 unexpected: `check` names it in a sentence, and the submission guard and the session start
-pass that sentence on. Outside a project they say nothing.
+pass that sentence on. A manuscript file that is not UTF-8 is a failing finding of the check
+like any other, and the guard blocks on it. Outside a project they say nothing.
 
 ### Codex (optional)
 
@@ -566,7 +567,10 @@ due yet is printed as `INFO` with `[not due until drafting]`, counted, and summa
 end. Nothing is skipped, because a check that quietly stopped looking would be worse than no
 check. And a finding this policy does not know about fails at every stage — a new gate has
 to opt in to being deferred. A gate that *crashes* reports `gate-errored`, which is in no
-deferral list and so fails everywhere: a checker that could not check is not a pass.
+deferral list and so fails everywhere: a checker that could not check is not a pass. A
+manuscript file that cannot be read as UTF-8, one saved in a code page or as UTF-16, is
+reported once as `manuscript-unreadable`, at the file and the line, with the gates that read
+the manuscript and so did not run. It fails everywhere too, and the other gates still report.
 
 The stage is declared in `paper.yaml`, not detected. Writing `stage: analysis` genuinely
 does demote the drafting findings, so it is an opt-out for anyone who wants one — which is

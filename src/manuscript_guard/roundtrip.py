@@ -44,6 +44,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.docxtext import TOKEN, spaced
 from manuscript_guard.safexml import UnsafeDocument, read_member
 from manuscript_guard.text.fences import fenced_spans
@@ -1752,7 +1753,7 @@ def _sources(project) -> list[tuple[Path, str, str]]:
 
     root = project.path("manuscript")
     return [
-        (path, path.relative_to(root).as_posix(), path.read_text(encoding="utf-8"))
+        (path, path.relative_to(root).as_posix(), read_text(path))
         for path in source_files(root)
     ]
 

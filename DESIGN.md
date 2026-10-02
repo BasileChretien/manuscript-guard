@@ -857,7 +857,10 @@ under the name its definition would give it: `LC-MS` and not `LC` and `MS`, `KEY
 and not `KEYNOTE`. An ordinary word joined on is then no part of it: `ROR-based` is `ROR`.
 The defined or known name is looked for first. The second review found the order reversed:
 the word was split at `seq` before `RNA-seq` was looked for, and its definition was
-reported as unused.
+reported as unused. A name that opens with an ordinary word is looked for with that word's
+capital lowered as well, because it takes one at the start of a sentence: `Non-HDL-C` is
+`non-HDL-C`. The capitals of the name itself are never folded, so `Rna-seq` is not
+`RNA-seq`.
 
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read
 without the paper, so it defines what it uses. The main text does not inherit from the
@@ -6186,6 +6189,9 @@ Closed since, and why each mattered:
     element symbols with a count from two to twelve is taken for a formula and not
     reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
+  - A defined name is read whole where it opens a hyphenated word or follows an ordinary
+    word in it, and not after a part that is neither: in `10x-RNA-seq` a defined `RNA-seq`
+    is not counted as used.
   - A short form in square brackets is read as a definition wherever the words before it
     spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
     `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since

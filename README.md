@@ -361,10 +361,10 @@ that should send you to it.
 
 | Hook | What it does |
 |---|---|
-| session start | One line: the stage, and how many findings fail and warn. Where a file of the project cannot be parsed, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
+| session start | One line: the stage, and how many findings fail and warn. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
-| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be parsed and the check cannot run |
+| before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run |
 
 The submission guard matches against the **whole command string** rather than a prefix rule,
 because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard submit` both
@@ -373,9 +373,9 @@ guard in the project this one learned from.
 
 A hook never breaks a session. Anything unexpected exits silently, because a guard that
 crashes on a half-configured project gets removed, taking the guards that worked with it.
-A project file that cannot be parsed is not unexpected: `check` names it in a sentence, and
-the submission guard and the session start pass that sentence on. Outside a project they
-say nothing.
+A project file that cannot be used, because it does not parse or is not UTF-8, is not
+unexpected: `check` names it in a sentence, and the submission guard and the session start
+pass that sentence on. Outside a project they say nothing.
 
 ### Codex (optional)
 

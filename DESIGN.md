@@ -609,7 +609,8 @@ paraphrase still fails: dropping "drug-induced" from a quoted sentence is report
 PDF text comes from poppler's `pdftotext` if present, then `pypdf` if importable, and
 otherwise the entry is reported as unverifiable rather than passed. Neither is a hard
 dependency: a toolkit that will not install without a PDF stack is a toolkit people do not
-install.
+install. `pdftotext` is asked for UTF-8 and read as UTF-8 whatever the locale, and a
+`pdftotext` that fails or gives nothing leaves the PDF to `pypdf`.
 
 ## Only a person can sign an attestation
 
@@ -721,7 +722,9 @@ and true quotes looked false.
 
 ARRIVE 2.0 publishes no Word checklist. Both its sets are printed side by side on one page
 of a PDF, so there is no table to read — only a visual grid, recovered by cutting the page
-at the column boundary and each column into topic, number and text sub-columns.
+at the column boundary and each column into topic, number and text sub-columns. The page is
+asked for in UTF-8 and decoded strictly: one `pdftotext` cannot give in UTF-8 is refused,
+not transcribed with a letter replaced.
 
 That path cannot support the same verification. Topic words wrap into the left margin of
 continuation lines and land *between* an item's own text fragments, so an item's full text

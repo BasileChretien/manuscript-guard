@@ -85,19 +85,9 @@ def _read_pdf(path: Path) -> str:
     Neither is a hard dependency. A toolkit that refuses to install without a PDF stack is
     a toolkit people do not install.
     """
-    if shutil.which("pdftotext"):
-        try:
-            finished = subprocess.run(
-                ["pdftotext", "-layout", str(path), "-"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if finished.returncode == 0 and finished.stdout.strip():
-                return finished.stdout
-        except (OSError, subprocess.SubprocessError):
-            pass
+    text = _pdftotext(path)
+    if text is not None:
+        return text
 
     try:
         import pypdf
@@ -112,6 +102,37 @@ def _read_pdf(path: Path) -> str:
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:  # noqa: BLE001 - pypdf raises a wide variety
         raise UnreadableSource(f"{path.name}: pypdf could not read it: {exc}") from exc
+
+
+def _pdftotext(path: Path) -> str | None:
+    """What `pdftotext` reads from the PDF, or None when it gave nothing to use.
+
+    The encoding is stated at both ends. Left unstated, poppler writes UTF-8, the pdftotext
+    of Xpdf writes Latin-1, and Python decodes with the locale, which on Windows is cp1252.
+    A closing curly quote is E2 80 9D in UTF-8 and 9D is unassigned in cp1252, so the
+    decode failed in the thread `subprocess` reads with, `stdout` came back as None, and
+    `.strip()` on it raised AttributeError past the `except` here. The literature chain
+    was reported as `gate-errored` and pypdf was never asked.
+
+    None for every way this can go wrong, so that the caller goes on to pypdf.
+    """
+    if not shutil.which("pdftotext"):
+        return None
+    try:
+        finished = subprocess.run(
+            ["pdftotext", "-layout", "-enc", "UTF-8", str(path), "-"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if finished.returncode != 0 or not (finished.stdout or "").strip():
+        return None
+    return finished.stdout
 
 
 def contains(haystack: str, needle: str) -> bool:

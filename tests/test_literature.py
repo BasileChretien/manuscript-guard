@@ -7,6 +7,11 @@ break to be reported.
 
 from __future__ import annotations
 
+import importlib.util
+import shutil
+import subprocess
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -19,6 +24,7 @@ from manuscript_guard.literature import (
     contains,
     normalise,
     read_source,
+    sources,
     states_value,
 )
 
@@ -239,6 +245,172 @@ def test_an_unsupported_format_says_what_to_do(tmp_path: Path) -> None:
     path.write_bytes(b"II*\x00")
     with pytest.raises(UnreadableSource, match="save the passage as .txt"):
         read_source(path)
+
+
+# ---------------------------------------------------------------- reading a PDF
+
+# In PDF's own octal escapes, \223 and \224 are the curly quotes of WinAnsi.
+CURLY_LINE = rb"The rate was \223high\224 at 7.2 per 1000."
+CURLY_TEXT = "The rate was “high” at 7.2 per 1000.\n"
+READ = 'The rate was "high" at 7.2 per 1000.'
+NOT_UTF8 = b"The rate was 7.2 \xff per 1000.\n"
+READ_NOT_UTF8 = "The rate was 7.2 \N{REPLACEMENT CHARACTER} per 1000."
+
+
+def one_page_pdf(line: bytes) -> bytes:
+    """A PDF of one page holding one line of text, small enough to write out here."""
+    stream = b"BT /F1 12 Tf 72 720 Td (" + line + b") Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    ]
+    body = b"%PDF-1.4\n"
+    offsets = []
+    for number, content in enumerate(objects, start=1):
+        offsets.append(len(body))
+        body += b"%d 0 obj\n" % number + content + b"\nendobj\n"
+    table = len(body)
+    body += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    body += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    body += b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1)
+    return body + b"startxref\n%d\n%%%%EOF\n" % table
+
+
+def stand_in_for_pdftotext(monkeypatch: pytest.MonkeyPatch, output: bytes) -> list[list[str]]:
+    """A program that writes `output` where pdftotext would run, on a cp1252 machine.
+
+    The child process is real, so the bytes are decoded by `subprocess` as they are in use
+    and not by a model of it. A call that names no encoding gets the one a Western European
+    Windows would choose. Returns the commands that were asked for.
+    """
+    real_run = subprocess.run
+    child = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write({output!r})"]
+    commands: list[list[str]] = []
+
+    def run(command, **options):
+        commands.append([str(part) for part in command])
+        if options.get("text") and "encoding" not in options:
+            options["encoding"] = "cp1252"
+        return real_run(child, **options)
+
+    monkeypatch.setattr(sources.shutil, "which", lambda name: name)
+    monkeypatch.setattr(sources.subprocess, "run", run)
+    return commands
+
+
+def no_pypdf(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "pypdf", None)
+
+
+def pypdf_that_reads(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    class Reader:
+        def __init__(self, _path: str) -> None:
+            self.pages = [types.SimpleNamespace(extract_text=lambda: text)]
+
+    monkeypatch.setitem(sys.modules, "pypdf", types.SimpleNamespace(PdfReader=Reader))
+
+
+@pytest.mark.skipif(
+    not shutil.which("pdftotext") and importlib.util.find_spec("pypdf") is None,
+    reason="neither pdftotext nor pypdf is installed",
+)
+def test_a_pdf_with_curly_quotes_is_read(tmp_path: Path) -> None:
+    """The PDF every publisher sends, read by whatever reader this machine has."""
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(one_page_pdf(CURLY_LINE))
+    assert read_source(path) == READ
+
+
+@pytest.mark.parametrize(
+    ("output", "read"),
+    [
+        (CURLY_TEXT.encode("utf-8"), READ),
+        (NOT_UTF8, READ_NOT_UTF8),
+    ],
+    ids=["utf-8", "not-utf-8"],
+)
+def test_pdftotext_is_read_as_utf8_whatever_the_locale(
+    output: bytes, read: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The call named no encoding, so Python decoded pdftotext's output with the locale.
+
+    On Windows that is cp1252. A closing curly quote is E2 80 9D in UTF-8 and 9D is
+    unassigned in cp1252, so the decode failed in the thread `subprocess` reads with,
+    `stdout` came back as None, and `.strip()` on it raised AttributeError past an `except`
+    that names two other errors. `check` reported "could not run: AttributeError: 'NoneType'
+    object has no attribute 'strip'" for any ledger entry whose source was such a PDF,
+    which is most PDFs, and pypdf was never tried.
+    """
+    commands = stand_in_for_pdftotext(monkeypatch, output)
+    no_pypdf(monkeypatch)
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(b"%PDF-1.4")
+
+    assert read_source(path) == read
+    (command,) = commands
+    assert command[command.index("-enc") + 1] == "UTF-8", (
+        "the pdftotext of Xpdf, which Git for Windows ships, writes Latin-1 unless asked"
+    )
+
+
+def finished(returncode: int, stdout: str | None) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess(["pdftotext"], returncode, stdout, "")
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        finished(0, None),
+        finished(0, " \n\x0c"),
+        finished(1, "Syntax Error: Couldn't find trailer dictionary"),
+        subprocess.TimeoutExpired("pdftotext", 120),
+        OSError("not a valid Win32 application"),
+    ],
+    ids=["no-output", "blank", "failed", "timed-out", "would-not-start"],
+)
+def test_a_pdftotext_that_gives_nothing_leaves_the_pdf_to_pypdf(
+    outcome, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Whatever goes wrong with the first reader, the second is asked before giving up."""
+
+    def run(*_args, **_options):
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(sources.shutil, "which", lambda name: name)
+    monkeypatch.setattr(sources.subprocess, "run", run)
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(b"%PDF-1.4")
+
+    pypdf_that_reads(monkeypatch, CURLY_TEXT)
+    assert read_source(path) == READ
+
+    no_pypdf(monkeypatch)
+    with pytest.raises(UnreadableSource, match="cannot read PDFs"):
+        read_source(path)
+
+
+def test_a_ledger_entry_with_a_pdf_source_is_verified(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same failure from where it was met: the gate did not run at all."""
+    stand_in_for_pdftotext(monkeypatch, CURLY_TEXT.encode("utf-8"))
+    no_pypdf(monkeypatch)
+    (project / "literature" / "sources" / "paper.pdf").write_bytes(b"%PDF-1.4")
+
+    def mutate(document):
+        entry = document["entries"][0]
+        entry.update(source_file="sources/paper.pdf", value=7.2, display="7.2", quote=READ)
+
+    edit_yaml(project / LEDGER, mutate)
+    report = chain_report(project)
+    assert report.ok, report.render(project)
+    assert report.counts["literature_verified"] == 2
 
 
 def test_normalise_is_idempotent() -> None:

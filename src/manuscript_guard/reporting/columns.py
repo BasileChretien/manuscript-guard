@@ -30,6 +30,9 @@ from manuscript_guard.reporting.transcribe import Item, RecipeError
 # "Study design    1    For each experiment, provide brief details ..."
 ITEM_LINE = re.compile(r"^(?P<topic>.{0,34}?)\s{2,}(?P<id>\d{1,2})\s{2,}(?P<text>\S.*)$")
 
+# How long pdftotext has for one page.
+TIMEOUT_SECONDS = 120
+
 
 @dataclass(frozen=True)
 class ColumnRecipe:
@@ -40,22 +43,51 @@ class ColumnRecipe:
 
 
 def page_text(path: Path, page: int) -> str:
+    """One page as `pdftotext -layout` lays it out, in UTF-8 or not at all.
+
+    The output was read as UTF-8 and never asked for in it. Poppler writes UTF-8 unasked;
+    the pdftotext of Xpdf, which Git for Windows puts on PATH, writes Latin-1, and there the
+    first accented letter on the page failed the decode. On Windows that left `stdout` as
+    None, which this returned, and the caller raised TypeError on it; elsewhere it was a
+    UnicodeDecodeError. Neither is a RecipeError, so `transcribe` ended in a traceback.
+
+    The bytes are decoded here, strictly. A checklist item with a replacement character in
+    it would pass the opening-clause check, which reads the same text, and be written into
+    a profile that is meant to be the published wording.
+
+    A pdftotext that does not start, or does not finish, is a RecipeError like the rest.
+    """
     if shutil.which("pdftotext") is None:
         raise RecipeError(
             "reading a column-laid-out PDF needs poppler's pdftotext; install it, or "
             "supply the checklist in another format"
         )
-    finished = subprocess.run(
-        ["pdftotext", "-layout", "-f", str(page), "-l", str(page), str(path), "-"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=120,
-        check=False,
-    )
+    pages = ["-f", str(page), "-l", str(page)]
+    try:
+        finished = subprocess.run(
+            ["pdftotext", "-layout", "-enc", "UTF-8", *pages, str(path), "-"],
+            capture_output=True,
+            timeout=TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RecipeError(
+            f"pdftotext did not finish page {page} of {path.name} in {TIMEOUT_SECONDS} seconds"
+        ) from exc
+    except OSError as exc:
+        raise RecipeError(f"pdftotext would not run on {path.name}: {exc}") from exc
     if finished.returncode != 0:
-        raise RecipeError(f"pdftotext failed on {path.name}: {finished.stderr.strip()[:200]}")
-    return finished.stdout
+        said = finished.stderr.decode("utf-8", errors="replace").strip()
+        raise RecipeError(f"pdftotext failed on {path.name}: {said[:200]}")
+    try:
+        text = finished.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RecipeError(
+            f"pdftotext was asked for UTF-8 and wrote something else for page {page} of "
+            f"{path.name} ({exc.reason}, at byte {exc.start}); try poppler's pdftotext, or "
+            f"supply the checklist in another format"
+        ) from exc
+    return text.replace("\r\n", "\n")
 
 
 def split_columns(text: str, at: int) -> tuple[str, str]:

@@ -3509,6 +3509,24 @@ Closed since, and why each mattered:
   return, shown to the user as a warning. The same JSON carries `additionalContext`, so the
   model is told either way. The reverse, a tool newer than its plugin, is silent, and so is
   a plugin never updated: nothing tells anyone to run `claude plugin update`.
+- **The skills are worded for any agent tool, and the test that keeps them so knows a list.**
+  The skills are in the open SKILL.md format, which other agent tools read as well as Claude
+  Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
+  CLI, Mistral Vibe, Kimi Code), a tool only one of them has, a plugin, the words "slash
+  command", `/manuscript-guard:`, one tool's instruction file or its `.claude` directory, and
+  when its frontmatter carries a field the Agent Skills specification does not define. It
+  matches on spelling, so it errs both ways. A tool that is not on the list passes, as does a
+  command typed as `/project-setup`, and wording that assumes one tool without naming it,
+  such as a step only that tool can carry out. ChatGPT, Copilot and Cursor are left off
+  because a skill may name them as subject matter (where a pasted artefact came from, what a
+  co-author used in Word), and model providers because a review panel may name where its
+  models come from; any of them used to mean the reader passes too. In the other direction, a
+  short list of phrases is taken out before the scan: Zotero's, Better BibTeX's, Word's or a
+  browser's plugin, "Anthropic's Claude", "Claude Opus", "Claude Sonnet", "Claude Haiku",
+  "Claude models" and a hyphenated model name ending in "-Codex". A model family named in
+  prose any other way fails, and has to be written as its identifier. Where a skill describes
+  a hook it says "where the hooks run", since an agent tool may have none. Read under Claude
+  Code only so far: no skill has been followed in a session of another tool.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a

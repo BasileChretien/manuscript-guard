@@ -58,8 +58,8 @@ What the emitter holds you to:
   `"12.3 (95% CI 10.1 to 14.9)"` as one value; publish the three numbers.
 
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
-`results-edited`, the plugin refuses the write, and `manuscript-guard verify` re-runs the
-analysis in a scratch copy and compares value by value.
+`results-edited`, the write guard refuses the edit where the hooks run, and
+`manuscript-guard verify` re-runs the analysis in a scratch copy and compares value by value.
 
 ## 2. Bind in the manuscript
 

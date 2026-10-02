@@ -3543,13 +3543,21 @@ Closed since, and why each mattered:
   0.158.0-alpha.2.1 on Windows, with no login and a scratch `CODEX_HOME`, from a checkout and
   from GitHub: `codex plugin marketplace add`, then `codex plugin add`, end with the plugin
   listed as installed and enabled at the manifest's version and every file of `plugin/`
-  copied. `codex plugin marketplace upgrade` then took that copy from 0.2.320 to 0.2.370
-  when `main` moved, with no second command. CI's `codex-plugin` job repeats the install on
-  each pull request, against 0.160.0 and the latest release. Not seen, because it needs a
-  login: a session in which a skill loads or a hook fires, and so whether Codex gives a
-  plugin's hooks `CLAUDE_PLUGIN_ROOT`, as its documentation says and as the stale-tool notice
-  needs. If Codex stops reading Claude Code's manifests, the CI job fails, and the plugin
-  then needs manifests of Codex's own (`.codex-plugin/plugin.json` and
+  copied. `codex plugin marketplace upgrade` then took the copy installed from GitHub from
+  0.2.320 to 0.2.370 when `main` moved, with no second command; a marketplace added from a
+  local path has no upgrade ("is not configured as a Git marketplace"). Codex's program also
+  carries an automatic upgrade of marketplaces. When it runs was not established, since the
+  `codex plugin` commands do not start it, so the plugin may move ahead of the pip package
+  unasked, which is what the stale-tool notice is for. CI's `codex-plugin` job repeats the
+  install on each pull request, from the checkout and not through GitHub, against 0.160.0
+  and the latest release. When a release of Codex changes its listing, its cache layout or a
+  command, the `latest` leg goes red on every open pull request, whatever that pull request
+  changes: the thing to do then is to read what changed and move the test and the pinned
+  release, not to look for the fault in the pull request. Not seen, because it needs a
+  login: a session in which a skill loads, a hook is trusted or a hook fires, and so whether
+  Codex gives a plugin's hooks `CLAUDE_PLUGIN_ROOT`, as its documentation says and as the
+  stale-tool notice needs. If Codex stops reading Claude Code's manifests, the CI job fails,
+  and the plugin then needs manifests of Codex's own (`.codex-plugin/plugin.json` and
   `.agents/plugins/marketplace.json`). The install needs the `codex` command, which the
   desktop app on its own may not put on `PATH`.
 - **The package and the plugin are one release with one number.** `pyproject.toml`,

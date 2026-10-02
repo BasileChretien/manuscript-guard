@@ -120,7 +120,8 @@ Verified 2026-08-03 on the author's machine.
   Word writes for an edit, rather than guessing: a move test that moved the whole `<w:p>`
   with its bookmark passed for months, and Word never makes that edit. Selection-based
   `Cut`/`Paste` borrows the clipboard; save and restore it.
-- **`codex plugin` can be tried with no login and without touching the real installation**:
+- **`codex plugin` can be tried with no login and without touching the real installation**
+  (verified 2026-10-02 with Codex 0.158):
   set `CODEX_HOME` to an empty folder, then `codex plugin marketplace add <checkout>` and
   `codex plugin add manuscript-guard@manuscript-guard`. `tests/test_plugin.py` does this where
   `codex` is on `PATH`, and CI's `codex-plugin` job always. A Codex binary may be on the

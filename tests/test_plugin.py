@@ -192,31 +192,94 @@ def test_codex_installs_the_plugin_from_the_manifests_claude_code_reads(tmp_path
     for name in shipped:
         assert (copy / name).read_bytes() == (PLUGIN / name).read_bytes(), name
 
-    listed = codex_plugin(home, "list")
-    (line,) = [line for line in listed.stdout.splitlines() if line.startswith(selector)]
-    assert "installed" in line and "enabled" in line and manifest["version"] in line, line
+    # The listing as data, not the table printed for a person, whose columns a release may
+    # move.
+    listed = codex_plugin(home, "list", "--json")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    (entry,) = [p for p in json.loads(listed.stdout)["installed"] if p["pluginId"] == selector]
+    assert entry["installed"] is True and entry["enabled"] is True, entry
+    assert entry["version"] == manifest["version"], entry
+
+
+# One hooks.json serves Claude Code and Codex, so it holds only what both read. Of what each
+# offers, that is these events and these fields of a handler (Codex's hooks page and Claude
+# Code's, read 2026-10-02): each tool has more of both, which the other would not know.
+SHARED_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart"}
+SHARED_FIELDS = {"type", "command", "timeout", "statusMessage"}
+# Both count a timeout in seconds. The longest hook here is the submission check; a figure
+# far above it is taken for milliseconds.
+LONGEST_SECONDS = 180
+
+
+def hooks_file_problems(config: dict) -> list[str]:
+    """What in a hooks file one of the two agent tools would not read as the other does."""
+    problems: list[str] = []
+    if set(config) != {"hooks"}:
+        problems.append(f"top-level keys {sorted(config)}")
+    for event, groups in config.get("hooks", {}).items():
+        if event not in SHARED_EVENTS:
+            problems.append(f"event {event}")
+        for group in groups:
+            if set(group) - {"matcher", "hooks"}:
+                problems.append(f"group keys {sorted(group)}")
+            names = set(group.get("matcher", "").split("|"))
+            for hook in group["hooks"]:
+                handler = hook.get("command", "").split()[-1:]
+                if set(hook) - SHARED_FIELDS or hook.get("type") != "command":
+                    problems.append(f"{handler}: fields {sorted(hook)}")
+                if not 0 < hook.get("timeout", 60) <= LONGEST_SECONDS:
+                    problems.append(f"{handler}: timeout {hook.get('timeout')}")
+                # Claude Code edits with `Write` and `Edit`. Codex edits with `apply_patch`
+                # and matches it under either of those names. Both run a shell as `Bash`.
+                if handler in (["guard-write"], ["after-edit"]) and not {"Edit", "Write"} <= names:
+                    problems.append(f"{handler}: matcher {group.get('matcher')!r}")
+                if handler == ["guard-submission"] and names != {"Bash"}:
+                    problems.append(f"{handler}: matcher {group.get('matcher')!r}")
+    return problems
 
 
 def test_the_hooks_file_holds_only_what_both_tools_read():
-    """One hooks.json serves Claude Code and Codex. Codex has these three events, reads these
-    four fields of a handler, with the timeout in seconds, and matches its one editing tool,
-    `apply_patch`, under the names `Edit` and `Write` (its hooks page, read 2026-10-02)."""
     config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    assert set(config) == {"hooks"}
-    assert set(config["hooks"]) <= {"PreToolUse", "PostToolUse", "SessionStart"}
+    assert hooks_file_problems(config) == []
+    handlers = {
+        hook["command"].split()[-1]
+        for groups in config["hooks"].values()
+        for group in groups
+        for hook in group["hooks"]
+    }
+    assert handlers == set(HANDLERS), "the cases below are about these four"
+
+
+@pytest.mark.parametrize(
+    ("handler", "change", "said"),
+    [
+        ("guard-submission", {"matcher": "bash"}, "matcher 'bash'"),
+        ("guard-submission", {"matcher": "Shell"}, "matcher 'Shell'"),
+        ("guard-submission", {"matcher": "Write"}, "matcher 'Write'"),
+        ("guard-write", {"matcher": "Write"}, "matcher 'Write'"),
+        ("after-edit", {"matcher": "Edit"}, "matcher 'Edit'"),
+        ("guard-write", {"matcher": "apply_patch"}, "matcher 'apply_patch'"),
+        ("after-edit", {"timeout": 500}, "timeout 500"),
+        ("session-start", {"timeout": 60000}, "timeout 60000"),
+        ("guard-write", {"async": True}, "fields"),
+        ("session-start", {"commandWindows": "x"}, "fields"),
+    ],
+)
+def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):
+    """Each of these passed while the check asked only that a file-reading hook's matcher
+    held `Edit` or `Write`, and that a timeout was at most 600."""
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     for groups in config["hooks"].values():
         for group in groups:
-            assert set(group) <= {"matcher", "hooks"}, group
             for hook in group["hooks"]:
-                assert set(hook) <= {"type", "command", "timeout", "statusMessage"}, hook
-                assert hook["type"] == "command"
-                assert 0 < hook.get("timeout", 60) <= 600, hook
-            reads_a_file = any(
-                hook["command"].split()[1] in {"guard-write", "after-edit"}
-                for hook in group["hooks"]
-            )
-            if reads_a_file:
-                assert {"Edit", "Write"} & set(group["matcher"].split("|")), group["matcher"]
+                if hook["command"].split()[-1] == handler:
+                    if "matcher" in change:
+                        group.update(change)
+                    else:
+                        hook.update(change)
+    problems = hooks_file_problems(config)
+    assert problems and all(handler in problem for problem in problems), problems
+    assert said in problems[0], problems
 
 
 # ---------------------------------------------------------------- what the skills tell you to run

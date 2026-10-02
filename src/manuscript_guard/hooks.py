@@ -60,6 +60,11 @@ SUBMISSION_MARKERS = re.compile(
     re.IGNORECASE,
 )
 
+# What a refusal tells its reader to run. Spelled with `--stage`, because `--submission` is
+# one of the markers above: told to run `check --submission`, an agent was refused again with
+# the same lines and never saw the list. Both spellings give one verdict.
+FULL_CHECK = "manuscript-guard check --stage submission"
+
 
 def _read_event() -> dict:
     try:
@@ -237,7 +242,7 @@ def guard_submission(payload: dict) -> int:
         f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
         + "\n".join(lines)
         + more
-        + "\n\nRun `manuscript-guard check --submission` for the full list.",
+        + f"\n\nRun `{FULL_CHECK}` for the full list.",
     )
 
 

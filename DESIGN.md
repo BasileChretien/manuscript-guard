@@ -980,6 +980,16 @@ that the hook fires on every Bash call, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+**A refusal names a command the guard lets through.** The refusal shows the first eight
+failures and says what to run for the rest. It used to say `manuscript-guard check
+--submission`, and `--submission` is one of the guard's markers wherever it stands in a
+command. An agent that did as it was told was refused again with the same eight lines, and
+could not reach the list. The refusal now names `manuscript-guard check --stage submission`,
+which the guard does not match and which gives the same verdict, the stage being resolved
+before any gate runs. `tests/test_hooks.py` takes each command a refusal names, sends it back
+through the guard in the project that was refused, and runs it to see that every failure is
+listed. A refusal added later is added to that test.
+
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
@@ -3451,6 +3461,19 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **Where the hooks run, an agent cannot run `check --submission` in a project that fails
+  it.** The submission guard matches `--submission` anywhere in a shell command, so it holds
+  `manuscript-guard check --submission` and `manuscript-guard review --submission` to the
+  submission check as it holds a copy of the `.docx`, though both only read. Its refusal
+  names `manuscript-guard check --stage submission`, which it does not match. `review` has no
+  second spelling: in a failing project an agent sees the review at submission standard
+  through `check --stage submission`, or not at all. The README and the submission-pack and
+  review-panel skills still write `check --submission`, which costs an agent one refusal
+  before it is told the other spelling. Letting a command through when it is a `check` and
+  nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
+  `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
+  mistake in it lets a submission through, which is what the guard exists to stop. An author
+  typing in a terminal is not affected, since a hook sees only the agent's commands.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

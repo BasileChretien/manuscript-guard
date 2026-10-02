@@ -11,6 +11,9 @@ fail loudly if it stopped holding:
 from __future__ import annotations
 
 import json
+import re
+import shlex
+import shutil
 from pathlib import Path
 
 import pytest
@@ -219,8 +222,6 @@ def test_ordinary_commands_are_not_touched(command: str, capsys) -> None:
 
 
 def test_a_failing_submission_blocks_the_command(project: Path, capsys) -> None:
-    import shutil
-
     shutil.rmtree(project / "review")
     result = run(
         "guard-submission",
@@ -229,7 +230,76 @@ def test_a_failing_submission_blocks_the_command(project: Path, capsys) -> None:
     )
     assert decision(result) == "deny"
     assert "submission check" in reason(result)
-    assert "check --submission" in reason(result)
+    assert "check --stage submission" in reason(result)
+
+
+def _named_commands(text: str) -> list[str]:
+    """Each `manuscript-guard` command a message tells its reader to run."""
+    return re.findall(r"`(manuscript-guard\s[^`]*)`", text)
+
+
+def _refused(project: Path, capsys) -> str:
+    """What the guard says of a submission from `project`, which it has to refuse."""
+    result = run(
+        "guard-submission",
+        {"tool_input": {"command": "manuscript-guard submit"}, "cwd": str(project)},
+        capsys,
+    )
+    assert decision(result) == "deny"
+    return reason(result)
+
+
+def _without_a_review(project: Path) -> None:
+    shutil.rmtree(project / "review")
+
+
+# Each way the submission guard refuses, by what is done to the project to bring it about. A
+# refusal added to the guard is added here, so that the command it names is held to the rule.
+REFUSALS = {"a failing check": _without_a_review}
+
+
+@pytest.mark.parametrize("spoil", REFUSALS.values(), ids=REFUSALS.keys())
+def test_a_refusal_names_a_command_the_guard_lets_through(spoil, project: Path, capsys) -> None:
+    """The refusal ended "Run `manuscript-guard check --submission` for the full list", and
+    `--submission` is one of the guard's own markers. An agent that did as it was told was
+    refused again with the same lines, and could never see the list."""
+    spoil(project)
+    named = _named_commands(_refused(project, capsys))
+    assert named, "a refusal says what to run next"
+    for command in named:
+        event = {"tool_input": {"command": command}, "cwd": str(project)}
+        assert run("guard-submission", event, capsys) is None, command
+        # An agent in the folder above writes it this way, which no prefix rule sees through.
+        assert SUBMISSION_MARKERS.search(f"cd example && {command}") is None, command
+
+
+def test_the_command_a_refusal_names_lists_every_failure(
+    project: Path, capsys, monkeypatch
+) -> None:
+    """The refusal shows eight failures and says where the rest are. Plain `check` is let
+    through as well, but at the stage this project declares it reports none of what the guard
+    refused for: the command named has to be the submission check."""
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.cli import main as cli
+
+    _without_a_review(project)
+    path = project / "manuscript" / "main.md"
+    loose = ", ".join(str(number) for number in range(4321, 4331))
+    path.write_text(path.read_text(encoding="utf-8") + f"\n\nUnbound: {loose}.\n", encoding="utf-8")
+    report, *_ = _run_gates(project, submission=True)
+
+    refusal = _refused(project, capsys)
+    hidden = [failure for failure in report.failures if failure.message not in refusal]
+    assert hidden, "more failures than the refusal shows"
+
+    (command,) = _named_commands(refusal)
+    monkeypatch.chdir(project)
+    assert cli(shlex.split(command)[1:]) == 1
+    listed = capsys.readouterr().out
+    assert [failure.message for failure in report.failures if failure.message not in listed] == []
+    # Below submission a finding that does not bind yet is still printed, as a note. The
+    # count is what tells the submission check from a check at the stage the project is at.
+    assert f"\n{len(report.failures)} failing, " in listed
 
 
 def test_a_passing_submission_is_not_blocked(project: Path, capsys) -> None:

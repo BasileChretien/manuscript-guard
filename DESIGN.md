@@ -914,7 +914,12 @@ decides whether a call stays on this machine is the host. The host itself is let
 digits, dots and hyphens, or a bracketed address, with nothing encoded: urllib decodes a
 percent-encoded host before it connects, so `api.openai.com%2e%65%76%69%6c.example` was
 shown to the author as written and reached `api.openai.com.evil.example`. The host the
-statement names has to be the host that is connected to.
+statement names has to be the host that is connected to, and that is now checked as such:
+the host shown is compared with the host urllib derives from the address, and no `%` is
+taken in it. Listing the shapes that mislead missed one twice; the second was a `%` after
+an address in brackets, which reads as a zone id. A host that ends in a number is an
+address and must be four numbers with dots, since `2130706433` and `0x7f.1` are each read
+by the resolver as an address the text does not show.
 
 **Keys.** A key is read from its environment variable when a call is made and goes into one
 request header. It is not in the request body, so the body can be printed and digested. It

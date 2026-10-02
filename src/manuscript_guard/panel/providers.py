@@ -18,6 +18,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -124,6 +125,38 @@ def _review(paper: Mapping) -> Mapping:
     return review if isinstance(review, Mapping) else {}
 
 
+def _as_connected(url: str) -> str | None:
+    """The host and port urllib will connect to for this address, as it derives them."""
+    try:
+        return urllib.request.Request(url).host
+    except ValueError:
+        return None
+
+
+def _plain_host(hostname: str) -> bool:
+    """Whether a host is a name, or an address written the one way everybody reads alike.
+
+    A host that ends in a number is an address, and must be four numbers with dots:
+    `2130706433`, `0x7f.1` and `127.1` are each read by the resolver as an address the
+    text does not show.
+    """
+    if ":" in hostname:
+        try:
+            ipaddress.IPv6Address(hostname)
+        except ValueError:
+            return False
+        return True
+    if HOSTNAME.fullmatch(hostname) is None:
+        return False
+    last = hostname.rstrip(".").rsplit(".", 1)[-1].lower()
+    if last.isdigit() or last.startswith("0x"):
+        try:
+            ipaddress.IPv4Address(hostname)
+        except ValueError:
+            return False
+    return True
+
+
 def _checked_url(name: str, url: object) -> str:
     """A URL a key and a manuscript may be sent to, without its trailing slash."""
     if not isinstance(url, str) or not url.strip():
@@ -159,20 +192,17 @@ def _checked_url(name: str, url: object) -> str:
         )
     # And the host has to be written as the host that is connected to. urllib decodes a
     # percent-encoded host before it connects, so `api.openai.com%2e%65%76%69%6c.example`
-    # was shown to the author as written and reached `api.openai.com.evil.example`.
-    if ":" in parts.hostname:
-        try:
-            ipaddress.IPv6Address(parts.hostname)
-        except ValueError:
-            written = False
-        else:
-            written = True
-    else:
-        written = HOSTNAME.fullmatch(parts.hostname) is not None
-    if not written:
+    # was shown to the author as written and reached `api.openai.com.evil.example`. Listing
+    # the shapes that do this missed one twice (a `%` after the address in brackets reads
+    # as a zone id), so the rule is held directly: the host shown must be the host urllib
+    # derives from the address, and no `%` is taken in it at all.
+    if "%" in parts.netloc or _as_connected(url) != parts.netloc or not _plain_host(
+        parts.hostname
+    ):
         raise ConfigError(
-            f"review.providers.{name}: the host in base_url must be written in letters, "
-            "digits, dots and hyphens, or as a bracketed address, with nothing encoded"
+            f"review.providers.{name}: the host in base_url must be written as it is "
+            "connected to: letters, digits, dots, hyphens and underscores, or an address "
+            "(four numbers with dots, or IPv6 in brackets), with nothing encoded"
         )
     if parts.query or parts.fragment or "?" in url or "#" in url:
         raise ConfigError(

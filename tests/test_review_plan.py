@@ -792,6 +792,20 @@ def link_directory(link: Path, target: Path) -> None:
             pytest.skip(f"cannot make a directory link here: {exc}")
 
 
+def test_a_manuscript_file_that_is_a_link_to_the_review_is_refused(mixed: Path) -> None:
+    """A file link is followed by every Python's directory walk, so this runs the refusal on
+    Linux and macOS, where the directory link below is not walked into. Windows needs a
+    privilege to make a file link and skips; the junction below covers it there."""
+    (mixed / "review" / "notes.md").write_text(f"{MARK}\n", encoding="utf-8")
+    link = mixed / "manuscript" / "notes.md"
+    try:
+        link.symlink_to(mixed / "review" / "notes.md")
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"cannot make a file link here: {exc}")
+    with pytest.raises(PlanError, match="notes.md"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
 def test_a_link_inside_the_manuscript_does_not_bring_in_the_response(mixed: Path) -> None:
     """`manuscript/old` as a link to `revision/`. Whether the directory walk follows a link
     depends on the Python version; either way the response is not sent."""

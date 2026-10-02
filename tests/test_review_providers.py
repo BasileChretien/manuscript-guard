@@ -923,6 +923,18 @@ def test_a_character_that_cannot_be_written_to_a_record_is_refused(escape: str) 
         "https://llm.example.org/v1#",
         "https://llm.example.org/v1?",
         "https://llm.example.org/v1#frag",
+        # Found by the check of that fix: a `%` in a bracketed host reads as a zone id to
+        # `ipaddress`, and urllib decodes what follows it.
+        "https://[2001:db8::%31]/v1",
+        "https://[2001:db8::0%3a1234:5678]/v1",
+        "https://[::1%32]/v1",
+        "https://[fe80::1%25eth0]:8443/v1",
+        "http://[::%31]:8080/v1",
+        # A number the resolver reads as an address the statement does not show.
+        "https://2130706433/v1",
+        "https://0x7f.1/v1",
+        "https://127.1/v1",
+        "https://0177.0.0.1/v1",
     ],
 )
 def test_a_host_is_written_as_the_host_that_is_connected_to(url: str) -> None:
@@ -936,9 +948,33 @@ def test_a_host_is_written_as_the_host_that_is_connected_to(url: str) -> None:
         )
 
 
+def test_the_host_shown_is_the_host_urllib_connects_to_for_every_provider() -> None:
+    """The rule itself, held for the presets and for a range of addresses that are taken:
+    what the statement names is what `urllib` derives from the address it is given."""
+    import urllib.request
+
+    taken = [
+        "https://LLM.Example.org/v1",
+        "https://llm.example.org:8443/v1",
+        "https://llm.example.org./v1",
+        "https://my_service.internal/api/v1.2/~me/%20x",
+        "http://[::1]:8080/v1",
+        "https://[2001:DB8::1]/v1",
+        "https://203.0.113.7:8443/v1",
+        "http://localhost:11434/v1",
+    ]
+    found = [model("lab/m", providers={"lab": {"base_url": url}}) for url in taken]
+    found += [providers.Model(preset, "m") for preset in providers.PRESETS.values()]
+    assert len(found) > 15
+    for one in found:
+        request = urllib.request.Request(client.endpoint(one), data=b"{}")
+        assert request.host == one.provider.host, one.provider.base_url
+
+
 @pytest.mark.parametrize(
     "url, host",
     [
+        ("https://10.0.0.5/v1", "10.0.0.5"),
         ("https://LLM.Example.org/v1", "LLM.Example.org"),
         ("https://llm.example.org:8443/v1/", "llm.example.org:8443"),
         ("https://llm.example.org./v1", "llm.example.org."),

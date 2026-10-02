@@ -298,8 +298,8 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
     ],
 )
 def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):
-    """Six of these passed while the check asked only that a file-reading hook's matcher held
-    `Edit` or `Write`, and that a timeout was at most 600: the first five and the timeout of
+    """Eight of these passed while the check asked only that a file-reading hook's matcher held
+    `Edit` or `Write`, and that a timeout was at most 600: the first seven and the timeout of
     500. The other four it caught already, and has to go on catching."""
     config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     for groups in config["hooks"].values():

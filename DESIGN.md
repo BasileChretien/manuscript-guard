@@ -1124,6 +1124,18 @@ the no-op path against roughly 400 ms through the full CLI.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
 
+**A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
+input as UTF-8, and a name outside ASCII goes as its own bytes, with no `\u` escape. Python on
+Windows opens standard input in the ANSI code page, so a handler that read it as text was
+handed `manuscript/méthodes.md` as `mÃ©thodes.md`, a file that does not exist.
+`hooks._event_text` reads the bytes and decodes them itself. Bytes that are not UTF-8 are read
+in the encoding standard input was opened with, as they were before, and a byte that encoding
+cannot read is replaced, so that the event is kept: an event read as nothing guards nothing,
+and a letter lost from a file's own name leaves the folder and the extension by which the
+write guard knows a generated file. The answer needed no change. `json.dumps` escapes every
+character outside ASCII, so what the hook prints reads the same in the code page it is written
+in and in the UTF-8 the tool reads it as, and a test holds it to ASCII.
+
 **A hook blocks only what is unambiguous.** Writing a machine-written results file is always
 wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced this way.
 
@@ -3696,13 +3708,49 @@ Closed since, and why each mattered:
   script that was changed and moved out of `analysis/` gets no reminder, since it is read
   where it now is; and a file updated by one hunk and moved away by a later one is still
   named where it no longer is.
-- **On Windows a file name outside ASCII may be misread by every hook.** The event is read
-  from standard input in the system's ANSI code page, which is what Python gives a pipe, and
-  not the console's (so `chcp 65001` changes nothing). If the agent tool writes it as UTF-8
-  without escapes, which was not captured from Claude Code or from Codex,
-  `manuscript/méthodes.md` is not recognised: the note after an edit says nothing, and a
-  refusal prints the name garbled. Found in review on 2026-10-02 and true before it; with
-  `PYTHONUTF8=1` set the name is read. Not fixed yet.
+- **On Windows every hook misread a name outside ASCII.** The event was read from standard
+  input as text, which on Windows is the system's ANSI code page, what Python gives a pipe,
+  and not the console's (so `chcp 65001` changed nothing), and the tools write it as UTF-8
+  without escapes. Under code page 1252 the note after an edit said nothing for
+  `manuscript/méthodes.md`, a refusal named `results/donnÃ©es.json`, and a results directory
+  moved by `paths:` to `résultats` was not guarded. A project kept anywhere under an accented
+  folder, and a home folder named after its owner is enough, had no hook at all: the write
+  guard found no project above the file, and the session start and the submission guard none
+  at their `cwd`. Under code page 932 a name in Japanese was misread in the same way, and
+  where it named a folder the whole event could be lost: the last byte of `語` begins a
+  two-byte character there and takes the backslash that follows it, and what is left is not
+  JSON. Found by the reviewer of #124 on 2026-10-02 with bytes piped by hand, and seen the
+  same day in a session of Claude Code 2.1.286: the installed hook gave its note for
+  `methods.md` and none for `méthodes.md`, written one after the other. With `PYTHONUTF8=1`
+  set the name was read. Closed: the event is read as bytes and decoded as UTF-8 (see "A
+  hook reads its event as UTF-8"), and the tests start the hook as a tool does, on an edit
+  from Claude Code and on a patch from Codex, with neither `PYTHONUTF8` nor
+  `PYTHONIOENCODING` set, and once more with standard input forced into a code page so that
+  they fail on every platform if the reading comes back. What is known of the tools: a
+  `SessionStart` event of Claude Code 2.1.119, kept
+  by a hook that wrote its input to a file, holds the folder `thèse` with the two bytes
+  `c3 a8`. Codex was not run, which needs a login; its source builds each event with
+  `serde_json::to_string`, which escapes nothing outside ASCII, and writes those bytes to the
+  hook (`codex-rs/hooks/src/events/` and `engine/command_runner.rs`, read 2026-10-02 at
+  8a400e78). Still open: an event in
+  an encoding that is neither UTF-8 nor the one standard input has loses its letters outside
+  ASCII. Lost from the file's own name, the write guard still refuses, by folder and
+  extension and under a garbled name, and the note after an edit finds no file. Lost from a
+  folder above the project, or from a results directory moved by `paths:`, the file is not
+  guarded, as it was not before. Where Python opens standard input with `surrogateescape`,
+  as it does on Windows and under the C locale, a byte the encoding cannot read used to
+  become a lone surrogate and is now U+FFFD. On Windows that is another garbled name. Under
+  the C locale the surrogate named a file whose name on disk is not UTF-8, and U+FFFD names
+  none. A text in a code page that happens to be valid UTF-8 is read as UTF-8. And a name
+  sent in one Unicode normal form and written in `paper.yaml` or on disk in another was not
+  tried; macOS is where that would show.
+- **The submission guard says nothing about a project it cannot read.** Where
+  `check --submission` stops on an error of the project's own, a results file that is not
+  JSON for one, the gates raise before there is a finding. The hook takes that for an
+  unexpected failure, exits 0 in silence, and the command goes through. The session start is
+  silent there for the same reason. It follows from "a hook never breaks the session", but
+  that error is worded for the author, and the guard could refuse with it. Found in the review
+  of #130 on 2026-10-02 and true before it. Not decided, and not changed.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

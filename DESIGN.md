@@ -3570,6 +3570,20 @@ Closed since, and why each mattered:
   what the manuscript says it means is a judgement, and belongs to the review panels.
 - **Nothing checks that a stored source is the work the citekey names.** Saving the wrong
   PDF under the right name passes, provided the quote is in it.
+- **A PDF is read as its reader gives it, less a short table of foldings.** Curly quotes,
+  the dashes, the hyphens U+2010 and U+2011, the ellipsis and the ligatures fi, fl, ff, ffi
+  and ffl are folded before a quote is looked for. Anything else one reader spells out and
+  another does not is compared as it comes: a quote typed with "oe" is not found in a source
+  read as "œ". A quote copied from the source, which is what the hint asks for, is.
+- **An ellipsis set against a value hides it.** The ellipsis is folded to three full stops
+  and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
+  does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
+  it does.
+- **A minus sign in a PDF figure is not the hyphen in its sidecar.** A figure saved as PDF
+  with its text kept as text (matplotlib's `pdf.fonttype: 42`) holds U+2212 before a negative
+  tick, and a sidecar entry `"-1.0"` does not allow it: `figure-number-unbound`. Poppler's
+  `pdftotext` always read it so; the one from Xpdf wrote a hyphen until it was asked for
+  UTF-8 and now reads it the same. The entry has to hold the sign the figure does.
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
@@ -4377,6 +4391,10 @@ Closed since, and why each mattered:
   column reader is not shaped for.
 - **ARRIVE's items are verified only at their opening clause**, for the reason above. It is
   the one profile whose tail text rests on the parser rather than on a check.
+- **ARRIVE's page is cut where poppler's `pdftotext` lays it out.** The one from Xpdf, which
+  Git for Windows puts on PATH, sets the two columns at other positions, the recipe's
+  `column_split` does not fit, and the transcription stops at `no items found on pages
+  (2,)` without a word about which `pdftotext` it wants.
 - **The TRIPOD adherence assessment form is not transcribed.** It is an appraisal
   instrument rather than a reporting checklist, and answering it is a different task from
   the one G5 performs.

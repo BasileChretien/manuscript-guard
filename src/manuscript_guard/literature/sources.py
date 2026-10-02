@@ -39,6 +39,15 @@ _EQUIVALENT = {
     " ": " ",
     "ﬁ": "fi",
     "ﬂ": "fl",
+    # What the pdftotext of Xpdf spelt out itself while it wrote Latin-1. Asked for UTF-8 it
+    # hands them over as they are, and so does poppler for a ligature a font names through
+    # its ToUnicode map. Without these a typed "effect" is not found in a source that says it.
+    "\N{LATIN SMALL LIGATURE FF}": "ff",
+    "\N{LATIN SMALL LIGATURE FFI}": "ffi",
+    "\N{LATIN SMALL LIGATURE FFL}": "ffl",
+    "\N{HYPHEN}": "-",
+    "\N{NON-BREAKING HYPHEN}": "-",
+    "\N{HORIZONTAL ELLIPSIS}": "...",
 }
 
 
@@ -114,7 +123,9 @@ def _pdftotext(path: Path) -> str | None:
     `.strip()` on it raised AttributeError past the `except` here. The literature chain
     was reported as `gate-errored` and pypdf was never asked.
 
-    None for every way this can go wrong, so that the caller goes on to pypdf.
+    None when pdftotext is absent, fails, times out or gives nothing, so that the caller
+    goes on to pypdf. Output that is not UTF-8 although it was asked for is kept, with each
+    byte that cannot be read replaced: a quote the damage does not touch still verifies.
     """
     if not shutil.which("pdftotext"):
         return None

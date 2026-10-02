@@ -202,6 +202,30 @@ def test_typographic_differences_do_not_break_a_true_quote(stored: str, quoted: 
     assert contains(stored, quoted)
 
 
+FF = "\N{LATIN SMALL LIGATURE FF}"
+FFI = "\N{LATIN SMALL LIGATURE FFI}"
+FFL = "\N{LATIN SMALL LIGATURE FFL}"
+
+
+@pytest.mark.parametrize(
+    ("stored", "quoted"),
+    [
+        (f"the coe{FFI}cient of the e{FF}ect", "the coefficient of the effect"),
+        (f"the result was ba{FFL}ing", "the result was baffling"),
+        ("drug\N{HYPHEN}induced injury", "drug-induced injury"),
+        ("a non\N{NON-BREAKING HYPHEN}inferiority margin", "a non-inferiority margin"),
+        ("and so on\N{HORIZONTAL ELLIPSIS} at 7.2", "and so on... at 7.2"),
+    ],
+    ids=["ff-ffi", "ffl", "hyphen", "non-breaking-hyphen", "ellipsis"],
+)
+def test_what_a_pdf_reader_may_or_may_not_fold_is_folded_here(stored: str, quoted: str) -> None:
+    """Writing Latin-1, the pdftotext of Xpdf spelt these out itself; asked for UTF-8 it hands
+    them over as they are, as poppler does for a ligature a font names through its ToUnicode
+    map. Only fi and fl were folded here, so a typed quote holding "effect" or "coefficient"
+    was refused against a source that says exactly that."""
+    assert contains(stored, quoted)
+
+
 def test_a_genuinely_different_quote_is_not_forgiven() -> None:
     assert not contains("The prevalence was 12.4%.", "The prevalence was 12.5%.")
 
@@ -411,6 +435,40 @@ def test_a_ledger_entry_with_a_pdf_source_is_verified(
     report = chain_report(project)
     assert report.ok, report.render(project)
     assert report.counts["literature_verified"] == 2
+
+
+# A line of an article set by pdfLaTeX with no ToUnicode map, as Xpdf writes it in UTF-8.
+LIGATURES = (
+    f"In the treated group the e{FF}ect on e{FFI}cacy was di{FF}erent: the coe{FFI}cient "
+    "was 0.42 (95% CI 0.21\N{EN DASH}0.63).\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("quote", "found"),
+    [
+        ("the effect on efficacy was different: the coefficient was 0.42", True),
+        ("the effect on efficacy was similar: the coefficient was 0.42", False),
+    ],
+    ids=["true-quote", "false-quote"],
+)
+def test_a_typed_quote_is_found_in_a_pdf_set_with_ligatures(
+    quote: str, found: bool, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asking pdftotext for UTF-8 took away the folding Xpdf did while it wrote Latin-1, and
+    the true quote was reported `quote-not-in-source` where `main` had verified it."""
+    stand_in_for_pdftotext(monkeypatch, LIGATURES.encode("utf-8"))
+    no_pypdf(monkeypatch)
+    (project / "literature" / "sources" / "paper.pdf").write_bytes(b"%PDF-1.4")
+
+    def mutate(document):
+        entry = document["entries"][0]
+        entry.update(source_file="sources/paper.pdf", value=0.42, display="0.42", quote=quote)
+
+    edit_yaml(project / LEDGER, mutate)
+    report = chain_report(project)
+    assert ("quote-not-in-source" not in codes(report)) is found, report.render(project)
+    assert report.counts["literature_verified"] == (2 if found else 1)
 
 
 def test_normalise_is_idempotent() -> None:

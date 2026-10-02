@@ -52,7 +52,9 @@ It never overwrites an existing file, so the second form adds manuscript-guard t
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
 an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was, without a word:
 add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` to
-`.gitignore`, by hand. And `results/` belongs to manuscript-guard: every `.json` directly
+`.gitignore`, by hand. An existing `AGENTS.md` is left too, and where it does not mention
+manuscript-guard `init` prints the rules to add to it. And `results/` belongs to
+manuscript-guard: every `.json` directly
 in it is read as a results fragment and fails the schema if it is not one, and `verify`
 empties the whole directory in its scratch copy. If the analysis already keeps its own
 output there, either move that output, or set `paths: {results: <dir>}` in `paper.yaml`
@@ -70,6 +72,7 @@ literature/            ledger.yaml, attested.yaml, references.bib, sources/
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
 figures/  review/  build/
 .gitattributes         * text=auto eol=lf
+AGENTS.md              the rules of the project, for any agent working in it
 ```
 
 **Keep the `.gitattributes`.** Every digest is byte-exact, and a checkout that turns line

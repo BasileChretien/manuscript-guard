@@ -34,15 +34,20 @@ pandoc is on PATH. Set it to the same value locally to run the suite as CI does;
 missing pandoc only skips the tests that need it.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
-`./plugin`). **Every pull request that changes `src/` or `plugin/` takes the next shared
-version number and bumps four places together:** `version` in `pyproject.toml`, `__version__`
-in `src/manuscript_guard/__init__.py`, and `version` in both `plugin/.claude-plugin/plugin.json`
-and the marketplace entry. The coordinating session assigns the numbers; ask it for one, and
-do not pick your own. Without a bump `claude plugin update` reports the old plugin as
-current, and `pip install --upgrade` finds nothing newer for the package. `tests/test_version.py`
-holds the four equal and `tests/test_plugin.py` the two manifests. When the installed tool is
-older than the plugin, its session-start hook (`manuscript-guard-hook`) warns once and blocks
-nothing.
+`./plugin`). The package and the plugin share one version number, written in four places:
+`version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
+`version` in both `plugin/.claude-plugin/plugin.json` and the marketplace entry. **A pull
+request does not touch the version: leave those four files exactly as `main` has them.** The
+coordinating session raises the number on `main` after merges, in a pull request that does
+nothing else. Do not ask it for a number and do not pick one. If a merge of `main` conflicts
+in those files, take `main`'s side in all four. Until 2026-10-02 every pull request that
+changed `src/` or `plugin/` bumped the four places itself: with a dozen open at once two took
+the same number, which git merges without a conflict, and one that waited for its review
+fell below `main`. The number still has to move, on `main`: without a bump `claude plugin
+update` reports the old plugin as current, and `pip install --upgrade` finds nothing newer for
+the package. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
+manifests. When the installed tool is older than the plugin, its session-start hook
+(`manuscript-guard-hook`) warns once and blocks nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 

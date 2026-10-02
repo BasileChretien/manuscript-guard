@@ -57,8 +57,10 @@ SUBMISSION_MARKERS = re.compile(
     # Moving a submission somewhere: an action verb near the pack or a built document.
     r"\b(?:zip|tar|scp|rsync|cp|copy|mv|move|curl|wget|mail|sendmail|git\s+push|"
     # The same verbs as PowerShell and Windows spell them, since on Windows an agent's shell
-    # is PowerShell. `Copy-Item` and `Move-Item` are held by `copy` and `move` above.
-    r"compress-archive|send-mailmessage|invoke-webrequest|invoke-restmethod|iwr|irm|"
+    # is PowerShell. `Copy-Item` and `Move-Item` are held by `copy` and `move` above. Not
+    # `irm`, the short name of `Invoke-RestMethod`: it is also the French for MRI, and stands
+    # in file names.
+    r"compress-archive|send-mailmessage|invoke-webrequest|invoke-restmethod|iwr|"
     r"start-bitstransfer|robocopy|xcopy)\b"
     r"[^\n]{0,120}?(?:\bsubmission\b|\.docx\b)",
     re.IGNORECASE,

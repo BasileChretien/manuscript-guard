@@ -134,7 +134,8 @@ def test_the_submission_guard_is_registered_for_every_tool_that_runs_a_shell_com
         for group in config["hooks"]["PreToolUse"]
         if any(hook["command"].split()[-1] == "guard-submission" for hook in group["hooks"])
     ]
-    # Any other character and both tools read the matcher as a regular expression instead.
+    # The characters both tools read as a list of exact names. Codex reads any other as a
+    # regular expression; Claude Code allows a few more (`-`, a space, `,`) before it does.
     assert re.fullmatch(r"[A-Za-z0-9_|]+", matcher), matcher
     assert set(matcher.split("|")) == SHELL_TOOLS
 

@@ -991,8 +991,8 @@ reviews deleted, `echo 'cp build/manuscript.docx elsewhere'` through the Bash to
 refused, and `Write-Output 'Copy-Item build\manuscript.docx elsewhere'` through the
 PowerShell tool was not. `tests/test_plugin.py` holds the matcher to the three names. The
 markers took the PowerShell and Windows spellings of the verbs they already had at the same
-time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest`, `Invoke-RestMethod` and
-their aliases `iwr` and `irm`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
+time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
+`Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
 `Move-Item` were held before, since `copy` and `move` stand in them as whole words.
 
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
@@ -3498,15 +3498,25 @@ Closed since, and why each mattered:
   the tool's own input, which that reference does not describe; no event from either was
   captured, for want of a login in a headless session. What was seen in a session is that a
   matcher of `Bash` does not fire for the PowerShell tool. Not held, in PowerShell: the
-  aliases `cpi` and `mi`, left out because so short a word before a `.docx` would be a false
-  alarm more often than a submission; and a .NET call that names no verb the guard knows,
-  such as `[IO.Compression.ZipFile]::CreateFromDirectory`. In any shell, the document has to
-  be named after the verb and on the same line: a path put in a variable beforehand is not
-  seen, nor is a command continued onto a second line before the path. The false alarms are
-  of the kind the guard already had: in a
-  project that fails the submission check, `Invoke-WebRequest` saving a journal's template
-  as a `.docx` is refused as `curl -o template.docx` is, and so is `robocopy` on a folder
-  whose name has the word submission in it.
+  aliases `cpi`, `mi` and `irm`, left out because so short a word before a `.docx` would be a
+  false alarm more often than a submission (`irm`, the short name of `Invoke-RestMethod`, is
+  also the French for MRI, and as a verb it had the guard refuse
+  `manuscript-guard import returned-IRM.docx`); and a .NET call that names no verb the guard
+  knows, such as `[IO.Compression.ZipFile]::CreateFromDirectory`. In any shell, the document
+  has to be named after the verb, on the same line and within 120 characters of it. So a
+  pipeline that names the document first is not held, and that is how PowerShell is usually
+  written: `Get-ChildItem build\*.docx | Copy-Item -Destination D:\out`. Nor is a path put in
+  a variable beforehand, a command continued onto a second line before the path, or a verb
+  whose other arguments fill the 120 characters, which PowerShell's named parameters do
+  sooner than a Unix command's: `Send-MailMessage` with `-From`, `-To`, `-Subject` and
+  `-Body` written out before `-Attachments build\manuscript.docx` is let through. The false
+  alarms are of the kind the guard already had: in a project that fails the submission
+  check, `Invoke-WebRequest` saving a journal's template as a `.docx` is refused as
+  `curl -o template.docx` is, and so are `robocopy` on a folder whose name has the word
+  submission in it and `iwr` on a journal's `submission-guidelines` page. Under Codex the
+  matcher is part of what a user trusted (`hook_hash` in
+  `codex-rs/hooks/src/engine/discovery.rs`, read 2026-10-02), so after this change of
+  matcher the guard is skipped there until the user reviews it again with `/hooks`.
 - **Under Codex the hooks are tested against its source, not in a session.** The handlers are
   tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
   as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a

@@ -229,7 +229,6 @@ def test_ordinary_commands_are_not_touched(command: str, capsys) -> None:
         r"Invoke-WebRequest -Uri https://journal.example/upload -InFile build\manuscript.docx",
         r"Invoke-RestMethod -Uri https://journal.example/upload -InFile build\manuscript.docx",
         r"iwr https://journal.example/upload -Method Post -InFile build\manuscript.docx",
-        r"irm https://journal.example/upload -Method Post -InFile build\manuscript.docx",
         r"Start-BitsTransfer -Source build\manuscript.docx -Destination \\server\share",
         r"robocopy build\submission \\server\share /E",
         r"xcopy build\submission \\server\share /E",
@@ -257,9 +256,44 @@ def test_submission_shaped_powershell_commands_are_recognised(command: str) -> N
         "manuscript-guard build --offline",
     ],
 )
-def test_ordinary_powershell_commands_are_not_touched(command: str, capsys) -> None:
+def test_ordinary_powershell_commands_are_not_touched(
+    command: str, project: Path, capsys
+) -> None:
+    """In a project that fails the submission check, so that a command taken for a
+    submission would be refused and the second assertion can fail."""
+    import shutil
+
+    shutil.rmtree(project / "review")
+    event = {"tool_name": "PowerShell", "tool_input": {"command": command}, "cwd": str(project)}
     assert SUBMISSION_MARKERS.search(command) is None
-    assert run("guard-submission", {"tool_input": {"command": command}}, capsys) is None
+    assert run("guard-submission", event, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard import returned-IRM.docx",
+        r'manuscript-guard import "C:\Users\me\Downloads\Article IRM relu.docx"',
+        r"python figures\irm-volumes.py; manuscript-guard build --offline; "
+        r"Start-Process build\manuscript.docx",
+        "python analysis/irm.py && manuscript-guard build --offline && open build/manuscript.docx",
+    ],
+)
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_a_file_named_for_an_mri_is_not_a_request_to_a_server(
+    tool: str, command: str, project: Path, capsys
+) -> None:
+    """`irm` is PowerShell's short name for `Invoke-RestMethod`, and IRM is the French for
+    MRI. Taken as a verb wherever it stood, it had the guard refuse the import of a
+    co-author's `returned-IRM.docx`, and a build that follows a script named `irm.py`, in a
+    project that fails the submission check: commands that passed before PowerShell's verbs
+    were added, under Bash too. So `irm` is not one of the verbs."""
+    import shutil
+
+    shutil.rmtree(project / "review")
+    event = {"tool_name": tool, "tool_input": {"command": command}, "cwd": str(project)}
+    assert SUBMISSION_MARKERS.search(command) is None
+    assert run("guard-submission", event, capsys) is None
 
 
 @pytest.mark.parametrize("tool", ["Bash", "PowerShell", "Monitor"])

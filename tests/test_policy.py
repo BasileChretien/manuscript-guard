@@ -212,6 +212,29 @@ def test_a_gate_that_crashes_is_reported_rather_than_dropped(project: Path, monk
     assert not report.ok
     failure = next(f for f in report.failures if f.code == "gate-errored")
     assert "RuntimeError: boom" in failure.message
+    assert "a bug in manuscript-guard" in failure.hint
+
+
+def test_a_file_a_gate_cannot_read_is_named_and_not_called_a_bug(project: Path) -> None:
+    """A review record saved as UTF-16. The gate did not run, and the reason is the file's own.
+
+    It read "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0", with no
+    file named, under a hint that began with a bug in the tool.
+    """
+    from manuscript_guard import cli
+
+    record = project / "review" / "round-1" / "biostatistician.yaml"
+    record.write_bytes(record.read_text(encoding="utf-8").encode("utf-16"))
+
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert failure.gate == "G11"
+    assert failure.message == (
+        f"G11 could not run: {record}: cannot read as UTF-8: the file is UTF-16. "
+        "Save the file as UTF-8."
+    )
+    assert "bug" not in failure.hint
+    assert "has not been checked by this gate" in failure.hint
 
 
 def test_a_deferred_finding_still_appears_in_the_output(tmp_path: Path) -> None:

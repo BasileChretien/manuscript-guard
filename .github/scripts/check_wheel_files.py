@@ -20,6 +20,10 @@ from pathlib import Path
 IMPORT_NAME = "manuscript_guard/"
 PACKAGE_DIR = "src/manuscript_guard"
 
+# Tracked outside the package and taken into it when the wheel is built (pyproject.toml,
+# force-include): where git has them, and where the wheel does.
+FORCED = {"plugin/skills/": "manuscript_guard/skills/"}
+
 
 def wheel_files(wheel: Path) -> set[str]:
     """The package's files in the wheel, as `manuscript_guard/...` (not the dist-info)."""
@@ -34,13 +38,20 @@ def wheel_files(wheel: Path) -> set[str]:
 def tracked_files(root: Path) -> set[str]:
     """What git tracks under the package, as `manuscript_guard/...` to match the wheel."""
     listed = subprocess.run(
-        ["git", "ls-files", "-z", "--", PACKAGE_DIR],
+        ["git", "ls-files", "-z", "--", PACKAGE_DIR, *(place.rstrip("/") for place in FORCED)],
         cwd=root,
         capture_output=True,
         check=True,
     ).stdout.decode("utf-8")
-    prefix = "src/"
-    return {name[len(prefix) :] for name in listed.split("\0") if name}
+    return {in_the_wheel(name) for name in listed.split("\0") if name}
+
+
+def in_the_wheel(name: str) -> str:
+    """Where a tracked file is expected in the wheel."""
+    for tracked, shipped in FORCED.items():
+        if name.startswith(tracked):
+            return shipped + name[len(tracked) :]
+    return name[len("src/") :]
 
 
 def compare(shipped: set[str], tracked: set[str]) -> tuple[list[str], list[str]]:

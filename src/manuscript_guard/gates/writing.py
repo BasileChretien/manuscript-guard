@@ -83,7 +83,7 @@ def check_writing(project: Project) -> Report:
 
     for path, text, prose in corpus:
         report = report.merge(_artefacts(rules, path, text, totals))
-        report = report.merge(_phrases(rules, path, prose, totals))
+        report = report.merge(_phrases(rules, path, text, prose, totals))
         report = report.merge(_vague(rules, path, text, prose, totals))
 
     report = report.merge(_density(rules, corpus, totals["words"]))
@@ -96,7 +96,17 @@ def check_writing(project: Project) -> Report:
     )
 
 
-def _line_of(text: str, offset: int) -> int:
+def _line_of(text: str, match: re.Match[str]) -> int:
+    """The line of the file the matched words begin on.
+
+    `text` is the file as read, never the prose the rules match in: masking keeps every
+    offset and blanks the line ends inside a comment, a listing and the front matter, so a
+    count in the prose fell short by each of those lines, and a phrase under a comment was
+    reported on the comment. And the words, not the match: a rule that opens with `^\\s*`
+    matches from the first blank line above a paragraph, and its finding was put there.
+    """
+    found = match.group(0)
+    offset = match.start() + len(found) - len(found.lstrip())
     return text.count("\n", 0, offset) + 1
 
 
@@ -116,7 +126,7 @@ def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
                     code="model-artefact",
                     message=f"{match.group(0)[:60]!r} — {rule['why']}",
                     path=path,
-                    line=_line_of(text, match.start()),
+                    line=_line_of(text, match),
                     context=_context(text, match.start(), match.end()),
                     hint="remove it; this cannot appear in a submitted manuscript",
                 )
@@ -124,7 +134,7 @@ def _artefacts(rules: Rules, path: Path, text: str, totals: dict) -> Report:
     return report
 
 
-def _phrases(rules: Rules, path: Path, prose: str, totals: dict) -> Report:
+def _phrases(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> Report:
     report = Report()
     for rule in rules.phrases:
         for seen, match in enumerate(re.finditer(rule["pattern"], prose)):
@@ -143,7 +153,7 @@ def _phrases(rules: Rules, path: Path, prose: str, totals: dict) -> Report:
                     severity=WARN,
                     message=f"{rule['id']}: {rule['why']}",
                     path=path,
-                    line=_line_of(prose, match.start()),
+                    line=_line_of(text, match),
                     context=_context(prose, match.start(), match.end()),
                     hint="rewrite, or keep it deliberately",
                 )
@@ -169,7 +179,7 @@ def _vague(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> Rep
                     severity=WARN,
                     message=f"{match.group(0)!r} with no citation nearby",
                     path=path,
-                    line=_line_of(prose, match.start()),
+                    line=_line_of(text, match),
                     context=_context(prose, match.start(), match.end()),
                     hint="cite the studies, or name who argues it and cite them",
                 )

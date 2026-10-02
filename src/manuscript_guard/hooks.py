@@ -247,11 +247,14 @@ def _relocated(root: Path) -> dict[str, str]:
     a `paper.yaml` saved in another encoding is the half-configured project a hook has to
     survive, and must not be what switches the guard off.
     """
-    from manuscript_guard.contracts import load_project
+    from manuscript_guard.contracts import ContractError, load_project
 
     try:
         project, _report = load_project(root)
-    except (ValueError, OSError):
+    except (ContractError, ValueError, OSError):
+        # `ContractError` is what such a file raises now, in a sentence for `check` to print.
+        # It was `UnicodeDecodeError`, a `ValueError`, and a paper.yaml that does not parse
+        # had always raised this one: there the guard was switched off.
         return {}
     moved: dict[str, str] = {}
     for name in ("results", "build"):
@@ -287,8 +290,8 @@ def _project_root(payload: dict) -> Path | None:
 
     The folder is the one the event names, and the search goes upwards from it only. A
     command sent from above a project that enters it, `cd paper && manuscript-guard submit`,
-    finds none and is not checked. That was so before this function, when the same error
-    ended in silence, and it is recorded under Known gaps.
+    finds none here. The submission guard then looks at what the command names
+    (`_named_projects`); the session start says nothing.
     """
     from manuscript_guard.contracts import ContractError, find_root
 
@@ -305,6 +308,111 @@ def _cannot_check(error: Exception) -> str:
     exits 2. A YAML error runs over several lines, so each is set in.
     """
     return "\n".join(f"  {line}" for line in str(error).splitlines())
+
+
+# The words of a shell command, for the one thing asked of each below: whether it is a path.
+# A string in quotes is one word, whatever it holds. Outside quotes a word ends at white space
+# and at what a shell or PowerShell puts between two commands, around a value or between the
+# items of a list. Nothing is run and nothing expanded: this is not how a shell reads a
+# command, only enough to find the paths written out in one.
+_WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=,{}`"'])+)""")
+
+# `/c/Users/x`, which is how Git Bash writes `C:/Users/x`, and Claude Code runs its commands
+# in Git Bash on Windows. Not `/s` with nothing after it, which is a switch: read as a drive
+# it sent the hook to look at `S:`, and a drive may be a share that takes its time.
+_GIT_BASH_DRIVE = re.compile(r"/([A-Za-z])(/.*)")
+
+# No path anyone keeps a paper under is longer, and no folder deeper. A word past either is
+# not walked: each step is a look on disk at a longer path, and `..` exists at every step,
+# so 5000 of them in one word took 34 s.
+_LONGEST_PATH = 4096
+_DEEPEST_PATH = 100
+
+
+def _words(command: str) -> list[str]:
+    """Each thing in a command that may be a path, once, in the order written.
+
+    A word is read as it stands, and where it was written in a way that hides a path, as
+    that path too:
+
+    - in quotes, `=` is not a separator, so `"--files-from=paper/list.txt"` is also read
+      from after its last `=`;
+    - curl writes a file to upload after an `@`, `file=@paper/build/manuscript.docx`, so a
+      word is also read from after its last `@`.
+
+    Outside quotes a backslash and a space are a space in a name, `my\\ paper`, as a shell
+    reads them, and that is the only reading. To PowerShell a backslash ends a folder's
+    name, so `.\\paper\\ D:\\sent` is two paths, and it is not found. Reading the pieces as
+    well found it, and twice took a piece of a file's name for the project beside it:
+    `paper` in `cp paper\\ draft.docx`, then in `cp Edited\\ paper\\ \\(JD\\).docx`.
+    """
+    words: list[str] = []
+    for double, single, bare in _WORDS.findall(command):
+        quoted = double or single
+        words += [quoted, quoted.rpartition("=")[2]] if quoted else [bare.replace("\\ ", " ")]
+    read = (reading for word in words for reading in (word, word.rpartition("@")[2]))
+    return list(dict.fromkeys(reading for reading in read if reading))
+
+
+def _spelt(word: str, cwd: Path) -> Path | None:
+    """Where a word points if it is a path, as far along it as there is anything on disk.
+
+    None for an option, for a word too long or too deep to be a path, and for a folder on
+    another machine: asking Windows whether `//host/share` exists waits for the host, and a
+    hook that fires on a shell command cannot wait.
+    """
+    if word.startswith("-") or len(word) > _LONGEST_PATH:
+        return None
+    if word.startswith("~"):
+        word = os.path.expanduser(word)
+    elif os.name == "nt" and (drive := _GIT_BASH_DRIVE.fullmatch(word)):
+        word = f"{drive[1]}:{drive[2]}"
+    path = Path(word)
+    if path.drive.startswith(("\\\\", "//")) or len(path.parts) > _DEEPEST_PATH:
+        return None
+    # Downwards from the folder the command was sent from, or from the root the word names,
+    # and no further than what exists: a word that is no path costs one look.
+    here, parts = cwd, path.parts
+    if path.anchor:
+        path = cwd / path  # on Windows a root with no drive is the root of this drive
+        here, parts = Path(path.anchor), path.parts[1:]
+    for part in parts:
+        if not (here / part).exists():
+            break
+        here = here / part
+    return here
+
+
+def _named_projects(command: str, cwd: Path) -> list[Path]:
+    """The projects a command names: each one that a word of the command is a path into.
+
+    Asked only where no project is at the folder the command was sent from, which is where
+    an agent started at the root of a repository stands, with the paper in a folder below.
+    `cd paper && manuscript-guard submit`, `manuscript-guard submit paper` and
+    `scp paper/build/manuscript.docx host:` each name it; a file that is not written yet
+    names the project its folder is in.
+
+    A project the command does not name is not looked for. The same folder is where every
+    other command of the repository is sent from, and a paper somewhere below that fails
+    must not stop a copy of an unrelated `.docx`. So a path held in a variable, a glob for
+    the folder itself, or a command inside a quoted string names nothing (Known gaps).
+
+    The folder itself and the ones above it are left out: `_project_root` looked there.
+    """
+    from manuscript_guard.contracts import ContractError, find_root
+
+    cwd = cwd.resolve()
+    looked_in = {cwd, *cwd.parents}
+    roots: list[Path] = []
+    for word in _words(command):
+        try:
+            found = _spelt(word, cwd)
+            if found is None or found.resolve() in looked_in:
+                continue
+            roots.append(find_root(found if found.is_dir() else found.parent))
+        except (ContractError, OSError, ValueError):
+            continue  # a word that is no path, or a path with no project above it
+    return list(dict.fromkeys(roots))
 
 
 # --------------------------------------------------------------------------- handlers
@@ -416,7 +524,11 @@ def _analysis_note(path: Path) -> str | None:
 
 
 def guard_submission(payload: dict) -> int:
-    """Before anything that looks like a submission, hold the project to that standard."""
+    """Before anything that looks like a submission, hold the project to that standard.
+
+    The project is the one at the folder the command was sent from. Where there is none, it
+    is each project the command names.
+    """
     # Codex puts the text of a patch in the field a shell command arrives in. A patch that
     # writes the word `--submission` into a file is an edit, which the write guard reads.
     if payload.get("tool_name") == PATCH_TOOL:
@@ -426,35 +538,68 @@ def guard_submission(payload: dict) -> int:
         return 0
 
     root = _project_root(payload)
-    if root is None:  # no project at the folder the command was sent from, or above it
+    if root is not None:
+        refusals = [_submission_refusal(root)]
+    else:
+        # One named project that the tool itself fails on must not cost the others theirs.
+        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
+        refusals = [
+            _or_nothing(lambda named: _submission_refusal(named, named_from=cwd), named)
+            for named in _named_projects(command, cwd)
+        ]
+    refusals = [refusal for refusal in refusals if refusal]
+    if not refusals:
         return 0
+    return _deny("PreToolUse", "\n\n".join(refusals))
 
+
+def _check_from(cwd: Path, root: Path) -> str:
+    """The submission check as a command that finds the project at `root` from `cwd`.
+
+    The folder is written last. The guard's markers want a verb before the word
+    `submission`, and `copy` is one: after the word, a folder called `paper-copy` does not
+    make the command submission-shaped, and before it, as in `cd paper-copy && ...`, it does.
+    """
+    try:
+        folder = root.relative_to(cwd)
+    except ValueError:  # not below the folder the command was sent from
+        folder = root
+    return f'{FULL_CHECK} "{folder.as_posix()}"'
+
+
+def _submission_refusal(root: Path, *, named_from: Path | None = None) -> str | None:
+    """Why a submission from this project is refused, or None where its check passes.
+
+    A project found because the command names it is said to be so, and the check the refusal
+    names carries the project's folder: from `named_from`, the folder the command was sent
+    from, the check alone finds no project.
+    """
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.contracts import ContractError
 
+    which = root.name if named_from is None else f"{root.name}, which this command names"
+    check = FULL_CHECK if named_from is None else _check_from(named_from, root)
     try:
-        report, project, _stage, _deferred = _run_gates(root, submission=True)
+        report, _project, _stage, _deferred = _run_gates(root, submission=True)
     except ContractError as error:
         # Not an unexpected failure: a file of the project's own cannot be parsed, so no gate
         # ran. Left to `dispatch` this ended in silence and the command went through, from a
         # project in which `check --submission` exits 2.
-        return _deny(
-            "PreToolUse",
-            f"manuscript-guard cannot check {root.name}, so nothing in it has been held to "
+        return (
+            f"manuscript-guard cannot check {which}, so nothing in it has been held to "
             f"the submission standard:\n\n{_cannot_check(error)}\n\n"
-            f"Fix that, then run `{FULL_CHECK}` on its own.",
+            f"Fix that, then run `{check}` on its own."
         )
     if report.ok:
-        return 0
+        return None
 
     lines = [f"  {f.code}: {f.message}" for f in report.failures[:8]]
     more = f"\n  (+{len(report.failures) - 8} more)" if len(report.failures) > 8 else ""
-    return _deny(
-        "PreToolUse",
-        f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
+    return (
+        f"{len(report.failures)} submission check(s) failing in {which}:\n"
         + "\n".join(lines)
         + more
-        + "\n\nRun `manuscript-guard check --submission` for the full list.",
+        + f"\n\nRun `{check}` on its own for the full list."
     )
 
 

@@ -1,0 +1,56 @@
+schema: manuscript-guard/abbreviations/1
+
+# Short forms G14 does not ask a manuscript to define.
+#
+# Short on purpose. Which abbreviations may stand undefined is a journal's decision and a
+# field's habit: "CI" after a percentage is left alone by some journals and expanded by
+# others, and "PCR" is a word to a molecular biologist and not to a health economist. A long
+# list here would decide that for every field at once, and be wrong for most of them. So
+# this holds only what is read as a word or a name in general English, or as a unit, and a
+# project adds its own under `language: known_abbreviations:` in paper.yaml.
+#
+# An entry hides every other meaning of its letters, so each is here for the meaning a
+# manuscript most often gives it. `AD`, `BC`, `AM` and `PM` were here as eras and times of
+# day and were taken out: in clinical prose they are Alzheimer's disease, breast cancer
+# and particulate matter far more often. `GMT` went the same way, for the geometric mean
+# titre. `US` and `PDF` stay, and hide ultrasound and the probability density function.
+#
+# Not listed, because they are read from elsewhere: the names G2 already treats as names
+# (`data/terms.yaml` and the project's `terms:`), the reporting guidelines the toolkit has
+# a recipe for, and the ones the project declares.
+
+known:
+  # Countries and unions
+  - UK
+  - US
+  - USA
+  - EU
+  - UN
+
+  # Time
+  - UTC
+
+  # Molecules every reader of science takes for words
+  - DNA
+  - RNA
+  - mRNA
+
+  # Things a data-availability statement names
+  - DOI
+  - URL
+  - PDF
+
+  # Ordinary English
+  - OK
+
+  # Unit symbols with two capitals together: an SI prefix on hertz, pascal, becquerel or
+  # watt hour. `MW` is not here: it is megawatt and molecular weight.
+  - MHz
+  - GHz
+  - THz
+  - MPa
+  - GPa
+  - MBq
+  - GBq
+  - MWh
+  - GWh

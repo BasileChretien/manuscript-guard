@@ -6,7 +6,7 @@ guarantee lives here; the Claude Code plugin layered on top only helps an author
 """
 
 # One number with pyproject.toml, plugin.json and the marketplace entry: see tests/test_version.py.
-__version__ = "0.2.415"
+__version__ = "0.2.417"
 
 from manuscript_guard.findings import Finding, Report
 

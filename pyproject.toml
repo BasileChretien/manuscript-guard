@@ -8,7 +8,7 @@ name = "manuscript-guard"
 # and as `manuscript_guard.__version__`; tests/test_version.py holds the four equal. The
 # plugin's skills call this tool, and `pip install --upgrade` decides on this number, so a
 # plugin bump that leaves it behind ships skills to a tool that cannot be upgraded to match.
-version = "0.2.415"
+version = "0.2.417"
 description = "Make every number in a scientific manuscript traceable to its source."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,7 +30,10 @@ dependencies = ["PyYAML>=6.0", "jsonschema>=4.0"]
 # changed nothing, which teaches everyone to ignore CI.
 # matplotlib is not a dependency of the toolkit. It is here because the test suite builds
 # the worked example, and the example's figure script draws with it.
-dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7"]
+# hatchling is the build backend. It is here so that the test which builds a wheel, to see
+# that it carries the skills, can do so without the network; where it is absent that test
+# is skipped.
+dev = ["pytest>=7.0", "ruff==0.16.1", "matplotlib>=3.7", "hatchling"]
 
 [project.scripts]
 manuscript-guard = "manuscript_guard.cli:main"
@@ -51,6 +54,13 @@ packages = ["src/manuscript_guard"]
 # copy. Only a source checkout worked. Belt and braces: hatchling ignores VCS-ignored files,
 # and .gitignore excludes generated profiles by path from the repository root.
 artifacts = ["src/manuscript_guard/profiles/**/*.yaml"]
+
+# The skills have one home, plugin/skills, which is where Claude Code and Codex install them
+# from. The wheel takes the same files, so that `manuscript-guard install-skills` can copy
+# them for an agent tool that reads a folder of skills and has no plugin. Nothing under src/
+# holds a second copy: the package finds them here in a checkout (skillcopy.shipped).
+[tool.hatch.build.targets.wheel.force-include]
+"plugin/skills" = "manuscript_guard/skills"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

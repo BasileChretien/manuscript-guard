@@ -15,6 +15,10 @@ a version nobody will read, and both of those are decisions for a person.
 
 from __future__ import annotations
 
+import contextlib
+import os
+import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -24,6 +28,11 @@ VERDICTS = ("pass", "minor-revision", "major-revision", "reject")
 #: of it. Counted in bytes of UTF-8, which is what those limits count.
 MAX_READER_NAME = 120
 FIGURE_VERDICTS = ("pass", "concerns")
+#: How long one writer waits for another to finish with a panel file, and how old a lock
+#: has to be before it is taken for one a writer left behind when it died. Writing a panel
+#: takes milliseconds.
+LOCK_WAIT_SECONDS = 30.0
+LOCK_STALE_SECONDS = 120.0
 
 
 class RecordError(Exception):
@@ -34,6 +43,51 @@ class RecordError(Exception):
 class Written:
     path: Path
     panel: Path | None
+
+
+@contextlib.contextmanager
+def panel_lock(panel: Path) -> Iterator[None]:
+    """Hold a panel file for one writer while it is read, changed and written back.
+
+    Several models' readings are filed by several processes at the same moment, and each
+    adds its reader to the panel. With nothing between them, six writers at once left the
+    panel naming two, three or five of the six readers, and the gate does not read a reading
+    the panel does not name. The lock is a file beside the panel, made with exclusive
+    create, which every file system this runs on does atomically.
+    """
+    lock = panel.with_name(panel.name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            pass
+        except PermissionError:
+            # Windows, while another writer is removing its lock.
+            pass
+        try:
+            age = time.time() - lock.stat().st_mtime
+        except OSError:
+            continue
+        if age > LOCK_STALE_SECONDS:
+            with contextlib.suppress(OSError):
+                lock.unlink()
+            continue
+        if time.monotonic() > deadline:
+            raise RecordError(
+                f"{panel.name} is being written by another manuscript-guard, or one that "
+                f"stopped part way: {lock.name} has been there for {age:.0f} s. Nothing was "
+                "written. Run the command again, or delete that file if nothing else is "
+                "running"
+            )
+        time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            lock.unlink()
 
 
 def _yaml_dump(document: dict) -> str:
@@ -148,6 +202,7 @@ def write_review(
     from manuscript_guard.gates.review import (
         file_digests,
         manuscript_digest,
+        panel_path,
         reading_path,
         reading_slug,
     )
@@ -175,17 +230,19 @@ def write_review(
 
     today = today or date.today()
     path = reading_path(project, round_number, reviewer, reading)
+    exists = RecordError(
+        f"{path.name} already exists in round {round_number}. If the manuscript has "
+        f"changed since, re-read it and record the new reading as a further round rather "
+        f"than restamping this one — the digest is the only thing separating 'somebody "
+        f"read this version' from 'somebody read a version'"
+    )
     if path.exists():
-        raise RecordError(
-            f"{path.name} already exists in round {round_number}. If the manuscript has "
-            f"changed since, re-read it and record the new reading as a further round rather "
-            f"than restamping this one — the digest is the only thing separating 'somebody "
-            f"read this version' from 'somebody read a version'"
-        )
+        raise exists
 
-    panel = _ensure_panel(project, round_number, reviewer, remit, today)
-    if reading:
-        _name_reader(panel, reviewer, reading)
+    with panel_lock(panel_path(project, round_number)):
+        panel = _ensure_panel(project, round_number, reviewer, remit, today)
+        if reading:
+            _name_reader(panel, reviewer, reading)
 
     document = {
         "schema": "manuscript-guard/review/1",
@@ -203,13 +260,18 @@ def write_review(
     document["findings"] = []
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "# Findings go below, each with an id, a severity and the finding itself. An empty\n"
-        "# list is a reviewer who found nothing, which is a claim in its own right.\n"
-        + _yaml_dump(document),
-        encoding="utf-8",
-        newline="\n",
-    )
+    try:
+        # Exclusive create. Two calls for one reader at the same moment both found no file
+        # above, and the second to write replaced the first: a record re-stamped.
+        with open(path, "x", encoding="utf-8", newline="\n") as handle:
+            handle.write(
+                "# Findings go below, each with an id, a severity and the finding itself. "
+                "An empty\n"
+                "# list is a reviewer who found nothing, which is a claim in its own right.\n"
+                + _yaml_dump(document)
+            )
+    except FileExistsError:
+        raise exists from None
     return Written(path=path, panel=panel)
 
 

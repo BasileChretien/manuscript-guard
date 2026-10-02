@@ -19,7 +19,13 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.gates.review import panel_path, panels, round_dir
+from manuscript_guard.gates.review import (
+    panel_path,
+    panels,
+    reading_path,
+    reading_slug,
+    round_dir,
+)
 from manuscript_guard.panel.client import ANTHROPIC_DEFAULT_MAX_TOKENS, build_body
 from manuscript_guard.panel.prompt import (
     FROM_PAPER,
@@ -36,7 +42,6 @@ from manuscript_guard.panel.providers import (
     configured_models,
     key_is_set,
     read_key,
-    slug,
 )
 
 DRY_RUN_DIR = ("review", "dry-run")
@@ -134,7 +139,7 @@ class Call:
     @property
     def filename(self) -> str:
         """The stem a reading by this model of this remit is filed under."""
-        return f"{self.reviewer}.{slug(self.model.reader)}"
+        return f"{self.reviewer}.{reading_slug(self.model.reader)}"
 
 
 @dataclass(frozen=True)
@@ -145,6 +150,10 @@ class Plan:
     reviewers: tuple[dict, ...]
     models: tuple[Model, ...]
     one_each: bool
+    #: Every reviewer and reader this round is read by, as (reviewer id, reader), whether
+    #: the reading is still to be asked for or already on file.
+    pairs: tuple[tuple[str, str], ...]
+    #: The pairs still to be asked for.
     calls: tuple[Call, ...]
     #: Pairs left out because their reading is already on file.
     already_filed: int
@@ -183,6 +192,18 @@ def _reviewers_of(path: Path) -> list[dict]:
     return list(document["reviewers"])
 
 
+def _read_in_full(project: Project, number: int, reviewer: dict) -> bool:
+    """Whether a remit has every reading its panel asks for: one from each reader it
+    names, or one from anybody when it names none."""
+    readers = reviewer.get("readers")
+    if not readers:
+        return _has_reported(round_dir(project, number), reviewer["id"])
+    return all(
+        reading_path(project, number, reviewer["id"], str(reader)).exists()
+        for reader in readers
+    )
+
+
 def next_round(project: Project) -> int:
     """The first round in which somebody has not reported, else the one after the last."""
     last = 0
@@ -192,8 +213,7 @@ def next_round(project: Project) -> int:
             reviewers = _reviewers_of(path)
         except PlanError:
             return number
-        directory = round_dir(project, number)
-        if not all(_has_reported(directory, reviewer["id"]) for reviewer in reviewers):
+        if not all(_read_in_full(project, number, reviewer) for reviewer in reviewers):
             return number
     return last + 1
 
@@ -219,11 +239,11 @@ def make_plan(
         )
     names: dict[str, str] = {}
     for model in models:
-        clash = names.setdefault(slug(model.reader), model.reader)
+        clash = names.setdefault(reading_slug(model.reader), model.reader)
         if clash != model.reader:
             raise PlanError(
                 f"{clash} and {model.reader} would be filed under one file name "
-                f"({slug(model.reader)}); list one of them"
+                f"({reading_slug(model.reader)}); list one of them"
             )
 
     number = next_round(project) if round_number is None else round_number
@@ -251,11 +271,11 @@ def make_plan(
             "review.max_output_tokens in paper.yaml is a whole number of tokens; "
             f"{cap!r} is not one"
         )
-    directory = round_dir(project, number)
+    paired = _pairs(reviewers, models, one_each)
     calls: list[Call] = []
     filed = 0
-    for reviewer, model in _pairs(reviewers, models, one_each):
-        if (directory / f"{reviewer['id']}.{slug(model.reader)}.yaml").exists():
+    for reviewer, model in paired:
+        if reading_path(project, number, reviewer["id"], model.reader).exists():
             filed += 1
             continue
         body = build_body(model, system_text(reviewer), material.user, max_output_tokens=cap)
@@ -268,6 +288,7 @@ def make_plan(
         reviewers=reviewers,
         models=models,
         one_each=one_each,
+        pairs=tuple((reviewer["id"], model.reader) for reviewer, model in paired),
         calls=tuple(calls),
         already_filed=filed,
         max_output_tokens=cap,

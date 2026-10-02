@@ -551,10 +551,15 @@ def test_a_local_model_is_said_to_stay_on_this_machine(project: Path, capsys, no
     assert "localhost:11434" in out and "this machine" in out
 
 
-def test_sending_is_not_in_this_version(mixed: Path, capsys, no_network) -> None:
-    """Refused in words rather than half done: this release shows what a run would send."""
+def test_a_run_nobody_agreed_to_sends_nothing(
+    mixed: Path, capsys, monkeypatch, no_network
+) -> None:
+    """Under a test nobody is at a terminal to be asked. `tests/test_review_run.py` holds
+    what a run does once it has its yes."""
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setenv("MISTRAL_API_KEY", KEY)
     assert main(["review", str(mixed), "--run", "--round", "2"]) == 2
-    assert "--dry-run" in capsys.readouterr().err
+    assert "--yes" in capsys.readouterr().err
 
 
 def test_dry_run_without_run_is_refused(mixed: Path, capsys) -> None:

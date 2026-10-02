@@ -413,3 +413,90 @@ def test_naming_a_reader_without_recording_a_review_is_refused(
     assert main(["review", str(unreviewed), "--reading", reader, *others]) == 2
     assert "--record" in capsys.readouterr().err
     assert not (unreviewed / "review").exists()
+
+
+# ---------------------------------------------------------------- several writers at once
+#
+# Found by the last check of #128. Several models' readings filed by several processes at
+# the same moment is what the multi-provider panel is for, and the panel file was read,
+# changed and written back with nothing to stop two writers doing it together.
+
+
+def test_readings_filed_at_the_same_moment_all_reach_the_panel(unreviewed: Path) -> None:
+    """Six `review --record --reading` calls started together each wrote its record, and the
+    panel ended up listing two, three or five of the six readers. The gate does not read a
+    reading the panel does not name."""
+    import subprocess
+    import sys
+
+    write_review(loaded(unreviewed), "statistics", verdict="pass", remit="the analysis")
+    readers = [f"reader-{number}" for number in range(6)]
+    started = [
+        subprocess.Popen(
+            [sys.executable, "-m", "manuscript_guard.cli", "review", str(unreviewed), "--record",
+             "statistics", "--reading", reader, "--verdict", "pass"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        for reader in readers
+    ]
+    for process in started:
+        out, err = process.communicate(timeout=300)
+        assert process.returncode == 0, err.decode(errors="replace")
+
+    panel = read_structured(unreviewed / "review" / "panel-1.yaml")
+    assert sorted(panel["reviewers"][0]["readers"]) == readers
+    report = check_review(loaded(unreviewed))
+    assert "reading-unnamed" not in codes(report)
+    assert report.counts["review_readings"] == 7
+    assert not list((unreviewed / "review").glob("*.lock")), "no lock is left behind"
+
+
+def test_a_lock_left_by_a_writer_that_died_is_taken_over(unreviewed: Path) -> None:
+    import os
+    import time
+
+    (unreviewed / "review").mkdir()
+    lock = unreviewed / "review" / "panel-1.yaml.lock"
+    lock.write_text("", encoding="utf-8")
+    long_ago = time.time() - 3600
+    os.utime(lock, (long_ago, long_ago))
+    written = write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
+    assert written.path.exists() and not lock.exists()
+
+
+def test_a_panel_another_writer_holds_is_waited_for_and_then_refused_in_words(
+    unreviewed: Path, monkeypatch
+) -> None:
+    from manuscript_guard import record
+
+    (unreviewed / "review").mkdir()
+    lock = unreviewed / "review" / "panel-1.yaml.lock"
+    lock.write_text("", encoding="utf-8")
+    monkeypatch.setattr(record, "LOCK_WAIT_SECONDS", 0.3)
+    with pytest.raises(RecordError, match="panel-1.yaml.lock"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
+    assert lock.exists(), "another writer's lock is not removed"
+    assert not (unreviewed / "review" / "round-1").exists()
+
+
+def test_a_record_that_appears_while_this_one_is_being_written_is_not_replaced(
+    unreviewed: Path, monkeypatch
+) -> None:
+    """Two calls for one reader at once both found no file. The second to write replaced the
+    first, which is a record re-stamped."""
+    from manuscript_guard import record
+
+    target = unreviewed / "review" / "round-1" / "statistics.yaml"
+    ensure = record._ensure_panel
+
+    def and_somebody_files_first(*args, **kwargs):
+        panel = ensure(*args, **kwargs)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("filed by somebody else\n", encoding="utf-8")
+        return panel
+
+    monkeypatch.setattr(record, "_ensure_panel", and_somebody_files_first)
+    with pytest.raises(RecordError, match="already exists"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
+    assert target.read_text(encoding="utf-8") == "filed by somebody else\n"

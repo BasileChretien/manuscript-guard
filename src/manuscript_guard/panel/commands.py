@@ -106,26 +106,16 @@ def run_panel(
     round_number: int | None,
     one_each: bool,
     dry_run: bool,
+    yes: bool = False,
     environ: Mapping[str, str] | None = None,
 ) -> int:
-    """Say what a run of the panel would send, and to whom. This version sends nothing."""
-    from manuscript_guard.panel.plan import (
-        AS_TEXT,
-        PlanError,
-        describe,
-        dry_run_dir,
-        make_plan,
-        write_dry_run,
-    )
+    """Have a round of the panel read by the models in `review.models`.
 
-    if not dry_run:
-        print(
-            "manuscript-guard: this version shows what a run would send and sends nothing. "
-            "Add --dry-run to see it; sending the panel to the providers comes in a later "
-            "release.",
-            file=sys.stderr,
-        )
-        return 2
+    The same statement is printed whether or not anything is sent: which files go to which
+    host, and how many calls that is. A dry run stops there. A run then needs a yes, typed
+    at a terminal or given as `--yes`, and without one sends nothing and writes nothing.
+    """
+    from manuscript_guard.panel.plan import PlanError, describe, make_plan
 
     project, contract = load_project(start)
     # What a request says about the paper is read from paper.yaml, so a file its schema
@@ -155,6 +145,13 @@ def run_panel(
     if not plan.calls:
         print("Every reading of this round is already on file, so there is nothing to send.")
         return 0
+    if dry_run:
+        return _dry_run(plan, project)
+    return _send(plan, project, yes, environ)
+
+
+def _dry_run(plan, project) -> int:
+    from manuscript_guard.panel.plan import AS_TEXT, dry_run_dir, write_dry_run
 
     written = write_dry_run(plan, project)
     where = _shown(dry_run_dir(plan, project), project.root)
@@ -168,4 +165,102 @@ def run_panel(
     return 0
 
 
-__all__ = ["list_providers", "run_panel"]
+def interactive() -> bool:
+    """Whether somebody is there to be asked."""
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _agreed(plan, hosts: str) -> bool:
+    """Ask, and take nothing but the word yes for an answer."""
+    calls = f"{len(plan.calls)} call{'' if len(plan.calls) == 1 else 's'}"
+    try:
+        typed = input(f"Send these {calls} to {hosts}? Type yes to send: ")
+    except EOFError:
+        return False
+    return typed.strip().lower() == "yes"
+
+
+def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
+    from manuscript_guard.panel.run import (
+        REFUSED_DIR,
+        missing_keys,
+        providers_of,
+        run_plan,
+        write_panel,
+    )
+    from manuscript_guard.record import RecordError
+
+    # Known before anything is sent, so nothing is: half a panel sent for a reason that could
+    # have been said in advance is a round to finish and a manuscript already disclosed.
+    missing = missing_keys(plan, environ)
+    if missing:
+        names = ", ".join(f"{p.key_env} (for {p.name})" for p in missing)
+        print(
+            f"manuscript-guard: nothing was sent. Not set in the environment: {names}. Set "
+            "it, or take that provider's models out of review.models in paper.yaml.",
+            file=sys.stderr,
+        )
+        return 2
+
+    for provider in providers_of(plan):
+        try:
+            read_key(provider, environ)
+        except ConfigError as exc:
+            print(f"manuscript-guard: nothing was sent. {exc}", file=sys.stderr)
+            return 2
+
+    hosts = ", ".join(provider.host for provider in providers_of(plan))
+    if not yes:
+        if not interactive():
+            print(
+                "manuscript-guard: nothing was sent. The manuscript is unpublished and this "
+                f"would send it to {hosts}; that needs a yes. Run the command in a terminal "
+                "to be asked, or add --yes.",
+                file=sys.stderr,
+            )
+            return 2
+        if not _agreed(plan, hosts):
+            print("Nothing was sent.", file=sys.stderr)
+            return 2
+
+    try:
+        panel = write_panel(project, plan)
+    except RecordError as exc:
+        print(f"manuscript-guard: nothing was sent. {exc}", file=sys.stderr)
+        return 2
+    print(f"panel: {panel.relative_to(project.root).as_posix()}")
+
+    def say(outcome) -> None:
+        who = f"  {outcome.call.reviewer}  {outcome.call.model.reader}"
+        if outcome.filed:
+            count = f"{outcome.findings} finding{'' if outcome.findings == 1 else 's'}"
+            major = f" ({outcome.major} major)" if outcome.major else ""
+            print(f"{who}  filed: {outcome.verdict}, {count}{major}", flush=True)
+        else:
+            print(f"{who}  not filed: {outcome.failure}", flush=True)
+
+    outcomes = run_plan(project, plan, environ=environ, say=say)
+    filed = [outcome for outcome in outcomes if outcome.filed]
+    where = f"review/round-{plan.round}"
+    print(f"\nFiled {len(filed)} of {len(outcomes)} readings in {where}/.")
+    if len(filed) < len(outcomes):
+        print(
+            "The round is incomplete until the rest are filed: the panel names every reader "
+            "that was asked. Run the command again to ask only for those."
+        )
+        if any(outcome.kept for outcome in outcomes):
+            print(
+                f"A reply that was refused is kept to read in {where}/{REFUSED_DIR}/. It is "
+                "not a review record and no check counts it."
+            )
+    print(
+        "`manuscript-guard review` shows where the round stands. Answer each major finding "
+        "in its record with a `resolution` or an `overridden`."
+    )
+    return 0 if len(filed) == len(outcomes) else 1
+
+
+__all__ = ["interactive", "list_providers", "run_panel"]

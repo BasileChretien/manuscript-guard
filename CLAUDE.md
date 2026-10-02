@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, pandoc tests skip if absent)
+pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, Codex, pandoc tests skip if absent)
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```
@@ -127,3 +127,11 @@ Verified 2026-08-03 on the author's machine.
   Word writes for an edit, rather than guessing: a move test that moved the whole `<w:p>`
   with its bookmark passed for months, and Word never makes that edit. Selection-based
   `Cut`/`Paste` borrows the clipboard; save and restore it.
+- **`codex plugin` can be tried with no login and without touching the real installation**
+  (verified 2026-10-02 with Codex 0.158):
+  set `CODEX_HOME` to an empty folder, then `codex plugin marketplace add <checkout>` and
+  `codex plugin add manuscript-guard@manuscript-guard`. `tests/test_plugin.py` does this where
+  `codex` is on `PATH`, and CI's `codex-plugin` job always. A Codex binary may be on the
+  machine without being on `PATH` (the desktop app keeps one under `.codex/plugins` in the
+  user's home). Adding a marketplace from GitHub clones it under `CODEX_HOME`, and on Windows
+  git fails with "Filename too long" when that folder is deep: use a short one.

@@ -984,11 +984,14 @@ the no-op path against roughly 400 ms through the full CLI.
 failures and says what to run for the rest. It used to say `manuscript-guard check
 --submission`, and `--submission` is one of the guard's markers wherever it stands in a
 command. An agent that did as it was told was refused again with the same eight lines, and
-could not reach the list. The refusal now names `manuscript-guard check --stage submission`,
-which the guard does not match and which gives the same verdict, the stage being resolved
-before any gate runs. `tests/test_hooks.py` takes each command a refusal names, sends it back
-through the guard in the project that was refused, and runs it to see that every failure is
-listed. A refusal added later is added to that test.
+could not reach the list. The refusal now says to run `manuscript-guard check --stage
+submission` on its own. Run so, the guard does not match it, and it gives the same verdict,
+the stage being resolved before any gate runs. "On its own" is part of the advice: the
+command ends in the word `submission`, so after `cp` or `git push` on the same line it is
+matched again (Known gaps). `tests/test_hooks.py` sends each command a refusal names back
+through the guard in the project that was refused, over a table that a refusal added later
+is added to. For the failing check it also runs the command, to see that every failure is
+listed and that as many are counted as the guard counted.
 
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
@@ -3513,17 +3516,38 @@ Closed since, and why each mattered:
   `PYTHONUTF8=1` set the name is read. Not fixed yet.
 - **Where the hooks run, an agent cannot run `check --submission` in a project that fails
   it.** The submission guard matches `--submission` anywhere in a shell command, so it holds
-  `manuscript-guard check --submission` and `manuscript-guard review --submission` to the
-  submission check as it holds a copy of the `.docx`, though both only read. Its refusal
-  names `manuscript-guard check --stage submission`, which it does not match. `review` has no
-  second spelling: in a failing project an agent sees the review at submission standard
-  through `check --stage submission`, or not at all. The README and the submission-pack and
-  review-panel skills still write `check --submission`, which costs an agent one refusal
+  `manuscript-guard check --submission`, `review --submission` and `respond --submission` to
+  the submission check as it holds a copy of the `.docx`, though the first two only read. Its
+  refusal says to run `manuscript-guard check --stage submission` on its own, which it does
+  not match. With an action verb before it on the same line it does, because the command
+  ends in the word `submission` and no spelling of the submission check avoids the word:
+  `git push && manuscript-guard check --stage submission` is refused, and so is the check
+  after `cp a b &&` or after `cd "example - Copy" &&`, where the folder's name is the verb.
+  On the line after such a command it goes through. `review` and `respond` take no `--stage`:
+  in a failing project an agent sees the review at submission standard through `check
+  --stage submission`, and `respond --submission` waits until the check passes. The README,
+  the submission-pack and review-panel skills, and the `MANIFEST.yaml` of a pack assembled
+  with `--skip-checks` still write `check --submission`, which costs an agent one refusal
   before it is told the other spelling. Letting a command through when it is a `check` and
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands.
+- **The submission guard looks for the project where the agent is, not where the command
+  goes.** It matches the command, then runs the submission check in the folder the event
+  names as the agent's. From the folder above a project there is no `paper.yaml` to find, the
+  check cannot run, and the hook, which never breaks a session, says nothing. From there
+  `cd example && manuscript-guard submit` and `cd example && scp build/manuscript.docx
+  host:` both go through, in a project that fails. `submit` then refuses on its own account;
+  the copy is held to nothing. The whole-string matching in the hooks section recognises both
+  commands, and from that folder recognising them is all it does. Found in the review of #131
+  on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
+  shell command, which the guard so far does not do.
+- **An abbreviated `--submission` is not seen by the submission guard.** The command line
+  accepts any prefix of an option that names one option only, so `manuscript-guard build
+  --subm` is a submission build and `review --subm` a review at submission standard, and the
+  guard's marker is the whole word. No document writes it that way. Found in the review of
+  #131 and true before it; a parser that refuses abbreviations would close it.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

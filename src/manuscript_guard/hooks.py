@@ -63,6 +63,11 @@ SUBMISSION_MARKERS = re.compile(
 # What a refusal tells its reader to run. Spelled with `--stage`, because `--submission` is
 # one of the markers above: told to run `check --submission`, an agent was refused again with
 # the same lines and never saw the list. Both spellings give one verdict.
+#
+# A refusal says to run it on its own, and that is part of the advice. The command ends in
+# the word `submission`, so after `cp`, `git push` or a folder named `Copy` on the same line
+# the third alternative above matches it, and no spelling of the submission check avoids the
+# word.
 FULL_CHECK = "manuscript-guard check --stage submission"
 
 
@@ -374,7 +379,7 @@ def guard_submission(payload: dict) -> int:
         f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
         + "\n".join(lines)
         + more
-        + f"\n\nRun `{FULL_CHECK}` for the full list.",
+        + f"\n\nRun `{FULL_CHECK}` on its own for the full list.",
     )
 
 

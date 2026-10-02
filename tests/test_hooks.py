@@ -269,16 +269,37 @@ def test_a_refusal_names_a_command_the_guard_lets_through(spoil, project: Path, 
     for command in named:
         event = {"tool_input": {"command": command}, "cwd": str(project)}
         assert run("guard-submission", event, capsys) is None, command
-        # An agent in the folder above writes it this way, which no prefix rule sees through.
+        # With a `cd` in front, as an agent often writes a command, the pattern passes it too.
         assert SUBMISSION_MARKERS.search(f"cd example && {command}") is None, command
+
+
+def test_a_refusal_says_to_run_the_command_on_its_own(project: Path, capsys) -> None:
+    """A known limit, held here so that the refusal's advice stays true of the pattern. The
+    command named ends in the word `submission`, and an action verb before it on the same line
+    makes the whole line submission-shaped: a refusal that only named the command sent an
+    agent that wrote `git push && <the command>` round the same loop."""
+    from manuscript_guard.hooks import FULL_CHECK
+
+    _without_a_review(project)
+    refusal = _refused(project, capsys)
+    assert f"`{FULL_CHECK}` on its own" in refusal
+
+    def guard(command: str) -> dict | None:
+        event = {"tool_input": {"command": command}, "cwd": str(project)}
+        return run("guard-submission", event, capsys)
+
+    assert guard(FULL_CHECK) is None
+    assert guard(f"git push\n{FULL_CHECK}") is None, "on a line of its own"
+    for before in ("git push", "cp results/a.json /tmp/a.json", 'cd "../example - Copy"'):
+        assert decision(guard(f"{before} && {FULL_CHECK}")) == "deny", before
 
 
 def test_the_command_a_refusal_names_lists_every_failure(
     project: Path, capsys, monkeypatch
 ) -> None:
     """The refusal shows eight failures and says where the rest are. Plain `check` is let
-    through as well, but at the stage this project declares it reports none of what the guard
-    refused for: the command named has to be the submission check."""
+    through as well, but at the stage this project declares it counts one failure fewer than
+    the guard refused for: the command named has to be the submission check."""
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.cli import main as cli
 

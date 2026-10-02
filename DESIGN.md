@@ -1110,7 +1110,7 @@ Four hooks, chosen because each catches something at the only moment it is cheap
 - **After editing an analysis file**, say the results are stale and the Methods may no
   longer describe the code.
 - **Before a submission-shaped shell command**, run the submission check and block on
-  failure.
+  failure, or where the project cannot be read for the check to run.
 
 That last one carries a specific lesson. It matches the **whole command string**, with no
 permission-rule prefix filter, because `cd example && manuscript-guard submit` and
@@ -1123,6 +1123,17 @@ the no-op path against roughly 400 ms through the full CLI.
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
+
+One error is expected, and is passed on. Where a file of the project's own cannot be parsed,
+`check` stops before any gate, says which file in a sentence written for the author, and
+exits 2. A project that could not be checked has not passed, so the submission guard refuses
+with that sentence, and the session start says it where the status line would have been. The
+gates raise the same error where there is no `paper.yaml` above the folder at all, and there
+a hook has nothing to say: a guard that refused on it would refuse every command that names
+a `.docx` anywhere on the machine. So both look for the project first
+(`hooks._project_root`), stay silent where there is none, and pass on only an error raised
+once one was found. Anything else the gates raise is still a fault of the tool, and still
+ends in silence.
 
 **A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
 input as UTF-8, and a name outside ASCII goes as its own bytes, with no `\u` escape. Python on
@@ -3744,13 +3755,35 @@ Closed since, and why each mattered:
   none. A text in a code page that happens to be valid UTF-8 is read as UTF-8. And a name
   sent in one Unicode normal form and written in `paper.yaml` or on disk in another was not
   tried; macOS is where that would show.
-- **The submission guard says nothing about a project it cannot read.** Where
+- **The submission guard said nothing about a project it could not read.** Where
   `check --submission` stops on an error of the project's own, a results file that is not
-  JSON for one, the gates raise before there is a finding. The hook takes that for an
-  unexpected failure, exits 0 in silence, and the command goes through. The session start is
-  silent there for the same reason. It follows from "a hook never breaks the session", but
-  that error is worded for the author, and the guard could refuse with it. Found in the review
-  of #130 on 2026-10-02 and true before it. Not decided, and not changed.
+  JSON for one, the gates raise before there is a finding. The hook took that for an
+  unexpected failure, exited 0 in silence, and the command went through. The session start
+  was silent there for the same reason. Found in the review of #130 on 2026-10-02 and true
+  before it. Closed the same day, by the author's decision: the guard refuses with the
+  project's own sentence, which names the file, and the session start says that sentence in
+  place of the status line and blocks nothing (see "A hook never breaks the session"). The
+  files concerned are the ones read before any gate runs: `paper.yaml`, `authors.yaml`, the
+  results fragments and the two ledgers under `literature/`. A file that a gate reads was
+  never part of this, since a gate that raises is reported as `gate-errored`, which fails at
+  every stage. Where no project is found at the folder the event names, or above it, both
+  hooks stay silent, as before. That folder is the only place looked in: a command sent from
+  above a project that enters it, `cd paper && manuscript-guard submit`, is not checked, in
+  a project that fails as in one that cannot be read. True on `main` before this, found in
+  the review of #131, and not decided. The refusal ends by naming
+  `manuscript-guard check --stage submission` and not `check --submission`, whose flag is
+  one of the guard's own markers: an agent told to run that one is refused again. It says
+  to run it on its own, because the command ends in the word `submission`, which the guard
+  matches after `cp` or `git push` on the same line. The older refusal, for a failing check,
+  still names `check --submission` here, and #131 changes that one.
+  Still open: only that
+  one error is passed on. A file among those that is not UTF-8, or a `paper.yaml` that holds
+  a list, ends `check` itself in a traceback (`UnicodeDecodeError`, `AttributeError`) and
+  not in a sentence. There the guard is silent as it was, and the command goes through.
+  Refusing on any error at all would have covered both and was not chosen: a fault of the
+  tool would then stop every command that names a `.docx` in that project, with a message its
+  author can do nothing with. The remedy is in `check`, which should say those two in a
+  sentence, and then the guard refuses them with no change of its own.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

@@ -1230,6 +1230,14 @@ through the guard in the project that was refused, over a table that a refusal a
 is added to. For the failing check it also runs the command, to see that every failure is
 listed and that as many are counted as the guard counted.
 
+**An option is read only where it is written in full.** The guard's marker for the
+submission standard is the word `--submission`, and it can only list the spellings the
+command line reads. argparse reads any prefix that names one option, which made `--subm` a
+spelling the guard did not have. The parser refuses abbreviations, on every command, so the
+word is the only spelling of that option (see "Closed since"). It is not the only way to ask
+for the submission standard: `--stage submission` is the other, which a refusal itself names
+for `check`, and on `build` the guard does not hold it (Known gaps).
+
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
@@ -3462,6 +3470,25 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
+  prefix of an option that names one option only, so `manuscript-guard build --subm` was a
+  submission build and `review --subm` a review at submission standard, and the guard's
+  marker is the whole word: in a project that fails, `build --subm --offline` was let
+  through by the guard. `build` then refused on its own account, as it does while anything
+  fails; with `--skip-checks` it built, and that build is what the guard missed. Found in
+  the review of #131 and true before it. No command reads an abbreviated
+  option now (Basile, 2026-10-02): `build --subm` exits 2 with `unrecognized arguments:
+  --subm`, and so does `--off` for `--offline`, which is the cost, paid by someone typing a
+  short form by hand. No document, skill or test in the repository wrote one. The marker was
+  not widened to the prefixes instead, because it would then have to be kept in step with
+  the parser by hand: on `review`, `--su` already stands for `--summary` as much as for
+  `--submission`. argparse's setting belongs to each parser, and on the top one alone it
+  leaves every command abbreviating, so it is set by the class the commands are made from.
+  `tests/test_cli.py` takes the commands that have the option from the parser and holds
+  every prefix of the word to one rule, that a spelling read as a submission is one the
+  guard's pattern matches; a second test fails for a command added with abbreviations on.
+  Before any command, `manuscript-guard --vers` is an error too, though the message is
+  argparse's for the missing command and does not name the option.
 - **A backslash before raw markup was not read.** `<!--`, `\begin{x}` or `<pre>` after an
   odd number of backslashes is text to pandoc, and `import` writes what a co-author types
   in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
@@ -3888,6 +3915,22 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **`build --stage submission` is a submission build the submission guard does not hold.**
+  `--stage submission` gives the same verdict as `--submission` and is not one of the
+  guard's markers, which is why a refusal can name `check --stage submission`. On `build` it
+  is let through too: in a project that fails, `manuscript-guard build --stage submission
+  --offline` is not stopped by the guard and refuses on its own account, and with
+  `--skip-checks` it writes `manuscript.UNCHECKED.docx`, where the same command with
+  `--submission` is refused before it runs. Found in the review of #136 on 2026-10-02 and
+  true on `main` before it. Not decided: a marker for `--stage submission` after `build`
+  only would close it.
+- **Under another name the command line is not a submission the guard sees.** The marker for
+  the pack is the words `manuscript-guard submit`. The package installs `mguard` as a second
+  name for the same command, and `mguard submit --offline --skip-checks`, `python -m
+  manuscript_guard.cli submit` and `manuscript-guard.exe submit` are all let through in a
+  project that fails. `submit` refuses on its own account without `--skip-checks`. An option
+  is seen under any name: `mguard build --submission` is refused. Found in the review of
+  #136 and true on `main` before it. Not fixed yet; the marker's line is one #132 changes.
 - **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
   Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
   reads it before any work, from the repository's root down to the working directory, up to
@@ -4054,11 +4097,6 @@ Closed since, and why each mattered:
   commands, and from that folder recognising them is all it does. Found in the review of #131
   on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
   shell command, which the guard so far does not do.
-- **An abbreviated `--submission` is not seen by the submission guard.** The command line
-  accepts any prefix of an option that names one option only, so `manuscript-guard build
-  --subm` is a submission build and `review --subm` a review at submission standard, and the
-  guard's marker is the whole word. No document writes it that way. Found in the review of
-  #131 and true before it; a parser that refuses abbreviations would close it.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

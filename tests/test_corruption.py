@@ -7821,6 +7821,13 @@ def _leave_merge_markers_in_a_reading(root: Path) -> None:
     )
 
 
+def _save_a_reading_as_utf16(root: Path) -> None:
+    """What Windows PowerShell 5 writes for `>`, and what some editors offer. Found by the
+    second review round of #128: taken for a note, with its findings."""
+    path = _reading(root, "desk-editor", _READERS[1])
+    path.write_bytes(path.read_text(encoding="utf-8").encode("utf-16"))
+
+
 def _pass_another_remit_off_under_the_plain_name(root: Path) -> None:
     """The model read the other remit only. Its record, copied over the reviewer's own
     plain record, says the other reviewer inside. Found by the review of #128."""
@@ -7848,13 +7855,14 @@ _LOST_READINGS = {
     ),
     "another remit's reading is copied under the plain name": (
         _pass_another_remit_off_under_the_plain_name,
-        "reading-misfiled",
+        "reading-missing",
     ),
     "another round's reading is moved to the plain name": (
         _pass_another_round_off_under_the_plain_name,
-        "reading-misfiled",
+        "reading-missing",
     ),
-    "a reading is emptied": (_empty, "reading-missing"),
+    "a reading is saved again as UTF-16": (_save_a_reading_as_utf16, "reading-unreadable"),
+    "a reading is emptied": (_empty, "schema-violation"),
     "one reader's record is copied as the other's": (
         _pass_one_reader_off_as_the_other,
         "reading-misfiled",
@@ -7868,7 +7876,7 @@ _LOST_READINGS = {
         _bring_a_reading_from_another_round,
         "reading-misfiled",
     ),
-    "the reader is taken out of a reading": (_strip_the_reader, "reading-missing"),
+    "the reader is taken out of a reading": (_strip_the_reader, "reading-misfiled"),
     "the remit is answered by hand instead": (_file_it_by_hand_instead, "reading-missing"),
     "a model's major finding is left open": (_leave_a_major_finding_open, "open-major-finding"),
     "the manuscript is edited after the readings": (

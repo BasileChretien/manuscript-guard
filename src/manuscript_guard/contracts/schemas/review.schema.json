@@ -16,7 +16,7 @@
     "reader": {
       "type": "string",
       "minLength": 1,
-      "description": "Who made this reading, where a remit is read more than once: provider/model for a model, any name for a person. A named reading is filed beside the reviewer's plain record as <reviewer>.<reader>.yaml, the reader's name lower-cased with every run of other characters as one hyphen. A panel may list the readers it expects of a reviewer, and each must then have filed. Omit it for the one record of a reviewer nobody else reads, which is how every record written before readings had names is read."
+      "description": "Who made this reading, where a remit is read more than once: provider/model for a model, any name for a person. A named reading is filed beside the reviewer's plain record as <reviewer>.<reader>.yaml, the reader's name lower-cased with every run of characters that are not letters, digits or their marks as one hyphen, and it is read only if the panel lists this reader for this reviewer. `manuscript-guard review --record <reviewer> --reading <reader>` writes both. Omit it in the reviewer's plain record, which is how every record written before readings had names is read."
     },
     "reviewed_by": {
       "type": "string",

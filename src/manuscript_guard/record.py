@@ -20,8 +20,9 @@ from datetime import date
 from pathlib import Path
 
 VERDICTS = ("pass", "minor-revision", "major-revision", "reject")
-#: A reader's name is part of a file name, and file systems stop at 255 bytes.
-MAX_READER_NAME = 80
+#: A reader's name is part of a file name, and file systems stop at 255 bytes for the whole
+#: of it. Counted in bytes of UTF-8, which is what those limits count.
+MAX_READER_NAME = 120
 FIGURE_VERDICTS = ("pass", "concerns")
 
 
@@ -80,6 +81,30 @@ def _ensure_panel(project, round_number: int, reviewer: str, remit: str, today: 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_yaml_dump(document), encoding="utf-8", newline="\n")
     return path
+
+
+def _name_reader(panel: Path, reviewer: str, reader: str) -> None:
+    """List `reader` among the readers the panel asks of `reviewer`, if it is not there.
+
+    The panel says who reads each remit, and G11 reads a named file only when the panel
+    names its reader. So filing a named reading names the reader, the way filing a record
+    puts the reviewer on the panel: a reading the gate would then not count is not filed.
+    A reader already listed under another spelling of the same name is left as the panel
+    has it.
+    """
+    from manuscript_guard.contracts._schema import read_structured
+    from manuscript_guard.gates.review import reading_slug
+
+    document = read_structured(panel) or {}
+    for entry in document.get("reviewers") or []:
+        if entry.get("id") != reviewer:
+            continue
+        listed = [str(name) for name in entry.get("readers") or []]
+        if reading_slug(reader) in {reading_slug(name) for name in listed}:
+            return
+        entry["readers"] = [*listed, reader]
+        panel.write_text(_yaml_dump(document), encoding="utf-8", newline="\n")
+        return
 
 
 def _remit_from_earlier_panels(project, reviewer: str, before: int) -> str:
@@ -142,10 +167,10 @@ def write_review(
                 "--reading names who made this reading and becomes part of the file's name, "
                 "so it needs a letter or a digit: openai/<model>, or a person's name"
             )
-        if len(reading_slug(reading)) > MAX_READER_NAME:
+        if len(reading_slug(reading).encode("utf-8")) > MAX_READER_NAME:
             raise RecordError(
                 f"--reading becomes part of the file's name, and this one is over "
-                f"{MAX_READER_NAME} characters; name the reader more shortly"
+                f"{MAX_READER_NAME} bytes; name the reader more shortly"
             )
 
     today = today or date.today()
@@ -159,6 +184,8 @@ def write_review(
         )
 
     panel = _ensure_panel(project, round_number, reviewer, remit, today)
+    if reading:
+        _name_reader(panel, reviewer, reading)
 
     document = {
         "schema": "manuscript-guard/review/1",

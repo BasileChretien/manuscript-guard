@@ -178,7 +178,7 @@ def _round_lines(summary) -> list[str]:
 
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
-    if args.reading and not args.record:
+    if args.reading is not None and not args.record:
         # Ignored in silence, it looked as though a reading had been filed.
         print(
             "manuscript-guard: --reading names who made a reading and goes with --record: "
@@ -1962,7 +1962,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="READER",
         help="with --record: who made this reading, where a remit is read more than once "
         "(openai/<model>, or a person's name). Written as review/round-N/REVIEWER.READER.yaml "
-        "beside the reviewer's plain record, so neither replaces the other",
+        "beside the reviewer's plain record, so neither replaces the other, and listed among "
+        "the reviewer's readers in the panel, which is what makes the gate read it",
     )
     review.add_argument(
         "--record-figure",

@@ -3760,12 +3760,16 @@ Closed since, and why each mattered:
   with Claude Code 2.1.119.
 - **The package and the plugin are one release with one number.** `pyproject.toml`,
   `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
-  version. The policy (Basile, 2026-09-30) is that every pull request that changes `src/` or
-  `plugin/` takes the next shared number and bumps all four, and the coordinating session
-  assigns the numbers, so that two open pull requests never take one. `tests/test_version.py`
-  fails when the four differ. It cannot tell that a pull request changed code and left them
-  alone, which is the case the policy is for: `pip install --upgrade` finds nothing newer for
-  a fix that did not bump, and the stale-tool notice below cannot fire either, because
+  version. The policy since 2026-10-02 (Basile) is that a pull request leaves the four alone,
+  and the maintainer raises them on `main` after each merge that changes `src/` or `plugin/`,
+  in a commit that changes nothing else. From 2026-09-30 every such pull request had bumped
+  all four itself, at a number assigned to it. With a dozen open that broke down: each merge
+  put the others in conflict on the same four lines, so only one could be in CI at a time,
+  and `main` twice passed a number that had been reserved. Between a merge and its bump,
+  `main` holds new code under the old number. `tests/test_version.py`
+  fails when the four differ. It cannot tell that a merge changed code and no bump followed,
+  which is the case the policy is for: `pip install --upgrade` finds nothing newer for
+  a fix that was not followed by one, and the stale-tool notice below cannot fire either, because
   `plugin.json` did not move. The README's `--force-reinstall` is the fallback. Before this
   the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
   nothing newer and left an older copy in place, and `--version` could not say which release

@@ -6,8 +6,9 @@ moved with every change and the package sat at 0.1.0, so `pip install --upgrade`
 nothing newer and left an older copy in place, and `--version` could not say which release
 anyone had. Now they are the same number, and each place that carries it is checked here.
 
-What this cannot see is a change that left the number alone. The policy for that is that every
-pull request that changes `src/` or `plugin/` takes the next shared number (CONTRIBUTING.md).
+What this cannot see is a change that left the number alone. The policy for that is that the
+maintainer raises it on `main` after each merge that changes `src/` or `plugin/`, and that a
+pull request does not touch it (CONTRIBUTING.md).
 """
 
 from __future__ import annotations

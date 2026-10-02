@@ -31,15 +31,19 @@ request against an interface that will change.
 
 ## Versions
 
-The package and the plugin are one release with one number. Every pull request that changes
-`src/` or `plugin/` takes the next shared number, and writes it in four places, all of which
-`tests/test_version.py` checks: `version` in `pyproject.toml`, `__version__` in
+The package and the plugin are one release with one number, written in four places, all of
+which `tests/test_version.py` checks: `version` in `pyproject.toml`, `__version__` in
 `src/manuscript_guard/__init__.py`, and `version` in `plugin/.claude-plugin/plugin.json` and
-`.claude-plugin/marketplace.json`. The maintainer assigns the numbers; ask for one rather than
-picking, because two open pull requests that take the same number are merged by git without a
-conflict, and the second ships under a number that has already been released. A change that
-leaves the number alone is invisible to `pip install --upgrade`, which decides on it, and
-bumping only the plugin leaves an installed tool behind the skills that call it.
+`.claude-plugin/marketplace.json`.
+
+A pull request leaves those four alone. The maintainer raises them on `main` after each merge
+that changes `src/` or `plugin/`, in a commit that changes nothing else. Pull requests used to
+carry the bump themselves, and that did not scale: they all edited the same four lines, so
+each merge put every other open pull request in conflict, and two that took the same number
+were merged by git without one. Until the bump lands, `main` holds the change under the old
+number; `pip install --upgrade` and `claude plugin update` decide on the number, so they see
+the change once it has risen. Bumping only the plugin would leave an installed tool behind the
+skills that call it, which is why the four move together.
 
 ## Running it
 

@@ -387,6 +387,16 @@ codex plugin add manuscript-guard@manuscript-guard
 Neither command needs a login. Start a new Codex session afterwards. Both need the `codex`
 command line tool; the desktop app on its own may not put it on your `PATH`.
 
+Codex keeps a copy, as Claude Code does, so a new release reaches you when you ask for it.
+One command refreshes the marketplace and the installed plugin with it:
+
+```bash
+codex plugin marketplace upgrade manuscript-guard
+```
+
+Upgrade the pip package at the same time. When the plugin is the newer of the two, the
+session-start hook says so once.
+
 **Codex runs a hook only after you have trusted it.** At the start of a session it warns
 that hooks are waiting for review, and `/hooks` lists the four `manuscript-guard-hook`
 commands for you to read and trust. Until you do, nothing is caught at the moment of the
@@ -400,7 +410,7 @@ later.
 | after a write | Each manuscript file and each analysis file in the patch gets its line |
 | before a submission-shaped shell command | As above |
 
-What Codex does not enforce, and the gates still catch afterwards:
+What Codex does not enforce. `check`, `build` and `submit` hold whatever the hooks do:
 
 - A hook you have not trusted, or one whose definition changed since you trusted it, is
   skipped.
@@ -409,9 +419,12 @@ What Codex does not enforce, and the gates still catch afterwards:
 - Codex's own documentation calls tool hooks "a useful guardrail, not a complete enforcement
   boundary", and says some tool paths can opt out of them.
 
-How far this has been checked: the install is run against Codex on every pull request, and
-the hooks are tested with input shaped as Codex's source builds it. A Codex session in which
-a skill is loaded and a hook fires has not been observed yet, because that needs a login.
+How far this has been checked: the install is run against Codex on every pull request, the
+upgrade was seen to take an installed copy from one release to the next, and the hooks are
+tested with input shaped as Codex's source builds it. A Codex session in which a skill is
+loaded and a hook fires has not been observed yet, because that needs a login. That includes
+the session-start notice, which depends on Codex telling the hook where the plugin is, as
+its documentation says it does.
 
 ## Auditing a paper you already wrote
 

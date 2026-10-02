@@ -114,8 +114,9 @@ def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
     for generated in ("`results/`", "`build/`", "`profiles/reporting/<NAME>.yaml`"):
         assert generated in text, generated
     # The one file under profiles/reporting/ an author does edit, which the rule must not
-    # seem to forbid.
-    assert "`profiles/reporting/recipes/`" in text
+    # seem to forbid. For a guideline that ships, there is none there until the author makes
+    # one, and the rule says what one is for.
+    assert "a recipe in `profiles/reporting/recipes/`, which is used in place of the one" in text
     assert "Run `manuscript-guard check` before `manuscript-guard build`" in text
     assert "`manuscript-guard check --submission`" in text
     assert "Never decide for yourself that the manuscript is clean" in text
@@ -144,8 +145,9 @@ def test_the_rules_forbid_no_number_that_check_accepts(project: Path, capsys) ->
     rule = " ".join(AGENTS.split())
     assert "never a typed literal" not in rule
 
-    # Every way `check` accepts a typed number has its word in the rule. A sentence with one
-    # of each, and a finding, which is the one it refuses.
+    # Each kind of typed number in this sentence that `check` accepts has its word in the
+    # rule. The classifier has more rules than these six; they are the ones a convention, a
+    # pointer, a label and a name stand for. The finding is the one it refuses.
     typed = project / "manuscript" / "typed.md"
     typed.write_text(
         "# Methods\n\nEvents of grade 3 in patients aged 18-64 years were coded with ICD-10 "

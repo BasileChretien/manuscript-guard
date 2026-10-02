@@ -229,6 +229,9 @@ UNREADABLE = {
     "another schema": lambda text: text.replace(skillcopy.SCHEMA, "manuscript-guard/skills/2"),
     "no version": lambda text: text.replace('"version"', '"release"'),
     "skills not a mapping": lambda text: json.dumps({**json.loads(text), "skills": 3}),
+    "a digest that is not text": lambda text: json.dumps(
+        {**json.loads(text), "skills": {"review-panel": {"SKILL.md": 3}}}
+    ),
     "a byte order mark": lambda text: "\N{ZERO WIDTH NO-BREAK SPACE}" + text,
 }
 
@@ -294,7 +297,7 @@ def test_a_copy_that_stopped_half_way_is_finished_by_the_next(
 
     def held_open(source, target, *arguments, **named):
         calls.append(target)
-        if len(calls) == 3:
+        if len(calls) == 1:
             real(source, target, *arguments, **named)
             (Path(target) / "SKILL.md").write_bytes(b"half of a skill")
             raise PermissionError("the file is open in another program")
@@ -320,8 +323,12 @@ def test_skills_already_there_as_they_would_be_written_are_taken_without_a_stamp
     skillcopy.install(folder)
     (folder / skillcopy.STAMP).unlink()
     done = skillcopy.install(folder)
-    assert not done.left
-    assert sorted(stamp_of(folder)["skills"]) == sorted(done.written)
+    assert not done.left and not done.written
+    assert sorted(stamp_of(folder)["skills"]) == sorted(done.unchanged)
+
+
+def with_crlf(body: bytes) -> bytes:
+    return body.replace(b"\n", b"\r\n")
 
 
 def test_a_copy_checked_out_with_other_line_endings_is_still_the_tools(
@@ -332,10 +339,83 @@ def test_a_copy_checked_out_with_other_line_endings_is_still_the_tools(
     folder = tmp_path / "skills"
     install_from(older, "0.0.1", folder, monkeypatch)
     for path in folder.rglob("*.md"):
-        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        path.write_bytes(with_crlf(path.read_bytes()))
     done = skillcopy.install(folder)
     assert not done.left, done.left
+    assert done.written == ("project-setup",) and done.removed == ("since-dropped",)
+    # The skill that changed is the new release's. The others hold the same text, and are
+    # left with the line endings git gave them: rewriting them would show every file as
+    # modified, with nothing in the diff.
+    expected = {
+        name: body if name.startswith("project-setup/") else with_crlf(body)
+        for name, body in tree(SOURCE).items()
+    }
+    assert skills_in(folder) == expected
+
+
+def forbid(*_arguments, **_named):
+    raise AssertionError("nothing was to be copied or removed")
+
+
+def test_a_run_with_nothing_to_change_writes_no_skill(tmp_path: Path, monkeypatch) -> None:
+    """Every skill was removed and written again on each run, changed or not: a folder of
+    the user's own that held the same text was written over, and one in use was emptied."""
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    theirs = folder / "review-panel"
+    (theirs / "an empty folder of the user's").mkdir()
+    (theirs / "SKILL.md").write_bytes(with_crlf((theirs / "SKILL.md").read_bytes()))
+    before = tree(folder)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(skillcopy.shutil, "copytree", forbid)
+        patch.setattr(skillcopy.shutil, "rmtree", forbid)
+        done = skillcopy.install(folder)
+    assert tree(folder) == before
+    assert (theirs / "an empty folder of the user's").is_dir()
+    assert not done.written and not done.left and not done.removed
+    assert len(done.unchanged) == len(list(SOURCE.glob("*/SKILL.md")))
+
+
+def test_a_skill_folder_in_use_is_left_whole(tmp_path: Path, older: Path, monkeypatch) -> None:
+    """On Windows a folder that is some program's working directory cannot be moved or
+    removed. The old skill was emptied before that was found out, and then read as changed
+    for good. It is now moved aside whole, which either happens or does not."""
+    folder = tmp_path / "skills"
+    install_from(older, "0.0.1", folder, monkeypatch)
+    before = tree(folder)
+    real = os.replace
+
+    def in_use(source, target):
+        if Path(source) == folder / "project-setup":
+            raise PermissionError(32, "The process cannot access the file", str(source))
+        return real(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(skillcopy.os, "replace", in_use)
+        with pytest.raises(PermissionError):
+            skillcopy.install(folder)
+    assert tree(folder) == before, "the old skill is whole, and nothing half-made is left"
+    assert sorted(p.name for p in folder.iterdir()) == sorted({n.split("/")[0] for n in before})
+
+    done = skillcopy.install(folder)
+    assert not done.left
     assert skills_in(folder) == tree(SOURCE)
+
+
+def test_nothing_the_copy_did_not_make_is_removed_to_make_room(
+    tmp_path: Path, older: Path, monkeypatch
+) -> None:
+    """A skill was staged under a fixed name beside its place, and whatever had that name
+    was removed first."""
+    folder = tmp_path / "skills"
+    install_from(older, "0.0.1", folder, monkeypatch)
+    theirs = folder / ".project-setup.partial"
+    theirs.mkdir()
+    (theirs / "precious.txt").write_bytes(b"precious")
+    done = skillcopy.install(folder)
+    assert done.written == ("project-setup",)
+    assert (theirs / "precious.txt").read_bytes() == b"precious"
 
 
 def make_link(link: Path, target: Path) -> bool:
@@ -408,15 +488,34 @@ def test_outside_a_project_the_project_form_says_so(tmp_path: Path, monkeypatch,
     assert "paper.yaml" in capsys.readouterr().err
 
 
-def test_the_command_fails_and_names_what_it_left(tmp_path: Path, capsys) -> None:
+def test_the_command_fails_and_names_what_it_left(tmp_path: Path, monkeypatch, capsys) -> None:
     folder = tmp_path / "skills"
     (folder / "review-panel").mkdir(parents=True)
     (folder / "review-panel" / "SKILL.md").write_bytes(b"theirs\n")
-    assert main(["install-skills", "--dir", str(folder)]) == 1
+    monkeypatch.setenv(skillcopy.USER_FOLDER_VARIABLE, str(folder))
+    assert main(["install-skills"]) == 1
     captured = capsys.readouterr()
     assert "review-panel" in captured.err and "not from manuscript-guard" in captured.err
-    assert "--project" in captured.err, "the message says what can be done about it"
+    assert "`--project` copies" in captured.err, "the message says what can be done about it"
     assert (folder / "project-setup" / "SKILL.md").is_file(), "the rest was still copied"
+
+
+@pytest.mark.parametrize("form", ["--project", "--dir"])
+def test_the_way_forward_is_not_the_option_already_given(
+    form: str, project: Path, monkeypatch, capsys
+) -> None:
+    """In the project's own folder, a skill that is someone else's is not helped by being
+    told to use `--project`."""
+    folder = project / ".agents" / "skills"
+    (folder / "review-panel").mkdir(parents=True)
+    (folder / "review-panel" / "SKILL.md").write_bytes(b"theirs\n")
+    monkeypatch.chdir(project)
+    arguments = ["--project"] if form == "--project" else ["--dir", str(folder)]
+    assert main(["install-skills", *arguments]) == 1
+    said = capsys.readouterr().err
+    assert "review-panel" in said and "not from manuscript-guard" in said
+    assert "`--project` copies" not in said
+    assert "move it away" in said
 
 
 def test_the_command_says_how_to_take_the_new_release_of_a_changed_skill(
@@ -566,6 +665,18 @@ def test_with_nowhere_to_say_it_the_notice_is_not_said(
         patch.setattr(sys, "stderr", None)
         again = main(["check", str(project), "--json"])
     assert (again, capsys.readouterr().out) == (code, out)
+
+
+def test_a_stamp_that_cannot_be_read_in_one_place_does_not_cost_the_other_its_line(
+    project: Path, no_user_copy: Path, older: Path, monkeypatch, capsys
+) -> None:
+    install_from(older, "0.0.1", no_user_copy, monkeypatch)
+    folder = project / ".agents" / "skills"
+    folder.mkdir(parents=True)
+    (folder / skillcopy.STAMP).write_text("{", encoding="utf-8")
+    _code, _out, said = check(project, capsys)
+    assert str(no_user_copy) in said and "0.0.1" in said
+    assert len(said.strip().splitlines()) == 1
 
 
 def test_build_names_a_stale_copy_as_well(

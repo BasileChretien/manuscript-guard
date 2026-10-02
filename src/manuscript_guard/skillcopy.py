@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,12 +44,21 @@ USER_FOLDER_VARIABLE = "MANUSCRIPT_GUARD_USER_SKILLS"
 NOT_OURS = "was already there and is not from manuscript-guard"
 CHANGED = "was changed since manuscript-guard copied it"
 
-#: What can be done about each, said with it: a refusal that names no way forward is met by
-#: someone who has edited nothing.
-WAY_FORWARD = {
-    NOT_OURS: "`--project` copies the skills into the project instead, where nothing else is",
-    CHANGED: "to take this release's, delete the folder and run the command again",
-}
+
+
+def way_forward(why: str, *, shared: bool) -> str:
+    """What can be done about a folder that was left, said with it: a refusal that names no
+    way forward is met by someone who has edited nothing. `shared` is the folder in the
+    user's home, which holds their other skills; a project's own folder does not, and there
+    `--project` is the option already given."""
+    if why == CHANGED:
+        return "to take this release's, delete the folder and run the command again"
+    if shared:
+        return "`--project` copies the skills into the project instead, where nothing else is"
+    return (
+        "move it away, or delete it if it is this skill and its stamp was lost, and run the "
+        "command again"
+    )
 
 
 class SkillsMissing(Exception):
@@ -76,6 +86,7 @@ class Copied:
 
     folder: Path
     written: tuple[str, ...]
+    unchanged: tuple[str, ...]
     removed: tuple[str, ...]
     left: tuple[tuple[str, str], ...]
 
@@ -162,24 +173,21 @@ def _is_link(path: Path) -> bool:
     return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
 
 
-def _why_left(target: Path, recorded: object, coming: dict[str, str] | None) -> str | None:
+def _holds(target: Path, text: dict[str, str]) -> bool:
+    """Whether a real folder is there and holds exactly this text."""
+    return not _is_link(target) and target.is_dir() and _digests(target) == text
+
+
+def _why_left(target: Path, recorded: object) -> str | None:
     """Why what stands where a skill goes may not be replaced, or None where it may.
 
-    `recorded` is what the stamp says was copied there, `coming` what is about to be. A
-    folder that already holds exactly what is coming may be written whatever the stamp
-    says, since nothing is lost: that is what finishes a copy that stopped half-way, before
-    its stamp was written.
+    `recorded` is what the stamp says was copied there.
     """
     if not target.exists() and not _is_link(target):
         return None
-    if _is_link(target) or not target.is_dir():
+    if recorded is None or _is_link(target) or not target.is_dir():
         return NOT_OURS
-    present = _digests(target)
-    if coming is not None and present == coming:
-        return None
-    if recorded is None:
-        return NOT_OURS
-    return None if present == recorded else CHANGED
+    return None if _digests(target) == recorded else CHANGED
 
 
 def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
@@ -190,28 +198,46 @@ def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
     os.replace(partial, folder / STAMP)
 
 
-def _staging(target: Path) -> Path:
-    """Where a skill is copied before it takes its place, so that no half-copied folder ever
-    stands under a skill's name."""
-    return target.with_name(f".{target.name}.partial")
+def _swap(target: Path, source: Path | None) -> None:
+    """Put a copy of `source` where `target` is, or with no source take `target` away.
 
-
-def _put(source: Path, target: Path) -> None:
-    staging = _staging(target)
-    if staging.exists():
-        shutil.rmtree(staging)
-    shutil.copytree(source, staging)
-    if target.exists():
-        shutil.rmtree(target)
-    os.replace(staging, target)
+    Through a folder made for the purpose beside it, so that nothing that was already there
+    is touched and no half-copied folder ever stands under a skill's name. What is there is
+    moved aside whole before anything is removed. A folder that cannot be moved, as one in
+    use on Windows cannot, is then left whole, where removing it file by file left it
+    emptied.
+    """
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{target.name}.", suffix=".partial", dir=target.parent)
+    )
+    try:
+        if source is not None:
+            shutil.copytree(source, staging / "new")
+        old = staging / "old"
+        if target.exists():
+            os.replace(target, old)
+        if source is not None:
+            try:
+                os.replace(staging / "new", target)
+            except OSError:
+                if old.exists():
+                    os.replace(old, target)
+                raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def install(folder: Path) -> Copied:
     """Copy every skill into `folder`, replacing only what an earlier copy wrote there.
 
+    A folder that already holds the text of the skill that is coming is left as it is and
+    recorded, whatever the stamp says of it: nothing would change, and writing it again
+    would write over a folder that may be the user's own, or still carry the line endings
+    git gave it.
+
     The stamp is written last. A copy that stops before then leaves each skill either as it
-    was, which the old stamp still describes, or as it was going to be, which the next copy
-    recognises, so the next copy finishes it.
+    was, which the old stamp still describes, or as this release has it, which the next
+    copy recognises, so the next copy finishes it.
     """
     source = shipped()
     names = sorted(path.parent.name for path in source.glob("*/SKILL.md"))
@@ -224,35 +250,40 @@ def install(folder: Path) -> Copied:
 
     recorded: dict[str, dict[str, str]] = {}
     written: list[str] = []
+    unchanged: list[str] = []
     removed: list[str] = []
     left: list[tuple[str, str]] = []
 
     for name in names:
         target = folder / name
         coming = _digests(source / name)
-        why = _why_left(target, ours.get(name), coming)
+        if _holds(target, coming):
+            recorded[name] = coming
+            unchanged.append(name)
+            continue
+        why = _why_left(target, ours.get(name))
         if why:
             left.append((name, why))
             if name in ours:
                 recorded[name] = ours[name]
             continue
-        _put(source / name, target)
+        _swap(target, source / name)
         recorded[name] = coming
         written.append(name)
 
     # A skill an earlier release copied and this one no longer has.
     for name in sorted(set(ours) - set(names)):
         target = folder / name
-        why = _why_left(target, ours[name], None)
+        why = _why_left(target, ours[name])
         if why:
             left.append((name, why))
             recorded[name] = ours[name]
         elif target.exists():
-            shutil.rmtree(target)
+            _swap(target, None)
             removed.append(name)
 
     _write_stamp(folder, recorded)
-    return Copied(folder, tuple(written), tuple(removed), tuple(left))
+    return Copied(folder, tuple(written), tuple(unchanged), tuple(removed), tuple(left))
 
 
 def _numbers(version: str) -> tuple[int, ...] | None:

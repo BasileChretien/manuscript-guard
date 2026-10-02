@@ -1816,8 +1816,12 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
-    kept = len(done.written)
-    print(f"{kept} skill{'' if kept == 1 else 's'} of manuscript-guard {__version__} in {folder}")
+    there = len(done.written) + len(done.unchanged)
+    already = f" ({len(done.unchanged)} already there)" if done.unchanged else ""
+    print(
+        f"{there} skill{'' if there == 1 else 's'} of manuscript-guard {__version__} in "
+        f"{folder}{already}"
+    )
     for name in done.removed:
         print(f"removed {name}, which this release no longer has")
     if args.dir is None:
@@ -1825,10 +1829,11 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
             "By their documentation, Codex, Gemini CLI, Mistral Vibe and Kimi Code CLI read "
             "`.agents/skills`. Start a new session of the agent tool to see them."
         )
+    shared = args.dir is None and not args.project
     for name, why in done.left:
         print(
             f"manuscript-guard: {folder / name} {why}, so it was left as it is; "
-            f"{skillcopy.WAY_FORWARD[why]}",
+            f"{skillcopy.way_forward(why, shared=shared)}",
             file=sys.stderr,
         )
     return 1 if done.left else 0

@@ -2864,12 +2864,21 @@ a stamp that is there and unreadable stops the command before it writes anything
 included. It may be a later release's, and a new stamp over it would make every folder there
 someone else's for good.
 
+**A skill that is already there is not written again.** A folder that holds the text of the
+skill that is coming is left as it is and recorded, whatever the stamp says of it. Writing
+it again changed nothing in the text and did harm around it: a folder of the user's own with
+the same text was written over, a copy with the line endings git gave it showed every file
+as modified, and a folder in use was emptied. So a run with nothing to change writes
+nothing but the stamp.
+
 **A copy that stops half-way is finished by the next.** The stamp is written last. A skill
-is copied beside its place and moved into it, so no half-copied folder ever stands under a
-skill's name. And a folder that already holds exactly what is about to be written may be
-written whatever the stamp says, since nothing can be lost. So after a copy that stopped, a
-file held open or an interrupt, each skill is either as the old stamp describes it or as the
-new release has it, and the next run takes both.
+that does have to change is copied into a folder made for the purpose beside it, what stood
+in its place is moved aside whole, and the copy is moved in; nothing is removed file by
+file, and nothing that was already there is touched to make room. A folder that cannot be
+moved, as one that is some program's working directory cannot be on Windows, stops the
+command with the skill whole. So after a copy that stopped, a file held open or an
+interrupt, each skill is either as the old stamp describes it or as this release has it,
+and the next run takes both.
 
 **The digests are of the text, not of the bytes.** CRLF is read as LF. A copy committed with
 a project and checked out by git on Windows comes back with the other line endings; with
@@ -3665,12 +3674,15 @@ Closed since, and why each mattered:
   person, shows nobody the line, and a process started with its error stream closed is told
   nothing. And a copy committed with the project reaches a co-author as old as it was
   committed.
-- **Two copies run at once into one folder can fail, and the next heals it.** Both stage a
-  skill under the same name beside its place. One can remove the other's, which then stops
-  with an error; neither loses anything of the user's (seen by the reviewer in eight trials),
-  and a run on its own afterwards finishes the copy. A stale staging folder of a skill that a
-  later release dropped is not cleaned up. A digest that reads CRLF as LF also calls two
-  binary files the same when they differ only so; the skills hold text.
+- **Two copies run at once into one folder can fail, and the next heals it.** Each stages a
+  skill in a folder of its own, but both move it into the same place, and one can find the
+  place taken or the old folder gone and stop with an error. Neither loses anything of the
+  user's (seen by the reviewer in eight trials of the earlier staging), and a run on its own
+  afterwards finishes the copy. A process killed outright in the middle leaves its staging
+  folder, named `.<skill>.<random>.partial`, which nothing cleans up. A digest that reads
+  CRLF as LF also calls two binary files the same when they differ only so; the skills hold
+  text. And a folder taken as holding a skill's text is recorded as this tool's even where
+  the user made it: a later release then replaces it.
 - **A copy shares its folder with every other skill the user has.** The skills are copied
   under their own names, because a skill's name must be its folder's and the gates' hints
   name them ("the review-panel skill"). Where the user already has a skill of the same name

@@ -388,6 +388,25 @@ def test_a_setting_in_the_wrong_shape_is_one_finding_that_names_the_key(
     assert violations[0].message.startswith(where)
 
 
+def test_a_crash_in_the_literature_chain_is_reported_under_its_own_gate(
+    project: Path, monkeypatch
+) -> None:
+    """It was reported as "G5 could not run", and G5 is the reporting checklist: the reader
+    was sent to a checklist that had been checked, away from the ledger that had not. Every
+    finding the literature chain makes is a G7 finding, and so is its failure to run."""
+    from manuscript_guard import cli
+    from manuscript_guard.gates import literature
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "check_literature_chain", explode)
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert failure.gate == literature.GATE == "G7"
+    assert failure.message.startswith("G7 could not run")
+
+
 def test_a_deferred_finding_still_appears_in_the_output(tmp_path: Path) -> None:
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.scaffold import init_project

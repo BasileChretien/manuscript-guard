@@ -2814,9 +2814,28 @@ every other skill they have. Each copy leaves a stamp beside the skills,
 `.manuscript-guard.json`, with the release and a digest of every file. A later copy replaces
 a skill only if the stamp lists it and its files still have those digests, and removes one
 that a newer release dropped on the same condition. A folder the stamp does not list, one
-edited since, a symbolic link, or anything at all where the stamp cannot be read, is left as
-it is and named, and the command exits 1. This is the rule the round trip settled on:
-refuse rather than guess.
+edited since, a link or a junction, or a file where a folder should be, is left as it is and
+named, with what can be done about it, and the command exits 1. This is the rule the round
+trip settled on: refuse rather than guess.
+
+The stamp says which folders may be removed, so it is believed whole or not at all. A name
+in it is used as a path: one that is not a single lower-case folder name (a path with `..`,
+an absolute one, an upper-case twin of a real skill, which on Windows is the same folder)
+makes the whole stamp unreadable, as do another schema, a missing field and broken JSON. And
+a stamp that is there and unreadable stops the command before it writes anything, the stamp
+included. It may be a later release's, and a new stamp over it would make every folder there
+someone else's for good.
+
+**A copy that stops half-way is finished by the next.** The stamp is written last. A skill
+is copied beside its place and moved into it, so no half-copied folder ever stands under a
+skill's name. And a folder that already holds exactly what is about to be written may be
+written whatever the stamp says, since nothing can be lost. So after a copy that stopped, a
+file held open or an interrupt, each skill is either as the old stamp describes it or as the
+new release has it, and the next run takes both.
+
+**The digests are of the text, not of the bytes.** CRLF is read as LF. A copy committed with
+a project and checked out by git on Windows comes back with the other line endings; with
+digests of the bytes all fourteen read as changed, and stayed so for good.
 
 **A copy goes stale, and the gates' own commands say so.** `pip install --upgrade` renews
 the tool and leaves the copy. A hook could say so, and these tools run none of ours. What
@@ -3556,8 +3575,15 @@ Closed since, and why each mattered:
   user's folder. A copy made with `--dir`, or one in a directory between the working
   directory and the project's root, is not found, and neither is a plugin, which its agent
   tool keeps. An agent tool that does not show a command's stderr to the model, or to the
-  person, shows nobody the line. And a copy committed with the project reaches a co-author as
-  old as it was committed.
+  person, shows nobody the line, and a process started with its error stream closed is told
+  nothing. And a copy committed with the project reaches a co-author as old as it was
+  committed.
+- **Two copies run at once into one folder can fail, and the next heals it.** Both stage a
+  skill under the same name beside its place. One can remove the other's, which then stops
+  with an error; neither loses anything of the user's (seen by the reviewer in eight trials),
+  and a run on its own afterwards finishes the copy. A stale staging folder of a skill that a
+  later release dropped is not cleaned up. A digest that reads CRLF as LF also calls two
+  binary files the same when they differ only so; the skills hold text.
 - **A copy shares its folder with every other skill the user has.** The skills are copied
   under their own names, because a skill's name must be its folder's and the gates' hints
   name them ("the review-panel skill"). Where the user already has a skill of the same name

@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,9 +43,31 @@ USER_FOLDER_VARIABLE = "MANUSCRIPT_GUARD_USER_SKILLS"
 NOT_OURS = "was already there and is not from manuscript-guard"
 CHANGED = "was changed since manuscript-guard copied it"
 
+#: What can be done about each, said with it: a refusal that names no way forward is met by
+#: someone who has edited nothing.
+WAY_FORWARD = {
+    NOT_OURS: "`--project` copies the skills into the project instead, where nothing else is",
+    CHANGED: "to take this release's, delete the folder and run the command again",
+}
+
 
 class SkillsMissing(Exception):
     """This copy of the tool has no skills to give."""
+
+
+class StampUnreadable(Exception):
+    """A stamp is there, and this release cannot read it. Nothing in its folder is touched:
+    it may be a later release's, and writing a new one over it would make every folder
+    there someone else's for good."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(
+            f"{path} is not a stamp this release can read, so nothing in {path.parent} was "
+            f"touched. If it is from a later release of manuscript-guard, upgrade this one. "
+            f"If it is damaged, delete it together with the skill folders it was for, and "
+            f"run the command again."
+        )
+        self.path = path
 
 
 @dataclass(frozen=True)
@@ -78,36 +101,85 @@ def project_folder(root: Path) -> Path:
     return Path(root) / ".agents" / "skills"
 
 
+#: What a skill's folder may be called, by the Agent Skills specification. A name in a stamp
+#: is used as a path, so it is held to this: one lower-case folder name and nothing else.
+_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
 def read_stamp(folder: Path) -> dict | None:
-    """The stamp in a folder, or None where there is none this tool can read."""
+    """The stamp in a folder, or None where there is none.
+
+    A stamp that is there and cannot be trusted raises `StampUnreadable`. It says which
+    folders may be removed, so it is believed whole or not at all: another schema, a missing
+    field, or a name that is not a skill's (a path, an upper-case twin of a real name) each
+    make the whole of it unreadable.
+    """
+    path = Path(folder) / STAMP
+    if not path.exists() and not path.is_symlink():
+        return None
     try:
-        document = json.loads((folder / STAMP).read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
-        return None
-    if not isinstance(document, dict) or document.get("schema") != SCHEMA:
-        return None
-    if not isinstance(document.get("version"), str) or not isinstance(
-        document.get("skills"), dict
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
+        raise StampUnreadable(path) from exc
+    if (
+        not isinstance(document, dict)
+        or document.get("schema") != SCHEMA
+        or not isinstance(document.get("version"), str)
+        or not isinstance(document.get("skills"), dict)
     ):
-        return None
+        raise StampUnreadable(path)
+    for name, files in document["skills"].items():
+        if not _SKILL_NAME.fullmatch(name) or not isinstance(files, dict):
+            raise StampUnreadable(path)
+        if not all(isinstance(key, str) and isinstance(value, str) for key, value in files.items()):
+            raise StampUnreadable(path)
     return document
 
 
 def _digests(skill: Path) -> dict[str, str]:
+    """Each file of a skill, with a digest of its text.
+
+    CRLF is read as LF. A copy committed with a project comes back from git on Windows with
+    the other line endings, and is the same copy.
+    """
     return {
-        path.relative_to(skill).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(skill).as_posix(): hashlib.sha256(
+            path.read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()
         for path in sorted(skill.rglob("*"))
         if path.is_file()
     }
 
 
-def _why_left(target: Path, recorded: object) -> str | None:
-    """Why a folder that is in the way may not be replaced, or None where it may."""
-    if not target.exists() and not target.is_symlink():
+def _is_link(path: Path) -> bool:
+    """A symbolic link, or on Windows a junction, which `is_symlink` does not report."""
+    if path.is_symlink():
+        return True
+    try:
+        tag = os.lstat(path).st_reparse_tag
+    except (OSError, AttributeError):  # no such attribute anywhere but on Windows
+        return False
+    return tag == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", None)
+
+
+def _why_left(target: Path, recorded: object, coming: dict[str, str] | None) -> str | None:
+    """Why what stands where a skill goes may not be replaced, or None where it may.
+
+    `recorded` is what the stamp says was copied there, `coming` what is about to be. A
+    folder that already holds exactly what is coming may be written whatever the stamp
+    says, since nothing is lost: that is what finishes a copy that stopped half-way, before
+    its stamp was written.
+    """
+    if not target.exists() and not _is_link(target):
         return None
-    if recorded is None or target.is_symlink() or not target.is_dir():
+    if _is_link(target) or not target.is_dir():
         return NOT_OURS
-    return None if _digests(target) == recorded else CHANGED
+    present = _digests(target)
+    if coming is not None and present == coming:
+        return None
+    if recorded is None:
+        return NOT_OURS
+    return None if present == recorded else CHANGED
 
 
 def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
@@ -118,8 +190,29 @@ def _write_stamp(folder: Path, skills: dict[str, dict[str, str]]) -> None:
     os.replace(partial, folder / STAMP)
 
 
+def _staging(target: Path) -> Path:
+    """Where a skill is copied before it takes its place, so that no half-copied folder ever
+    stands under a skill's name."""
+    return target.with_name(f".{target.name}.partial")
+
+
+def _put(source: Path, target: Path) -> None:
+    staging = _staging(target)
+    if staging.exists():
+        shutil.rmtree(staging)
+    shutil.copytree(source, staging)
+    if target.exists():
+        shutil.rmtree(target)
+    os.replace(staging, target)
+
+
 def install(folder: Path) -> Copied:
-    """Copy every skill into `folder`, replacing only what an earlier copy wrote there."""
+    """Copy every skill into `folder`, replacing only what an earlier copy wrote there.
+
+    The stamp is written last. A copy that stops before then leaves each skill either as it
+    was, which the old stamp still describes, or as it was going to be, which the next copy
+    recognises, so the next copy finishes it.
+    """
     source = shipped()
     names = sorted(path.parent.name for path in source.glob("*/SKILL.md"))
     if not names:
@@ -136,22 +229,21 @@ def install(folder: Path) -> Copied:
 
     for name in names:
         target = folder / name
-        why = _why_left(target, ours.get(name))
+        coming = _digests(source / name)
+        why = _why_left(target, ours.get(name), coming)
         if why:
             left.append((name, why))
             if name in ours:
                 recorded[name] = ours[name]
             continue
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(source / name, target)
-        recorded[name] = _digests(target)
+        _put(source / name, target)
+        recorded[name] = coming
         written.append(name)
 
     # A skill an earlier release copied and this one no longer has.
     for name in sorted(set(ours) - set(names)):
         target = folder / name
-        why = _why_left(target, ours[name])
+        why = _why_left(target, ours[name], None)
         if why:
             left.append((name, why))
             recorded[name] = ours[name]
@@ -186,7 +278,12 @@ def stale_notice(root: Path | None) -> str | None:
 
     lines: list[str] = []
     for folder, flag in places:
-        stamp = read_stamp(folder)
+        try:
+            stamp = read_stamp(folder)
+        except StampUnreadable:
+            # Said by `install-skills`, which is where it can be acted on. Here it must not
+            # cost the other folder its line.
+            continue
         if stamp is None:
             continue
         copy = _numbers(stamp["version"])

@@ -376,8 +376,8 @@ crashes on a half-configured project gets removed, taking the guards that worked
 
 ### Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools (optional)
 
-These tools read skills from a folder, `.agents/skills`, in your home or in a project. After
-the pip package, one command copies the fourteen skills there:
+By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
+home or in a project. After the pip package, one command copies the fourteen skills there:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills
@@ -390,7 +390,11 @@ else, for a tool that reads another folder.
 **It never writes over what it did not write.** The folder in your home is shared with every
 other skill you have. A skill of yours with the same name as one of these is left as it is
 and named, the others are copied, and the command exits 1; `--project` copies into the
-paper's own folder, where nothing else is. A copied skill you have edited since is left too.
+paper's own folder, where nothing else is. A copied skill you have edited since is left too:
+to take the new release of it, delete its folder and run the command again. What the command
+may replace is recorded in a stamp beside the skills, `.manuscript-guard.json`. Leave it
+there, and commit it with the skills if you commit them. If the command cannot read it, it
+stops and touches nothing.
 
 **To update,** upgrade the pip package and run the same command again. Until you do, `check`
 and `build` say so: when a copy in either folder is from another release than the tool, one
@@ -419,10 +423,10 @@ A Codex user without the `codex` command can use the copy in place of the plugin
 has no hooks. With both, Codex shows every skill twice.
 
 How far this has been checked: Gemini CLI 0.58.0 lists the fourteen skills from a project's
-`.agents/skills`. For Mistral Vibe and Kimi Code CLI, that they read the folder is from
-their own documentation. What each tool does with `AGENTS.md` is from its documentation too,
-and for Kimi Code CLI that documentation was not found to say. No skill has been used in a
-session of any of the three.
+`.agents/skills`. That it reads the folder in your home, and that Mistral Vibe and Kimi Code
+CLI read either, is from their own documentation and has not been watched. What each tool
+does with `AGENTS.md` is from its documentation too, and for Kimi Code CLI that documentation
+was not found to say. No skill has been used in a session of any of the three.
 
 ## Auditing a paper you already wrote
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -49,12 +50,13 @@ def stamp_of(folder: Path) -> dict:
 
 @pytest.fixture
 def older(tmp_path: Path, monkeypatch) -> Path:
-    """A source as an earlier release shipped it: one skill worded differently, and one that
-    has since been dropped."""
+    """A source as an earlier release shipped it: one skill worded differently and holding a
+    file it no longer has, and one skill that has since been dropped."""
     source = tmp_path / "older-release"
     shutil.copytree(SOURCE, source)
     setup = source / "project-setup" / "SKILL.md"
     setup.write_bytes(setup.read_bytes() + b"\nAn older sentence.\n")
+    (source / "project-setup" / "reference.md").write_bytes(b"a file a later release dropped\n")
     dropped = source / "since-dropped"
     dropped.mkdir()
     (dropped / "SKILL.md").write_bytes(b"---\nname: since-dropped\ndescription: Use never.\n---\n")
@@ -89,10 +91,15 @@ def test_the_wheel_carries_the_plugins_skills_and_no_copy_is_kept_in_the_package
 
 
 def test_a_built_wheel_holds_every_skill_file_as_the_plugin_has_it(tmp_path: Path) -> None:
+    """Built with the hatchling that is installed, so the test needs no network. It is among
+    the development dependencies for this; without it the test is skipped, and CI's wheel job
+    makes the same comparison on an installed wheel."""
     import zipfile
 
+    pytest.importorskip("hatchling")
     built = subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "-q", "-w", str(tmp_path)],
+        [sys.executable, "-m", "pip", "wheel", str(REPO), "--no-deps", "--no-build-isolation",
+         "-q", "-w", str(tmp_path)],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -205,18 +212,170 @@ def test_a_dropped_skill_that_was_edited_is_left_too(
     done = skillcopy.install(folder)
     assert kept.read_bytes().endswith(b"edited\n")
     assert not done.removed and [name for name, _why in done.left] == ["since-dropped"]
+    # Still on record, or the next copy would take it for someone else's.
+    assert "since-dropped" in stamp_of(folder)["skills"]
 
 
-@pytest.mark.parametrize("body", ["", "{", "[]", '{"schema": "something/else"}', '{"skills": 3}'])
-def test_a_stamp_that_cannot_be_read_gives_this_tool_nothing(tmp_path: Path, body: str) -> None:
-    """Without a stamp it can read, no folder there is known to be this tool's."""
+def rewrite_stamp(folder: Path, change) -> None:
+    stamp = stamp_of(folder)
+    change(stamp)
+    (folder / skillcopy.STAMP).write_text(json.dumps(stamp), encoding="utf-8")
+
+
+UNREADABLE = {
+    "empty": lambda text: "",
+    "cut short": lambda text: text[: len(text) // 2],
+    "a list": lambda text: "[]",
+    "another schema": lambda text: text.replace(skillcopy.SCHEMA, "manuscript-guard/skills/2"),
+    "no version": lambda text: text.replace('"version"', '"release"'),
+    "skills not a mapping": lambda text: json.dumps({**json.loads(text), "skills": 3}),
+    "a byte order mark": lambda text: "\N{ZERO WIDTH NO-BREAK SPACE}" + text,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(UNREADABLE))
+def test_a_stamp_that_cannot_be_read_stops_the_copy_and_is_left(tmp_path: Path, kind: str) -> None:
+    """A stamp this release cannot read may be a later release's. Writing a new one over it
+    would lose the record of what is the tool's, for that release and every one after: the
+    folders would be someone else's for good. So nothing is written, the stamp included."""
     folder = tmp_path / "skills"
     skillcopy.install(folder)
-    (folder / skillcopy.STAMP).write_text(body, encoding="utf-8")
-    before = skills_in(folder)
+    stamp = folder / skillcopy.STAMP
+    stamp.write_text(UNREADABLE[kind](stamp.read_text(encoding="utf-8")), encoding="utf-8")
+    before = tree(folder)
+    with pytest.raises(skillcopy.StampUnreadable):
+        skillcopy.install(folder)
+    assert tree(folder) == before
+
+
+@pytest.mark.parametrize(
+    "name", ["../../outside", "sub/outside", "<absolute>", "", ".", "REVIEW-PANEL", "Outside"]
+)
+def test_a_stamp_is_never_obeyed_for_a_name_that_is_not_a_skills(tmp_path: Path, name: str) -> None:
+    """The stamp says which folders may be removed, and a name in it was used as a path. One
+    written by hand, or arriving with a cloned project, could name a folder anywhere, with
+    the digests of what is in it. A name that is not one lower-case folder name makes the
+    whole stamp unreadable."""
+    folder = tmp_path / "a" / "skills"
+    skillcopy.install(folder)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "precious.txt").write_bytes(b"precious")
+    (folder / "Outside").mkdir()
+    (folder / "Outside" / "precious.txt").write_bytes(b"precious")
+    listed = str(outside) if name == "<absolute>" else name
+    digests = {"precious.txt": hashlib.sha256(b"precious").hexdigest()}
+    if name == "REVIEW-PANEL":
+        digests = stamp_of(folder)["skills"]["review-panel"]
+
+    def forge(stamp: dict) -> None:
+        stamp["version"] = "0.0.1"
+        stamp["skills"][listed] = digests
+
+    rewrite_stamp(folder, forge)
+    before = tree(tmp_path)
+    with pytest.raises(skillcopy.StampUnreadable):
+        skillcopy.install(folder)
+    assert tree(tmp_path) == before
+
+
+def test_a_copy_that_stopped_half_way_is_finished_by_the_next(
+    tmp_path: Path, older: Path, monkeypatch
+) -> None:
+    """The stamp is written when the copy is done. A copy that stops before that (a file held
+    open, a synced folder, an interrupt) leaves new skills under an old stamp, and they read
+    as changed since they were copied: left, for good. What is already in a folder is what
+    would be written there, so writing it loses nothing."""
+    folder = tmp_path / "skills"
+    install_from(older, "0.0.1", folder, monkeypatch)
+
+    real = shutil.copytree
+    calls: list[object] = []
+
+    def held_open(source, target, *arguments, **named):
+        calls.append(target)
+        if len(calls) == 3:
+            real(source, target, *arguments, **named)
+            (Path(target) / "SKILL.md").write_bytes(b"half of a skill")
+            raise PermissionError("the file is open in another program")
+        return real(source, target, *arguments, **named)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(skillcopy.shutil, "copytree", held_open)
+        with pytest.raises(PermissionError):
+            skillcopy.install(folder)
+    assert stamp_of(folder)["version"] == "0.0.1", "the stamp is as the last whole copy left it"
+
     done = skillcopy.install(folder)
-    assert skills_in(folder) == before
-    assert not done.written and len(done.left) == len(before)
+    assert not done.left, done.left
+    assert tree(folder).keys() - {skillcopy.STAMP} == tree(SOURCE).keys(), "and nothing half-made"
+    assert skills_in(folder) == tree(SOURCE)
+    assert stamp_of(folder)["version"] == __version__
+
+
+def test_skills_already_there_as_they_would_be_written_are_taken_without_a_stamp(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    (folder / skillcopy.STAMP).unlink()
+    done = skillcopy.install(folder)
+    assert not done.left
+    assert sorted(stamp_of(folder)["skills"]) == sorted(done.written)
+
+
+def test_a_copy_checked_out_with_other_line_endings_is_still_the_tools(
+    tmp_path: Path, older: Path, monkeypatch
+) -> None:
+    """A copy committed with a project and checked out by git on Windows comes back with
+    CRLF. Digests over the bytes as they are called all fourteen changed, for good."""
+    folder = tmp_path / "skills"
+    install_from(older, "0.0.1", folder, monkeypatch)
+    for path in folder.rglob("*.md"):
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    done = skillcopy.install(folder)
+    assert not done.left, done.left
+    assert skills_in(folder) == tree(SOURCE)
+
+
+def make_link(link: Path, target: Path) -> bool:
+    """A link to a folder, of whatever kind this system lets an ordinary user make."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return True
+    except OSError:
+        pass
+    try:
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+        return True
+    except (ImportError, OSError, AttributeError):
+        return False
+
+
+def test_a_file_or_a_link_where_a_skill_goes_is_left(tmp_path: Path, monkeypatch) -> None:
+    """Even one the stamp lists, with the very content that was copied: a link leads out of
+    the folder, and what is at its other end is not this tool's to remove."""
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    elsewhere = tmp_path / "elsewhere" / "figure-review"
+    shutil.copytree(folder / "figure-review", elsewhere)
+    shutil.rmtree(folder / "figure-review")
+    linked = make_link(folder / "figure-review", elsewhere)
+    shutil.rmtree(folder / "review-panel")
+    (folder / "review-panel").write_bytes(b"a file where a folder was\n")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(skillcopy, "__version__", "99.0.0")
+        done = skillcopy.install(folder)
+    left = [name for name, _why in done.left]
+    assert "review-panel" in left
+    assert (folder / "review-panel").read_bytes() == b"a file where a folder was\n"
+    if not linked:
+        pytest.skip("this system lets an ordinary user make no link to a folder")
+    assert "figure-review" in left
+    assert tree(elsewhere) == tree(SOURCE / "figure-review")
 
 
 # ---------------------------------------------------------------- the command
@@ -256,7 +415,33 @@ def test_the_command_fails_and_names_what_it_left(tmp_path: Path, capsys) -> Non
     assert main(["install-skills", "--dir", str(folder)]) == 1
     captured = capsys.readouterr()
     assert "review-panel" in captured.err and "not from manuscript-guard" in captured.err
+    assert "--project" in captured.err, "the message says what can be done about it"
     assert (folder / "project-setup" / "SKILL.md").is_file(), "the rest was still copied"
+
+
+def test_the_command_says_how_to_take_the_new_release_of_a_changed_skill(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    edited = folder / "figure-review" / "SKILL.md"
+    edited.write_bytes(edited.read_bytes() + b"\nOur own rule.\n")
+    monkeypatch.setattr(skillcopy, "__version__", "99.0.0")
+    assert main(["install-skills", "--dir", str(folder)]) == 1
+    said = capsys.readouterr().err
+    assert "figure-review" in said and "was changed" in said
+    assert "delete the folder and run the command again" in said
+
+
+def test_the_command_stops_at_a_stamp_it_cannot_read(tmp_path: Path, capsys) -> None:
+    folder = tmp_path / "skills"
+    skillcopy.install(folder)
+    (folder / skillcopy.STAMP).write_text("{", encoding="utf-8")
+    before = tree(folder)
+    assert main(["install-skills", "--dir", str(folder)]) == 2
+    assert tree(folder) == before
+    said = capsys.readouterr().err
+    assert skillcopy.STAMP in said and "nothing" in said
 
 
 # ---------------------------------------------------------------- a stale copy
@@ -346,6 +531,43 @@ def test_a_stamp_that_cannot_be_read_never_costs_the_check(
     assert check(project, capsys) == (code, out, "")
 
 
+@pytest.mark.parametrize(
+    ("copy", "renews"),
+    [
+        ("0.2.99", True),  # older: 99 < 400, though "99" sorts after "400" as text
+        ("0.2.399", True),
+        ("0.2.400", None),
+        ("0.2.1000", False),  # newer: 1000 > 400, though "1000" sorts before "400" as text
+        ("0.10.0", False),
+    ],
+)
+def test_releases_are_compared_as_numbers_not_as_text(
+    project: Path, no_user_copy: Path, copy: str, renews: bool | None, monkeypatch, capsys
+) -> None:
+    install_from(SOURCE, copy, project / ".agents" / "skills", monkeypatch)
+    monkeypatch.setattr(skillcopy, "__version__", "0.2.400")
+    _code, _out, said = check(project, capsys)
+    if renews is None:
+        assert said == ""
+    else:
+        assert ("install-skills --project" in said) == renews, said
+        assert ("pip install --upgrade" in said) != renews, said
+
+
+def test_with_nowhere_to_say_it_the_notice_is_not_said(
+    project: Path, no_user_copy: Path, older: Path, monkeypatch, capsys
+) -> None:
+    """A process started with its error stream closed has none, and `print` then writes to
+    standard output: the notice landed after the JSON of `check --json`."""
+    code, out, _err = check(project, capsys, "--json")
+    install_from(older, "0.0.1", project / ".agents" / "skills", monkeypatch)
+    capsys.readouterr()
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "stderr", None)
+        again = main(["check", str(project), "--json"])
+    assert (again, capsys.readouterr().out) == (code, out)
+
+
 def test_build_names_a_stale_copy_as_well(
     project: Path, no_user_copy: Path, older: Path, monkeypatch, capsys
 ) -> None:
@@ -359,12 +581,18 @@ def test_build_names_a_stale_copy_as_well(
 # ---------------------------------------------------------------- a tool that reads the folder
 
 GEMINI = shutil.which("gemini")
+WITH_GEMINI = "MANUSCRIPT_GUARD_WITH_GEMINI"
 
 
-@pytest.mark.skipif(GEMINI is None, reason="Gemini CLI is not installed")
+@pytest.mark.skipif(
+    GEMINI is None or not os.environ.get(WITH_GEMINI),
+    reason=f"runs only with Gemini CLI installed and {WITH_GEMINI} set",
+)
 def test_gemini_cli_finds_every_skill_in_the_copy(tmp_path: Path) -> None:
-    """`gemini skills list` reads the folders and calls no model. Skipped where Gemini CLI
-    is absent, which includes CI: this is the check a contributor who has it can run."""
+    """`gemini skills list` reads the folders and calls no model. It is asked for by name,
+    with the variable above, because Gemini CLI reads and keeps its state in the real home of
+    whoever runs it, which a test suite should not touch unasked. Passed with Gemini CLI
+    0.58.0 on 2026-10-02."""
     workspace = tmp_path / "w"
     folder = workspace / ".agents" / "skills"
     skillcopy.install(folder)

@@ -1812,7 +1812,7 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
 
     try:
         done = skillcopy.install(folder)
-    except (skillcopy.SkillsMissing, OSError) as exc:
+    except (skillcopy.SkillsMissing, skillcopy.StampUnreadable, OSError) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
@@ -1822,11 +1822,15 @@ def cmd_install_skills(args: argparse.Namespace) -> int:
         print(f"removed {name}, which this release no longer has")
     if args.dir is None:
         print(
-            "Codex, Gemini CLI, Mistral Vibe and Kimi Code CLI read `.agents/skills`. "
-            "Start a new session of the agent tool to see them."
+            "By their documentation, Codex, Gemini CLI, Mistral Vibe and Kimi Code CLI read "
+            "`.agents/skills`. Start a new session of the agent tool to see them."
         )
     for name, why in done.left:
-        print(f"manuscript-guard: {folder / name} {why}, so it was left as it is", file=sys.stderr)
+        print(
+            f"manuscript-guard: {folder / name} {why}, so it was left as it is; "
+            f"{skillcopy.WAY_FORWARD[why]}",
+            file=sys.stderr,
+        )
     return 1 if done.left else 0
 
 
@@ -1846,10 +1850,13 @@ def _note_stale_skills(start: Path) -> None:
         except (ContractError, OSError):
             root = None
         notice = skillcopy.stale_notice(root)
+        # A process started with its error stream closed has none, and `print` then writes
+        # to standard output, after the JSON of `check --json`. With nowhere to say it, it
+        # is not said.
+        if notice and sys.stderr is not None:
+            print(notice, file=sys.stderr)
     except Exception:  # noqa: BLE001 - a notice must never cost the command its answer
         return
-    if notice:
-        print(notice, file=sys.stderr)
 
 
 def cmd_init(args: argparse.Namespace) -> int:

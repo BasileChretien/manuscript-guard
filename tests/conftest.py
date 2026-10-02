@@ -7,6 +7,7 @@ copy has to be per test; only the expensive part is shared.
 
 from __future__ import annotations
 
+import atexit
 import os
 import re
 import shutil
@@ -45,10 +46,11 @@ PANDOC_VERSION_LINE = re.compile(r"^pandoc(?i:\.exe)?\s+(\S+)", re.MULTILINE)
 #: `check` and `build` say when a copy of the skills in the user's home is from another
 #: release. Whoever runs the suite may have such a copy, and the tests that read stderr must
 #: not depend on it, in this process or in one they start. So the suite looks in a folder
-#: that is not there.
-os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(
-    Path(tempfile.gettempdir()) / "manuscript-guard-tests-no-user-skills"
-)
+#: that is not there: one under a directory made for this run and removed after it, so that
+#: a test that wrote there by mistake leaves nothing for the next run to read.
+_FOR_THIS_RUN = Path(tempfile.mkdtemp(prefix="manuscript-guard-tests-"))
+atexit.register(shutil.rmtree, _FOR_THIS_RUN, ignore_errors=True)
+os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(_FOR_THIS_RUN / "no-user-skills")
 
 
 def pytest_configure(config: pytest.Config) -> None:

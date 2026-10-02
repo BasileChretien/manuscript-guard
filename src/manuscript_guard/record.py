@@ -65,7 +65,9 @@ def panel_lock(panel: Path) -> Iterator[None]:
     away again when its writer was refused took it from under a writer waiting for the same
     lock, which ended in a traceback. The one refusal that would make a folder, a reviewer
     with no remit in a project with no `review/` yet, is made before the lock is asked for;
-    everything else that reads the panel reads it while holding the lock.
+    otherwise `review --record` reads its round's panel only while holding this lock.
+    Earlier rounds' panels, read for a returning reviewer's remit, are read without
+    theirs: DESIGN.md, Known gaps.
     """
     lock = panel.with_name(panel.name + ".lock")
     lock.parent.mkdir(parents=True, exist_ok=True)

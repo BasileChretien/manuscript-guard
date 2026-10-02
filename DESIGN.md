@@ -172,7 +172,20 @@ copy — see the note under "What an adversarial review found".
   manuscript/supplementary/*.md   # the same, built as its own document
   figures/              # scripts that may read results.json and nothing else
   build/                # docx/pdf artifacts, gitignored
+  AGENTS.md             # the rules of the project, for any agent working in it
 ```
+
+`AGENTS.md` is there because the skills and the hooks reach an agent only where they were
+installed, and several agent tools read that one file at a project's root on their own. It
+holds what the guarantee rests on, on one short page: machine-written files are not edited,
+`check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
+says only what holds in any project at any time, because it is written once: a finding is
+never typed, though a convention or a pointer is; `check` decides for the stage the project
+declares; and for how to install the skills it points to the README without saying what the
+README holds for which tool. It names no agent tool. Like every file of the scaffold it is never written over an existing
+one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
+prints the rules to add, because an agent there would otherwise read rules that say nothing
+of `results/`. It is advice to the reader and enforces nothing: the gates do that.
 
 `manuscript/supplementary/` is read by every gate that reads prose — a fabricated number in a
 supplementary table is still fabricated, and a supplement nobody checks is the obvious place
@@ -3511,6 +3524,21 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
+  Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
+  reads it before any work, from the repository's root down to the working directory, up to
+  32 KiB in all; Mistral Vibe reads it in a folder the user has trusted; Claude Code from
+  2.1.277 reads it only where there is no `CLAUDE.md` in the working directory or above;
+  Gemini CLI reads `GEMINI.md` and takes `AGENTS.md` only once `context.fileName` in its
+  settings lists it; for Kimi Code CLI a third-party page says it is read and Kimi's own
+  documentation was not found to. The file is written by `init` and never again: a project
+  made by an earlier release has none until `init` is run on it once more, a later release's
+  wording does not reach a file already written, and it says `results/` and `build/` even
+  where `paths:` in `paper.yaml` has moved them. A file that names the toolkit anywhere is
+  taken to hold the rules, so one that mentions it and lacks them gets no notice. Its first
+  rule says a checklist profile is written by `transcribe` from a recipe, which is untrue of
+  one file: the worked example's `DEMO-OBS.yaml` is invented and written by hand, and has no
+  recipe.
 - **Under Codex the hooks are tested against its source, not in a session.** The handlers are
   tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
   as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a
@@ -3606,8 +3634,10 @@ Closed since, and why each mattered:
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
   CLI, Mistral Vibe, Kimi Code), a tool only one of them has, a plugin, the words "slash
-  command", `/manuscript-guard:`, one tool's instruction file or its `.claude` directory, and
-  when its frontmatter carries a field the Agent Skills specification does not define. It
+  command", `/manuscript-guard:`, one tool's instruction file, its `.claude` directory, a
+  `CLAUDE_` variable or an `mcp__` tool name, and when its frontmatter carries a field the
+  Agent Skills specification does not define. The `AGENTS.md` that `init` writes is held to
+  the same scan. It
   matches on spelling, so it errs both ways. A tool that is not on the list passes, as does a
   command typed as `/project-setup`, and wording that assumes one tool without naming it,
   such as a step only that tool can carry out. ChatGPT, Copilot and Cursor are left off
@@ -3615,9 +3645,15 @@ Closed since, and why each mattered:
   co-author used in Word), and model providers because a review panel may name where its
   models come from; any of them used to mean the reader passes too. In the other direction, a
   short list of phrases is taken out before the scan: Zotero's, Better BibTeX's, Word's or a
-  browser's plugin, "Anthropic's Claude", "Claude Opus", "Claude Sonnet", "Claude Haiku",
-  "Claude models" and a hyphenated model name ending in "-Codex". A model family named in
-  prose any other way fails, and has to be written as its identifier. Where a skill describes
+  browser's plugin, a plug-in estimator or principle, "Anthropic's Claude" unless "Code"
+  follows, "Claude
+  Opus", "Claude Sonnet", "Claude Haiku", "Claude models" and a hyphenated model name ending
+  in "-Codex". Claude or Codex named in prose any other way fails ("Claude" alone in a list
+  of models, "Claude 4.5 Sonnet", "the Claude family") and has to be written as an
+  identifier; other model families pass however they are written. A reader addressed by one
+  of the phrases taken out ("if you are Claude Opus") passes, since a pattern cannot tell that
+  from a member of a panel. Another product's plugin named in a way that is not listed fails
+  ("the LibreOffice plugin"). Where a skill describes
   a hook it says "where the hooks run", since an agent tool may have none. Read under Claude
   Code only so far: no skill has been followed in a session of another tool.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A

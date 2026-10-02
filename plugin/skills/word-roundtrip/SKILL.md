@@ -62,9 +62,9 @@ Tell the co-author, in these words or better ones:
 
 ## 2. When it comes back
 
-Save it outside `build/`, which every build overwrites. With the plugin installed, a shell
-command that copies or moves a `.docx` can be intercepted by the submission guard, so pass
-the file's path straight to `import` rather than moving it.
+Save it outside `build/`, which every build overwrites. Where the hooks run, a shell command
+that copies or moves a `.docx` can be intercepted by the submission guard, so pass the file's
+path straight to `import` rather than moving it.
 
 Commit, or at least make sure `git status` is clean. `--apply` writes the source in place and
 keeps no backup.

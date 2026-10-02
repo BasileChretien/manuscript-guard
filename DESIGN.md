@@ -240,7 +240,9 @@ All deterministic, all runnable in CI without Claude.
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
-check is not a pass.
+check is not a pass. Where what the gate threw is the project's own error about a file it
+reads, a review record that is not UTF-8 for one, the finding carries that sentence, which
+names the file, and does not call it a bug.
 
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
@@ -1243,11 +1245,20 @@ through the guard in the project that was refused, over a table that a refusal a
 is added to. For the failing check it also runs the command, to see that every failure is
 listed and that as many are counted as the guard counted.
 
+**An option is read only where it is written in full.** The guard's marker for the
+submission standard is the word `--submission`, and it can only list the spellings the
+command line reads. argparse reads any prefix that names one option, which made `--subm` a
+spelling the guard did not have. The parser refuses abbreviations, on every command, so the
+word is the only spelling of that option (see "Closed since"). It is not the only way to ask
+for the submission standard: `--stage submission` is the other, which a refusal itself names
+for `check`, and on `build` the guard does not hold it (Known gaps).
+
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
 
-One error is expected, and is passed on. Where a file of the project's own cannot be parsed,
+One error is expected, and is passed on. Where a file of the project's own cannot be used
+(it does not parse, is not UTF-8, or leaves `check` with no folders or no stage to go by),
 `check` stops before any gate, says which file in a sentence written for the author, and
 exits 2. A project that could not be checked has not passed, so the submission guard refuses
 with that sentence, and the session start says it where the status line would have been. The
@@ -3474,6 +3485,25 @@ Added by the adversarial review, verified and **not** fixed:
 
 Closed since, and why each mattered:
 
+- **An abbreviated `--submission` was not seen by the submission guard.** argparse reads any
+  prefix of an option that names one option only, so `manuscript-guard build --subm` was a
+  submission build and `review --subm` a review at submission standard, and the guard's
+  marker is the whole word: in a project that fails, `build --subm --offline` was let
+  through by the guard. `build` then refused on its own account, as it does while anything
+  fails; with `--skip-checks` it built, and that build is what the guard missed. Found in
+  the review of #131 and true before it. No command reads an abbreviated
+  option now (Basile, 2026-10-02): `build --subm` exits 2 with `unrecognized arguments:
+  --subm`, and so does `--off` for `--offline`, which is the cost, paid by someone typing a
+  short form by hand. No document, skill or test in the repository wrote one. The marker was
+  not widened to the prefixes instead, because it would then have to be kept in step with
+  the parser by hand: on `review`, `--su` already stands for `--summary` as much as for
+  `--submission`. argparse's setting belongs to each parser, and on the top one alone it
+  leaves every command abbreviating, so it is set by the class the commands are made from.
+  `tests/test_cli.py` takes the commands that have the option from the parser and holds
+  every prefix of the word to one rule, that a spelling read as a submission is one the
+  guard's pattern matches; a second test fails for a command added with abbreviations on.
+  Before any command, `manuscript-guard --vers` is an error too, though the message is
+  argparse's for the missing command and does not name the option.
 - **A backslash before raw markup was not read.** `<!--`, `\begin{x}` or `<pre>` after an
   odd number of backslashes is text to pandoc, and `import` writes what a co-author types
   in Word so: a `<!--` typed there comes back as `\<!--`. `_blocks` took it for an opener
@@ -3927,6 +3957,22 @@ Closed since, and why each mattered:
   matcher is part of what a user trusted (`hook_hash` in
   `codex-rs/hooks/src/engine/discovery.rs`, read 2026-10-02), so after this change of
   matcher the guard is skipped there until the user reviews it again with `/hooks`.
+- **`build --stage submission` is a submission build the submission guard does not hold.**
+  `--stage submission` gives the same verdict as `--submission` and is not one of the
+  guard's markers, which is why a refusal can name `check --stage submission`. On `build` it
+  is let through too: in a project that fails, `manuscript-guard build --stage submission
+  --offline` is not stopped by the guard and refuses on its own account, and with
+  `--skip-checks` it writes `manuscript.UNCHECKED.docx`, where the same command with
+  `--submission` is refused before it runs. Found in the review of #136 on 2026-10-02 and
+  true on `main` before it. Not decided: a marker for `--stage submission` after `build`
+  only would close it.
+- **Under another name the command line is not a submission the guard sees.** The marker for
+  the pack is the words `manuscript-guard submit`. The package installs `mguard` as a second
+  name for the same command, and `mguard submit --offline --skip-checks`, `python -m
+  manuscript_guard.cli submit` and `manuscript-guard.exe submit` are all let through in a
+  project that fails. `submit` refuses on its own account without `--skip-checks`. An option
+  is seen under any name: `mguard build --submission` is refused. Found in the review of
+  #136 and true on `main` before it. Not fixed yet; the marker's line is one #132 changes.
 - **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
   Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
   reads it before any work, from the repository's root down to the working directory, up to
@@ -4018,14 +4064,52 @@ Closed since, and why each mattered:
   to run it on its own, because the command ends in the word `submission`, which the guard
   matches after `cp` or `git push` on the same line. The older refusal, for a failing check,
   says the same since #131.
-  Still open: only that
-  one error is passed on. A file among those that is not UTF-8, or a `paper.yaml` that holds
-  a list, ends `check` itself in a traceback (`UnicodeDecodeError`, `AttributeError`) and
-  not in a sentence. There the guard is silent as it was, and the command goes through.
-  Refusing on any error at all would have covered both and was not chosen: a fault of the
-  tool would then stop every command that names a `.docx` in that project, with a message its
-  author can do nothing with. The remedy is in `check`, which should say those two in a
-  sentence, and then the guard refuses them with no change of its own.
+  The hooks pass on that one error and no other, so `check` has to raise it for everything
+  of the project's own that stops it, and it did not. A file among those that was not UTF-8
+  ended `check` in a traceback (`UnicodeDecodeError`), and so did a `paper.yaml` that held a
+  list (`AttributeError`). There the guard was silent as it had been, and the command went
+  through. Looking for more of the kind found these: a `paper.yaml` that held text or a
+  number, and text is what YAML makes of `title:My paper` with no space after the colon;
+  `paths` that was not folders by name, or one folder given as a number or left empty; a
+  file the system would not open;
+  a `stage` that is not one, `draft` for `drafting`, on a plain `check` (with `--submission`
+  the stage is given, so the check ran and reported the line); and, from the review of the
+  change, a date that does not exist, typed without quotes. `verified_on: 2026-09-31` is a
+  date to YAML until the date is made, and that fails with an error that is not one of the
+  parser's own, so it went past the two that were caught. Each is now said in a sentence
+  that names the file, and `check` exits 2. For a file that is not UTF-8 the sentence gives
+  the encoding where a byte-order mark names it, else the byte and the line it is on, and
+  says to save the file as UTF-8. For the others it gives what the file holds and what was
+  expected in its place, the stages to choose from, or what the parser said. The submission
+  guard refuses with the sentence and has not changed. Such a file is refused and not read
+  in the encoding its mark names, which is how the audit reads an output it was handed:
+  these are the project's own files, and one way to write them leaves less to get wrong than
+  five. Refusing on any error at all would have covered all of it and was not chosen: a
+  fault of the tool would then stop every command that names a `.docx` in that project, with
+  a message its author can do nothing with. Two things are refused that were not. A
+  `paper.yaml` that holds `[]`, `0` or `false` was read as no settings, with the schema's
+  findings for everything missing, and is now a list or a number like any other. And a
+  folder under `paths` that only a gate asks for, given as a number, was a schema finding
+  beside a `gate-errored` one and now stops the check before any gate. The write guard did
+  change, by one name. It asks `paper.yaml` where the results are kept, and it caught the
+  error a file that is not UTF-8 used to raise, so it went on under the usual names. The new
+  error went past it: the guard ended in silence and the edit went through, which the review
+  found. It catches that error now, and so guards `results/` and `build/` under their usual
+  names in a project whose `paper.yaml` does not parse as well, where it had always been
+  silent. A folder moved by `paths:` it cannot know there. A file a gate reads is still a
+  `gate-errored` finding. Where what the gate raised is this error, the finding now carries
+  its sentence with no class name in front, under a hint that no longer begins with a bug in
+  the tool: a review record in UTF-16 read "UnicodeDecodeError: 'utf-8' codec can't decode
+  byte 0xff in position 0" and named no file. Still open, and each fails at every stage, so
+  none is a pass. A manuscript file that is not UTF-8 is read by the gates themselves, so
+  the finding there still reads that way and names no file, and `explain` and `render` end
+  in a traceback on one. The same wording stays for a file a gate reads by another route: a
+  figure's `.guard.yaml`, `methods.lock`. A key of `paper.yaml` that only a gate reads, in
+  the wrong shape (`terms: 5`, `review: [1]`), is a `gate-errored` finding worded as a fault
+  of the tool, beside the schema's own finding, which names the key; `explain` and `bind`
+  end in a traceback on `terms: 5`. And a results fragment with the mark of UTF-8 in front,
+  which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
+  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read.
 - **Where the hooks run, an agent cannot run `check --submission` in a project that fails
   it.** The submission guard matches `--submission` anywhere in a shell command, so it holds
   `manuscript-guard check --submission`, `review --submission` and `respond --submission` to
@@ -4055,11 +4139,6 @@ Closed since, and why each mattered:
   commands, and from that folder recognising them is all it does. Found in the review of #131
   on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
   shell command, which the guard so far does not do.
-- **An abbreviated `--submission` is not seen by the submission guard.** The command line
-  accepts any prefix of an option that names one option only, so `manuscript-guard build
-  --subm` is a submission build and `review --subm` a review at submission standard, and the
-  guard's marker is the whole word. No document writes it that way. Found in the review of
-  #131 and true before it; a parser that refuses abbreviations would close it.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

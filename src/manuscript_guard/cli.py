@@ -138,6 +138,20 @@ def _guarded(name: str, gate) -> Report:
 
     try:
         return gate()
+    except ContractError as exc:
+        # A file the gate reads cannot be used, and the error is a sentence for the author
+        # that names it. The same code, which fails at every stage, but not worded as a
+        # fault of the tool: no class name before the sentence, and no bug in the hint.
+        return Report(
+            (
+                Finding(
+                    gate=name,
+                    code="gate-errored",
+                    message=f"{name} could not run: {exc}",
+                    hint="put that file right; the manuscript has not been checked by this gate",
+                ),
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - any gate failure must be visible, not fatal
         return Report(
             (
@@ -1941,8 +1955,24 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+class _Parser(argparse.ArgumentParser):
+    """A parser that reads an option only where it is written in full.
+
+    argparse reads any prefix of an option that names one option only, so `build --subm` was
+    a submission build. The submission guard looks for the word `--submission` in a command,
+    and a spelling it cannot list is a submission it does not see.
+
+    The setting is each parser's own, and on the top parser alone it leaves every command
+    reading abbreviations. A command is made by the class of the parser it is added to, so
+    setting it here reaches each of them, and one added later.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **{**kwargs, "allow_abbrev": False})
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="manuscript-guard",
         description="Make every number in a scientific manuscript traceable to its source.",
     )

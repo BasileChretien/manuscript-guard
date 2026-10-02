@@ -55,7 +55,11 @@ SUBMISSION_MARKERS = re.compile(
     # standards.
     r"manuscript-guard\s+submit\b|--submission\b|"
     # Moving a submission somewhere: an action verb near the pack or a built document.
-    r"\b(?:zip|tar|scp|rsync|cp|copy|mv|move|curl|wget|mail|sendmail|git\s+push)\b"
+    r"\b(?:zip|tar|scp|rsync|cp|copy|mv|move|curl|wget|mail|sendmail|git\s+push|"
+    # The same verbs as PowerShell and Windows spell them, since on Windows an agent's shell
+    # is PowerShell. `Copy-Item` and `Move-Item` are held by `copy` and `move` above.
+    r"compress-archive|send-mailmessage|invoke-webrequest|invoke-restmethod|iwr|irm|"
+    r"start-bitstransfer|robocopy|xcopy)\b"
     r"[^\n]{0,120}?(?:\bsubmission\b|\.docx\b)",
     re.IGNORECASE,
 )
@@ -514,9 +518,10 @@ def main(argv: list[str] | None = None) -> int:
     """Entry point for `manuscript-guard-hook`.
 
     A separate console script from the main CLI, and this module imports nothing heavy at
-    module level, because the Bash guard fires on *every* shell command. Routing it through
-    the full CLI would load the gates, the build pipeline and the Zotero client before
-    deciding the command has nothing to do with a submission.
+    module level, because the submission guard fires on *every* shell command, whichever of
+    `Bash`, `PowerShell` and `Monitor` runs it. Routing it through the full CLI would load
+    the gates, the build pipeline and the Zotero client before deciding the command has
+    nothing to do with a submission.
     """
     args = argv if argv is not None else sys.argv[1:]
     if not args or args[0] not in HANDLERS:

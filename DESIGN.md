@@ -976,9 +976,24 @@ That last one carries a specific lesson. It matches the **whole command string**
 permission-rule prefix filter, because `cd example && manuscript-guard submit` and
 `FOO=1 manuscript-guard submit` both defeat a prefix rule — which is precisely how a
 submission build slipped past the equivalent guard in the predecessor project. The cost is
-that the hook fires on every Bash call, so it has its own console script
+that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
+
+It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
+`PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
+reads the command, not the tool's name. It was registered for `Bash` alone until 2026-10-02,
+and a matcher made of letters and `|` is a list of exact tool names, for Claude Code and for
+Codex alike. On Windows Claude Code makes PowerShell an agent's first shell, and by its
+documentation has no Bash tool at all where Git Bash is absent, so there the guard never ran.
+Seen in a session with both tools (Claude Code 2.1.286): in a copy of the example with its
+reviews deleted, `echo 'cp build/manuscript.docx elsewhere'` through the Bash tool was
+refused, and `Write-Output 'Copy-Item build\manuscript.docx elsewhere'` through the
+PowerShell tool was not. `tests/test_plugin.py` holds the matcher to the three names. The
+markers took the PowerShell and Windows spellings of the verbs they already had at the same
+time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest`, `Invoke-RestMethod` and
+their aliases `iwr` and `irm`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
+`Move-Item` were held before, since `copy` and `move` stand in them as whole words.
 
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
@@ -3475,6 +3490,23 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **The submission guard sees a command only through the tools it is registered for, and
+  only the verbs it knows.** Those tools are `Bash`, `PowerShell` and `Monitor`. A command
+  that an MCP server runs, a terminal tool for one, never reaches it, and neither does a copy
+  made inside a script the agent runs. That the PowerShell tool sends its command in
+  `tool_input.command` is taken from Claude Code's hooks reference, and for `Monitor` from
+  the tool's own input, which that reference does not describe; no event from either was
+  captured, for want of a login in a headless session. What was seen in a session is that a
+  matcher of `Bash` does not fire for the PowerShell tool. Not held, in PowerShell: the
+  aliases `cpi` and `mi`, left out because so short a word before a `.docx` would be a false
+  alarm more often than a submission; and a .NET call that names no verb the guard knows,
+  such as `[IO.Compression.ZipFile]::CreateFromDirectory`. In any shell, the document has to
+  be named after the verb and on the same line: a path put in a variable beforehand is not
+  seen, nor is a command continued onto a second line before the path. The false alarms are
+  of the kind the guard already had: in a
+  project that fails the submission check, `Invoke-WebRequest` saving a journal's template
+  as a `.docx` is refused as `curl -o template.docx` is, and so is `robocopy` on a folder
+  whose name has the word submission in it.
 - **Under Codex the hooks are tested against its source, not in a session.** The handlers are
   tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
   as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a

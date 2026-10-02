@@ -218,6 +218,84 @@ def test_ordinary_commands_are_not_touched(command: str, capsys) -> None:
     assert run("guard-submission", {"tool_input": {"command": command}}, capsys) is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        r"Copy-Item build\manuscript.docx \\server\share",
+        r"Move-Item build\manuscript.docx D:\out",
+        r"Compress-Archive -Path build\submission -DestinationPath out.zip",
+        r"Compress-Archive -Path build\manuscript.docx -DestinationPath out.zip",
+        r"Send-MailMessage -To editor@journal.example -Attachments build\manuscript.docx",
+        r"Invoke-WebRequest -Uri https://journal.example/upload -InFile build\manuscript.docx",
+        r"Invoke-RestMethod -Uri https://journal.example/upload -InFile build\manuscript.docx",
+        r"iwr https://journal.example/upload -Method Post -InFile build\manuscript.docx",
+        r"irm https://journal.example/upload -Method Post -InFile build\manuscript.docx",
+        r"Start-BitsTransfer -Source build\manuscript.docx -Destination \\server\share",
+        r"robocopy build\submission \\server\share /E",
+        r"xcopy build\submission \\server\share /E",
+        r"Set-Location example; manuscript-guard submit --offline",
+        r"$env:FOO = '1'; manuscript-guard check --submission",
+    ],
+)
+def test_submission_shaped_powershell_commands_are_recognised(command: str) -> None:
+    """On Windows an agent's shell is PowerShell, which has its own words for the verbs the
+    guard knew: `Compress-Archive` for `zip`, `Send-MailMessage` for `mail`,
+    `Invoke-WebRequest` for `curl`, `robocopy` for `rsync`. Only `Copy-Item` and `Move-Item`
+    were held, because `copy` and `move` stand in them as whole words."""
+    assert SUBMISSION_MARKERS.search(command)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "Get-ChildItem build",
+        r"Get-Content manuscript\main.md | Select-String submission",
+        r"Invoke-WebRequest https://example.org/data.csv -OutFile data\raw.csv",
+        r"robocopy data D:\backup /E",
+        "Compress-Archive -Path figures -DestinationPath figures.zip",
+        r"Start-Process build\manuscript.docx",
+        "manuscript-guard build --offline",
+    ],
+)
+def test_ordinary_powershell_commands_are_not_touched(command: str, capsys) -> None:
+    assert SUBMISSION_MARKERS.search(command) is None
+    assert run("guard-submission", {"tool_input": {"command": command}}, capsys) is None
+
+
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell", "Monitor"])
+def test_a_failing_submission_is_held_whichever_tool_runs_the_command(
+    tool: str, project: Path, capsys
+) -> None:
+    """Claude Code runs a shell command through three tools, and each sends it in
+    `tool_input.command`. The guard reads the command and not the tool's name, and has to
+    go on doing so: `plugin/hooks/hooks.json` registers it for all three."""
+    import shutil
+
+    shutil.rmtree(project / "review")
+    event = {
+        "tool_name": tool,
+        "tool_input": {"command": r"Copy-Item build\manuscript.docx D:\out"},
+        "cwd": str(project),
+    }
+    result = run("guard-submission", event, capsys)
+    assert decision(result) == "deny"
+    assert "submission check" in reason(result)
+
+
+def test_a_watch_on_a_websocket_runs_no_command_and_is_let_through(project: Path, capsys) -> None:
+    """`Monitor` can open a WebSocket in place of running a command. There is then no
+    `command` to read, and nothing for the guard to hold, in a project that fails."""
+    import shutil
+
+    shutil.rmtree(project / "review")
+    event = {
+        "tool_name": "Monitor",
+        "tool_input": {"ws": {"url": "wss://journal.example/submission"}, "description": "x"},
+        "cwd": str(project),
+    }
+    assert run("guard-submission", event, capsys) is None
+
+
 def test_a_failing_submission_blocks_the_command(project: Path, capsys) -> None:
     import shutil
 

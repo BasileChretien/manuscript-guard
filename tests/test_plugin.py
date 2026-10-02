@@ -114,6 +114,31 @@ def test_every_hook_the_plugin_registers_has_a_handler():
         assert handler in HANDLERS, f"{command!r} reaches no handler"
 
 
+# The tools through which Claude Code runs a shell command. Each sends it in
+# `tool_input.command`, which is where the submission guard reads it.
+SHELL_TOOLS = {"Bash", "PowerShell", "Monitor"}
+
+
+def test_the_submission_guard_is_registered_for_every_tool_that_runs_a_shell_command():
+    """Registered for `Bash` alone, the guard never ran on Windows.
+
+    Claude Code and Codex both read a matcher made of letters and `|` as a list of exact
+    tool names, so `Bash` is the Bash tool and nothing else. On Windows Claude Code sends an
+    agent's commands through the `PowerShell` tool, and where Git Bash is absent it has no
+    Bash tool at all: `Copy-Item build\\manuscript.docx` out of a failing project was never
+    shown to the guard.
+    """
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    (matcher,) = [
+        group.get("matcher", "")
+        for group in config["hooks"]["PreToolUse"]
+        if any(hook["command"].split()[-1] == "guard-submission" for hook in group["hooks"])
+    ]
+    # Any other character and both tools read the matcher as a regular expression instead.
+    assert re.fullmatch(r"[A-Za-z0-9_|]+", matcher), matcher
+    assert set(matcher.split("|")) == SHELL_TOOLS
+
+
 def test_the_marketplace_installs_the_plugin_it_describes():
     market = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))

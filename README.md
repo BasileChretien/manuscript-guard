@@ -369,7 +369,9 @@ that should send you to it.
 The submission guard matches against the **whole command string** rather than a prefix rule,
 because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard submit` both
 defeat prefix matching. That is not hypothetical: it is how a submission slipped past the
-guard in the project this one learned from.
+guard in the project this one learned from. It reads a command whichever tool runs it
+(`Bash`, `PowerShell` or `Monitor` under Claude Code), and knows the PowerShell words for
+its verbs, `Compress-Archive` and `Send-MailMessage` among them.
 
 A hook never breaks a session. Anything unexpected exits silently, because a guard that
 crashes on a half-configured project gets removed, taking the guards that worked with it.

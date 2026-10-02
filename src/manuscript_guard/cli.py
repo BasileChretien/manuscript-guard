@@ -64,7 +64,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import init_project
+from manuscript_guard.scaffold import init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import substitute
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -154,6 +154,25 @@ def _guarded(name: str, gate) -> Report:
 
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
+    if args.providers:
+        # Before the project is loaded: the list of providers is worth having without one.
+        from manuscript_guard.panel.commands import list_providers
+
+        return list_providers(args.path)
+    if args.run or args.dry_run:
+        from manuscript_guard.panel.commands import run_panel
+
+        if not args.run:
+            print(
+                "manuscript-guard: --dry-run goes with --run: `review --run --dry-run` shows "
+                "what a run of the panel would send",
+                file=sys.stderr,
+            )
+            return 2
+        return run_panel(
+            args.path, round_number=args.round, one_each=args.one_each, dry_run=args.dry_run
+        )
+
     project, _ = load_project(args.path)
     digest = manuscript_digest(project)
     if args.digest:
@@ -180,7 +199,7 @@ def cmd_review(args: argparse.Namespace) -> int:
                     project,
                     args.record,
                     verdict=args.verdict,
-                    round_number=args.round,
+                    round_number=1 if args.round is None else args.round,
                     reviewed_by=args.by,
                     remit=args.remit or "",
                     summary=args.summary or "",
@@ -1803,6 +1822,13 @@ def cmd_init(args: argparse.Namespace) -> int:
     created = init_project(args.path, title=args.title)
     for path in created:
         print(f"created {path}")
+    rules = rules_to_add(args.path)
+    if rules:
+        print(
+            "\nAGENTS.md was already there and says nothing of manuscript-guard, so it was "
+            "left as it was. An agent tool reads its rules from that file. Add these to it:\n\n"
+            + rules
+        )
     print(
         "\nnext: describe your authors in authors.yaml, then write an analysis that "
         f"publishes its results with {HOW_TO_EMIT}"
@@ -1930,10 +1956,39 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted({*RECORD_VERDICTS, *FIGURE_VERDICTS}),
         help="required with --record or --record-figure",
     )
-    review.add_argument("--round", type=int, default=1, help="review round; default 1")
+    review.add_argument(
+        "--round",
+        type=int,
+        help="review round. Default 1 with --record; with --run, the first round somebody "
+        "has not reported in",
+    )
     review.add_argument("--by", help="who did the reading; defaults to the reviewer id")
     review.add_argument("--remit", help="what this reviewer is responsible for noticing")
     review.add_argument("--summary", help="the reviewer's overall comment")
+    review.add_argument(
+        "--providers",
+        action="store_true",
+        help="list the model providers a panel can be read by, the environment variable "
+        "each key comes from, and whether it is set. No key is printed",
+    )
+    review.add_argument(
+        "--run",
+        action="store_true",
+        help="have the round's panel read by the models in paper.yaml's review.models. In "
+        "this version only together with --dry-run",
+    )
+    review.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --run: say which files would go to which provider and how many calls "
+        "that is, write the exact request bodies under build/, and send nothing",
+    )
+    review.add_argument(
+        "--one-each",
+        action="store_true",
+        help="with --run: one model per reviewer, dealt across review.models in turn, "
+        "instead of every model reading every remit",
+    )
     review.set_defaults(func=cmd_review)
 
     bind = sub.add_parser(

@@ -135,6 +135,7 @@ manuscript-guard/
                    #   includes journal.py and reporting.py: the guideline checkers
     build/         # md -> docx/pdf, zotero.lua, CSL, tables, figures
     zotero/        # BBT JSON-RPC client, citation-key pinning checks
+    panel/         # model providers reading the review panel; no gate imports it
     literature/    # stored sources, quote and value verification
     reporting/     # recipe-driven checklist transcription
     text/          # masking, tokenising, placeholders, docx and code readers
@@ -172,7 +173,20 @@ copy — see the note under "What an adversarial review found".
   manuscript/supplementary/*.md   # the same, built as its own document
   figures/              # scripts that may read results.json and nothing else
   build/                # docx/pdf artifacts, gitignored
+  AGENTS.md             # the rules of the project, for any agent working in it
 ```
+
+`AGENTS.md` is there because the skills and the hooks reach an agent only where they were
+installed, and several agent tools read that one file at a project's root on their own. It
+holds what the guarantee rests on, on one short page: machine-written files are not edited,
+`check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
+says only what holds in any project at any time, because it is written once: a finding is
+never typed, though a convention or a pointer is; `check` decides for the stage the project
+declares; and for how to install the skills it points to the README without saying what the
+README holds for which tool. It names no agent tool. Like every file of the scaffold it is never written over an existing
+one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
+prints the rules to add, because an agent there would otherwise read rules that say nothing
+of `results/`. It is advice to the reader and enforces nothing: the gates do that.
 
 `manuscript/supplementary/` is read by every gate that reads prose — a fabricated number in a
 supplementary table is still fabricated, and a supplement nobody checks is the obvious place
@@ -880,6 +894,132 @@ was a single ratio; all three were fixed, and the manuscript is better for it. R
 blinded and differently composed, found the remaining soft spots. Two findings are recorded
 as deliberate overrides rather than fixed, because the honest answer was that the synthetic
 data do not support what the reviewer wanted.
+
+## A panel read by several providers
+
+The panel existed only as a skill for one agent. A scientist without that agent could not
+run it, and a panel drawn from one model shares that model's blind spots. So the reviewers'
+remits can be read by models from several providers, listed once in `paper.yaml`:
+
+```yaml
+review:
+  models: [openai/<model>, mistral/<model>, moonshot/<model>]
+```
+
+**This is a layer beside the gates, not a gate.** `src/manuscript_guard/panel/` holds every
+provider call, and nothing under `gates/` imports it; a test reads the imports. The gates
+still run in CI with no network and no model. A model files a review record, and G11 reads
+records as it always has. A model does not decide whether the manuscript is clean.
+
+**One client, no new dependency.** OpenAI, Mistral, Moonshot (Kimi), DeepSeek, OpenRouter,
+Google's Gemini endpoint and a local Ollama all speak the chat API OpenAI defined, and
+Anthropic speaks its own. Two request shapes on `urllib` cover all of them, so a preset is
+four facts: the base URL, the name of the variable holding the key, the shape, and how the
+vendor spells an output cap. Each was read from the vendor's documentation on 2026-10-02 and
+a test holds the table. No preset names a model: model names change faster than a release,
+and the author supplies them. A provider that is not built in is added under
+`review.providers` by its URL. A built-in name cannot be pointed elsewhere, and a provider
+that is not built in cannot name a built-in provider's key variable as its own: either
+would let a `paper.yaml` somebody else wrote send the reader's key to a host of its
+choosing. The address must be one host, a port if it needs one, and a path, in plain
+characters; `http://[::1].evil.example` and `http://@localhost` are refused, since what
+decides whether a call stays on this machine is the host. The host itself is letters,
+digits, dots and hyphens, or a bracketed address, with nothing encoded: urllib decodes a
+percent-encoded host before it connects, so `api.openai.com%2e%65%76%69%6c.example` was
+shown to the author as written and reached `api.openai.com.evil.example`. The host the
+statement names has to be the host that is connected to, and that is now checked as such:
+the host shown is compared with the host urllib derives from the address, and no `%` is
+taken in it. Listing the shapes that mislead missed one twice; the second was a `%` after
+an address in brackets, which reads as a zone id. A host that ends in a number is an
+address and must be four numbers with dots, since `2130706433` and `0x7f.1` are each read
+by the resolver as an address the text does not show.
+
+**Keys.** A key is read from its environment variable when a call is made and goes into one
+request header. It is not in the request body, so the body can be printed and digested. It
+is not written to a file, a record or a message: `review --providers` says only whether each
+variable is set, and a rejected key gets a message of our own. Anything printed that
+somebody else wrote, a provider's error or an exception's text, has every run of four or
+more of the key's characters taken out first, because a provider's message for a bad key
+can quote its first and last few; the review of the first version found the whole key
+printed when it held a line break, inside the message `http.client` gives for a header it
+will not send. A key holding a space, a line break or a character outside ASCII is now
+refused by its variable's name before it reaches a header, and what an exception says
+about a request it would not build is never repeated. `key_env` must look like a
+variable's name, upper case, so that a key pasted there is refused rather than committed.
+Keys go over https, or to this machine. A redirect is not followed: it would carry the key
+and the manuscript to a host nobody agreed to. A request to this machine does not go
+through the proxy the environment names, which urllib would otherwise have handed it to.
+
+**The manuscript is unpublished, and sending it to a third party is the author's
+decision.** The toolkit cannot know what a provider keeps, for how long, or whether it
+trains on it; that is in each provider's terms, and they differ and change. What it can do
+is say what would leave the machine before anything does. `review --run --dry-run` builds
+every request exactly as a run would, prints which files go to which host and how many
+calls that is, writes the bodies under `build/` with a readable copy of their text, and
+opens no connection. A model run on this machine through Ollama is the option that sends
+nothing anywhere, and the statement says so.
+
+**What a reviewer is sent is a fixed list**: the paper's title, keywords, journal and
+guideline from `paper.yaml`; the journal profile and the reporting checklist where the
+project has them; every manuscript file; and that reviewer's own role, remit and reason.
+Nothing else is sent. That list is how the second panel stays blinded when models run it.
+The earlier rounds' records, the other panels and the response to a journal's reviewers are
+not on it, so no request can carry them, and a test plants a marker in each and looks. For
+the same reason `authors.yaml`, `results/` and the literature sources stay where they are.
+`results/` and the ledger are read, for the values the bindings print, and only those
+printed values reach a request.
+
+Three entries of that list are named in `paper.yaml`, and the first version joined each
+name into a path without looking at where it led. `reporting_guideline:
+[../../review/round-1/biostatistician]` put round one's record in every round-two request,
+`target_journal: ../../authors` sent `authors.yaml` as the journal profile, and
+`paths: {manuscript: .}` made the notes beside the review and the response to the reviewers
+into manuscript files. A journal or guideline now has to be a name, and the file it
+resolves to, with links followed, has to sit in the project's `profiles/` or the shipped
+ones and not under `review/` or `revision/`, which a `profiles/` directory that is itself
+a link could otherwise lead to. The manuscript directory may not take in `review/` or
+`revision/`, nor sit inside
+them, and a manuscript file that is a link to somewhere outside it is refused. A
+`paper.yaml` its schema refuses is not planned from at all.
+
+The manuscript is sent as the build prints it. Each binding is replaced by its value and
+each table rendered, because a reviewer shown `{{results.ror.point}}` cannot check a
+number. Each file's YAML header and every HTML comment are left out, as the build leaves
+them out: a comment is where authors are told to keep their notes, and "the round-one
+statistician asked for this" is not something to hand a blinded reviewer. The files go in
+the order the build prints them, `main.md` first and the supplement last.
+
+**Agreeableness is the failure to design against.** A panel of personas that all approve
+has told the author nothing. Each reviewer is told to decide first what would have to be
+true, within its remit, for it to recommend rejection, and to check each against the text;
+the reply must carry those tests, so a reading that attacked nothing shows.
+
+**A reply is untrusted input.** It is accepted when it is one JSON object that fits the
+reply schema, bare or in a single code fence, and refused otherwise. Nothing is repaired:
+prose around the object is not trimmed, a truncated object is not closed, a verdict outside
+the vocabulary is not mapped to the nearest one. A reply cut short by a token limit is
+refused even if it parses, and so is one the provider marks as a refusal. The reply schema
+holds only what a reader can know. Who read, when, and which version are filled in by the
+tool, and a finding's `resolution` is the author's to write, so a reply carrying one is
+refused: it would file a major finding already answered. One thing is read as what it
+plainly says: a finding's `where` may be left out, a model that leaves a key out often
+writes `null` for it, and null there is taken as absent. No other key may be null, prose
+made only of white space is not prose, and a character that could not be written to a
+record (a NUL, half of a surrogate pair) refuses the reply while it can still be refused.
+
+**Nothing is asked twice without a reason.** A rate limit or an overloaded server is
+retried twice, because no reply was produced. A timeout is not: the provider may have run
+the request and billed for it.
+
+**By default every model reads every remit**, because the point of several models is that
+one's blind spot is another's finding; `--one-each` deals one model to each reviewer in
+turn, for a third of the cost with three models. With no panel file, rounds one and two
+have a starter panel that assumes no field, so a first run needs only the list of models.
+It is shown before anything is sent and left in the panel file to be edited. A second
+starter panel shares nobody with the first.
+
+This is being built in steps. The provider layer and the dry run came first; sending, and
+G11 reading several readings of one remit, follow.
 
 ## The submission pack writes nothing twice
 
@@ -3472,6 +3612,53 @@ Closed since, and why each mattered:
   a reading of an older text, not for a reading that never happened.
 - **A model reviewing its own draft is worth less than a fresh reader.** The skill warns
   about agreeableness, which is the likely failure, but nothing enforces independence.
+- **What a provider does with a manuscript it is sent is outside the toolkit.** Retention,
+  logging, human review and training on inputs are set by each provider's terms and by the
+  account the key belongs to. The dry run and the statement before a run say what leaves the
+  machine and for which host; they cannot say what happens to it there. Blinding has the
+  same edge: each request is a new conversation that carries nothing from an earlier round,
+  but a provider that keeps a memory across requests is not something a request can see.
+- **A provider's reviewer does not see the figures.** A request is text. Each figure's place
+  is marked, and a caption the author wrote beside it goes with the prose around it, but
+  the picture is not sent, so a model's reading says nothing about whether a figure shows
+  what the text claims. G10's figure review is still the check on that.
+- **A provider that is not built in may name any other environment variable as its key.**
+  A built-in provider's variable is refused, but nothing can list every variable that
+  holds a secret: `key_env: GITHUB_TOKEN` under a provider in a `paper.yaml` somebody else
+  wrote would send that token to its host. The statement before a run names the host and
+  the variable for every provider, which is the place to notice.
+- **Taking a key out of a message can take a word with it.** Any four characters in a row
+  that the key also holds are replaced, so a provider's message that happens to share four
+  with the key loses them. Fewer than four of the key's characters in a row are not
+  recognised as the key's.
+- **A connection that cannot be opened in time reads as a timeout.** The client does not
+  ask again after a timeout, because the request may have run and been billed. urllib does
+  not say whether the time ran out before or after the request was sent, so a provider
+  that was merely unreachable is not retried either, and the message says it may have
+  been billed when it cannot have been.
+- **A reviewer is sent the numbers as they print today.** Bindings are replaced with the
+  current values in `results/` and the ledger. A record's digests cover the manuscript's
+  source files, as a hand-filed record's do, so re-running the analysis after a reading
+  changes what the paper says without marking that reading stale. `document_digest` closes
+  this for a built document; nothing closes it for a review, by a person or by a model.
+- **The journal profile and the checklist are sent whole.** They are the project's own
+  files, comments included. A checklist generated from a guideline's published text is sent
+  to the provider as part of the request, which is use rather than redistribution, but it
+  does leave the machine with everything else.
+- **The provider presets are a snapshot.** Base URLs, key variables and the spelling of an
+  output cap were read from each vendor's documentation on 2026-10-02. A vendor that moves
+  its endpoint breaks the preset until a release follows; `review.providers` takes the new
+  URL under another name in the meantime. Google's endpoint documents neither a JSON mode
+  nor an output cap, so neither is sent there, and `review.max_output_tokens` has no effect
+  on it.
+- **Plain http is taken for this machine only.** A model served over http from another
+  machine on a laboratory network is refused, with or without a key, because the manuscript
+  would cross that network unencrypted. Putting it behind https, or tunnelling it to
+  localhost, is the way through.
+- **The size of a request is an estimate and no price is shown.** The statement before a
+  run counts the calls and gives the bytes of the largest request at four characters a
+  token. Tokenisers differ by model and prices change, so neither is built in; a model that
+  reasons before answering is billed for output the reply never shows.
 - **Submission is the only severity that depends on how the tool was invoked.** It is a
   small inconsistency, accepted because blocking every draft build on a complete two-round
   review would make G11 something to switch off. Severities that depend on the *data* are
@@ -3487,6 +3674,21 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
+  Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
+  reads it before any work, from the repository's root down to the working directory, up to
+  32 KiB in all; Mistral Vibe reads it in a folder the user has trusted; Claude Code from
+  2.1.277 reads it only where there is no `CLAUDE.md` in the working directory or above;
+  Gemini CLI reads `GEMINI.md` and takes `AGENTS.md` only once `context.fileName` in its
+  settings lists it; for Kimi Code CLI a third-party page says it is read and Kimi's own
+  documentation was not found to. The file is written by `init` and never again: a project
+  made by an earlier release has none until `init` is run on it once more, a later release's
+  wording does not reach a file already written, and it says `results/` and `build/` even
+  where `paths:` in `paper.yaml` has moved them. A file that names the toolkit anywhere is
+  taken to hold the rules, so one that mentions it and lacks them gets no notice. Its first
+  rule says a checklist profile is written by `transcribe` from a recipe, which is untrue of
+  one file: the worked example's `DEMO-OBS.yaml` is invented and written by hand, and has no
+  recipe.
 - **Under Codex the hooks are tested against its source, not in a session.** The handlers are
   tested with payloads shaped as `codex-rs` builds them and patches that follow its grammar,
   as read on 2026-10-02. No hook has been seen to fire in a live Codex session, which needs a
@@ -3589,8 +3791,10 @@ Closed since, and why each mattered:
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
   CLI, Mistral Vibe, Kimi Code), a tool only one of them has, a plugin, the words "slash
-  command", `/manuscript-guard:`, one tool's instruction file or its `.claude` directory, and
-  when its frontmatter carries a field the Agent Skills specification does not define. It
+  command", `/manuscript-guard:`, one tool's instruction file, its `.claude` directory, a
+  `CLAUDE_` variable or an `mcp__` tool name, and when its frontmatter carries a field the
+  Agent Skills specification does not define. The `AGENTS.md` that `init` writes is held to
+  the same scan. It
   matches on spelling, so it errs both ways. A tool that is not on the list passes, as does a
   command typed as `/project-setup`, and wording that assumes one tool without naming it,
   such as a step only that tool can carry out. ChatGPT, Copilot and Cursor are left off
@@ -3598,9 +3802,15 @@ Closed since, and why each mattered:
   co-author used in Word), and model providers because a review panel may name where its
   models come from; any of them used to mean the reader passes too. In the other direction, a
   short list of phrases is taken out before the scan: Zotero's, Better BibTeX's, Word's or a
-  browser's plugin, "Anthropic's Claude", "Claude Opus", "Claude Sonnet", "Claude Haiku",
-  "Claude models" and a hyphenated model name ending in "-Codex". A model family named in
-  prose any other way fails, and has to be written as its identifier. Where a skill describes
+  browser's plugin, a plug-in estimator or principle, "Anthropic's Claude" unless "Code"
+  follows, "Claude
+  Opus", "Claude Sonnet", "Claude Haiku", "Claude models" and a hyphenated model name ending
+  in "-Codex". Claude or Codex named in prose any other way fails ("Claude" alone in a list
+  of models, "Claude 4.5 Sonnet", "the Claude family") and has to be written as an
+  identifier; other model families pass however they are written. A reader addressed by one
+  of the phrases taken out ("if you are Claude Opus") passes, since a pattern cannot tell that
+  from a member of a panel. Another product's plugin named in a way that is not listed fails
+  ("the LibreOffice plugin"). Where a skill describes
   a hook it says "where the hooks run", since an agent tool may have none. Read under Claude
   Code only so far: no skill has been followed in a session of another tool.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A

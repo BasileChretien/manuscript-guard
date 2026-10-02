@@ -377,7 +377,9 @@ that should send you to it.
 The submission guard matches against the **whole command string** rather than a prefix rule,
 because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard submit` both
 defeat prefix matching. That is not hypothetical: it is how a submission slipped past the
-guard in the project this one learned from.
+guard in the project this one learned from. It reads a command whichever tool runs it
+(`Bash`, `PowerShell` or `Monitor` under Claude Code), and knows the PowerShell words for
+its verbs, `Compress-Archive` and `Send-MailMessage` among them.
 
 The command is held to the project at the folder the agent is in. Where that folder has
 none, as at the root of a repository with the paper in a folder below, it is held to each

@@ -1305,9 +1305,24 @@ That last one carries a specific lesson. It matches the **whole command string**
 permission-rule prefix filter, because `cd example && manuscript-guard submit` and
 `FOO=1 manuscript-guard submit` both defeat a prefix rule — which is precisely how a
 submission build slipped past the equivalent guard in the predecessor project. The cost is
-that the hook fires on every Bash call, so it has its own console script
+that the hook fires on every shell command, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
+
+It is registered for the three tools through which Claude Code runs a shell command: `Bash`,
+`PowerShell` and `Monitor`. Each sends the command in `tool_input.command`, and the guard
+reads the command, not the tool's name. It was registered for `Bash` alone until 2026-10-02,
+and a matcher made of letters and `|` is a list of exact tool names, for Claude Code and for
+Codex alike. On Windows Claude Code makes PowerShell an agent's first shell, and by its
+documentation has no Bash tool at all where Git Bash is absent, so there the guard never ran.
+Seen in a session with both tools (Claude Code 2.1.286): in a copy of the example with its
+reviews deleted, `echo 'cp build/manuscript.docx elsewhere'` through the Bash tool was
+refused, and `Write-Output 'Copy-Item build\manuscript.docx elsewhere'` through the
+PowerShell tool was not. `tests/test_plugin.py` holds the matcher to the three names. The
+markers took the PowerShell and Windows spellings of the verbs they already had at the same
+time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
+`Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
+`Move-Item` were held before, since `copy` and `move` stand in them as whole words.
 
 **The command is held to the project at the agent's folder, or to the one it names.**
 Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
@@ -4069,6 +4084,33 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **The submission guard sees a command only through the tools it is registered for, and
+  only the verbs it knows.** Those tools are `Bash`, `PowerShell` and `Monitor`. A command
+  that an MCP server runs, a terminal tool for one, never reaches it, and neither does a copy
+  made inside a script the agent runs. That the PowerShell tool sends its command in
+  `tool_input.command` is taken from Claude Code's hooks reference, and for `Monitor` from
+  the tool's own input, which that reference does not describe; no event from either was
+  captured, for want of a login in a headless session. What was seen in a session is that a
+  matcher of `Bash` does not fire for the PowerShell tool. Not held, in PowerShell: the
+  aliases `cpi`, `mi` and `irm`, left out because so short a word before a `.docx` would be a
+  false alarm more often than a submission (`irm`, the short name of `Invoke-RestMethod`, is
+  also the French for MRI, and as a verb it had the guard refuse
+  `manuscript-guard import returned-IRM.docx`); and a .NET call that names no verb the guard
+  knows, such as `[IO.Compression.ZipFile]::CreateFromDirectory`. In any shell, the document
+  has to be named after the verb, on the same line and within 120 characters of it. So a
+  pipeline that names the document first is not held, and that is how PowerShell is usually
+  written: `Get-ChildItem build\*.docx | Copy-Item -Destination D:\out`. Nor is a path put in
+  a variable beforehand, a command continued onto a second line before the path, or a verb
+  whose other arguments fill the 120 characters, which PowerShell's named parameters do
+  sooner than a Unix command's: `Send-MailMessage` with `-From`, `-To`, `-Subject` and
+  `-Body` written out before `-Attachments build\manuscript.docx` is let through. The false
+  alarms are of the kind the guard already had: in a project that fails the submission
+  check, `Invoke-WebRequest` saving a journal's template as a `.docx` is refused as
+  `curl -o template.docx` is, and so are `robocopy` on a folder whose name has the word
+  submission in it and `iwr` on a journal's `submission-guidelines` page. Under Codex the
+  matcher is part of what a user trusted (`hook_hash` in
+  `codex-rs/hooks/src/engine/discovery.rs`, read 2026-10-02), so after this change of
+  matcher the guard is skipped there until the user reviews it again with `/hooks`.
 - **`build --stage submission` is a submission build the submission guard does not hold.**
   `--stage submission` gives the same verdict as `--submission` and is not one of the
   guard's markers, which is why a refusal can name `check --stage submission`. On `build` it

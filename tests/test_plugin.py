@@ -115,6 +115,33 @@ def test_every_hook_the_plugin_registers_has_a_handler():
         assert handler in HANDLERS, f"{command!r} reaches no handler"
 
 
+# The tools through which Claude Code runs a shell command. Each sends it in
+# `tool_input.command`, which is where the submission guard reads it. Codex runs every shell
+# under the first name.
+SHELL_TOOLS = {"Bash", "PowerShell", "Monitor"}
+
+
+def test_the_submission_guard_is_registered_for_every_tool_that_runs_a_shell_command():
+    """Registered for `Bash` alone, the guard never ran on Windows.
+
+    Claude Code and Codex both read a matcher made of letters and `|` as a list of exact
+    tool names, so `Bash` is the Bash tool and nothing else. On Windows Claude Code sends an
+    agent's commands through the `PowerShell` tool, and where Git Bash is absent it has no
+    Bash tool at all: `Copy-Item build\\manuscript.docx` out of a failing project was never
+    shown to the guard.
+    """
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    (matcher,) = [
+        group.get("matcher", "")
+        for group in config["hooks"]["PreToolUse"]
+        if any(hook["command"].split()[-1] == "guard-submission" for hook in group["hooks"])
+    ]
+    # The characters both tools read as a list of exact names. Codex reads any other as a
+    # regular expression; Claude Code allows a few more (`-`, a space, `,`) before it does.
+    assert re.fullmatch(r"[A-Za-z0-9_|]+", matcher), matcher
+    assert set(matcher.split("|")) == SHELL_TOOLS
+
+
 def test_the_marketplace_installs_the_plugin_it_describes():
     market = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -231,10 +258,12 @@ def hooks_file_problems(config: dict) -> list[str]:
                 if not 0 < hook.get("timeout", 60) <= LONGEST_SECONDS:
                     problems.append(f"{handler}: timeout {hook.get('timeout')}")
                 # Claude Code edits with `Write` and `Edit`. Codex edits with `apply_patch`
-                # and matches it under either of those names. Both run a shell as `Bash`.
+                # and matches it under either of those names. Both run a shell as `Bash`, and
+                # Claude Code as `PowerShell` and `Monitor` too, names Codex never sends and
+                # reads as two more exact names that match nothing.
                 if handler in (["guard-write"], ["after-edit"]) and not {"Edit", "Write"} <= names:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
-                if handler == ["guard-submission"] and names != {"Bash"}:
+                if handler == ["guard-submission"] and names != SHELL_TOOLS:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
     return problems
 
@@ -255,6 +284,8 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
     ("handler", "change", "said"),
     [
         ("guard-submission", {"matcher": "bash"}, "matcher 'bash'"),
+        ("guard-submission", {"matcher": "Bash"}, "matcher 'Bash'"),
+        ("guard-submission", {"matcher": "Bash|PowerShell"}, "matcher 'Bash|PowerShell'"),
         ("guard-submission", {"matcher": "Shell"}, "matcher 'Shell'"),
         ("guard-submission", {"matcher": "Write"}, "matcher 'Write'"),
         ("guard-write", {"matcher": "Write"}, "matcher 'Write'"),
@@ -267,8 +298,8 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
     ],
 )
 def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):
-    """Six of these passed while the check asked only that a file-reading hook's matcher held
-    `Edit` or `Write`, and that a timeout was at most 600: the first five and the timeout of
+    """Eight of these passed while the check asked only that a file-reading hook's matcher held
+    `Edit` or `Write`, and that a timeout was at most 600: the first seven and the timeout of
     500. The other four it caught already, and has to go on catching."""
     config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     for groups in config["hooks"].values():

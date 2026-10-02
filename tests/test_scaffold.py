@@ -99,6 +99,57 @@ def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> N
     assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked
 
 
+def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
+    """Several agent tools read an `AGENTS.md` at a project's root on their own, whether or
+    not the skills are installed. So the rules the guarantee rests on are in every new
+    project: machine-written files are not edited, `check` runs before a build, and nobody
+    but `check` decides that the manuscript is clean."""
+    root = tmp_path / "paper"
+    created = init_project(root, title="A fresh project")
+    rules = root / "AGENTS.md"
+    assert rules in created
+    text = " ".join(rules.read_text(encoding="utf-8").split())
+
+    assert "Never edit a machine-written file" in text
+    for generated in ("`results/`", "`build/`", "`profiles/reporting/*.yaml`"):
+        assert generated in text, generated
+    assert "Run `manuscript-guard check` before `manuscript-guard build`" in text
+    assert "Never decide for yourself that the manuscript is clean" in text
+    # The templates go through str.format, so a binding is written with four braces there
+    # and has to come out with two.
+    assert "`{{results.<key>}}`" in text and "{{{" not in text
+    assert b"\r" not in rules.read_bytes()
+
+
+def test_rules_that_are_already_there_are_left_and_the_ones_to_add_are_printed(
+    tmp_path: Path, capsys
+) -> None:
+    """`init` never overwrites. A repository that already has an `AGENTS.md` keeps it, and
+    without a word an agent working there would have no rule about `results/` at all."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "AGENTS.md").write_text("# House rules\n", encoding="utf-8")
+    assert main(["init", str(root), "--title", "T"]) == 0
+    assert (root / "AGENTS.md").read_text(encoding="utf-8") == "# House rules\n"
+    said = capsys.readouterr().out
+    assert "AGENTS.md was already there" in said
+    assert "Never edit a machine-written file" in said
+
+
+def test_init_does_not_print_rules_that_are_in_the_file(tmp_path: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", "T"]) == 0
+    first = capsys.readouterr().out
+    assert "AGENTS.md" in first and "Never edit a machine-written file" not in first
+    # Run again on the project it made: the file is there, and it holds the rules.
+    assert main(["init", str(root), "--title", "T"]) == 0
+    assert "Never edit a machine-written file" not in capsys.readouterr().out
+
+
 def test_the_advice_names_an_emitter_that_exists(
     project: Path, tmp_path: Path, capsys
 ) -> None:

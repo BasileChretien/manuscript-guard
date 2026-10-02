@@ -167,6 +167,33 @@ Numbers in `manuscript/` are bindings into `results/` (written by the analysis) 
 `literature/` (extracted from sources). Nothing is typed by hand, so nothing goes stale.
 """
 
+# Several agent tools read an AGENTS.md at a project's root on their own, with or without the
+# skills. It holds the rules the guarantee rests on, for an agent that has nothing else, and
+# names no agent tool. Braces are doubled because every template here goes through format().
+AGENTS = """\
+# Rules for working in this project
+
+This paper is written with [manuscript-guard](https://github.com/BasileChretien/manuscript-guard),
+which makes every number in the manuscript traceable to its source. The rules below hold for
+a person and for any agent tool.
+
+1. **Never edit a machine-written file.** `results/` is written by the analysis, `build/` by
+   `manuscript-guard build`, `respond` and `submit`, and `profiles/reporting/*.yaml` by
+   `manuscript-guard transcribe`. To change one, change what writes it and run that again.
+2. **Run `manuscript-guard check` before `manuscript-guard build`**, and after any change to
+   the analysis or the manuscript. Report the codes it prints as they are.
+3. **Never decide for yourself that the manuscript is clean.** `check` decides. A failing
+   check is not nearly clean, and nothing is changed only to make it pass: not a results
+   file, and not a convention in `paper.yaml` for a number that should have been bound.
+4. A number in `manuscript/` is a binding, `{{{{results.<key>}}}}` or `{{{{lit.<key>}}}}`,
+   never a typed literal. `manuscript-guard bind` lists the ones bound to nothing.
+5. Only a person signs `literature/attested.yaml`.
+
+The step-by-step guidance is in the skills that come with manuscript-guard, starting with
+`project-setup`. If your agent tool shows none of them, say so to the author: the README at
+the address above says how to install them.
+"""
+
 PLAN = """\
 # Analysis plan
 
@@ -211,6 +238,7 @@ _FILES = {
     ".gitignore": GITIGNORE,
     ".gitattributes": GITATTRIBUTES,
     "README.md": README,
+    "AGENTS.md": AGENTS,
 }
 
 _DIRS = ("analysis", "results", "literature/sources", "figures", "review", "build")
@@ -237,3 +265,20 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
         keep.write_text("", encoding="utf-8", newline="\n")
 
     return created
+
+
+def rules_to_add(root: Path) -> str | None:
+    """The rules for an agent, where the project's AGENTS.md does not have them.
+
+    `init` never overwrites, so a repository that already has an AGENTS.md keeps its own. An
+    agent working there would then read rules that say nothing of `results/`. The file is
+    taken to have them if it names the toolkit at all, which a file written here does.
+    """
+    path = Path(root).resolve() / "AGENTS.md"
+    try:
+        present = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    if "manuscript-guard" in present:
+        return None
+    return AGENTS.format(title="").split("\n", 1)[1].strip()

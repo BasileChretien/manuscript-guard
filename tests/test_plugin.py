@@ -230,6 +230,18 @@ def test_the_command_check_catches_a_command_or_option_that_does_not_exist():
     ]
 
 
+def test_the_rules_init_writes_name_commands_and_a_skill_that_exist():
+    """`AGENTS.md` is read by an agent that may have nothing else, and it types what the file
+    says. The worked example carries the same file, since people start from a copy of it."""
+    from manuscript_guard.scaffold import AGENTS
+
+    text = AGENTS.format(title="T")
+    assert command_problems(text, cli_options()) == []
+    assert len([f for f in command_fragments(text) if MENTION.search(f)]) >= 4
+    assert "`project-setup`" in text and "project-setup" in skill_names()
+    assert (REPO / "example" / "AGENTS.md").read_bytes() == text.encode("utf-8")
+
+
 def test_the_skills_name_the_commands_that_write_a_record_rather_than_a_hand_computed_digest():
     """A record carries a digest of what was read. `review --record` and `--record-figure`
     fill it in; the skills that describe those records once told the reader to compute it

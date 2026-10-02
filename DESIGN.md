@@ -172,7 +172,17 @@ copy — see the note under "What an adversarial review found".
   manuscript/supplementary/*.md   # the same, built as its own document
   figures/              # scripts that may read results.json and nothing else
   build/                # docx/pdf artifacts, gitignored
+  AGENTS.md             # the rules of the project, for any agent working in it
 ```
+
+`AGENTS.md` is there because the skills and the hooks reach an agent only where they were
+installed, and several agent tools read that one file at a project's root on their own. It
+holds what the guarantee rests on, in twenty lines: machine-written files are not edited,
+`check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
+names no agent tool. Like every file of the scaffold it is never written over an existing
+one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
+prints the rules to add, because an agent there would otherwise read rules that say nothing
+of `results/`. It is advice to the reader and enforces nothing: the gates do that.
 
 `manuscript/supplementary/` is read by every gate that reads prose — a fabricated number in a
 supplementary table is still fabricated, and a supplement nobody checks is the obvious place
@@ -3451,6 +3461,18 @@ Closed since, and why each mattered:
   and nothing is guarded. It is not silent, going by the hooks documentation: a hook whose
   command exits with anything but 0 or 2 (a shell's 127, command not found) shows a
   non-blocking `hook error` notice in the transcript. Not observed in a live session.
+- **`AGENTS.md` is read by some agent tools and not by others, and it is written once.**
+  Read from each tool's documentation on 2026-10-02, none of it observed in a session: Codex
+  reads it before any work, from the repository's root down to the working directory, up to
+  32 KiB in all; Mistral Vibe reads it in a folder the user has trusted; Claude Code from
+  2.1.277 reads it only where there is no `CLAUDE.md` in the working directory or above;
+  Gemini CLI reads `GEMINI.md` and takes `AGENTS.md` only once `context.fileName` in its
+  settings lists it; for Kimi Code CLI a third-party page says it is read and Kimi's own
+  documentation was not found to. The file is written by `init` and never again: a project
+  made by an earlier release has none until `init` is run on it once more, a later release's
+  wording does not reach a file already written, and it says `results/` and `build/` even
+  where `paths:` in `paper.yaml` has moved them. A file that names the toolkit anywhere is
+  taken to hold the rules, so one that mentions it and lacks them gets no notice.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

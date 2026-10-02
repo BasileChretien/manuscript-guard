@@ -822,7 +822,8 @@ NAMING_NONE = [
     # Somewhere else than this machine.
     "scp host:paper/build/manuscript.docx .",
     "curl -O https://example.org/paper/manuscript.docx",
-    # Words in quotes are read as one word, so the text of a message names nothing.
+    # Words in quotes are read as one word, so the text of a message names nothing, unless
+    # it ends in `=paper` or `@paper` (Known gaps).
     'git commit -m "copy edits to paper before submission"',
     # The folder the command was sent from, and the ones above it, were looked in already.
     "cd . && cp notes.docx ..",
@@ -928,7 +929,10 @@ def test_a_word_too_long_to_be_a_path_is_not_walked(above: Path) -> None:
     assert hooks._spelt("../" * 3000, above) is None
     assert hooks._spelt("paper/../" * 3000 + "paper", above) is None
     assert hooks._spelt("x" * 5000, above) is None
-    walked = hooks._spelt("paper/../" * 20 + "paper", above)
+    # Under that length it is the number of folders that stops the walk.
+    assert hooks._spelt("../" * 200, above) is None
+    assert hooks._spelt("paper/../" * 50 + "paper", above) is None
+    walked = hooks._spelt("paper/../" * 49 + "paper", above)
     assert walked is not None and walked.resolve() == (above / "paper").resolve()
 
 
@@ -1047,6 +1051,36 @@ def test_a_folder_with_a_space_in_its_name_is_read_whole(
     result = sent(f"scp {written} host:submission", above, capsys)
     assert decision(result) == "deny", written
     assert "failing in my paper" in reason(result)
+
+
+SPACE = chr(92) + " "  # a space in a name, as a shell escapes one
+
+ESCAPED_NAMES = [
+    f"cp paper{SPACE}draft.docx /backup",
+    f"cp Edited{SPACE}paper{SPACE}JD.docx /backup",
+    f"mv ~/Downloads/Reviewer{SPACE}comments{SPACE}paper{SPACE}v2.docx docs/",
+    f"cp docs/Final{SPACE}paper{SPACE}v3.docx /backup",
+    f"cd paper{SPACE}v2 && manuscript-guard submit",
+    f"scp paper{SPACE}v2/build/manuscript.docx host:",
+]
+
+
+@pytest.mark.parametrize("command", ESCAPED_NAMES)
+def test_a_name_with_escaped_spaces_is_one_name_and_not_its_pieces(
+    command: str, project: Path, capsys
+) -> None:
+    """`paper\\ draft.docx` is a file called `paper draft.docx`. Read piece by piece as well,
+    for the sake of a path as PowerShell writes one, the piece `paper` named the project
+    beside it: a copy of an unrelated document was refused for that project's failures, and
+    so was a submission from `paper v2`, which passes."""
+    above = project.parent
+    shutil.copytree(project, above / "paper v2")
+    (above / "docs").mkdir()
+    (above / "paper draft.docx").write_bytes(b"")
+    _without_a_review(project)
+
+    assert SUBMISSION_MARKERS.search(command)
+    assert sent(command, above, capsys) is None, command
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

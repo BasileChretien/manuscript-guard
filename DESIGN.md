@@ -1002,9 +1002,14 @@ A word is read as it stands and, where the way it is written hides a path, as th
 too. curl writes a file to upload after an `@`, `file=@example/build/manuscript.docx`, so a
 word is read from after its last `@` as well. In quotes `=` is not a separator, so a quoted
 word is also read from after its last `=`. And `my\ paper` is one name to a shell where
-`.\example\ D:\sent` is two paths to PowerShell, so both readings are tried. A word of more
-than 4096 characters or 100 folders is not a path and is not walked: each step down is a
-look on disk, `..` exists at every step, and 5000 of them in one word took 34 s.
+`.\example\ D:\sent` is two paths to PowerShell. The pieces are read as well only on
+Windows, and only where one of them holds a backslash of its own, which makes it a path as
+Windows writes one. They were first read everywhere, and the piece `paper` of `cp paper\
+draft.docx /backup` named the project in `paper/`: a copy of an unrelated document was
+refused, and so was a submission from `paper v2`, which passed (the second round of #137's
+review). A word of more than 4096 characters or 100 folders is not a path and is not
+walked: each step down is a look on disk, `..` exists at every step, and 5000 of them in
+one word took 34 s.
 
 This is not reading the command as a shell does. Nothing is expanded and nothing is run, and
 the guard does not know that `cd` changes folder: it asks of each word whether it is a path
@@ -1015,9 +1020,9 @@ Following a leading `cd` was the other way, and would have left `manuscript-guar
 example` and `scp example/build/manuscript.docx host:` uncaught, which need no `cd`. What a
 command does not spell out is not found, and a word that happens to be the folder's name is
 taken for it; both are under Known gaps. A submission-shaped command that names no project
-costs about 10 ms more than it did, one look on disk for each word, and a command that is
-not submission-shaped costs nothing more. A script of 2000 different words written into a
-file through the shell, if it is submission-shaped, costs about a second.
+costs about 10 ms more than it did, one look on disk for each reading of each word, and a
+command that is not submission-shaped costs nothing more. A script of 2000 different words
+written into a file through the shell, if it is submission-shaped, costs about a second.
 
 **A refusal names a command the guard lets through.** The refusal shows the first eight
 failures and says what to run for the rest. It used to say `manuscript-guard check
@@ -3692,13 +3697,19 @@ Closed since, and why each mattered:
     an option with its value joined on (`tar -Cexample -czf submission.tgz .`,
     `Copy-Item -Path:example/build/manuscript.docx`), a command inside a quoted string
     (`bash -c "cd example && manuscript-guard submit"`, `python -c "..."`), and a folder
-    whose name is only partly in quotes (`my" "paper`). These go through as before.
+    whose name is only partly in quotes (`my" "paper`). A folder with a comma or a brace in
+    its name is found in quotes and not without them (`cd Smith,\ Jones`), since a word
+    ends at either. Three ways curl names a file: quoted inside its own quotes (`-F
+    'file=@"example/build/manuscript.docx"'`), a list in braces inside quotes (`-T
+    "{a.docx,b.docx}"`), and after `<` (`-F "file=<example/manuscript/main.md"`). And on
+    Windows a path as PowerShell writes it that ends in a backslash and holds no other,
+    `Copy-Item example\ sent`. These go through as before.
   - *Not looked at, or looked at in the wrong place.* A folder on another machine written
     `//host/share/...` is not looked at: asking whether it exists waits for the host, and
     the hook fires on a shell command. The same share under a drive letter is looked at,
     and waits if the host does. In Git Bash `/tmp/x` is the user's own temporary folder;
-    the guard reads it as `C:\tmp\x`, so a project kept under the one is not found and one
-    under the other would be taken for it.
+    the guard reads it as `\tmp\x` on the drive the agent is on, so a project kept under
+    the one is not found and one under the other would be taken for it.
   - *Inside a project, only that project.* Where the agent's folder is in a project the
     guard checks that one, as it always did, and does not read the words: from a project
     that passes, `cd ../second && manuscript-guard submit` is let through though `second`
@@ -3717,6 +3728,10 @@ Closed since, and why each mattered:
     word is a branch. So is `Paper` on Windows, which ignores case, `paper.` there too,
     since Windows drops a dot or a space at the end of a name, and the end of
     `https://example.org/dl?f=paper`, since a word ends at `=`, at a comma and at a brace.
+    So is what follows the last `@` of any word and the last `=` of a quoted one, which
+    are read for curl's sake: `mail -s "submission" editor@paper`, and a commit message
+    that ends `p=paper` or `thanks @paper`. On Windows a name with an escaped space that
+    also holds a backslash is read piece by piece, `cp docs\Final\ paper\ v3.docx`.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last
@@ -3724,7 +3739,9 @@ Closed since, and why each mattered:
     submission, a verb and then the word: `copy/my submission/paper`. And an agent that
     enters the folder on the same line instead, `cd paper-copy && manuscript-guard check
     --stage submission`, puts the verb before the word: that line now names the project
-    and is refused, where it used to go through unchecked.
+    and is refused, where it used to go through unchecked. The folder is written in double
+    quotes, where a shell expands `$`: for a project in `big$money/` the check named finds
+    no project.
   - *The session start says nothing from the folder above*, in a project that fails or in
     one that cannot be read.
   - *A long command costs a look on disk for each different word.* 2000 of them took 1.3 s

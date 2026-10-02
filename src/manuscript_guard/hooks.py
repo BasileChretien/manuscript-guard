@@ -319,9 +319,9 @@ _WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=,{}`"'])+)""")
 # it sent the hook to look at `S:`, and a drive may be a share that takes its time.
 _GIT_BASH_DRIVE = re.compile(r"/([A-Za-z])(/.*)")
 
-# No path a system opens is longer, and no folder is kept deeper. A word past either is not
-# walked: each step is a look on disk at a longer path, and `..` exists at every step, so
-# 5000 of them in one word took 34 s.
+# No path anyone keeps a paper under is longer, and no folder deeper. A word past either is
+# not walked: each step is a look on disk at a longer path, and `..` exists at every step,
+# so 5000 of them in one word took 34 s.
 _LONGEST_PATH = 4096
 _DEEPEST_PATH = 100
 
@@ -333,7 +333,10 @@ def _words(command: str) -> list[str]:
     that path too:
 
     - `my\\ paper` is one name to a shell. To PowerShell a backslash ends a folder's name,
-      and `.\\paper\\ D:\\sent` is two paths. Both readings are given;
+      and `.\\paper\\ D:\\sent` is two paths. The pieces are read as well only on Windows,
+      and only where one of them holds a backslash of its own, which makes it a path as
+      Windows writes one. Read everywhere, the pieces of `paper\\ draft.docx` named the
+      project in `paper/`, and a copy of an unrelated document was refused;
     - in quotes, `=` is not a separator, so `"--files-from=paper/list.txt"` is also read
       from after its last `=`;
     - curl writes a file to upload after an `@`, `file=@paper/build/manuscript.docx`, so a
@@ -344,8 +347,11 @@ def _words(command: str) -> list[str]:
         quoted = double or single
         if quoted:
             words += [quoted, quoted.rpartition("=")[2]]
-        else:
-            words += [bare.replace("\\ ", " "), *bare.split("\\ ")]
+            continue
+        words.append(bare.replace("\\ ", " "))
+        pieces = bare.split("\\ ")
+        if os.name == "nt" and any("\\" in piece for piece in pieces):
+            words += pieces
     read = (reading for word in words for reading in (word, word.rpartition("@")[2]))
     return list(dict.fromkeys(reading for reading in read if reading))
 

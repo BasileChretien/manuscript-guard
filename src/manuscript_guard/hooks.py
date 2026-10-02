@@ -68,7 +68,7 @@ SUBMISSION_MARKERS = re.compile(
 #
 # A refusal says to run it on its own, and that is part of the advice. The command ends in
 # the word `submission`, so after `cp`, `git push` or a folder named `Copy` on the same line
-# the third alternative above matches it, and no spelling the documents give avoids the
+# the third alternative above matches it, and no spelling of the submission check avoids the
 # word.
 FULL_CHECK = "manuscript-guard check --stage submission"
 
@@ -454,7 +454,7 @@ def guard_submission(payload: dict) -> int:
         f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
         + "\n".join(lines)
         + more
-        + "\n\nRun `manuscript-guard check --submission` for the full list.",
+        + f"\n\nRun `{FULL_CHECK}` on its own for the full list.",
     )
 
 

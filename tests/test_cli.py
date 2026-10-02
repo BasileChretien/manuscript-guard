@@ -73,6 +73,60 @@ def test_check_outside_a_project_exits_two(tmp_path: Path, capsys) -> None:
     assert "no paper.yaml" in capsys.readouterr().err
 
 
+#: A file read before any gate runs, left so that it cannot be used, and what is said of it.
+#: Each ended `check` in a traceback and exit 1, which a hook takes for a fault of the tool.
+CANNOT_BE_USED = {
+    "utf-16": ("results/hand.json", b"\xff\xfe\x7b", "hand.json: cannot read as UTF-8"),
+    "code page": (
+        "authors.yaml",
+        "authors:\n  - name: Renée\n".encode("cp1252"),
+        "authors.yaml: cannot read as UTF-8: the byte 0xe9 on line 2",
+    ),
+    "ledger": (
+        "literature/ledger.yaml",
+        b"\xff\xfeentries: []\n",
+        "ledger.yaml: cannot read as UTF-8",
+    ),
+    "list": ("paper.yaml", b"- a\n- b\n", "paper.yaml: holds a list where"),
+    "paths": ("paper.yaml", b"paths: [results]\n", "paper.yaml: `paths` holds a list where"),
+    "date": (
+        "literature/ledger.yaml",
+        b"entries:\n  - verified_on: 2026-09-31\n",
+        "ledger.yaml: cannot parse: ",
+    ),
+}
+
+
+@pytest.mark.parametrize("flags", [(), ("--submission",)], ids=["draft", "submission"])
+@pytest.mark.parametrize("case", list(CANNOT_BE_USED))
+def test_check_says_in_a_sentence_which_file_it_cannot_use(
+    case: str, flags: tuple[str, ...], project: Path, capsys
+) -> None:
+    """Exit 2 and one sentence on stderr, as for a file that does not parse."""
+    relative, content, said = CANNOT_BE_USED[case]
+    (project / relative).write_bytes(content)
+
+    assert run("check", str(project), *flags) == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("manuscript-guard: ")
+    assert said in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == "", "no gate ran, so there is no report"
+
+
+def test_check_says_which_stage_is_not_one(project: Path, capsys) -> None:
+    """The stage decides which findings fail; without it there is no verdict to give."""
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "\nstage: draft\n", encoding="utf-8")
+
+    assert run("check", str(project)) == 2
+    assert "paper.yaml: `stage` is 'draft', which is not a stage" in capsys.readouterr().err
+
+    # Told the stage, the check runs, and reports the line as a finding among the rest.
+    assert run("check", str(project), "--submission") == 1
+    assert "'draft' is not one of" in capsys.readouterr().out
+
+
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:
     shutil.rmtree(project / "review")
     assert run("check", str(project)) == 0
@@ -565,11 +619,14 @@ def _reads_as_submission(command: str, option: str) -> bool:
         return False
 
 
-def test_every_spelling_read_as_submission_is_one_the_guard_sees() -> None:
+def test_every_prefix_of_submission_that_is_read_is_one_the_guard_sees() -> None:
     """argparse reads any prefix of an option that names one option only, so `build --subm`
     was a submission build, and the submission guard, whose marker is the whole word, let it
     through in a project that fails. Taken from the parser, so that a command given the
-    option later is held to the same."""
+    option later is held to the same.
+
+    It is about the one option. `--stage submission` asks for the same standard and is not a
+    marker, on purpose for `check` and as a known gap for `build`."""
     from manuscript_guard.hooks import SUBMISSION_MARKERS
 
     word = "--submission"

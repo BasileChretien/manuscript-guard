@@ -68,12 +68,68 @@ def find_root(start: Path) -> Path:
     )
 
 
+def _held(value: object) -> str:
+    """What YAML made of a value, in the words an author would use for it."""
+    if value is None:
+        return "nothing"
+    if isinstance(value, bool):
+        return "a yes or no"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, dict):
+        return "settings"
+    return "something else"
+
+
+def _settings(paper: object, path: Path) -> dict:
+    """The parsed `paper.yaml`, once it is known to be what `Project` reads it as.
+
+    The schema reports a wrong shape as a finding, but `Project` is asked where the results
+    are before there is a report to print, and a list or a line of text has no `paths` to
+    ask: `check` ended in `AttributeError`, the finding was never seen, and the hooks took
+    the traceback for a fault of the tool. So the two things every command needs of this
+    file are held here, and said in a sentence: that it is settings, and that each folder it
+    names is named in text. Everything else in it is still the schema's to report.
+    """
+    if paper is None:  # an empty file: nothing set yet, and the schema says what to add
+        return {}
+    if not isinstance(paper, dict):
+        cause = (
+            " (a line such as `title:My paper`, with no space after the colon, is read as text)"
+            if isinstance(paper, str)
+            else ""
+        )
+        raise ContractError(
+            f"{path}: holds {_held(paper)} where the settings of the paper are expected, "
+            f"one `key: value` to a line{cause}"
+        )
+    if "paths" not in paper:
+        return paper
+    paths = paper["paths"]
+    if not isinstance(paths, dict):
+        raise ContractError(
+            f"{path}: `paths` holds {_held(paths)} where a folder is expected for each name "
+            f"it changes, as in `results: output`, indented on a line of its own"
+        )
+    for which in DEFAULT_PATHS:
+        if which in paths and not isinstance(paths[which], str):
+            raise ContractError(
+                f"{path}: `paths.{which}` holds {_held(paths[which])} where the name of a "
+                f"folder is expected, as in `{which}: {DEFAULT_PATHS[which]}`"
+            )
+    return paper
+
+
 def load_project(start: Path | None = None) -> tuple[Project, Report]:
     root = find_root(start or Path.cwd())
     reports: list[Report] = []
 
     paper_path = root / PAPER_FILE
-    paper = read_structured(paper_path) or {}
+    paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
 
     authors_path = root / AUTHORS_FILE

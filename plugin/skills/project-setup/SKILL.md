@@ -52,7 +52,9 @@ It never overwrites an existing file, so the second form adds manuscript-guard t
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
 an existing `.gitattributes`, `.gitignore` or `README.md` is left as it was, without a word:
 add `* text=auto eol=lf` and the binary lines to `.gitattributes`, and `build/` to
-`.gitignore`, by hand. And `results/` belongs to manuscript-guard: every `.json` directly
+`.gitignore`, by hand. An existing `AGENTS.md` is left too, and where it does not mention
+manuscript-guard `init` prints the rules to add to it. And `results/` belongs to
+manuscript-guard: every `.json` directly
 in it is read as a results fragment and fails the schema if it is not one, and `verify`
 empties the whole directory in its scratch copy. If the analysis already keeps its own
 output there, either move that output, or set `paths: {results: <dir>}` in `paper.yaml`
@@ -70,6 +72,7 @@ literature/            ledger.yaml, attested.yaml, references.bib, sources/
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
 figures/  review/  build/
 .gitattributes         * text=auto eol=lf
+AGENTS.md              the rules of the project, for any agent working in it
 ```
 
 **Keep the `.gitattributes`.** Every digest is byte-exact, and a checkout that turns line
@@ -164,7 +167,9 @@ Do not edit either. And a shell command that copies, zips or pushes a `.docx` is
 check, so run `manuscript-guard check --submission` yourself before a manuscript leaves.
 
 - At the start of a session, one line of status: the stage, and how many findings fail and
-  warn.
+  warn. Where a file of the project cannot be used (`paper.yaml`, `authors.yaml`, a results
+  file or a ledger that does not parse or is not UTF-8), that line says which file and why
+  in its place, and no gate has run until the file is put right.
 - Before a write, one to `results/`, `build/` or a generated checklist profile is refused.
   Change the analysis and re-run it; edit the recipe and re-transcribe.
 - After a write: a saved manuscript file has its numbers classified and any unbound ones
@@ -172,9 +177,10 @@ check, so run `manuscript-guard check --submission` yourself before a manuscript
   saved analysis file gets a reminder that the results are now stale.
 - Before a shell command containing `--submission`, or one that copies, zips or pushes a
   submission or a `.docx`, the whole submission check runs and the command is refused if
-  anything fails. That includes `manuscript-guard check --submission` itself. The refusal
-  shows the first eight failures; `check --stage submission` runs the same check without
-  the hook and lists them all.
+  anything fails, or if a file of the project cannot be used and the check cannot run. That
+  includes `manuscript-guard check --submission` itself. The refusal shows the first eight
+  failures; `check --stage submission` runs the same check without the hook and lists them
+  all.
 
 ## If you are a model doing this
 

@@ -99,6 +99,124 @@ def test_init_ships_the_gitattributes_the_digests_depend_on(tmp_path: Path) -> N
     assert {"*.docx", "*.png", "*.pdf", "*.xlsx"} <= marked
 
 
+def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
+    """Several agent tools read an `AGENTS.md` at a project's root on their own, whether or
+    not the skills are installed. So the rules the guarantee rests on are in every new
+    project: machine-written files are not edited, `check` runs before a build, and nobody
+    but `check` decides that the manuscript is clean."""
+    root = tmp_path / "paper"
+    created = init_project(root, title="A fresh project")
+    rules = root / "AGENTS.md"
+    assert rules in created
+    text = " ".join(rules.read_text(encoding="utf-8").split())
+
+    assert "Never edit a machine-written file" in text
+    for generated in ("`results/`", "`build/`", "`profiles/reporting/<NAME>.yaml`"):
+        assert generated in text, generated
+    # The one file under profiles/reporting/ an author does edit, which the rule must not
+    # seem to forbid. For a guideline that ships, there is none there until the author makes
+    # one, and the rule says what one is for.
+    assert "a recipe in `profiles/reporting/recipes/`, which is used in place of the one" in text
+    assert "Run `manuscript-guard check` before `manuscript-guard build`" in text
+    assert "`manuscript-guard check --submission`" in text
+    assert "Never decide for yourself that the manuscript is clean" in text
+    # The templates go through str.format, so a binding is written with four braces there
+    # and has to come out with two.
+    assert "`{{results.<key>}}`" in text and "{{{" not in text
+    assert b"\r" not in rules.read_bytes()
+
+
+def test_the_rules_forbid_no_number_that_check_accepts(project: Path, capsys) -> None:
+    """The rule on numbers said one is "never a typed literal". `check` accepts a typed number
+    that is a convention of writing or a pointer, and the worked example, which carries the
+    rules, is full of them. Taken at its word the rule could not be followed ("Table 2" has
+    no binding), and with the rule against changing a convention to make a check pass it told
+    an agent never to declare one."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.scaffold import AGENTS
+
+    capsys.readouterr()
+    assert main(["explain", str(project / "manuscript" / "main.md")]) == 0
+    explained = capsys.readouterr().out
+    assert "convention" in explained and "structural" in explained
+    assert main(["check", str(project)]) == 0
+    capsys.readouterr()
+
+    rule = " ".join(AGENTS.split())
+    assert "never a typed literal" not in rule
+
+    # Each kind of typed number in this sentence that `check` accepts has its word in the
+    # rule. The classifier has more rules than these six; they are the ones a convention, a
+    # pointer, a label and a name stand for. The finding is the one it refuses.
+    typed = project / "manuscript" / "typed.md"
+    typed.write_text(
+        "# Methods\n\nEvents of grade 3 in patients aged 18-64 years were coded with ICD-10 "
+        "(R version 4.3.1). See Table 1 for the 95% confidence intervals. The mean was 3.84.\n",
+        encoding="utf-8",
+    )
+    main(["explain", str(typed)])
+    rows = [line.split() for line in capsys.readouterr().out.splitlines() if line.split()]
+    verdicts = {row[2]: (row[0], row[4]) for row in rows}
+    assert verdicts["3.84"][0] == "FAIL", verdicts
+    said_as = {
+        "confidence-level": "a convention of writing",
+        "cross-reference": "a pointer",
+        "categorical-label": "a label",
+        "age-band": "a label",
+        "software-version": "a name",
+        "terms": "a name",
+    }
+    accepted = {how for verdict, how in verdicts.values() if verdict == "ok"}
+    assert accepted == set(said_as), accepted
+    for how in sorted(accepted):
+        assert said_as[how] in rule, f"{how}: the rule does not say {said_as[how]!r}"
+
+
+def test_the_rules_promise_nothing_the_readme_may_not_hold() -> None:
+    """The file is written once and read for as long as the project lives, under whatever
+    agent tool. It said the README "says how to install" the skills, when the README held
+    the commands of one agent tool only."""
+    from manuscript_guard.scaffold import AGENTS
+
+    closing = " ".join(AGENTS.split())
+    assert "says how to install them" not in closing
+    assert "says which agent tools they can be installed in, and how" in closing
+
+
+def test_rules_that_are_already_there_are_left_and_the_ones_to_add_are_printed(
+    tmp_path: Path, capsys
+) -> None:
+    """`init` never overwrites. A repository that already has an `AGENTS.md` keeps it, and
+    without a word an agent working there would have no rule about `results/` at all."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "AGENTS.md").write_text("# House rules\n", encoding="utf-8")
+    assert main(["init", str(root), "--title", "T"]) == 0
+    assert (root / "AGENTS.md").read_text(encoding="utf-8") == "# House rules\n"
+    said = capsys.readouterr().out
+    assert "AGENTS.md was already there" in said
+    # Every line of the file but its heading, which the repository's own file has already.
+    from manuscript_guard.scaffold import AGENTS
+
+    heading, rules = AGENTS.format(title="T").split("\n", 1)
+    assert heading.startswith("# ") and rules.strip() in said
+    assert heading not in said
+
+
+def test_init_does_not_print_rules_that_are_in_the_file(tmp_path: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--title", "T"]) == 0
+    first = capsys.readouterr().out
+    assert "AGENTS.md" in first and "Never edit a machine-written file" not in first
+    # Run again on the project it made: the file is there, and it holds the rules.
+    assert main(["init", str(root), "--title", "T"]) == 0
+    assert "Never edit a machine-written file" not in capsys.readouterr().out
+
+
 def test_the_advice_names_an_emitter_that_exists(
     project: Path, tmp_path: Path, capsys
 ) -> None:

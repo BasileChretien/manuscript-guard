@@ -68,7 +68,7 @@ SUBMISSION_MARKERS = re.compile(
 #
 # A refusal says to run it on its own, and that is part of the advice. The command ends in
 # the word `submission`, so after `cp`, `git push` or a folder named `Copy` on the same line
-# the third alternative above matches it, and no spelling of the submission check avoids the
+# the third alternative above matches it, and no spelling the documents give avoids the
 # word.
 FULL_CHECK = "manuscript-guard check --stage submission"
 
@@ -247,11 +247,14 @@ def _relocated(root: Path) -> dict[str, str]:
     a `paper.yaml` saved in another encoding is the half-configured project a hook has to
     survive, and must not be what switches the guard off.
     """
-    from manuscript_guard.contracts import load_project
+    from manuscript_guard.contracts import ContractError, load_project
 
     try:
         project, _report = load_project(root)
-    except (ValueError, OSError):
+    except (ContractError, ValueError, OSError):
+        # `ContractError` is what such a file raises now, in a sentence for `check` to print.
+        # It was `UnicodeDecodeError`, a `ValueError`, and a paper.yaml that does not parse
+        # had always raised this one: there the guard was switched off.
         return {}
     moved: dict[str, str] = {}
     for name in ("results", "build"):

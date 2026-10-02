@@ -46,6 +46,13 @@
           "why": {
             "type": "string",
             "description": "What about this paper or journal called for this reviewer."
+          },
+          "readers": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Who is asked to read this remit, where more than one reading is wanted: provider/model for a model, any name for a person. Each must file a reading (review/round-<n>/<id>.<reader>.yaml, which says the same `reader` inside), and the round is incomplete while one has not, so a provider that failed does not leave a round that looks read. Only the readers listed here are read: a file beside the reviewer's record under any other name is not opened, and is reported as not counted. `manuscript-guard review --record <id> --reading <reader>` adds the reader here when it files the reading. Omit the key and the reviewer's plain record answers the remit."
           }
         }
       }

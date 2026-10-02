@@ -80,7 +80,9 @@ def _held(value: object) -> str:
         return "text"
     if isinstance(value, list):
         return "a list"
-    return "settings"
+    if isinstance(value, dict):
+        return "settings"
+    return "something else"
 
 
 def _settings(paper: object, path: Path) -> dict:

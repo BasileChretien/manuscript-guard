@@ -86,6 +86,11 @@ CANNOT_BE_USED = {
     ),
     "list": ("paper.yaml", b"- a\n- b\n", "paper.yaml: holds a list where"),
     "paths": ("paper.yaml", b"paths: [results]\n", "paper.yaml: `paths` holds a list where"),
+    "date": (
+        "literature/ledger.yaml",
+        b"entries:\n  - verified_on: 2026-09-31\n",
+        "ledger.yaml: cannot parse: ",
+    ),
 }
 
 

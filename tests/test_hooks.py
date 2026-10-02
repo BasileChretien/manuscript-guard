@@ -528,6 +528,11 @@ UNREADABLE = {
     ),
     "list": ("paper.yaml", b"- a\n- b\n", "holds a list where"),
     "folders": ("paper.yaml", b"paths: [results]\n", "`paths` holds a list where"),
+    "date": (
+        "literature/ledger.yaml",
+        b"entries:\n  - verified_on: 2026-09-31\n",
+        "cannot parse: ",
+    ),
 }
 
 
@@ -626,6 +631,24 @@ def test_session_start_says_why_a_project_cannot_be_checked(
     assert "`manuscript-guard check`" in context(result)
     assert decision(result) is None, "it is said, and nothing is blocked"
     assert "systemMessage" not in result
+
+
+def test_a_results_file_is_still_guarded_in_a_project_that_cannot_be_read(
+    unreadable: tuple[Path, str], capsys
+) -> None:
+    """The write guard asks `paper.yaml` where the results are kept, and with no answer keeps
+    to the folder's usual name.
+
+    It caught the error a file that is not UTF-8 used to raise, and went on. That file now
+    raises the project's own error, which it did not catch: the guard ended in silence and
+    the edit went through. A `paper.yaml` that does not parse had always ended it so.
+    """
+    project, _said = unreadable
+    edit = {"tool_input": {"file_path": str(project / "results" / "x.json")}, "cwd": str(project)}
+
+    result = run("guard-write", edit, capsys)
+    assert decision(result) == "deny"
+    assert "results/x.json is generated, not written" in reason(result)
 
 
 def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(

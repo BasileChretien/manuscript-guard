@@ -71,7 +71,9 @@ def _not_utf8(path: Path, data: bytes, error: UnicodeDecodeError) -> str:
     if named:
         what = f"the file is {named}"
     else:
-        line = data.count(b"\n", 0, error.start) + 1
+        # Lines as the text below is given them: ended by LF, by CR, or by the two together.
+        before = data[: error.start]
+        line = before.count(b"\n") + before.count(b"\r") - before.count(b"\r\n") + 1
         what = f"the byte 0x{data[error.start]:02x} on line {line} is not UTF-8"
     return f"{path}: cannot read as UTF-8: {what}. Save the file as UTF-8."
 
@@ -99,7 +101,10 @@ def read_structured(path: Path) -> Any:
         if path.suffix.lower() == ".json":
             return json.loads(text)
         return _plain(yaml.safe_load(text))
-    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+    except Exception as exc:  # noqa: BLE001 - whatever the parser raises is about this file
+        # Not only the parsers' own two errors. `verified_on: 2026-09-31` is a date to YAML
+        # until the date is made, and that fails with a plain `ValueError`; a list that holds
+        # itself ends in `RecursionError`. Each was a traceback, and silence from the hooks.
         raise ContractError(f"{path}: cannot parse: {exc}") from exc
 
 

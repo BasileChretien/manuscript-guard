@@ -87,11 +87,45 @@ def test_the_bytes_of_the_report_are_utf16_and_are_refused(tmp_path: Path) -> No
     assert "the file is UTF-16" in refusal(path)
 
 
-def test_utf8_is_still_read_whatever_its_line_endings(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
+def test_the_line_is_counted_as_the_file_ends_its_lines(ending: str, tmp_path: Path) -> None:
     path = tmp_path / "ledger.yaml"
-    path.write_bytes("who: Renée\r\ntext: |\r\n  one\r\n  two\r\n".encode())
+    path.write_bytes(ending.join(["a: 1", "b: 2", "c: caf\xe9", ""]).encode("cp1252"))
+
+    assert "the byte 0xe9 on line 3" in refusal(path)
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"], ids=["LF", "CRLF", "CR"])
+@pytest.mark.parametrize("mark", [b"", b"\xef\xbb\xbf"], ids=["plain", "marked"])
+def test_utf8_is_still_read_whatever_its_line_endings(
+    mark: bytes, ending: str, tmp_path: Path
+) -> None:
+    """With the mark of UTF-8 in front as well, which YAML has always been read through."""
+    path = tmp_path / "ledger.yaml"
+    path.write_bytes(mark + ending.join(["who: Renée", "text: |", "  one", "  two", ""]).encode())
 
     assert read_structured(path) == {"who": "Renée", "text": "one\ntwo\n"}
+
+
+# ---------------------------------------------------------------- a value the parser will not make
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["verified_on: 2026-09-31\n", "verified_on: 2026-13-01\n", "x: &again [*again]\n"],
+    ids=["no such day", "no such month", "a list that holds itself"],
+)
+def test_a_value_the_parser_will_not_make_is_refused_in_a_sentence(
+    written: str, tmp_path: Path
+) -> None:
+    """A date that does not exist, typed without quotes. YAML takes it for a date, and the
+    making of it fails with an error that is not one of the parser's own: `ValueError`, which
+    went past the two that were caught. What it says is Python's and changes with the version,
+    so only the sentence around it is held here."""
+    path = tmp_path / "ledger.yaml"
+    path.write_text(written, encoding="utf-8")
+
+    assert refusal(path).startswith(f"{path}: cannot parse: ")
 
 
 def test_a_file_that_cannot_be_opened_is_refused_in_a_sentence(tmp_path: Path) -> None:

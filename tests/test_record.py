@@ -261,3 +261,155 @@ def test_a_refusal_exits_two_rather_than_raising(unreviewed: Path, capsys) -> No
     argv = ["review", str(unreviewed), "--record", "reader", "--verdict", "pass"]
     assert main(argv) == 2
     assert "--remit" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- a named reading
+
+
+def test_a_named_reading_is_a_record_of_its_own(unreviewed: Path) -> None:
+    """One remit read twice, by a model and by a person, is two records. The second must not
+    need the first to be overwritten, which the command refuses to do."""
+    first = write_review(loaded(unreviewed), "statistics", verdict="pass", remit="the analysis")
+    second = write_review(
+        loaded(unreviewed), "statistics", verdict="major-revision", reading="openai/model-a"
+    )
+    assert first.path.name == "statistics.yaml"
+    assert second.path.name == "statistics.openai-model-a.yaml"
+
+    document = read_structured(second.path)
+    assert validate(document, "review", second.path).ok
+    assert document["reader"] == "openai/model-a"
+    assert document["reviewer"] == "statistics"
+    assert document["reviewed_by"] == "openai/model-a"
+    assert "reader" not in read_structured(first.path)
+
+    panel = read_structured(second.panel)
+    assert panel["reviewers"] == [
+        {"id": "statistics", "remit": "the analysis", "readers": ["openai/model-a"]}
+    ], "filing a named reading names its reader in the panel, or the gate would not read it"
+    assert check_review(loaded(unreviewed), submission=True).counts["review_readings"] == 2
+
+
+def test_who_did_the_reading_can_still_be_named_apart_from_the_reader(unreviewed: Path) -> None:
+    written = write_review(
+        loaded(unreviewed),
+        "statistics",
+        verdict="pass",
+        remit="the analysis",
+        reading="second opinion",
+        reviewed_by="Dr Tanaka",
+    )
+    document = read_structured(written.path)
+    assert written.path.name == "statistics.second-opinion.yaml"
+    assert (document["reader"], document["reviewed_by"]) == ("second opinion", "Dr Tanaka")
+
+
+def test_a_named_reading_is_not_restamped_either(unreviewed: Path) -> None:
+    kwargs = {"verdict": "pass", "remit": "the analysis", "reading": "openai/model-a"}
+    write_review(loaded(unreviewed), "statistics", **kwargs)
+    with pytest.raises(RecordError, match="already exists"):
+        write_review(loaded(unreviewed), "statistics", **kwargs)
+
+
+def test_two_readers_whose_names_make_one_file_name_do_not_overwrite(unreviewed: Path) -> None:
+    write_review(
+        loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="openai/model.a"
+    )
+    with pytest.raises(RecordError, match="already exists"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", reading="openai/model-a")
+
+
+def test_each_reader_filed_is_added_to_the_panel_once(unreviewed: Path) -> None:
+    project = loaded(unreviewed)
+    write_review(project, "statistics", verdict="pass", remit="x", reading="openai/model-a")
+    write_review(project, "statistics", verdict="pass", reading="Dr Tanaka")
+    panel = unreviewed / "review" / "panel-1.yaml"
+    assert read_structured(panel)["reviewers"][0]["readers"] == ["openai/model-a", "Dr Tanaka"]
+    assert validate(read_structured(panel), "panel", panel).ok
+    report = check_review(loaded(unreviewed), submission=True)
+    assert "reading-unnamed" not in codes(report) and "reading-missing" not in codes(report)
+
+
+def test_a_reader_the_panel_already_names_is_left_as_the_panel_spells_it(
+    unreviewed: Path,
+) -> None:
+    project = loaded(unreviewed)
+    write_review(project, "statistics", verdict="pass", remit="x")
+    panel = unreviewed / "review" / "panel-1.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    document["reviewers"][0]["readers"] = ["Dr. Tanaka"]
+    panel.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    write_review(loaded(unreviewed), "statistics", verdict="pass", reading="Dr Tanaka")
+    assert read_structured(panel)["reviewers"][0]["readers"] == ["Dr. Tanaka"]
+    report = check_review(loaded(unreviewed), submission=True)
+    assert "reading-missing" not in codes(report)
+
+
+@pytest.mark.parametrize("bad", ["///", "  ", "-"])
+def test_a_reader_whose_name_leaves_no_file_name_is_refused(unreviewed: Path, bad: str) -> None:
+    with pytest.raises(RecordError, match="--reading"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x", reading=bad)
+
+
+def test_the_command_files_a_named_reading(unreviewed: Path, capsys) -> None:
+    from manuscript_guard.cli import main
+
+    argv = ["review", str(unreviewed), "--record", "statistics", "--verdict", "pass"]
+    assert main([*argv, "--remit", "the analysis", "--reading", "openai/model-a"]) == 0
+    assert "statistics.openai-model-a.yaml" in capsys.readouterr().out
+    assert main([*argv, "--reading", "Dr Tanaka"]) == 0
+    assert (unreviewed / "review" / "round-1" / "statistics.dr-tanaka.yaml").exists()
+    assert main([*argv, "--reading", "Dr Tanaka"]) == 2
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_a_readers_name_is_recorded_without_the_space_around_it(unreviewed: Path) -> None:
+    written = write_review(
+        loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="  Dr Tanaka \n"
+    )
+    assert read_structured(written.path)["reader"] == "Dr Tanaka"
+
+
+def test_a_reading_filed_under_the_panels_spelling_of_the_same_reader_is_the_same_file(
+    unreviewed: Path,
+) -> None:
+    """`Dr. Tanaka` and `Dr Tanaka` are one reader and one file, so the second is a second
+    reading by the same reader, refused, and the message says which file holds the first."""
+    write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="Dr Tanaka")
+    with pytest.raises(RecordError, match="statistics.dr-tanaka.yaml already exists"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", reading="Dr. Tanaka")
+
+
+def test_a_readers_name_too_long_for_a_file_name_is_refused_in_words(unreviewed: Path) -> None:
+    with pytest.raises(RecordError, match="--reading"):
+        write_review(
+            loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="x" * 300
+        )
+    # Counted in bytes, which is what a file system counts: 80 characters of three bytes
+    # each made a 257-byte name.
+    with pytest.raises(RecordError, match="--reading"):
+        write_review(
+            loaded(unreviewed),
+            "statistics",
+            verdict="pass",
+            remit="x",
+            reading="\N{CJK UNIFIED IDEOGRAPH-7530}" * 80,
+        )
+
+
+@pytest.mark.parametrize(
+    "others",
+    [[], ["--record-figure", "forest", "--verdict", "pass", "--by", "me"], ["--files"]],
+    ids=["alone", "with a figure review", "with --files"],
+)
+@pytest.mark.parametrize("reader", ["openai/model-a", ""])
+def test_naming_a_reader_without_recording_a_review_is_refused(
+    unreviewed: Path, capsys, others: list[str], reader: str
+) -> None:
+    """Ignored in silence, it looked as though a reading had been filed."""
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(unreviewed), "--reading", reader, *others]) == 2
+    assert "--record" in capsys.readouterr().err
+    assert not (unreviewed / "review").exists()

@@ -152,8 +152,40 @@ def _guarded(name: str, gate) -> Report:
         )
 
 
+def _round_lines(summary) -> list[str]:
+    """Who read each remit of a round and what each concluded, with the strictest verdict.
+
+    The verdict is reported and decides nothing: what blocks a submission is an unanswered
+    major finding, which the report below lists with the reader who raised it.
+    """
+    if summary is None or not summary.readings:
+        return []
+    strictest = summary.strictest
+    by = ", ".join(part for part in (strictest.reviewer, strictest.reader) if part)
+    lines = [f"strictest verdict: {strictest.verdict} ({by})"]
+    rows = []
+    for reading in summary.readings:
+        found = f"{reading.findings} finding{'' if reading.findings == 1 else 's'}"
+        if reading.major:
+            found += f", {reading.major} major ({reading.open_major} open)"
+        rows.append((reading.reviewer, reading.reader or "", reading.verdict, found))
+    widths = [max(len(row[column]) for row in rows) for column in range(3)]
+    for row in rows:
+        cells = [cell.ljust(width) for cell, width in zip(row, widths, strict=False)]
+        lines.append("  ".join([*cells, row[3]]).rstrip())
+    return lines
+
+
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
+    if args.reading is not None and not args.record:
+        # Ignored in silence, it looked as though a reading had been filed.
+        print(
+            "manuscript-guard: --reading names who made a reading and goes with --record: "
+            "`review --record <reviewer> --reading <reader> --verdict <verdict>`",
+            file=sys.stderr,
+        )
+        return 2
     if args.providers:
         # Before the project is loaded: the list of providers is worth having without one.
         from manuscript_guard.panel.commands import list_providers
@@ -203,6 +235,7 @@ def cmd_review(args: argparse.Namespace) -> int:
                     reviewed_by=args.by,
                     remit=args.remit or "",
                     summary=args.summary or "",
+                    reading=args.reading,
                 )
         except RecordError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
@@ -228,8 +261,13 @@ def cmd_review(args: argparse.Namespace) -> int:
     if not found:
         print("no review panels. The review-panel skill assembles one.")
     else:
+        from manuscript_guard.gates.review import round_summaries
+
+        summaries = {summary.number: summary for summary in round_summaries(project)}
         for number, path in found:
             print(f"  round {number}: {path.name}")
+            for line in _round_lines(summaries.get(number)):
+                print(f"    {line}")
     report = check_review(project, submission=args.submission)
     print(report.render(project.root))
     return 0 if report.ok else 1
@@ -1944,6 +1982,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="write review/round-N/REVIEWER.yaml for the manuscript as it now stands, with "
         "the digests filled in. G11 blocks submission until every reviewer has filed one, "
         "and there was no command that produced one",
+    )
+    review.add_argument(
+        "--reading",
+        metavar="READER",
+        help="with --record: who made this reading, where a remit is read more than once "
+        "(openai/<model>, or a person's name). Written as review/round-N/REVIEWER.READER.yaml "
+        "beside the reviewer's plain record, so neither replaces the other, and listed among "
+        "the reviewer's readers in the panel, which is what makes the gate read it",
     )
     review.add_argument(
         "--record-figure",

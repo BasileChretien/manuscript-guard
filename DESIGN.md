@@ -2789,6 +2789,47 @@ Three decisions worth recording:
   including embedded NULs, UTF-16 and the byte-exact `.txt` and `.sql`, are asserted
   byte-identical across the two languages.
 
+## The skills, for an agent tool with no plugin
+
+Claude Code and Codex install the skills as a plugin from this repository. Gemini CLI,
+Mistral Vibe and Kimi Code CLI have no such route here. What they share, with Codex too, is a
+folder: each reads skills from `.agents/skills` in a project and in the user's home. So
+`manuscript-guard install-skills` copies the skills there (`--project` for the project you
+are in, `--dir` for any other folder), and one command serves every such tool.
+
+**One source.** The skills live in `plugin/skills` and nowhere else in the repository. The
+wheel takes those files as `manuscript_guard/skills` when it is built (`force-include` in
+`pyproject.toml`), and in a checkout `skillcopy.shipped()` returns `plugin/skills` itself. A
+copy kept under `src/` would have been a second source. Three tests hold this: the package
+directory has no `skills/`, a wheel built in the test carries every file of `plugin/skills`
+byte for byte, and CI's wheel job compares the wheel's file list with what git tracks.
+
+**The copy is exact, and so are its names.** A skill is copied as it is, under its own name:
+the Agent Skills specification wants a skill's name to be its folder's, and the gates' hints
+name the skills. Prefixing them would have meant rewriting each file on the way out, and the
+copy would no longer be the source.
+
+**Nothing that is not this tool's is touched.** The folder in the user's home is shared with
+every other skill they have. Each copy leaves a stamp beside the skills,
+`.manuscript-guard.json`, with the release and a digest of every file. A later copy replaces
+a skill only if the stamp lists it and its files still have those digests, and removes one
+that a newer release dropped on the same condition. A folder the stamp does not list, one
+edited since, a symbolic link, or anything at all where the stamp cannot be read, is left as
+it is and named, and the command exits 1. This is the rule the round trip settled on:
+refuse rather than guess.
+
+**A copy goes stale, and the gates' own commands say so.** `pip install --upgrade` renews
+the tool and leaves the copy. A hook could say so, and these tools run none of ours. What
+every agent runs, under any tool, is `check` and `build`: after either, a stamp from another
+release gets one line on stderr with the command that renews it, or, where the copy is the
+newer, the command that upgrades the tool. It is printed after the command has finished and
+changes neither its output nor its exit code, and a stamp that cannot be read says nothing.
+The gates themselves do not look at it: a stale skill is not a finding about the manuscript.
+
+`MANUSCRIPT_GUARD_USER_SKILLS` names the user's folder where it is not `~/.agents/skills`.
+The test suite sets it to a folder that does not exist, so that a run never reads the copy
+of whoever is running it.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -3491,6 +3532,31 @@ Closed since, and why each mattered:
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a
   guarantee.
+- **A copy of the skills is found stale in two places only, and by two commands.**
+  `install-skills` leaves a stamp, and `check` and `build` name a copy whose stamp is from
+  another release, on stderr. They look in `.agents/skills` at the project's root and in the
+  user's folder. A copy made with `--dir`, or one in a directory between the working
+  directory and the project's root, is not found, and neither is a plugin, which its agent
+  tool keeps. An agent tool that does not show a command's stderr to the model, or to the
+  person, shows nobody the line. And a copy committed with the project reaches a co-author as
+  old as it was committed.
+- **A copy shares its folder with every other skill the user has.** The skills are copied
+  under their own names, because a skill's name must be its folder's and the gates' hints
+  name them ("the review-panel skill"). Where the user already has a skill of the same name
+  it is left and ours is not copied, so a hint then leads to theirs. `install-skills` says so
+  and exits 1; `--project` copies into the project, where nothing else is. A Codex user who
+  installs the plugin and also has a copy sees every skill twice.
+- **Gemini CLI, Mistral Vibe and Kimi Code CLI get the skills and no hooks.** Each has a hook
+  system of its own, with other event names and another way to refuse (read from their
+  documentation on 2026-10-02), and none is wired here. Under those tools nothing is caught
+  at the moment of the mistake, and what `check`, `build` and `submit` catch is caught later.
+  Kimi's hooks could not carry it all in any case: by its documentation what a hook prints
+  after a tool call or at the start of a session never reaches the model, so only the two
+  guards that refuse could work there. How far each was seen: Gemini CLI 0.58.0 lists all
+  fourteen skills from a project's `.agents/skills` (`gemini skills list`, which calls no
+  model, and is a test where Gemini CLI is installed); that Mistral Vibe and Kimi Code CLI
+  read the folder is from their documentation. No skill has been activated in a session of
+  any of the three.
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
   and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
   ones are not distinguishable from a sentence break.

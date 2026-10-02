@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -39,6 +40,15 @@ REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 #: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
 #: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
 PANDOC_VERSION_LINE = re.compile(r"^pandoc(?i:\.exe)?\s+(\S+)", re.MULTILINE)
+
+
+#: `check` and `build` say when a copy of the skills in the user's home is from another
+#: release. Whoever runs the suite may have such a copy, and the tests that read stderr must
+#: not depend on it, in this process or in one they start. So the suite looks in a folder
+#: that is not there.
+os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(
+    Path(tempfile.gettempdir()) / "manuscript-guard-tests-no-user-skills"
+)
 
 
 def pytest_configure(config: pytest.Config) -> None:

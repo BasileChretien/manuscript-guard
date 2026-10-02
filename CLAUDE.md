@@ -64,7 +64,14 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `render` (substitute bindings only), `init` (scaffold a project),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
-record: a second reading is a second round.
+record: a second reading is a second round. `install-skills` copies the skills into
+`.agents/skills` (the user's, or `--project`, or `--dir`) for an agent tool that has no
+plugin; it never writes over a folder it did not write.
+
+The skills have one home, `plugin/skills`. The wheel takes them from there when it is built
+and nothing under `src/` holds a copy, so edit them only there. The test suite sets
+`MANUSCRIPT_GUARD_USER_SKILLS` to a folder that does not exist, so that `check` never reads
+the copy of whoever is running it.
 
 The example's citekeys are fictional and live in its committed `references.bib`, so it
 builds offline anywhere without touching anyone's Zotero.

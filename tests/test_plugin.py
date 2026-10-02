@@ -238,6 +238,10 @@ def test_the_rules_init_writes_name_commands_and_a_skill_that_exist():
     text = AGENTS.format(title="T")
     assert command_problems(text, cli_options()) == []
     assert len([f for f in command_fragments(text) if MENTION.search(f)]) >= 4
+    # A command named by its one word, which the check above does not read: `respond`.
+    words = set(re.findall(r"`([a-z][a-z-]*)`", text))
+    assert {"render", "respond", "submit", "check"} <= words, words
+    assert words <= set(cli_options()) | skill_names(), words - set(cli_options()) - skill_names()
     assert "`project-setup`" in text and "project-setup" in skill_names()
     assert (REPO / "example" / "AGENTS.md").read_bytes() == text.encode("utf-8")
 

@@ -111,14 +111,50 @@ def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
     text = " ".join(rules.read_text(encoding="utf-8").split())
 
     assert "Never edit a machine-written file" in text
-    for generated in ("`results/`", "`build/`", "`profiles/reporting/*.yaml`"):
+    for generated in ("`results/`", "`build/`", "`profiles/reporting/<NAME>.yaml`"):
         assert generated in text, generated
+    # The one file under profiles/reporting/ an author does edit, which the rule must not
+    # seem to forbid.
+    assert "`profiles/reporting/recipes/`" in text
     assert "Run `manuscript-guard check` before `manuscript-guard build`" in text
+    assert "`manuscript-guard check --submission`" in text
     assert "Never decide for yourself that the manuscript is clean" in text
     # The templates go through str.format, so a binding is written with four braces there
     # and has to come out with two.
     assert "`{{results.<key>}}`" in text and "{{{" not in text
     assert b"\r" not in rules.read_bytes()
+
+
+def test_the_rules_forbid_no_number_that_check_accepts(project: Path, capsys) -> None:
+    """The rule on numbers said one is "never a typed literal". `check` accepts a typed number
+    that is a convention of writing or a pointer, and the worked example, which carries the
+    rules, is full of them. Taken at its word the rule could not be followed ("Table 2" has
+    no binding), and with the rule against changing a convention to make a check pass it told
+    an agent never to declare one."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.scaffold import AGENTS
+
+    capsys.readouterr()
+    assert main(["explain", str(project / "manuscript" / "main.md")]) == 0
+    explained = capsys.readouterr().out
+    assert "convention" in explained and "structural" in explained
+    assert main(["check", str(project)]) == 0
+    capsys.readouterr()
+
+    rule = " ".join(AGENTS.split())
+    assert "never a typed literal" not in rule
+    assert "a convention of writing" in rule and "a pointer" in rule
+
+
+def test_the_rules_promise_nothing_the_readme_may_not_hold() -> None:
+    """The file is written once and read for as long as the project lives, under whatever
+    agent tool. It said the README "says how to install" the skills, when the README held
+    the commands of one agent tool only."""
+    from manuscript_guard.scaffold import AGENTS
+
+    closing = " ".join(AGENTS.split())
+    assert "says how to install them" not in closing
+    assert "says which agent tools they can be installed in, and how" in closing
 
 
 def test_rules_that_are_already_there_are_left_and_the_ones_to_add_are_printed(
@@ -135,7 +171,12 @@ def test_rules_that_are_already_there_are_left_and_the_ones_to_add_are_printed(
     assert (root / "AGENTS.md").read_text(encoding="utf-8") == "# House rules\n"
     said = capsys.readouterr().out
     assert "AGENTS.md was already there" in said
-    assert "Never edit a machine-written file" in said
+    # Every line of the file but its heading, which the repository's own file has already.
+    from manuscript_guard.scaffold import AGENTS
+
+    heading, rules = AGENTS.format(title="T").split("\n", 1)
+    assert heading.startswith("# ") and rules.strip() in said
+    assert heading not in said
 
 
 def test_init_does_not_print_rules_that_are_in_the_file(tmp_path: Path, capsys) -> None:

@@ -177,9 +177,12 @@ copy — see the note under "What an adversarial review found".
 
 `AGENTS.md` is there because the skills and the hooks reach an agent only where they were
 installed, and several agent tools read that one file at a project's root on their own. It
-holds what the guarantee rests on, in twenty lines: machine-written files are not edited,
+holds what the guarantee rests on, on one short page: machine-written files are not edited,
 `check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
-names no agent tool. Like every file of the scaffold it is never written over an existing
+says only what holds in any project at any time, because it is written once: a finding is
+never typed, though a convention or a pointer is; `check` decides for the stage the project
+declares; and for how to install the skills it points to the README without saying what the
+README holds for which tool. It names no agent tool. Like every file of the scaffold it is never written over an existing
 one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
 prints the rules to add, because an agent there would otherwise read rules that say nothing
 of `results/`. It is advice to the reader and enforces nothing: the gates do that.
@@ -3472,7 +3475,10 @@ Closed since, and why each mattered:
   made by an earlier release has none until `init` is run on it once more, a later release's
   wording does not reach a file already written, and it says `results/` and `build/` even
   where `paths:` in `paper.yaml` has moved them. A file that names the toolkit anywhere is
-  taken to hold the rules, so one that mentions it and lacks them gets no notice.
+  taken to hold the rules, so one that mentions it and lacks them gets no notice. Its first
+  rule says a checklist profile is written by `transcribe` from a recipe, which is untrue of
+  one file: the worked example's `DEMO-OBS.yaml` is invented and written by hand, and has no
+  recipe.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -3524,7 +3530,8 @@ Closed since, and why each mattered:
   co-author used in Word), and model providers because a review panel may name where its
   models come from; any of them used to mean the reader passes too. In the other direction, a
   short list of phrases is taken out before the scan: Zotero's, Better BibTeX's, Word's or a
-  browser's plugin, a plug-in estimator, "Anthropic's Claude" unless "Code" follows, "Claude
+  browser's plugin, a plug-in estimator or principle, "Anthropic's Claude" unless "Code"
+  follows, "Claude
   Opus", "Claude Sonnet", "Claude Haiku", "Claude models" and a hyphenated model name ending
   in "-Codex". Claude or Codex named in prose any other way fails ("Claude" alone in a list
   of models, "Claude 4.5 Sonnet", "the Claude family") and has to be written as an

@@ -26,3 +26,10 @@ conventions:
 
 terms:
   - example-drug-2
+
+# Abbreviations this paper leaves undefined on purpose. Each `CI` here follows the level it
+# belongs to ("95% CI"), which this paper takes its readers to know. Anything else G14 finds
+# used and not defined is reported as a warning.
+language:
+  known_abbreviations:
+    - "CI"

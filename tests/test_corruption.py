@@ -7940,3 +7940,105 @@ def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project
         encoding="utf-8",
     )
     assert "reading-unreadable" in _review_failures(project)
+
+
+# --------------------------------------------------------------------------------------
+# G14: an abbreviation is defined once, before it is used. Each test below makes one of the
+# edits a hurried revision makes, and the gate has to report that edit and no other.
+# --------------------------------------------------------------------------------------
+
+UNDEFINED_USE = " (ROR {{lit.background.class_ror}})"
+DEFINED_USE = ", with a reporting odds ratio (ROR) of {{lit.background.class_ror}}"
+SPELT_OUT = "The reporting odds ratio was computed from"
+ABBREVIATED = "The ROR was computed from"
+
+
+def language_findings(root: Path) -> list[tuple[str, int]]:
+    from manuscript_guard.gates import check_language
+
+    report = check_language(load_project(root)[0])
+    assert report.ok, "G14 warns; it does not fail"
+    return sorted((f.code, f.line) for f in report.findings)
+
+
+def with_ror_defined(root: Path) -> str:
+    """The example with its one slip mended: ROR defined where the Introduction first uses
+    it, and used once in the Methods."""
+    text = main_md(root).read_text(encoding="utf-8")
+    assert UNDEFINED_USE in text and SPELT_OUT in text, "the fixture changed under this test"
+    mended = text.replace(UNDEFINED_USE, DEFINED_USE).replace(SPELT_OUT, ABBREVIATED)
+    main_md(root).write_text(mended, encoding="utf-8")
+    return mended
+
+
+def line_of(text: str, needle: str) -> int:
+    return text.count("\n", 0, text.index(needle)) + 1
+
+
+def test_the_example_s_undefined_abbreviation_is_caught(project: Path) -> None:
+    text = main_md(project).read_text(encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "(ROR "))]
+
+
+def test_the_mended_example_has_nothing_to_report(project: Path) -> None:
+    """The baseline for what follows: a gate that reports the clean text proves nothing by
+    reporting the corrupted one."""
+    with_ror_defined(project)
+    assert language_findings(project) == []
+
+
+def test_abbreviating_throughout_without_a_definition_is_caught(project: Path) -> None:
+    """Find-and-replace of the long form, the definition never written: the abstract and
+    the main text each use ROR, and neither defines it."""
+    text = main_md(project).read_text(encoding="utf-8")
+    shortened = re.sub(r"\breporting(\s+)odds(\s+)ratio\b", "ROR", text)
+    assert shortened.count("ROR") > 4
+    main_md(project).write_text(shortened, encoding="utf-8")
+    found = language_findings(project)
+    assert [code for code, _line in found] == ["abbreviation-undefined"] * 2
+    assert found[0][1] == line_of(shortened, "The ROR was"), "the abstract's, where it is used"
+
+
+def test_a_definition_moved_below_its_first_use_is_caught(project: Path) -> None:
+    """The Introduction is cut down and its definition goes with the cut; the author
+    defines the term again where the Methods compute it. The Introduction still uses it."""
+    mended = with_ror_defined(project)
+    moved = mended.replace(DEFINED_USE, UNDEFINED_USE).replace(
+        ABBREVIATED, "The reporting odds ratio (ROR) was computed from"
+    )
+    moved = moved.replace("A signal was defined", "A raised ROR was read as a signal, defined")
+    main_md(project).write_text(moved, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(moved, "(ROR {{"))
+    ]
+
+
+def test_a_definition_pasted_a_second_time_is_caught(project: Path) -> None:
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here", "The reporting odds ratio (ROR) observed here"
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio (ROR) observed"))
+    ]
+
+
+def test_a_definition_whose_only_use_was_cut_is_caught(project: Path) -> None:
+    mended = with_ror_defined(project)
+    cut = mended.replace(ABBREVIATED, SPELT_OUT)
+    main_md(project).write_text(cut, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-unused", line_of(cut, "(ROR)"))]
+
+
+def test_a_definition_whose_brackets_were_deleted_is_caught(project: Path) -> None:
+    """A copy-editor's tidy: "a reporting odds ratio (ROR) of" becomes "a reporting odds
+    ratio of", and the Methods still say ROR."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of")
+    assert tidied != mended
+    main_md(project).write_text(tidied, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]

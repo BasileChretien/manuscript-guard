@@ -9,9 +9,11 @@ schema: manuscript-guard/abbreviations/1
 # this holds only what is read as a word or a name in general English, or as a unit, and a
 # project adds its own under `language: known_abbreviations:` in paper.yaml.
 #
-# Each entry has one meaning in a manuscript. `AD`, `BC`, `AM` and `PM` were here as eras
-# and times of day and were taken out: in clinical prose they are Alzheimer's disease,
-# breast cancer and particulate matter far more often, and an entry here hides those.
+# An entry hides every other meaning of its letters, so each is here for the meaning a
+# manuscript most often gives it. `AD`, `BC`, `AM` and `PM` were here as eras and times of
+# day and were taken out: in clinical prose they are Alzheimer's disease, breast cancer
+# and particulate matter far more often. `GMT` went the same way, for the geometric mean
+# titre. `US` and `PDF` stay, and hide ultrasound and the probability density function.
 #
 # Not listed, because they are read from elsewhere: the names G2 already treats as names
 # (`data/terms.yaml` and the project's `terms:`), the reporting guidelines the toolkit has
@@ -25,9 +27,8 @@ known:
   - EU
   - UN
 
-  # Time zones
+  # Time
   - UTC
-  - GMT
 
   # Molecules every reader of science takes for words
   - DNA

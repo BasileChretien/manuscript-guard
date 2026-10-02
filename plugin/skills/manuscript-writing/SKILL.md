@@ -98,8 +98,9 @@ Quote each entry: unquoted, YAML reads `NO`, `ON` and `YES` as booleans, and `ch
 fails on the setting. List one only when the journal's instructions allow it or it is a
 name. The list is the author's decision, so ask before adding to it.
 
-A chemical formula (`CO2`, `NaHCO3`), a unit (`MHz`) and a registration number
-(`NCT01234567`) are not reported and need no entry.
+A chemical formula with a count in it (`CO2`, `CO~2~`, `NaHCO3`), the unit symbols
+shipped (`MHz`, `GPa`) and a registration number (`NCT01234567`) are not reported and need
+no entry. A formula with no count (`HCl`, `NaOH`) is reported like any abbreviation.
 
 ## Checking your work
 

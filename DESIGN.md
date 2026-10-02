@@ -839,15 +839,23 @@ is taken for one only when two capitals stand side by side, which keeps `McNemar
 `DeLong` and `PhD` out of the report. Three things with two capitals together are not
 abbreviations and are left alone. A numeral, `II` to `XXXIX`. A registration or accession
 number, letters and then five digits or more: `NCT01234567`. And a chemical formula: a
-word that reads from end to end as element symbols with small counts, and holds a
-lower-case letter or a digit, so `CO2`, `HCl` and `NaHCO3` are formulas while `CO`, `CI`
-and `HCV`, which spell elements too, are still abbreviations. A count above twelve is no
-formula's, which keeps `IC50` in the report.
+word that reads from end to end as element symbols and their counts, with a count
+somewhere. The count is what tells the two apart. `CO2`, `H2SO4` and `NaHCO3` are formulas;
+`CO`, `CI` and `HCV` spell elements too and are abbreviations, and so, for the gate, are
+`HCl` and `NaOH`, because nothing distinguishes them from `PCa` (prostate cancer) and `SCr`
+(serum creatinine), which the first version of this rule let through as formulas. A count
+is from two to twelve: nobody writes a count of one, which keeps `HSV1` in the report, and
+none runs to fifty, which keeps `IC50`. A count typeset as pandoc's subscript, `CO~2~`, or
+in subscript digits, is read as the count it is.
 
 **A hyphenated word is one abbreviation where it reads as one.** `SARS-CoV-2` is read
-whole when it is defined or known. Where nothing in it is, it is reported whole, under the
-name its definition would give it: `LC-MS` and not `LC` and `MS`, `KEYNOTE-189` and not
-`KEYNOTE`. An ordinary word joined on is no part of it: `ROR-based` is `ROR`.
+whole when it is defined or known, and so is a name that holds an ordinary word:
+`RNA-seq`, `non-HDL-C`. Where nothing in it is defined or known, it is reported whole,
+under the name its definition would give it: `LC-MS` and not `LC` and `MS`, `KEYNOTE-189`
+and not `KEYNOTE`. An ordinary word joined on is then no part of it: `ROR-based` is `ROR`.
+The defined or known name is looked for first. The second review found the order reversed:
+the word was split at `seq` before `RNA-seq` was looked for, and its definition was
+reported as unused.
 
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read
 without the paper, so it defines what it uses. The main text does not inherit from the
@@ -5933,13 +5941,19 @@ Closed since, and why each mattered:
     town, "Cary, NC". An author's initials are not exempted from `authors.yaml`, because
     initials are two or three capitals and collide with abbreviations: an author named Ada
     Example would hide every `AE`.
-  - The formula rule has two edges. A formula written in capitals alone is still reported,
-    `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`. And a name spelt in
-    element symbols with a small count is taken for a formula and not reported: `PI3K`,
-    `PD1`, `VO2`.
+  - The formula rule has two edges. A formula with no count is still reported, `HCl`,
+    `NaOH`, `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`, a group in
+    brackets, `(NH4)2SO4`, which reports `2SO4`, and a charge, `SO42-`. And a name spelt in
+    element symbols with a count from two to twelve is taken for a formula and not
+    reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
   - A short form in square brackets is read as a definition wherever the words before it
-    spell it, a link's label `[ROR][ref]` included.
+    spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
+    `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since
+    its bracket is masked with its target.
+  - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
+    `HU` are reported: several have a second meaning, and the list is the project's to
+    extend.
   - Only a section titled "Abstract" is read apart. A `Summary`, a `Key points` box and a
     `Figure legends` section are main text, so a definition repeated in the Introduction
     after one of them, or in a legend that has to stand alone, is reported as

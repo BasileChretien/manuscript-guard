@@ -238,12 +238,48 @@ def test_neither_a_bracket_nor_a_long_form_crosses_a_blank_line(project: Path) -
         "was raised.\n",
     )
     assert codes(apart) == {"abbreviation-undefined"}, found(apart)
-    open_bracket = written(
+    for opened, closed in ("()", "[]"):
+        open_bracket = written(
+            project,
+            f"# Methods\n\nThe reporting odds ratio {opened}ROR;\n\nsee below{closed} was "
+            "raised. The ROR was raised.\n",
+        )
+        assert codes(open_bracket) == {"abbreviation-undefined"}, found(open_bracket)
+
+
+def test_definitions_are_read_in_the_order_they_stand(project: Path) -> None:
+    """Square brackets are found in a second pass, and the first definition is still the
+    one that stands first."""
+    report = written(
         project,
-        "# Methods\n\nThe reporting odds ratio (ROR\n\nwas raised) in each stratum. The ROR "
-        "was raised.\n",
+        "# Results\n\nThe hazard ratio [HR] was 0.75. The HR was stable.\n\n# Discussion\n\n"
+        "The hazard ratio (HR) fell.\n",
     )
-    assert codes(open_bracket) == {"abbreviation-undefined"}, found(open_bracket)
+    (finding,) = report.findings
+    assert finding.code == "abbreviation-redefined"
+    assert finding.line == 7
+    assert "manuscript/main.md:3" in finding.message
+
+
+def test_used_before_defined_names_the_first_use_and_the_first_definition(
+    project: Path,
+) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe ROR was computed.\n\nThe ROR compares groups.\n\nThe reporting odds "
+        "ratio (ROR) is a ratio. The ROR was raised.\n\nThe reporting odds ratio (ROR) fell.\n",
+    )
+    early = next(f for f in report.findings if f.code == "abbreviation-used-before-defined")
+    assert early.line == 3
+    assert "manuscript/main.md:7" in early.message
+
+
+def test_a_lower_case_s_is_the_plural_s_only_after_a_plural_long_form() -> None:
+    from manuscript_guard.gates.language import _stem
+
+    assert _stem("scFvs", "single-chain variable fragments") == "scFv"
+    assert _stem("scFvs", "single-chain variable fragment") == "scFvs"
+    assert _stem("RORs", "reporting odds ratio") == "ROR", "after a capital it always is"
 
 
 def test_a_plural_definition_defines_the_singular(project: Path) -> None:
@@ -292,6 +328,57 @@ def test_a_hyphenated_abbreviation_defined_whole_is_used_whole(project: Path) ->
         "took an hour.\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "RNA sequencing (RNA-seq) libraries were prepared; RNA-seq reads were aligned.",
+        "Non-high-density lipoprotein cholesterol (non-HDL-C) was the outcome. Mean "
+        "non-HDL-C fell.",
+        "Chromatin immunoprecipitation sequencing (ChIP-seq) was done. ChIP-seq peaks were "
+        "called.",
+        "Anti-factor Xa activity (anti-FXa) was measured. The anti-FXa level rose.",
+    ],
+)
+def test_a_name_that_holds_an_ordinary_word_is_still_one_name(project: Path, text: str) -> None:
+    """Looked for whole before the word is split at `seq` or `non`. Split first, the
+    definition was reported as unused and its capitals as undefined."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    assert not report.findings, found(report)
+
+
+def test_a_listed_name_that_holds_an_ordinary_word_is_honoured(project: Path) -> None:
+    configured(
+        project,
+        language={"known_abbreviations": ["EMPEROR-Preserved"]},
+        reporting_guideline=["DEMO-OBS", "ROBINS-Exposure"],
+    )
+    report = written(
+        project,
+        "# Methods\n\nIn EMPEROR-Preserved, events fell. We followed the ROBINS-Exposure "
+        "tool.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_the_plural_of_a_listed_abbreviation_is_listed(project: Path) -> None:
+    """Any final `s`, as for a defined one: an inhibitor class ends in a lower-case `i`."""
+    text = "# Methods\n\nPARPis and SGLT2is were used, and one HDACi.\n"
+    assert len(found(written(project, text), "abbreviation-undefined")) == 3
+    configured(project, language={"known_abbreviations": ["PARPi", "SGLT2i", "HDACi"]})
+    assert not written(project, text).findings
+
+
+def test_a_defined_part_of_a_hyphenated_word_is_a_use(project: Path) -> None:
+    """`ROR-PRR` with ROR defined: ROR is used, and PRR is what is missing."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) was computed. ROR-PRR agreement was "
+        "good.\n",
+    )
+    (message,) = found(report)
+    assert message.startswith("PRR is used once")
 
 
 def test_a_hyphenated_name_is_defined_and_used_whole(project: Path) -> None:
@@ -367,7 +454,9 @@ def test_ordinary_prose_has_nothing_to_report(project: Path) -> None:
         "The ratio was {{results.ror.point}} overall.",
         "<!-- ROR to be defined once the Methods are settled -->\n\nThe ratio was raised.",
         "The ratio $ROR = ad/bc$ was computed.",
-        "The solution of HCl and NaHCO3 was saturated with CO2, then dried over MgSO4.",
+        "The solution of H2SO4 and NaHCO3 was saturated with CO2, then dried over MgSO4.",
+        "CO~2~ and H~2~SO~4~ were bubbled through (NH~4~)~2~SO~4~, with NH~3~ and CH~4~.",
+        "The CO\N{SUBSCRIPT TWO} was vented.",
         "Spectra were recorded at 400 MHz and 2 GPa in CDCl3, with 5 MBq of tracer.",
         "The trial is registered as NCT01234567 and the review as CRD42020123456.",
         "Reporting follows TRIPOD for the model and PRISMA for the search.",
@@ -385,7 +474,12 @@ def test_what_is_not_an_abbreviation_is_not_reported(project: Path, sentence: st
     "sentence",
     [
         "The IC50 was 12 nM.",  # element letters, and a count no formula has
+        "The IC~50~ was 12 nM.",  # the same, typeset
+        "HSV1 was isolated.",  # nobody writes a count of one
         "KOH was added.",  # a formula with nothing to tell it from an abbreviation
+        "HCl was added.",  # the same: no count
+        "PCa was diagnosed.",  # prostate cancer, which spells phosphorus and calcium
+        "SCr was measured.",  # serum creatinine, which spells sulfur and chromium
         "The ABCDEFGHIJKLMNO score was raised.",  # as long as a short form may be
     ],
 )
@@ -688,6 +782,6 @@ def test_a_long_hyphenated_word_is_read_in_linear_time(assert_linear) -> None:
     def chained(count: int) -> str:
         return "-".join(["AB"] * count)
 
-    assert_linear(
-        chained, lambda token: _forms(token, set(), nothing), 2000, "one word, by hyphen"
-    )
+    # From 50 parts: reading every stretch of the word whole is cubic, and from 2,000 a
+    # return of it would not fail this test but stall it for hours.
+    assert_linear(chained, lambda token: _forms(token, set(), nothing), 50, "one word, by hyphen")

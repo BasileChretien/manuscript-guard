@@ -63,10 +63,14 @@ _WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
 # One level of brackets, not running on for ever: an unclosed "(" must not pair with a ")"
 # three paragraphs later.
 _PAREN = re.compile(r"\(([^()]{1,300})\)")
-# The form a journal uses inside a parenthesis: "(hazard ratio [HR], 0.75)". A link's text
-# and a citation are not read as one: `mask` has taken a link's `](target)` and a citation's
-# key, so neither is left as a bracket holding a word.
+# The form a journal uses inside a parenthesis: "(hazard ratio [HR], 0.75)". A citation is
+# not read as one, since `mask` has taken its key and left no word in the bracket, nor a
+# link to a file, whose `](target)` is masked with its bracket. A link to a URL is: `mask`
+# takes the URL first and leaves the `]`, so "reporting odds ratio [ROR](https://...)"
+# defines ROR, which is what it says.
 _SQUARE = re.compile(r"\[([^\[\]]{1,300})\]")
+# A count written as pandoc writes a subscript: the 2 of `CO~2~`.
+_SUBSCRIPT = re.compile(r"~(\d{1,2})~")
 _BLANK_LINE = re.compile(r"\n[ \t\r]*\n")
 _QUOTES = (
     "*_\"'"
@@ -127,11 +131,15 @@ _PERIODIC_TABLE = (
     "Ts Og D"
 )
 _ELEMENTS = frozenset(_PERIODIC_TABLE.split())
-#: The largest count read as a formula's. `C6H12O6` is a formula and `IC50` is not.
+#: The counts read as a formula's. Nobody writes a count of one, so `HSV1` and `PD1` are
+#: not formulas; `C6H12O6` is one and `IC50` is not.
+_SMALLEST_COUNT = 2
 _LARGEST_COUNT = 12
 #: The digits a count is written in. Not `str.isdigit`, which a superscript two also
 #: answers and `int` then refuses.
 _DIGITS = "0123456789"
+#: The subscript digits, U+2080 to U+2089, as the digits they stand for: `CO₂` is `CO2`.
+_SUBSCRIPTS = {0x2080 + digit: str(digit) for digit in range(10)}
 
 
 @dataclass(frozen=True)
@@ -215,10 +223,15 @@ def _numeral(form: str) -> bool:
 
 
 def _formula(form: str) -> bool:
-    """Is this a chemical formula: two elements or more, each with a small count or none,
-    and a lower-case letter or a digit somewhere, so that `CO2`, `HCl` and `NaHCO3` are
-    formulas and `CO`, `CI` and `HCV`, which spell elements too, are not."""
-    if not any(char.islower() or char in _DIGITS for char in form):
+    """Is this a chemical formula: a word that reads from end to end as element symbols and
+    their counts, two elements or more, with a count somewhere.
+
+    The count is what tells a formula from an abbreviation. `CO2`, `H2SO4` and `NaHCO3` are
+    formulas. `CO`, `CI` and `HCV` spell elements too, and so do `PCa`, `SCr` and `HCl`:
+    with no count there is nothing to tell prostate cancer from a phosphorus-calcium
+    compound, so all of those are still reported."""
+    form = form.translate(_SUBSCRIPTS)
+    if not any(char in _DIGITS for char in form):
         return False
     # reached[i]: the most elements that can be read up to character i, or -1.
     reached = [-1] * (len(form) + 1)
@@ -233,7 +246,9 @@ def _formula(form: str) -> bool:
             while stop < len(form) and form[stop] in _DIGITS:
                 stop += 1
             count = form[start + width : stop]
-            if count and (count[0] == "0" or int(count) > _LARGEST_COUNT):
+            if count and (
+                count[0] == "0" or not _SMALLEST_COUNT <= int(count) <= _LARGEST_COUNT
+            ):
                 continue
             reached[stop] = max(reached[stop], reached[start] + 1)
     return reached[len(form)] >= 2
@@ -470,6 +485,30 @@ def _definitions(prose: str) -> list[tuple[int, str, str]]:
     return found
 
 
+def _listed_as(form: str, known: _Known) -> bool:
+    """Is this word, or the singular it is the plural of, one the lists exempt? Any final
+    `s` counts, as for a defined abbreviation: `PARPis` for a listed `PARPi`."""
+    return form in known or (form.endswith("s") and form[:-1] in known)
+
+
+def _named(
+    parts: list[str], starts: list[int], index: int, defined: set[str], known: _Known
+) -> tuple[int, list[tuple[int, str, bool]]] | None:
+    """A defined or listed name of two parts or more that starts here, and where it stops.
+
+    Looked for before the word is split at its ordinary words, because a name may hold
+    one: `RNA-seq`, `non-HDL-C`, `EMPEROR-Preserved`. Split first, `RNA-seq` was never
+    matched whole, so its definition was reported as unused."""
+    for stop in range(len(parts), index + 1, -1):
+        form = "-".join(parts[index:stop])
+        base = _defined_as(form, defined)
+        if base is not None:
+            return stop, [(starts[index], base, True)]
+        if _listed_as(form, known):
+            return stop, []
+    return None
+
+
 def _is_word(part: str) -> bool:
     """An ordinary word in a hyphenated one: `based` in `ROR-based`, `Non` in `Non-ICI`."""
     return len(part) >= 2 and part.isalpha() and part[1:].islower()
@@ -494,7 +533,7 @@ def _run(
                 found.append((starts[index], base, True))
                 index = stop
                 break
-            if form in known or _singular(form) in known:
+            if _listed_as(form, known):
                 found.append((starts[index], "", True))
                 index = stop
                 break
@@ -517,13 +556,19 @@ def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str,
     for part in parts[:-1]:
         starts.append(starts[-1] + len(part) + 1)
     found: list[tuple[int, str, bool]] = []
+    joined = len(parts) <= _JOINED_PARTS
     index = 0
     while index < len(parts):
+        named = _named(parts, starts, index, defined, known) if joined else None
+        if named is not None:
+            index, uses = named
+            found += uses
+            continue
         if _is_word(parts[index]):
             index += 1
             continue
         stop = index + 1
-        if len(parts) <= _JOINED_PARTS:
+        if joined:
             while stop < len(parts) and not _is_word(parts[stop]):
                 stop += 1
         found += _run(parts, starts, index, stop, defined, known)
@@ -616,6 +661,11 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
                     continue
                 if not is_defined and region.quiet:
                     continue
+                if not is_defined:
+                    # `CO~2~`: the word is `CO`, and with its subscript it is a formula.
+                    count = _SUBSCRIPT.match(file.prose, offset + len(short))
+                    if count is not None and _formula(short + count.group(1)):
+                        continue
                 scopes[region.scope].used.setdefault(short, []).append(
                     _Mark(file.order, offset, region.quiet)
                 )

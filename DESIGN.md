@@ -989,8 +989,9 @@ wrong. Prose that trips the AI-writing lint is not, so nothing in G6 is enforced
 
 **The same hooks read Codex's input.** Codex runs hooks under the event names Claude Code
 uses, takes the same output, and matches a file edit under the names `Edit` and `Write`, so
-`plugin/hooks/hooks.json` is one file for both. Three of the four hooks receive what they
-receive from Claude Code. The difference is a file edit. Codex makes it with one tool,
+`plugin/hooks/hooks.json` is one file for both. Two of the four hooks, the session start and
+the submission guard, receive what they receive from Claude Code. The difference is a file
+edit, which the other two read. Codex makes it with one tool,
 `apply_patch`, and hands the hook the text of the patch in `tool_input.command`, with no
 `file_path`. The files are named in the patch's headers, relative to `cwd`, and one patch may
 write several.
@@ -999,11 +1000,13 @@ write several.
 (`codex-rs/apply-patch/src/parser.rs` and `streaming_parser.rs`, read 2026-10-02): nothing
 before `*** Begin Patch` or after `*** End Patch`; a header is a whole line of the envelope,
 which inside an update must start at the first column, since a line of the file's text starts
-with a space, `+` or `-`; `*** Move to:` only on the line after the header of the file it
-moves. A looser reading would refuse an edit to a manuscript that quotes a patch, and a
-stricter one would miss a write. The write guard refuses the whole patch when any file it
-adds, updates or moves a file to is generated, and names those files only. After the patch,
-each manuscript file and each analysis file in it gets its line. A file the patch deletes is
+with a space, `+` or `-`; `*** Move to:` once, and only before the first change to the file
+it moves, which an `*** End of File` line there is not. A looser reading would refuse an edit
+to a manuscript that quotes a patch, and a stricter one would miss a write. The write guard
+refuses the whole patch when any file it adds, updates or moves a file to is generated, and
+names those files only, each once. Where the project keeps `results/` is asked of it once for
+the patch, not once for each file. After the patch, each manuscript file and each analysis
+file in it gets its line, a moved one where it now is. A file the patch deletes is
 not refused: removing a fragment whose script is gone is the author's decision, and `check`
 reports every binding that pointed at it. And the submission guard leaves a patch alone,
 because a patch that writes `--submission` into a file is an edit, not a command.
@@ -3483,7 +3486,17 @@ Closed since, and why each mattered:
   reads no file from it and the write guard guards nothing, in silence; `check` still reports
   an edited results file afterwards. A patch Codex would reject as malformed after its first
   header can be refused by the guard first, which costs nothing, since it would not have been
-  applied.
+  applied. Codex also applies a patch that a model sends as a shell command
+  (`apply_patch <<'EOF'`). Whether a hook then sees it as a patch or as a shell command was not
+  established from the sources read; if as a shell command, the write guard does not read it.
+  The reader was compared with a Python port of Codex's parser on generated patches, by the
+  reviewer of the pull request, and not with the parser itself.
+- **On Windows a file name outside ASCII may be misread by every hook.** The event is read
+  from standard input in the console's code page. If the agent tool writes it as UTF-8
+  without escapes, which was not captured from Claude Code or from Codex,
+  `manuscript/méthodes.md` is not recognised: the note after an edit says nothing, and a
+  refusal prints the name garbled. Found in review on 2026-10-02 and true before it; with
+  `PYTHONUTF8=1` set the name is read. Not fixed yet.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

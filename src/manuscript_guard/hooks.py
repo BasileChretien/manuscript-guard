@@ -99,53 +99,72 @@ _PATCH_ADD = "*** Add File: "
 _PATCH_UPDATE = "*** Update File: "
 _PATCH_DELETE = "*** Delete File: "
 _PATCH_MOVE = "*** Move to: "
+_PATCH_EOF = "*** End of File"
 _HEREDOC_OPENERS = ("<<EOF", "<<'EOF'", '<<"EOF"')
 
 
-def patch_paths(patch: str) -> list[str]:
-    """The files an `apply_patch` envelope writes, read as Codex's own parser reads it.
+def _patch_hunks(patch: str) -> list[tuple[str, str | None]]:
+    """Each file an `apply_patch` envelope writes, and where it is moved to if it is.
 
-    A file added, a file updated, and where an updated file is moved to. A deleted file is
-    not written, so it is not here. The rules are the parser's, because a looser reading
-    refuses an edit to a manuscript that merely quotes a patch, and a stricter one misses a
-    write Codex goes on to make:
+    Read as Codex's own parser reads the envelope, because a looser reading refuses an edit
+    to a manuscript that merely quotes a patch, and a stricter one misses a write Codex goes
+    on to make:
 
     - nothing counts before `*** Begin Patch`, or after `*** End Patch`;
     - a header is a whole line of the envelope. Inside an update, where a line of the file's
       text begins with a space, `+` or `-`, only a marker at the very start of the line is
       one; elsewhere space around it is allowed;
-    - `*** Move to:` is read only on the line straight after the header of the file it moves;
+    - `*** Move to:` is read once, and only before the first change to the file it moves,
+      which an `*** End of File` line there is not;
     - the here-document some models wrap a patch in is taken off first.
+
+    A deleted file is not written, so it is not here.
     """
     lines = [line.removesuffix("\r") for line in patch.strip().split("\n")]
     if len(lines) >= 4 and lines[0] in _HEREDOC_OPENERS and lines[-1].endswith("EOF"):
-        lines = "\n".join(lines[1:-1]).strip().split("\n")
+        lines = lines[1:-1]
     if lines[0].strip() != _PATCH_BEGIN:
         return []
 
-    written: list[str] = []
+    hunks: list[tuple[str, str | None]] = []
     updating = False
     may_move = False
     for line in lines[1:]:
         header = line.rstrip() if updating else line.strip()
-        moves, may_move = may_move, False
+        moves, may_move = may_move, may_move and header == _PATCH_EOF
         if header == _PATCH_END:
             break
         if header.startswith(_PATCH_ADD):
-            written.append(header[len(_PATCH_ADD) :])
+            hunks.append((header[len(_PATCH_ADD) :], None))
             updating = False
         elif header.startswith(_PATCH_DELETE):
             updating = False
         elif header.startswith(_PATCH_UPDATE):
-            written.append(header[len(_PATCH_UPDATE) :])
+            hunks.append((header[len(_PATCH_UPDATE) :], None))
             updating = may_move = True
         elif moves and header.startswith(_PATCH_MOVE):
-            written.append(header[len(_PATCH_MOVE) :])
-    return written
+            hunks[-1] = (hunks[-1][0], header[len(_PATCH_MOVE) :])
+            may_move = False
+    return hunks
 
 
-def _edited_paths(payload: dict) -> list[Path]:
-    """The files a write is about to touch, or has just touched.
+def patch_paths(patch: str, *, after: bool = False) -> list[str]:
+    """The files an `apply_patch` envelope writes, each once, in the patch's order.
+
+    Before the patch is applied, a moved file counts at both ends: its text changes where it
+    is, and it lands where it goes. With `after`, it counts only where it now is.
+    """
+    names = [
+        name
+        for file, moved in _patch_hunks(patch)
+        for name in ((moved or file,) if after else (file, moved))
+        if name
+    ]
+    return list(dict.fromkeys(names))
+
+
+def _edited_paths(payload: dict, *, after: bool = False) -> list[Path]:
+    """The files a write is about to touch or, with `after`, has just touched.
 
     Most tools name one, in `file_path`. `notebook_path` is here because hooks.json registers
     NotebookEdit and that tool does not send `file_path` — so the matcher was live and the
@@ -162,7 +181,7 @@ def _edited_paths(payload: dict) -> list[Path]:
     if payload.get("tool_name") != PATCH_TOOL or not isinstance(command, str):
         return []
     base = Path(payload.get("cwd") or Path.cwd())
-    return [base / name for name in patch_paths(command) if name]
+    return [base / name for name in patch_paths(command, after=after)]
 
 
 def _or_nothing(reader, path: Path) -> str | None:
@@ -177,12 +196,25 @@ def _or_nothing(reader, path: Path) -> str | None:
         return None
 
 
-def _project_path(root: Path, name: str) -> Path:
-    """Where this project keeps `name`, honouring a `paths:` override in paper.yaml."""
+def _relocated(root: Path) -> dict[str, str]:
+    """Where `paths:` in paper.yaml puts `results/` and `build/`, for each one it moves.
+
+    `results/` and `build/` are the defaults, but `paths:` can move either, and a guard that
+    reads the literal names silently stops guarding when it does. G1 still catches the edit
+    afterwards; preventing it is the write guard's whole job.
+    """
     from manuscript_guard.contracts import load_project
 
     project, _report = load_project(root)
-    return project.path(name)
+    moved: dict[str, str] = {}
+    for name in ("results", "build"):
+        try:
+            configured = str(project.path(name).relative_to(root)).replace("\\", "/")
+        except (ValueError, OSError):
+            continue
+        if configured and configured != name:
+            moved[name] = configured
+    return moved
 
 
 def _relative_to_project(path: Path) -> tuple[Path, str] | None:
@@ -208,13 +240,20 @@ def guard_write(payload: dict) -> int:
     A patch is applied whole, so one generated file in it refuses all of it, and the reason
     names each generated file and none of the others.
     """
-    refusals = [why for path in _edited_paths(payload) if (why := _or_nothing(_refusal, path))]
+    # A patch may write many files of one project, and where that project keeps `results/`
+    # is asked of it once.
+    projects: dict[Path, dict[str, str]] = {}
+    refusals = [
+        why
+        for path in _edited_paths(payload)
+        if (why := _or_nothing(lambda file: _refusal(file, projects), path))
+    ]
     if not refusals:
         return 0
     return _deny("PreToolUse", "\n".join(refusals))
 
 
-def _refusal(path: Path) -> str | None:
+def _refusal(path: Path, projects: dict[Path, dict[str, str]]) -> str | None:
     """Why this file may not be written by hand, or None where it may."""
     found = _relative_to_project(path)
     if found is None:
@@ -224,16 +263,10 @@ def _refusal(path: Path) -> str | None:
     if any(relative.startswith(prefix) for prefix in ALLOWED):
         return None
 
-    # `results/` and `build/` are the defaults, but `paths:` in paper.yaml can move either,
-    # and a guard that reads the literal names silently stops guarding when it does. G1
-    # still catches the edit afterwards; preventing it is this hook's whole job.
-    for name in ("results", "build"):
-        try:
-            configured = str(_project_path(root, name).relative_to(root)).replace("\\", "/")
-        except (ValueError, OSError):
-            continue
-        if configured and configured != name:
-            relative = relative.replace(f"{configured}/", f"{name}/", 1)
+    if root not in projects:
+        projects[root] = _relocated(root)
+    for name, configured in projects[root].items():
+        relative = relative.replace(f"{configured}/", f"{name}/", 1)
 
     for prefix, suffix, why in FORBIDDEN:
         if relative.startswith(prefix) and relative.endswith(suffix):
@@ -243,7 +276,11 @@ def _refusal(path: Path) -> str | None:
 
 def after_edit(payload: dict) -> int:
     """Classify the numbers in a manuscript file the moment it is saved."""
-    notes = [note for path in _edited_paths(payload) if (note := _or_nothing(_note_on, path))]
+    notes = [
+        note
+        for path in _edited_paths(payload, after=True)
+        if (note := _or_nothing(_note_on, path))
+    ]
     if not notes:
         return 0
     return _context("PostToolUse", "\n".join(notes))
@@ -253,9 +290,6 @@ def _note_on(path: Path) -> str | None:
     """What to say about a file that was just written, or None where there is nothing."""
     if path.suffix.lower() != ".md":
         return _analysis_note(path)
-    # A patch that moves a file names it where it was, too.
-    if not path.is_file():
-        return None
     found = _relative_to_project(path)
     if found is None:
         return None

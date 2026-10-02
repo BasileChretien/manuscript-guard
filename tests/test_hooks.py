@@ -503,9 +503,65 @@ def codex_edit(cwd: Path, patch: str, event: str = "PreToolUse") -> dict:
             ),
             ["notes.md"],
         ),
-        # `Move to` is read only straight after the header of the file it moves.
+        # `Move to` is read only before the first change to the file it moves.
         (
             patch_of("*** Update File: a.md", "@@", "-one", "*** Move to: results/z.json"),
+            ["a.md"],
+        ),
+        # `*** End of File` there makes no change, so Codex still takes a move after it.
+        (
+            patch_of(
+                "*** Update File: analysis/hand.json",
+                "*** End of File",
+                "*** End of File",
+                "*** Move to: results/hand.json",
+                "@@",
+                "-a",
+                "+b",
+            ),
+            ["analysis/hand.json", "results/hand.json"],
+        ),
+        # A file is moved once.
+        (
+            patch_of("*** Update File: a.md", "*** Move to: b.md", "*** Move to: results/c.md"),
+            ["a.md", "b.md"],
+        ),
+        # After a file is added or deleted the next header may be indented again, which
+        # inside an update it may not.
+        (
+            patch_of(
+                "*** Update File: a.md",
+                "@@",
+                "+x",
+                "*** Add File: b.md",
+                "+y",
+                " *** Add File: results/c.json",
+                "+z",
+            ),
+            ["a.md", "b.md", "results/c.json"],
+        ),
+        (
+            patch_of(
+                "*** Update File: a.md",
+                "@@",
+                "+x",
+                "*** Delete File: b.md",
+                " *** Add File: results/c.json",
+                "+z",
+            ),
+            ["a.md", "results/c.json"],
+        ),
+        # Nothing counts before `*** Begin Patch`, or after `*** End Patch`.
+        ("junk\n*** Add File: results/x.json\n+x\n*** End Patch", []),
+        (patch_of("*** Add File: a.md", "+x") + "\n*** Add File: results/x.json\n+x", ["a.md"]),
+        # The here-document with the line endings of Windows.
+        (
+            "<<'EOF'\r\n*** Begin Patch\r\n*** Add File: a.md\r\n+x\r\n*** End Patch\r\nEOF\r\n",
+            ["a.md"],
+        ),
+        # A file named by two hunks is one file.
+        (
+            patch_of("*** Update File: a.md", "@@", "+x", "*** Update File: a.md", "@@", "+y"),
             ["a.md"],
         ),
         ("", []),
@@ -611,6 +667,59 @@ def test_a_patch_outside_any_project_is_ignored(tmp_path: Path, capsys) -> None:
     assert run("guard-write", codex_edit(tmp_path, patch), capsys) is None
 
 
+def test_a_file_that_cannot_be_read_does_not_cost_the_others_their_refusal(
+    project: Path, capsys
+) -> None:
+    """A name no file system takes stops the reading of that one file, and only that one."""
+    patch = patch_of("*** Add File: results/\x00.json", "+{}", "*** Add File: build/y.md", "+y")
+    result = run("guard-write", codex_edit(project, patch), capsys)
+    assert decision(result) == "deny"
+    assert "build/y.md" in reason(result)
+
+
+def test_only_the_tool_that_applies_patches_has_its_input_read_as_one(
+    project: Path, capsys
+) -> None:
+    """A shell command may hold the text of a patch, in a here-document or an `echo`. What it
+    does with it is the shell's business, and the write guard does not claim to know."""
+    patch = patch_of("*** Add File: results/hand.json", "+{}")
+    payload = codex_edit(project, patch) | {"tool_name": "Bash"}
+    assert run("guard-write", payload, capsys) is None
+
+
+def test_a_file_named_twice_in_a_patch_is_refused_and_noted_once(project: Path, capsys) -> None:
+    twice = ("*** Update File: {0}", "@@", "+x", "*** Update File: {0}", "@@", "+y")
+    refused = patch_of(*(line.format("results/hand.json") for line in twice))
+    said = reason(run("guard-write", codex_edit(project, refused), capsys))
+    assert said.count("results/hand.json") == 1, said
+
+    (project / "manuscript" / "main.md").write_text("It was 3.84.\n", encoding="utf-8")
+    noted = patch_of(*(line.format("manuscript/main.md") for line in twice))
+    text = context(run("after-edit", codex_edit(project, noted, "PostToolUse"), capsys))
+    assert text.count("bound to nothing") == 1, text
+
+
+def test_the_project_is_read_once_for_a_patch_of_many_files(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Where `results/` and `build/` are is a question about the project, not about each
+    file. Asked per file it took eight seconds for five hundred, of a fifteen-second limit."""
+    import manuscript_guard.contracts as contracts
+
+    loaded = []
+    real = contracts.load_project
+
+    def counted(*arguments, **named):
+        loaded.append(arguments)
+        return real(*arguments, **named)
+
+    monkeypatch.setattr(contracts, "load_project", counted)
+    hunks = [line for n in range(40) for line in (f"*** Add File: results/{n}.json", "+{}")]
+    result = run("guard-write", codex_edit(project, patch_of(*hunks)), capsys)
+    assert decision(result) == "deny" and reason(result).count("\n") == 39
+    assert len(loaded) == 1, len(loaded)
+
+
 def test_unbound_numbers_are_reported_after_a_patch(project: Path, capsys) -> None:
     path = project / "manuscript" / "main.md"
     path.write_text("# Results\n\nThe odds ratio was 3.84 in 77 cases.\n", encoding="utf-8")
@@ -655,6 +764,19 @@ def test_a_file_a_patch_moved_is_read_where_it_went(project: Path, capsys) -> No
     text = context(run("after-edit", codex_edit(project, patch, "PostToolUse"), capsys))
     assert "manuscript/results-section.md has 1 number(s) bound to nothing" in text
     assert "draft.md" not in text
+
+
+def test_an_analysis_file_a_patch_moved_is_named_where_it_went(project: Path, capsys) -> None:
+    patch = patch_of(
+        "*** Update File: analysis/01_disproportionality.py",
+        "*** Move to: analysis/01_ror.py",
+        "@@",
+        "-old",
+        "+new",
+    )
+    text = context(run("after-edit", codex_edit(project, patch, "PostToolUse"), capsys))
+    assert "analysis/01_ror.py changed" in text
+    assert len(text.splitlines()) == 1 and "01_disproportionality.py" not in text
 
 
 def test_a_clean_patch_says_nothing(project: Path, capsys) -> None:

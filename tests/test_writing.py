@@ -235,6 +235,18 @@ def test_a_finding_is_on_its_own_line_under_lines_the_gate_does_not_read(
     assert {f.code: f.line for f in report.findings} == expected
 
 
+@pytest.mark.parametrize("blank_lines", [1, 3])
+def test_an_artefact_that_opens_a_paragraph_is_on_its_own_line(
+    project: Path, blank_lines: int
+) -> None:
+    """The rule for a chat assistant's opening word reads from the start of a line, through
+    any blank lines, to the word. The finding was placed where that reading began: on the
+    first blank line above the paragraph, not on the sentence."""
+    text = "# Methods\n" + "\n" * blank_lines + "Certainly! Here is the revised section.\n"
+    report = written(project, text)
+    assert [f.line for f in report.findings if f.code == "model-artefact"] == [blank_lines + 2]
+
+
 def test_a_finding_under_a_comment_still_shows_its_prose(project: Path) -> None:
     """The line is counted in the file; what is shown beside it is still the prose, with
     the comment above it left out, and a phrase in the comment is not a finding."""

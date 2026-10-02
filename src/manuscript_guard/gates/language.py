@@ -498,14 +498,21 @@ def _named(
 
     Looked for before the word is split at its ordinary words, because a name may hold
     one: `RNA-seq`, `non-HDL-C`, `EMPEROR-Preserved`. Split first, `RNA-seq` was never
-    matched whole, so its definition was reported as unused."""
+    matched whole, so its definition was reported as unused.
+
+    A name that opens with an ordinary word takes a capital at the start of a sentence, so
+    `Non-HDL-C` is looked for as `non-HDL-C` too. Only there: the capitals of the name
+    itself are the name, and `Rna-seq` is not `RNA-seq`."""
+    opening = parts[index]
+    lowered = opening[0].lower() + opening[1:] if _is_word(opening) else opening
     for stop in range(len(parts), index + 1, -1):
-        form = "-".join(parts[index:stop])
-        base = _defined_as(form, defined)
-        if base is not None:
-            return stop, [(starts[index], base, True)]
-        if _listed_as(form, known):
-            return stop, []
+        rest = "-".join(parts[index + 1 : stop])
+        for form in dict.fromkeys((f"{opening}-{rest}", f"{lowered}-{rest}")):
+            base = _defined_as(form, defined)
+            if base is not None:
+                return stop, [(starts[index], base, True)]
+            if _listed_as(form, known):
+                return stop, []
     return None
 
 

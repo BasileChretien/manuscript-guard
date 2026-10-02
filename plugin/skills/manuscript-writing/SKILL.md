@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence or vague-attribution, or when revising text that was drafted quickly.
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution or an abbreviation finding (used before defined, redefined, unused, undefined), or when revising text that was drafted quickly.
 ---
 
 # Writing prose that reads as written
@@ -63,10 +63,49 @@ now believe, and what would change their mind:
 > A cohort study with prescription counts would settle whether the excess reflects risk or
 > reporting.
 
+## Abbreviations
+
+Define an abbreviation where it first appears, long form first: "the reporting odds ratio
+(ROR)". From there on use the short form every time. Do not define it again in the
+Discussion, and do not define one the text will not use: if it would appear once or twice,
+write it out.
+
+The abstract is read without the paper, so it carries its own definitions and the main
+text starts again. A supplement may rely on what the main text defined.
+
+G14 reports the four ways this goes wrong, as warnings:
+
+| Code | What happened | What to do |
+|---|---|---|
+| `abbreviation-used-before-defined` | the short form appears above its definition | move the definition to the first use |
+| `abbreviation-redefined` | it is defined twice, or as two things | keep the first definition; if the meanings differ, give the second its own short form |
+| `abbreviation-unused` | it is defined and nothing uses it | write the long form and drop the brackets |
+| `abbreviation-undefined` | it is used and never defined | define it at first use |
+
+The check reads capitals, so it also reports names: a trial, a statistics package, an
+agency. And some journals let a few abbreviations stand. Those go in `paper.yaml`, written
+as the manuscript writes them:
+
+```yaml
+language:
+  known_abbreviations:
+    - "CI"
+    - "SAS"
+    - "NO"
+```
+
+Quote each entry: unquoted, YAML reads `NO`, `ON` and `YES` as booleans, and `check` then
+fails on the setting. List one only when the journal's instructions allow it or it is a
+name. The list is the author's decision, so ask before adding to it.
+
+A chemical formula with a count in it (`CO2`, `CO~2~`, `NaHCO3`), the unit symbols
+shipped (`MHz`, `GPa`) and a registration number (`NCT01234567`) are not reported and need
+no entry. A formula with no count (`HCl`, `NaOH`) is reported like any abbreviation.
+
 ## Checking your work
 
 ```bash
-manuscript-guard check          # G6 among the rest
+manuscript-guard check          # G6 and G14 among the rest
 ```
 
 Findings name the rule and the reason. Disagree freely — several of these constructions

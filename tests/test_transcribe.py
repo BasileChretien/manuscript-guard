@@ -10,6 +10,9 @@ by running the transcriber against the real thing and watching it get the answer
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -599,3 +602,152 @@ def test_only_the_opening_clause_is_verified_for_columns() -> None:
 
     text = "a. Describe any criteria used for including animals during the experiment."
     assert opening(text) == "a. Describe any criteria used for including animals"
+
+
+# ---------------------------------------------------------------- the page, from pdftotext
+
+_ACCENTED = "\n".join(
+    left.replace("animals", "naïve animals").ljust(60) + right
+    for left, right in zip(_LEFT, _RIGHT, strict=True)
+)
+
+# What the pdftotext of Xpdf does with a page: Latin-1, unless it is asked for UTF-8.
+_AS_XPDF = f"""
+import sys
+asked = sys.argv[1:]
+utf8 = "-enc" in asked and asked[asked.index("-enc") + 1] == "UTF-8"
+sys.stdout.buffer.write({_ACCENTED!a}.encode("utf-8" if utf8 else "latin-1"))
+"""
+_LATIN1 = "Study design   1   Describe the naïve groups.".encode("latin-1")
+_NOT_UTF8 = f"import sys; sys.stdout.buffer.write({_LATIN1!r})"
+_FAILS = "import sys; sys.stderr.write('Syntax Error: no xref table'); sys.exit(1)"
+
+
+def pdftotext_runs(monkeypatch: pytest.MonkeyPatch, script: str) -> None:
+    """Run `script` where pdftotext would run: a real process, given the same arguments."""
+    from manuscript_guard.reporting import columns
+
+    real_run = subprocess.run
+
+    def run(command, **options):
+        return real_run([sys.executable, "-c", script, *command[1:]], **options)
+
+    monkeypatch.setattr(columns.shutil, "which", lambda name: name)
+    monkeypatch.setattr(columns.subprocess, "run", run)
+
+
+def one_page_pdf(line: bytes) -> bytes:
+    """A PDF of one page holding one line of text, small enough to write out here."""
+    stream = b"BT /F1 12 Tf 72 720 Td (" + line + b") Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    ]
+    body = b"%PDF-1.4\n"
+    offsets = []
+    for number, content in enumerate(objects, start=1):
+        offsets.append(len(body))
+        body += b"%d 0 obj\n" % number + content + b"\nendobj\n"
+    table = len(body)
+    body += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    body += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    body += b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1)
+    return body + b"startxref\n%d\n%%%%EOF\n" % table
+
+
+def test_an_accented_letter_on_the_page_is_read_from_the_pdftotext_of_xpdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The page was read as UTF-8 and never asked for in it.
+
+    Poppler writes UTF-8 unasked. The pdftotext of Xpdf, which Git for Windows puts on
+    PATH, writes Latin-1, and the first accented letter failed the decode: on Windows
+    `page_text` returned None and the caller raised "TypeError: expected string or
+    bytes-like object, got 'NoneType'"; elsewhere it was a UnicodeDecodeError. `transcribe`
+    reports a RecipeError in a sentence, and this was neither.
+    """
+    from manuscript_guard.reporting.columns import ColumnRecipe, transcribe_columns
+
+    pdftotext_runs(monkeypatch, _AS_XPDF)
+    path = tmp_path / "ARRIVE.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    recipe = ColumnRecipe(document=path.name, pages=(1,), column_split=60, min_text_words=3)
+
+    items, haystack = transcribe_columns(path, recipe)
+    assert [item.id for item in items] == ["1", "2", "11", "12"]
+    assert items[1].text == (
+        "a. Describe any criteria used for including naïve animals during the experiment."
+    )
+    assert "including naïve animals" in haystack
+
+
+@pytest.mark.parametrize(
+    ("script", "said"),
+    [
+        (_NOT_UTF8, "wrote something else for page 2 of ARRIVE.pdf"),
+        (_FAILS, "pdftotext failed on ARRIVE.pdf: Syntax Error: no xref table"),
+    ],
+    ids=["not-utf-8", "failed"],
+)
+def test_a_page_pdftotext_cannot_give_is_refused_in_a_sentence(
+    script: str, said: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A letter that could not be decoded is not replaced: the item it stood in would pass
+    the opening-clause check, which reads the same text, and go into the profile."""
+    from manuscript_guard.reporting.columns import page_text
+
+    pdftotext_runs(monkeypatch, script)
+    path = tmp_path / "ARRIVE.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    with pytest.raises(RecipeError, match=said):
+        page_text(path, 2)
+
+
+@pytest.mark.parametrize(
+    ("raised", "said"),
+    [
+        (
+            subprocess.TimeoutExpired("pdftotext", 120),
+            "pdftotext did not finish page 2 of ARRIVE.pdf",
+        ),
+        (
+            OSError("not a valid Win32 application"),
+            "pdftotext would not run on ARRIVE.pdf: not a valid Win32 application",
+        ),
+    ],
+    ids=["timed-out", "would-not-start"],
+)
+def test_a_pdftotext_that_does_not_answer_is_refused_in_a_sentence(
+    raised: Exception, said: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Neither was caught, and neither is a RecipeError, so `transcribe` ended in a
+    traceback where every other failure of the page is a sentence."""
+    from manuscript_guard.reporting import columns
+
+    def run(*_args, **_options):
+        raise raised
+
+    monkeypatch.setattr(columns.shutil, "which", lambda name: name)
+    monkeypatch.setattr(columns.subprocess, "run", run)
+    path = tmp_path / "ARRIVE.pdf"
+    path.write_bytes(b"%PDF-1.4")
+    with pytest.raises(RecipeError, match=said):
+        columns.page_text(path, 2)
+
+
+@pytest.mark.skipif(not shutil.which("pdftotext"), reason="pdftotext is not installed")
+def test_a_real_page_with_an_accented_letter_is_read(tmp_path: Path) -> None:
+    """By whichever pdftotext this machine has, and with the line ends of none of them."""
+    from manuscript_guard.reporting.columns import page_text
+
+    path = tmp_path / "ARRIVE.pdf"
+    # In PDF's own octal escapes, \357 is the i with a diaeresis of WinAnsi.
+    path.write_bytes(one_page_pdf(rb"Describe the na\357ve and the treated groups."))
+
+    text = page_text(path, 1)
+    assert text.splitlines()[0].strip() == "Describe the naïve and the treated groups."
+    assert "\r" not in text

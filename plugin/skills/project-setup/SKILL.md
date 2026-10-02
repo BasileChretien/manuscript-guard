@@ -142,7 +142,7 @@ Each finding names a code. The code says where to go:
 |---|---|
 | `no-analysis-plan`, `plan-section-*` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `unclassified-number`, `unresolved-binding`, `unquoted-result`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
-| `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact` | [manuscript-writing](../manuscript-writing/SKILL.md) |
+| `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `abbreviation-*` | [manuscript-writing](../manuscript-writing/SKILL.md) |
 | `methods-drift`, `methods-never-reconciled` | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale` | [figure-review](../figure-review/SKILL.md) |
@@ -167,7 +167,9 @@ Do not edit either. And a shell command that copies, zips or pushes a `.docx` is
 check, so run `manuscript-guard check --submission` yourself before a manuscript leaves.
 
 - At the start of a session, one line of status: the stage, and how many findings fail and
-  warn.
+  warn. Where a file of the project cannot be used (`paper.yaml`, `authors.yaml`, a results
+  file or a ledger that does not parse or is not UTF-8), that line says which file and why
+  in its place, and no gate has run until the file is put right.
 - Before a write, one to `results/`, `build/` or a generated checklist profile is refused.
   Change the analysis and re-run it; edit the recipe and re-transcribe.
 - After a write: a saved manuscript file has its numbers classified and any unbound ones
@@ -175,9 +177,10 @@ check, so run `manuscript-guard check --submission` yourself before a manuscript
   saved analysis file gets a reminder that the results are now stale.
 - Before a shell command containing `--submission`, or one that copies, zips or pushes a
   submission or a `.docx`, the whole submission check runs and the command is refused if
-  anything fails. That includes `manuscript-guard check --submission` itself. The refusal
-  shows the first eight failures; `check --stage submission` runs the same check without
-  the hook and lists them all.
+  anything fails, or if a file of the project cannot be used and the check cannot run. That
+  includes `manuscript-guard check --submission` itself. The refusal shows the first eight
+  failures; `check --stage submission` runs the same check without the hook and lists them
+  all.
 
 ## If you are a model doing this
 

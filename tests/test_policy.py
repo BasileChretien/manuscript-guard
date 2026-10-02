@@ -212,6 +212,48 @@ def test_a_gate_that_crashes_is_reported_rather_than_dropped(project: Path, monk
     assert not report.ok
     failure = next(f for f in report.failures if f.code == "gate-errored")
     assert "RuntimeError: boom" in failure.message
+    assert "a bug in manuscript-guard" in failure.hint
+
+
+def test_a_file_a_gate_cannot_read_is_named_and_not_called_a_bug(project: Path) -> None:
+    """A review record saved as UTF-16. The gate did not run, and the reason is the file's own.
+
+    It read "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0", with no
+    file named, under a hint that began with a bug in the tool.
+    """
+    from manuscript_guard import cli
+
+    record = project / "review" / "round-1" / "biostatistician.yaml"
+    record.write_bytes(record.read_text(encoding="utf-8").encode("utf-16"))
+
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert failure.gate == "G11"
+    assert failure.message == (
+        f"G11 could not run: {record}: cannot read as UTF-8: the file is UTF-16. "
+        "Save the file as UTF-8."
+    )
+    assert "bug" not in failure.hint
+    assert "has not been checked by this gate" in failure.hint
+
+
+def test_a_crash_in_the_literature_chain_is_reported_under_its_own_gate(
+    project: Path, monkeypatch
+) -> None:
+    """It was reported as "G5 could not run", and G5 is the reporting checklist: the reader
+    was sent to a checklist that had been checked, away from the ledger that had not. Every
+    finding the literature chain makes is a G7 finding, and so is its failure to run."""
+    from manuscript_guard import cli
+    from manuscript_guard.gates import literature
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "check_literature_chain", explode)
+    report, _project, _chosen, _deferred = cli._run_gates(project)
+    failure = next(f for f in report.failures if f.code == "gate-errored")
+    assert failure.gate == literature.GATE == "G7"
+    assert failure.message.startswith("G7 could not run")
 
 
 def test_a_deferred_finding_still_appears_in_the_output(tmp_path: Path) -> None:
@@ -269,3 +311,10 @@ def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) ->
     assert not by_flag.ok
     assert not by_stage.ok
     assert not by_declaration.ok
+
+
+def test_a_reading_the_panel_asked_for_binds_where_a_missing_review_does() -> None:
+    """G11 only warns before a submission, so this decides nothing today. It is declared so
+    that the day G11's severity stops depending on the flag, a missing reading is deferred
+    with the missing review it is a kind of, and not failed from the first day."""
+    assert binds_at("reading-missing") == binds_at("review-missing") == SUBMISSION

@@ -13,6 +13,11 @@
       "type": "string",
       "description": "The id from the panel file."
     },
+    "reader": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Who made this reading, where a remit is read more than once: provider/model for a model, any name for a person. A named reading is filed beside the reviewer's plain record as <reviewer>.<reader>.yaml, the reader's name lower-cased with every run of characters that are not letters, digits or their marks as one hyphen, and it is read only if the panel lists this reader for this reviewer. `manuscript-guard review --record <reviewer> --reading <reader>` writes both. Omit it in the reviewer's plain record, which is how every record written before readings had names is read."
+    },
     "reviewed_by": {
       "type": "string",
       "minLength": 1,
@@ -37,6 +42,62 @@
     "summary": {
       "type": "string",
       "description": "What the paper claims and whether the evidence supports it, in the reviewer's own words."
+    },
+    "rejection_tests": {
+      "type": "array",
+      "description": "What the reader decided would have to be true, within the remit, to recommend rejection, and what the manuscript showed for each. Kept so that a reading which attacked nothing shows. The gate does not read it.",
+      "items": {
+        "type": "object",
+        "required": ["test", "holds", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "test": { "type": "string", "minLength": 1 },
+          "holds": { "type": "boolean" },
+          "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "How a reading made by a model through a provider's API can be traced. Written by the tool, never by the model. It holds no key, no header and no prompt text: the prompt is identified by the digest of the request body, which never carries the key. The gate does not read it.",
+      "required": ["provider", "model", "prompt_sha256", "tool_version"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model as it was asked for."
+        },
+        "model_reported": {
+          "type": "string",
+          "description": "The model as the provider named it in its answer, which may be a dated version of the one asked for."
+        },
+        "host": {
+          "type": "string",
+          "description": "The host the request was sent to."
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the request body exactly as it was sent."
+        },
+        "response_id": {
+          "type": "string",
+          "description": "The provider's identifier for the response, where it gives one."
+        },
+        "finish": {
+          "type": "string",
+          "description": "How the provider said the reply ended. Only a finished reply is filed."
+        },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "tool_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The manuscript-guard version that built the prompt."
+        }
+      }
     },
     "findings": {
       "type": "array",

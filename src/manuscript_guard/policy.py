@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from manuscript_guard.contracts import ContractError
+from manuscript_guard.contracts.project import PAPER_FILE
 from manuscript_guard.findings import FAIL, INFO, Report
 
 DESIGN = "design"
@@ -114,6 +116,7 @@ BINDS_AT = {
     "no-review": SUBMISSION,
     "rounds-outstanding": SUBMISSION,
     "review-missing": SUBMISSION,
+    "reading-missing": SUBMISSION,
     "point-unanswered": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
@@ -185,7 +188,13 @@ def resolve_stage(project, override: str | None, submission: bool) -> str:
         return override
     declared = project.paper.get("stage")
     if declared:
-        stage_index(declared)
+        if declared not in STAGES:
+            # The schema reports this too, as a finding, but the stage decides which findings
+            # fail, so there is no report to put it in. It was a `ValueError` and a traceback.
+            raise ContractError(
+                f"{project.root / PAPER_FILE}: `stage` is {declared!r}, which is not a stage; "
+                f"write one of {', '.join(STAGES)}"
+            )
         return declared
     return DRAFTING
 

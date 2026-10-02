@@ -23,7 +23,7 @@ pip package, with tests.
 
 ```bash
 pip install -e ".[dev]"      # from the repo root
-pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, pandoc tests skip if absent)
+pytest -q                    # ~1500 tests, 18-28 min on Windows (R, Zotero, Claude Code, Codex, pandoc tests skip if absent)
 ruff check src tests
 claude plugin validate .     # the marketplace manifest; `plugin` validates the plugin itself
 ```
@@ -34,15 +34,25 @@ pandoc is on PATH. Set it to the same value locally to run the suite as CI does;
 missing pandoc only skips the tests that need it.
 
 The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`, source
-`./plugin`). **Every pull request that changes `src/` or `plugin/` takes the next shared
-version number and bumps four places together:** `version` in `pyproject.toml`, `__version__`
-in `src/manuscript_guard/__init__.py`, and `version` in both `plugin/.claude-plugin/plugin.json`
-and the marketplace entry. The coordinating session assigns the numbers; ask it for one, and
-do not pick your own. Without a bump `claude plugin update` reports the old plugin as
-current, and `pip install --upgrade` finds nothing newer for the package. `tests/test_version.py`
-holds the four equal and `tests/test_plugin.py` the two manifests. When the installed tool is
-older than the plugin, its session-start hook (`manuscript-guard-hook`) warns once and blocks
-nothing.
+`./plugin`). The package and the plugin share one version number, written in four places:
+`version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
+`version` in both `plugin/.claude-plugin/plugin.json` and the marketplace entry. **A pull
+request does not touch the version: leave the version line in each of the four files exactly
+as `main` has it.** Only that line is meant. The rest of each file is a pull request's to
+change like any other, the dependencies in `pyproject.toml` for one. The coordinating session
+raises the number on `main` after merges that change `src/` or `plugin/`. Its bump is the one
+pull request that changes those four lines, and it changes nothing else. Do not ask it for a
+number and do not pick one. A branch that already carries a bump puts `main`'s version lines
+back, whether a merge of `main` conflicts on them or goes through cleanly; where it
+conflicts, take `main`'s side on all four lines. Until 2026-10-02 every pull request that
+changed `src/` or `plugin/` bumped the four places itself. With a dozen open at once two
+branches carried the same number, which git merges without a conflict and which was caught
+before either merged, and `main` passed the number of a pull request that was waiting for its
+review. The number still has to move, on `main`: without a bump `claude plugin update`
+reports the old plugin as current, and `pip install --upgrade` finds nothing newer for the
+package. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
+manifests. When the installed tool is older than the plugin, its session-start hook
+(`manuscript-guard-hook`) warns once and blocks nothing.
 
 The example doubles as the test fixture. To see the whole loop:
 
@@ -64,7 +74,14 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `render` (substitute bindings only), `init` (scaffold a project),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
-record: a second reading is a second round.
+record: a second reading is a second round. `install-skills` copies the skills into
+`.agents/skills` (the user's, or `--project`, or `--dir`) for an agent tool that has no
+plugin; it never writes over a folder it did not write.
+
+The skills have one home, `plugin/skills`. The wheel takes them from there when it is built
+and nothing under `src/` holds a copy, so edit them only there. The test suite sets
+`MANUSCRIPT_GUARD_USER_SKILLS` to a folder that does not exist, so that `check` never reads
+the copy of whoever is running it.
 
 The example's citekeys are fictional and live in its committed `references.bib`, so it
 builds offline anywhere without touching anyone's Zotero.
@@ -120,3 +137,11 @@ Verified 2026-08-03 on the author's machine.
   Word writes for an edit, rather than guessing: a move test that moved the whole `<w:p>`
   with its bookmark passed for months, and Word never makes that edit. Selection-based
   `Cut`/`Paste` borrows the clipboard; save and restore it.
+- **`codex plugin` can be tried with no login and without touching the real installation**
+  (verified 2026-10-02 with Codex 0.158):
+  set `CODEX_HOME` to an empty folder, then `codex plugin marketplace add <checkout>` and
+  `codex plugin add manuscript-guard@manuscript-guard`. `tests/test_plugin.py` does this where
+  `codex` is on `PATH`, and CI's `codex-plugin` job always. A Codex binary may be on the
+  machine without being on `PATH` (the desktop app keeps one under `.codex/plugins` in the
+  user's home). Adding a marketplace from GitHub clones it under `CODEX_HOME`, and on Windows
+  git fails with "Filename too long" when that folder is deep: use a short one.

@@ -10,6 +10,9 @@ than assumed.
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import json
 import shutil
 import sys
@@ -17,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.cli import main
+from manuscript_guard.cli import build_parser, main
 from manuscript_guard.emit import write_digest
 
 PANDOC = shutil.which("pandoc") is not None
@@ -68,6 +71,60 @@ def test_check_outside_a_project_exits_two(tmp_path: Path, capsys) -> None:
     """Cannot-run is a different answer from failed, and CI needs to tell them apart."""
     assert run("check", str(tmp_path)) == 2
     assert "no paper.yaml" in capsys.readouterr().err
+
+
+#: A file read before any gate runs, left so that it cannot be used, and what is said of it.
+#: Each ended `check` in a traceback and exit 1, which a hook takes for a fault of the tool.
+CANNOT_BE_USED = {
+    "utf-16": ("results/hand.json", b"\xff\xfe\x7b", "hand.json: cannot read as UTF-8"),
+    "code page": (
+        "authors.yaml",
+        "authors:\n  - name: Renée\n".encode("cp1252"),
+        "authors.yaml: cannot read as UTF-8: the byte 0xe9 on line 2",
+    ),
+    "ledger": (
+        "literature/ledger.yaml",
+        b"\xff\xfeentries: []\n",
+        "ledger.yaml: cannot read as UTF-8",
+    ),
+    "list": ("paper.yaml", b"- a\n- b\n", "paper.yaml: holds a list where"),
+    "paths": ("paper.yaml", b"paths: [results]\n", "paper.yaml: `paths` holds a list where"),
+    "date": (
+        "literature/ledger.yaml",
+        b"entries:\n  - verified_on: 2026-09-31\n",
+        "ledger.yaml: cannot parse: ",
+    ),
+}
+
+
+@pytest.mark.parametrize("flags", [(), ("--submission",)], ids=["draft", "submission"])
+@pytest.mark.parametrize("case", list(CANNOT_BE_USED))
+def test_check_says_in_a_sentence_which_file_it_cannot_use(
+    case: str, flags: tuple[str, ...], project: Path, capsys
+) -> None:
+    """Exit 2 and one sentence on stderr, as for a file that does not parse."""
+    relative, content, said = CANNOT_BE_USED[case]
+    (project / relative).write_bytes(content)
+
+    assert run("check", str(project), *flags) == 2
+    captured = capsys.readouterr()
+    assert captured.err.startswith("manuscript-guard: ")
+    assert said in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == "", "no gate ran, so there is no report"
+
+
+def test_check_says_which_stage_is_not_one(project: Path, capsys) -> None:
+    """The stage decides which findings fail; without it there is no verdict to give."""
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + "\nstage: draft\n", encoding="utf-8")
+
+    assert run("check", str(project)) == 2
+    assert "paper.yaml: `stage` is 'draft', which is not a stage" in capsys.readouterr().err
+
+    # Told the stage, the check runs, and reports the line as a finding among the rest.
+    assert run("check", str(project), "--submission") == 1
+    assert "'draft' is not one of" in capsys.readouterr().out
 
 
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:
@@ -538,3 +595,95 @@ def test_audit_strict_fails_when_a_paper_could_not_be_read(project: Path) -> Non
     args = ("audit", str(readable), str(locked), "--against", str(project / "results"))
     assert run(*args) == 0
     assert run(*args, "--strict") == 1
+
+
+# ---------------------------------------------------------------- the parser
+
+
+def _commands() -> dict[str, argparse.ArgumentParser]:
+    """The parser of every command, by the command's name."""
+    (commands,) = (
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return dict(commands.choices)
+
+
+def _reads_as_submission(command: str, option: str) -> bool:
+    """Whether `manuscript-guard <command> <option>` asks for the submission standard."""
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return bool(build_parser().parse_args([command, option]).submission)
+    except SystemExit:
+        return False
+
+
+def test_every_prefix_of_submission_that_is_read_is_one_the_guard_sees() -> None:
+    """argparse reads any prefix of an option that names one option only, so `build --subm`
+    was a submission build, and the submission guard, whose marker is the whole word, let it
+    through in a project that fails. Taken from the parser, so that a command given the
+    option later is held to the same.
+
+    It is about the one option. `--stage submission` asks for the same standard and is not a
+    marker, on purpose for `check` and as a known gap for `build`."""
+    from manuscript_guard.hooks import SUBMISSION_MARKERS
+
+    word = "--submission"
+    taking = [name for name, parser in _commands().items() if word in parser._option_string_actions]
+    assert {"check", "build", "review", "respond"} <= set(taking)
+
+    unseen = [
+        f"manuscript-guard {command} {word[:length]}"
+        for command in taking
+        for length in range(3, len(word) + 1)
+        if _reads_as_submission(command, word[:length])
+        and not SUBMISSION_MARKERS.search(f"manuscript-guard {command} {word[:length]}")
+    ]
+    assert unseen == []
+    # Not by refusing everything: the word itself is still read.
+    assert all(_reads_as_submission(command, word) for command in taking)
+
+
+def test_no_command_reads_an_abbreviated_option() -> None:
+    """The setting is each parser's own: on the top parser alone it leaves every command
+    reading abbreviations, and those are where the options are."""
+    parser = build_parser()
+    abbreviating = [
+        name
+        for name, command in {"manuscript-guard": parser, **_commands()}.items()
+        if command.allow_abbrev
+    ]
+    assert abbreviating == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("build", "--subm", "--offline"),
+        ("check", "--subm"),
+        ("review", "--subm"),
+        ("respond", "--subm"),
+        ("build", "--off"),
+        ("submit", "--skip"),
+    ],
+)
+def test_an_abbreviated_option_is_an_error_that_names_it(argv: tuple, capsys) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        run(*argv)
+    assert exit_.value.code == 2
+    assert f"unrecognized arguments: {argv[1]}" in capsys.readouterr().err
+
+
+def test_an_abbreviated_version_prints_no_version(capsys) -> None:
+    """Before any command the error is argparse's for the command that is missing, which
+    does not name the option. It is an error all the same, and prints no version."""
+    with pytest.raises(SystemExit) as exit_:
+        run("--vers")
+    assert exit_.value.code == 2
+    assert capsys.readouterr().out == ""
+
+
+def test_an_option_written_in_full_is_still_read(project: Path, capsys) -> None:
+    assert run("check", str(project), "--submission", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["counts"]

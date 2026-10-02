@@ -2024,8 +2024,24 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+class _Parser(argparse.ArgumentParser):
+    """A parser that reads an option only where it is written in full.
+
+    argparse reads any prefix of an option that names one option only, so `build --subm` was
+    a submission build. The submission guard looks for the word `--submission` in a command,
+    and a spelling it cannot list is a submission it does not see.
+
+    The setting is each parser's own, and on the top parser alone it leaves every command
+    reading abbreviations. A command is made by the class of the parser it is added to, so
+    setting it here reaches each of them, and one added later.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **{**kwargs, "allow_abbrev": False})
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="manuscript-guard",
         description="Make every number in a scientific manuscript traceable to its source.",
     )

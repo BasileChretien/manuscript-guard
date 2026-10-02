@@ -143,7 +143,31 @@ def test_the_rules_forbid_no_number_that_check_accepts(project: Path, capsys) ->
 
     rule = " ".join(AGENTS.split())
     assert "never a typed literal" not in rule
-    assert "a convention of writing" in rule and "a pointer" in rule
+
+    # Every way `check` accepts a typed number has its word in the rule. A sentence with one
+    # of each, and a finding, which is the one it refuses.
+    typed = project / "manuscript" / "typed.md"
+    typed.write_text(
+        "# Methods\n\nEvents of grade 3 in patients aged 18-64 years were coded with ICD-10 "
+        "(R version 4.3.1). See Table 1 for the 95% confidence intervals. The mean was 3.84.\n",
+        encoding="utf-8",
+    )
+    main(["explain", str(typed)])
+    rows = [line.split() for line in capsys.readouterr().out.splitlines() if line.split()]
+    verdicts = {row[2]: (row[0], row[4]) for row in rows}
+    assert verdicts["3.84"][0] == "FAIL", verdicts
+    said_as = {
+        "confidence-level": "a convention of writing",
+        "cross-reference": "a pointer",
+        "categorical-label": "a label",
+        "age-band": "a label",
+        "software-version": "a name",
+        "terms": "a name",
+    }
+    accepted = {how for verdict, how in verdicts.values() if verdict == "ok"}
+    assert accepted == set(said_as), accepted
+    for how in sorted(accepted):
+        assert said_as[how] in rule, f"{how}: the rule does not say {said_as[how]!r}"
 
 
 def test_the_rules_promise_nothing_the_readme_may_not_hold() -> None:

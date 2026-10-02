@@ -179,10 +179,11 @@ copy — see the note under "What an adversarial review found".
 installed, and several agent tools read that one file at a project's root on their own. It
 holds what the guarantee rests on, on one short page: machine-written files are not edited,
 `check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
-says only what holds in any project at any time, because it is written once: a finding is
-never typed, though a convention or a pointer is; `check` decides for the stage the project
-declares; and for how to install the skills it points to the README without saying what the
-README holds for which tool. It names no agent tool. Like every file of the scaffold it is never written over an existing
+is worded to hold in any project at any time, because it is written once: a finding is never
+typed, though a convention, a pointer, a label or a name is; `check` decides for the stage
+the project declares; and for how to install the skills it points to the README without
+saying what the README holds for which tool. Where it does not hold, Known gaps says so. It
+names no agent tool. Like every file of the scaffold it is never written over an existing
 one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
 prints the rules to add, because an agent there would otherwise read rules that say nothing
 of `results/`. It is advice to the reader and enforces nothing: the gates do that.

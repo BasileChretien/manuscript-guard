@@ -403,6 +403,33 @@ def test_a_skill_folder_in_use_is_left_whole(tmp_path: Path, older: Path, monkey
     assert skills_in(folder) == tree(SOURCE)
 
 
+def test_a_copy_that_cannot_be_moved_in_puts_the_old_skill_back(
+    tmp_path: Path, older: Path, monkeypatch
+) -> None:
+    """By then the old skill has been moved aside, and the staging folder it sits in is
+    removed on the way out. Without the move back the skill was gone from the folder."""
+    folder = tmp_path / "skills"
+    install_from(older, "0.0.1", folder, monkeypatch)
+    before = tree(folder)
+    real = os.replace
+
+    def no_way_in(source, target):
+        if Path(source).name == "new" and Path(target) == folder / "project-setup":
+            raise PermissionError(5, "Access is denied", str(target))
+        return real(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(skillcopy.os, "replace", no_way_in)
+        with pytest.raises(PermissionError):
+            skillcopy.install(folder)
+    assert tree(folder) == before, "the old skill is back whole, and nothing half-made is left"
+    assert sorted(p.name for p in folder.iterdir()) == sorted({n.split("/")[0] for n in before})
+
+    done = skillcopy.install(folder)
+    assert done.written == ("project-setup",) and not done.left
+    assert skills_in(folder) == tree(SOURCE)
+
+
 def test_nothing_the_copy_did_not_make_is_removed_to_make_room(
     tmp_path: Path, older: Path, monkeypatch
 ) -> None:

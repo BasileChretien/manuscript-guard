@@ -237,7 +237,9 @@ def install(folder: Path) -> Copied:
 
     The stamp is written last. A copy that stops before then leaves each skill either as it
     was, which the old stamp still describes, or as this release has it, which the next
-    copy recognises, so the next copy finishes it.
+    copy recognises, so the next copy finishes it. One skill can be missing instead, where
+    the copy stopped between moving the old one aside and moving the new one in: the next
+    copy writes it.
     """
     source = shipped()
     names = sorted(path.parent.name for path in source.glob("*/SKILL.md"))

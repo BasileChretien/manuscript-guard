@@ -2876,9 +2876,12 @@ that does have to change is copied into a folder made for the purpose beside it,
 in its place is moved aside whole, and the copy is moved in; nothing is removed file by
 file, and nothing that was already there is touched to make room. A folder that cannot be
 moved, as one that is some program's working directory cannot be on Windows, stops the
-command with the skill whole. So after a copy that stopped, a file held open or an
-interrupt, each skill is either as the old stamp describes it or as this release has it,
-and the next run takes both.
+command with the skill whole. Where the copy cannot be moved in, what was moved aside is
+moved back. So after a copy that stopped, a file held open or an interrupt, each skill is
+either as the old stamp describes it or as this release has it, and the next run takes
+both. One skill can be missing instead: where the interrupt fell between the two moves, or
+where the move back failed as well. What is gone then is a copy this tool made, and the next
+run writes the skill.
 
 **The digests are of the text, not of the bytes.** CRLF is read as LF. A copy committed with
 a project and checked out by git on Windows comes back with the other line endings; with
@@ -3677,9 +3680,11 @@ Closed since, and why each mattered:
 - **Two copies run at once into one folder can fail, and the next heals it.** Each stages a
   skill in a folder of its own, but both move it into the same place, and one can find the
   place taken or the old folder gone and stop with an error. Neither loses anything of the
-  user's (seen by the reviewer in eight trials of the earlier staging), and a run on its own
-  afterwards finishes the copy. A process killed outright in the middle leaves its staging
-  folder, named `.<skill>.<random>.partial`, which nothing cleans up. A digest that reads
+  user's (seen by the reviewer in eight trials), and a run on its own afterwards finishes
+  the copy. A process killed outright in the middle leaves its staging folder, named
+  `.<skill>.<random>.partial`, and so does an old copy that holds a file which cannot be
+  removed, a read-only one on Windows: the staging folder is removed without stopping at
+  what will not go. Nothing cleans either up. A digest that reads
   CRLF as LF also calls two binary files the same when they differ only so; the skills hold
   text. And a folder taken as holding a skill's text is recorded as this tool's even where
   the user made it: a later release then replaces it.

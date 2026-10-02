@@ -272,3 +272,74 @@ def test_gates_and_build_agree_on_the_example(project: Path) -> None:
     assembled, report = assemble(proj, namespace, results)
     assert report.ok
     assert build_document(proj, assembled, mode=OFFLINE).output.exists()
+
+
+# ---------------------------------------------------------------- figure captions
+
+
+def _styles(path: Path) -> str:
+    return zipfile.ZipFile(path).read("word/styles.xml").decode("utf-8", "replace")
+
+
+def _paragraphs(path: Path) -> list[str]:
+    import re
+
+    xml = zipfile.ZipFile(path).read("word/document.xml").decode("utf-8", "replace")
+    return re.findall(r"<w:p[ >].*?</w:p>", xml, re.DOTALL)
+
+
+def _captioned(project: Path) -> Path:
+    """The example, cut down to a figure with a caption and two ordinary paragraphs."""
+    (project / "manuscript" / "main.md").write_text(
+        "# Results\n\nOrdinary prose before the figure.\n\n{{figure.forest}}\n\n"
+        "**Figure 1.** What the figure shows, at length.\n\n"
+        "Figure 1 is discussed in this paragraph, which is not a caption.\n",
+        encoding="utf-8",
+    )
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    return build_document(proj, assembled, mode=OFFLINE).output
+
+
+@needs_pandoc
+def test_the_caption_after_a_figure_is_styled_smaller(project: Path) -> None:
+    """A caption set in the body font leaves a reader nothing to tell caption from text."""
+    import re
+
+    output = _captioned(project)
+    styles = _styles(output)
+    assert 'w:styleId="FigureCaption"' in styles, "the style must be defined in the document"
+    caption = re.search(r'<w:style [^>]*w:styleId="FigureCaption".*?</w:style>', styles, re.DOTALL)
+    assert caption is not None
+    size = re.search(r'<w:sz w:val="(\d+)"', caption.group(0))
+    assert size is not None, "a caption style that sets no size is not smaller than anything"
+    default = re.search(r"<w:docDefaults>.*?<w:sz w:val=\"(\d+)\"", styles, re.DOTALL)
+    assert default is not None
+    assert int(size.group(1)) < int(default.group(1)), "the caption must be the smaller size"
+
+    styled = [p for p in _paragraphs(output) if 'w:val="FigureCaption"' in p]
+    assert len(styled) == 1, "exactly the one caption"
+    assert "What the figure shows" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", styled[0]))
+
+
+@needs_pandoc
+def test_a_paragraph_that_follows_no_figure_is_not_a_caption(project: Path) -> None:
+    """The rule is position, not the word "Figure": prose that mentions a figure is prose."""
+    import re
+
+    output = _captioned(project)
+    for paragraph in _paragraphs(output):
+        text = "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", paragraph))
+        if "is discussed in this paragraph" in text or "prose before the figure" in text:
+            assert 'w:val="FigureCaption"' not in paragraph
+
+
+@needs_pandoc
+def test_the_ordinary_build_still_records_its_source(project: Path) -> None:
+    """The build now always hands pandoc a reference document, and the stamp that tells a
+    co-author's document from a current one must not be what distinguishes the two builds."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    output = _captioned(project)
+    assert output.with_name(output.name + SOURCE_STAMP).is_file()

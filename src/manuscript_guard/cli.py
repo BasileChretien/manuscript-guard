@@ -1387,6 +1387,7 @@ def _build_annotated(project, namespace, results, assembled, args) -> int:
         mode=OFFLINE if args.offline else LIVE,
         output=build_dir / "manuscript.annotated.docx",
         reference_doc=reference,
+        stamp=False,
         prologue=legend() + "\n\n",
         epilogue=appendix(marks) + figure_sheet(project, results),
         # Marked up for the author to read, not the document sent, which the plain build

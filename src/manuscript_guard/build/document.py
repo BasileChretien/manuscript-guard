@@ -27,6 +27,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.build.styles import reference_with
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -55,6 +56,10 @@ OFFLINE = "offline"
 # field and document preferences Word's Zotero plugin needs, which zotero.lua writes for
 # LibreOffice only. See the file's header.
 ZOTERO_WORD_LUA = Path(__file__).with_name("zotero_word.lua")
+
+# Also ours, run on every docx build: the paragraph after a figure is styled as its caption,
+# so a reader can see where the caption ends. See the file's header and `build/styles.py`.
+FIGURE_CAPTION_LUA = Path(__file__).with_name("figure_caption.lua")
 ZOTERO_STYLES = "http://www.zotero.org/styles/"
 
 
@@ -253,12 +258,18 @@ def build_document(
     csl: Path | None = None,
     output: Path | None = None,
     reference_doc: Path | None = None,
+    stamp: bool = True,
     prologue: str = "",
     epilogue: str = "",
     supplementary: bool = False,
     verify_reading: bool = True,
 ) -> BuildResult:
-    """Make the document. `verify_reading` asks pandoc first whether it reads the sources
+    """Make the document.
+
+    `stamp` writes the record of which text the document was built from, and there must be
+    exactly one document carrying it: the annotated copy passes `stamp=False`.
+
+    `verify_reading` asks pandoc first whether it reads the sources
     as the gates do (`reading.misreading`). Two builds go without: `import`, rebuilding a
     document already sent in order to compare the returned one with it, since refusing
     there stranded a document a co-author was holding; and the annotated copy, which is for
@@ -335,8 +346,15 @@ def build_document(
             "the document is not built; `check` cannot see this, and the build asks pandoc."
         )
     command = [pandoc(), "--standalone", str(source.resolve()), "-o", str(output.resolve())]
-    if reference_doc is not None:
-        command += [f"--reference-doc={reference_doc.resolve()}"]
+    # The caller's reference document (the annotated build adds its highlight styles to one),
+    # or one generated here for the figure-caption style alone.
+    reference = reference_doc or reference_with(
+        pandoc(), build_dir / ".cache" / f"{output.stem}-reference.docx"
+    )
+    command += [
+        f"--reference-doc={reference.resolve()}",
+        f"--lua-filter={FIGURE_CAPTION_LUA.resolve()}",
+    ]
     report = Report()
 
     if mode == LIVE:
@@ -373,7 +391,7 @@ def build_document(
         report = report.merge(_verify_live_fields(output))
     # Not the annotated copy: the stamp is what `check` reads to decide whether the
     # document a co-author opens is current, and there must be exactly one such document.
-    if reference_doc is None:
+    if stamp:
         _stamp_source(project, output)
         # And inside the file, where it can survive being emailed. The sidecar answers
         # "is my build current"; this answers "which text were these edits made against",

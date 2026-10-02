@@ -786,11 +786,6 @@ NAMING = [
     # Several at once, as a shell writes them and as PowerShell does.
     "cp {paper,docs}/build/manuscript.docx /tmp",
     "Copy-Item docs/a.docx,paper/build/manuscript.docx sent",
-    # To PowerShell a backslash ends a folder's name, and the space after it ends the word.
-    pytest.param(
-        "Copy-Item ." + chr(92) + "paper" + chr(92) + " sent/submission -Recurse",
-        marks=ON_WINDOWS,
-    ),
 ]
 
 
@@ -847,6 +842,9 @@ NOT_SPELT_OUT = [
     "scp $PWD/paper/build/manuscript.docx host:",
     "scp */build/*.docx host:",
     "tar -Cpaper -czf submission.tgz .",
+    # To PowerShell a backslash ends a folder's name and the space after it ends the word.
+    # Here a backslash and a space are a space in a name, as a shell reads them.
+    "Copy-Item ." + chr(92) + "paper" + chr(92) + " sent/submission -Recurse",
     'bash -c "cd paper && manuscript-guard submit"',
     "python -c \"import shutil; shutil.copy('paper/build/manuscript.docx', '/tmp')\"",
 ]
@@ -1062,6 +1060,12 @@ ESCAPED_NAMES = [
     f"cp docs/Final{SPACE}paper{SPACE}v3.docx /backup",
     f"cd paper{SPACE}v2 && manuscript-guard submit",
     f"scp paper{SPACE}v2/build/manuscript.docx host:",
+    # With another escape beside the spaces, as Git Bash writes `paper draft (1).docx`.
+    f"cp paper{SPACE}draft{SPACE}{chr(92)}(1{chr(92)}).docx /backup",
+    f"cp Edited{SPACE}paper{SPACE}{chr(92)}(JD{chr(92)}).docx /backup",
+    f"cp paper{SPACE}R{chr(92)}&R.docx /backup",
+    f"cp paper{SPACE}v2/build/manuscript{SPACE}{chr(92)}(1{chr(92)}).docx /backup",
+    f"cp paper{SPACE}-{SPACE}editor{chr(92)}'s{SPACE}copy.docx /backup",
 ]
 
 
@@ -1072,7 +1076,9 @@ def test_a_name_with_escaped_spaces_is_one_name_and_not_its_pieces(
     """`paper\\ draft.docx` is a file called `paper draft.docx`. Read piece by piece as well,
     for the sake of a path as PowerShell writes one, the piece `paper` named the project
     beside it: a copy of an unrelated document was refused for that project's failures, and
-    so was a submission from `paper v2`, which passes."""
+    so was a submission from `paper v2`, which passes. Narrowed to Windows and to a run that
+    holds another backslash, it still did so for a name with a bracket in it. The pieces are
+    not read."""
     above = project.parent
     shutil.copytree(project, above / "paper v2")
     (above / "docs").mkdir()
@@ -1081,6 +1087,17 @@ def test_a_name_with_escaped_spaces_is_one_name_and_not_its_pieces(
 
     assert SUBMISSION_MARKERS.search(command)
     assert sent(command, above, capsys) is None, command
+
+
+@ON_WINDOWS
+def test_a_name_that_is_the_folders_with_a_bracket_after_a_space_is_taken_for_it(
+    above: Path, capsys
+) -> None:
+    """A known false alarm, held here. A word ends at a bracket, escaped or not, and Windows
+    drops the space left at the end of `paper `: `paper (1).docx` is held to `paper/`."""
+    command = f"cp paper{SPACE}{chr(92)}(1{chr(92)}).docx /backup"
+    assert decision(sent(command, above, capsys)) == "deny"
+    assert sent('cp "paper (1).docx" /backup', above, capsys) is None, "in quotes it is not"
 
 
 def test_a_project_named_by_its_whole_path_is_found_from_anywhere(

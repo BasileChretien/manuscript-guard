@@ -332,26 +332,21 @@ def _words(command: str) -> list[str]:
     A word is read as it stands, and where it was written in a way that hides a path, as
     that path too:
 
-    - `my\\ paper` is one name to a shell. To PowerShell a backslash ends a folder's name,
-      and `.\\paper\\ D:\\sent` is two paths. The pieces are read as well only on Windows,
-      and only where one of them holds a backslash of its own, which makes it a path as
-      Windows writes one. Read everywhere, the pieces of `paper\\ draft.docx` named the
-      project in `paper/`, and a copy of an unrelated document was refused;
     - in quotes, `=` is not a separator, so `"--files-from=paper/list.txt"` is also read
       from after its last `=`;
     - curl writes a file to upload after an `@`, `file=@paper/build/manuscript.docx`, so a
       word is also read from after its last `@`.
+
+    Outside quotes a backslash and a space are a space in a name, `my\\ paper`, as a shell
+    reads them, and that is the only reading. To PowerShell a backslash ends a folder's
+    name, so `.\\paper\\ D:\\sent` is two paths, and it is not found. Reading the pieces as
+    well found it, and twice took a piece of a file's name for the project beside it:
+    `paper` in `cp paper\\ draft.docx`, then in `cp Edited\\ paper\\ \\(JD\\).docx`.
     """
     words: list[str] = []
     for double, single, bare in _WORDS.findall(command):
         quoted = double or single
-        if quoted:
-            words += [quoted, quoted.rpartition("=")[2]]
-            continue
-        words.append(bare.replace("\\ ", " "))
-        pieces = bare.split("\\ ")
-        if os.name == "nt" and any("\\" in piece for piece in pieces):
-            words += pieces
+        words += [quoted, quoted.rpartition("=")[2]] if quoted else [bare.replace("\\ ", " ")]
     read = (reading for word in words for reading in (word, word.rpartition("@")[2]))
     return list(dict.fromkeys(reading for reading in read if reading))
 

@@ -1001,15 +1001,19 @@ with the advice it had just followed.
 A word is read as it stands and, where the way it is written hides a path, as that path
 too. curl writes a file to upload after an `@`, `file=@example/build/manuscript.docx`, so a
 word is read from after its last `@` as well. In quotes `=` is not a separator, so a quoted
-word is also read from after its last `=`. And `my\ paper` is one name to a shell where
-`.\example\ D:\sent` is two paths to PowerShell. The pieces are read as well only on
-Windows, and only where one of them holds a backslash of its own, which makes it a path as
-Windows writes one. They were first read everywhere, and the piece `paper` of `cp paper\
-draft.docx /backup` named the project in `paper/`: a copy of an unrelated document was
-refused, and so was a submission from `paper v2`, which passed (the second round of #137's
-review). A word of more than 4096 characters or 100 folders is not a path and is not
-walked: each step down is a look on disk, `..` exists at every step, and 5000 of them in
-one word took 34 s.
+word is also read from after its last `=`. Outside quotes a backslash and a space are a
+space in a name, `my\ paper`, as a shell reads them, and that is the only reading. To
+PowerShell a backslash ends a folder's name, so `.\example\ D:\sent` is two paths, and it
+is not found. Reading the pieces as well found it, and twice took a piece of a file's name
+for the project beside it: `paper` in `cp paper\ draft.docx /backup`, which refused a copy
+of an unrelated document and a submission from `paper v2`, which passed; then, once
+narrowed to Windows and to a run holding another backslash, in `cp Edited\ paper\
+\(JD\).docx /backup`, where the other backslash is a shell's escape. Both were found by
+#137's review, and the reading was dropped (Basile, 2026-10-02): a path not found is a
+limit that is written down, and a document refused for a project it has nothing to do with
+is what this change was decided against. A word of more than 4096 characters or 100
+folders is not a path and is not walked: each step down is a look on disk, `..` exists at
+every step, and 5000 of them in one word took 34 s.
 
 This is not reading the command as a shell does. Nothing is expanded and nothing is run, and
 the guard does not know that `cd` changes folder: it asks of each word whether it is a path
@@ -3701,9 +3705,11 @@ Closed since, and why each mattered:
     its name is found in quotes and not without them (`cd Smith,\ Jones`), since a word
     ends at either. Three ways curl names a file: quoted inside its own quotes (`-F
     'file=@"example/build/manuscript.docx"'`), a list in braces inside quotes (`-T
-    "{a.docx,b.docx}"`), and after `<` (`-F "file=<example/manuscript/main.md"`). And on
-    Windows a path as PowerShell writes it that ends in a backslash and holds no other,
-    `Copy-Item example\ sent`. These go through as before.
+    "{a.docx,b.docx}"`), and after `<` (`-F "file=<example/manuscript/main.md"`). And a
+    path as PowerShell writes it that ends in a backslash before the next argument,
+    `Copy-Item .\example\ sent/submission -Recurse`: a backslash and a space are read as a
+    space in a name. Without the backslash at the end it is found, on Windows. These go
+    through as before.
   - *Not looked at, or looked at in the wrong place.* A folder on another machine written
     `//host/share/...` is not looked at: asking whether it exists waits for the host, and
     the hook fires on a shell command. The same share under a drive letter is looked at,
@@ -3730,8 +3736,9 @@ Closed since, and why each mattered:
     `https://example.org/dl?f=paper`, since a word ends at `=`, at a comma and at a brace.
     So is what follows the last `@` of any word and the last `=` of a quoted one, which
     are read for curl's sake: `mail -s "submission" editor@paper`, and a commit message
-    that ends `p=paper` or `thanks @paper`. On Windows a name with an escaped space that
-    also holds a backslash is read piece by piece, `cp docs\Final\ paper\ v3.docx`.
+    that ends `p=paper` or `thanks @paper`. And on Windows a file called `paper (1).docx`,
+    written `cp paper\ \(1\).docx /backup`: a word ends at a bracket, escaped or not, and
+    Windows drops the space left at the end of `paper `. In quotes it names nothing.
     A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held to it too, as it
     always was from inside (the word-roundtrip skill says to give the path to `import`).
   - *The check a refusal names can be refused in two shapes.* Written with the folder last

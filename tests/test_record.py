@@ -39,6 +39,11 @@ def loaded(path: Path):
     return load_project(path)[0]
 
 
+#: A modification time for a lock nobody holds any more: the first day of 2000. A fixed
+#: moment, so that no test here reads a clock.
+LONG_AGO = 946_684_800
+
+
 def codes(report) -> set[str]:
     return {f.code for f in report.findings}
 
@@ -454,13 +459,11 @@ def test_readings_filed_at_the_same_moment_all_reach_the_panel(unreviewed: Path)
 
 def test_a_lock_left_by_a_writer_that_died_is_taken_over(unreviewed: Path) -> None:
     import os
-    import time
 
     (unreviewed / "review").mkdir()
     lock = unreviewed / "review" / "panel-1.yaml.lock"
     lock.write_text("", encoding="utf-8")
-    long_ago = time.time() - 3600
-    os.utime(lock, (long_ago, long_ago))
+    os.utime(lock, (LONG_AGO, LONG_AGO))
     written = write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
     assert written.path.exists() and not lock.exists()
 
@@ -507,19 +510,20 @@ def test_a_folder_that_cannot_be_written_is_refused_in_words_and_not_waited_on(
 ) -> None:
     """The lock could not be made, and no lock was there to wait for. The wait had no end
     and no pause: one processor, fully, until the command was killed."""
-    import time
-
     from manuscript_guard import record
 
+    tried: list[str] = []
+
     def refused(path, flags, *more):
+        tried.append(str(path))
         raise PermissionError(13, "Permission denied", str(path))
 
     monkeypatch.setattr(record.os, "open", refused)
     monkeypatch.setattr(record, "LOCK_DENIED_SECONDS", 0.2)
-    started = time.monotonic()
     with pytest.raises(RecordError, match="cannot be written"):
         write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
-    assert time.monotonic() - started < 10
+    # A pause between tries: a fifth of a second of trying without one was 100,000 tries.
+    assert 1 < len(tried) < 200
     assert not (unreviewed / "review" / "round-1").exists()
 
 
@@ -527,15 +531,13 @@ def test_a_lock_left_behind_that_cannot_be_removed_is_refused_in_words(
     unreviewed: Path, monkeypatch
 ) -> None:
     import os
-    import time
 
     from manuscript_guard import record
 
     (unreviewed / "review").mkdir()
     lock = unreviewed / "review" / "panel-1.yaml.lock"
     lock.write_text("", encoding="utf-8")
-    old = time.time() - 3600
-    os.utime(lock, (old, old))
+    os.utime(lock, (LONG_AGO, LONG_AGO))
     real = Path.unlink
 
     def held(self, *args, **how):
@@ -545,10 +547,9 @@ def test_a_lock_left_behind_that_cannot_be_removed_is_refused_in_words(
 
     monkeypatch.setattr(Path, "unlink", held)
     monkeypatch.setattr(record, "LOCK_WAIT_SECONDS", 0.3)
-    started = time.monotonic()
     with pytest.raises(RecordError, match="panel-1.yaml.lock"):
         write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
-    assert time.monotonic() - started < 10
+    assert lock.exists()
 
 
 def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> None:

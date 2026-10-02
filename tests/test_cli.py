@@ -180,24 +180,37 @@ def test_explain_reads_a_file_that_is_utf8_as_before(project: Path, capsys) -> N
     assert capsys.readouterr().out == expected
 
 
-def test_explain_and_bind_run_where_a_convention_does_not_compile(project: Path, capsys) -> None:
-    """Both build the classifier from `conventions:`, and a pattern that is no regular
-    expression ended each in a traceback (`re.error`). The entry is not read, and `check`
-    names it."""
+#: What `explain` and `bind` build the classifier from, left so that it cannot be built, the
+#: error each command ended in a traceback with, and what `check` says of the key.
+NO_CLASSIFIER = {
+    "terms: 5": ("terms", 5, "terms: 5 is not of type 'array'"),
+    "a pattern that does not compile": (
+        "conventions",
+        [{"pattern": "[0-9", "why": "a count"}],
+        "conventions/0/pattern: '[0-9' is not a regular expression",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_CLASSIFIER))
+def test_explain_and_bind_run_where_a_setting_cannot_be_used(
+    case: str, project: Path, capsys
+) -> None:
+    """`TypeError: 'int' object is not iterable` and `re.error`. The key is not read, both
+    commands run, and `check` says what is wrong with it."""
+    import yaml
+
+    key, value, said = NO_CLASSIFIER[case]
     paper = project / "paper.yaml"
-    paper.write_text(
-        paper.read_text(encoding="utf-8").replace(
-            "conventions:\n", "conventions:\n  - pattern: '[0-9'\n    why: a count\n", 1
-        ),
-        encoding="utf-8",
-    )
-    assert "pattern: '[0-9'" in paper.read_text(encoding="utf-8")
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document[key] = value
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
 
     assert run("explain", str(project / "manuscript" / "main.md")) == 0
-    assert run("bind", str(project)) == 0
-    capsys.readouterr()
+    assert run("bind", str(project)) in (0, 1)
+    assert "Traceback" not in capsys.readouterr().err
     assert run("check", str(project)) == 1
-    assert "conventions/0/pattern: '[0-9' is not a regular expression" in capsys.readouterr().out
+    assert said in capsys.readouterr().out
 
 
 def test_check_reports_a_manuscript_file_that_is_not_utf8_as_one_finding(

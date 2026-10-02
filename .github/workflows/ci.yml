@@ -60,6 +60,37 @@ jobs:
       - run: claude plugin validate ${{ matrix.claude == 'latest' && '--strict' || '' }} .
       - run: claude plugin validate ${{ matrix.claude == 'latest' && '--strict' || '' }} plugin
 
+  codex-plugin:
+    # Codex installs the plugin from the manifests Claude Code reads, and the README tells a
+    # Codex user to do exactly that. `codex plugin` writes only under CODEX_HOME: no model and
+    # no login are involved. Two versions, as for Claude Code: the release this was first
+    # run against here, and the latest, so that a change in how Codex reads a marketplace
+    # fails here before a user meets it. With the variable set, a missing Codex fails the
+    # run where it would otherwise skip the test.
+    strategy:
+      fail-fast: false
+      matrix:
+        codex: ["0.160.0", "latest"]
+    runs-on: ubuntu-latest
+    env:
+      MANUSCRIPT_GUARD_REQUIRE_CODEX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g @openai/codex@${{ matrix.codex }}
+      - run: codex --version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # These tests call no pandoc, but every pytest run here is held to the same requirement.
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
+      - run: pip install -e ".[dev]"
+      - run: pytest -q -rs tests/test_plugin.py -k "codex or hooks_file"
+
   r-interop:
     # The results contract is only a contract if a second language can honour it.
     runs-on: ubuntu-latest
@@ -145,6 +176,16 @@ jobs:
           # (transcribe then fails on the missing document, which is after it found the
           # recipe). The schemas were read by `check` above.
           "$BIN/python" -c "from manuscript_guard.paths import SHIPPED_JOURNALS as J, SHIPPED_RECIPES as R; assert (J / 'TEMPLATE.yaml').is_file(); assert len(list(R.glob('*.recipe.yaml'))) >= 13"
+
+          # The skills, which are tracked outside the package and taken into the wheel when it
+          # is built. In a checkout `install-skills` reads them from plugin/skills, so only an
+          # installed copy shows whether the wheel has them.
+          "$BIN/manuscript-guard" install-skills --project
+          test -s .agents/skills/project-setup/SKILL.md
+          test -s .agents/skills/.manuscript-guard.json
+          # And they are the plugin's, file for file.
+          "$BIN/python" -c "import filecmp, os, sys; c = filecmp.dircmp(os.path.join(os.environ['GITHUB_WORKSPACE'], 'plugin', 'skills'), os.path.join('.agents', 'skills'), ignore=['.manuscript-guard.json']); bad = [c.left_only, c.right_only, c.diff_files] + [s.left_only + s.right_only + s.diff_files for s in c.subdirs.values()]; sys.exit(1 if any(bad) else 0)"
+          "$BIN/manuscript-guard" check
           out=$("$BIN/manuscript-guard" transcribe STROBE 2>&1 || true)
           [[ "$out" == *STROBE.recipe.yaml* ]] || { echo "$out"; exit 1; }
           hook=$(echo '{}' | "$BIN/manuscript-guard-hook" session-start)

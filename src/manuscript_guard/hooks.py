@@ -8,7 +8,9 @@ Three rules govern everything here.
 
 **A hook must never break the session.** Any unexpected error exits 0 in silence. A guard
 that crashes when a project is half-configured is worse than no guard, because the author
-removes it and loses the guard that worked.
+removes it and loses the guard that worked. One error is expected and is passed on: a file of
+the project's own that cannot be parsed, which `check` reports in a sentence written for the
+author. The submission guard refuses with that sentence and the session start says it.
 
 **A hook must be fast.** `guard-write` and `after-edit` fire on every edit, so neither loads
 the full gate set: the first is a path check, the second classifies numbers in one file.
@@ -66,15 +68,54 @@ SUBMISSION_MARKERS = re.compile(
     re.IGNORECASE,
 )
 
+# What a refusal tells its reader to run. Spelled with `--stage`, because `--submission` is
+# one of the markers above: told to run `check --submission`, an agent was refused again with
+# the same lines and never saw the list. Both spellings give one verdict.
+#
+# A refusal says to run it on its own, and that is part of the advice. The command ends in
+# the word `submission`, so after `cp`, `git push` or a folder named `Copy` on the same line
+# the third alternative above matches it, and no spelling the documents give avoids the
+# word.
+FULL_CHECK = "manuscript-guard check --stage submission"
+
+
+def _event_text() -> str:
+    """The event, as the agent tool wrote it on standard input.
+
+    Read as bytes and decoded as UTF-8, because that is what the tools write: Claude Code and
+    Codex both send a name outside ASCII as its own bytes, with no escape. Left to Python,
+    standard input is decoded in the ANSI code page on Windows, where `méthodes.md` arrived
+    as `mÃ©thodes.md`, a file that does not exist, and a project kept under an accented
+    folder was never found, so that no hook said or refused anything there.
+
+    Bytes that are not UTF-8 are read in the encoding standard input was opened with, as they
+    were before, and a byte that encoding cannot read is replaced, so that the event is kept:
+    a letter lost from a file's own name leaves the folder and the extension by which the
+    write guard knows a generated file.
+    """
+    stream = sys.stdin
+    if stream is None:  # started with no standard input at all
+        return ""
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:  # replaced by something that holds text, as a test does
+        return stream.read()
+    raw = buffer.read()
+    try:
+        return raw.decode("utf-8-sig")  # without the mark Windows PowerShell puts first
+    except UnicodeDecodeError:
+        return raw.decode(getattr(stream, "encoding", None) or "utf-8", errors="replace")
+
 
 def _read_event() -> dict:
     try:
-        return json.loads(sys.stdin.read() or "{}")
+        return json.loads(_event_text() or "{}")
     except (json.JSONDecodeError, ValueError):
         return {}
 
 
 def _emit(payload: dict) -> int:
+    # `json.dumps` escapes everything outside ASCII, and that is what keeps the answer whole:
+    # standard output is in the code page on Windows too, and the tool reads it as UTF-8.
     print(json.dumps(payload))
     return 0
 
@@ -243,6 +284,35 @@ def _relative_to_project(path: Path) -> tuple[Path, str] | None:
         return None
 
 
+def _project_root(payload: dict) -> Path | None:
+    """The project the event was sent from, or None where there is none.
+
+    Asked before the gates are run, because the gates raise one error for two things: no
+    `paper.yaml` above this folder, and a project with a file that cannot be parsed. The
+    first is no business of a hook. The second is said, in `_cannot_check`.
+
+    The folder is the one the event names, and the search goes upwards from it only. A
+    command sent from above a project that enters it, `cd paper && manuscript-guard submit`,
+    finds none and is not checked. That was so before this function, when the same error
+    ended in silence, and it is recorded under Known gaps.
+    """
+    from manuscript_guard.contracts import ContractError, find_root
+
+    try:
+        return find_root(Path(payload.get("cwd") or Path.cwd()))
+    except (ContractError, OSError):
+        return None
+
+
+def _cannot_check(error: Exception) -> str:
+    """The project's own account of why it cannot be read, set in from the margin.
+
+    It is written for the author and names the file: `check` prints the same sentence and
+    exits 2. A YAML error runs over several lines, so each is set in.
+    """
+    return "\n".join(f"  {line}" for line in str(error).splitlines())
+
+
 # --------------------------------------------------------------------------- handlers
 
 
@@ -361,10 +431,25 @@ def guard_submission(payload: dict) -> int:
     if not SUBMISSION_MARKERS.search(command):
         return 0
 
-    from manuscript_guard.cli import _run_gates
+    root = _project_root(payload)
+    if root is None:  # no project at the folder the command was sent from, or above it
+        return 0
 
-    cwd = Path(payload.get("cwd") or Path.cwd())
-    report, project, _stage, _deferred = _run_gates(cwd, submission=True)
+    from manuscript_guard.cli import _run_gates
+    from manuscript_guard.contracts import ContractError
+
+    try:
+        report, project, _stage, _deferred = _run_gates(root, submission=True)
+    except ContractError as error:
+        # Not an unexpected failure: a file of the project's own cannot be parsed, so no gate
+        # ran. Left to `dispatch` this ended in silence and the command went through, from a
+        # project in which `check --submission` exits 2.
+        return _deny(
+            "PreToolUse",
+            f"manuscript-guard cannot check {root.name}, so nothing in it has been held to "
+            f"the submission standard:\n\n{_cannot_check(error)}\n\n"
+            f"Fix that, then run `{FULL_CHECK}` on its own.",
+        )
     if report.ok:
         return 0
 
@@ -375,16 +460,29 @@ def guard_submission(payload: dict) -> int:
         f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
         + "\n".join(lines)
         + more
-        + "\n\nRun `manuscript-guard check --submission` for the full list.",
+        + f"\n\nRun `{FULL_CHECK}` on its own for the full list.",
     )
 
 
-def _status_line(payload: dict) -> str:
+def _status_line(payload: dict) -> str | None:
+    """Where the project stands, or why that cannot be said. None outside a project."""
+    root = _project_root(payload)
+    if root is None:
+        return None
+
     from manuscript_guard.cli import _run_gates
+    from manuscript_guard.contracts import ContractError
     from manuscript_guard.policy import DESCRIPTIONS
 
-    cwd = Path(payload.get("cwd") or Path.cwd())
-    report, project, stage, deferred = _run_gates(cwd)
+    try:
+        report, project, stage, deferred = _run_gates(root)
+    except ContractError as error:
+        # Silence here read as "no project", and the author met the file at submission.
+        return (
+            f"manuscript-guard: {root.name} cannot be checked, and no gate has run:\n"
+            f"{_cannot_check(error)}\n"
+            "Fix that, then run `manuscript-guard check`."
+        )
     failing = len(report.failures)
     warnings = len(report.warnings)
 
@@ -477,7 +575,7 @@ def session_start(payload: dict) -> int:
         notice = None
     try:
         status = _status_line(payload)
-    except Exception:  # noqa: BLE001 - outside a project there is no line, and no error
+    except Exception:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
         status = None
     if status is None and notice is None:
         return 0

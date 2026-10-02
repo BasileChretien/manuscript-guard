@@ -474,7 +474,8 @@ or of your home:
 ```
 
 A Codex user without the `codex` command can use the copy in place of the plugin, and then
-has no hooks. With both, Codex shows every skill twice.
+has no hooks. With both, Codex has every skill in two places it reads, the plugin and the
+folder. What it then shows was not watched.
 
 How far this has been checked: Gemini CLI 0.58.0 lists the fourteen skills from a project's
 `.agents/skills`. That it reads the folder in your home, and that Mistral Vibe and Kimi Code

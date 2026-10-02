@@ -3924,7 +3924,8 @@ Closed since, and why each mattered:
   nothing. And a copy committed with the project reaches a co-author as old as it was
   committed. The comparison is of the two version numbers and of nothing else, so it is as
   fine as the numbers are: a copy made from a checkout whose skills later change under the
-  same number is not named. A released package always has a number of its own.
+  same number is not named. An install from `main` between a merge and the bump of the
+  version that follows it is in the same case.
 - **Two copies run at once into one folder can fail, and the next heals it.** Each stages a
   skill in a folder of its own, but both move it into the same place, and one can find the
   place taken or the old folder gone and stop with an error. Neither loses anything of the
@@ -3941,7 +3942,8 @@ Closed since, and why each mattered:
   name them ("the review-panel skill"). Where the user already has a skill of the same name
   it is left and ours is not copied, so a hint then leads to theirs. `install-skills` says so
   and exits 1; `--project` copies into the project, where nothing else is. A Codex user who
-  installs the plugin and also has a copy sees every skill twice.
+  installs the plugin and also has a copy has every skill in two places Codex reads; what
+  Codex then shows was not watched.
 - **Gemini CLI, Mistral Vibe and Kimi Code CLI get the skills and no hooks.** Each has a hook
   system of its own, with other event names and another way to refuse (read from their
   documentation on 2026-10-02), and none is wired here. Under those tools nothing is caught

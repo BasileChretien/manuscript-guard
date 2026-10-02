@@ -333,11 +333,6 @@ def usable_key(key: str) -> bool:
     return PRINTABLE.fullmatch(key) is not None
 
 
-def slug(reader: str) -> str:
-    """A reader's name as part of a file name: `openai/gpt-x.1` becomes `openai-gpt-x-1`."""
-    return re.sub(r"[^a-z0-9]+", "-", reader.lower()).strip("-")
-
-
 __all__ = [
     "ANTHROPIC",
     "OPENAI",
@@ -349,6 +344,5 @@ __all__ = [
     "key_is_set",
     "known_providers",
     "read_key",
-    "slug",
     "usable_key",
 ]

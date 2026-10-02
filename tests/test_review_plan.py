@@ -418,7 +418,15 @@ def test_the_round_is_the_first_one_somebody_has_not_reported_in(mixed: Path) ->
     assert plan.next_round(project) == 3  # both of the example's rounds are complete
     (mixed / "review" / "round-2" / "clinical-reader.yaml").unlink()
     assert plan.next_round(project) == 2
+    # A file the panel does not name is not a reading, to G11 or here: the round waits.
     (mixed / "review" / "round-2" / "clinical-reader.mistral-model-b.yaml").write_text("x")
+    assert plan.next_round(project) == 2
+    panel = mixed / "review" / "panel-2.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    for reviewer in document["reviewers"]:
+        if reviewer["id"] == "clinical-reader":
+            reviewer["readers"] = ["mistral/model-b"]
+    panel.write_bytes(yaml.safe_dump(document, sort_keys=False).encode("utf-8"))
     assert plan.next_round(project) == 3
     shutil.rmtree(mixed / "review")
     assert plan.next_round(project) == 1
@@ -551,10 +559,15 @@ def test_a_local_model_is_said_to_stay_on_this_machine(project: Path, capsys, no
     assert "localhost:11434" in out and "this machine" in out
 
 
-def test_sending_is_not_in_this_version(mixed: Path, capsys, no_network) -> None:
-    """Refused in words rather than half done: this release shows what a run would send."""
+def test_a_run_nobody_agreed_to_sends_nothing(
+    mixed: Path, capsys, monkeypatch, no_network
+) -> None:
+    """Under a test nobody is at a terminal to be asked. `tests/test_review_run.py` holds
+    what a run does once it has its yes."""
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setenv("MISTRAL_API_KEY", KEY)
     assert main(["review", str(mixed), "--run", "--round", "2"]) == 2
-    assert "--dry-run" in capsys.readouterr().err
+    assert "--yes" in capsys.readouterr().err
 
 
 def test_dry_run_without_run_is_refused(mixed: Path, capsys) -> None:

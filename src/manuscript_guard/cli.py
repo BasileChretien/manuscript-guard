@@ -202,6 +202,14 @@ def cmd_review(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if (args.record or args.record_figure) and (args.providers or args.run or args.dry_run):
+        # The models' part of the command answered first, and the record was not filed.
+        print(
+            "manuscript-guard: --record files a record, and --providers, --run and --dry-run "
+            "are about the models that read the panel: give one or the other",
+            file=sys.stderr,
+        )
+        return 2
     if args.providers:
         # Before the project is loaded: the list of providers is worth having without one.
         from manuscript_guard.panel.commands import list_providers
@@ -218,7 +226,11 @@ def cmd_review(args: argparse.Namespace) -> int:
             )
             return 2
         return run_panel(
-            args.path, round_number=args.round, one_each=args.one_each, dry_run=args.dry_run
+            args.path,
+            round_number=args.round,
+            one_each=args.one_each,
+            dry_run=args.dry_run,
+            yes=args.yes,
         )
 
     project, _ = load_project(args.path)
@@ -2119,8 +2131,9 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument(
         "--run",
         action="store_true",
-        help="have the round's panel read by the models in paper.yaml's review.models. In "
-        "this version only together with --dry-run",
+        help="have the round's panel read by the models in paper.yaml's review.models and "
+        "file each reading as a review record. Says which files go to which provider and "
+        "how many calls that is, then needs a yes before anything is sent",
     )
     review.add_argument(
         "--dry-run",
@@ -2133,6 +2146,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="with --run: one model per reviewer, dealt across review.models in turn, "
         "instead of every model reading every remit",
+    )
+    review.add_argument(
+        "--yes",
+        action="store_true",
+        help="with --run: send without being asked. For a script the author wrote; an "
+        "agent asks the author first. The statement of what is sent where is still printed",
     )
     review.set_defaults(func=cmd_review)
 

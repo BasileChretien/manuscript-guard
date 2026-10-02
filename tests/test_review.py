@@ -8,6 +8,7 @@ produce a document to read.
 from __future__ import annotations
 
 import shutil
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -688,6 +689,33 @@ def test_two_files_under_one_readers_name_are_reported(project: Path) -> None:
     assert report.counts["review_rounds_complete"] == 1
 
 
+def test_two_files_under_one_name_stored_two_ways_are_reported(project: Path) -> None:
+    """An accented letter is one character, or a letter and a mark after it. NTFS and most
+    Linux file systems keep the two spellings as two files; the reader is one."""
+    reader = "Zo" + chr(0xE9)
+    first = add_reading(project, "desk-editor", reader)
+    second = first.with_name(unicodedata.normalize("NFD", first.name))
+    assert second.name != first.name
+    if second.exists():
+        pytest.skip("this file system does not tell the two spellings apart")
+    shutil.copy(first, second)
+    report = report_for(project, submission=True)
+    duplicate = [f for f in report.failures if f.code == "duplicate-reading"]
+    assert len(duplicate) == 1 and reader in duplicate[0].message
+    assert report.counts["review_rounds_complete"] == 1
+
+
+def test_a_record_that_does_not_fit_its_schema_is_not_also_said_to_be_missing(
+    project: Path,
+) -> None:
+    """It is there, and wrong: one finding for one fault, as before readings had names."""
+    edit_yaml(project / BIOSTAT, lambda d: d.pop("verdict"))
+    report = report_for(project, submission=True)
+    assert "schema-violation" in failures(report)
+    assert "review-missing" not in codes(report)
+    assert report.counts["review_rounds_complete"] == 1
+
+
 def test_a_malformed_reading_leaves_the_round_unfinished(project: Path) -> None:
     expect_readers(project, 2, "desk-editor", MODEL_A)
     (project / DESK_A).write_text(
@@ -712,7 +740,11 @@ def test_a_copy_kept_beside_a_record_does_not_start_failing_a_submission(project
         "biostatistician.old.yaml",
     ]
     assert all(f.severity == "warn" for f in unnamed)
-    assert "`readers`" in unnamed[0].hint and "--reading" in unnamed[0].hint
+    assert "`readers`" in unnamed[0].hint and "by hand" in unnamed[0].hint
+    assert "--reading" not in unnamed[0].hint, (
+        "`review --record --reading` stops at a file that is already there, so it is not a "
+        "way out of this warning"
+    )
 
 
 def test_a_reading_nobody_named_in_the_panel_is_not_read_and_says_how_to_be(

@@ -314,7 +314,9 @@ def _refuse_status(model: Model, response: HttpResponse, key: str | None) -> Cal
 
 def _count(usage: object, name: str) -> int | None:
     value = usage.get(name) if isinstance(usage, dict) else None
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
+    # A count below zero is not a count, and the record's schema would refuse the reading.
+    counted = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    return value if counted else None
 
 
 def _text_parts(content: object) -> str | None:

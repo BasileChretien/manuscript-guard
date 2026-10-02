@@ -264,10 +264,10 @@ def test_a_manuscript_file_that_is_not_utf8_is_one_finding_that_names_it(
     line = in_a_code_page(source)
 
     report, _project, _chosen, _deferred = cli._run_gates(project, stage=stage)
-    (failure,) = (f for f in report.failures if f.code == "source-unreadable")
+    (failure,) = (f for f in report.failures if f.code == "manuscript-unreadable")
     # G11 reads the bytes, not the text, so it ran: the file changed after the panel read
     # it, which is a finding of its own once the review binds.
-    others = {f.code for f in report.failures} - {"source-unreadable"}
+    others = {f.code for f in report.failures} - {"manuscript-unreadable"}
     assert others == ({"review-stale", "rounds-outstanding"} if stage == SUBMISSION else set())
     assert (failure.gate, failure.path, failure.line) == ("G0", source, line)
     assert failure.message == (
@@ -289,14 +289,15 @@ def test_each_manuscript_file_that_is_not_utf8_is_named(project: Path) -> None:
     extra.write_bytes("# Notes\n\nText.\n".encode("utf-16"))
 
     report, _project, _chosen, _deferred = cli._run_gates(project)
-    said = {f.path: (f.line, f.message) for f in report.failures if f.code == "source-unreadable"}
+    unread = [f for f in report.failures if f.code == "manuscript-unreadable"]
+    said = {f.path: (f.line, f.message) for f in unread}
     assert set(said) == {main, extra}
     assert said[extra] == (
         None,
         "manuscript/supplementary/zz_notes.md: cannot read as UTF-8: the file is UTF-16. "
         "Save the file as UTF-8.",
     )
-    assert {f.code for f in report.failures} == {"source-unreadable"}
+    assert {f.code for f in report.failures} == {"manuscript-unreadable"}
 
 
 def test_the_gates_that_do_not_read_the_manuscript_still_report(project: Path) -> None:
@@ -309,7 +310,7 @@ def test_the_gates_that_do_not_read_the_manuscript_still_report(project: Path) -
 
     report, _project, _chosen, _deferred = cli._run_gates(project, submission=True)
     codes = {f.code for f in report.failures}
-    assert "source-unreadable" in codes
+    assert "manuscript-unreadable" in codes
     assert "no-review" in codes, "G11 did not run"
     assert "figure-unreviewed" in codes, "G10 did not run"
     assert "gate-errored" not in codes
@@ -344,6 +345,12 @@ NOT_THE_SHAPE = {
     "conventions: a pattern that does not compile": (
         "conventions",
         [{"pattern": "[0-9", "why": "a count"}],
+        "conventions/0/pattern: ",
+        "G2",
+    ),
+    "conventions: a pattern the compiler refuses with another error": (
+        "conventions",
+        [{"pattern": "(?a)(?u)x", "why": "pasted"}],
         "conventions/0/pattern: ",
         "G2",
     ),

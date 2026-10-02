@@ -230,9 +230,9 @@ def _front_matter(project, *, supplementary: bool = False, live: bool = False) -
     short = None if supplementary else paper.get("short_title")
     if short:
         lines.append(f'subtitle: "{short}"')
-    # `setting`: the keywords the schema accepts. `keywords: 5` raised here under
-    # `--skip-checks`, and one word where a list is expected was printed letter by letter.
-    keywords = None if supplementary else project.setting("keywords")
+    # `keywords: 5` raised here under `--skip-checks`, and one word where a list is expected
+    # was printed letter by letter; see `Project.keywords`.
+    keywords = None if supplementary else project.keywords
     if keywords:
         lines.append("keywords: [" + ", ".join(f'"{k}"' for k in keywords) + "]")
     lines += [

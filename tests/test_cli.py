@@ -141,6 +141,7 @@ READS_THE_MANUSCRIPT = {
     "bind": lambda root: ("bind", str(root)),
     "bind --apply": lambda root: ("bind", str(root), "--apply"),
     "methods": lambda root: ("methods", str(root)),
+    "sync-bib": lambda root: ("sync-bib", str(root)),
     "build --skip-checks": lambda root: ("build", str(root), "--offline", "--skip-checks"),
     "submit --skip-checks": lambda root: ("submit", str(root), "--offline", "--skip-checks"),
 }
@@ -242,7 +243,7 @@ def test_check_json_carries_the_file_and_the_line(project: Path, capsys) -> None
     document = json.loads(capsys.readouterr().out)
     failing = [f for f in document["findings"] if f["severity"] == "fail"]
     assert [(f["code"], f["path"], f["line"]) for f in failing] == [
-        ("source-unreadable", str(source), line)
+        ("manuscript-unreadable", str(source), line)
     ]
 
 
@@ -255,6 +256,21 @@ def test_build_refuses_a_manuscript_file_that_is_not_utf8(project: Path, capsys)
     assert "manuscript/main.md: cannot read as UTF-8: the byte 0xe9" in captured.out
     assert "could not run" not in captured.out
     assert not list((project / "build").glob("*.docx"))
+
+
+def test_review_holds_to_the_rounds_asked_for_beside_a_key_the_schema_refuses(
+    project: Path, capsys
+) -> None:
+    """`review` does not print the schema's findings, so what it reads of `review:` is its
+    whole answer. Five rounds asked for, two complete, and one mistyped key beside it."""
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + "\nreview:\n  rounds_required: 5\n  typo: 1\n",
+        encoding="utf-8",
+    )
+
+    assert run("review", str(project), "--submission") == 1
+    assert "2 of 5 review round(s) complete" in capsys.readouterr().out
 
 
 def test_check_submission_is_stricter_than_a_draft(project: Path) -> None:

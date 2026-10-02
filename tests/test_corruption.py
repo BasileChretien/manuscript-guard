@@ -392,6 +392,9 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
         pytest.param([r"\d+"], id="a list of patterns with no reason"),
         pytest.param([{"pattern": r"\d+"}], id="an entry with no reason"),
         pytest.param([{"pattern": r"\d+", "why": ""}], id="an entry with an empty reason"),
+        pytest.param(
+            [{"pattern": r"(?a)(?u)\d+", "why": "pasted"}], id="a pattern that does not compile"
+        ),
     ],
 )
 def test_a_convention_the_schema_refuses_exempts_nothing(project: Path, conventions) -> None:
@@ -424,7 +427,7 @@ def test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass(project: Path
 
     for stage in STAGES:
         report, _project, _chosen, _deferred = _run_gates(project, stage=stage)
-        assert "source-unreadable" in codes(report), stage
+        assert "manuscript-unreadable" in codes(report), stage
         assert "gate-errored" not in codes(report), stage
     assert main(["build", str(project), "--offline"]) == 1
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 2

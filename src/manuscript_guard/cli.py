@@ -181,7 +181,7 @@ def _unreadable_report(project, unreadable: dict[Path, Unreadable], stopped: lis
         findings.append(
             Finding(
                 gate="G0",
-                code="source-unreadable",
+                code="manuscript-unreadable",
                 message=f"{shown}: {error.reason}",
                 path=path,
                 line=error.line,

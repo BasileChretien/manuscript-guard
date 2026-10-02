@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -47,24 +46,39 @@ class Project:
 
     def setting(self, key: str) -> Any:
         """What a gate reads of one key of `paper.yaml`: its value as far as the schema
-        accepts it. Of a list, the entries the schema accepts; of anything else, the value
-        or None.
+        accepts it. Of a list, and of settings under a key, the entries the schema accepts;
+        of anything else, the value or None.
 
         The schema reports a wrong shape as a finding that names the key and fails at every
         stage, and the gate that read the value raised on it all the same: `terms: 5` was
         also "G2 could not run: TypeError: 'int' object is not iterable", under a hint that
         begins with a bug in the tool. So a gate reads only what the schema let through and
-        runs as if the rest were not set, which never makes it more lenient: an entry of
-        `conventions` or `terms` that is not read exempts nothing.
+        runs as if the rest were not set. An entry of `conventions` or `terms` that is not
+        read exempts nothing, so that reading is the stricter one. A `rounds_required` that
+        is not read is the default, which can be fewer rounds than was meant: `"3"` in
+        quotes was read as three. The schema's finding stands in either case.
+
+        Entry by entry, because one mistake should not take what is right with it: a
+        convention written correctly beside one that is not, or the rounds a paper asks for
+        beside a mistyped key.
         """
         if key not in self.paper:
             return None
-        value = self.paper[key]
-        if _schema_of(key).get("type") == "array":
-            if not isinstance(value, list):
-                return None
-            return [entry for entry in value if _accepts(key, True).is_valid(entry)]
-        return value if _accepts(key, False).is_valid(value) else None
+        return _accepted(load_schema("paper")["properties"][key], self.paper[key])
+
+    @property
+    def keywords(self) -> tuple[str, ...]:
+        """The keywords as the build prints them: each entry of the list as text, and none
+        where `keywords` is not a list.
+
+        Not through `setting`. A build under `--skip-checks` prints what the author typed,
+        and `2019`, which YAML reads as a number, was printed before: it must not leave the
+        document without a word. What changes is what raised or was garbled: `keywords: 5`
+        ended the build in `TypeError`, and one word where a list is expected was printed
+        letter by letter.
+        """
+        value = self.paper.get("keywords")
+        return tuple(str(entry) for entry in value) if isinstance(value, list) else ()
 
     @property
     def english_variant(self) -> str:
@@ -93,15 +107,34 @@ class Project:
         return tuple(self.setting("terms") or ())
 
 
-def _schema_of(key: str) -> dict:
-    return load_schema("paper")["properties"][key]
+def _accepted(schema: dict, value: Any) -> Any:
+    """`value` as far as `schema` accepts it; see `Project.setting`."""
+    kind = schema.get("type")
+    if kind == "array":
+        if not isinstance(value, list):
+            return None
+        accepts = Draft202012Validator(schema["items"]).is_valid
+        return [entry for entry in value if accepts(entry)]
+    if kind == "object":
+        if not isinstance(value, dict):
+            return None
+        known = schema.get("properties", {})
+        return {
+            name: entry
+            for name, entry in value.items()
+            if name in known and Draft202012Validator(known[name]).is_valid(entry)
+        }
+    return value if Draft202012Validator(schema).is_valid(value) else None
 
 
 def _not_a_pattern(pattern: str) -> str | None:
     """Why a convention's pattern cannot be compiled, or None where it can."""
     try:
         re.compile(pattern, re.MULTILINE)
-    except (re.error, OverflowError, RecursionError) as exc:
+    except Exception as exc:  # noqa: BLE001 - whatever the compiler raises is about the pattern
+        # Not only its own error. `(?a)(?u)x` is a `ValueError`, a repeat too large an
+        # `OverflowError`. This runs where the project is loaded, before any gate, so one
+        # that got past ended every command in a traceback and the hooks in silence.
         return str(exc)
     return None
 
@@ -133,14 +166,6 @@ def _patterns(paper: dict, path: Path) -> Report:
             )
         )
     return Report(tuple(findings))
-
-
-@cache
-def _accepts(key: str, entry: bool) -> Draft202012Validator:
-    """The schema's check for one key of `paper.yaml`, or for one entry of a key that is a
-    list."""
-    schema = _schema_of(key)
-    return Draft202012Validator(schema["items"] if entry else schema)
 
 
 def find_root(start: Path) -> Path:

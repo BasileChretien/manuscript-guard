@@ -443,7 +443,7 @@ check. And a finding this policy does not know about fails at every stage — a 
 to opt in to being deferred. A gate that *crashes* reports `gate-errored`, which is in no
 deferral list and so fails everywhere: a checker that could not check is not a pass. A
 manuscript file that cannot be read as UTF-8, one saved in a code page or as UTF-16, is
-reported once as `source-unreadable`, at the file and the line, with the gates that read
+reported once as `manuscript-unreadable`, at the file and the line, with the gates that read
 the manuscript and so did not run. It fails everywhere too, and the other gates still report.
 
 The stage is declared in `paper.yaml`, not detected. Writing `stage: analysis` genuinely

@@ -401,8 +401,19 @@ def test_a_list_keeps_the_entries_the_schema_accepts(tmp_path: Path) -> None:
     assert rounds_required(project) == 3
 
 
+#: A pattern that does not compile, and what the compiler says of it. The second is not the
+#: compiler's own error but a `ValueError`: the check for one let it past, and since it is
+#: made where the project is loaded, every command ended in a traceback and the hooks in
+#: silence, where the gate had at least reported it.
+NO_PATTERN = {
+    "[0-9": "unterminated character set",
+    "(?a)(?u)x": "ASCII and UNICODE flags are incompatible",
+}
+
+
+@pytest.mark.parametrize("pattern", list(NO_PATTERN))
 def test_a_pattern_that_is_no_regular_expression_is_a_finding_that_names_it(
-    tmp_path: Path,
+    pattern: str, tmp_path: Path
 ) -> None:
     """The schema can only say that a pattern is text. Compiling it raised in the gate, "G2
     could not run: error: unterminated character set at position 0", and nothing named the
@@ -414,7 +425,7 @@ def test_a_pattern_that_is_no_regular_expression_is_a_finding_that_names_it(
         "conventions:\n"
         "  - pattern: half-normal\n"
         "    why: a name\n"
-        "  - pattern: '[0-9'\n"
+        f"  - pattern: '{pattern}'\n"
         "    why: a count\n"
     )
     project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
@@ -423,19 +434,47 @@ def test_a_pattern_that_is_no_regular_expression_is_a_finding_that_names_it(
     assert (failure.gate, failure.code) == ("G0", "schema-violation")
     assert failure.path == tmp_path / "paper" / "paper.yaml"
     assert failure.message.startswith(
-        "conventions/1/pattern: '[0-9' is not a regular expression: "
+        f"conventions/1/pattern: {pattern!r} is not a regular expression: {NO_PATTERN[pattern]}"
     )
     assert project.extra_conventions == ({"pattern": "half-normal", "why": "a name"},)
     Classifier.load(project.extra_conventions, project.extra_terms)
 
 
-@pytest.mark.parametrize("keywords", [5, 2.5, True, "pharmacovigilance", [5, "signal"]])
-def test_keywords_in_the_wrong_shape_are_not_printed_and_do_not_stop_a_build(
-    keywords: object, project: Path
+def test_rounds_required_is_read_beside_an_entry_the_schema_refuses(tmp_path: Path) -> None:
+    """Of settings, as of a list, the entries the schema accepts are read. Dropping the
+    whole of `review:` for one mistyped key beside it asked for two rounds where the paper
+    asks for five, and `review --submission` answered 0 where it had answered 1."""
+    from manuscript_guard.gates.review import rounds_required
+
+    written = "review:\n  rounds_required: 5\n  round_required: 1\n"
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert [f.code for f in report.failures] == ["schema-violation"]
+    assert project.setting("review") == {"rounds_required": 5}
+    assert rounds_required(project) == 5
+
+
+@pytest.mark.parametrize(
+    ("keywords", "printed"),
+    [
+        (5, None),
+        (2.5, None),
+        (True, None),
+        ("pharmacovigilance", None),
+        ([5, "signal"], ["5", "signal"]),
+        (["pharmacovigilance", 2019], ["pharmacovigilance", "2019"]),
+        ([False, "cGMP"], ["False", "cGMP"]),
+    ],
+)
+def test_keywords_in_the_wrong_shape_do_not_stop_a_build_and_none_is_dropped_from_a_list(
+    keywords: object, printed: list[str] | None, project: Path
 ) -> None:
     """`keywords: 5` ended a build with `--skip-checks`, and the title page of the pack, in
     `TypeError: 'int' object is not iterable`: the one key the build reads as a list. One
-    word where a list is expected was printed letter by letter."""
+    word where a list is expected was printed letter by letter. Neither is printed now.
+
+    An entry of a list that is not text is printed as it was: `2019`, which YAML reads as a
+    number, reached an unchecked document and must not leave it without a word."""
     import yaml
 
     from manuscript_guard.build.document import _front_matter
@@ -449,9 +488,9 @@ def test_keywords_in_the_wrong_shape_are_not_printed_and_do_not_stop_a_build(
     assert "schema-violation" in {f.code for f in report.failures}
 
     header, page = _front_matter(loaded), title_page(loaded)
-    if isinstance(keywords, list):  # the entry that is a word is kept
-        assert 'keywords: ["signal"]' in header
-        assert "**Keywords.** signal\n" in page
+    if printed:
+        assert "keywords: [" + ", ".join(f'"{word}"' for word in printed) + "]\n" in header
+        assert "**Keywords.** " + "; ".join(printed) + "\n" in page
     else:
         assert "keywords:" not in header
         assert "**Keywords.**" not in page

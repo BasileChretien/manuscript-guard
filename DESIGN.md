@@ -229,7 +229,7 @@ check is not a pass. Where what the gate threw is the project's own error about 
 reads, a review record that is not UTF-8 for one, the finding carries that sentence, which
 names the file, and does not call it a bug.
 
-And one for the manuscript itself: `source-unreadable`, for a manuscript file whose text
+And one for the manuscript itself: `manuscript-unreadable`, for a manuscript file whose text
 cannot be had, because it is not UTF-8 or the system will not open it. Each gate that reads
 the manuscript stops at such a file, so it is reported once for each file, at the file and
 the line, with the gates that did not run. The other gates report as usual. It fails at
@@ -3608,7 +3608,8 @@ Closed since, and why each mattered:
   fault of the tool would then stop every command that names a `.docx` in that project, with
   a message its author can do nothing with. Two things are refused that were not. A
   `paper.yaml` that holds `[]`, `0` or `false` was read as no settings, with the schema's
-  findings for everything missing, and is now a list or a number like any other. And a
+  findings for everything missing, and is now refused like any other list, number or yes or
+  no. And a
   folder under `paths` that only a gate asks for, given as a number, was a schema finding
   beside a `gate-errored` one and now stops the check before any gate. The write guard did
   change, by one name. It asks `paper.yaml` where the results are kept, and it caught the
@@ -3627,7 +3628,7 @@ Closed since, and why each mattered:
   traceback. Closed the same day, by the author's decision. Every reader of the
   manuscript's text goes through the reader the project's files use, so those commands say
   the sentence and exit 2. `check` reports one finding for each such file,
-  `source-unreadable`, at the file and the line, and its hint names the gates that stopped
+  `manuscript-unreadable`, at the file and the line, and its hint names the gates that stopped
   there. It does not stop before the gates, as it does for a project file: the gates that
   do not read the manuscript still report, `--json` carries the finding, and the line drawn
   above holds, that a file read before any gate stops the check and a file a gate reads is
@@ -3649,23 +3650,44 @@ Closed since, and why each mattered:
   finding worded as a fault of the tool, "G2 could not run: TypeError: 'int' object is not
   iterable", beside the schema's own finding, which names the key; `explain` and `bind`
   ended in a traceback on `terms: 5`. Closed with it, by the same decision: a gate reads of
-  such a key what the schema accepts, of a list the entries it accepts, and runs as if the
-  rest were not set. The schema's finding fails at every stage, so no project passes that
-  failed, and nothing is read more leniently: an entry of `conventions` or `terms` that is
-  not read exempts nothing, so until the key is put right the numbers it accounted for are
-  reported as unbound beside the schema's finding. The build reads `keywords` the same way.
-  It raised on `keywords: 5` under `--skip-checks`, and printed one word, where a list is
-  expected, letter by letter. A convention whose pattern is not a regular expression is
-  text to the schema, and raised where the classifier is built ("G2 could not run: error:
-  unterminated character set at position 0"). It is now a finding that names the entry,
-  under the schema's code, and the entry is not read. One entry that was read is no longer:
-  a convention with an `id`. The classifier names the rule by it and the schema has never
-  allowed it, so a project that wrote one failed already. A test here wrote one.
+  such a key what the schema accepts, of a list or of the settings under `review` the
+  entries it accepts, and runs as if the rest were not set. The schema's finding fails at
+  every stage, so no project passes that failed. For what exempts, that is the stricter
+  reading: an entry of `conventions` or `terms` that is not read exempts nothing, so until
+  the key is put right the numbers it accounted for are reported as unbound beside the
+  schema's finding. For `rounds_required` it is the default, two, and that can be fewer
+  than was meant: `"3"` in quotes was read as three. `review` on its own does not print the
+  schema's findings, so there the command answers for two rounds; `check` fails on the
+  schema's finding either way. The rounds asked for are still read beside a mistyped key
+  under `review`. A convention whose pattern is not a regular expression is text to the
+  schema, and raised where the classifier is built ("G2 could not run: error: unterminated
+  character set at position 0"). It is now a finding that names the entry, under the
+  schema's code, and the entry is not read. It is made where the project is loaded, before
+  any gate, so whatever the compiler raises is caught: the review found a pattern,
+  `(?a)(?u)x`, whose error was not the compiler's own, and which ended every command in a
+  traceback and the hooks in silence. One entry that was read is no longer: a convention
+  with an `id`. The classifier names the rule by it and the schema has never allowed it, so
+  a project that wrote one failed already. A test here wrote one. The build reads
+  `keywords` with no gate in front of it under `--skip-checks`. It raised on `keywords: 5`,
+  and printed one word, where a list is expected, letter by letter; neither is printed now.
+  An entry of the list that is not text is printed as it was, `2019` for one, which YAML
+  reads as a number: a build that was asked not to check prints what was typed.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by
-  another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. And a
+  another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
+  folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
+  it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
+  in a traceback on it, as before. And a
   results fragment with the mark of UTF-8 in front,
   which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
-  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read.
+  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read. Two more are of
+  the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
+  entry under `paths`, and were found in the review of #134. The write guard does not know
+  a folder that another entry moves: with `results: output` beside a `figures:` left empty,
+  an edit under `output/` goes through. It was refused before an entry in the wrong shape
+  stopped the whole file being read: the guard now keeps to the usual names there. `check`
+  exits 2 until the entry is put right, and G1 reports the edit after that. And the note
+  after an edit says nothing in such a project, where it named the unbound number. Neither
+  is decided.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

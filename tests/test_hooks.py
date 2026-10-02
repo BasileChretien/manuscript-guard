@@ -602,9 +602,32 @@ def test_a_manuscript_file_that_is_not_utf8_is_a_failing_check_that_names_it(
     result = run_installed("guard-submission", as_sent({**SUBMIT, "cwd": str(project)}), {})
     assert decision(result) == "deny"
     assert "submission check(s) failing" in reason(result)
-    named = "source-unreadable: manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line"
+    named = "manuscript-unreadable: manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line"
     assert named in reason(result)
     assert "could not run" not in reason(result)
+
+    started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
+    assert "1 failing" in context(run_installed("session-start", as_sent(started), {}))
+
+
+def test_a_pattern_the_compiler_refuses_is_a_failing_check_and_not_silence(
+    project: Path,
+) -> None:
+    """A convention's pattern is compiled where the project is loaded, before any gate. An
+    error from the compiler that was not the one expected (`ValueError`, for flags that
+    cannot be combined) was a fault of the tool to both hooks: the guard said nothing and
+    the command went through, where the gate that compiled it had been a failing finding."""
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert text.count("conventions:\n") == 1
+    paper.write_text(
+        text.replace("conventions:\n", "conventions:\n  - pattern: (?a)(?u)x\n    why: pasted\n"),
+        encoding="utf-8",
+    )
+
+    result = run_installed("guard-submission", as_sent({**SUBMIT, "cwd": str(project)}), {})
+    assert decision(result) == "deny"
+    assert "schema-violation: conventions/0/pattern: '(?a)(?u)x' is not a regular" in reason(result)
 
     started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
     assert "1 failing" in context(run_installed("session-start", as_sent(started), {}))

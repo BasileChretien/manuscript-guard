@@ -565,11 +565,14 @@ def _reads_as_submission(command: str, option: str) -> bool:
         return False
 
 
-def test_every_spelling_read_as_submission_is_one_the_guard_sees() -> None:
+def test_every_prefix_of_submission_that_is_read_is_one_the_guard_sees() -> None:
     """argparse reads any prefix of an option that names one option only, so `build --subm`
     was a submission build, and the submission guard, whose marker is the whole word, let it
     through in a project that fails. Taken from the parser, so that a command given the
-    option later is held to the same."""
+    option later is held to the same.
+
+    It is about the one option. `--stage submission` asks for the same standard and is not a
+    marker, on purpose for `check` and as a known gap for `build`."""
     from manuscript_guard.hooks import SUBMISSION_MARKERS
 
     word = "--submission"

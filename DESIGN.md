@@ -980,6 +980,30 @@ that the hook fires on every Bash call, so it has its own console script
 (`manuscript-guard-hook`) that imports nothing heavy until it knows it has work: 152 ms for
 the no-op path against roughly 400 ms through the full CLI.
 
+**The command is held to the project at the agent's folder, or to the one it names.**
+Recognising `cd example && manuscript-guard submit` is half of catching it. The check runs
+in a project, and the guard took the one at the folder the event names as the agent's, or
+above it. An agent started at the root of a repository, with the paper in `example/`, stands
+in a folder that has none: the command was recognised, held to nothing, and went through in
+a project that fails. Where no project is at that folder, the guard now reads the words of
+the command and holds it to each project that one of them is a path into: `example` after
+`cd` or as the argument of `submit`, `example/build/manuscript.docx` after `scp`. A file
+that is not written yet names the project its folder is in. Each project is checked once.
+The refusal names it, says that the command named it, and gives its folder, because from
+where the agent stands `check --stage submission` finds no project.
+
+This is not reading the command as a shell does. Nothing is expanded and nothing is run, and
+the guard does not know that `cd` changes folder: it asks of each word whether it is a path
+into a project, and a string in quotes is one word. That keeps out a project the command
+does not name (Basile, 2026-10-02). The root of a repository is where every other command is
+sent from, and a paper below it that fails must not stop a copy of an unrelated `.docx`.
+Following a leading `cd` was the other way, and would have left `manuscript-guard submit
+example` and `scp example/build/manuscript.docx host:` uncaught, which need no `cd`. What a
+command does not spell out is not found, and a word that happens to be the folder's name is
+taken for it; both are under Known gaps. A submission-shaped command that names no project
+costs about 10 ms more than it did, one look on disk for each word, and a command that is
+not submission-shaped costs nothing more.
+
 **A refusal names a command the guard lets through.** The refusal shows the first eight
 failures and says what to run for the rest. It used to say `manuscript-guard check
 --submission`, and `--submission` is one of the guard's markers wherever it stands in a
@@ -3601,10 +3625,12 @@ Closed since, and why each mattered:
   results fragments and the two ledgers under `literature/`. A file that a gate reads was
   never part of this, since a gate that raises is reported as `gate-errored`, which fails at
   every stage. Where no project is found at the folder the event names, or above it, both
-  hooks stay silent, as before. That folder is the only place looked in: a command sent from
-  above a project that enters it, `cd paper && manuscript-guard submit`, is not checked, in
-  a project that fails as in one that cannot be read. True on `main` before this, found in
-  the review of #131, and not decided. The refusal ends by naming
+  hooks stayed silent, as before: a command sent from above a project that enters it, `cd
+  paper && manuscript-guard submit`, was not checked, in a project that fails as in one that
+  cannot be read. True on `main` before this and found in the review of #131. The submission
+  guard has since been given the projects such a command names, and refuses for one that
+  cannot be read in the same words; the session start still says nothing from there. The
+  refusal ends by naming
   `manuscript-guard check --stage submission` and not `check --submission`, whose flag is
   one of the guard's own markers: an agent told to run that one is refused again. It says
   to run it on its own, because the command ends in the word `submission`, which the guard
@@ -3637,16 +3663,43 @@ Closed since, and why each mattered:
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
   mistake in it lets a submission through, which is what the guard exists to stop. An author
   typing in a terminal is not affected, since a hook sees only the agent's commands.
-- **The submission guard looks for the project where the agent is, not where the command
-  goes.** It matches the command, then runs the submission check in the folder the event
-  names as the agent's. From the folder above a project there is no `paper.yaml` to find, the
-  check cannot run, and the hook, which never breaks a session, says nothing. From there
-  `cd example && manuscript-guard submit` and `cd example && scp build/manuscript.docx
-  host:` both go through, in a project that fails. `submit` then refuses on its own account;
-  the copy is held to nothing. The whole-string matching in the hooks section recognises both
-  commands, and from that folder recognising them is all it does. Found in the review of #131
-  on 2026-10-02 and true before it. Not decided: following a leading `cd` means reading a
-  shell command, which the guard so far does not do.
+- **From a folder with no project, the submission guard finds only a project the command
+  spells out.** It used to find none. It matched the command, then ran the submission check
+  in the folder the event names as the agent's, and from the folder above a project there is
+  no `paper.yaml` to find: the check could not run and the hook said nothing. From there
+  `cd example && manuscript-guard submit`, `manuscript-guard submit example` and `scp
+  example/build/manuscript.docx host:` all went through, in a project that fails. `submit`
+  then refused on its own account; the copy was held to nothing. Found in the review of #131
+  on 2026-10-02 and true before it. Closed for a project the command names (see "The command
+  is held to the project at the agent's folder, or to the one it names"). What is left:
+  - *Not spelt out, so not found.* A folder held in a variable (`cd $PAPER && manuscript-guard
+    submit`), a glob that stands for the folder (`scp */build/*.docx host:`; one for the file,
+    `example/build/*.docx`, is found), a command inside a quoted string (`bash -c "cd example
+    && manuscript-guard submit"`, `python -c "..."`), and a folder whose name is only partly
+    in quotes (`my" "paper`). These go through as before.
+  - *Not looked at.* A folder on another machine written `//host/share/...`: asking whether
+    it exists waits for the host, and the hook fires on a shell command.
+  - *Inside a project, only that project.* Where the agent's folder is in a project the
+    guard checks that one, as it always did, and does not read the words: from a project
+    that passes, `cd ../second && manuscript-guard submit` is let through though `second`
+    fails. Not decided.
+  - *A word that is the folder's name is taken for the folder.* With the paper in `paper/`,
+    `git push origin paper  # submission` from the folder above is held to it, though the
+    word is a branch. A copy into the project, `cp ~/Downloads/edited.docx paper/`, is held
+    to it too, as it always was from inside (the word-roundtrip skill says to give the path
+    to `import`). On Windows a word such as `/s` is read as the root of drive `S:`, the way
+    Git Bash writes one, which matters only to a project kept at the root of a drive.
+  - *The refusal says to run the check on its own in the project's folder.* Written as one
+    line, `cd example && manuscript-guard check --stage submission` is let through. Where
+    the folder's name holds one of the guard's verbs, `paper-copy`, that line is
+    submission-shaped, now names the project, and is refused, where it used to go through
+    unchecked: enter the folder in a command of its own first.
+  - *The session start says nothing from the folder above*, in a project that fails or in
+    one that cannot be read.
+  - *Two limits of the markers met on the way, true in any folder and before this.* `git -C
+    example push` is not submission-shaped: `git push` is matched as two words side by
+    side. And a `.docx` more than 120 characters after its verb is not matched, which a
+    whole path can exceed.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until

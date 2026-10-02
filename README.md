@@ -371,6 +371,13 @@ because `cd example && manuscript-guard submit` and `FOO=1 manuscript-guard subm
 defeat prefix matching. That is not hypothetical: it is how a submission slipped past the
 guard in the project this one learned from.
 
+The command is held to the project at the folder the agent is in. Where that folder has
+none, as at the root of a repository with the paper in a folder below, it is held to each
+project the command names: `cd example && manuscript-guard submit`, `manuscript-guard submit
+example` and `scp example/build/manuscript.docx host:` are all checked against `example`. A
+project the command does not name is left alone, and a folder held in a variable is not
+followed.
+
 A hook never breaks a session. Anything unexpected exits silently, because a guard that
 crashes on a half-configured project gets removed, taking the guards that worked with it.
 A project file that cannot be parsed is not unexpected: `check` names it in a sentence, and

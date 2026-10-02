@@ -287,8 +287,8 @@ def _project_root(payload: dict) -> Path | None:
 
     The folder is the one the event names, and the search goes upwards from it only. A
     command sent from above a project that enters it, `cd paper && manuscript-guard submit`,
-    finds none and is not checked. That was so before this function, when the same error
-    ended in silence, and it is recorded under Known gaps.
+    finds none here. The submission guard then looks at what the command names
+    (`_named_projects`); the session start says nothing.
     """
     from manuscript_guard.contracts import ContractError, find_root
 
@@ -305,6 +305,88 @@ def _cannot_check(error: Exception) -> str:
     exits 2. A YAML error runs over several lines, so each is set in.
     """
     return "\n".join(f"  {line}" for line in str(error).splitlines())
+
+
+# The words of a shell command, for the one thing asked of each below: whether it is a path.
+# A string in quotes is one word, whatever it holds. Outside quotes a word ends at white space
+# and at what a shell or PowerShell puts between two commands or around a value, and a space
+# after a backslash is part of it. Nothing is run and nothing expanded: this is not how a
+# shell reads a command, only enough to find the paths written out in one.
+_WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=`"'])+)""")
+
+# `/c/Users/x`, which is how Git Bash writes `C:/Users/x`, and Claude Code runs its commands
+# in Git Bash on Windows.
+_GIT_BASH_DRIVE = re.compile(r"/([A-Za-z])(/.*)?")
+
+
+def _words(command: str) -> list[str]:
+    """Each word of a command once, in the order written."""
+    words = (
+        double or single or bare.replace("\\ ", " ")
+        for double, single, bare in _WORDS.findall(command)
+    )
+    return list(dict.fromkeys(word for word in words if word))
+
+
+def _spelt(word: str, cwd: Path) -> Path | None:
+    """Where a word points if it is a path, as far along it as there is anything on disk.
+
+    None for an option, and for a folder on another machine: asking Windows whether
+    `//host/share` exists waits for the host, and a hook that fires on a shell command
+    cannot wait.
+    """
+    if word.startswith("-"):
+        return None
+    if word.startswith("~"):
+        word = os.path.expanduser(word)
+    elif os.name == "nt" and (drive := _GIT_BASH_DRIVE.fullmatch(word)):
+        word = f"{drive[1]}:{drive[2] or '/'}"
+    path = Path(word)
+    if path.drive.startswith(("\\\\", "//")):
+        return None
+    # Downwards from the folder the command was sent from, or from the root the word names,
+    # and no further than what exists: a word that is no path costs one look.
+    here, parts = cwd, path.parts
+    if path.anchor:
+        path = cwd / path  # on Windows a root with no drive is the root of this drive
+        here, parts = Path(path.anchor), path.parts[1:]
+    for part in parts:
+        if not (here / part).exists():
+            break
+        here = here / part
+    return here
+
+
+def _named_projects(command: str, cwd: Path) -> list[Path]:
+    """The projects a command names: each one that a word of the command is a path into.
+
+    Asked only where no project is at the folder the command was sent from, which is where
+    an agent started at the root of a repository stands, with the paper in a folder below.
+    `cd paper && manuscript-guard submit`, `manuscript-guard submit paper` and
+    `scp paper/build/manuscript.docx host:` each name it; a file that is not written yet
+    names the project its folder is in.
+
+    A project the command does not name is not looked for. The same folder is where every
+    other command of the repository is sent from, and a paper somewhere below that fails
+    must not stop a copy of an unrelated `.docx`. So a path held in a variable, a glob for
+    the folder itself, or a command inside a quoted string names nothing (Known gaps).
+
+    The folder itself and the ones above it are left out: `_project_root` looked there.
+    """
+    from manuscript_guard.contracts import ContractError, find_root
+
+    cwd = cwd.resolve()
+    looked_in = {cwd, *cwd.parents}
+    roots: list[Path] = []
+    for word in _words(command):
+        try:
+            found = _spelt(word, cwd)
+            if found is None or found.resolve() in looked_in:
+                continue
+            roots.append(find_root(found if found.is_dir() else found.parent))
+        except (ContractError, OSError, ValueError):
+            continue  # a word that is no path, or a path with no project above it
+    return list(dict.fromkeys(roots))
 
 
 # --------------------------------------------------------------------------- handlers
@@ -416,7 +498,11 @@ def _analysis_note(path: Path) -> str | None:
 
 
 def guard_submission(payload: dict) -> int:
-    """Before anything that looks like a submission, hold the project to that standard."""
+    """Before anything that looks like a submission, hold the project to that standard.
+
+    The project is the one at the folder the command was sent from. Where there is none, it
+    is each project the command names.
+    """
     # Codex puts the text of a patch in the field a shell command arrives in. A patch that
     # writes the word `--submission` into a file is an edit, which the write guard reads.
     if payload.get("tool_name") == PATCH_TOOL:
@@ -426,35 +512,54 @@ def guard_submission(payload: dict) -> int:
         return 0
 
     root = _project_root(payload)
-    if root is None:  # no project at the folder the command was sent from, or above it
+    if root is not None:
+        refusals = [_submission_refusal(root)]
+    else:
+        # One named project that the tool itself fails on must not cost the others theirs.
+        cwd = Path(payload.get("cwd") or Path.cwd())
+        refusals = [
+            _or_nothing(lambda named: _submission_refusal(named, named=True), named)
+            for named in _named_projects(command, cwd)
+        ]
+    refusals = [refusal for refusal in refusals if refusal]
+    if not refusals:
         return 0
+    return _deny("PreToolUse", "\n\n".join(refusals))
 
+
+def _submission_refusal(root: Path, *, named: bool = False) -> str | None:
+    """Why a submission from this project is refused, or None where its check passes.
+
+    A project found because the command names it is said to be so, and the refusal says
+    where it is: from the folder the command was sent from, the check it names finds no
+    project.
+    """
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.contracts import ContractError
 
+    which = f"{root.name}, which this command names" if named else root.name
+    where = f" in {root}" if named else ""
     try:
-        report, project, _stage, _deferred = _run_gates(root, submission=True)
+        report, _project, _stage, _deferred = _run_gates(root, submission=True)
     except ContractError as error:
         # Not an unexpected failure: a file of the project's own cannot be parsed, so no gate
         # ran. Left to `dispatch` this ended in silence and the command went through, from a
         # project in which `check --submission` exits 2.
-        return _deny(
-            "PreToolUse",
-            f"manuscript-guard cannot check {root.name}, so nothing in it has been held to "
+        return (
+            f"manuscript-guard cannot check {which}, so nothing in it has been held to "
             f"the submission standard:\n\n{_cannot_check(error)}\n\n"
-            f"Fix that, then run `{FULL_CHECK}` on its own.",
+            f"Fix that, then run `{FULL_CHECK}` on its own{where}."
         )
     if report.ok:
-        return 0
+        return None
 
     lines = [f"  {f.code}: {f.message}" for f in report.failures[:8]]
     more = f"\n  (+{len(report.failures) - 8} more)" if len(report.failures) > 8 else ""
-    return _deny(
-        "PreToolUse",
-        f"{len(report.failures)} submission check(s) failing in {project.root.name}:\n"
+    return (
+        f"{len(report.failures)} submission check(s) failing in {which}:\n"
         + "\n".join(lines)
         + more
-        + f"\n\nRun `{FULL_CHECK}` on its own for the full list.",
+        + f"\n\nRun `{FULL_CHECK}` on its own{where} for the full list."
     )
 
 

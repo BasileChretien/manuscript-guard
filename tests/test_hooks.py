@@ -723,6 +723,316 @@ def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(
     assert run("session-start", {"cwd": str(project), "source": "startup"}, capsys) is None
 
 
+# ---------------------------------------------------------------- the project a command names
+#
+# An agent started at the root of a repository sends its commands from there, with the paper
+# in a folder below. The guard looked for the project at the folder the event names and above
+# it, found none, and said nothing: `cd paper && manuscript-guard submit` was recognised and
+# held to no check. Where no project is at that folder, the command is now held to each
+# project that one of its words is a path into.
+
+
+def sent(command: str, cwd: Path, capsys) -> dict | None:
+    """What the guard says of a shell command sent from `cwd`."""
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
+    return run("guard-submission", event, capsys)
+
+
+@pytest.fixture
+def above(project: Path) -> Path:
+    """The folder above a project that fails at submission, with a folder of notes beside it."""
+    _without_a_review(project)
+    (project.parent / "docs").mkdir()
+    return project.parent
+
+
+#: A backslash separates folders on Windows only; elsewhere it is part of a name.
+ON_WINDOWS = pytest.mark.skipif(os.name != "nt", reason="a path as Windows writes it")
+
+NAMING = [
+    # Entering the project first, as an agent at the root of a repository writes it.
+    "cd paper && manuscript-guard submit",
+    "cd paper && scp build/manuscript.docx host:",
+    "cd paper && manuscript-guard check --submission",
+    "cd paper&&manuscript-guard submit",
+    'cd "paper" && manuscript-guard submit',
+    "cd 'paper'; manuscript-guard submit",
+    "cd ./paper/manuscript && manuscript-guard submit",
+    "(cd paper; manuscript-guard submit)",
+    "pushd paper && manuscript-guard submit",
+    "Set-Location paper; manuscript-guard submit",
+    "PAPER=paper; cd $PAPER && manuscript-guard submit",
+    # Naming it as the argument every command takes.
+    "manuscript-guard submit paper",
+    "manuscript-guard submit paper/",
+    "manuscript-guard check paper --submission",
+    "manuscript-guard build --submission --offline paper",
+    # Naming a file in it.
+    "scp paper/build/manuscript.docx host:",
+    "scp paper/build/*.docx host:",
+    "cp paper/build/{manuscript,supplementary}.docx /tmp",
+    "zip sent.zip paper/build/manuscript.docx",
+    "zip paper/not-written-yet.zip letter.docx",
+    "rsync --files-from=paper/build/list.txt . host:submission",
+    "Copy-Item -Path paper/build/manuscript.docx -Destination sent",
+    pytest.param(
+        "Copy-Item " + str(Path("paper", "build", "manuscript.docx")) + " sent", marks=ON_WINDOWS
+    ),
+]
+
+
+@pytest.mark.parametrize("command", NAMING)
+def test_a_command_sent_from_above_is_held_to_the_project_it_names(
+    command: str, above: Path, capsys
+) -> None:
+    assert SUBMISSION_MARKERS.search(command), "submission-shaped, so the guard has work"
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny", command
+    assert "submission check(s) failing in paper" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command", ["cd paper && manuscript-guard submit", "scp paper/build/manuscript.docx host:"]
+)
+def test_a_named_project_that_passes_is_not_refused(command: str, project: Path, capsys) -> None:
+    assert sent(command, project.parent, capsys) is None
+
+
+NAMING_NONE = [
+    "cp notes.docx /backup",
+    "manuscript-guard submit",
+    # A folder that is there and holds no project.
+    "cp docs/notes.docx /backup",
+    "cd docs && zip sent.zip notes.docx",
+    # A folder that is not there.
+    "cp letter.docx papers/",
+    # Somewhere else than this machine.
+    "scp host:paper/build/manuscript.docx .",
+    "curl -O https://example.org/paper/manuscript.docx",
+    # Words in quotes are read as one word, so the text of a message names nothing.
+    'git commit -m "copy edits to paper before submission"',
+    # The folder the command was sent from, and the ones above it, were looked in already.
+    "cd . && cp notes.docx ..",
+]
+
+
+@pytest.mark.parametrize("command", NAMING_NONE)
+def test_a_project_the_command_does_not_name_is_not_what_it_is_held_to(
+    command: str, above: Path, capsys
+) -> None:
+    """A folder that has a paper somewhere below is where every other command of a repository
+    is sent from too. One that fails must not stop a copy of some other `.docx`."""
+    assert SUBMISSION_MARKERS.search(command), "submission-shaped, or it proves nothing"
+    assert sent(command, above, capsys) is None, command
+
+
+#: Known limits, held here so that DESIGN.md's account of them stays true. Each concerns the
+#: project that fails, and none spells its folder out as a word of its own.
+NOT_SPELT_OUT = [
+    "cd $PAPER && manuscript-guard submit",
+    "scp */build/*.docx host:",
+    'bash -c "cd paper && manuscript-guard submit"',
+    "python -c \"import shutil; shutil.copy('paper/build/manuscript.docx', '/tmp')\"",
+]
+
+
+@pytest.mark.parametrize("command", NOT_SPELT_OUT)
+def test_a_project_the_command_does_not_spell_out_is_not_found(
+    command: str, above: Path, capsys
+) -> None:
+    assert SUBMISSION_MARKERS.search(command)
+    assert sent(command, above, capsys) is None, command
+
+
+def test_a_word_that_is_the_folders_name_is_taken_for_the_folder(above: Path, capsys) -> None:
+    """A known false alarm, held here. The word is a branch, and the guard reads words."""
+    result = sent("git push origin paper  # submission", above, capsys)
+    assert decision(result) == "deny"
+    # A copy into the project is held to it as well, as it always was from inside.
+    assert decision(sent("cp docs/edited.docx paper/", above, capsys)) == "deny"
+    assert decision(sent("cp ../docs/edited.docx .", above / "paper", capsys)) == "deny"
+
+
+def test_a_folder_named_after_a_verb_has_to_be_entered_first(above: Path, capsys) -> None:
+    """A known limit, held here. The refusal says to run the check on its own in the folder.
+    Written as one line with a `cd`, the folder's name is on that line, and `copy` is one of
+    the guard's verbs: the line is submission-shaped, and it names the project."""
+    project = (above / "paper").rename(above / "paper-copy")
+    check = hooks.FULL_CHECK
+
+    assert sent(f"cd paper && {check}", above, capsys) is None, "an ordinary name: not matched"
+    assert decision(sent(f"cd paper-copy && {check}", above, capsys)) == "deny"
+    assert sent(check, project, capsys) is None
+
+
+def test_git_told_where_to_push_from_is_not_a_command_the_markers_know() -> None:
+    """A limit of the markers and not of the search: `git push` is two words side by side."""
+    assert SUBMISSION_MARKERS.search("git -C paper push  # submission") is None
+
+
+def test_the_refusal_says_which_project_and_where_to_run_the_check(above: Path, capsys) -> None:
+    """From the folder above, `manuscript-guard check --stage submission` finds no project.
+    The refusal says where the project is, and the command it names, run on its own there, is
+    let through."""
+    result = sent("cd paper && manuscript-guard submit", above, capsys)
+    project = (above / "paper").resolve()
+
+    assert "failing in paper, which this command names" in reason(result)
+    assert f"`{hooks.FULL_CHECK}` on its own in {project}" in reason(result)
+    (command,) = _named_commands(reason(result))
+    assert sent(command, project, capsys) is None
+    # And as an agent in the folder above writes it.
+    assert sent(f"cd paper && {command}", above, capsys) is None
+
+
+def test_every_project_a_command_names_is_checked(above: Path, capsys) -> None:
+    shutil.copytree(above / "paper", above / "second")
+
+    command = "zip sent.zip paper/build/manuscript.docx second/build/manuscript.docx"
+    result = sent(command, above, capsys)
+    assert decision(result) == "deny"
+    assert "failing in paper, which this command names" in reason(result)
+    assert "failing in second, which this command names" in reason(result)
+
+
+def test_a_passing_project_named_beside_a_failing_one_is_not_in_the_refusal(
+    project: Path, capsys
+) -> None:
+    failing = project.parent / "second"
+    shutil.copytree(project, failing)
+    _without_a_review(failing)
+
+    command = "zip sent.zip paper/build/manuscript.docx second/build/manuscript.docx"
+    result = sent(command, project.parent, capsys)
+    assert decision(result) == "deny"
+    assert "failing in second, which this command names" in reason(result)
+    assert "in paper" not in reason(result)
+
+
+def test_a_project_named_twice_is_checked_once(above: Path, monkeypatch, capsys) -> None:
+    from manuscript_guard import cli
+
+    checked: list[Path] = []
+    gates = cli._run_gates
+
+    def counted(start: Path, **options):
+        checked.append(start)
+        return gates(start, **options)
+
+    monkeypatch.setattr(cli, "_run_gates", counted)
+    command = "cd paper && zip sent.zip ./paper/build/manuscript.docx paper/build/x.docx"
+    assert decision(sent(command, above, capsys)) == "deny"
+    assert checked == [(above / "paper").resolve()]
+
+
+def test_a_named_project_that_cannot_be_read_is_refused_in_its_own_words(
+    above: Path, capsys
+) -> None:
+    (above / "paper" / "results" / "hand.json").write_bytes(b"")
+    result = sent("cd paper && manuscript-guard submit", above, capsys)
+    assert decision(result) == "deny"
+    assert "cannot check paper, which this command names" in reason(result)
+    assert "hand.json: cannot parse" in reason(result)
+    assert f"`{hooks.FULL_CHECK}` on its own in {(above / 'paper').resolve()}" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "written",
+    ['"my paper"', "'my paper'", "my" + chr(92) + " paper", '"my paper/build/manuscript.docx"'],
+    ids=["double-quoted", "single-quoted", "space-escaped", "a-file-in-it"],
+)
+def test_a_folder_with_a_space_in_its_name_is_read_whole(
+    written: str, above: Path, capsys
+) -> None:
+    (above / "paper").rename(above / "my paper")
+    (above / "my").mkdir()  # what half the name would point at
+    result = sent(f"scp {written} host:submission", above, capsys)
+    assert decision(result) == "deny", written
+    assert "failing in my paper" in reason(result)
+
+
+def test_a_project_named_by_its_whole_path_is_found_from_anywhere(
+    above: Path, tmp_path_factory, capsys
+) -> None:
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    document = (above / "paper" / "build" / "manuscript.docx").as_posix()
+    # Not `scp <document> host:`. The markers look for `.docx` within 120 characters of the
+    # verb, and a whole path is often longer than that: a limit of theirs, in any folder.
+    result = sent(f"manuscript-guard submit --document {document}", elsewhere, capsys)
+    assert decision(result) == "deny"
+    assert "failing in paper" in reason(result)
+    # A sibling, reached by going up.
+    beside = sent("cd ../paper && manuscript-guard submit", above / "docs", capsys)
+    assert decision(beside) == "deny"
+
+
+def test_a_path_under_the_home_folder_is_read_as_the_shell_reads_it(
+    above: Path, tmp_path_factory, monkeypatch, capsys
+) -> None:
+    for variable in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(variable, str(above))
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    assert decision(sent("scp ~/paper/build/manuscript.docx host:", elsewhere, capsys)) == "deny"
+
+
+@ON_WINDOWS
+def test_a_drive_written_as_git_bash_writes_it_is_read(
+    above: Path, tmp_path_factory, capsys
+) -> None:
+    """Claude Code runs its commands in Git Bash on Windows, where `C:/x` is `/c/x`."""
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    project = (above / "paper").resolve()
+    written = f"/{project.drive[0].lower()}{project.as_posix()[2:]}"
+    assert written.startswith(f"/{project.drive[0].lower()}/")
+    result = sent(f"cd {written} && manuscript-guard submit", elsewhere, capsys)
+    assert decision(result) == "deny"
+
+
+def test_a_word_that_cannot_be_a_path_does_not_cost_the_others(above: Path, capsys) -> None:
+    for word in ("x" * 5000, "a/" * 3000 + "b", "nul" + chr(0) + "byte", "a*b?c:d", "::::"):
+        command = f"manuscript-guard submit {word} paper {word}"
+        assert decision(sent(command, above, capsys)) == "deny", word[:20]
+
+
+def test_inside_a_project_only_that_project_is_held(project: Path, capsys) -> None:
+    """A known limit, held here. Where the folder the command is sent from is in a project,
+    that project is the one checked, as it always was, and a second one the command names is
+    not looked for."""
+    failing = project.parent / "second"
+    shutil.copytree(project, failing)
+    _without_a_review(failing)
+
+    assert sent("cd ../second && manuscript-guard submit", project, capsys) is None
+    assert sent("scp ../second/build/manuscript.docx host:", project / "manuscript", capsys) is None
+
+
+def test_a_command_from_above_is_held_as_a_tool_sends_it(above: Path) -> None:
+    """Started as a process, on an event as Claude Code and as Codex write one."""
+    command = "cd paper && scp build/manuscript.docx host:"
+    claude = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(above)}
+    codex = codex_edit(above, "") | {"tool_name": "Bash", "tool_input": {"command": command}}
+    for event in (claude, codex):
+        result = run_installed("guard-submission", as_sent(event), {})
+        assert decision(result) == "deny"
+        assert "failing in paper, which this command names" in reason(result)
+
+
+def test_a_search_for_named_projects_is_made_only_for_a_submission(
+    above: Path, monkeypatch, capsys
+) -> None:
+    """The guard fires on every shell command. One that is not submission-shaped is let
+    through before any folder is looked at."""
+
+    looked: list[str] = []
+    monkeypatch.setattr(hooks, "_named_projects", lambda *_: looked.append("named") or [])
+    monkeypatch.setattr(hooks, "_project_root", lambda *_: looked.append("at the folder"))
+    assert sent("cd paper && ls build", above, capsys) is None
+    assert looked == []
+    # And for one that is, the folder first, then the words.
+    assert sent("cd paper && manuscript-guard submit", above, capsys) is None
+    assert looked == ["at the folder", "named"]
+
+
 # ---------------------------------------------------------------- a CLI older than its plugin
 
 UPGRADE_PIP = "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard"

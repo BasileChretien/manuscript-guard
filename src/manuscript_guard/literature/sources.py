@@ -39,6 +39,15 @@ _EQUIVALENT = {
     " ": " ",
     "ﬁ": "fi",
     "ﬂ": "fl",
+    # What the pdftotext of Xpdf spelt out itself while it wrote Latin-1. Asked for UTF-8 it
+    # hands them over as they are, and so does poppler for a ligature a font names through
+    # its ToUnicode map. Without these a typed "effect" is not found in a source that says it.
+    "\N{LATIN SMALL LIGATURE FF}": "ff",
+    "\N{LATIN SMALL LIGATURE FFI}": "ffi",
+    "\N{LATIN SMALL LIGATURE FFL}": "ffl",
+    "\N{HYPHEN}": "-",
+    "\N{NON-BREAKING HYPHEN}": "-",
+    "\N{HORIZONTAL ELLIPSIS}": "...",
 }
 
 
@@ -85,19 +94,9 @@ def _read_pdf(path: Path) -> str:
     Neither is a hard dependency. A toolkit that refuses to install without a PDF stack is
     a toolkit people do not install.
     """
-    if shutil.which("pdftotext"):
-        try:
-            finished = subprocess.run(
-                ["pdftotext", "-layout", str(path), "-"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if finished.returncode == 0 and finished.stdout.strip():
-                return finished.stdout
-        except (OSError, subprocess.SubprocessError):
-            pass
+    text = _pdftotext(path)
+    if text is not None:
+        return text
 
     try:
         import pypdf
@@ -112,6 +111,39 @@ def _read_pdf(path: Path) -> str:
         return "\n".join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:  # noqa: BLE001 - pypdf raises a wide variety
         raise UnreadableSource(f"{path.name}: pypdf could not read it: {exc}") from exc
+
+
+def _pdftotext(path: Path) -> str | None:
+    """What `pdftotext` reads from the PDF, or None when it gave nothing to use.
+
+    The encoding is stated at both ends. Left unstated, poppler writes UTF-8, the pdftotext
+    of Xpdf writes Latin-1, and Python decodes with the locale, which on Windows is cp1252.
+    A closing curly quote is E2 80 9D in UTF-8 and 9D is unassigned in cp1252, so the
+    decode failed in the thread `subprocess` reads with, `stdout` came back as None, and
+    `.strip()` on it raised AttributeError past the `except` here. The literature chain
+    was reported as `gate-errored` and pypdf was never asked.
+
+    None when pdftotext is absent, fails, times out or gives nothing, so that the caller
+    goes on to pypdf. Output that is not UTF-8 although it was asked for is kept, with each
+    byte that cannot be read replaced: a quote the damage does not touch still verifies.
+    """
+    if not shutil.which("pdftotext"):
+        return None
+    try:
+        finished = subprocess.run(
+            ["pdftotext", "-layout", "-enc", "UTF-8", str(path), "-"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if finished.returncode != 0 or not (finished.stdout or "").strip():
+        return None
+    return finished.stdout
 
 
 def contains(haystack: str, needle: str) -> bool:

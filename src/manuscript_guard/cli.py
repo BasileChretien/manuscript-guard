@@ -112,7 +112,7 @@ def _run_gates(
         ("G3", lambda: check_figures(project, results)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
-        ("G5", lambda: check_literature_chain(project, literature)),
+        ("G7", lambda: check_literature_chain(project, literature)),
         ("G4", lambda: check_journal(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project)),

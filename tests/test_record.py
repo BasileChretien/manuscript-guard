@@ -333,3 +333,43 @@ def test_the_command_files_a_named_reading(unreviewed: Path, capsys) -> None:
     assert (unreviewed / "review" / "round-1" / "statistics.dr-tanaka.yaml").exists()
     assert main([*argv, "--reading", "Dr Tanaka"]) == 2
     assert "already exists" in capsys.readouterr().err
+
+
+def test_a_readers_name_is_recorded_without_the_space_around_it(unreviewed: Path) -> None:
+    written = write_review(
+        loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="  Dr Tanaka \n"
+    )
+    assert read_structured(written.path)["reader"] == "Dr Tanaka"
+
+
+def test_a_reading_filed_under_the_panels_spelling_of_the_same_reader_is_the_same_file(
+    unreviewed: Path,
+) -> None:
+    """`Dr. Tanaka` and `Dr Tanaka` are one reader and one file, so the second is a second
+    reading by the same reader, refused, and the message says which file holds the first."""
+    write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="Dr Tanaka")
+    with pytest.raises(RecordError, match="statistics.dr-tanaka.yaml already exists"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", reading="Dr. Tanaka")
+
+
+def test_a_readers_name_too_long_for_a_file_name_is_refused_in_words(unreviewed: Path) -> None:
+    with pytest.raises(RecordError, match="--reading"):
+        write_review(
+            loaded(unreviewed), "statistics", verdict="pass", remit="x", reading="x" * 300
+        )
+
+
+@pytest.mark.parametrize(
+    "others",
+    [[], ["--record-figure", "forest", "--verdict", "pass", "--by", "me"], ["--files"]],
+    ids=["alone", "with a figure review", "with --files"],
+)
+def test_naming_a_reader_without_recording_a_review_is_refused(
+    unreviewed: Path, capsys, others: list[str]
+) -> None:
+    """Ignored in silence, it looked as though a reading had been filed."""
+    from manuscript_guard.cli import main
+
+    assert main(["review", str(unreviewed), "--reading", "openai/model-a", *others]) == 2
+    assert "--record" in capsys.readouterr().err
+    assert not (unreviewed / "review").exists()

@@ -893,7 +893,17 @@ records. The author chose this over two alternatives. Counting a remit as read o
 anybody had read it passes a round two of three models answered. Filing nothing unless
 every call succeeded throws away replies already paid for. A panel that names no readers
 needs one reading by anybody, which is how every round written before this is read; the
-example's two rounds report exactly as they did.
+example's two rounds give the same findings as they did, which is none. What is new for
+them is a count of readings in the report and the list of who read what in `manuscript-guard
+review`.
+
+**A reader is known by the name that names its file.** A reader's name becomes part of a
+file name with its letters and digits kept, in any script, and every run of anything else
+as one hyphen. That form is also how the gate recognises a reader, so the panel's
+`Dr. Tanaka` and a reading filed as `Dr Tanaka` are one reader. Matched letter for letter,
+the gate asked for a file that existed and `review --record` refused to write it. A name
+with no letter or digit names no file, and is refused where it is typed and reported where
+a panel holds one.
 
 **Any reader can raise a finding, and nobody's reading answers another's.** Every reading
 is judged as a record always was: stale when a file it read changes, counted for coverage,
@@ -908,20 +918,37 @@ decided anything on a verdict, and still does not: a record cannot be re-stamped
 verdict could be cleared only by a further round, and what an author can act on is a
 finding.
 
-**A reading is what its file name says.** A named reading that says another reader, another
+**A reading is what its place says.** A named reading that says another reader, another
 reviewer or another round inside is `reading-misfiled` and answers for nobody, so one
-reader's record copied under another's name does not satisfy the panel. Two records
-claiming one reader are `duplicate-reading`. A file beside a record that names no reader,
-such as `biostatistician.old.yaml`, was nothing to the gate before and decides nothing now:
-it is reported as `reading-unnamed`, a warning at every stage, so a copy kept in the round
-does not start failing a submission.
+reader's record copied under another's name does not satisfy the panel. The reviewer's
+plain record is held to the same as soon as it names a reader, since it then answers for
+that reader: the review of the first version copied another remit's reading over
+`desk-editor.yaml` and satisfied the panel with it. Two records claiming one reader are
+`duplicate-reading`.
+
+**A file beside a record that is not a reading decides nothing, and is said.** Before
+readings had names nothing opened `biostatistician.old.yaml`, or `biostatistician.files.yaml`
+holding the UTF-16 a shell redirect writes, or a folder. None of them may start failing a
+submission, and none may take the gate down: the first version opened every such file and
+raised on the ones it could not decode. A file that names no reader is reported as
+`reading-unnamed`, a warning at every stage, and a folder is not looked at.
+
+**A reading that cannot be read is refused, not dropped.** The difference from the note
+above is whether the file is a reading: it is filed under the name of a reader the panel
+asks for, or it says `reader:` on a line of its own. A reading is edited by hand, to answer
+its findings, and `resolution: Fixed: it now says reporting` is not YAML. Counted as a
+note, the file drew a warning and its other major finding stopped binding, so a submission
+passed with it unanswered. It is `reading-unreadable` now, a failure at every stage like
+any malformed record, and the round is unfinished until it parses.
 
 **What a model's reading may keep.** A record may carry `provenance`: the provider, the
 model as asked for and as the provider named it, the host, the SHA-256 of the request body,
 the provider's response identifier, how the reply ended, the token counts and the version
-of this tool. The schema refuses any other field there, so no key, header or prompt text
-can be filed in one. `rejection_tests` records what the reader decided would have to be
-true to reject, and what the manuscript showed. The gate reads neither.
+of this tool. The schema refuses any other field there, so nothing has a place to put a
+key, a header or the prompt's text. What goes into the fields the provider words (its name
+for the model, its response identifier, its reason for stopping) is for whatever writes the
+record to clean. `rejection_tests` records what the reader decided would have to be true
+to reject, and what the manuscript showed. The gate reads neither.
 
 The worked example carries a real two-round panel. Round one found that the paper had no
 case definition, no mention of duplicate records, and no contingency table for a result that
@@ -3474,17 +3501,24 @@ Closed since, and why each mattered:
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
-- **A plain record is not checked against where it is filed.** A named reading must say the
-  reviewer, the round and the reader its file name says. `<reviewer>.yaml` is read as it
-  always was: its `reviewer` and `round` fields are not compared with its place, so a
-  record copied from round one into round two counts there if its digests still match.
-  Left alone so that no existing record starts failing.
-- **A reading that loses its `reader` line stops counting.** It is reported as
-  `reading-unnamed`, a warning that never becomes a failure, and its findings are no longer
-  read. Where the panel names that reader the round fails as `reading-missing`. Where it
-  does not, the effect is that of deleting the file, which no gate can prevent.
-- **Two readers whose names differ only in punctuation are one file.** `model.a` and
-  `model-a` both file as `model-a`, and the second is refused by `review --record`.
+- **A plain record that names no reader is not checked against where it is filed.** A
+  record that names a reader must say the reviewer and the round its place says.
+  `<reviewer>.yaml` with no `reader` is read as it always was: its `reviewer` and `round`
+  fields are not compared with its place, so a record copied from round one into round two
+  counts there if its digests still match. Left alone so that no existing record starts
+  failing.
+- **A reading that loses its `reader` line stops counting.** A file that still parses and
+  no longer names a reader is reported as `reading-unnamed`, a warning that never becomes
+  a failure, and its findings are no longer read. Where the panel names that reader the
+  round fails as `reading-missing`. Where it does not, the effect is that of deleting the
+  file, which no gate can prevent. A reading that stops parsing is a different case and is
+  refused.
+- **A note that cannot be parsed and says `reader:` on a line of its own is taken for a
+  reading.** That line is how a broken reading is told from a note, so a note written that
+  way fails as `reading-unreadable` until it is moved out of the round or made to parse.
+- **Two readers whose names differ only in punctuation or case are one reader.** `model.a`
+  and `model-a` both file as `model-a`: the second is refused by `review --record`, and a
+  panel that lists both asks for one reading.
 - **A reading by somebody the panel did not name counts.** Its staleness and its major
   findings bind like any other's. The panel says who must read, not who may.
 - **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is

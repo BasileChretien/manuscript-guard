@@ -20,6 +20,8 @@ from datetime import date
 from pathlib import Path
 
 VERDICTS = ("pass", "minor-revision", "major-revision", "reject")
+#: A reader's name is part of a file name, and file systems stop at 255 bytes.
+MAX_READER_NAME = 80
 FIGURE_VERDICTS = ("pass", "concerns")
 
 
@@ -139,6 +141,11 @@ def write_review(
             raise RecordError(
                 "--reading names who made this reading and becomes part of the file's name, "
                 "so it needs a letter or a digit: openai/<model>, or a person's name"
+            )
+        if len(reading_slug(reading)) > MAX_READER_NAME:
+            raise RecordError(
+                f"--reading becomes part of the file's name, and this one is over "
+                f"{MAX_READER_NAME} characters; name the reader more shortly"
             )
 
     today = today or date.today()

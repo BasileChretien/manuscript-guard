@@ -178,6 +178,14 @@ def _round_lines(summary) -> list[str]:
 
 def cmd_review(args: argparse.Namespace) -> int:
     """Show where the review stands, and write the record a reviewer has to file."""
+    if args.reading and not args.record:
+        # Ignored in silence, it looked as though a reading had been filed.
+        print(
+            "manuscript-guard: --reading names who made a reading and goes with --record: "
+            "`review --record <reviewer> --reading <reader> --verdict <verdict>`",
+            file=sys.stderr,
+        )
+        return 2
     project, _ = load_project(args.path)
     digest = manuscript_digest(project)
     if args.digest:

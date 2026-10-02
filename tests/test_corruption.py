@@ -7793,8 +7793,67 @@ def _edit_the_manuscript_afterwards(root: Path) -> None:
     path.write_text(path.read_text(encoding="utf-8") + "\n\nAdded after.\n", encoding="utf-8")
 
 
+def _answer_a_finding_in_words_yaml_cannot_read(root: Path) -> None:
+    """The step the gate asks for, done with a slip: a resolution with a colon in it. The
+    reading's other major finding was never answered, and must not stop binding because the
+    file stopped parsing. Found by the review of #128."""
+    path = _reading(root, "desk-editor", _READERS[1])
+    text = path.read_text(encoding="utf-8").replace(
+        "findings: []\n",
+        "findings:\n"
+        "- id: f1\n  severity: major\n  finding: The abstract claims a risk.\n"
+        "  resolution: Fixed: it says reporting now.\n"
+        "- id: f2\n  severity: major\n  finding: No denominator is given.\n",
+    )
+    assert "resolution: Fixed: it" in text
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(yaml.YAMLError):
+        yaml.safe_load(text)
+
+
+def _leave_merge_markers_in_a_reading(root: Path) -> None:
+    path = _reading(root, "desk-editor", _READERS[1])
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace("verdict:", "<<<<<<< HEAD\nverdict: pass\n=======\nverdict:", 1)
+        + ">>>>>>> theirs\n",
+        encoding="utf-8",
+    )
+
+
+def _pass_another_remit_off_under_the_plain_name(root: Path) -> None:
+    """The model read the other remit only. Its record, copied over the reviewer's own
+    plain record, says the other reviewer inside. Found by the review of #128."""
+    _reading(root, "desk-editor", _READERS[1]).unlink()
+    shutil.copy(
+        _reading(root, "clinical-reader", _READERS[1]), _round_two(root) / "desk-editor.yaml"
+    )
+
+
+def _pass_another_round_off_under_the_plain_name(root: Path) -> None:
+    moved = _reading(root, "desk-editor", _READERS[1])
+    _edit(moved, lambda d: d.update(round=1))
+    moved.replace(_round_two(root) / "desk-editor.yaml")
+
+
 _LOST_READINGS = {
     "a reading is deleted": (_lose, "reading-missing"),
+    "a resolution is typed in words YAML cannot read": (
+        _answer_a_finding_in_words_yaml_cannot_read,
+        "reading-unreadable",
+    ),
+    "merge markers are left in a reading": (
+        _leave_merge_markers_in_a_reading,
+        "reading-unreadable",
+    ),
+    "another remit's reading is copied under the plain name": (
+        _pass_another_remit_off_under_the_plain_name,
+        "reading-misfiled",
+    ),
+    "another round's reading is moved to the plain name": (
+        _pass_another_round_off_under_the_plain_name,
+        "reading-misfiled",
+    ),
     "a reading is emptied": (_empty, "reading-missing"),
     "one reader's record is copied as the other's": (
         _pass_one_reader_off_as_the_other,
@@ -7841,3 +7900,35 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok and not report.findings, report.render(project)
     assert report.counts["review_rounds_complete"] == 2
+
+
+def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
+    """The panel names nobody, so nothing is `reading-missing`. The reading carried an
+    unanswered major finding; a warning that it "names no reader" let the submission pass."""
+    from manuscript_guard.record import write_review
+
+    path = write_review(
+        load_project(project)[0],
+        "desk-editor",
+        verdict="major-revision",
+        round_number=2,
+        reading=_READERS[0],
+    ).path
+    text = path.read_text(encoding="utf-8").replace(
+        "findings: []\n",
+        "findings:\n"
+        "- id: f1\n  severity: major\n  finding: The abstract claims a risk.\n"
+        "- id: f2\n  severity: major\n  finding: No denominator is given.\n",
+    )
+    path.write_text(text, encoding="utf-8")
+    assert "open-major-finding" in _review_failures(project)
+
+    path.write_text(
+        text.replace(
+            "  finding: The abstract claims a risk.\n",
+            "  finding: The abstract claims a risk.\n"
+            "  resolution: Fixed: it says reporting now.\n",
+        ),
+        encoding="utf-8",
+    )
+    assert "reading-unreadable" in _review_failures(project)

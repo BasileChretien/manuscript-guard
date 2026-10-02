@@ -146,9 +146,15 @@ def round_dir(project: Project, round_number: int) -> Path:
 def reading_slug(reader: str) -> str:
     """A reader's name as the part of a file name: `openai/gpt-x.1` is `openai-gpt-x-1`.
 
-    Empty for a name with no letter or digit in it, which names no file.
+    Letters and digits of any script are kept, lower-cased, and every run of anything else
+    is one hyphen. Empty for a name with no letter or digit in it, which names no file.
+
+    This is also what makes two spellings one reader. The panel's `Dr. Tanaka` and a reading
+    filed as `Dr Tanaka` are the same file, so they are the same reader: matched letter for
+    letter, the gate asked for a file that existed and `review --record` refused to write it.
     """
-    return re.sub("[^a-z0-9]+", "-", reader.lower()).strip("-")
+    kept = "".join(char if char.isalnum() else "-" for char in reader.lower())
+    return re.sub("-+", "-", kept).strip("-")
 
 
 def reading_path(
@@ -166,9 +172,14 @@ def reading_path(
 
 
 def reading_files(directory: Path, reviewer: str) -> list[Path]:
-    """Every record of one remit in a round: the plain one, then the named ones by name."""
+    """Every record of one remit in a round: the plain one, then the named ones by name.
+
+    Files only. A folder named like a reading is nothing to the gate, as it was before
+    readings had names.
+    """
     plain = directory / f"{reviewer}.yaml"
-    return [*([plain] if plain.exists() else []), *sorted(directory.glob(f"{reviewer}.*.yaml"))]
+    named = sorted(path for path in directory.glob(f"{reviewer}.*.yaml") if path.is_file())
+    return [*([plain] if plain.exists() else []), *named]
 
 
 def panels(project: Project) -> list[tuple[int, Path]]:
@@ -206,19 +217,26 @@ class _Filed:
 
 
 def _misfiled(path: Path, reviewer: str, number: int, document: dict) -> str | None:
-    """Why a named reading is not what its file name says it is, or None when it is.
+    """Why a record that names a reader is not what its place says it is, or None when it is.
 
     The file name is how a reader the panel named is looked for. A record under one reader's
     name that says another's inside is one reading standing in for two, and the same goes
     for a record copied from another remit or another round.
+
+    The reviewer's plain record is held to the last two as soon as it names a reader, since
+    it then answers for that reader. Checked for named files only, another remit's reading
+    copied over `desk-editor.yaml` satisfied the panel while the same copy under the
+    reader's own file name was refused. A plain record that names no reader is read as it
+    always was.
     """
-    named = path.name[len(reviewer) + 1 : -len(".yaml")]
     reader = str(document["reader"])
-    if reading_slug(reader) != named:
-        return (
-            f"says its reader is {reader}, whose reading is filed as "
-            f"{reviewer}.{reading_slug(reader)}.yaml"
-        )
+    slug = reading_slug(reader)
+    if not slug:
+        return f"names a reader, {reader!r}, with no letter or digit to name a file by"
+    if path.name != f"{reviewer}.yaml":
+        named = path.name[len(reviewer) + 1 : -len(".yaml")]
+        if slug != named:
+            return f"says its reader is {reader}, whose reading is filed as {reviewer}.{slug}.yaml"
     if document["reviewer"] != reviewer:
         return f"says it is {document['reviewer']}'s remit"
     if document["round"] != number:
@@ -226,34 +244,81 @@ def _misfiled(path: Path, reviewer: str, number: int, document: dict) -> str | N
     return None
 
 
+#: A line of a file that could not be parsed, saying it is somebody's reading.
+_READER_LINE = re.compile("(?m)^reader[ \t]*:")
+
+
+def _is_a_reading(path: Path, reviewer: str, expected: frozenset[str]) -> bool:
+    """Whether a file that cannot be parsed is a reading rather than a note or a copy.
+
+    It is one if it is filed under the name of a reader the panel asks for, or if it says
+    `reader:` on a line of its own. A reading is edited by hand, to answer its findings, and
+    `resolution: Fixed: it now says reporting` is not YAML: the file stopped parsing, and
+    counted as a note, the reading's other findings stopped binding with it.
+    """
+    if path.name[len(reviewer) + 1 : -len(".yaml")] in expected:
+        return True
+    try:
+        text = path.read_bytes()[:65536].decode("utf-8", errors="replace")
+    except OSError:
+        return False
+    return _READER_LINE.search(text) is not None
+
+
 def _filed(
-    directory: Path, reviewer: str, number: int, severity: str
+    directory: Path,
+    reviewer: str,
+    number: int,
+    severity: str,
+    expected: frozenset[str] = frozenset(),
 ) -> tuple[list[_Filed], Report, bool]:
     """The readings of one remit, what is wrong with those that cannot be read, and whether
-    any was refused."""
+    any was refused. `expected` holds the file-name form of the readers the panel names."""
     report = Report()
     found: list[_Filed] = []
     refused = False
     for path in reading_files(directory, reviewer):
         plain = path.name == f"{reviewer}.yaml"
-        try:
+        unreadable = False
+        if plain:
+            # As it always was: a reviewer's own record that cannot be parsed stops the gate.
             document = read_structured(path)
-        except ContractError:
-            if plain:
-                raise
-            document = None
+        else:
+            # Before readings had names nothing opened a file such as
+            # `biostatistician.files.yaml`, so whatever it holds must not take the gate
+            # down: UTF-16 from a shell redirect, a note in another code page, a date that
+            # does not exist. PyYAML raises a plain ValueError for the last.
+            try:
+                document = read_structured(path)
+            except (ContractError, OSError, ValueError):
+                document, unreadable = None, True
+        if unreadable and _is_a_reading(path, reviewer, expected):
+            refused = True
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="reading-unreadable",
+                    message=f"round {number}: {path.name} cannot be read as a review record",
+                    path=path,
+                    hint="it is a reading, and while it cannot be parsed nothing in it is "
+                    "counted, its unanswered findings included. A value that holds a colon "
+                    "and a space needs quotes: resolution: 'Fixed: it now says reporting'",
+                )
+            )
+            continue
         if not plain and not (isinstance(document, dict) and document.get("reader")):
             # Until readings had names, a file such as `biostatistician.old.yaml` beside a
             # record was nothing to the gate, and a copy kept there must not start failing
             # a submission. It is said, because a reading that lost its `reader` line would
             # otherwise drop out of the round in silence, findings and all.
+            what = "cannot be read and names no reader" if unreadable else "names no reader"
             report = report.with_findings(
                 Finding(
                     gate=GATE,
                     code="reading-unnamed",
                     severity=WARN,
-                    message=f"round {number}: {path.name} names no reader, so it is not "
-                    f"counted as a reading of {reviewer}",
+                    message=f"round {number}: {path.name} {what}, so it is not counted as "
+                    f"a reading of {reviewer}",
                     path=path,
                     hint="a reading beside a reviewer's record says who made it in "
                     "`reader:`. If this is a copy or a note, keep it outside the round",
@@ -265,7 +330,7 @@ def _filed(
         if not schema_report.ok or not isinstance(document, dict):
             refused = True
             continue
-        if not plain:
+        if document.get("reader"):
             why = _misfiled(path, reviewer, number, document)
             if why is not None:
                 refused = True
@@ -461,7 +526,14 @@ def _check_round(
 
     for reviewer in panel["reviewers"]:
         name = reviewer["id"]
-        filed, problems, refused = _filed(directory, name, number, severity)
+        expected = [str(reader) for reader in reviewer.get("readers") or ()]
+        filed, problems, refused = _filed(
+            directory,
+            name,
+            number,
+            severity,
+            frozenset(reading_slug(reader) for reader in expected) - {""},
+        )
         report = report.merge(problems)
         unfinished = unfinished or refused
 
@@ -469,18 +541,23 @@ def _check_round(
         # of them: with every model reading every remit, one provider failing must not leave
         # a round that looks complete. A panel that names none needs one reading, by
         # anybody, which is how every round was read before readings had names.
+        #
+        # A reader is known by the form of its name that names its file, so the panel's
+        # `Dr. Tanaka` is the reader of `desk-editor.dr-tanaka.yaml` however that record
+        # punctuates it.
         by_reader: dict[str, Path] = {}
         for reading in filed:
             if reading.reader is None:
                 continue
-            if reading.reader in by_reader:
+            known = reading_slug(reading.reader)
+            if known in by_reader:
                 report = report.with_findings(
                     Finding(
                         gate=GATE,
                         code="duplicate-reading",
                         severity=severity,
                         message=f"round {number}: {name} has two readings by "
-                        f"{reading.reader} ({by_reader[reading.reader].name} and "
+                        f"{reading.reader} ({by_reader[known].name} and "
                         f"{reading.path.name})",
                         path=reading.path,
                         hint="one reader reads a remit once in a round; a second reading "
@@ -488,24 +565,36 @@ def _check_round(
                     )
                 )
             else:
-                by_reader[reading.reader] = reading.path
+                by_reader[known] = reading.path
 
-        expected = [str(reader) for reader in reviewer.get("readers") or ()]
         for reader in expected:
-            if reader not in by_reader:
-                unfinished = True
-                report = report.with_findings(
-                    Finding(
-                        gate=GATE,
-                        code="reading-missing",
-                        severity=severity,
-                        message=f"round {number}: {name} has no reading by {reader}",
-                        path=reading_path(project, number, name, reader),
-                        context=reviewer["remit"][:140],
-                        hint="the panel names this reader for the remit. File its reading, "
-                        "or take the reader out of the panel if it is not going to report",
-                    )
+            known = reading_slug(reader)
+            if known in by_reader:
+                continue
+            unfinished = True
+            if known:
+                where = reading_path(project, number, name, reader)
+                hint = (
+                    "the panel names this reader for the remit. File its reading, or take "
+                    "the reader out of the panel if it is not going to report"
                 )
+            else:
+                where = panel_path(project, number)
+                hint = (
+                    "a reader's name needs a letter or a digit: it names the file the "
+                    "reading is filed in. Give this reader a name in the panel"
+                )
+            report = report.with_findings(
+                Finding(
+                    gate=GATE,
+                    code="reading-missing",
+                    severity=severity,
+                    message=f"round {number}: {name} has no reading by {reader}",
+                    path=where,
+                    context=reviewer["remit"][:140],
+                    hint=hint,
+                )
+            )
         if not expected and not filed and not refused:
             unfinished = True
             report = report.with_findings(

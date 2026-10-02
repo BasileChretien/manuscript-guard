@@ -559,6 +559,33 @@ def test_a_local_model_is_said_to_stay_on_this_machine(project: Path, capsys, no
     assert "localhost:11434" in out and "this machine" in out
 
 
+@pytest.mark.parametrize("model", ["gpt-oss:120b-cloud", "gemma4:cloud", "Qwen3-Coder:480B-Cloud"])
+def test_an_ollama_cloud_model_is_not_said_to_stay_on_this_machine(
+    project: Path, capsys, no_network, model: str
+) -> None:
+    """Ollama's server on this machine also serves its cloud models, and passes their
+    requests on to Ollama's servers. The address is localhost all the same, and the
+    statement said "this machine; nothing leaves it" of a manuscript that was about to."""
+    configure(project, f"ollama/{model}", "ollama/model-l")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "nothing leaves it" not in out
+    assert "Ollama's servers" in out and model in out
+    where = next(line for line in out.splitlines() if "localhost:11434" in line)
+    assert "leaves this machine" in where
+
+
+def test_a_model_on_this_machine_is_said_to_stay_there_only_if_its_server_keeps_it(
+    project: Path, capsys, no_network
+) -> None:
+    """Whether a server on this machine passes a request on is not something the address
+    shows; the statement says what it can know, and no more."""
+    configure(project, "ollama/model-l")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 0
+    where = next(line for line in capsys.readouterr().out.splitlines() if "localhost:11434" in line)
+    assert "this machine" in where and "unless" in where
+
+
 def test_a_run_nobody_agreed_to_sends_nothing(
     mixed: Path, capsys, monkeypatch, no_network
 ) -> None:

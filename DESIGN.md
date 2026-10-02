@@ -1156,8 +1156,12 @@ trains on it; that is in each provider's terms, and they differ and change. What
 is say what would leave the machine before anything does. `review --run --dry-run` builds
 every request exactly as a run would, prints which files go to which host and how many
 calls that is, writes the bodies under `build/` with a readable copy of their text, and
-opens no connection. A model run on this machine through Ollama is the option that sends
-nothing anywhere, and the statement says so.
+opens no connection. A model that Ollama runs on this machine is the option that sends
+nothing anywhere. The statement used to say "this machine; nothing leaves it" of any
+address on this machine, and Ollama's server there also serves Ollama's cloud models, whose
+requests it sends to Ollama's servers. A model named as Ollama names those, `-cloud` or
+`:cloud`, is now said to leave the machine, and any other model on this machine is said to
+stay there unless the server there passes it on, which the address cannot show.
 
 **What a reviewer is sent is a fixed list**: the paper's title, keywords, journal and
 guideline from `paper.yaml`; the journal profile and the reporting checklist where the

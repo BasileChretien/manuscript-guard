@@ -103,8 +103,11 @@ manuscript-guard review --run             # the same statement, then asks, then 
 
 Each provider's API key is read from its environment variable (`--providers` names them)
 and is never written anywhere. A provider that is not built in is added under
-`review.providers` with its `base_url`. A model run on the same machine through Ollama
-needs no key and sends nothing anywhere.
+`review.providers` with its `base_url`. A model that Ollama runs on the same machine
+needs no key and sends nothing anywhere. An Ollama cloud model (a name ending in `-cloud`
+or `:cloud`) is not one: Ollama's server passes it on to Ollama's own servers, though the
+address is `localhost`. The statement before a run says so for those names; it cannot see
+any other server on this machine that forwards what it receives.
 
 **The manuscript is unpublished, and sending it to a provider is the author's decision,
 not yours.** If you are an agent, run the dry run, show the author its statement of which

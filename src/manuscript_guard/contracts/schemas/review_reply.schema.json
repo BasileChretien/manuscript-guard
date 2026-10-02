@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/review-reply/1",
+  "title": "manuscript-guard review reply",
+  "description": "What a model is asked to answer with when it reads a manuscript within one reviewer's remit. A reply is untrusted input: one that does not fit this schema is refused, never repaired. It holds only what the reader can know. Who read, when, and which version of the manuscript are filled in by the tool, and a finding's resolution is the author's to write, so a reply carrying any of those is refused. Every piece of prose must hold at least one character that is not white space.",
+  "type": "object",
+  "required": ["verdict", "summary", "rejection_tests", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "enum": ["pass", "minor-revision", "major-revision", "reject"],
+      "description": "The reviewer's overall judgement within the remit, in the vocabulary a journal uses."
+    },
+    "summary": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "What the paper claims and whether the evidence supports it, as far as the remit reaches."
+    },
+    "rejection_tests": {
+      "type": "array",
+      "minItems": 1,
+      "description": "What would have to be true, within the remit, for this reviewer to recommend rejection, each checked against the manuscript. The failure of a model reviewer is agreeableness; deciding what would sink the paper before judging it is the defence.",
+      "items": {
+        "type": "object",
+        "required": ["test", "holds", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "test": { "type": "string", "pattern": "\\S" },
+          "holds": {
+            "type": "boolean",
+            "description": "Whether the condition is true of this manuscript."
+          },
+          "evidence": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Where in the manuscript the answer was found, or what was looked for and is absent."
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "An empty list is a reviewer who found nothing, which is a claim in its own right.",
+      "items": {
+        "type": "object",
+        "required": ["severity", "finding"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "enum": ["major", "minor", "comment"] },
+          "where": {
+            "type": ["string", "null"],
+            "description": "The section or sentence. It may be left out, and null is read as left out."
+          },
+          "finding": { "type": "string", "pattern": "\\S" }
+        }
+      }
+    }
+  }
+}

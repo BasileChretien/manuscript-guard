@@ -443,3 +443,10 @@ def test_every_way_of_saying_submission_gives_the_same_verdict(project: Path) ->
     assert not by_flag.ok
     assert not by_stage.ok
     assert not by_declaration.ok
+
+
+def test_a_reading_the_panel_asked_for_binds_where_a_missing_review_does() -> None:
+    """G11 only warns before a submission, so this decides nothing today. It is declared so
+    that the day G11's severity stops depending on the flag, a missing reading is deferred
+    with the missing review it is a kind of, and not failed from the first day."""
+    assert binds_at("reading-missing") == binds_at("review-missing") == SUBMISSION

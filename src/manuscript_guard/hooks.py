@@ -309,40 +309,62 @@ def _cannot_check(error: Exception) -> str:
 
 # The words of a shell command, for the one thing asked of each below: whether it is a path.
 # A string in quotes is one word, whatever it holds. Outside quotes a word ends at white space
-# and at what a shell or PowerShell puts between two commands or around a value, and a space
-# after a backslash is part of it. Nothing is run and nothing expanded: this is not how a
-# shell reads a command, only enough to find the paths written out in one.
-_WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=`"'])+)""")
+# and at what a shell or PowerShell puts between two commands, around a value or between the
+# items of a list. Nothing is run and nothing expanded: this is not how a shell reads a
+# command, only enough to find the paths written out in one.
+_WORDS = re.compile(r""""([^"]*)"|'([^']*)'|((?:\\ |[^\s;&|()<>=,{}`"'])+)""")
 
 # `/c/Users/x`, which is how Git Bash writes `C:/Users/x`, and Claude Code runs its commands
-# in Git Bash on Windows.
-_GIT_BASH_DRIVE = re.compile(r"/([A-Za-z])(/.*)?")
+# in Git Bash on Windows. Not `/s` with nothing after it, which is a switch: read as a drive
+# it sent the hook to look at `S:`, and a drive may be a share that takes its time.
+_GIT_BASH_DRIVE = re.compile(r"/([A-Za-z])(/.*)")
+
+# No path a system opens is longer, and no folder is kept deeper. A word past either is not
+# walked: each step is a look on disk at a longer path, and `..` exists at every step, so
+# 5000 of them in one word took 34 s.
+_LONGEST_PATH = 4096
+_DEEPEST_PATH = 100
 
 
 def _words(command: str) -> list[str]:
-    """Each word of a command once, in the order written."""
-    words = (
-        double or single or bare.replace("\\ ", " ")
-        for double, single, bare in _WORDS.findall(command)
-    )
-    return list(dict.fromkeys(word for word in words if word))
+    """Each thing in a command that may be a path, once, in the order written.
+
+    A word is read as it stands, and where it was written in a way that hides a path, as
+    that path too:
+
+    - `my\\ paper` is one name to a shell. To PowerShell a backslash ends a folder's name,
+      and `.\\paper\\ D:\\sent` is two paths. Both readings are given;
+    - in quotes, `=` is not a separator, so `"--files-from=paper/list.txt"` is also read
+      from after its last `=`;
+    - curl writes a file to upload after an `@`, `file=@paper/build/manuscript.docx`, so a
+      word is also read from after its last `@`.
+    """
+    words: list[str] = []
+    for double, single, bare in _WORDS.findall(command):
+        quoted = double or single
+        if quoted:
+            words += [quoted, quoted.rpartition("=")[2]]
+        else:
+            words += [bare.replace("\\ ", " "), *bare.split("\\ ")]
+    read = (reading for word in words for reading in (word, word.rpartition("@")[2]))
+    return list(dict.fromkeys(reading for reading in read if reading))
 
 
 def _spelt(word: str, cwd: Path) -> Path | None:
     """Where a word points if it is a path, as far along it as there is anything on disk.
 
-    None for an option, and for a folder on another machine: asking Windows whether
-    `//host/share` exists waits for the host, and a hook that fires on a shell command
-    cannot wait.
+    None for an option, for a word too long or too deep to be a path, and for a folder on
+    another machine: asking Windows whether `//host/share` exists waits for the host, and a
+    hook that fires on a shell command cannot wait.
     """
-    if word.startswith("-"):
+    if word.startswith("-") or len(word) > _LONGEST_PATH:
         return None
     if word.startswith("~"):
         word = os.path.expanduser(word)
     elif os.name == "nt" and (drive := _GIT_BASH_DRIVE.fullmatch(word)):
-        word = f"{drive[1]}:{drive[2] or '/'}"
+        word = f"{drive[1]}:{drive[2]}"
     path = Path(word)
-    if path.drive.startswith(("\\\\", "//")):
+    if path.drive.startswith(("\\\\", "//")) or len(path.parts) > _DEEPEST_PATH:
         return None
     # Downwards from the folder the command was sent from, or from the root the word names,
     # and no further than what exists: a word that is no path costs one look.
@@ -516,9 +538,9 @@ def guard_submission(payload: dict) -> int:
         refusals = [_submission_refusal(root)]
     else:
         # One named project that the tool itself fails on must not cost the others theirs.
-        cwd = Path(payload.get("cwd") or Path.cwd())
+        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
         refusals = [
-            _or_nothing(lambda named: _submission_refusal(named, named=True), named)
+            _or_nothing(lambda named: _submission_refusal(named, named_from=cwd), named)
             for named in _named_projects(command, cwd)
         ]
     refusals = [refusal for refusal in refusals if refusal]
@@ -527,18 +549,32 @@ def guard_submission(payload: dict) -> int:
     return _deny("PreToolUse", "\n\n".join(refusals))
 
 
-def _submission_refusal(root: Path, *, named: bool = False) -> str | None:
+def _check_from(cwd: Path, root: Path) -> str:
+    """The submission check as a command that finds the project at `root` from `cwd`.
+
+    The folder is written last. The guard's markers want a verb before the word
+    `submission`, and `copy` is one: after the word, a folder called `paper-copy` does not
+    make the command submission-shaped, and before it, as in `cd paper-copy && ...`, it does.
+    """
+    try:
+        folder = root.relative_to(cwd)
+    except ValueError:  # not below the folder the command was sent from
+        folder = root
+    return f'{FULL_CHECK} "{folder.as_posix()}"'
+
+
+def _submission_refusal(root: Path, *, named_from: Path | None = None) -> str | None:
     """Why a submission from this project is refused, or None where its check passes.
 
-    A project found because the command names it is said to be so, and the refusal says
-    where it is: from the folder the command was sent from, the check it names finds no
-    project.
+    A project found because the command names it is said to be so, and the check the refusal
+    names carries the project's folder: from `named_from`, the folder the command was sent
+    from, the check alone finds no project.
     """
     from manuscript_guard.cli import _run_gates
     from manuscript_guard.contracts import ContractError
 
-    which = f"{root.name}, which this command names" if named else root.name
-    where = f" in {root}" if named else ""
+    which = root.name if named_from is None else f"{root.name}, which this command names"
+    check = FULL_CHECK if named_from is None else _check_from(named_from, root)
     try:
         report, _project, _stage, _deferred = _run_gates(root, submission=True)
     except ContractError as error:
@@ -548,7 +584,7 @@ def _submission_refusal(root: Path, *, named: bool = False) -> str | None:
         return (
             f"manuscript-guard cannot check {which}, so nothing in it has been held to "
             f"the submission standard:\n\n{_cannot_check(error)}\n\n"
-            f"Fix that, then run `{FULL_CHECK}` on its own{where}."
+            f"Fix that, then run `{check}` on its own."
         )
     if report.ok:
         return None
@@ -559,7 +595,7 @@ def _submission_refusal(root: Path, *, named: bool = False) -> str | None:
         f"{len(report.failures)} submission check(s) failing in {which}:\n"
         + "\n".join(lines)
         + more
-        + f"\n\nRun `{FULL_CHECK}` on its own{where} for the full list."
+        + f"\n\nRun `{check}` on its own for the full list."
     )
 
 

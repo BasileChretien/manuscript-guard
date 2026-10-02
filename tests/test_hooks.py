@@ -1140,3 +1140,31 @@ def test_no_patch_breaks_a_hook(handler: str, command: object, project: Path, ca
     payload = codex_edit(project, "") | {"tool_input": {"command": command}}
     assert dispatch(handler, payload) == 0
     capsys.readouterr()
+
+
+@READINGS
+def test_a_patch_naming_accented_files_is_read_as_codex_sends_it(
+    project: Path, environment: dict[str, str]
+) -> None:
+    """Codex writes the event as UTF-8 too, and the names are in the text of the patch.
+
+    `serde_json::to_string` escapes nothing outside ASCII, and its bytes go to the hook as they
+    are (codex-rs/hooks/src/events and engine/command_runner.rs, read 2026-10-02).
+    """
+    written = patch_of(
+        "*** Add File: results/données.json",
+        "+{}",
+        "*** Update File: manuscript/méthodes.md",
+        "@@",
+        "+It was 3.84.",
+    )
+    refused = run_installed("guard-write", as_sent(codex_edit(project, written)), environment)
+    assert decision(refused) == "deny"
+    assert "results/données.json is generated" in reason(refused)
+    assert "méthodes" not in reason(refused), "only the generated file is named"
+
+    (project / "manuscript" / "méthodes.md").write_text("It was 3.84.\n", encoding="utf-8")
+    edited = patch_of("*** Update File: manuscript/méthodes.md", "@@", "+It was 3.84.")
+    event = as_sent(codex_edit(project, edited, "PostToolUse"))
+    noted = run_installed("after-edit", event, environment)
+    assert "manuscript/méthodes.md has 1 number(s) bound to nothing" in context(noted)

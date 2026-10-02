@@ -116,7 +116,8 @@ def test_every_hook_the_plugin_registers_has_a_handler():
 
 
 # The tools through which Claude Code runs a shell command. Each sends it in
-# `tool_input.command`, which is where the submission guard reads it.
+# `tool_input.command`, which is where the submission guard reads it. Codex runs every shell
+# under the first name.
 SHELL_TOOLS = {"Bash", "PowerShell", "Monitor"}
 
 
@@ -257,10 +258,12 @@ def hooks_file_problems(config: dict) -> list[str]:
                 if not 0 < hook.get("timeout", 60) <= LONGEST_SECONDS:
                     problems.append(f"{handler}: timeout {hook.get('timeout')}")
                 # Claude Code edits with `Write` and `Edit`. Codex edits with `apply_patch`
-                # and matches it under either of those names. Both run a shell as `Bash`.
+                # and matches it under either of those names. Both run a shell as `Bash`, and
+                # Claude Code as `PowerShell` and `Monitor` too, names Codex never sends and
+                # reads as two more exact names that match nothing.
                 if handler in (["guard-write"], ["after-edit"]) and not {"Edit", "Write"} <= names:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
-                if handler == ["guard-submission"] and names != {"Bash"}:
+                if handler == ["guard-submission"] and names != SHELL_TOOLS:
                     problems.append(f"{handler}: matcher {group.get('matcher')!r}")
     return problems
 
@@ -281,6 +284,8 @@ def test_the_hooks_file_holds_only_what_both_tools_read():
     ("handler", "change", "said"),
     [
         ("guard-submission", {"matcher": "bash"}, "matcher 'bash'"),
+        ("guard-submission", {"matcher": "Bash"}, "matcher 'Bash'"),
+        ("guard-submission", {"matcher": "Bash|PowerShell"}, "matcher 'Bash|PowerShell'"),
         ("guard-submission", {"matcher": "Shell"}, "matcher 'Shell'"),
         ("guard-submission", {"matcher": "Write"}, "matcher 'Write'"),
         ("guard-write", {"matcher": "Write"}, "matcher 'Write'"),

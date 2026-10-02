@@ -34,13 +34,17 @@ request against an interface that will change.
 The package and the plugin are one release with one number, written in four places, all of
 which `tests/test_version.py` checks: `version` in `pyproject.toml`, `__version__` in
 `src/manuscript_guard/__init__.py`, and `version` in `plugin/.claude-plugin/plugin.json` and
-`.claude-plugin/marketplace.json`. A pull request leaves all four exactly as `main` has them.
-The maintainer raises the number on `main` after merges, in a pull request that does nothing
-else, so there is no number to ask for. It used to be the pull request's to write, and two
-open pull requests that took the same number were merged by git without a conflict, the
-second under a number already released. The number still has to move, on `main`: a change
-released under the old one is invisible to `pip install --upgrade`, which decides on it, and
-a plugin that moved alone would leave an installed tool behind the skills that call it.
+`.claude-plugin/marketplace.json`. A pull request leaves the version line in each of the four
+exactly as `main` has it; the rest of those files is yours to change like any other. The
+maintainer raises the number on `main` after merges that change `src/` or `plugin/`. That
+bump is the one pull request that changes those four lines, and it changes nothing else, so
+there is no number to ask for. A branch that already carries a bump puts `main`'s lines back.
+It used to be the pull request's to write: two open branches then carried the same number,
+which git merges without a conflict, the second under a number already released, and `main`
+passed the number of a pull request that was waiting for its review. The number still has to
+move, on `main`: a change released under the old one is invisible to `pip install --upgrade`,
+which decides on it, and a plugin that moved alone would leave an installed tool behind the
+skills that call it.
 
 ## Running it
 

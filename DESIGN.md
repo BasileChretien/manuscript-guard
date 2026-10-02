@@ -3784,18 +3784,20 @@ Closed since, and why each mattered:
   desktop app on its own may not put on `PATH`.
 - **The package and the plugin are one release with one number.** `pyproject.toml`,
   `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
-  version. The policy (Basile, 2026-10-02) is that a pull request leaves all four as `main`
-  has them, and the coordinating session raises the number on `main` after merges, in a pull
-  request that does nothing else. From 2026-09-30 until then every pull request that changed
-  `src/` or `plugin/` took the next shared number and bumped all four, with the numbers
-  assigned so that two open pull requests never took one. With a dozen open at once two took
-  one all the same, which git merges without a conflict, and one that waited for its review
-  fell below `main`. `tests/test_version.py` fails when the four differ. It cannot tell that
-  code changed on `main` and the number was not raised after it, which is the case the policy
-  is for: `pip install --upgrade` finds nothing newer for a fix under the old number, and the
-  stale-tool notice below cannot fire either, because `plugin.json` did not move. Between a
-  merge and the bump that follows it, `main` is in that state. The README's
-  `--force-reinstall` is the fallback. Before this
+  version. The policy (Basile, 2026-10-02) is that a pull request leaves the version line in
+  each of the four as `main` has it, and the coordinating session raises the number on `main`
+  after merges that change `src/` or `plugin/`. Its bump is the one pull request that changes
+  those lines, and it changes nothing else. From 2026-09-30 until then every pull request
+  that changed `src/` or `plugin/` took the next shared number and bumped all four, with the
+  numbers assigned so that two open pull requests never took one. With a dozen open at once
+  two branches carried the same number all the same, which git merges without a conflict and
+  which was caught before either merged, and `main` passed the number of a pull request that
+  was waiting for its review. `tests/test_version.py` fails when the four differ. It cannot
+  tell that code changed on `main` and the number was not raised after it, which is the case
+  the policy is for: `pip install --upgrade` finds nothing newer for a fix under the old
+  number, and the stale-tool notice below cannot fire either, because `plugin.json` did not
+  move. Between a merge and the bump that follows it, `main` is in that state. The README's
+  `--force-reinstall` is the fallback. Before the package and the plugin had one number,
   the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
   nothing newer and left an older copy in place, and `--version` could not say which release
   anyone had. Verified 2026-09-30 with pip 26.2: an upgrade takes a newer commit when its

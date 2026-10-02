@@ -37,15 +37,20 @@ The repository is its own plugin marketplace (`.claude-plugin/marketplace.json`,
 `./plugin`). The package and the plugin share one version number, written in four places:
 `version` in `pyproject.toml`, `__version__` in `src/manuscript_guard/__init__.py`, and
 `version` in both `plugin/.claude-plugin/plugin.json` and the marketplace entry. **A pull
-request does not touch the version: leave those four files exactly as `main` has them.** The
-coordinating session raises the number on `main` after merges, in a pull request that does
-nothing else. Do not ask it for a number and do not pick one. If a merge of `main` conflicts
-in those files, take `main`'s side in all four. Until 2026-10-02 every pull request that
-changed `src/` or `plugin/` bumped the four places itself: with a dozen open at once two took
-the same number, which git merges without a conflict, and one that waited for its review
-fell below `main`. The number still has to move, on `main`: without a bump `claude plugin
-update` reports the old plugin as current, and `pip install --upgrade` finds nothing newer for
-the package. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
+request does not touch the version: leave the version line in each of the four files exactly
+as `main` has it.** Only that line is meant. The rest of each file is a pull request's to
+change like any other, the dependencies in `pyproject.toml` for one. The coordinating session
+raises the number on `main` after merges that change `src/` or `plugin/`. Its bump is the one
+pull request that changes those four lines, and it changes nothing else. Do not ask it for a
+number and do not pick one. A branch that already carries a bump puts `main`'s version lines
+back, whether a merge of `main` conflicts on them or goes through cleanly; where it
+conflicts, take `main`'s side on all four lines. Until 2026-10-02 every pull request that
+changed `src/` or `plugin/` bumped the four places itself. With a dozen open at once two
+branches carried the same number, which git merges without a conflict and which was caught
+before either merged, and `main` passed the number of a pull request that was waiting for its
+review. The number still has to move, on `main`: without a bump `claude plugin update`
+reports the old plugin as current, and `pip install --upgrade` finds nothing newer for the
+package. `tests/test_version.py` holds the four equal and `tests/test_plugin.py` the two
 manifests. When the installed tool is older than the plugin, its session-start hook
 (`manuscript-guard-hook`) warns once and blocks nothing.
 

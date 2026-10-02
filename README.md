@@ -230,7 +230,7 @@ manuscript-guard --version
 manuscript-guard stages
 ```
 
-The package and the plugin carry one version number, and every change to either raises it, so
+The package and the plugin carry one version number, raised after every change to either, so
 `manuscript-guard --version` names the release you have. To take a newer one:
 
 ```bash

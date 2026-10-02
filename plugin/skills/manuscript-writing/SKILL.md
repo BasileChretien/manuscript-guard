@@ -89,12 +89,17 @@ as the manuscript writes them:
 ```yaml
 language:
   known_abbreviations:
-    - CI
-    - SAS
+    - "CI"
+    - "SAS"
+    - "NO"
 ```
 
-List one only when the journal's instructions allow it or it is a name. The list is the
-author's decision, so ask before adding to it.
+Quote each entry: unquoted, YAML reads `NO`, `ON` and `YES` as booleans, and `check` then
+fails on the setting. List one only when the journal's instructions allow it or it is a
+name. The list is the author's decision, so ask before adding to it.
+
+A chemical formula (`CO2`, `NaHCO3`), a unit (`MHz`) and a registration number
+(`NCT01234567`) are not reported and need no entry.
 
 ## Checking your work
 

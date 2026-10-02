@@ -117,7 +117,7 @@
       "properties": {
         "known_abbreviations": {
           "type": "array",
-          "description": "Short forms this paper uses without defining them, because the journal lets them stand or its readers take them for words or names: CI, PCR, MedDRA. Written as the manuscript writes them. G14 reports any other abbreviation it finds used and not defined.",
+          "description": "Short forms this paper uses without defining them, because the journal lets them stand or its readers take them for words or names: CI, PCR, MedDRA. Written as the manuscript writes them, and in quotes: unquoted, YAML reads NO, ON and YES as booleans. G14 reports any other abbreviation it finds used and not defined.",
           "items": { "type": "string", "minLength": 2 }
         }
       }

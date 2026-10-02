@@ -818,11 +818,27 @@ answers in any field. The gate asks only the second kind:
 it, or the short form with the long form in brackets, where the letters of the short form
 can be found in order in the long one and the first of them begins a word. That is Schwartz
 and Hearst's rule (Pac Symp Biocomput 2003;8:451-62), written out here in thirty lines
-because a gate that runs in CI should not take a dependency for them. The short form in a
-definition may be anything with two capitals, or one that is not the capital of a word
-(`mL`), or a capital and a digit. A word met with no definition is taken for an abbreviation
-only when two capitals stand side by side, which is what keeps `McNemar`, `DeLong`, `NaCl`
-and `PhD` out of the report.
+because a gate that runs in CI should not take a dependency for them. The short form may
+also stand in square brackets, "hazard ratio [HR]", which is how a journal writes a
+definition inside a parenthesis. The short form in a definition may be anything with two
+capitals, or one that is not the capital of a word (`mL`), or a capital and a digit. A
+plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
+defines `mAb`.
+
+**An abbreviation nobody defined is read by its capitals.** A word met with no definition
+is taken for one only when two capitals stand side by side, which keeps `McNemar`,
+`DeLong` and `PhD` out of the report. Three things with two capitals together are not
+abbreviations and are left alone. A numeral, `II` to `XXXIX`. A registration or accession
+number, letters and then five digits or more: `NCT01234567`. And a chemical formula: a
+word that reads from end to end as element symbols with small counts, and holds a
+lower-case letter or a digit, so `CO2`, `HCl` and `NaHCO3` are formulas while `CO`, `CI`
+and `HCV`, which spell elements too, are still abbreviations. A count above twelve is no
+formula's, which keeps `IC50` in the report.
+
+**A hyphenated word is one abbreviation where it reads as one.** `SARS-CoV-2` is read
+whole when it is defined or known. Where nothing in it is, it is reported whole, under the
+name its definition would give it: `LC-MS` and not `LC` and `MS`, `KEYNOTE-189` and not
+`KEYNOTE`. An ordinary word joined on is no part of it: `ROR-based` is `ROR`.
 
 **Three texts are read apart, because each is read apart.** The abstract is indexed and read
 without the paper, so it defines what it uses. The main text does not inherit from the
@@ -836,11 +852,17 @@ link targets go with `mask`, and inline code, equations, image captions, front m
 headings go after them: a heading in capitals is not an abbreviation. A reference list is
 not read at all. In a contributions, acknowledgements, funding or competing-interests
 section, capitals are people and institutions, so nothing there is reported as undefined,
-and a funder named once with its acronym is not reported as unused.
+and a funder named once with its acronym is not reported as unused. Those sections are
+found by a word anywhere in their title, since each publisher words the heading its own
+way: "CRediT authorship contribution statement", "Role of the funding source".
 
 **What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
-general English reads as a word or a name: `DNA`, `UK`, `DOI`. It is short on purpose. A long
-list would decide for every field at once what its readers know. To it are added the names
+general English reads as a word or a name, `DNA`, `UK`, `DOI`, and a few unit symbols with
+two capitals together, `MHz`, `GPa`. It is short on purpose. A long list would decide for
+every field at once what its readers know, and an entry with a second meaning hides that
+meaning: `AD`, `BC` and `PM` were in the first version as eras and times of day, and the
+first review took them out, because in clinical prose they are Alzheimer's disease, breast
+cancer and particulate matter. To it are added the names
 G2 already reads as names (`terms.yaml` and the project's `terms:`), the reporting
 guidelines the toolkit has a recipe for, the ones the project declares, and whatever the
 project lists under `language: known_abbreviations:` in `paper.yaml`. A listed abbreviation
@@ -850,7 +872,8 @@ that the manuscript defines anyway is still held to that definition.
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
 undefined abbreviation fail a submission build. Run on the realistic manuscript kept in
 `tests/test_language.py` it gives 22 findings, of which two are names: a trial and a
-statistics package. A check that is wrong that often may advise; it may not stop a build.
+statistics package. The first review's probes in chemistry and physics added formulas
+and unit symbols to what it got wrong, and the rules for those are a reading too. A check that is wrong that often may advise; it may not stop a build.
 
 The worked example found its own slip the first time the gate ran: the Introduction writes
 "(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
@@ -5629,19 +5652,42 @@ Closed since, and why each mattered:
     definition is still counted; the long form quoted in a message can be wrong, and two
     definitions of one thing can be reported as two meanings.
   - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
-    and `Hb` are missed, where `eGFR` is caught. `Hb` cannot be defined either, being the
-    capital of a word, so "haemoglobin (Hb)" is not tracked.
+    and `Hb` are missed, where `iPSC` and `siRNA` are caught. `Hb` and `Tregs` cannot be
+    defined either, each being the capital of a word, so "haemoglobin (Hb)" is not tracked.
+  - Every entry of `data/terms.yaml` is exempt, in any case: it lists `egfr`, `mtor`,
+    `ecog`, `nyha`, `meddra` and some 170 more as names, so `eGFR` used and never
+    defined is not reported.
   - `II` to `XXXIX` are read as numerals wherever they stand, so `IV` for intravenous and
     `VI` are never reported.
   - A name in capitals is reported like an abbreviation: a trial (`KEYNOTE-189`), a package
-    (`SAS`), an agency. The project lists those it means to leave.
+    (`SAS`), an agency. The project lists those it means to leave. So are the initials of
+    a reviewer named in the Methods, "(JB, CD)", and a US state after a manufacturer's
+    town, "Cary, NC". An author's initials are not exempted from `authors.yaml`, because
+    initials are two or three capitals and collide with abbreviations: an author named Ada
+    Example would hide every `AE`.
+  - The formula rule has two edges. A formula written in capitals alone is still reported,
+    `KOH`, `HCN`, `NO`, as is organic shorthand, `EtOAc`, `MeOH`. And a name spelt in
+    element symbols with a small count is taken for a formula and not reported: `PI3K`,
+    `PD1`, `VO2`.
+  - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
+  - A short form in square brackets is read as a definition wherever the words before it
+    spell it, a link's label `[ROR][ref]` included.
+  - Only a section titled "Abstract" is read apart. A `Summary`, a `Key points` box and a
+    `Figure legends` section are main text, so a definition repeated in the Introduction
+    after one of them, or in a legend that has to stand alone, is reported as
+    `abbreviation-redefined`.
   - A word typed in capitals for emphasis is reported as an undefined abbreviation.
   - Tables and figures are not read, since both are generated from results. An abbreviation
     defined in the text for a table's sake is reported as unused, and one used only in a
     caption is not seen. The hint on `abbreviation-unused` says so.
   - Title-page text comes from `paper.yaml` and `authors.yaml`, which are not read.
-  - The sections where nothing is reported as undefined are found by their English titles:
-    contributions, acknowledgements, funding, competing interests, disclosures.
+  - The sections where nothing is reported as undefined are found by English words in
+    their titles: contribution, contributor, acknowledgement, funding, financial support or
+    disclosure, competing interest, conflict of interest, declaration of interest,
+    disclosure, author statement. A section of the paper proper whose title holds one,
+    "Funding of primary care", is quiet too.
+  - There is no cap on the number of findings: a manuscript that defines one abbreviation a
+    thousand times gets a thousand warnings. Making them is linear in the manuscript.
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`.
 

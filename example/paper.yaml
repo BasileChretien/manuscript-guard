@@ -32,4 +32,4 @@ terms:
 # used and not defined is reported as a warning.
 language:
   known_abbreviations:
-    - CI
+    - "CI"

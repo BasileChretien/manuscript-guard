@@ -6,8 +6,12 @@ schema: manuscript-guard/abbreviations/1
 # field's habit: "CI" after a percentage is left alone by some journals and expanded by
 # others, and "PCR" is a word to a molecular biologist and not to a health economist. A long
 # list here would decide that for every field at once, and be wrong for most of them. So
-# this holds only what is read as a word or a name in general English, and a project adds
-# its own under `language: known_abbreviations:` in paper.yaml.
+# this holds only what is read as a word or a name in general English, or as a unit, and a
+# project adds its own under `language: known_abbreviations:` in paper.yaml.
+#
+# Each entry has one meaning in a manuscript. `AD`, `BC`, `AM` and `PM` were here as eras
+# and times of day and were taken out: in clinical prose they are Alzheimer's disease,
+# breast cancer and particulate matter far more often, and an entry here hides those.
 #
 # Not listed, because they are read from elsewhere: the names G2 already treats as names
 # (`data/terms.yaml` and the project's `terms:`), the reporting guidelines the toolkit has
@@ -21,13 +25,7 @@ known:
   - EU
   - UN
 
-  # Time
-  - AM
-  - PM
-  - BC
-  - AD
-  - BCE
-  - CE
+  # Time zones
   - UTC
   - GMT
 
@@ -40,7 +38,18 @@ known:
   - DOI
   - URL
   - PDF
-  - ID
 
   # Ordinary English
   - OK
+
+  # Unit symbols with two capitals together: an SI prefix on hertz, pascal, becquerel or
+  # watt hour. `MW` is not here: it is megawatt and molecular weight.
+  - MHz
+  - GHz
+  - THz
+  - MPa
+  - GPa
+  - MBq
+  - GBq
+  - MWh
+  - GWh

@@ -31,7 +31,7 @@ definitions and is otherwise held to its own.
 from __future__ import annotations
 
 import re
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -63,35 +63,52 @@ _WORD = re.compile(r"[^\W_]+(?:-[^\W_]+)*")
 # One level of brackets, not running on for ever: an unclosed "(" must not pair with a ")"
 # three paragraphs later.
 _PAREN = re.compile(r"\(([^()]{1,300})\)")
-_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+# The form a journal uses inside a parenthesis: "(hazard ratio [HR], 0.75)". A link's text
+# and a citation are not read as one: `mask` has taken a link's `](target)` and a citation's
+# key, so neither is left as a bracket holding a word.
+_SQUARE = re.compile(r"\[([^\[\]]{1,300})\]")
+_BLANK_LINE = re.compile(r"\n[ \t\r]*\n")
 _QUOTES = (
     "*_\"'"
     "\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}"
     "\N{LEFT SINGLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}"
 )
+#: What may cling to either end of a long form and is no part of it.
+_EDGES = _QUOTES + ".,;:()[]"
 # The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...").
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*(?:$|[;,:])"
 )
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
 _BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:-[^\W_]+)*)[ \t]?$")
-# Bounded, so a line of `![` with no closing bracket is read once and not once per `![`.
-_IMAGE = re.compile(r"!\[[^\]]{0,1000}\]\([^)\n]{0,1000}\)")
+# An image with its caption: `![caption](target)` or `![caption][label]`, a bracket inside
+# the caption allowed one deep, for a citation. Bounded throughout, so a line of `![` with
+# no closing bracket is read once and not once per `![`.
+_IMAGE = re.compile(
+    r"!\[(?:[^\[\]]|\[[^\[\]]{0,300}\]){0,1000}\]"
+    r"(?:\([^)\n]{0,1000}\)|\[[^\]\n]{0,300}\])"
+)
 # I to XXXIX. Longer numerals, and the letters C, D, L and M, are left to be read as
 # abbreviations: CI, MI, CD and LV are valid numerals and are far more often not numerals.
 _ROMAN = re.compile(r"X{0,3}(?:IX|IV|V?I{0,3})")
+# A registration or accession number: letters, then five digits or more. NCT01234567,
+# CRD42020123456, ISRCTN12345678, GSE12345.
+_IDENTIFIER = re.compile(r"[A-Za-z]{2,}\d{5,}")
 _ARTICLES = ("the ", "a ", "an ")
 
 # Sections where capitals are people and institutions, not abbreviations a reader needs
-# defined: initials in a contributions statement, a funder's name, a society's.
+# defined: initials in a contributions statement, a funder's name, a society's. Found by a
+# word anywhere in the title, because publishers word these headings their own way:
+# "CRediT authorship contribution statement", "Role of the funding source".
 _QUIET = re.compile(
-    r"^\s*(?:"
-    r"(?:authors?['\N{RIGHT SINGLE QUOTATION MARK}]?s?\s+)?contributions?"
-    r"|contributors?(?:hip)?"
+    r"\b(?:"
+    r"contributions?|contributors?(?:hip)?"
     r"|acknowledge?ments?"
-    r"|funding|financial\s+support"
-    r"|competing\s+interests?|conflicts?\s+of\s+interest|declarations?\s+of\s+interests?"
+    r"|funding|financial\s+(?:support|disclosures?)"
+    r"|competing\s+interests?|conflicts?\s+of\s+interests?"
+    r"|declarations?\s+of\s+(?:competing\s+)?interests?"
     r"|disclosures?"
+    r"|author\s+statement"
     r")\b",
     re.IGNORECASE,
 )
@@ -101,6 +118,21 @@ _QUIET = re.compile(
 #: `a-a-a-...` costs what its length is.
 _JOINED_PARTS = 6
 
+#: The symbols of the elements, and D for deuterium, which solvents are named with.
+_PERIODIC_TABLE = (
+    "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga "
+    "Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd "
+    "Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra "
+    "Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv "
+    "Ts Og D"
+)
+_ELEMENTS = frozenset(_PERIODIC_TABLE.split())
+#: The largest count read as a formula's. `C6H12O6` is a formula and `IC50` is not.
+_LARGEST_COUNT = 12
+#: The digits a count is written in. Not `str.isdigit`, which a superscript two also
+#: answers and `int` then refuses.
+_DIGITS = "0123456789"
+
 
 @dataclass(frozen=True)
 class _Mark:
@@ -109,7 +141,6 @@ class _Mark:
 
     order: int
     offset: int
-    path: Path
     quiet: bool = False
 
     @property
@@ -154,20 +185,24 @@ class _Known:
     def __contains__(self, form: object) -> bool:
         if not isinstance(form, str):
             return False
-        single = form[:-1] if form.endswith("s") else form
-        return (
-            form in self.exact
-            or single in self.exact
-            or form.lower() in self.lowered
-            or single.lower() in self.lowered
-        )
+        return form in self.exact or form.lower() in self.lowered
+
+
+def _listed(value: object) -> set[str]:
+    """A setting's entries as words, read past one in the wrong shape: the schema reports
+    that, and a gate that raised on it would fail a build over a warning's worth of work."""
+    if not isinstance(value, (list, tuple)):
+        return set()
+    return {str(entry) for entry in value if isinstance(entry, (str, int, float))}
 
 
 def _known(project: Project) -> _Known:
     exact, lowered = _shipped()
     return _Known(
-        exact | set(project.known_abbreviations) | set(project.reporting_guidelines),
-        lowered | {str(term).lower() for term in project.extra_terms},
+        exact
+        | set(project.known_abbreviations)
+        | _listed(project.paper.get("reporting_guideline")),
+        lowered | {term.lower() for term in _listed(project.paper.get("terms"))},
     )
 
 
@@ -179,6 +214,31 @@ def _numeral(form: str) -> bool:
     return bool(form) and _ROMAN.fullmatch(form) is not None
 
 
+def _formula(form: str) -> bool:
+    """Is this a chemical formula: two elements or more, each with a small count or none,
+    and a lower-case letter or a digit somewhere, so that `CO2`, `HCl` and `NaHCO3` are
+    formulas and `CO`, `CI` and `HCV`, which spell elements too, are not."""
+    if not any(char.islower() or char in _DIGITS for char in form):
+        return False
+    # reached[i]: the most elements that can be read up to character i, or -1.
+    reached = [-1] * (len(form) + 1)
+    reached[0] = 0
+    for start in range(len(form)):
+        if reached[start] < 0:
+            continue
+        for width in (2, 1):
+            stop = start + width
+            if stop > len(form) or form[start:stop] not in _ELEMENTS:
+                continue
+            while stop < len(form) and form[stop] in _DIGITS:
+                stop += 1
+            count = form[start + width : stop]
+            if count and (count[0] == "0" or int(count) > _LARGEST_COUNT):
+                continue
+            reached[stop] = max(reached[stop], reached[start] + 1)
+    return reached[len(form)] >= 2
+
+
 def _reads_as_abbreviation(form: str) -> bool:
     """Would a reader take this word, met with no definition, for an abbreviation?
 
@@ -186,11 +246,14 @@ def _reads_as_abbreviation(form: str) -> bool:
     `McNemar`, `DeLong`, `NaCl` and `PhD` have two capitals and are not abbreviations
     anybody defines, and a rule that reported them would be switched off for the surnames
     alone. `HbA1c` and `mL` are missed by it and caught when the manuscript defines them.
+    A numeral, a registration number and a chemical formula are not abbreviations either.
     """
     return (
         2 <= len(form) <= LONGEST
         and _capitals_together(form)
         and not _numeral(form)
+        and _IDENTIFIER.fullmatch(form) is None
+        and not _formula(form)
     )
 
 
@@ -215,6 +278,16 @@ def _singular(form: str) -> str:
     return form
 
 
+def _defined_as(form: str, defined: set[str]) -> str | None:
+    """The defined short form this word is a use of, its plural included: `RORs` for `ROR`,
+    `mAbs` for `mAb`."""
+    if form in defined:
+        return form
+    if form.endswith("s") and form[:-1] in defined:
+        return form[:-1]
+    return None
+
+
 def _long_form(short: str, before: str) -> str | None:
     """The long form `short` abbreviates, read from the end of `before`; None when its
     letters are not there in order.
@@ -235,8 +308,13 @@ def _long_form(short: str, before: str) -> str | None:
         if at < 0:
             return None
         at -= 1
-    found = before[at + 1 :].strip()
-    if len(found) <= len(short) or short.lower() in found.lower().split():
+    found = before[at + 1 :].strip().strip(_EDGES).strip()
+    if len(found) <= len(short):
+        return None
+    # A short form does not define itself, nor through its plural: in "expressed as ORs
+    # (OR, 95% CI)" the letters of OR are all in "ORs".
+    words = {_singular(word.strip(_EDGES)).lower() for word in found.split()}
+    if _singular(short).lower() in words:
         return None
     return found
 
@@ -298,7 +376,7 @@ def _regions(
     def here(start: int) -> _Region:
         if any(section.is_references for section in chain):
             return _Region(start, None, True)
-        quiet = any(_QUIET.match(section.title) for section in chain)
+        quiet = any(_QUIET.search(section.title) for section in chain)
         if supplementary:
             return _Region(start, SUPPLEMENT, quiet)
         abstract = any(section.is_abstract for section in chain)
@@ -313,57 +391,127 @@ def _regions(
     return regions
 
 
+def _stem(short: str, long: str) -> str:
+    """The form a definition defines: `RORs` defines `ROR`, and `mAbs` after "monoclonal
+    antibodies" defines `mAb`, since a plural long form says the `s` is the plural's."""
+    single = _singular(short)
+    if single != short:
+        return single
+    last = long.split()[-1].strip(_EDGES) if long.split() else ""
+    if (
+        len(short) > 2
+        and short.endswith("s")
+        and last.lower().endswith("s")
+        and _may_be_defined(short[:-1])
+    ):
+        return short[:-1]
+    return short
+
+
+def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+    """A definition with its short form in the bracket: "reporting odds ratio (ROR)"."""
+    opening = _OPENS_WITH.match(bracket.group(1))
+    if opening is None or not _may_be_defined(opening.group("short")):
+        return None
+    short = opening.group("short")
+    before = prose[max(0, bracket.start() - 400) : bracket.start()]
+    before = _BLANK_LINE.split(before)[-1]
+    words = " ".join(before.split()[-_window(short) :])
+    long = _long_form(short, words)
+    if long is None and short != _singular(short):
+        long = _long_form(_singular(short), words)
+    if long is None:
+        return None
+    return bracket.start(1) + opening.start("short"), _stem(short, long), long
+
+
+def _long_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | None:
+    """A definition with its long form in the bracket: "ROR (reporting odds ratio)"."""
+    standing = _BEFORE_PAREN.search(prose, max(0, bracket.start() - LONGEST - 1), bracket.start())
+    if standing is None or not _may_be_defined(standing.group("short")):
+        return None
+    # The search starts a short form's length back, so it can start inside a word.
+    head = standing.start("short")
+    if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
+        return None
+    short = standing.group("short")
+    words = bracket.group(1).split()
+    if not 2 <= len(words) <= _window(short):
+        return None
+    joined = " ".join(words)
+    long = _long_form(_singular(short), joined)
+    if long is None:
+        return None
+    # The long form has to be the bracket, give or take an article: "ROR (see the ratio
+    # results)" matches its letters from "ratio" on and defines nothing.
+    rest = joined[: joined.rfind(long)].strip(_EDGES + " ").lower()
+    if rest and rest + " " not in _ARTICLES:
+        return None
+    return head, _stem(short, long), long
+
+
 def _definitions(prose: str) -> list[tuple[int, str, str]]:
-    """Every definition in `prose`: where its short form stands, the short form as written,
-    and the long form. Both orders: "reporting odds ratio (ROR)" and "ROR (reporting odds
-    ratio)"."""
+    """Every definition in `prose`: where its short form stands, the form it defines, and
+    the long form. Both orders in round brackets, "reporting odds ratio (ROR)" and "ROR
+    (reporting odds ratio)", and the short form in square ones, "hazard ratio [HR]"."""
     found: list[tuple[int, str, str]] = []
     for bracket in _PAREN.finditer(prose):
-        inner = bracket.group(1)
-        if _BLANK_LINE.search(inner):
+        if _BLANK_LINE.search(bracket.group(1)):
             continue
-        opening = _OPENS_WITH.match(inner)
-        if opening and _may_be_defined(opening.group("short")):
-            short = opening.group("short")
-            before = prose[max(0, bracket.start() - 400) : bracket.start()]
-            before = _BLANK_LINE.split(before)[-1]
-            words = before.split()[-_window(short) :]
-            long = _long_form(short, " ".join(words))
-            if long is None and short != _singular(short):
-                long = _long_form(_singular(short), " ".join(words))
-            if long is not None:
-                found.append((bracket.start(1) + opening.start("short"), short, long))
-                continue
-        standing = _BEFORE_PAREN.search(
-            prose, max(0, bracket.start() - LONGEST - 1), bracket.start()
-        )
-        if standing is None or not _may_be_defined(standing.group("short")):
+        definition = _short_inside(prose, bracket) or _long_inside(prose, bracket)
+        if definition is not None:
+            found.append(definition)
+    for bracket in _SQUARE.finditer(prose):
+        if _BLANK_LINE.search(bracket.group(1)):
             continue
-        # The search starts a short form's length back, so it can start inside a word.
-        head = standing.start("short")
-        if head > 0 and (prose[head - 1].isalnum() or prose[head - 1] == "-"):
-            continue
-        short = standing.group("short")
-        words = inner.split()
-        if not 2 <= len(words) <= _window(short):
-            continue
-        joined = " ".join(words)
-        long = _long_form(_singular(short), joined)
-        if long is None:
-            continue
-        # The long form has to be the bracket, give or take an article: "ROR (see the
-        # ratio results)" matches its letters from "ratio" on and defines nothing.
-        rest = joined[: len(joined) - len(long)].lower()
-        if rest and rest not in _ARTICLES:
-            continue
-        found.append((standing.start("short"), short, long))
+        definition = _short_inside(prose, bracket)
+        if definition is not None:
+            found.append(definition)
     return found
+
+
+def _is_word(part: str) -> bool:
+    """An ordinary word in a hyphenated one: `based` in `ROR-based`, `Non` in `Non-ICI`."""
+    return len(part) >= 2 and part.isalpha() and part[1:].islower()
+
+
+def _run(
+    parts: list[str], starts: list[int], begin: int, end: int, defined: set[str], known: _Known
+) -> list[tuple[int, str, bool]]:
+    """The abbreviations in one stretch of a hyphenated word that holds no ordinary word.
+
+    Read whole where the whole is defined or known, `SARS-CoV-2`. Where nothing in it is,
+    it is reported whole, so `LC-MS` is one abbreviation and not `LC` and `MS`, and a
+    trial is named `KEYNOTE-189`, as its definition would name it."""
+    found: list[tuple[int, str, bool]] = []
+    loose: list[int] = []
+    index = begin
+    while index < end:
+        for stop in range(end, index, -1):
+            form = "-".join(parts[index:stop])
+            base = _defined_as(form, defined)
+            if base is not None:
+                found.append((starts[index], base, True))
+                index = stop
+                break
+            if form in known or _singular(form) in known:
+                found.append((starts[index], "", True))
+                index = stop
+                break
+        else:
+            loose.append(index)
+            index += 1
+    shaped = [index for index in loose if _reads_as_abbreviation(_singular(parts[index]))]
+    whole = _singular("-".join(parts[begin:end]))
+    if not found and shaped and len(whole) <= LONGEST:
+        return [(starts[begin], whole, False)]
+    found = [entry for entry in found if entry[1]]
+    return found + [(starts[index], _singular(parts[index]), False) for index in shaped]
 
 
 def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str, bool]]:
     """The abbreviations in one word: where each starts in it, its short form, and whether
-    it is one the manuscript defines. A hyphenated word is read whole where the whole is a
-    defined or known name, and by its parts where it is not."""
+    it is one the manuscript defines."""
     parts = token.split("-")
     starts = [0]
     for part in parts[:-1]:
@@ -371,22 +519,15 @@ def _forms(token: str, defined: set[str], known: _Known) -> list[tuple[int, str,
     found: list[tuple[int, str, bool]] = []
     index = 0
     while index < len(parts):
-        furthest = len(parts) if len(parts) <= _JOINED_PARTS else index + 1
-        for stop in range(furthest, index, -1):
-            form = "-".join(parts[index:stop])
-            base = form if form in defined else _singular(form)
-            if base in defined:
-                found.append((starts[index], base, True))
-                index = stop
-                break
-            if form in known:
-                index = stop
-                break
-        else:
-            part = parts[index]
-            if _reads_as_abbreviation(_singular(part)):
-                found.append((starts[index], _singular(part), False))
+        if _is_word(parts[index]):
             index += 1
+            continue
+        stop = index + 1
+        if len(parts) <= _JOINED_PARTS:
+            while stop < len(parts) and not _is_word(parts[stop]):
+                stop += 1
+        found += _run(parts, starts, index, stop, defined, known)
+        index = stop
     return found
 
 
@@ -395,16 +536,34 @@ class _File:
     order: int
     path: Path
     text: str
-    prose: str
     regions: list[_Region]
     definitions: list[tuple[int, str, str]]
+    prose: str = ""
     starts: list[int] = field(default_factory=list)
+    breaks: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
+        self.breaks = [index for index, char in enumerate(self.text) if char == "\n"]
 
     def region_at(self, offset: int) -> _Region:
         return self.regions[bisect_right(self.starts, offset) - 1]
+
+    def line_of(self, offset: int) -> int:
+        return bisect_left(self.breaks, offset) + 1
+
+
+def _file(order: int, path: Path, text: str, chain: list[Section], supplementary: bool) -> _File:
+    headings = find_headings(text)
+    prose = _prose(text, headings)
+    return _File(
+        order=order,
+        path=path,
+        text=text,
+        regions=_regions(headings, chain, supplementary=supplementary),
+        definitions=_definitions(prose),
+        prose=prose,
+    )
 
 
 def _read(project: Project) -> list[_File]:
@@ -423,18 +582,7 @@ def _read(project: Project) -> list[_File]:
         chain: list[Section] = []
         for path in document:
             text = path.read_text(encoding="utf-8")
-            headings = find_headings(text)
-            prose = _prose(text, headings)
-            files.append(
-                _File(
-                    order=len(files),
-                    path=path,
-                    text=text,
-                    prose=prose,
-                    regions=_regions(headings, chain, supplementary=supplementary),
-                    definitions=_definitions(prose),
-                )
-            )
+            files.append(_file(len(files), path, text, chain, supplementary))
     return files
 
 
@@ -448,11 +596,10 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             region = file.region_at(offset)
             if region.scope is None:
                 continue
-            base = _singular(short)
-            defined.add(base)
+            defined.add(short)
             defining.add((file.order, offset))
-            scopes[region.scope].defined.setdefault(base, []).append(
-                _Definition(file.order, offset, file.path, region.quiet, long)
+            scopes[region.scope].defined.setdefault(short, []).append(
+                _Definition(file.order, offset, region.quiet, long)
             )
 
     for file in files:
@@ -463,20 +610,16 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             region = file.region_at(word.start())
             if region.scope is None:
                 continue
-            for within, base, is_defined in _forms(token, defined, known):
+            for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
                     continue
                 if not is_defined and region.quiet:
                     continue
-                scopes[region.scope].used.setdefault(base, []).append(
-                    _Mark(file.order, offset, file.path, region.quiet)
+                scopes[region.scope].used.setdefault(short, []).append(
+                    _Mark(file.order, offset, region.quiet)
                 )
     return scopes
-
-
-def _line_of(text: str, offset: int) -> int:
-    return text.count("\n", 0, offset) + 1
 
 
 def _context(text: str, offset: int, length: int) -> str:
@@ -495,34 +638,33 @@ def _same_meaning(one: str, other: str) -> bool:
     return plain(one) == plain(other)
 
 
-def check_language(project: Project) -> Report:
-    files = _read(project)
-    known = _known(project)
+def _judge(files: list[_File], known: _Known, root: Path) -> Report:
+    """The findings, from files already read. Apart from `check_language` so that what it
+    costs can be measured on a manuscript of any size without writing one to disk."""
     scopes = _collect(files, known)
-    texts = {file.order: file.text for file in files}
-    root = project.root
 
     def where(mark: _Mark) -> str:
+        file = files[mark.order]
         try:
-            shown = mark.path.relative_to(root).as_posix()
+            shown = file.path.relative_to(root).as_posix()
         except ValueError:
-            shown = str(mark.path)
-        return f"{shown}:{_line_of(texts[mark.order], mark.offset)}"
+            shown = str(file.path)
+        return f"{shown}:{file.line_of(mark.offset)}"
 
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
-        text = texts[mark.order]
+        file = files[mark.order]
         return Finding(
             gate=GATE,
             code=code,
             severity=WARN,
             message=message,
-            path=mark.path,
-            line=_line_of(text, mark.offset),
-            context=_context(text, mark.offset, len(short)),
+            path=file.path,
+            line=file.line_of(mark.offset),
+            context=_context(file.text, mark.offset, len(short)),
             hint=hint,
         )
 
-    report = Report()
+    findings: list[Finding] = []
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
 
@@ -535,12 +677,11 @@ def check_language(project: Project) -> Report:
             first = definitions[0]
             uses = sorted(scope.used.get(short, ()), key=lambda mark: mark.key)
 
-            early = [use for use in uses if use.key < first.key]
-            if early:
-                report = report.with_findings(
+            if uses and uses[0].key < first.key:
+                findings.append(
                     finding(
                         "abbreviation-used-before-defined",
-                        early[0],
+                        uses[0],
                         short,
                         f"{short} is used here, and defined later at {where(first)}",
                         "define an abbreviation where it first appears: the long form, then "
@@ -558,14 +699,12 @@ def check_language(project: Project) -> Report:
                         f"at {where(first)}"
                     )
                     hint = "one short form, one meaning: a reader keeps the first"
-                report = report.with_findings(
-                    finding("abbreviation-redefined", again, short, message, hint)
-                )
+                findings.append(finding("abbreviation-redefined", again, short, message, hint))
 
             # A funder or a society named in full with its acronym, once, is how those
             # statements are written; nothing later is expected to use it.
             if not uses and not first.quiet:
-                report = report.with_findings(
+                findings.append(
                     finding(
                         "abbreviation-unused",
                         first,
@@ -590,19 +729,23 @@ def check_language(project: Project) -> Report:
             message = f"{short} is used {times} in the {scope.name} and not defined there"
             if scope.name == BODY and short in scopes[ABSTRACT].defined:
                 message += "; the abstract defines it, and is read apart from the paper"
-            report = report.with_findings(
+            findings.append(
                 finding(
                     "abbreviation-undefined",
                     uses[0],
                     short,
                     message,
-                    "define it at first use, or list it under `language: "
+                    "define it at first use, or list it in quotes under `language: "
                     "known_abbreviations:` in paper.yaml if this journal's readers take it "
                     "for a word or a name",
                 )
             )
 
-    return report.with_counts(
-        abbreviations_read=len(everything),
-        abbreviations_defined=len(defined_anywhere),
+    return Report(
+        tuple(findings),
+        {"abbreviations_read": len(everything), "abbreviations_defined": len(defined_anywhere)},
     )
+
+
+def check_language(project: Project) -> Report:
+    return _judge(_read(project), _known(project), project.root)

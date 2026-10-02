@@ -182,6 +182,70 @@ def test_both_orders_of_a_definition_are_read(project: Path, definition: str) ->
     assert not report.findings, found(report)
 
 
+def test_a_definition_in_square_brackets_is_read(project: Path) -> None:
+    """The form a journal uses inside a parenthesis, where round brackets would nest."""
+    configured(project, language={"known_abbreviations": []})
+    report = written(
+        project,
+        "# Results\n\nThe risk was lower with treatment (hazard ratio [HR], 0.75; 95% "
+        "confidence interval [CI], 0.60 to 0.94). The HR was stable and the CI was narrow.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_markup_and_punctuation_are_no_part_of_a_long_form(project: Path) -> None:
+    """An emphasised first definition and a plain second one are one meaning, and the hint
+    quotes the words without their asterisks."""
+    report = written(
+        project,
+        "# Methods\n\nThe *reporting odds ratio* (ROR) was computed. The ROR compares "
+        "groups.\n\n# Discussion\n\nThe reporting odds ratio, (ROR) was raised.\n",
+    )
+    (message,) = found(report, "abbreviation-redefined")
+    assert "defined again" in message, "not two meanings"
+    unused = written(project, "# Methods\n\nThe **reporting odds ratio** (ROR) was computed.\n")
+    (finding,) = unused.findings
+    assert "'reporting odds ratio'" in finding.hint
+
+
+def test_a_short_form_does_not_define_itself_through_its_plural(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nAssociations were expressed as ORs (OR, 95% CI). The OR was raised.\n",
+    )
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    ("definition", "use"),
+    [
+        ("Monoclonal antibodies (mAbs) were used.", "Each mAb was tested."),
+        ("Monoclonal antibodies (mAbs) were used.", "The mAbs were tested."),
+        ("A monoclonal antibody (mAb) was used.", "Two mAbs were tested."),
+    ],
+)
+def test_a_plural_in_lower_case_is_the_singular_s(project: Path, definition: str, use: str) -> None:
+    report = written(project, f"# Methods\n\n{definition} {use}\n")
+    assert not report.findings, found(report)
+
+
+def test_neither_a_bracket_nor_a_long_form_crosses_a_blank_line(project: Path) -> None:
+    """Two paragraphs are two thoughts: a long form ending one does not define the bracket
+    opening the next, and a bracket left open does not close in the next."""
+    apart = written(
+        project,
+        "# Methods\n\nWe computed the reporting odds ratio\n\n(ROR) in each stratum. The ROR "
+        "was raised.\n",
+    )
+    assert codes(apart) == {"abbreviation-undefined"}, found(apart)
+    open_bracket = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR\n\nwas raised) in each stratum. The ROR "
+        "was raised.\n",
+    )
+    assert codes(open_bracket) == {"abbreviation-undefined"}, found(open_bracket)
+
+
 def test_a_plural_definition_defines_the_singular(project: Path) -> None:
     report = written(
         project,
@@ -196,6 +260,36 @@ def test_a_hyphenated_use_is_a_use(project: Path) -> None:
         project,
         "# Methods\n\nThe reporting odds ratio (ROR) was computed. ROR-based signals were "
         "listed.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "named"),
+    [
+        ("Samples were analysed by LC-MS.", "LC-MS"),
+        ("Clusters were drawn with t-SNE.", "t-SNE"),
+        ("In the KEYNOTE-189 trial, survival was longer.", "KEYNOTE-189"),
+        ("Levels of 25-OH-D were measured.", "25-OH-D"),
+        ("ROR-based signals were listed.", "ROR"),
+        ("Non-ROR signals were listed.", "ROR"),
+    ],
+)
+def test_a_hyphenated_abbreviation_is_reported_whole(
+    project: Path, sentence: str, named: str
+) -> None:
+    """Under the name its definition would use, and once: not `LC` and `MS`. An ordinary
+    word joined to it is not part of the name."""
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    (message,) = found(report, "abbreviation-undefined")
+    assert message.split()[0] == named
+
+
+def test_a_hyphenated_abbreviation_defined_whole_is_used_whole(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nLiquid chromatography-mass spectrometry (LC-MS) was used. LC-MS runs "
+        "took an hour.\n",
     )
     assert not report.findings, found(report)
 
@@ -273,11 +367,55 @@ def test_ordinary_prose_has_nothing_to_report(project: Path) -> None:
         "The ratio was {{results.ror.point}} overall.",
         "<!-- ROR to be defined once the Methods are settled -->\n\nThe ratio was raised.",
         "The ratio $ROR = ad/bc$ was computed.",
+        "The solution of HCl and NaHCO3 was saturated with CO2, then dried over MgSO4.",
+        "Spectra were recorded at 400 MHz and 2 GPa in CDCl3, with 5 MBq of tracer.",
+        "The trial is registered as NCT01234567 and the review as CRD42020123456.",
+        "Reporting follows TRIPOD for the model and PRISMA for the search.",
+        "![The PRR by drug](figures/prr.svg)",
+        "![The PRR by drug [@fictionalClassSignal2019]](figures/prr.svg)",
+        "![The PRR by drug][prr]\n\n[prr]: figures/prr.svg",
     ],
 )
 def test_what_is_not_an_abbreviation_is_not_reported(project: Path, sentence: str) -> None:
     report = written(project, f"# Methods\n\n{sentence}\n")
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The IC50 was 12 nM.",  # element letters, and a count no formula has
+        "KOH was added.",  # a formula with nothing to tell it from an abbreviation
+        "The ABCDEFGHIJKLMNO score was raised.",  # as long as a short form may be
+    ],
+)
+def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) -> None:
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_word_in_capitals_too_long_for_a_short_form_is_not_reported(project: Path) -> None:
+    report = written(project, "# Methods\n\nThe ABCDEFGHIJKLMNOP score was raised.\n")
+    assert not report.findings, found(report)
+
+
+def test_an_undefined_abbreviation_is_reported_where_it_is_first_used(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nThe ROR was computed.\n\nThe ROR compares groups.\n\nA raised ROR is "
+        "a signal.\n",
+    )
+    (finding,) = report.findings
+    assert finding.line == 3
+    assert "3 times" in finding.message
+    assert "in quotes" in finding.hint, "unquoted, YAML reads NO and ON as booleans"
+
+
+def test_a_project_s_terms_are_names_here_too(project: Path) -> None:
+    text = "# Methods\n\nABCB11 expression was raised.\n"
+    assert codes(written(project, text)) == {"abbreviation-undefined"}
+    configured(project, terms=["ABCB11"])
+    assert not written(project, text).findings
 
 
 def test_a_fenced_listing_is_not_read(project: Path) -> None:
@@ -304,6 +442,12 @@ def test_a_heading_in_capitals_is_not_an_abbreviation(project: Path) -> None:
         "Competing interests",
         "Conflict of interest",
         "Declaration of interests",
+        "CRediT authorship contribution statement",
+        "Declaration of competing interest",
+        "Role of the funding source",
+        "Sources of funding",
+        "Financial disclosure",
+        "Author statement",
     ],
 )
 def test_initials_and_funders_are_not_abbreviations(project: Path, heading: str) -> None:
@@ -320,6 +464,17 @@ def test_a_funder_named_once_with_its_acronym_is_not_unused(project: Path) -> No
         project,
         f"# Methods\n\n{PLAIN}\n\n# Funding\n\nFunded by the Agence Nationale de la "
         "Recherche (ANR).\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_file_with_no_heading_continues_the_section_before_it(project: Path) -> None:
+    """The build prints the files one after the other, so the funding statement that ends
+    `main.md` is still the section when the next file opens without a heading."""
+    report = written(
+        project,
+        f"# Methods\n\n{PLAIN}\n\n# Funding\n\nFunded by the ANR.\n",
+        **{"2_more": "The NIHR paid for the second year.\n"},
     )
     assert not report.findings, found(report)
 
@@ -355,9 +510,24 @@ def test_a_known_abbreviation_the_author_defines_is_still_held_to_its_definition
     assert codes(report) == {"abbreviation-used-before-defined"}
 
 
-def test_a_setting_in_the_wrong_shape_does_not_stop_the_gate(project: Path) -> None:
-    """The schema reports the setting; G14 still reads the manuscript."""
-    configured(project, language=["CI"])
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"language": ["CI"]},
+        {"language": {"known_abbreviations": "CI"}},
+        {"language": {"known_abbreviations": [False, ["CI"], {"a": 1}]}},
+        {"terms": 5},
+        {"terms": [["a"], {"b": 1}]},
+        {"reporting_guideline": [["a"], ["b"]]},
+        {"reporting_guideline": [{"a": 1}]},
+    ],
+)
+def test_a_setting_in_the_wrong_shape_does_not_stop_the_gate(
+    project: Path, settings: dict
+) -> None:
+    """The schema reports the setting; G14 still reads the manuscript. A gate that raises
+    is a failure, and this one has only warnings to give."""
+    configured(project, **settings)
     report = written(project, "# Methods\n\nThe ROR was computed.\n")
     assert codes(report) == {"abbreviation-undefined"}
 
@@ -459,7 +629,7 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
         ("undefined", "HR"),
         ("undefined", "IC025"),  # in the abstract
         ("undefined", "IC025"),  # and in the main text
-        ("undefined", "KEYNOTE"),  # a name, not an abbreviation
+        ("undefined", "KEYNOTE-189"),  # a name, not an abbreviation
         ("undefined", "ML"),
         ("undefined", "NIH"),
         ("undefined", "OR"),
@@ -489,6 +659,25 @@ def test_unclosed_images_are_read_in_linear_time(assert_linear) -> None:
         return "![" * count
 
     assert_linear(images, lambda text: _prose(text, []), 2000, "the prose reading, by `![`")
+
+
+def test_many_findings_are_made_in_linear_time(assert_linear) -> None:
+    """One finding for each repeated definition, each with its line and its context: the
+    line was counted from the top of the file each time, and the report copied."""
+    from manuscript_guard.gates.language import _file, _judge, _Known
+
+    nothing = _Known(frozenset(), frozenset())
+
+    def repeated(count: int) -> list:
+        text = "# Methods\n\n" + "The reporting odds ratio (ROR) was raised.\n" * count
+        return [_file(0, Path("main.md"), text, [], False)]
+
+    def judge(files: list) -> None:
+        report = _judge(files, nothing, Path("."))
+        # Each definition after the first is a redefinition, and nothing uses the first.
+        assert len(report.findings) == len(files[0].definitions)
+
+    assert_linear(repeated, judge, 500, "the findings, by repeated definition")
 
 
 def test_a_long_hyphenated_word_is_read_in_linear_time(assert_linear) -> None:

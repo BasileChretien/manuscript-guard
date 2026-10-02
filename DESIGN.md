@@ -3513,8 +3513,10 @@ Closed since, and why each mattered:
   The skills are in the open SKILL.md format, which other agent tools read as well as Claude
   Code. `tests/test_plugin.py` fails when a skill names an agent tool (Claude, Codex, Gemini
   CLI, Mistral Vibe, Kimi Code), a tool only one of them has, a plugin, the words "slash
-  command", `/manuscript-guard:`, one tool's instruction file or its `.claude` directory, and
-  when its frontmatter carries a field the Agent Skills specification does not define. It
+  command", `/manuscript-guard:`, one tool's instruction file, its `.claude` directory, a
+  `CLAUDE_` variable or an `mcp__` tool name, and when its frontmatter carries a field the
+  Agent Skills specification does not define. The `AGENTS.md` that `init` writes is held to
+  the same scan. It
   matches on spelling, so it errs both ways. A tool that is not on the list passes, as does a
   command typed as `/project-setup`, and wording that assumes one tool without naming it,
   such as a step only that tool can carry out. ChatGPT, Copilot and Cursor are left off
@@ -3522,9 +3524,14 @@ Closed since, and why each mattered:
   co-author used in Word), and model providers because a review panel may name where its
   models come from; any of them used to mean the reader passes too. In the other direction, a
   short list of phrases is taken out before the scan: Zotero's, Better BibTeX's, Word's or a
-  browser's plugin, "Anthropic's Claude", "Claude Opus", "Claude Sonnet", "Claude Haiku",
-  "Claude models" and a hyphenated model name ending in "-Codex". A model family named in
-  prose any other way fails, and has to be written as its identifier. Where a skill describes
+  browser's plugin, a plug-in estimator, "Anthropic's Claude" unless "Code" follows, "Claude
+  Opus", "Claude Sonnet", "Claude Haiku", "Claude models" and a hyphenated model name ending
+  in "-Codex". Claude or Codex named in prose any other way fails ("Claude" alone in a list
+  of models, "Claude 4.5 Sonnet", "the Claude family") and has to be written as an
+  identifier; other model families pass however they are written. A reader addressed by one
+  of the phrases taken out ("if you are Claude Opus") passes, since a pattern cannot tell that
+  from a member of a panel. Another product's plugin named in a way that is not listed fails
+  ("the LibreOffice plugin"). Where a skill describes
   a hook it says "where the hooks run", since an agent tool may have none. Read under Claude
   Code only so far: no skill has been followed in a session of another tool.
 - **The audit cannot tell where a number should be, only whether it exists somewhere.** A

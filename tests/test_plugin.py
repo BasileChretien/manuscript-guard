@@ -323,17 +323,20 @@ AGENT_SPECIFIC = (
     ),
     (
         r"\b[Pp]lug-?in|/manuscript-guard:|\bslash commands?\b|\b(?:CLAUDE|GEMINI)\.md\b"
-        r"|\.claude\b|\bCLAUDE_[A-Z_]+",
+        # A folder named `.claude`, not the dot inside `anthropic.claude-opus` or a host name.
+        r"|(?<!\w)\.claude\b|\bCLAUDE_[A-Z_]+",
         "describes how one agent packages or invokes the skills",
     ),
 )
 
 # What the list above would catch by its spelling and is not about the reader's tool: another
-# product's plugin, which is how this repository names Zotero's in Word, and a model named in
-# prose as a member of a panel. Taken out before the scan.
+# product's plugin, which is how this repository names Zotero's in Word, a plug-in estimator,
+# and a model named in prose as a member of a panel. Taken out before the scan. "Anthropic's
+# Claude Code" is the agent tool with its maker's name in front, and stays in.
 NOT_THE_READERS_TOOL = re.compile(
     r"\b(?:Zotero|Better BibTeX|Word|[Bb]rowser)(?:'s)?(?: Word| Zotero)? plug-?ins?\b"
-    r"|\bAnthropic's Claude\b|\bClaude (?:Opus|Sonnet|Haiku|models?)\b"
+    r"|\bplug-in (?:estimat\w+|principle)\b"
+    r"|\bAnthropic's Claude\b(?! Code)|\bClaude (?:Opus|Sonnet|Haiku|models?)\b"
     r"|[\w.]-Codex\b"
 )
 
@@ -373,9 +376,11 @@ def test_the_wording_check_catches_what_only_one_agent_tool_understands():
         "The plugin's hooks need the `PATH` Claude\nCode sees. Use the Claude-in-Chrome tools,\n"
         "call `AskUserQuestion`, `mcp__browser__open`, the Bash tool or The `Task` tool, or\n"
         "type /manuscript-guard:project-setup, a slash command. Read CLAUDE.md and\n"
-        ".claude/skills, set CLAUDE_PLUGIN_ROOT, and install the plug-in.\n"
+        ".claude/skills, set CLAUDE_PLUGIN_ROOT, and install the plug-in. Under Anthropic's\n"
+        "Claude Code the hooks run.\n"
     )
     assert wording_problems(text) == [
+        "'Claude' names one agent tool",
         "'Claude' names one agent tool",
         "'Claude' names one agent tool",
         "'AskUserQuestion' names a tool only one agent has",
@@ -403,8 +408,19 @@ def test_the_wording_check_passes_what_is_true_under_any_agent_tool():
         "identifier. `oaicite` is what ChatGPT leaves in pasted text, a co-author may have let\n"
         "Copilot in Word rewrite a paragraph, and Cursor position in Word does not matter.\n"
         "Write the plan, read AGENTS.md, and run it in bash.\n"
+        # A dot inside an identifier or a host name is not a hidden folder, and the plug-in
+        # estimator is a term of causal inference.
+        "Through another provider the same model is `bedrock/anthropic.claude-opus-4-5-v1:0`,\n"
+        "and a key comes from platform.claude.com. G-computation is a plug-in estimator.\n"
     )
     assert wording_problems(text) == []
+
+
+def test_the_rules_init_writes_speak_to_no_one_agent_tool():
+    """`AGENTS.md` is the file every agent tool reads, so it is held to what the skills are."""
+    from manuscript_guard.scaffold import AGENTS
+
+    assert wording_problems(AGENTS.format(title="T")) == []
 
 
 def test_the_setup_skill_says_what_is_left_without_hooks_and_no_more():

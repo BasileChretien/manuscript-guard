@@ -670,11 +670,72 @@ def test_a_patch_outside_any_project_is_ignored(tmp_path: Path, capsys) -> None:
 def test_a_file_that_cannot_be_read_does_not_cost_the_others_their_refusal(
     project: Path, capsys
 ) -> None:
-    """A name no file system takes stops the reading of that one file, and only that one."""
-    patch = patch_of("*** Add File: results/\x00.json", "+{}", "*** Add File: build/y.md", "+y")
+    """A name no file system takes stops the reading of that one file, and only that one.
+
+    The NUL is in a directory's name on purpose. In the file's own name it is caught where
+    the path is resolved, and the test then passes whether or not one file's error is kept
+    from the others."""
+    patch = patch_of(
+        "*** Add File: bad\x00dir/x.json", "+{}", "*** Add File: build/y.md", "+y"
+    )
     result = run("guard-write", codex_edit(project, patch), capsys)
     assert decision(result) == "deny"
     assert "build/y.md" in reason(result)
+
+    noted = patch_of(
+        "*** Add File: bad\x00dir/x.py",
+        "+x",
+        "*** Update File: analysis/01_disproportionality.py",
+        "@@",
+        "+x",
+    )
+    text = context(run("after-edit", codex_edit(project, noted, "PostToolUse"), capsys))
+    assert "analysis/01_disproportionality.py changed" in text
+
+
+def test_a_generated_file_a_patch_moves_away_is_refused_where_it_is(project: Path, capsys) -> None:
+    """The file is rewritten where it stands before it is moved, so the guard reads the patch
+    as it will be applied, both ends of a move, and not as the project is left afterwards."""
+    patch = patch_of(
+        "*** Update File: results/01_disproportionality.json",
+        "*** Move to: analysis/hand.json",
+        "@@",
+        "-a",
+        "+b",
+    )
+    result = run("guard-write", codex_edit(project, patch), capsys)
+    assert decision(result) == "deny"
+    assert "results/01_disproportionality.json" in reason(result)
+
+
+@pytest.mark.parametrize(
+    ("name", "body"),
+    [
+        ("authors.yaml", "- name: Zoë\n".encode("cp1252")),
+        ("paper.yaml", "title: Étude\n".encode("cp1252")),
+        ("authors.yaml", "authors: []\n".encode("utf-16")),
+    ],
+)
+@pytest.mark.parametrize("shape", ["a path", "a patch"])
+def test_a_project_file_in_another_encoding_does_not_turn_the_guard_off(
+    project: Path, name: str, body: bytes, shape: str, capsys
+) -> None:
+    """Where the project keeps `results/` is read from the project. When it cannot be read,
+    `results/` is where it is by default, and the guard still stands: a file saved in the
+    code page of Windows, or as UTF-16 by a shell redirect, is the half-configured project a
+    hook has to survive. Asking the project once for a whole patch had moved that question
+    out of the place that caught its failure."""
+    (project / name).write_bytes(body)
+    target = project / "results" / "01_disproportionality.json"
+    if shape == "a path":
+        payload = {"tool_input": {"file_path": str(target)}}
+    else:
+        payload = codex_edit(
+            project, patch_of("*** Update File: results/01_disproportionality.json", "@@", "+x")
+        )
+    result = run("guard-write", payload, capsys)
+    assert decision(result) == "deny"
+    assert "machine-written" in reason(result)
 
 
 def test_only_the_tool_that_applies_patches_has_its_input_read_as_one(

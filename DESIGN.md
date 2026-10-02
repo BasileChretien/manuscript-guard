@@ -3490,9 +3490,13 @@ Closed since, and why each mattered:
   (`apply_patch <<'EOF'`). Whether a hook then sees it as a patch or as a shell command was not
   established from the sources read; if as a shell command, the write guard does not read it.
   The reader was compared with a Python port of Codex's parser on generated patches, by the
-  reviewer of the pull request, and not with the parser itself.
+  reviewer of the pull request, and not with the parser itself. After a patch, an analysis
+  script that was changed and moved out of `analysis/` gets no reminder, since it is read
+  where it now is; and a file updated by one hunk and moved away by a later one is still
+  named where it no longer is.
 - **On Windows a file name outside ASCII may be misread by every hook.** The event is read
-  from standard input in the console's code page. If the agent tool writes it as UTF-8
+  from standard input in the system's ANSI code page, which is what Python gives a pipe, and
+  not the console's (so `chcp 65001` changes nothing). If the agent tool writes it as UTF-8
   without escapes, which was not captured from Claude Code or from Codex,
   `manuscript/méthodes.md` is not recognised: the note after an edit says nothing, and a
   refusal prints the name garbled. Found in review on 2026-10-02 and true before it; with

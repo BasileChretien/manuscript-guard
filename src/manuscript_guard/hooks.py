@@ -144,7 +144,6 @@ def _patch_hunks(patch: str) -> list[tuple[str, str | None]]:
             updating = may_move = True
         elif moves and header.startswith(_PATCH_MOVE):
             hunks[-1] = (hunks[-1][0], header[len(_PATCH_MOVE) :])
-            may_move = False
     return hunks
 
 
@@ -202,10 +201,17 @@ def _relocated(root: Path) -> dict[str, str]:
     `results/` and `build/` are the defaults, but `paths:` can move either, and a guard that
     reads the literal names silently stops guarding when it does. G1 still catches the edit
     afterwards; preventing it is the write guard's whole job.
+
+    A project that cannot be read moves nothing, and the guard stands on the default names:
+    a `paper.yaml` saved in another encoding is the half-configured project a hook has to
+    survive, and must not be what switches the guard off.
     """
     from manuscript_guard.contracts import load_project
 
-    project, _report = load_project(root)
+    try:
+        project, _report = load_project(root)
+    except (ValueError, OSError):
+        return {}
     moved: dict[str, str] = {}
     for name in ("results", "build"):
         try:

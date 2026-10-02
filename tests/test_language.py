@@ -376,6 +376,47 @@ def test_the_capitals_of_a_name_are_the_name(project: Path) -> None:
     assert codes(report) == {"abbreviation-unused"}, found(report)
 
 
+def test_a_listed_name_takes_a_capital_at_the_start_of_a_sentence(project: Path) -> None:
+    """The same for a name the project lists as for one the manuscript defines."""
+    text = "# Methods\n\nMean values fell. Non-HDL-C was lower in women.\n"
+    (message,) = found(written(project, text))
+    assert message.startswith("HDL-C is used once")
+    configured(project, language={"known_abbreviations": ["non-HDL-C"]})
+    assert not written(project, text).findings
+
+
+def test_the_plural_of_a_name_takes_the_capital_too(project: Path) -> None:
+    report = written(
+        project,
+        "# Methods\n\nPatients not on immune checkpoint inhibitors (non-ICI) were controls. "
+        "The non-ICI group was older. Non-ICIs were excluded.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_name_inside_a_longer_word_takes_the_capital_too(project: Path) -> None:
+    """Wherever in the word the name opens, not only at its head."""
+    report = written(
+        project,
+        "# Methods\n\nNon-high-density lipoprotein cholesterol (non-HDL-C) was the outcome. "
+        "Mean non-HDL-C fell. Post-Non-HDL-C values rose.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_single_letter_opening_a_name_is_not_lowered(project: Path) -> None:
+    """A known gap, held so that closing it is a decision: an ordinary word has two letters
+    or more, so `T-PA` opening a sentence is not `t-PA`. Lowering any opening letter would
+    make `T-cell` a use of a defined `t-cell`, and a capital alone is often the name."""
+    report = written(
+        project,
+        "# Methods\n\nTissue plasminogen activator (t-PA) was given. The t-PA dose was fixed. "
+        "T-PA was stopped early.\n",
+    )
+    (message,) = found(report)
+    assert message.startswith("T-PA is used once")
+
+
 def test_the_longest_defined_name_is_the_one_used(project: Path) -> None:
     report = written(
         project,

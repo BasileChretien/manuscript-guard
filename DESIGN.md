@@ -6189,9 +6189,16 @@ Closed since, and why each mattered:
     element symbols with a count from two to twelve is taken for a formula and not
     reported: `PI3K`, `VO2`, `CD3`, `CIN2`, `CKD3`, `PIP2`, `ICD10`.
   - Two abbreviations joined by a hyphen, neither defined, are reported as one: `ROR-PRR`.
-  - A defined name is read whole where it opens a hyphenated word or follows an ordinary
-    word in it, and not after a part that is neither: in `10x-RNA-seq` a defined `RNA-seq`
-    is not counted as used.
+  - A defined name is read whole where it opens a hyphenated word, or follows an ordinary
+    word or another defined or listed name in it, and not after any other part: in
+    `10x-RNA-seq` a defined `RNA-seq` is not counted as used, and with `ChIP-seq` defined,
+    `10x-ChIP-seq` is also reported as an undefined `10x-ChIP`.
+  - The capital a name takes at the start of a sentence is read one way only, and only
+    for an opening word of two letters or more. A name defined with the capital, because
+    its definition opens a sentence, "Non-HDL-C (non-high-density lipoprotein cholesterol)
+    was ...", is not found by its lower-case uses: they are reported as an undefined
+    `HDL-C`, and `Non-HDL-C` as unused. And `T-PA` opening a sentence is not a defined
+    `t-PA`, where `Hs-CRP` is `hs-CRP`.
   - A short form in square brackets is read as a definition wherever the words before it
     spell it: a reference link's text, `[ROR][ref]`, and a link to a URL,
     `[ROR](https://...)`, included. A link to a file, `[ROR](glossary.md)`, is not, since

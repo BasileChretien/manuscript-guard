@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -137,6 +138,150 @@ def test_claude_code_accepts_the_manifest(target):
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ---------------------------------------------------------------- the same plugin, in Codex
+#
+# Codex reads the manifests Claude Code reads, so the repository carries no second manifest
+# and no second copy of the skills. `codex plugin` writes only under CODEX_HOME and asks for
+# no login, so the install can be tried wherever Codex is. Skipped where it is not. CI's
+# codex-plugin job installs it and sets the variable below, and there a missing Codex fails.
+
+CODEX = shutil.which("codex")
+REQUIRE_CODEX = "MANUSCRIPT_GUARD_REQUIRE_CODEX"
+
+
+def codex_plugin(home: Path, *arguments: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [CODEX, "plugin", *arguments],
+        env={**os.environ, "CODEX_HOME": str(home)},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=180,
+    )
+
+
+def test_where_codex_is_required_it_is_there():
+    if os.environ.get(REQUIRE_CODEX, "").strip():
+        assert CODEX is not None, f"{REQUIRE_CODEX} is set, but codex is not on PATH"
+
+
+@pytest.mark.skipif(CODEX is None, reason="Codex is not installed")
+def test_codex_installs_the_plugin_from_the_manifests_claude_code_reads(tmp_path):
+    market = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    home = tmp_path / "h"
+    home.mkdir()
+
+    added = codex_plugin(home, "marketplace", "add", str(REPO))
+    assert added.returncode == 0, added.stdout + added.stderr
+    selector = f"{manifest['name']}@{market['name']}"
+    installed = codex_plugin(home, "add", selector)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+
+    # Codex files its copy under the version the manifest states. The copy holds the manifest
+    # too, which is where the session-start hook reads the version back.
+    cache = home / "plugins" / "cache"
+    copy = cache / market["name"] / manifest["name"] / manifest["version"]
+    assert copy.is_dir(), sorted(str(path.relative_to(home)) for path in cache.rglob("*"))
+    shipped = sorted(p.relative_to(PLUGIN).as_posix() for p in PLUGIN.rglob("*") if p.is_file())
+    assert "hooks/hooks.json" in shipped and ".claude-plugin/plugin.json" in shipped
+    assert len([name for name in shipped if name.endswith("/SKILL.md")]) == len(skill_names())
+    for name in shipped:
+        assert (copy / name).read_bytes() == (PLUGIN / name).read_bytes(), name
+
+    # The listing as data, not the table printed for a person, whose columns a release may
+    # move.
+    listed = codex_plugin(home, "list", "--json")
+    assert listed.returncode == 0, listed.stdout + listed.stderr
+    (entry,) = [p for p in json.loads(listed.stdout)["installed"] if p["pluginId"] == selector]
+    assert entry["installed"] is True and entry["enabled"] is True, entry
+    assert entry["version"] == manifest["version"], entry
+
+
+# One hooks.json serves Claude Code and Codex, so it holds only what both read. These are the
+# events and the fields of a handler that the file uses and that both were checked to read
+# (Codex's hooks page and Claude Code's, read 2026-10-02). The two share more than these;
+# another is checked against both before it is added here.
+SHARED_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart"}
+SHARED_FIELDS = {"type", "command", "timeout", "statusMessage"}
+# Both count a timeout in seconds. The longest hook here is the submission check; a figure
+# far above it is taken for milliseconds.
+LONGEST_SECONDS = 180
+
+
+def hooks_file_problems(config: dict) -> list[str]:
+    """What in a hooks file one of the two agent tools would not read as the other does."""
+    problems: list[str] = []
+    if set(config) != {"hooks"}:
+        problems.append(f"top-level keys {sorted(config)}")
+    for event, groups in config.get("hooks", {}).items():
+        if event not in SHARED_EVENTS:
+            problems.append(f"event {event}")
+        for group in groups:
+            if set(group) - {"matcher", "hooks"}:
+                problems.append(f"group keys {sorted(group)}")
+            names = set(group.get("matcher", "").split("|"))
+            for hook in group["hooks"]:
+                handler = hook.get("command", "").split()[-1:]
+                if set(hook) - SHARED_FIELDS or hook.get("type") != "command":
+                    problems.append(f"{handler}: fields {sorted(hook)}")
+                if not 0 < hook.get("timeout", 60) <= LONGEST_SECONDS:
+                    problems.append(f"{handler}: timeout {hook.get('timeout')}")
+                # Claude Code edits with `Write` and `Edit`. Codex edits with `apply_patch`
+                # and matches it under either of those names. Both run a shell as `Bash`.
+                if handler in (["guard-write"], ["after-edit"]) and not {"Edit", "Write"} <= names:
+                    problems.append(f"{handler}: matcher {group.get('matcher')!r}")
+                if handler == ["guard-submission"] and names != {"Bash"}:
+                    problems.append(f"{handler}: matcher {group.get('matcher')!r}")
+    return problems
+
+
+def test_the_hooks_file_holds_only_what_both_tools_read():
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    assert hooks_file_problems(config) == []
+    handlers = {
+        hook["command"].split()[-1]
+        for groups in config["hooks"].values()
+        for group in groups
+        for hook in group["hooks"]
+    }
+    assert handlers == set(HANDLERS), "the cases below are about these four"
+
+
+@pytest.mark.parametrize(
+    ("handler", "change", "said"),
+    [
+        ("guard-submission", {"matcher": "bash"}, "matcher 'bash'"),
+        ("guard-submission", {"matcher": "Shell"}, "matcher 'Shell'"),
+        ("guard-submission", {"matcher": "Write"}, "matcher 'Write'"),
+        ("guard-write", {"matcher": "Write"}, "matcher 'Write'"),
+        ("after-edit", {"matcher": "Edit"}, "matcher 'Edit'"),
+        ("guard-write", {"matcher": "apply_patch"}, "matcher 'apply_patch'"),
+        ("after-edit", {"timeout": 500}, "timeout 500"),
+        ("session-start", {"timeout": 60000}, "timeout 60000"),
+        ("guard-write", {"async": True}, "fields"),
+        ("session-start", {"commandWindows": "x"}, "fields"),
+    ],
+)
+def test_the_hooks_file_check_catches_what_one_tool_would_not_read(handler, change, said):
+    """Six of these passed while the check asked only that a file-reading hook's matcher held
+    `Edit` or `Write`, and that a timeout was at most 600: the first five and the timeout of
+    500. The other four it caught already, and has to go on catching."""
+    config = json.loads((PLUGIN / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    for groups in config["hooks"].values():
+        for group in groups:
+            for hook in group["hooks"]:
+                if hook["command"].split()[-1] == handler:
+                    if "matcher" in change:
+                        group.update(change)
+                    else:
+                        hook.update(change)
+    problems = hooks_file_problems(config)
+    assert problems and all(handler in problem for problem in problems), problems
+    assert said in problems[0], problems
 
 
 # ---------------------------------------------------------------- what the skills tell you to run

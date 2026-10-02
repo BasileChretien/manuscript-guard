@@ -186,6 +186,14 @@ def cmd_review(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if (args.record or args.record_figure) and (args.providers or args.run or args.dry_run):
+        # The models' part of the command answered first, and the record was not filed.
+        print(
+            "manuscript-guard: --record files a record, and --providers, --run and --dry-run "
+            "are about the models that read the panel: give one or the other",
+            file=sys.stderr,
+        )
+        return 2
     if args.providers:
         # Before the project is loaded: the list of providers is worth having without one.
         from manuscript_guard.panel.commands import list_providers
@@ -2043,8 +2051,8 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument(
         "--yes",
         action="store_true",
-        help="with --run: send without being asked. For a script; the statement of what "
-        "is sent where is still printed",
+        help="with --run: send without being asked. For a script the author wrote; an "
+        "agent asks the author first. The statement of what is sent where is still printed",
     )
     review.set_defaults(func=cmd_review)
 

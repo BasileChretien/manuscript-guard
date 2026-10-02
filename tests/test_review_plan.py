@@ -418,7 +418,15 @@ def test_the_round_is_the_first_one_somebody_has_not_reported_in(mixed: Path) ->
     assert plan.next_round(project) == 3  # both of the example's rounds are complete
     (mixed / "review" / "round-2" / "clinical-reader.yaml").unlink()
     assert plan.next_round(project) == 2
+    # A file the panel does not name is not a reading, to G11 or here: the round waits.
     (mixed / "review" / "round-2" / "clinical-reader.mistral-model-b.yaml").write_text("x")
+    assert plan.next_round(project) == 2
+    panel = mixed / "review" / "panel-2.yaml"
+    document = yaml.safe_load(panel.read_text(encoding="utf-8"))
+    for reviewer in document["reviewers"]:
+        if reviewer["id"] == "clinical-reader":
+            reviewer["readers"] = ["mistral/model-b"]
+    panel.write_bytes(yaml.safe_dump(document, sort_keys=False).encode("utf-8"))
     assert plan.next_round(project) == 3
     shutil.rmtree(mixed / "review")
     assert plan.next_round(project) == 1

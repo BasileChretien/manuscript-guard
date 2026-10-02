@@ -875,3 +875,285 @@ def test_a_fault_nobody_foresaw_in_one_reading_does_not_lose_the_others(
     out = capsys.readouterr().out
     assert "4 of 8" in out and "RuntimeError" in out
     assert len(readings(unreviewed)) == 4
+
+
+def test_a_record_the_review_schema_refuses_is_not_filed(
+    unreviewed: Path, providers: Providers
+) -> None:
+    """The reply schema is the first check and the review schema is the last. Whatever got
+    past the first, what is filed has to be a review record."""
+    from datetime import date
+
+    from manuscript_guard.panel import run as running
+    from manuscript_guard.panel.plan import make_plan
+    from manuscript_guard.panel.reply import ReplyRefused
+
+    project = loaded(unreviewed)
+    plan = make_plan(project)
+    reply = client.Reply(
+        text="", response_id=None, model=None, finish="stop", input_tokens=None, output_tokens=None
+    )
+    parsed = json.loads(reply_text("accept"))
+    with pytest.raises(ReplyRefused, match="does not fit the schema"):
+        running.file_reading(project, plan, plan.calls[0], reply, parsed, date(2026, 1, 1))
+    assert not (unreviewed / "review").exists()
+
+
+# ----------------------------------------------------------- found by the review of the run
+
+
+def drop_the_second_model(root: Path) -> None:
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert f"[{MODEL_A}, {MODEL_B}]" in text
+    paper.write_text(
+        text.replace(f"[{MODEL_A}, {MODEL_B}]", f"[{MODEL_A}]"), encoding="utf-8", newline="\n"
+    )
+
+
+def test_a_round_the_panel_still_waits_on_is_not_said_to_be_on_file(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """One provider failed, and its model was then taken out of `review.models`. The panel
+    still names it for every remit. The command said every reading of the round was on file
+    and exited 0."""
+    providers.host("api.mistral.ai", lambda request: HttpResponse(500, {}, b"{}"))
+    assert run(unreviewed, "--yes") == 1
+    drop_the_second_model(unreviewed)
+    providers.by_host.clear()
+    providers.requests.clear()
+    capsys.readouterr()
+
+    assert run(unreviewed, "--yes") == 1
+    out = capsys.readouterr().out
+    assert providers.requests == []
+    assert "nothing to send" in out and "not complete" in out and MODEL_B in out
+    assert "`readers`" in out, "it says how a reader who will not report is released"
+
+
+def test_a_run_that_asks_fewer_readers_than_the_panel_names_says_so(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """The second run deals one model to each reviewer, so it asks two of the four readings
+    that are missing. Both arrive; the round is still waiting for the other two."""
+    providers.host("api.mistral.ai", lambda request: HttpResponse(500, {}, b"{}"))
+    assert run(unreviewed, "--yes") == 1
+    providers.by_host.clear()
+    providers.requests.clear()
+    capsys.readouterr()
+
+    assert run(unreviewed, "--yes", "--one-each") == 1
+    out = capsys.readouterr().out
+    assert len(providers.requests) == 2
+    assert "Filed 2 of 2" in out and "not complete" in out and MODEL_B in out
+
+
+def test_a_complete_round_is_still_said_to_be_on_file(
+    project: Path, providers: Providers, capsys
+) -> None:
+    configure(project, MODEL_A)
+    assert run(project, "--yes", "--round", "2") == 0
+    capsys.readouterr()
+    assert run(project, "--round", "2") == 0
+    out = capsys.readouterr().out
+    assert "nothing to send" in out and "not complete" not in out
+
+
+def test_a_run_that_is_interrupted_sends_no_further_call(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """Ctrl+C after the yes. The calls already made cannot be recalled and their replies are
+    filed; no other call may leave. Every remaining call was still sent, and the run could
+    only be stopped by killing it."""
+    import _thread
+    import threading
+    import time
+
+    once = threading.Lock()
+    fired: list[bool] = []
+
+    def slow(request):
+        with once:
+            first = not fired
+            fired.append(True)
+        if first:
+            _thread.interrupt_main()
+        time.sleep(1.0)
+        return answer(reply_text())
+
+    providers.default = slow
+    assert run(unreviewed, "--yes") == 1
+    out = capsys.readouterr().out
+    sent = len(providers.requests)
+    assert sent < 8, "calls were still made after the interrupt"
+    assert len(readings(unreviewed)) == sent, "what was sent and answered is filed"
+    assert f"{8 - sent} of 8 calls were not sent" in out
+    assert "reading-missing" in {
+        finding.code for finding in check_review(loaded(unreviewed), submission=True).failures
+    }
+
+
+def test_an_interrupt_at_the_question_is_a_no(
+    unreviewed: Path, providers: Providers, monkeypatch, capsys
+) -> None:
+    def interrupted(prompt: str = "") -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(commands, "interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", interrupted)
+    before = everything_under(unreviewed)
+    assert run(unreviewed) == 2
+    assert "Nothing was sent" in capsys.readouterr().err
+    assert providers.requests == []
+    assert everything_under(unreviewed) == before
+
+
+@pytest.mark.parametrize("key", ["test", "none", "dummy", "sk-no-key-required"])
+def test_a_placeholder_key_for_a_local_server_does_not_refuse_the_reviews(
+    project: Path, providers: Providers, monkeypatch, key: str
+) -> None:
+    """A server on the same machine is often given a word for a key. The record's own field
+    `rejection_tests` holds `test`, and a review says `none of` and `required`."""
+    shutil.rmtree(project / "review")
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8")
+        + "\nreview:\n  models: [lab/model-l]\n  providers:\n    lab:\n"
+        "      base_url: http://localhost:8080/v1\n      key_env: LAB_API_KEY\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    monkeypatch.setenv("LAB_API_KEY", key)
+    said = json.loads(reply_text())
+    said["summary"] = "A dummy variable is used; none of the required tests is reported."
+    providers.default = lambda request: answer(json.dumps(said))
+    assert run(project, "--yes") == 0
+    assert len(readings(project)) == 4
+
+
+def test_a_reply_a_record_would_not_keep_as_written_is_refused(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """U+0085 is written into YAML as it is and read back as a line break, so the record
+    said something the model did not. Nothing a model wrote is changed on its way to a
+    record: the reply is refused."""
+    said = json.loads(reply_text())
+    said["findings"] = [
+        {
+            "severity": "major",
+            "finding": "The interval is wrong." + chr(0x85) + "It should be 2.1 to 6.9.",
+        }
+    ]
+    providers.host(
+        "api.mistral.ai", lambda request: answer(json.dumps(said, ensure_ascii=False))
+    )
+    assert run(unreviewed, "--yes") == 1
+    assert "as written" in capsys.readouterr().out
+    assert not any("mistral" in path.name for path in readings(unreviewed))
+    assert len(readings(unreviewed)) == 4
+
+
+def test_what_would_stop_every_reply_being_filed_is_said_before_anything_is_sent(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """A record lists the files that were read, and its schema takes no `..` in a file's
+    name. That is known before the question: every call was made, and every reply refused."""
+    extra = unreviewed / "manuscript" / "supplementary"
+    extra.mkdir(exist_ok=True)
+    (extra / "appendix..v2.md").write_text(
+        "# Appendix\n\nNothing with a number in it.\n", encoding="utf-8"
+    )
+    before = everything_under(unreviewed)
+    assert run(unreviewed, "--yes") == 2
+    err = capsys.readouterr().err
+    assert "nothing was sent" in err.lower() and "appendix..v2.md" in err
+    assert providers.requests == []
+    assert everything_under(unreviewed) == before
+
+
+def test_a_panel_changed_while_the_question_waited_stops_the_run(
+    project: Path, providers: Providers, monkeypatch, capsys
+) -> None:
+    """The statement named the reviewers of the panel as it was. A reading filed for a
+    reviewer the panel no longer names is one no gate reads."""
+    configure(project, MODEL_A)
+    panel = project / "review" / "panel-2.yaml"
+
+    def rename_then_agree(prompt: str = "") -> str:
+        document = read_structured(panel)
+        document["reviewers"][0]["id"] = "somebody-else"
+        panel.write_bytes(yaml.safe_dump(document, sort_keys=False).encode("utf-8"))
+        return "yes"
+
+    monkeypatch.setattr(commands, "interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", rename_then_agree)
+    assert run(project, "--round", "2") == 2
+    err = capsys.readouterr().err
+    assert "nothing was sent" in err.lower() and "panel-2.yaml" in err
+    assert providers.requests == []
+    assert len(readings(project, 2)) == 0
+
+
+def test_a_reading_is_filed_even_if_its_temporary_name_cannot_be_removed(
+    unreviewed: Path, providers: Providers, monkeypatch, capsys
+) -> None:
+    real = Path.unlink
+
+    def keep_temporaries(self, *args, **how):
+        if self.name.endswith(".tmp"):
+            raise PermissionError(13, "in use", str(self))
+        return real(self, *args, **how)
+
+    monkeypatch.setattr(Path, "unlink", keep_temporaries)
+    assert run(unreviewed, "--yes") == 0
+    assert "Filed 8 of 8" in capsys.readouterr().out
+    assert not (unreviewed / "review" / "round-1" / "refused").exists()
+
+
+def test_a_verdict_that_is_the_key_is_not_printed(
+    unreviewed: Path, providers: Providers, capsys
+) -> None:
+    """A refusal quotes what it refuses."""
+    providers.host("api.openai.com", lambda request: answer(reply_text(KEY_A)))
+    assert run(unreviewed, "--yes") == 1
+    printed = capsys.readouterr()
+    for part in (KEY_A, KEY_A[:12], KEY_A[-12:]):
+        assert part not in printed.out + printed.err
+        for name, content in everything_under(unreviewed).items():
+            assert part.encode() not in content, name
+
+
+def test_without_hard_links_a_record_that_appeared_is_still_not_replaced(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from manuscript_guard.panel import run as running
+
+    def no_links(source, target, **how):
+        raise OSError("hard links are not supported here")
+
+    target = tmp_path / "statistics.openai-model-a.yaml"
+    target.write_bytes(b"theirs")
+    real = Path.exists
+    monkeypatch.setattr(running.os, "link", no_links)
+    monkeypatch.setattr(
+        Path, "exists", lambda self, **how: False if self == target else real(self, **how)
+    )
+    with pytest.raises(FileExistsError):
+        running._write_new(target, "ours")
+    monkeypatch.undo()
+    assert target.read_bytes() == b"theirs"
+
+
+@pytest.mark.parametrize("flags", [["--providers"], ["--run", "--dry-run"], ["--run", "--yes"]])
+def test_recording_a_reading_and_running_the_models_in_one_command_is_refused(
+    project: Path, providers: Providers, capsys, flags: list[str]
+) -> None:
+    """The run's part of the command answered first and the record was not filed, with
+    nothing said: it looked as though a reading had been recorded."""
+    configure(project, MODEL_A)
+    before = everything_under(project)
+    recording = ["--record", "desk-editor", "--reading", "a co-author", "--verdict", "pass"]
+    assert main(["review", str(project), "--round", "2", *recording, *flags]) == 2
+    assert "--record" in capsys.readouterr().err
+    assert providers.requests == []
+    assert everything_under(project) == before

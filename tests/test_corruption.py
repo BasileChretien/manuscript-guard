@@ -8029,6 +8029,10 @@ _RUNS_THAT_FALL_SHORT = {
         lambda: _served("Here is my review." + chr(10) + _RAN),
         "reading-missing",
     ),
+    "a reply holds a character a record would not keep as written": (
+        lambda: _served(_with(summary="The estimator is stated." + chr(0x85) + "It is the ROR.")),
+        "reading-missing",
+    ),
     "a model raises a major finding": (
         lambda: _served(_with(verdict="major-revision", findings=_MAJOR)),
         "open-major-finding",

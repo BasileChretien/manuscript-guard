@@ -500,3 +500,60 @@ def test_a_record_that_appears_while_this_one_is_being_written_is_not_replaced(
     with pytest.raises(RecordError, match="already exists"):
         write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
     assert target.read_text(encoding="utf-8") == "filed by somebody else\n"
+
+
+def test_a_folder_that_cannot_be_written_is_refused_in_words_and_not_waited_on(
+    unreviewed: Path, monkeypatch
+) -> None:
+    """The lock could not be made, and no lock was there to wait for. The wait had no end
+    and no pause: one processor, fully, until the command was killed."""
+    import time
+
+    from manuscript_guard import record
+
+    def refused(path, flags, *more):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(record.os, "open", refused)
+    monkeypatch.setattr(record, "LOCK_DENIED_SECONDS", 0.2)
+    started = time.monotonic()
+    with pytest.raises(RecordError, match="cannot be written"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
+    assert time.monotonic() - started < 10
+    assert not (unreviewed / "review" / "round-1").exists()
+
+
+def test_a_lock_left_behind_that_cannot_be_removed_is_refused_in_words(
+    unreviewed: Path, monkeypatch
+) -> None:
+    import os
+    import time
+
+    from manuscript_guard import record
+
+    (unreviewed / "review").mkdir()
+    lock = unreviewed / "review" / "panel-1.yaml.lock"
+    lock.write_text("", encoding="utf-8")
+    old = time.time() - 3600
+    os.utime(lock, (old, old))
+    real = Path.unlink
+
+    def held(self, *args, **how):
+        if self.name.endswith(".lock"):
+            raise PermissionError(13, "in use", str(self))
+        return real(self, *args, **how)
+
+    monkeypatch.setattr(Path, "unlink", held)
+    monkeypatch.setattr(record, "LOCK_WAIT_SECONDS", 0.3)
+    started = time.monotonic()
+    with pytest.raises(RecordError, match="panel-1.yaml.lock"):
+        write_review(loaded(unreviewed), "statistics", verdict="pass", remit="x")
+    assert time.monotonic() - started < 10
+
+
+def test_a_record_that_is_refused_leaves_no_folder_behind(unreviewed: Path) -> None:
+    """The panel's lock is made in `review/`. A reviewer with no remit is refused, and the
+    folder made for the lock was left: an empty `review/` where there had been none."""
+    with pytest.raises(RecordError, match="--remit"):
+        write_review(loaded(unreviewed), "somebody", verdict="pass")
+    assert not (unreviewed / "review").exists()

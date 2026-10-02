@@ -24,7 +24,6 @@ from manuscript_guard.gates.review import (
     panels,
     reading_path,
     reading_slug,
-    round_dir,
 )
 from manuscript_guard.panel.client import ANTHROPIC_DEFAULT_MAX_TOKENS, build_body
 from manuscript_guard.panel.prompt import (
@@ -166,11 +165,6 @@ def starter_panel(round_number: int) -> tuple[dict, ...]:
     return tuple(dict(reviewer) for reviewer in STARTER_PANELS.get(round_number, ()))
 
 
-def _has_reported(directory: Path, reviewer: str) -> bool:
-    """Whether any reading of this remit is on file, by hand or by a model."""
-    return (directory / f"{reviewer}.yaml").exists() or any(directory.glob(f"{reviewer}.*.yaml"))
-
-
 def _reviewers_of(path: Path) -> list[dict]:
     try:
         document = read_structured(path)
@@ -193,15 +187,38 @@ def _reviewers_of(path: Path) -> list[dict]:
 
 
 def _read_in_full(project: Project, number: int, reviewer: dict) -> bool:
-    """Whether a remit has every reading its panel asks for: one from each reader it
-    names, or one from anybody when it names none."""
+    """Whether a remit has every reading its panel asks for, as G11 counts them: one from
+    each reader it names, or the reviewer's plain record when it names none."""
     readers = reviewer.get("readers")
     if not readers:
-        return _has_reported(round_dir(project, number), reviewer["id"])
+        return reading_path(project, number, reviewer["id"]).exists()
     return all(
         reading_path(project, number, reviewer["id"], str(reader)).exists()
         for reader in readers
     )
+
+
+def unread(project: Project, number: int) -> list[tuple[str, str]]:
+    """The readers a round's panel names whose reading is not on file, as (reviewer,
+    reader). Empty when the round has no panel, or one that cannot be read.
+
+    A run asks the models listed now. The panel may name others: a model since taken out of
+    `review.models`, or one that `--one-each` dealt to another reviewer this time. The
+    command must not call a round read while the panel is still waiting for them.
+    """
+    path = panel_path(project, number)
+    if not path.exists():
+        return []
+    try:
+        reviewers = _reviewers_of(path)
+    except PlanError:
+        return []
+    return [
+        (reviewer["id"], str(reader))
+        for reviewer in reviewers
+        for reader in reviewer.get("readers") or ()
+        if not reading_path(project, number, reviewer["id"], str(reader)).exists()
+    ]
 
 
 def next_round(project: Project) -> int:
@@ -471,5 +488,6 @@ __all__ = [
     "make_plan",
     "next_round",
     "starter_panel",
+    "unread",
     "write_dry_run",
 ]

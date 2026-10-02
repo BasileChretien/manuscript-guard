@@ -5,8 +5,9 @@ is left to get right is what is written down:
 
 * **A reading is filed whole or not at all.** A reply becomes a record only after it has
   come back finished, parsed as one JSON object, fitted the reply schema, and the record
-  built from it has fitted the review schema. The record is written to a temporary file and
-  moved into place, so an interrupted run leaves no half-written record for G11 to read.
+  built from it has fitted the review schema and reads back as it was written. The record
+  is written to a temporary file and linked into place, so an interrupted run leaves no
+  half-written record for G11 to read.
 * **Nothing of the review is written by this tool.** The verdict, the summary, the tests and
   the findings are the model's words. The tool adds what the model cannot know: who read,
   when, which version of the manuscript, and how the reading can be traced. It numbers the
@@ -25,8 +26,9 @@ from __future__ import annotations
 import contextlib
 import os
 import threading
+import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -42,13 +44,17 @@ from manuscript_guard.panel.client import CallFailed, Reply, Transport
 from manuscript_guard.panel.plan import Call, Plan
 from manuscript_guard.panel.providers import Provider, key_is_set, read_key
 from manuscript_guard.panel.reply import ReplyRefused, parse_reply
-from manuscript_guard.record import panel_lock
+from manuscript_guard.record import RecordError, panel_lock
 
 REFUSED_DIR = "refused"
 #: The longest thing a provider says of itself that is filed.
 MAX_SAID = 200
-#: How many characters of a key, in a row, a record is refused for.
-KEY_RUN = 8
+#: How many characters of a key, in a row, a review is refused for, and the shortest key
+#: that is looked for at all.
+KEY_RUN = 12
+KEY_LEAST = 8
+#: What a call that was never made is reported as.
+NOT_SENT = "not sent: the run was stopped"
 
 STARTER_RATIONALE = (
     "Starter panel, written by manuscript-guard because this round had none. It assumes "
@@ -69,6 +75,8 @@ class Outcome:
     failure: str = ""
     #: Where the refused reply was kept, when there was text to keep.
     kept: Path | None = None
+    #: False for a call that was never made, because the run was stopped first.
+    sent: bool = True
 
     @property
     def filed(self) -> bool:
@@ -113,7 +121,9 @@ def _write_new(path: Path, text: str) -> None:
             except FileExistsError:
                 raise FileExistsError(path) from None
     finally:
-        temporary.unlink(missing_ok=True)
+        # Once the link is made the record is filed, whatever becomes of the other name.
+        with contextlib.suppress(OSError):
+            temporary.unlink(missing_ok=True)
 
 
 # -------------------------------------------------------------------------------- the panel
@@ -148,6 +158,20 @@ def _write_panel(project: Project, plan: Plan, today: date) -> Path:
     path = plan.panel
     if path.exists():
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        listed = document.get("reviewers") if isinstance(document, dict) else None
+        named_now = {
+            reviewer.get("id") for reviewer in listed or () if isinstance(reviewer, dict)
+        }
+        gone = sorted(set(asked) - named_now)
+        if gone:
+            # The statement the author agreed to named the reviewers of the panel as it
+            # was. A reading filed for a reviewer the panel no longer names is read by no
+            # gate, and it would have been paid for.
+            raise RecordError(
+                f"{path.name} has changed since the plan was shown: it no longer names "
+                f"{', '.join(gone)}. Run the command again to see the plan for the panel "
+                "as it is now"
+            )
         changed = False
         for reviewer in document["reviewers"]:
             readers = list(reviewer.get("readers") or [])
@@ -203,29 +227,34 @@ def _plain(said: str | None, keys: Sequence[str]) -> str | None:
 
 
 def _strings(value: object) -> Iterator[str]:
+    """Every string a reply holds as a value. The names of its fields are the schema's."""
     if isinstance(value, str):
         yield value
     elif isinstance(value, dict):
-        for name, inner in value.items():
-            yield from _strings(name)
+        for inner in value.values():
             yield from _strings(inner)
     elif isinstance(value, list):
         for inner in value:
             yield from _strings(inner)
 
 
-def _repeats_a_key(document: dict, keys: Sequence[str]) -> bool:
-    """Whether a record holds a key of this run, or `KEY_RUN` characters of one in a row.
+def _repeats_a_key(parsed: dict, keys: Sequence[str]) -> bool:
+    """Whether a review holds a key of this run, or `KEY_RUN` characters of one in a row.
 
     A model is never sent the key, so it cannot repeat one; a gateway between could put it
-    in the reply. A shorter run is not looked for: the first letters of a key are a
-    vendor's prefix and a common word, and every review that said `project` was refused.
+    in the reply. A shorter run is not looked for, and a key shorter than `KEY_LEAST` is
+    not looked for at all. A key begins with its vendor's prefix, and at four characters
+    every review that said `project` was refused for a key beginning `sk-proj-`. A server on
+    the same machine is given a word for a key: `test` refused every review, since the
+    record has a field called `rejection_tests`, and `sk-no-key-required` refused the ones
+    that said `required`.
     """
     for key in keys:
-        parts = {key} if len(key) <= KEY_RUN else {
-            key[start : start + KEY_RUN] for start in range(len(key) - KEY_RUN + 1)
-        }
-        for text in _strings(document):
+        if len(key) < KEY_LEAST:
+            continue
+        width = min(len(key), KEY_RUN)
+        parts = {key[start : start + width] for start in range(len(key) - width + 1)}
+        for text in _strings(parsed):
             if any(part in text for part in parts):
                 return True
     return False
@@ -295,13 +324,55 @@ def file_reading(
     if not report.ok:
         said = "; ".join(finding.message for finding in report.findings[:3])
         raise ReplyRefused(f"the record built from the reply does not fit the schema: {said}")
-    if _repeats_a_key(document, keys):
+    if _repeats_a_key(parsed, keys):
         raise ReplyRefused(
             "the reply repeats the key it was called with, or part of it; a record is "
             "committed, so this one is not filed"
         )
-    _write_new(path, HEADER + _dump(document))
+    text = HEADER + _dump(document)
+    # The record has to say what the model said. YAML writes U+0085 as it is and reads it
+    # back as a line break, so a finding came back with its words changed; whatever else
+    # does not survive the trip is caught the same way, by making the trip.
+    try:
+        kept = yaml.safe_load(text) == document
+    except yaml.YAMLError:
+        kept = False
+    if not kept:
+        raise ReplyRefused(
+            "the reply holds a character a record does not keep as written (U+0085, a "
+            "line break from another system, is one); it is not filed, since the record "
+            "would say something the reader did not"
+        )
+    _write_new(path, text)
     return path
+
+
+#: A reply with nothing in it, to try a record's own fields with before anything is sent.
+_NOTHING_SAID = {
+    "verdict": "pass",
+    "summary": "-",
+    "rejection_tests": [{"test": "-", "holds": False, "evidence": "-"}],
+    "findings": [],
+}
+
+
+def unfileable(project: Project, plan: Plan, today: date | None = None) -> str | None:
+    """Why no reply of this plan could be filed, where that is known before sending.
+
+    A record carries more than the reply: the round, the reader, the digest of every file
+    that was read. If those do not fit the review schema, every reply would be refused
+    after it was paid for. A manuscript file with `..` in its name is one such case.
+    """
+    today = today or date.today()
+    empty = Reply(
+        text="", response_id=None, model=None, finish="stop", input_tokens=None, output_tokens=None
+    )
+    for call in plan.calls:
+        path = reading_path(project, plan.round, call.reviewer, call.model.reader)
+        report = validate(_record(plan, call, empty, _NOTHING_SAID, today), "review", path)
+        if not report.ok:
+            return "; ".join(finding.message for finding in report.findings[:3])
+    return None
 
 
 def refused_path(project: Project, plan: Plan, call: Call) -> Path:
@@ -390,18 +461,32 @@ def run_plan(
     transport: Transport | None = None,
     today: date | None = None,
     say: Callable[[Outcome], None] | None = None,
+    stopping: Callable[[], None] | None = None,
 ) -> list[Outcome]:
     """Make every call of the plan. Providers are asked side by side, each one call at a
-    time, so one slow provider does not hold the others and none is flooded."""
+    time, so one slow provider does not hold the others and none is flooded.
+
+    An interrupt stops the sending: no call is begun after it. The calls already made
+    cannot be recalled, so they are waited for and their replies filed, and every call not
+    made comes back as an outcome with `sent` false. A second interrupt is not caught.
+    """
     today = today or date.today()
     held = {provider: read_key(provider, environ) for provider in providers_of(plan)}
     keys = [key for key in held.values() if key]
     told = threading.Lock()
+    stop = threading.Event()
+    # No call is made until every provider's thread is waiting, so that an interrupt while
+    # they are being started stops all of them and not only the ones already listed.
+    go = threading.Event()
 
     def ask(provider: Provider) -> list[Outcome]:
+        go.wait()
         outcomes = []
         for call in plan.calls:
             if call.model.provider != provider:
+                continue
+            if stop.is_set():
+                outcomes.append(Outcome(call, failure=NOT_SENT, sent=False))
                 continue
             outcome = _one(project, plan, call, held[provider], keys, transport, today)
             outcomes.append(outcome)
@@ -410,10 +495,42 @@ def run_plan(
                     say(outcome)
         return outcomes
 
-    with ThreadPoolExecutor(max_workers=max(1, len(held))) as pool:
-        done = [outcome for outcomes in pool.map(ask, list(held)) for outcome in outcomes]
+    pool = ThreadPoolExecutor(max_workers=max(1, len(held)))
+    futures: list[Future] = []
+    try:
+        try:
+            for provider in held:
+                futures.append(pool.submit(ask, provider))
+            go.set()
+            _until_done(futures)
+        except KeyboardInterrupt:
+            stop.set()
+            go.set()
+            if stopping is not None:
+                with told:
+                    stopping()
+            _until_done(futures)
+    finally:
+        stop.set()
+        go.set()
+        pool.shutdown(wait=False, cancel_futures=True)
+    done = [outcome for future in futures for outcome in future.result()]
+    # A provider whose thread was never listed made no call: the stop came first.
+    reported = {id(outcome.call) for outcome in done}
+    done += [
+        Outcome(call, failure=NOT_SENT, sent=False)
+        for call in plan.calls
+        if id(call) not in reported
+    ]
     order = {id(call): index for index, call in enumerate(plan.calls)}
     return sorted(done, key=lambda outcome: order[id(outcome.call)])
+
+
+def _until_done(futures: Sequence[Future]) -> None:
+    """Wait in short sleeps, so that an interrupt reaches the main thread on every system:
+    a wait on a lock is not interrupted on Windows."""
+    while not all(future.done() for future in futures):
+        time.sleep(0.05)
 
 
 __all__ = [
@@ -423,5 +540,6 @@ __all__ = [
     "missing_keys",
     "providers_of",
     "run_plan",
+    "unfileable",
     "write_panel",
 ]

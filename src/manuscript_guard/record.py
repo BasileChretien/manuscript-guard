@@ -33,6 +33,8 @@ FIGURE_VERDICTS = ("pass", "concerns")
 #: takes milliseconds.
 LOCK_WAIT_SECONDS = 30.0
 LOCK_STALE_SECONDS = 120.0
+#: How long a lock that cannot be made, with none there to wait for, is tried for.
+LOCK_DENIED_SECONDS = 2.0
 
 
 class RecordError(Exception):
@@ -54,40 +56,72 @@ def panel_lock(panel: Path) -> Iterator[None]:
     panel naming two, three or five of the six readers, and the gate does not read a reading
     the panel does not name. The lock is a file beside the panel, made with exclusive
     create, which every file system this runs on does atomically.
+
+    Every way round the loop pauses and looks at the clock. A folder that cannot be written
+    to made no lock and left none to wait for, and the first version waited for it without
+    a pause and without an end.
     """
     lock = panel.with_name(panel.name + ".lock")
+    made_folder = not lock.parent.exists()
     lock.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + LOCK_WAIT_SECONDS
-    while True:
-        try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-            break
-        except FileExistsError:
-            pass
-        except PermissionError:
-            # Windows, while another writer is removing its lock.
-            pass
-        try:
-            age = time.time() - lock.stat().st_mtime
-        except OSError:
-            continue
-        if age > LOCK_STALE_SECONDS:
+    try:
+        _take(lock, panel)
+    except BaseException:
+        if made_folder:
             with contextlib.suppress(OSError):
-                lock.unlink()
-            continue
-        if time.monotonic() > deadline:
-            raise RecordError(
-                f"{panel.name} is being written by another manuscript-guard, or one that "
-                f"stopped part way: {lock.name} has been there for {age:.0f} s. Nothing was "
-                "written. Run the command again, or delete that file if nothing else is "
-                "running"
-            )
-        time.sleep(0.05)
+                lock.parent.rmdir()
+        raise
     try:
         yield
     finally:
         with contextlib.suppress(OSError):
             lock.unlink()
+        if made_folder:
+            # Made for the lock, and still empty: the writer was refused before it wrote.
+            with contextlib.suppress(OSError):
+                lock.parent.rmdir()
+
+
+def _take(lock: Path, panel: Path) -> None:
+    started = time.monotonic()
+    denied_since: float | None = None
+    while True:
+        denied: PermissionError | None = None
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return
+        except FileExistsError:
+            pass
+        except PermissionError as exc:
+            # Windows says this while another writer is removing its lock, for an instant.
+            # Any system says it for a folder that cannot be written to, and goes on
+            # saying it, with no lock there to wait for.
+            denied = exc
+        now = time.monotonic()
+        try:
+            age: float | None = time.time() - lock.stat().st_mtime
+        except OSError:
+            age = None
+        if denied is None or age is not None:
+            denied_since = None
+        elif denied_since is None:
+            denied_since = now
+        elif now - denied_since > LOCK_DENIED_SECONDS:
+            raise RecordError(
+                f"{lock.parent.name}/ cannot be written to ({denied.strerror or 'refused'}), "
+                f"so {panel.name} was not changed and nothing was written"
+            )
+        if age is not None and age > LOCK_STALE_SECONDS:
+            with contextlib.suppress(OSError):
+                lock.unlink()
+        if now - started > LOCK_WAIT_SECONDS:
+            there = "is there" if age is None else f"has been there for {age:.0f} s"
+            raise RecordError(
+                f"{panel.name} is being written by another manuscript-guard, or one that "
+                f"stopped part way: {lock.name} {there}. Nothing was written. Run the "
+                "command again, or delete that file if nothing else is running"
+            )
+        time.sleep(0.05)
 
 
 def _yaml_dump(document: dict) -> str:

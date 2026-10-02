@@ -205,3 +205,43 @@ def test_findings_say_which_rule_fired(project: Path) -> None:
     assert finding.hint
     assert finding.context
     assert finding.line == 3
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        "# Discussion\n\n<!--\na note\nover three lines\n-->\n",
+        "# Discussion\n\n```r\ncases <- 12\ntotal <- 480\n```\n",
+        '---\ntitle: "A study"\nlang: en\n---\n\n# Discussion\n',
+    ],
+    ids=["comment", "listing", "front-matter"],
+)
+def test_a_finding_is_on_its_own_line_under_lines_the_gate_does_not_read(
+    project: Path, above: str
+) -> None:
+    """A comment, a listing and the front matter's machinery are blanked before the prose
+    rules run, line ends included, and the lines were counted in what was left: a phrase
+    under a comment of four lines was reported three lines up, on the comment itself."""
+    sentences = {
+        "ai-phrasing": "We delve into the mechanisms.",
+        "vague-attribution": "Studies have shown that reporting is low.",
+        "model-artefact": "We analysed TODO reports.",
+    }
+    text = above + "".join(f"\n{sentence}\n" for sentence in sentences.values())
+    report = written(project, text)
+    lines = text.split("\n")
+    expected = {code: lines.index(sentence) + 1 for code, sentence in sentences.items()}
+    assert sorted(expected.values()) == [8, 10, 12], "each opening is six lines"
+    assert {f.code: f.line for f in report.findings} == expected
+
+
+def test_a_finding_under_a_comment_still_shows_its_prose(project: Path) -> None:
+    """The line is counted in the file; what is shown beside it is still the prose, with
+    the comment above it left out, and a phrase in the comment is not a finding."""
+    report = written(
+        project,
+        "# Discussion\n\n<!--\nwe delve into this later\n-->\n\nWe delve into the mechanisms.\n",
+    )
+    (finding,) = report.findings
+    assert finding.line == 7
+    assert finding.context == "We delve into the mechanisms."

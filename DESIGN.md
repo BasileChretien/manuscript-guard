@@ -236,6 +236,7 @@ All deterministic, all runnable in CI without Claude.
 | G11 | Panel review | no review round, a stale review, a file nobody read, or an unanswered major finding |
 | G12 | Methods appropriateness | the analysis plan does not answer the question asked |
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
+| G14 | Abbreviations | never: it warns when one is used before it is defined, defined twice, defined for nothing or never defined |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -798,6 +799,63 @@ does not count towards the vocabulary rate.
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.
+
+## Abbreviations are checked against the manuscript, not against a style guide
+
+G14 is the first check on the language itself, and it is built on one distinction. Whether
+"ROR" has to be defined is a question about a journal: one house style expands "CI" and
+another lets it stand. Whether "ROR" *was* defined, where, how many times, and whether
+anything used it afterwards are questions about the manuscript, and they have the same
+answers in any field. The gate asks only the second kind:
+
+- `abbreviation-used-before-defined`: the short form appears above the sentence that
+  defines it;
+- `abbreviation-redefined`: it is defined a second time, or as two different things;
+- `abbreviation-unused`: it is defined and nothing uses it afterwards;
+- `abbreviation-undefined`: it is used and never defined.
+
+**A definition is read by its shape.** A long form with the short form in brackets after
+it, or the short form with the long form in brackets, where the letters of the short form
+can be found in order in the long one and the first of them begins a word. That is Schwartz
+and Hearst's rule (Pac Symp Biocomput 2003;8:451-62), written out here in thirty lines
+because a gate that runs in CI should not take a dependency for them. The short form in a
+definition may be anything with two capitals, or one that is not the capital of a word
+(`mL`), or a capital and a digit. A word met with no definition is taken for an abbreviation
+only when two capitals stand side by side, which is what keeps `McNemar`, `DeLong`, `NaCl`
+and `PhD` out of the report.
+
+**Three texts are read apart, because each is read apart.** The abstract is indexed and read
+without the paper, so it defines what it uses. The main text does not inherit from the
+abstract, and says so when that is the reason for a finding. The supplement is read after
+the paper, so it inherits the main text's definitions and nothing else. Files are read in
+the order the build prints them, and a file that opens without a heading continues the
+section the one before it ended in.
+
+**What is not a sentence is not read.** Listings, comments, bindings, citation keys and
+link targets go with `mask`, and inline code, equations, image captions, front matter and
+headings go after them: a heading in capitals is not an abbreviation. A reference list is
+not read at all. In a contributions, acknowledgements, funding or competing-interests
+section, capitals are people and institutions, so nothing there is reported as undefined,
+and a funder named once with its acronym is not reported as unused.
+
+**What may stand undefined is data.** `data/abbreviations.yaml` holds a short list of what
+general English reads as a word or a name: `DNA`, `UK`, `DOI`. It is short on purpose. A long
+list would decide for every field at once what its readers know. To it are added the names
+G2 already reads as names (`terms.yaml` and the project's `terms:`), the reporting
+guidelines the toolkit has a recipe for, the ones the project declares, and whatever the
+project lists under `language: known_abbreviations:` in `paper.yaml`. A listed abbreviation
+that the manuscript defines anyway is still held to that definition.
+
+**Every finding is a warning, at every stage.** The reading of a definition is good and not
+exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
+undefined abbreviation fail a submission build. Run on the realistic manuscript kept in
+`tests/test_language.py` it gives 22 findings, of which two are names: a trial and a
+statistics package. A check that is wrong that often may advise; it may not stop a build.
+
+The worked example found its own slip the first time the gate ran: the Introduction writes
+"(ROR ...)" and nothing defines ROR. It is left as it is, because the example's review
+records are tied to the text they read, so `check` on the example prints that one warning.
+`CI` is listed in the example's `paper.yaml` to show the setting.
 
 ## Methods drift is a reconciliation ledger
 
@@ -5557,6 +5615,35 @@ Closed since, and why each mattered:
   one scan at a time. Two costs fall outside the CPU ratio too: a scan whose result is
   cached by content runs once, on the untimed first check, and garbage collection is off
   while timing. Both are left to the wall clock.
+
+- **G14 reads a definition by its shape, and an abbreviation by its capitals.**
+  - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
+    ROR", "ROR stands for". Its short form is then reported as undefined.
+  - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
+    a definition; `(ROR; ...)`, `(ROR, ...)` and `(ROR: ...)` are.
+  - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
+    bracket is read and the outer is not, and a definition whose long form holds a bracket
+    is missed.
+  - The long form is matched by letters, so it can start a word late or early: "the ratio
+    as before (ROR)" is read as a definition whose long form is "ratio as before". The
+    definition is still counted; the long form quoted in a message can be wrong, and two
+    definitions of one thing can be reported as two meanings.
+  - An undefined abbreviation with no two capitals together is not reported: `HbA1c`, `mL`
+    and `Hb` are missed, where `eGFR` is caught. `Hb` cannot be defined either, being the
+    capital of a word, so "haemoglobin (Hb)" is not tracked.
+  - `II` to `XXXIX` are read as numerals wherever they stand, so `IV` for intravenous and
+    `VI` are never reported.
+  - A name in capitals is reported like an abbreviation: a trial (`KEYNOTE-189`), a package
+    (`SAS`), an agency. The project lists those it means to leave.
+  - A word typed in capitals for emphasis is reported as an undefined abbreviation.
+  - Tables and figures are not read, since both are generated from results. An abbreviation
+    defined in the text for a table's sake is reported as unused, and one used only in a
+    caption is not seen. The hint on `abbreviation-unused` says so.
+  - Title-page text comes from `paper.yaml` and `authors.yaml`, which are not read.
+  - The sections where nothing is reported as undefined are found by their English titles:
+    contributions, acknowledgements, funding, competing interests, disclosures.
+  - The hook that runs after a manuscript file is saved does not run this gate yet; the
+    findings appear at `check`.
 
 ## Still open
 

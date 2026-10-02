@@ -55,6 +55,14 @@ class Project:
     def extra_terms(self) -> tuple[str, ...]:
         return tuple(self.paper.get("terms", ()))
 
+    @property
+    def known_abbreviations(self) -> tuple[str, ...]:
+        """Short forms this paper uses without defining them. Read past a setting in the
+        wrong shape: the schema reports that, and G14 still has a manuscript to read."""
+        language = self.paper.get("language")
+        listed = language.get("known_abbreviations") if isinstance(language, dict) else None
+        return tuple(str(entry) for entry in listed) if isinstance(listed, list) else ()
+
 
 def find_root(start: Path) -> Path:
     """Walk upwards for the directory holding paper.yaml."""

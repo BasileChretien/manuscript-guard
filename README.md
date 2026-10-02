@@ -24,7 +24,7 @@ anything else has to be justified. Change the analysis, rebuild, and the manuscr
 supplements and figures follow. A stale number is a build failure, not a discovery made by
 a reviewer.
 
-> **Status: alpha.** All thirteen gates, the document build, the literature tooling, the
+> **Status: alpha.** All fourteen gates, the document build, the literature tooling, the
 > checklist transcriber, the review panels, the Word round trip and the submission pack work
 > and are tested against a worked example — a test suite that gains a case for every defect found, and
 > several rounds of adversarial review whose
@@ -115,6 +115,7 @@ Currently implemented:
 | G11 | a recorded panel has reviewed the manuscript, and its major findings are answered |
 | G12 | there was an analysis plan, and its sections say something |
 | G13 | every reviewer point is answered, and every claimed revision really happened |
+| G14 | an abbreviation is defined once, before it is used (warnings only) |
 
 `manuscript-guard check --submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building
@@ -196,6 +197,13 @@ for ordinary words it counts. "Robust" describes a standard error and "significa
 technical meaning; six "crucial"s in four hundred words is the tell, not one. A lint that
 flags robust standard errors gets switched off, and a lint that is switched off guards
 nothing. It detects **habits, not authorship**, and says so.
+
+**Abbreviations are checked against the manuscript itself.** Whether "CI" needs defining is
+a journal's decision; whether an abbreviation was defined, defined twice, defined for
+nothing or used before its definition is a fact about the text, the same in any field.
+G14 reports those four as warnings, reads the abstract, the main text and the supplement
+apart, and takes the abbreviations a paper leaves undefined on purpose from
+`language: known_abbreviations:` in `paper.yaml`.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

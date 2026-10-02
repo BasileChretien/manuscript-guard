@@ -39,6 +39,7 @@ from manuscript_guard.gates import (
     check_figures,
     check_freshness,
     check_journal,
+    check_language,
     check_literature_chain,
     check_methods,
     check_numbers,
@@ -119,6 +120,7 @@ def _run_gates(
         ("G12", lambda: check_design(project)),
         ("G8", lambda: check_consistency(results)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
+        ("G14", lambda: check_language(project)),
         ("BUILD", lambda: check_shapes(project)),
     ):
         reports.append(_guarded(name, gate))

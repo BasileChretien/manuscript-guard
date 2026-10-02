@@ -874,6 +874,55 @@ guarantee, and the one most likely to be switched off), superseding only across 
 revision round (which left copy-edits before the first submission at the same dead end), and
 no change.
 
+**A remit can be read by several readers.** One reviewer had one record a round, so a remit
+could be read once. A panel read by models from several providers has several readings of
+each remit, and a co-author may read a remit a model also read. Each reading is a record of
+its own, `review/round-N/<reviewer>.<reader>.yaml`, beside the plain `<reviewer>.yaml`; a
+reviewer's id cannot hold a dot, so the first dot ends it. The record says the same `reader`
+inside, and `review --record <reviewer> --reading <reader>` files one. Nothing is merged
+into one file, because a record several writers append to is a record that can be
+re-stamped.
+
+**The panel names its readers, and is held to each.** A reviewer's entry may list the
+`readers` asked to read the remit, and G11 then wants a reading from every one of them:
+`reading-missing` leaves the round unfinished. With every model reading every remit, one
+provider failing must not leave a round that looks complete, and this is what lets the
+readings that did arrive be filed: the round is visibly incomplete until the missing reader
+reports or is taken out of the panel, which is a decision somebody made and the file
+records. The author chose this over two alternatives. Counting a remit as read once
+anybody had read it passes a round two of three models answered. Filing nothing unless
+every call succeeded throws away replies already paid for. A panel that names no readers
+needs one reading by anybody, which is how every round written before this is read; the
+example's two rounds report exactly as they did.
+
+**Any reader can raise a finding, and nobody's reading answers another's.** Every reading
+is judged as a record always was: stale when a file it read changes, counted for coverage,
+and each unanswered major finding blocks a submission, with the reader who raised it named.
+The gate does not match similar findings across readers. Two models saying the same thing
+in different words are two findings to answer, and deciding they are one is a judgement the
+author makes in the resolution.
+
+**The strictest verdict is reported and decides nothing.** `manuscript-guard review` lists
+who read each remit, what each concluded and the round's strictest verdict. G11 has never
+decided anything on a verdict, and still does not: a record cannot be re-stamped, so a
+verdict could be cleared only by a further round, and what an author can act on is a
+finding.
+
+**A reading is what its file name says.** A named reading that says another reader, another
+reviewer or another round inside is `reading-misfiled` and answers for nobody, so one
+reader's record copied under another's name does not satisfy the panel. Two records
+claiming one reader are `duplicate-reading`. A file beside a record that names no reader,
+such as `biostatistician.old.yaml`, was nothing to the gate before and decides nothing now:
+it is reported as `reading-unnamed`, a warning at every stage, so a copy kept in the round
+does not start failing a submission.
+
+**What a model's reading may keep.** A record may carry `provenance`: the provider, the
+model as asked for and as the provider named it, the host, the SHA-256 of the request body,
+the provider's response identifier, how the reply ended, the token counts and the version
+of this tool. The schema refuses any other field there, so no key, header or prompt text
+can be filed in one. `rejection_tests` records what the reader decided would have to be
+true to reject, and what the manuscript showed. The gate reads neither.
+
 The worked example carries a real two-round panel. Round one found that the paper had no
 case definition, no mention of duplicate records, and no contingency table for a result that
 was a single ratio; all three were fixed, and the manuscript is better for it. Round two,
@@ -3425,6 +3474,19 @@ Closed since, and why each mattered:
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
+- **A plain record is not checked against where it is filed.** A named reading must say the
+  reviewer, the round and the reader its file name says. `<reviewer>.yaml` is read as it
+  always was: its `reviewer` and `round` fields are not compared with its place, so a
+  record copied from round one into round two counts there if its digests still match.
+  Left alone so that no existing record starts failing.
+- **A reading that loses its `reader` line stops counting.** It is reported as
+  `reading-unnamed`, a warning that never becomes a failure, and its findings are no longer
+  read. Where the panel names that reader the round fails as `reading-missing`. Where it
+  does not, the effect is that of deleting the file, which no gate can prevent.
+- **Two readers whose names differ only in punctuation are one file.** `model.a` and
+  `model-a` both file as `model-a`, and the second is refused by `review --record`.
+- **A reading by somebody the panel did not name counts.** Its staleness and its major
+  findings bind like any other's. The panel says who must read, not who may.
 - **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is
   "the response letter" reads the revised text, the round is complete, and the
   biostatistician's stale reading of the Methods becomes history. The panel file's

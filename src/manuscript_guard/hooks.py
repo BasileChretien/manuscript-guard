@@ -61,14 +61,43 @@ SUBMISSION_MARKERS = re.compile(
 )
 
 
+def _event_text() -> str:
+    """The event, as the agent tool wrote it on standard input.
+
+    Read as bytes and decoded as UTF-8, because that is what the tools write: Claude Code and
+    Codex both send a name outside ASCII as its own bytes, with no escape. Left to Python,
+    standard input is decoded in the ANSI code page on Windows, where `méthodes.md` arrived
+    as `mÃ©thodes.md`, a file that does not exist, and a project kept under an accented
+    folder was never found, so that no hook said or refused anything there.
+
+    Bytes that are not UTF-8 are read in the encoding standard input was opened with, as they
+    were before, and a byte that encoding cannot read is replaced, so that the event is kept:
+    a letter lost from a file's own name leaves the folder and the extension by which the
+    write guard knows a generated file.
+    """
+    stream = sys.stdin
+    if stream is None:  # started with no standard input at all
+        return ""
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:  # replaced by something that holds text, as a test does
+        return stream.read()
+    raw = buffer.read()
+    try:
+        return raw.decode("utf-8-sig")  # without the mark Windows PowerShell puts first
+    except UnicodeDecodeError:
+        return raw.decode(getattr(stream, "encoding", None) or "utf-8", errors="replace")
+
+
 def _read_event() -> dict:
     try:
-        return json.loads(sys.stdin.read() or "{}")
+        return json.loads(_event_text() or "{}")
     except (json.JSONDecodeError, ValueError):
         return {}
 
 
 def _emit(payload: dict) -> int:
+    # `json.dumps` escapes everything outside ASCII, and that is what keeps the answer whole:
+    # standard output is in the code page on Windows too, and the tool reads it as UTF-8.
     print(json.dumps(payload))
     return 0
 

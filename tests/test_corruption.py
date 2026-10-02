@@ -367,9 +367,9 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     """
     paper = project / "paper.yaml"
     document = yaml.safe_load(paper.read_text(encoding="utf-8"))
-    document["conventions"] = [
-        {"id": "house-style", "why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}
-    ]
+    # No `id`: the schema allows a pattern, a reason and a date, and an entry it refuses is
+    # not read. The rule is named for its pattern.
+    document["conventions"] = [{"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}]
     paper.write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
@@ -379,9 +379,56 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     )
 
     report = gate_report(project)
+    assert "schema-violation" not in codes(report)
     assert report.counts["atoms_project_exempt"] == 3
     finding = next(f for f in report.findings if f.code == "project-exemption")
-    assert "project:house-style" in finding.message
+    assert r"project:\d+(?:[.,]\d+)*" in finding.message
+
+
+@pytest.mark.parametrize(
+    "conventions",
+    [
+        pytest.param(r"\d+", id="a pattern where a list is expected"),
+        pytest.param([r"\d+"], id="a list of patterns with no reason"),
+        pytest.param([{"pattern": r"\d+"}], id="an entry with no reason"),
+        pytest.param([{"pattern": r"\d+", "why": ""}], id="an entry with an empty reason"),
+    ],
+)
+def test_a_convention_the_schema_refuses_exempts_nothing(project: Path, conventions) -> None:
+    """A `conventions:` in the wrong shape is not read, so the gate runs where it raised. What
+    it must not do is read part of it: a pattern with no reason is not an exemption."""
+    from manuscript_guard.cli import _run_gates
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["conventions"] = conventions
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main_md(project).write_text(
+        main_md(project).read_text(encoding="utf-8") + "\n\nLoose 4321 here.\n", encoding="utf-8"
+    )
+
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert {"schema-violation", "unclassified-number"} <= codes(report)
+    assert "gate-errored" not in codes(report)
+    assert report.counts["atoms_project_exempt"] == 0
+
+
+def test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass(project: Path) -> None:
+    """G2 cannot read the file, so it cannot report the number in it. The run fails all the
+    same at every stage, on a finding that names the file, and nothing is built from it."""
+    from manuscript_guard.cli import _run_gates, main
+    from manuscript_guard.policy import STAGES
+
+    path = main_md(project)
+    path.write_bytes(path.read_bytes() + b"\nThe caf\xe9 saw 4321 patients.\n")
+
+    for stage in STAGES:
+        report, _project, _chosen, _deferred = _run_gates(project, stage=stage)
+        assert "source-unreadable" in codes(report), stage
+        assert "gate-errored" not in codes(report), stage
+    assert main(["build", str(project), "--offline"]) == 1
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 2
+    assert not list((project / "build").rglob("*.docx"))
 
 
 @pytest.mark.parametrize(

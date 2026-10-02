@@ -589,6 +589,27 @@ def test_it_is_refused_from_a_folder_inside_the_project_as_well(project: Path) -
     assert "hand.json: cannot parse" in reason(result)
 
 
+def test_a_manuscript_file_that_is_not_utf8_is_a_failing_check_that_names_it(
+    project: Path,
+) -> None:
+    """A file the gates read is a finding and not a project that cannot be checked, so the
+    guard refuses on the count and the session start gives its status line. The finding was
+    seven, `gate-errored: G2 could not run: UnicodeDecodeError` and six like it, which took
+    seven of the eight lines the guard shows and named no file."""
+    source = project / "manuscript" / "main.md"
+    source.write_bytes(source.read_bytes() + b"\nCaf\xe9 society.\n")
+
+    result = run_installed("guard-submission", as_sent({**SUBMIT, "cwd": str(project)}), {})
+    assert decision(result) == "deny"
+    assert "submission check(s) failing" in reason(result)
+    named = "source-unreadable: manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line"
+    assert named in reason(result)
+    assert "could not run" not in reason(result)
+
+    started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
+    assert "1 failing" in context(run_installed("session-start", as_sent(started), {}))
+
+
 @READINGS
 def test_the_sentence_names_a_file_under_an_accented_folder_whole(
     under_an_accent: Path, environment: dict[str, str]

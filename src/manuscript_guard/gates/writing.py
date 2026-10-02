@@ -31,6 +31,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
@@ -75,7 +76,7 @@ def check_writing(project: Project) -> Report:
     corpus: list[tuple[Path, str, str]] = []
 
     for path in source_files(project.path("manuscript")):
-        text = path.read_text(encoding="utf-8")
+        text = read_text(path)
         # Prose only: citations, code and bindings are not the author's cadence.
         prose = mask(text).replace("\x00", " ")
         corpus.append((path, text, prose))

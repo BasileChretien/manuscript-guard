@@ -132,7 +132,7 @@ def title_page(project: Project) -> str:
     if orcids:
         lines += ["**ORCID.**", ""] + [f"- {o}" for o in orcids] + [""]
 
-    keywords = paper.get("keywords")
+    keywords = project.setting("keywords")
     if keywords:
         lines += ["**Keywords.** " + "; ".join(keywords), ""]
 

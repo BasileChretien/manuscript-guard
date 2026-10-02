@@ -27,6 +27,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -229,7 +230,9 @@ def _front_matter(project, *, supplementary: bool = False, live: bool = False) -
     short = None if supplementary else paper.get("short_title")
     if short:
         lines.append(f'subtitle: "{short}"')
-    keywords = None if supplementary else paper.get("keywords")
+    # `setting`: the keywords the schema accepts. `keywords: 5` raised here under
+    # `--skip-checks`, and one word where a list is expected was printed letter by letter.
+    keywords = None if supplementary else project.setting("keywords")
     if keywords:
         lines.append("keywords: [" + ", ".join(f'"{k}"' for k in keywords) + "]")
     lines += [
@@ -314,7 +317,7 @@ def build_document(
 
     read = [
         ("the build's prologue", prologue),
-        *((a.path.name, a.path.read_text(encoding="utf-8")) for a in ordered),
+        *((a.path.name, read_text(a.path)) for a in ordered),
         ("the build's epilogue", epilogue),
     ]
     built = [prologue, *(a.text for a in ordered), epilogue]

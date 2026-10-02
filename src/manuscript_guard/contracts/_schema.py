@@ -26,6 +26,21 @@ class ContractError(Exception):
     shape that leaves the project nowhere to look. The message is written for the author."""
 
 
+class Unreadable(ContractError):
+    """A file whose text could not be had: it is not UTF-8, or the system would not open it.
+
+    Said as `path: reason`, like every other `ContractError`. The path, and the line where
+    one byte is at fault, are kept apart from the sentence for a caller that holds a report:
+    `check` places one finding at the file, where each gate that read it raised.
+    """
+
+    def __init__(self, path: Path, reason: str, line: int | None = None) -> None:
+        super().__init__(f"{path}: {reason}")
+        self.path = path
+        self.reason = reason
+        self.line = line
+
+
 @cache
 def load_schema(name: str) -> dict:
     path = SCHEMA_DIR / f"{name}.schema.json"
@@ -60,8 +75,8 @@ _OTHER_ENCODINGS = (
 )
 
 
-def _not_utf8(path: Path, data: bytes, error: UnicodeDecodeError) -> str:
-    """What is wrong with a file that did not decode, and where an author would look for it.
+def _not_utf8(data: bytes, error: UnicodeDecodeError) -> tuple[str, int | None]:
+    """What is wrong with a file that did not decode, and the line an author would look on.
 
     A byte-order mark names the encoding outright: Windows PowerShell 5 writes UTF-16 for
     `>`, and Notepad for "Unicode". Without one the usual cause is a code page and an
@@ -69,34 +84,49 @@ def _not_utf8(path: Path, data: bytes, error: UnicodeDecodeError) -> str:
     """
     named = next((name for mark, name in _OTHER_ENCODINGS if data.startswith(mark)), None)
     if named:
-        what = f"the file is {named}"
+        what, line = f"the file is {named}", None
     else:
         # Lines as the text below is given them: ended by LF, by CR, or by the two together.
         before = data[: error.start]
         line = before.count(b"\n") + before.count(b"\r") - before.count(b"\r\n") + 1
         what = f"the byte 0x{data[error.start]:02x} on line {line} is not UTF-8"
-    return f"{path}: cannot read as UTF-8: {what}. Save the file as UTF-8."
+    return f"cannot read as UTF-8: {what}. Save the file as UTF-8.", line
+
+
+def read_text(path: Path) -> str:
+    """The text of one of the project's files, as `Path.read_text(encoding="utf-8")` gives it.
+
+    Whatever stops the file being read is raised as `Unreadable`, in a sentence that names
+    the file. It is a `ContractError`, the one error `check` prints and exits 2 on, and the
+    one the hooks pass on: a file that was not UTF-8, or that the system would not open,
+    once ended in a traceback, which a hook takes for a fault of the tool and meets with
+    silence.
+
+    Every reader of the manuscript's text comes through here as well as the structured
+    files, so a source saved in a code page is refused in the same sentence by `explain`,
+    `render` and the build, and by each gate.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise Unreadable(path, f"cannot read: {exc.strerror or exc}") from exc
+    try:
+        # Line endings as `Path.read_text` folds them. What was parsed before is what is
+        # parsed now, and every position a gate reports is an offset into this text.
+        return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    except UnicodeDecodeError as exc:
+        raise Unreadable(path, *_not_utf8(data, exc)) from exc
 
 
 def read_structured(path: Path) -> Any:
     """Read a .json, .yaml or .yml file. Returns None when the file does not exist.
 
     Whatever stops the file being read is raised as `ContractError`, in a sentence that names
-    the file. It is the one error `check` prints and exits 2 on, and the one the hooks pass
-    on: a file that was not UTF-8, or that the system would not open, once ended in a
-    traceback, which a hook takes for a fault of the tool and meets with silence.
+    the file; see `read_text`.
     """
     if not path.exists():
         return None
-    try:
-        data = path.read_bytes()
-    except OSError as exc:
-        raise ContractError(f"{path}: cannot read: {exc.strerror or exc}") from exc
-    try:
-        # Line endings as `read_text` gave them, which is what was parsed before.
-        text = data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
-    except UnicodeDecodeError as exc:
-        raise ContractError(_not_utf8(path, data, exc)) from exc
+    text = read_text(path)
     try:
         if path.suffix.lower() == ".json":
             return json.loads(text)

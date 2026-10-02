@@ -28,6 +28,7 @@ from pathlib import Path
 
 import yaml
 
+from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.emit import sha256_of
 from manuscript_guard.findings import WARN, Finding, Report
@@ -97,7 +98,7 @@ def compare(current: dict[str, str], recorded: dict[str, str]) -> Drift:
 
 def methods_text(project: Project) -> str:
     for path in source_files(project.path("manuscript")):
-        for section in split_sections(path.read_text(encoding="utf-8")):
+        for section in split_sections(read_text(path)):
             if _METHODS_HEADING.match(section.title):
                 return section.enclosed
     return ""

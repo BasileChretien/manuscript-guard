@@ -6,11 +6,21 @@ they work from anywhere inside the tree, the way git does.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
+from typing import Any
 
-from manuscript_guard.contracts._schema import ContractError, read_structured, validate
-from manuscript_guard.findings import Report, merge_all
+from jsonschema import Draft202012Validator
+
+from manuscript_guard.contracts._schema import (
+    ContractError,
+    load_schema,
+    read_structured,
+    validate,
+)
+from manuscript_guard.findings import Finding, Report, merge_all
 
 PAPER_FILE = "paper.yaml"
 AUTHORS_FILE = "authors.yaml"
@@ -35,6 +45,27 @@ class Project:
         configured = self.paper.get("paths", {}).get(which, DEFAULT_PATHS[which])
         return self.root / configured
 
+    def setting(self, key: str) -> Any:
+        """What a gate reads of one key of `paper.yaml`: its value as far as the schema
+        accepts it. Of a list, the entries the schema accepts; of anything else, the value
+        or None.
+
+        The schema reports a wrong shape as a finding that names the key and fails at every
+        stage, and the gate that read the value raised on it all the same: `terms: 5` was
+        also "G2 could not run: TypeError: 'int' object is not iterable", under a hint that
+        begins with a bug in the tool. So a gate reads only what the schema let through and
+        runs as if the rest were not set, which never makes it more lenient: an entry of
+        `conventions` or `terms` that is not read exempts nothing.
+        """
+        if key not in self.paper:
+            return None
+        value = self.paper[key]
+        if _schema_of(key).get("type") == "array":
+            if not isinstance(value, list):
+                return None
+            return [entry for entry in value if _accepts(key, True).is_valid(entry)]
+        return value if _accepts(key, False).is_valid(value) else None
+
     @property
     def english_variant(self) -> str:
         return self.paper.get("english_variant", "en-GB")
@@ -45,15 +76,71 @@ class Project:
 
     @property
     def reporting_guidelines(self) -> tuple[str, ...]:
-        return tuple(self.paper.get("reporting_guideline", ()))
+        return tuple(self.setting("reporting_guideline") or ())
 
     @property
     def extra_conventions(self) -> tuple[dict, ...]:
-        return tuple(self.paper.get("conventions", ()))
+        """The conventions a classifier can be built from: those the schema accepts, less
+        any whose pattern does not compile, which `load_project` reports."""
+        return tuple(
+            entry
+            for entry in self.setting("conventions") or ()
+            if _not_a_pattern(entry["pattern"]) is None
+        )
 
     @property
     def extra_terms(self) -> tuple[str, ...]:
-        return tuple(self.paper.get("terms", ()))
+        return tuple(self.setting("terms") or ())
+
+
+def _schema_of(key: str) -> dict:
+    return load_schema("paper")["properties"][key]
+
+
+def _not_a_pattern(pattern: str) -> str | None:
+    """Why a convention's pattern cannot be compiled, or None where it can."""
+    try:
+        re.compile(pattern, re.MULTILINE)
+    except (re.error, OverflowError, RecursionError) as exc:
+        return str(exc)
+    return None
+
+
+def _patterns(paper: dict, path: Path) -> Report:
+    """A finding for each convention whose pattern is not a regular expression.
+
+    The schema can only say that a pattern is text. One that does not compile raised where
+    the classifier was built, so it was "G2 could not run: error: unterminated character set
+    at position 0" with no entry named, and a traceback from `explain` and `bind`. Said
+    here, under the schema's code, which fails at every stage, and the entry is not read.
+    """
+    conventions = paper.get("conventions")
+    findings = []
+    for index, entry in enumerate(conventions if isinstance(conventions, list) else ()):
+        pattern = entry.get("pattern") if isinstance(entry, dict) else None
+        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
+        if why is None:  # it compiles, or it is not text, which is the schema's to report
+            continue
+        findings.append(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
+                f"expression: {why}",
+                path=path,
+                hint="a pattern is a Python regular expression; a bracket meant as a "
+                "character is written with a backslash before it",
+            )
+        )
+    return Report(tuple(findings))
+
+
+@cache
+def _accepts(key: str, entry: bool) -> Draft202012Validator:
+    """The schema's check for one key of `paper.yaml`, or for one entry of a key that is a
+    list."""
+    schema = _schema_of(key)
+    return Draft202012Validator(schema["items"] if entry else schema)
 
 
 def find_root(start: Path) -> Path:
@@ -131,6 +218,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     paper_path = root / PAPER_FILE
     paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
+    reports.append(_patterns(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

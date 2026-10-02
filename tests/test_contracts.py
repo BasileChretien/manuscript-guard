@@ -14,7 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from manuscript_guard.contracts import ContractError, load_namespace, load_project, read_structured
+from manuscript_guard.contracts import (
+    ContractError,
+    Unreadable,
+    load_namespace,
+    load_project,
+    read_structured,
+    read_text,
+)
 from manuscript_guard.policy import DRAFTING, SUBMISSION, resolve_stage
 
 PAPER = 'schema: manuscript-guard/paper/1\ntitle: "A study"\nenglish_variant: en-GB\n'
@@ -249,3 +256,202 @@ def test_a_stage_that_is_not_one_is_not_asked_for_where_another_is_given(tmp_pat
 
     assert resolve_stage(project, None, True) == SUBMISSION
     assert resolve_stage(project, DRAFTING, False) == DRAFTING
+
+
+# ---------------------------------------------------------------- the text of a manuscript file
+
+#: What `Path.read_text` folds and what it leaves: both line endings, alone and mixed, and a
+#: mark at the top, which stays in the text.
+AS_WRITTEN = {
+    "unix": b"one\ntwo\n",
+    "windows": b"one\r\ntwo\r\n",
+    "old mac": b"one\rtwo\r",
+    "mixed": b"one\r\ntwo\rthree\n\r\nfour",
+    "a return before a return and a feed": b"one\r\r\ntwo",
+    "marked": b"\xef\xbb\xbf# Title\r\n",
+    "accented": "Café society.\r\n".encode(),
+    "empty": b"",
+}
+
+
+@pytest.mark.parametrize("case", list(AS_WRITTEN))
+def test_a_manuscript_file_is_read_as_it_always_was(case: str, tmp_path: Path) -> None:
+    """Every position a gate reports is an offset into this text, so a file that is UTF-8
+    reads exactly as `Path.read_text` gave it."""
+    path = tmp_path / "main.md"
+    path.write_bytes(AS_WRITTEN[case])
+
+    assert read_text(path) == path.read_text(encoding="utf-8")
+
+
+def test_a_manuscript_file_in_a_code_page_is_refused_with_where_to_look(tmp_path: Path) -> None:
+    """Saved as "ANSI", with one accented letter. The error is the one `check` prints and the
+    hooks pass on, and it carries the file and the line for a finding to be placed at."""
+    path = tmp_path / "main.md"
+    path.write_bytes(b"# Title\n\nCaf\xe9 society.\n")
+
+    with pytest.raises(Unreadable) as raised:
+        read_text(path)
+    error = raised.value
+    reason = "cannot read as UTF-8: the byte 0xe9 on line 3 is not UTF-8. Save the file as UTF-8."
+    assert isinstance(error, ContractError)
+    assert str(error) == f"{path}: {reason}"
+    assert (error.path, error.reason, error.line) == (path, reason, 3)
+
+
+def test_a_manuscript_file_in_utf16_has_no_line_to_point_at(tmp_path: Path) -> None:
+    path = tmp_path / "main.md"
+    path.write_bytes("# Title\n\nText.\n".encode("utf-16"))
+
+    with pytest.raises(Unreadable, match="cannot read as UTF-8: the file is UTF-16") as raised:
+        read_text(path)
+    assert raised.value.line is None
+
+
+@pytest.mark.parametrize("there", [True, False], ids=["a folder", "nothing"])
+def test_a_manuscript_file_that_cannot_be_opened_is_refused_in_a_sentence(
+    there: bool, tmp_path: Path
+) -> None:
+    path = tmp_path / "main.md"
+    if there:
+        path.mkdir()
+
+    with pytest.raises(Unreadable) as raised:
+        read_text(path)
+    assert str(raised.value).startswith(f"{path}: cannot read: ")
+    assert raised.value.line is None
+
+
+def test_a_structured_file_is_refused_with_the_same_error(tmp_path: Path) -> None:
+    """One reader under both, so a ledger and a manuscript file are refused in one sentence."""
+    path = tmp_path / "ledger.yaml"
+    path.write_bytes(b"who: Ren\xe9e\n")
+
+    with pytest.raises(Unreadable) as raised:
+        read_structured(path)
+    assert (raised.value.path, raised.value.line) == (path, 1)
+
+
+# ---------------------------------------------------------------- a setting only a gate reads
+
+#: A key of `paper.yaml` that no command needs before the gates run, in a shape the schema
+#: refuses. The schema's finding names the key. The gate that read the value raised on it,
+#: `TypeError: 'int' object is not iterable`, which was reported as a fault of the tool.
+NOT_THE_SHAPE = {
+    "terms, a number": ("terms: 5\n", "terms"),
+    "terms, one word": ("terms: CYP3A4\n", "terms"),
+    "conventions, a word": ("conventions: abc\n", "conventions"),
+    "conventions, a number": ("conventions: 5\n", "conventions"),
+    "conventions, a list of words": ("conventions:\n  - abc\n", "conventions/0"),
+    "conventions, no reason": ("conventions:\n  - pattern: abc\n", "conventions/0"),
+    "conventions, a pattern that is a number": (
+        "conventions:\n  - pattern: 5\n    why: because\n",
+        "conventions/0/pattern",
+    ),
+    "guideline, a number": ("reporting_guideline: 5\n", "reporting_guideline"),
+    "guideline, one word": ("reporting_guideline: STROBE\n", "reporting_guideline"),
+    "review, a list": ("review: [1]\n", "review"),
+    "review, a number": ("review: 5\n", "review"),
+    "review, rounds in words": ("review:\n  rounds_required: two\n", "review/rounds_required"),
+    "review, no rounds": ("review:\n  rounds_required: 0\n", "review/rounds_required"),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_THE_SHAPE))
+def test_a_setting_in_the_wrong_shape_is_the_schemas_to_report_and_is_not_read(
+    case: str, tmp_path: Path
+) -> None:
+    """The gates run as if the key were not set, and the schema's finding is what is said."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.review import DEFAULT_ROUNDS_REQUIRED, rounds_required
+
+    written, where = NOT_THE_SHAPE[case]
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert [f.code for f in report.failures] == ["schema-violation"]
+    assert report.failures[0].message.startswith(f"{where}: ")
+    assert project.extra_terms == ()
+    assert project.extra_conventions == ()
+    assert project.reporting_guidelines == ()
+    assert rounds_required(project) == DEFAULT_ROUNDS_REQUIRED
+    Classifier.load(project.extra_conventions, project.extra_terms)
+
+
+def test_a_list_keeps_the_entries_the_schema_accepts(tmp_path: Path) -> None:
+    """One entry in the wrong shape does not take the others with it: dropping a convention
+    that was written correctly would report every number it accounts for."""
+    written = (
+        "terms: [CYP3A4, 5]\n"
+        "reporting_guideline: [STROBE, 5]\n"
+        "conventions:\n"
+        "  - pattern: half-normal\n"
+        "    why: a name\n"
+        "  - abc\n"
+        "review:\n"
+        "  rounds_required: 3\n"
+    )
+    from manuscript_guard.gates.review import rounds_required
+
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert len(report.failures) == 3
+    assert project.extra_terms == ("CYP3A4",)
+    assert project.reporting_guidelines == ("STROBE",)
+    assert project.extra_conventions == ({"pattern": "half-normal", "why": "a name"},)
+    assert rounds_required(project) == 3
+
+
+def test_a_pattern_that_is_no_regular_expression_is_a_finding_that_names_it(
+    tmp_path: Path,
+) -> None:
+    """The schema can only say that a pattern is text. Compiling it raised in the gate, "G2
+    could not run: error: unterminated character set at position 0", and nothing named the
+    entry; `explain` and `bind` ended in a traceback. The entry is not read, like one the
+    schema refuses, and the one beside it is."""
+    from manuscript_guard.classify import Classifier
+
+    written = (
+        "conventions:\n"
+        "  - pattern: half-normal\n"
+        "    why: a name\n"
+        "  - pattern: '[0-9'\n"
+        "    why: a count\n"
+    )
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (failure,) = report.failures
+    assert (failure.gate, failure.code) == ("G0", "schema-violation")
+    assert failure.path == tmp_path / "paper" / "paper.yaml"
+    assert failure.message.startswith(
+        "conventions/1/pattern: '[0-9' is not a regular expression: "
+    )
+    assert project.extra_conventions == ({"pattern": "half-normal", "why": "a name"},)
+    Classifier.load(project.extra_conventions, project.extra_terms)
+
+
+@pytest.mark.parametrize("keywords", [5, 2.5, True, "pharmacovigilance", [5, "signal"]])
+def test_keywords_in_the_wrong_shape_are_not_printed_and_do_not_stop_a_build(
+    keywords: object, project: Path
+) -> None:
+    """`keywords: 5` ended a build with `--skip-checks`, and the title page of the pack, in
+    `TypeError: 'int' object is not iterable`: the one key the build reads as a list. One
+    word where a list is expected was printed letter by letter."""
+    import yaml
+
+    from manuscript_guard.build.document import _front_matter
+    from manuscript_guard.build.submission import title_page
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["keywords"] = keywords
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    loaded, report = load_project(project)
+    assert "schema-violation" in {f.code for f in report.failures}
+
+    header, page = _front_matter(loaded), title_page(loaded)
+    if isinstance(keywords, list):  # the entry that is a word is kept
+        assert 'keywords: ["signal"]' in header
+        assert "**Keywords.** signal\n" in page
+    else:
+        assert "keywords:" not in header
+        assert "**Keywords.**" not in page

@@ -32,6 +32,8 @@ NAME = re.compile(r"[a-z][a-z0-9-]*")
 #: the convention is what stops a key pasted there from being accepted as a variable's name,
 #: committed with paper.yaml, and printed by the message that says the variable is unset.
 KEY_ENV = re.compile(r"[A-Z][A-Z0-9_]*")
+#: Visible ASCII and nothing else: what an address or a key is made of.
+PRINTABLE = re.compile("[!-~]+")
 
 
 class ConfigError(Exception):
@@ -123,13 +125,34 @@ def _checked_url(name: str, url: object) -> str:
     """A URL a key and a manuscript may be sent to, without its trailing slash."""
     if not isinstance(url, str) or not url.strip():
         raise ConfigError(f"review.providers.{name} needs a base_url")
-    parts = urlsplit(url.strip())
+    if not PRINTABLE.fullmatch(url):
+        raise ConfigError(
+            f"review.providers.{name}: base_url holds a space, a line break or a character "
+            "outside ASCII; write the address as plain characters"
+        )
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError as exc:
+        # `http://[::1:11434/v1`, with its bracket missing, or a port that is not a number.
+        raise ConfigError(
+            f"review.providers.{name}: base_url cannot be read as an address ({exc})"
+        ) from None
     if not parts.hostname:
         raise ConfigError(f"review.providers.{name}: base_url names no host")
     if parts.username or parts.password:
         raise ConfigError(
             f"review.providers.{name}: base_url carries a user name or password; the key "
             "comes from the environment variable named in key_env"
+        )
+    # The authority has to be one host and at most a port, and nothing else. What decides
+    # whether a call stays on this machine is the host, and `http://[::1].evil.example` and
+    # `http://@localhost` each have a host that is not what the address appears to say.
+    host = f"[{parts.hostname}]" if ":" in parts.hostname else parts.hostname
+    if parts.netloc.lower() != host + (f":{port}" if port is not None else ""):
+        raise ConfigError(
+            f"review.providers.{name}: base_url must name one host, with a port if it needs "
+            "one, and nothing else before the path"
         )
     if parts.query or parts.fragment:
         raise ConfigError(
@@ -142,7 +165,7 @@ def _checked_url(name: str, url: object) -> str:
             "this machine (localhost), because a key and an unpublished manuscript would "
             "otherwise cross the network unencrypted"
         )
-    return url.strip().rstrip("/")
+    return url.rstrip("/")
 
 
 def _custom(name: str, entry: object) -> Provider:
@@ -166,6 +189,15 @@ def _custom(name: str, entry: object) -> Provider:
             f"review.providers.{name}: key_env is the NAME of the environment variable that "
             "holds the key (upper-case letters, digits and underscores), never the key"
         )
+    taken = sorted(preset.name for preset in PRESETS.values() if preset.key_env == key_env)
+    if key_env is not None and taken:
+        # The other half of not letting a built-in name be pointed elsewhere: a paper.yaml
+        # somebody else wrote could name the reader's OpenAI key under a provider of its own
+        # and have it sent to its host.
+        raise ConfigError(
+            f"review.providers.{name}: {key_env} is the key of the built-in provider "
+            f"{taken[0]}, and is sent only there. Give this provider a variable of its own"
+        )
     api = entry.get("api", OPENAI)
     if api not in APIS:
         raise ConfigError(f"review.providers.{name}: api is one of {', '.join(APIS)}")
@@ -176,7 +208,10 @@ def known_providers(paper: Mapping) -> dict[str, Provider]:
     """The presets, and whatever the project adds under `review.providers`."""
     extra = _review(paper).get("providers") or {}
     if not isinstance(extra, Mapping):
-        raise ConfigError("review.providers maps a name to its base_url")
+        raise ConfigError(
+            "review.providers holds one entry for each provider that is not built in: its "
+            "name, and under it a base_url"
+        )
     return {**PRESETS, **{name: _custom(name, entry) for name, entry in extra.items()}}
 
 
@@ -224,11 +259,28 @@ def key_is_set(provider: Provider, environ: Mapping[str, str] | None = None) -> 
 
 
 def read_key(provider: Provider, environ: Mapping[str, str] | None = None) -> str | None:
-    """The key itself, for the one header it goes into. None when unset or not needed."""
+    """The key itself, for the one header it goes into. None when unset or not needed.
+
+    A key that holds a space, a line break or a character outside ASCII is refused here, by
+    the variable's name. No provider issues one, so it is a variable set wrongly, and it
+    must not reach a header: `http.client` refuses such a header with a message that quotes
+    it, key and all.
+    """
     if provider.key_env is None:
         return None
     environ = os.environ if environ is None else environ
-    return environ.get(provider.key_env, "").strip() or None
+    key = environ.get(provider.key_env, "").strip()
+    if key and not usable_key(key):
+        raise ConfigError(
+            f"the key in {provider.key_env} holds a space, a line break or a character "
+            "outside ASCII, which no key has. Check how the variable was set; nothing was sent"
+        )
+    return key or None
+
+
+def usable_key(key: str) -> bool:
+    """Whether a key can go into a request header as it is."""
+    return PRINTABLE.fullmatch(key) is not None
 
 
 def slug(reader: str) -> str:
@@ -248,4 +300,5 @@ __all__ = [
     "known_providers",
     "read_key",
     "slug",
+    "usable_key",
 ]

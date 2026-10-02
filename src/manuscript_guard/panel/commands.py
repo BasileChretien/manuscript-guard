@@ -10,13 +10,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from manuscript_guard.contracts import ContractError, load_project
-from manuscript_guard.contracts.project import find_root
+from manuscript_guard.contracts.project import PAPER_FILE, find_root
 from manuscript_guard.panel.providers import (
     ConfigError,
     Provider,
     configured_models,
     key_is_set,
     known_providers,
+    read_key,
 )
 
 EXAMPLE = "review:\n  models: [openai/<model>, mistral/<model>, moonshot/<model>]"
@@ -28,6 +29,14 @@ def _key_words(provider: Provider, environ: Mapping[str, str] | None) -> tuple[s
     if state is None:
         return "(none)", "-"
     return provider.key_env or "", "set" if state else "unset"
+
+
+def _shown(path: Path, root: Path) -> str:
+    """A path as the author is shown it: relative to the project where it is inside it."""
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _table(rows: Sequence[tuple[str, ...]]) -> str:
@@ -78,13 +87,15 @@ def list_providers(start: Path, environ: Mapping[str, str] | None = None) -> int
     print("review.models in paper.yaml:")
     ready = []
     for model in models:
-        missing = key_is_set(model.provider, environ) is False
-        ready.append(
-            (
-                f"  {model.reader}",
-                f"{model.provider.key_env} is not set" if missing else "ready",
-            )
-        )
+        state = "ready"
+        if key_is_set(model.provider, environ) is False:
+            state = f"{model.provider.key_env} is not set"
+        else:
+            try:
+                read_key(model.provider, environ)
+            except ConfigError:
+                state = f"{model.provider.key_env} is set, but to something that is not a key"
+        ready.append((f"  {model.reader}", state))
     print(_table(ready))
     return 0
 
@@ -116,7 +127,23 @@ def run_panel(
         )
         return 2
 
-    project, _ = load_project(start)
+    project, contract = load_project(start)
+    # What a request says about the paper is read from paper.yaml, so a file its schema
+    # refuses is not planned from: a keyword list written as one string was sent letter by
+    # letter. `check` reports the same findings; here they stop the plan.
+    broken = [
+        finding
+        for finding in contract.failures
+        if finding.path is not None and finding.path.name == PAPER_FILE
+    ]
+    if broken:
+        said = "; ".join(finding.message for finding in broken[:5])
+        print(
+            f"manuscript-guard: {PAPER_FILE} does not fit its schema, so nothing is planned "
+            f"from it: {said}",
+            file=sys.stderr,
+        )
+        return 2
     try:
         plan = make_plan(project, round_number=round_number, one_each=one_each)
     except PlanError as exc:
@@ -130,7 +157,7 @@ def run_panel(
         return 0
 
     written = write_dry_run(plan, project)
-    where = dry_run_dir(plan, project).relative_to(project.root).as_posix()
+    where = _shown(dry_run_dir(plan, project), project.root)
     print(
         "Dry run: nothing was sent. The request bodies, exactly as a run would send them, "
         f"are in {where}/ with the SHA-256 of each:"

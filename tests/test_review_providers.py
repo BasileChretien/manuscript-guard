@@ -238,7 +238,7 @@ def test_listing_the_providers_never_prints_a_key(monkeypatch, capsys, tmp_path:
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     assert main(["review", str(tmp_path), "--providers"]) == 0
     out = capsys.readouterr().out
-    assert KEY not in out and KEY[-6:] not in out
+    assert not any(KEY[i : i + 4] in out for i in range(len(KEY) - 3)), "part of the key"
     lines = {line.split()[0]: line for line in out.splitlines() if line.strip()}
     assert "OPENAI_API_KEY" in lines["openai"] and "set" in lines["openai"].split()
     assert "MISTRAL_API_KEY" in lines["mistral"] and "unset" in lines["mistral"].split()
@@ -676,3 +676,232 @@ def test_a_model_cannot_answer_its_own_finding() -> None:
         finding = {"severity": "major", "finding": "x", field: "2026-10-02"}
         with pytest.raises(ReplyRefused):
             parse_reply(changed(findings=[finding]))
+
+
+# ----------------------------------------------------------------------------------------
+# Found by the independent review of #125, each with the reproduction it ran.
+# ----------------------------------------------------------------------------------------
+
+BACKSLASH = chr(92)
+ESCAPE = chr(27)
+
+
+def shows(text: str, key: str, width: int = 4) -> bool:
+    """Whether any `width` characters in a row of the key appear in `text`."""
+    return any(key[i : i + width] in text for i in range(len(key) - width + 1))
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "sk-FIRSTHALF\nSECONDHALF",
+        "sk-FIRSTHALF\rSECONDHALF",
+        "sk-FIRSTHALF SECONDHALF",
+        "sk-FIRSTHALF\tSECONDHALF",
+        "sk-FIRSTHALF\N{LATIN SMALL LETTER E WITH ACUTE}SECONDHALF",
+    ],
+    ids=["line feed", "carriage return", "space", "tab", "not ASCII"],
+)
+def test_a_key_no_provider_issues_is_refused_before_it_reaches_a_header(key: str) -> None:
+    """http.client refuses a header holding a line break, and its message quotes the header.
+    The quote is a repr, so looking for the key as typed found nothing to take out, and the
+    whole key was printed."""
+    openai = providers.PRESETS["openai"]
+    with pytest.raises(ConfigError) as refused:
+        providers.read_key(openai, {"OPENAI_API_KEY": key})
+    assert "OPENAI_API_KEY" in str(refused.value)
+    assert not shows(str(refused.value), key)
+
+
+def test_a_key_that_is_only_padded_is_used_without_the_padding() -> None:
+    assert providers.read_key(providers.PRESETS["openai"], {"OPENAI_API_KEY": f" {KEY}\n"}) == KEY
+
+
+def test_a_key_that_cannot_be_a_header_never_reaches_the_transport() -> None:
+    transport = Answers(openai_answer())
+    found = model("openai/m")
+    with pytest.raises(CallFailed) as failed:
+        client.call(
+            found, client.build_body(found, "s", "u"), key="sk-A\nB-SECRETHALF", transport=transport
+        )
+    assert failed.value.kind == "auth"
+    assert "SECRETHALF" not in str(failed.value)
+    assert transport.requests == []
+
+
+def test_a_provider_that_needs_a_key_is_not_called_without_one() -> None:
+    """Sending the manuscript with no authorisation discloses it and gets nothing back."""
+    transport = Answers(openai_answer())
+    found = model("openai/m")
+    with pytest.raises(CallFailed) as failed:
+        client.call(found, client.build_body(found, "s", "u"), key=None, transport=transport)
+    assert failed.value.kind == "auth" and "OPENAI_API_KEY" in str(failed.value)
+    assert transport.requests == []
+
+
+def test_what_the_transport_says_about_a_request_it_refused_is_not_repeated() -> None:
+    """Whatever raised it, the words of an exception built from the request are not ours."""
+    transport = Answers(TransportError("network", f"Invalid header value b'Bearer {KEY}'"))
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", transport)
+    assert not shows(str(failed.value), KEY)
+
+
+def test_a_key_a_model_repeats_in_its_refusal_is_not_printed() -> None:
+    answer = openai_answer(content=None, refusal=f"I will not use {KEY} for this.")
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(answer))
+    assert failed.value.kind == "refused"
+    assert not shows(str(failed.value), KEY)
+    assert "I will not use" in str(failed.value)
+
+
+def test_a_request_shows_no_key_when_it_is_printed() -> None:
+    found = model("openai/m")
+    request = client.build_request(found, client.build_body(found, "s", "u"), key=KEY)
+    assert not shows(repr(request), KEY) and not shows(str(request), KEY)
+
+
+@pytest.mark.parametrize("status", [400, 404, 422, 500])
+def test_part_of_a_key_in_any_error_is_taken_out(status: int) -> None:
+    """A provider's message for a bad key can quote part of it, whatever status it sends."""
+    said = f"Incorrect API key provided: {KEY[:8]}****{KEY[-4:]}. Check your key."
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(error(status, said)))
+    assert not shows(str(failed.value), KEY)
+    assert "Check your key" in str(failed.value)
+
+
+def test_control_characters_in_a_providers_words_are_not_printed() -> None:
+    said = f"bad {ESCAPE}[31mrequest{ESCAPE}[0m {chr(7)}now"
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(error(400, said)))
+    assert ESCAPE not in str(failed.value) and chr(7) not in str(failed.value)
+    assert "bad" in str(failed.value) and "request" in str(failed.value)
+
+
+@pytest.mark.parametrize("asked", ["nan", "inf", "-inf", "-3", "soon"])
+def test_a_wait_that_is_not_a_number_of_seconds_is_the_default(asked: str) -> None:
+    transport = Answers(error(429, headers={"Retry-After": asked}), openai_answer())
+    _, naps = ask("openai/m", transport)
+    assert naps == [0.0 if asked == "-3" else client.DEFAULT_WAIT_SECONDS]
+
+
+def test_an_answer_nested_too_deep_is_a_failure_not_a_traceback() -> None:
+    deep = b"[" * 100_000
+    with pytest.raises(CallFailed) as failed:
+        ask("openai/m", Answers(HttpResponse(200, {}, deep)))
+    assert failed.value.kind == "unreadable"
+    with pytest.raises(CallFailed):
+        ask("openai/m", Answers(HttpResponse(400, {}, deep)))
+
+
+def test_a_reply_nested_too_deep_is_refused_not_a_traceback() -> None:
+    with pytest.raises(ReplyRefused):
+        parse_reply("[" * 100_000)
+
+
+def test_content_parts_that_are_not_all_parts_are_not_half_read() -> None:
+    parts = ['{"ok": ', {"type": "text", "text": "true}"}]
+    with pytest.raises(CallFailed) as failed:
+        ask("mistral/m", Answers(openai_answer(content=parts)))
+    assert failed.value.kind == "unreadable"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://[::1:11434/v1",
+        "https://[your-host]/v1",
+        "http://localhost:80:8080/v1",
+        "http://localhost:port/v1",
+        "http://@localhost/v1",
+        "http://[::1].evil.example/v1",
+        "https://llm.example.org/v1 beta",
+        "https://llm.example.org/v1\n",
+        "https://llm.ex\N{FULLWIDTH SOLIDUS}ample.org/v1",
+    ],
+)
+def test_a_base_url_that_is_not_plainly_one_host_is_refused_in_words(url: str) -> None:
+    with pytest.raises(ConfigError, match="base_url"):
+        providers.configured_models(
+            paper(models=["lab/m"], providers={"lab": {"base_url": url}})
+        )
+
+
+@pytest.mark.parametrize("url", ["http://[::1:11434/v1", "https://[your-host]/v1"])
+@pytest.mark.parametrize("command", [["--providers"], ["--run", "--dry-run", "--round", "2"]])
+def test_a_base_url_urlsplit_refuses_is_reported_and_not_a_traceback(
+    project: Path, capsys, url: str, command: list[str]
+) -> None:
+    path = project / "paper.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + f'\nreview:\n  models: [lab/m]\n  providers:\n    lab:\n      base_url: "{url}"\n',
+        encoding="utf-8",
+    )
+    assert main(["review", str(project), *command]) == 2
+    assert "base_url" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "variable", ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MOONSHOT_API_KEY", "GEMINI_API_KEY"]
+)
+def test_a_provider_that_is_not_built_in_cannot_take_a_built_in_providers_key(
+    variable: str,
+) -> None:
+    """A built-in name cannot be pointed elsewhere so that a paper.yaml somebody else wrote
+    cannot send the reader's key to a host of its choosing. Naming that key's variable under
+    another provider's name did the same thing."""
+    with pytest.raises(ConfigError, match="its own"):
+        providers.configured_models(
+            paper(
+                models=["helper/m"],
+                providers={
+                    "helper": {"base_url": "https://collect.example/v1", "key_env": variable}
+                },
+            )
+        )
+
+
+def test_a_place_left_out_may_be_given_as_null_and_is_then_absent() -> None:
+    """The prompt says `where` may be left out, and a model that leaves a key out often
+    writes null for it. Null says what absent says, so it is read as absent."""
+    findings = [{"severity": "minor", "where": None, "finding": "x"}]
+    assert parse_reply(changed(findings=findings))["findings"] == [
+        {"severity": "minor", "finding": "x"}
+    ]
+    with pytest.raises(ReplyRefused):
+        parse_reply(changed(findings=[{"severity": None, "finding": "x"}]))
+    with pytest.raises(ReplyRefused):
+        parse_reply(changed(summary=None))
+
+
+def test_a_code_fence_inside_a_finding_does_not_decide_whether_the_reply_is_read() -> None:
+    quoted = changed(summary="The listing opens with ``` and never closes.")
+    assert parse_reply(quoted)["summary"].startswith("The listing")
+    assert parse_reply("```json\n" + quoted + "\n```")["summary"].startswith("The listing")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        changed(summary="   "),
+        changed(findings=[{"severity": "minor", "finding": " \n "}]),
+        changed(rejection_tests=[{"test": " ", "holds": True, "evidence": "x"}]),
+        changed(rejection_tests=[{"test": "x", "holds": True, "evidence": "\t"}]),
+    ],
+)
+def test_words_that_are_only_space_are_not_words(text: str) -> None:
+    with pytest.raises(ReplyRefused):
+        parse_reply(text)
+
+
+@pytest.mark.parametrize("escape", ["u0000", "ud800", "udfff"])
+def test_a_character_that_cannot_be_written_to_a_record_is_refused(escape: str) -> None:
+    """Accepted here, a NUL or half of a surrogate pair fails later, when the record is
+    written as UTF-8 YAML, after the reply has been paid for and called valid."""
+    text = json.dumps(GOOD).replace("The estimator", f"The {BACKSLASH}{escape} estimator")
+    assert BACKSLASH + escape in text
+    with pytest.raises(ReplyRefused):
+        parse_reply(text)

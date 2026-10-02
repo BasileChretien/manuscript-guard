@@ -224,26 +224,85 @@ def test_nothing_from_an_earlier_round_reaches_a_later_one(mixed: Path) -> None:
         assert MARK.encode() not in call.body
 
 
-def test_the_authors_are_not_sent(mixed: Path) -> None:
+def test_the_authors_the_results_files_and_the_sources_are_not_sent(mixed: Path) -> None:
+    """The numbers a reviewer needs are in the manuscript as it prints. The files they come
+    from carry more: who wrote the paper, which script on which machine, the quoted sources."""
+    authors = yaml.safe_load((mixed / "authors.yaml").read_text(encoding="utf-8"))
+    names = {
+        str(author[key])
+        for author in authors["authors"]
+        for key in ("email", "orcid")
+        if author.get(key)
+    }
+    names |= {f"{author['given']} {author['family']}" for author in authors["authors"]}
+    names |= {str(affiliation["text"]) for affiliation in authors["affiliations"]}
+    results = json.loads(
+        (mixed / "results" / "01_disproportionality.json").read_text(encoding="utf-8")
+    )
+    ledger = yaml.safe_load((mixed / "literature" / "ledger.yaml").read_text(encoding="utf-8"))
+    kept_here = names | {
+        results["provenance"]["generated_by"],
+        results["provenance"]["generated_by_sha256"],
+        results["provenance"]["inputs"][0]["sha256"],
+        ledger["entries"][0]["quote"],
+        ledger["entries"][0]["source_file"],
+    }
+    assert len(kept_here) >= 8
+
     made = plan.make_plan(loaded(mixed), round_number=2)
     for call in made.calls:
-        assert b"ada.example@invalid.example" not in call.body
-        assert b"0000-0002-1825-0097" not in call.body
+        for text in kept_here:
+            assert text.encode() not in call.body, text
 
 
 def test_no_gate_imports_the_provider_layer() -> None:
     """The gates run in CI with no network and no model."""
-    for path in sorted((REPO / "src" / "manuscript_guard" / "gates").glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            names = []
-            if isinstance(node, ast.ImportFrom):
-                names = [node.module or ""]
-            elif isinstance(node, ast.Import):
-                names = [alias.name for alias in node.names]
-            assert not any(
-                name.startswith(("manuscript_guard.panel", "urllib.request")) for name in names
-            ), path
+    gates = sorted((REPO / "src" / "manuscript_guard" / "gates").glob("*.py"))
+    assert len(gates) > 10
+    for path in gates:
+        assert not _forbidden_imports(path.read_text(encoding="utf-8")), path
+
+
+#: What a gate has no business importing: the provider layer, and anything that opens a
+#: connection itself. (The citation gate asks a running Zotero through `zotero/`, which is
+#: on this machine and has its own module.)
+_NETWORK = ("urllib", "http", "socket", "ssl", "requests", "httpx")
+
+
+def _forbidden_imports(source: str) -> list[str]:
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            names = [module, *(f"{module}.{alias.name}".lstrip(".") for alias in node.names)]
+        else:
+            continue
+        for name in names:
+            parts = name.split(".")
+            if "panel" in parts or parts[0] in _NETWORK:
+                found.append(name)
+    return found
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "from manuscript_guard.panel import client",
+        "from manuscript_guard import panel",
+        "import manuscript_guard.panel.client",
+        "from ..panel import client",
+        "from .. import panel",
+        "import urllib.request",
+        "from urllib import request",
+        "import http.client",
+        "import socket",
+    ],
+)
+def test_the_scan_of_the_gates_imports_sees_each_way_of_writing_one(line: str) -> None:
+    assert _forbidden_imports(line)
+    assert not _forbidden_imports("from manuscript_guard.gates.review import panels")
 
 
 # --------------------------------------------------------------------------------- pairing
@@ -384,10 +443,17 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 @pytest.fixture
 def no_network(monkeypatch):
+    """Every connection is refused, by whatever code tried to open it."""
+    import socket
+
     def refuse(request, timeout):  # pragma: no cover - the point is that it never runs
         raise AssertionError(f"a dry run opened a connection to {request.url}")
 
+    def no_connection(self, address):  # pragma: no cover - likewise
+        raise AssertionError(f"a connection was opened to {address}")
+
     monkeypatch.setattr(client, "default_transport", refuse)
+    monkeypatch.setattr(socket.socket, "connect", no_connection)
 
 
 def test_a_dry_run_says_what_would_go_where_and_sends_nothing(
@@ -407,7 +473,7 @@ def test_a_dry_run_says_what_would_go_where_and_sends_nothing(
     assert "manuscript/main.md" in out
     assert "profiles/journals/demo-journal.yaml" in out
     assert "authors.yaml" in out  # named among what is not sent
-    assert KEY not in out
+    assert not any(KEY[i : i + 4] in out for i in range(len(KEY) - 3)), "part of the key"
     assert snapshot(mixed) == before, "a dry run changed the project outside build/"
 
 
@@ -518,3 +584,191 @@ def test_recording_by_hand_still_defaults_to_round_one(unreviewed: Path) -> None
         == 0
     )
     assert (unreviewed / "review" / "round-1" / "reader.yaml").exists()
+
+
+# ----------------------------------------------------------------------------------------
+# Found by the independent review of #125, each with the reproduction it ran.
+# ----------------------------------------------------------------------------------------
+
+
+def rewrite(root: Path, old: str, new: str) -> None:
+    path = root / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+
+def test_a_round_one_record_cannot_be_named_as_the_checklist(mixed: Path) -> None:
+    """The inputs are a fixed list, and three of its entries are named in paper.yaml. A name
+    that walks out of `profiles/` made any file an input: here, round one's own record."""
+    record = mixed / "review" / "round-1" / "biostatistician.yaml"
+    record.write_text(
+        record.read_text(encoding="utf-8").replace("summary:", f"summary: {MARK}"),
+        encoding="utf-8",
+    )
+    assert MARK in record.read_text(encoding="utf-8")
+    rewrite(mixed, "  - DEMO-OBS", "  - ../../review/round-1/biostatistician")
+    with pytest.raises(PlanError, match="reporting_guideline"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
+def test_authors_yaml_cannot_be_named_as_the_journal_profile(mixed: Path) -> None:
+    rewrite(mixed, "target_journal: demo-journal", "target_journal: ../../authors")
+    with pytest.raises(PlanError, match="target_journal"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
+@pytest.mark.parametrize("name", ["sub/demo-journal", "..", "demo-journal.yaml/..", "C:/x"])
+def test_a_profile_name_is_a_name_and_not_a_path(mixed: Path, name: str) -> None:
+    rewrite(mixed, "target_journal: demo-journal", f'target_journal: "{name}"')
+    with pytest.raises(PlanError, match="target_journal"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
+@pytest.mark.parametrize("where", [".", "review", "review/round-1", "revision"])
+def test_a_manuscript_directory_that_takes_in_the_review_is_refused(
+    mixed: Path, where: str
+) -> None:
+    """`paths.manuscript: .` made every Markdown file of the project a manuscript file: the
+    notes kept beside the review, and the response to the journal's reviewers."""
+    (mixed / "revision").mkdir()
+    (mixed / "revision" / "response.md").write_text(f"Reviewer 1 said {MARK}.\n", "utf-8")
+    (mixed / "review" / "notes.md").write_text(f"{MARK}\n", encoding="utf-8")
+    (mixed / "review" / "round-1" / "notes.md").write_text(f"{MARK}\n", encoding="utf-8")
+    path = mixed / "paper.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"paths:\n  manuscript: {where}\n", encoding="utf-8"
+    )
+    with pytest.raises(PlanError, match="paths.manuscript"):
+        plan.make_plan(loaded(mixed), round_number=2)
+
+
+def test_a_manuscript_directory_of_another_name_is_still_read(mixed: Path) -> None:
+    (mixed / "manuscript").rename(mixed / "text")
+    path = mixed / "paper.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "paths:\n  manuscript: text\n", encoding="utf-8"
+    )
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    assert "text/main.md" in whole(bodies(made)[("desk-editor", "openai/model-a")])
+
+
+def test_what_the_build_deletes_is_not_sent(mixed: Path) -> None:
+    """An HTML comment reaches no document, and authors are told to keep notes in one. The
+    reviewer is told the manuscript is shown as a reader will see it."""
+    path = mixed / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\ntitle:")
+    path.write_text(
+        text.replace("---\ntitle:", f"---\nnote: {MARK}-FRONT\ntitle:", 1)
+        + f"\n<!-- {MARK}: the round-one statistician asked for this; Ada to check -->\n"
+        + "\nA last sentence that is printed.\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    for call in made.calls:
+        assert MARK.encode() not in call.body
+        assert b"A last sentence that is printed." in call.body
+        assert b"<!--" not in json.loads(call.body)["messages"][1]["content"].encode()
+
+
+def test_the_files_are_sent_in_the_order_the_build_prints_them(mixed: Path) -> None:
+    """`main.md` opens the paper whatever the other files are called, and the supplement
+    follows the paper. In path order `1_methods.md` came first."""
+    (mixed / "manuscript" / "1_methods.md").write_text("# More methods\n\nText.\n", "utf-8")
+    (mixed / "manuscript" / "zz_discussion.md").write_text("# More discussion\n", "utf-8")
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    assert [sent.label for sent in made.material.sent if sent.label.startswith("manuscript/")] == [
+        "manuscript/main.md",
+        "manuscript/1_methods.md",
+        "manuscript/zz_discussion.md",
+        "manuscript/supplementary/S1_code_lists.md",
+    ]
+    user = made.material.user
+    places = [user.index(f"BEGIN manuscript/{name}") for name in ("main.md", "1_methods.md")]
+    assert places == sorted(places)
+    project = loaded(mixed)
+    assert made.material.manuscript_sha256 == manuscript_digest(project)
+    assert made.material.file_sha256 == file_digests(project)
+
+
+def test_a_binding_in_a_comment_is_neither_sent_nor_counted(mixed: Path) -> None:
+    path = mixed / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n<!-- to come: {{results.not_yet}} -->\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    assert made.material.unrendered == 0
+    assert "not_yet" not in whole(bodies(made)[("desk-editor", "openai/model-a")])
+
+
+KEYWORDS = "keywords:\n  - pharmacovigilance\n  - disproportionality\n  - hepatotoxicity\n"
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        (KEYWORDS, "keywords: pharmacovigilance\n"),
+        (KEYWORDS, "keywords: 5\n"),
+        ("english_variant: en-GB\n", "english_variant: en-GB\nstage: finished\n"),
+    ],
+    ids=["keywords as one string", "keywords as a number", "an unrelated key"],
+)
+def test_a_paper_yaml_the_schema_refuses_is_not_planned_from(
+    mixed: Path, capsys, no_network, old: str, new: str
+) -> None:
+    """A keyword list written as one string was sent letter by letter, and as a number was
+    a traceback. `check` reports both; the plan used the file regardless."""
+    rewrite(mixed, old, new)
+    assert main(["review", str(mixed), "--run", "--dry-run", "--round", "2"]) == 2
+    printed = capsys.readouterr()
+    assert "paper.yaml" in printed.err
+    assert "Keywords: p, h, a" not in printed.out
+    assert not (mixed / "build" / "review").exists()
+
+
+@pytest.mark.parametrize("cap", ["-5", "0", '"4000"', "true"])
+def test_a_cap_that_is_not_a_count_of_tokens_is_refused(
+    project: Path, capsys, no_network, cap: str
+) -> None:
+    configure(project, "openai/model-a", extra=f"  max_output_tokens: {cap}\n")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 2
+    assert "max_output_tokens" in capsys.readouterr().err
+
+
+def test_the_statement_says_which_model_a_cap_does_not_reach(
+    project: Path, capsys, no_network
+) -> None:
+    """Google documents no output cap for its endpoint, so none is sent there."""
+    configure(project, "openai/model-a", "gemini/model-g", extra="  max_output_tokens: 3000\n")
+    assert main(["review", str(project), "--run", "--dry-run", "--round", "2"]) == 0
+    out = capsys.readouterr().out
+    line = next(line for line in out.splitlines() if "3,000" in line)
+    assert "gemini/model-g" in line and "no cap" in line
+    found = bodies(plan.make_plan(loaded(project), round_number=2))
+    assert "max_tokens" not in found[("desk-editor", "gemini/model-g")]
+    assert "max_completion_tokens" not in found[("desk-editor", "gemini/model-g")]
+
+
+def test_a_build_directory_outside_the_project_is_named_and_not_a_traceback(
+    mixed: Path, tmp_path: Path, capsys, no_network
+) -> None:
+    outside = (tmp_path / "elsewhere").as_posix()
+    path = mixed / "paper.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8") + f"paths:\n  build: {outside}\n", encoding="utf-8"
+    )
+    assert main(["review", str(mixed), "--run", "--dry-run", "--round", "2"]) == 0
+    assert "elsewhere/review/round-2/dry-run" in capsys.readouterr().out.replace("\\", "/")
+
+
+def test_the_readable_copy_holds_only_the_reviewers_that_would_be_asked(mixed: Path) -> None:
+    for name in ("desk-editor.openai-model-a.yaml", "desk-editor.mistral-model-b.yaml"):
+        (mixed / "review" / "round-2" / name).write_text("x", encoding="utf-8")
+    made = plan.make_plan(loaded(mixed), round_number=2)
+    text = plan.as_text(made)
+    assert "instructions to clinical-reader" in text
+    assert "instructions to desk-editor" not in text

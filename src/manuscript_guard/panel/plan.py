@@ -245,7 +245,11 @@ def make_plan(
 
     review = project.paper.get("review")
     cap = review.get("max_output_tokens") if isinstance(review, dict) else None
-    cap = cap if isinstance(cap, int) and not isinstance(cap, bool) else None
+    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 1):
+        raise PlanError(
+            "review.max_output_tokens in paper.yaml is a whole number of tokens; "
+            f"{cap!r} is not one"
+        )
     directory = round_dir(project, number)
     calls: list[Call] = []
     filed = 0
@@ -354,7 +358,20 @@ def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = N
 
     lines.append("")
     if plan.max_output_tokens:
-        lines.append(f"Each reply is capped at {plan.max_output_tokens:,} tokens.")
+        uncapped = [
+            m.reader
+            for m in plan.models
+            if m.provider.api != ANTHROPIC and not m.provider.max_tokens_field
+        ]
+        lines.append(
+            f"Each reply is capped at {plan.max_output_tokens:,} tokens"
+            + (
+                f", except {', '.join(uncapped)}, which gets no cap: its endpoint documents "
+                "no way to set one."
+                if uncapped
+                else "."
+            )
+        )
     else:
         capped = [m.reader for m in plan.models if m.provider.api == ANTHROPIC]
         lines.append(
@@ -402,8 +419,10 @@ def as_text(plan: Plan) -> str:
         f"What round {plan.round} of the panel would be sent. The files beside this one "
         "are the request bodies, byte for byte; this is their text, for reading.",
     ]
+    asked = {call.reviewer for call in plan.calls}
     for reviewer in plan.reviewers:
-        parts += [f"{RULE} instructions to {reviewer['id']}", system_text(reviewer).rstrip()]
+        if reviewer["id"] in asked:
+            parts += [f"{RULE} instructions to {reviewer['id']}", system_text(reviewer).rstrip()]
     parts += [f"{RULE} the message every reviewer is given", plan.material.user.rstrip()]
     return "\n\n".join(parts) + "\n"
 

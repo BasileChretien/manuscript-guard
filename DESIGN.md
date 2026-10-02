@@ -905,17 +905,28 @@ four facts: the base URL, the name of the variable holding the key, the shape, a
 vendor spells an output cap. Each was read from the vendor's documentation on 2026-10-02 and
 a test holds the table. No preset names a model: model names change faster than a release,
 and the author supplies them. A provider that is not built in is added under
-`review.providers` by its URL. A built-in name cannot be pointed elsewhere, because a
-`paper.yaml` somebody else wrote could then send the reader's key to a host of its choosing.
+`review.providers` by its URL. A built-in name cannot be pointed elsewhere, and a provider
+that is not built in cannot name a built-in provider's key variable as its own: either
+would let a `paper.yaml` somebody else wrote send the reader's key to a host of its
+choosing. The address must be one host, a port if it needs one, and a path, in plain
+characters; `http://[::1].evil.example` and `http://@localhost` are refused, since what
+decides whether a call stays on this machine is the host.
 
 **Keys.** A key is read from its environment variable when a call is made and goes into one
 request header. It is not in the request body, so the body can be printed and digested. It
 is not written to a file, a record or a message: `review --providers` says only whether each
-variable is set, an error built from a provider's words is scrubbed of the key, and a
-rejected key gets a message of our own, since a provider's message for a bad key can quote
-part of it. `key_env` must look like a variable's name, upper case, so that a key pasted
-there is refused rather than committed. Keys go over https, or to this machine. A redirect
-is not followed: it would carry the key and the manuscript to a host nobody agreed to.
+variable is set, and a rejected key gets a message of our own. Anything printed that
+somebody else wrote, a provider's error or an exception's text, has every run of four or
+more of the key's characters taken out first, because a provider's message for a bad key
+can quote its first and last few; the review of the first version found the whole key
+printed when it held a line break, inside the message `http.client` gives for a header it
+will not send. A key holding a space, a line break or a character outside ASCII is now
+refused by its variable's name before it reaches a header, and what an exception says
+about a request it would not build is never repeated. `key_env` must look like a
+variable's name, upper case, so that a key pasted there is refused rather than committed.
+Keys go over https, or to this machine. A redirect is not followed: it would carry the key
+and the manuscript to a host nobody agreed to. A request to this machine does not go
+through the proxy the environment names, which urllib would otherwise have handed it to.
 
 **The manuscript is unpublished, and sending it to a third party is the author's
 decision.** The toolkit cannot know what a provider keeps, for how long, or whether it
@@ -923,18 +934,36 @@ trains on it; that is in each provider's terms, and they differ and change. What
 is say what would leave the machine before anything does. `review --run --dry-run` builds
 every request exactly as a run would, prints which files go to which host and how many
 calls that is, writes the bodies under `build/` with a readable copy of their text, and
-opens no connection. A model run locally through Ollama is the option that sends nothing
-anywhere, and the statement says so.
+opens no connection. A model run on this machine through Ollama is the option that sends
+nothing anywhere, and the statement says so.
 
 **What a reviewer is sent is a fixed list**: the paper's title, keywords, journal and
 guideline from `paper.yaml`; the journal profile and the reporting checklist where the
 project has them; every manuscript file; and that reviewer's own role, remit and reason.
-Nothing else is read. That list is how the second panel stays blinded when models run it.
+Nothing else is sent. That list is how the second panel stays blinded when models run it.
 The earlier rounds' records, the other panels and the response to a journal's reviewers are
 not on it, so no request can carry them, and a test plants a marker in each and looks. For
 the same reason `authors.yaml`, `results/` and the literature sources stay where they are.
-The manuscript is sent as it reads, each binding replaced by its value and each table
-rendered, because a reviewer shown `{{results.ror.point}}` cannot check a number.
+`results/` and the ledger are read, for the values the bindings print, and only those
+printed values reach a request.
+
+Three entries of that list are named in `paper.yaml`, and the first version joined each
+name into a path without looking at where it led. `reporting_guideline:
+[../../review/round-1/biostatistician]` put round one's record in every round-two request,
+`target_journal: ../../authors` sent `authors.yaml` as the journal profile, and
+`paths: {manuscript: .}` made the notes beside the review and the response to the reviewers
+into manuscript files. A journal or guideline now has to be a name, and the file it
+resolves to, with links followed, has to sit in the project's `profiles/` or the shipped
+ones. The manuscript directory may not take in `review/` or `revision/`, nor sit inside
+them, and a manuscript file that is a link to somewhere outside it is refused. A
+`paper.yaml` its schema refuses is not planned from at all.
+
+The manuscript is sent as the build prints it. Each binding is replaced by its value and
+each table rendered, because a reviewer shown `{{results.ror.point}}` cannot check a
+number. Each file's YAML header and every HTML comment are left out, as the build leaves
+them out: a comment is where authors are told to keep their notes, and "the round-one
+statistician asked for this" is not something to hand a blinded reviewer. The files go in
+the order the build prints them, `main.md` first and the supplement last.
 
 **Agreeableness is the failure to design against.** A panel of personas that all approve
 has told the author nothing. Each reviewer is told to decide first what would have to be
@@ -948,7 +977,11 @@ the vocabulary is not mapped to the nearest one. A reply cut short by a token li
 refused even if it parses, and so is one the provider marks as a refusal. The reply schema
 holds only what a reader can know. Who read, when, and which version are filled in by the
 tool, and a finding's `resolution` is the author's to write, so a reply carrying one is
-refused: it would file a major finding already answered.
+refused: it would file a major finding already answered. One thing is read as what it
+plainly says: a finding's `where` may be left out, a model that leaves a key out often
+writes `null` for it, and null there is taken as absent. No other key may be null, prose
+made only of white space is not prose, and a character that could not be written to a
+record (a NUL, half of a surrogate pair) refuses the reply while it can still be refused.
 
 **Nothing is asked twice without a reason.** A rate limit or an overloaded server is
 retried twice, because no reply was produced. A timeout is not: the provider may have run
@@ -3526,9 +3559,23 @@ Closed since, and why each mattered:
   same edge: each request is a new conversation that carries nothing from an earlier round,
   but a provider that keeps a memory across requests is not something a request can see.
 - **A provider's reviewer does not see the figures.** A request is text. Each figure's place
-  is marked and its caption is sent with the prose around it, but the picture is not, so a
-  model's reading says nothing about whether a figure shows what the text claims. G10's
-  figure review is still the check on that.
+  is marked, and a caption the author wrote beside it goes with the prose around it, but
+  the picture is not sent, so a model's reading says nothing about whether a figure shows
+  what the text claims. G10's figure review is still the check on that.
+- **A provider that is not built in may name any other environment variable as its key.**
+  A built-in provider's variable is refused, but nothing can list every variable that
+  holds a secret: `key_env: GITHUB_TOKEN` under a provider in a `paper.yaml` somebody else
+  wrote would send that token to its host. The statement before a run names the host and
+  the variable for every provider, which is the place to notice.
+- **Taking a key out of a message can take a word with it.** Any four characters in a row
+  that the key also holds are replaced, so a provider's message that happens to share four
+  with the key loses them. Fewer than four of the key's characters in a row are not
+  recognised as the key's.
+- **A connection that cannot be opened in time reads as a timeout.** The client does not
+  ask again after a timeout, because the request may have run and been billed. urllib does
+  not say whether the time ran out before or after the request was sent, so a provider
+  that was merely unreachable is not retried either, and the message says it may have
+  been billed when it cannot have been.
 - **A reviewer is sent the numbers as they print today.** Bindings are replaced with the
   current values in `results/` and the ledger. A record's digests cover the manuscript's
   source files, as a hand-filed record's do, so re-running the analysis after a reading

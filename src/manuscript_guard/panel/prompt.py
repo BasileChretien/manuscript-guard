@@ -2,15 +2,22 @@
 
 **The inputs are a fixed list.** A request is built from `paper.yaml`'s description of the
 paper, the target journal's profile, the reporting guideline, the manuscript's own files, and
-the one reviewer's entry in the panel. Nothing else is read. That is how the second panel
+the one reviewer's entry in the panel. Nothing else is sent. That is how the second panel
 stays blinded when models run it: the earlier rounds' records, the other panels and the
 response to a journal's reviewers are not on the list, so no request can carry them. It is
 also why the authors' names, the results files and the literature sources stay on the
-machine. `tests/test_review_plan.py` plants a marker in each of those and looks for it.
+machine. `tests/test_review_plan.py` plants a marker in the first three and looks for what
+only the others hold.
 
-**The manuscript is sent as it reads**, with each binding replaced by the value it prints
-and each table rendered, because a reviewer who is shown `{{results.ror.point}}` cannot
-check a number. Figures are pictures and are not sent; the place of each is marked.
+The journal, the guideline and the manuscript directory are named in `paper.yaml`, so each
+name is held to where it may lead: a profile is a name under `profiles/`, and the
+manuscript directory may not take in the review or the response to it.
+
+**The manuscript is sent as the build prints it**, with each binding replaced by the value
+it prints and each table rendered, because a reviewer who is shown `{{results.ror.point}}`
+cannot check a number. What the build leaves out is left out here too: a file's YAML header,
+and every HTML comment, which is where authors keep their notes. Figures are pictures and
+are not sent; the place of each is marked.
 
 **The failure of a model reviewer is agreeableness.** A panel of personas that all approve
 has told the author nothing. So each reviewer is told to decide first what would have to be
@@ -21,18 +28,25 @@ the text. The reply carries those tests, so a reading that attacked nothing show
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.build.assemble import render_table
+from manuscript_guard.build.assemble import render_table, strip_front_matter
 from manuscript_guard.contracts import load_namespace
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.journal import profile_path
-from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.reporting import checklist_path
+from manuscript_guard.paths import SHIPPED
+from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.placeholders import parse
 
 FROM_PAPER = "title, short title, keywords, target journal, reporting guideline, English variant"
+
+#: What makes a profile's name a path: a separator of either kind, or a drive's colon.
+_NOT_IN_A_NAME = ("/", chr(92), ":")
+_BLANK_RUNS = re.compile("\n{3,}")
 
 #: Named in the dry run and before a run, so the author sees what stays on the machine.
 NOT_SENT = (
@@ -164,7 +178,13 @@ def _read(path: Path, label: str) -> tuple[bytes, str]:
 
 
 def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
-    """The text with each binding replaced by what it prints, and how many have nothing."""
+    """The text as the build prints it, and how many of its bindings have nothing to print.
+
+    The build drops a file's YAML header and pandoc drops every HTML comment, so neither is
+    sent: a comment is where authors are told to keep their notes, and "the round-one
+    statistician asked for this" is not something a blinded reviewer should be handed.
+    """
+    text = blank_comments(strip_front_matter(text)[0])
     placeholders, _ = parse(text)
     missing = 0
     for placeholder in sorted(placeholders, key=lambda p: p.start, reverse=True):
@@ -181,7 +201,15 @@ def _as_read(text: str, namespace: dict, results) -> tuple[str, int]:
             missing += 1
             continue
         text = text[: placeholder.start] + replacement + text[placeholder.end :]
-    return text, missing
+    # A blanked comment leaves its lines behind as spaces.
+    lines = [line.rstrip() for line in text.splitlines()]
+    return _BLANK_RUNS.sub("\n\n", "\n".join(lines)), missing
+
+
+def _listed(value: object) -> list[str]:
+    """A list of names from paper.yaml, or nothing if it is not one. The schema says it is;
+    a string here would otherwise be sent letter by letter."""
+    return [str(item) for item in value] if isinstance(value, (list, tuple)) else []
 
 
 def _about(project: Project) -> str:
@@ -189,18 +217,79 @@ def _about(project: Project) -> str:
     facts = [
         ("Title", paper.get("title")),
         ("Short title", paper.get("short_title")),
-        ("Keywords", ", ".join(str(k) for k in paper.get("keywords") or ())),
+        ("Keywords", ", ".join(_listed(paper.get("keywords")))),
         ("Target journal", project.target_journal),
-        ("Reporting guideline", ", ".join(project.reporting_guidelines)),
+        ("Reporting guideline", ", ".join(_listed(paper.get("reporting_guideline")))),
         ("English", project.english_variant),
     ]
     return "\n".join(f"{name}: {value}" for name, value in facts if value)
 
 
+def _inside(path: Path, directory: Path) -> bool:
+    """Whether `path`, with every link followed, is `directory` or under it."""
+    try:
+        path.resolve().relative_to(directory.resolve())
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def _profile(project: Project, key: str, name: object, kind: str, find) -> Path | None:
+    """The profile `paper.yaml` names, if it is a name and the file is a profile.
+
+    These two keys are the only inputs the author names, and each is joined into a path. A
+    name that walks out of `profiles/` made any YAML file of the project an input:
+    `../../review/round-1/biostatistician` as the reporting guideline put round one's
+    record into every round-two request. So the name must be a name, and the file it
+    resolves to, with links followed, must sit in the project's profiles or the shipped ones.
+    """
+    if not isinstance(name, str) or not name.strip():
+        return None
+    if ".." in name or any(char in name for char in _NOT_IN_A_NAME):
+        raise PromptError(
+            f"{key} in paper.yaml names a profile under profiles/{kind}/, not a path: "
+            f"{name!r} is not sent"
+        )
+    found = find(project, name)
+    if found is None:
+        return None
+    homes = (project.root / "profiles" / kind, SHIPPED / kind)
+    if not any(_inside(found, home) for home in homes):
+        raise PromptError(
+            f"{key} in paper.yaml: {name} resolves to a file outside profiles/{kind}/, "
+            "which is not sent"
+        )
+    return found
+
+
+def _manuscript_files(project: Project) -> tuple[Path, list[Path]]:
+    """The manuscript directory and its files, refused if they take in what is not sent."""
+    directory = project.path("manuscript")
+    kept_out = [project.root / "review", project.root / "revision"]
+    if _inside(project.root, directory) or any(
+        _inside(directory, private) or _inside(private, directory) for private in kept_out
+    ):
+        raise PromptError(
+            "paths.manuscript in paper.yaml takes in the review rounds or the response to "
+            "reviewers, which are never sent. Keep the manuscript in a directory of its own"
+        )
+    sources = source_files(directory)
+    for path in sources:
+        if not _inside(path, directory) or any(_inside(path, private) for private in kept_out):
+            raise PromptError(
+                f"{path.name} under {directory.name}/ is a link to a file outside it, which "
+                "is not sent"
+            )
+    return directory, sources
+
+
 def gather(project: Project) -> Material:
-    """Read what every reviewer of a round is sent. Reads only what the module's list names."""
-    manuscript_dir = project.path("manuscript")
-    sources = source_files(manuscript_dir)
+    """Read what every reviewer of a round is sent. Sends only what the module's list names.
+
+    `results/` and the ledger are read too, for the values the bindings print. They are not
+    sent: only the printed value of a binding the manuscript uses reaches the text.
+    """
+    manuscript_dir, sources = _manuscript_files(project)
     if not sources:
         raise PromptError(f"there is no manuscript to review under {manuscript_dir.name}/")
 
@@ -208,14 +297,15 @@ def gather(project: Project) -> Material:
     parts = ["# The paper", _about(project)]
     sent: list[Sent] = []
 
-    journal = project.target_journal
-    found = profile_path(project, journal) if journal else None
+    found = _profile(
+        project, "target_journal", project.paper.get("target_journal"), "journals", profile_path
+    )
     if found is not None:
         label = _label(project, found)
         parts += ["# What the target journal requires", _block(label, _read(found, label)[1])]
         sent.append(Sent(label))
-    for name in project.reporting_guidelines:
-        found = checklist_path(project, name)
+    for name in _listed(project.paper.get("reporting_guideline")):
+        found = _profile(project, "reporting_guideline", name, "reporting", checklist_path)
         if found is None:
             continue
         label = _label(project, found)
@@ -225,6 +315,7 @@ def gather(project: Project) -> Material:
     parts.append("# The manuscript")
     whole = hashlib.sha256()
     digests: dict[str, str] = {}
+    blocks: dict[Path, tuple[str, str]] = {}
     unrendered = 0
     for path in sources:
         relative = path.relative_to(manuscript_dir).as_posix()
@@ -237,8 +328,19 @@ def gather(project: Project) -> Material:
         digests[relative] = hashlib.sha256(data).hexdigest()
         shown, missing = _as_read(text, namespace, results)
         unrendered += missing
+        blocks[path] = (label, shown)
+
+    # Sent in the order the build prints them: the paper with `main.md` first, then the
+    # supplement. In path order `1_methods.md` came before `main.md`.
+    paper = [path for path in sources if not is_supplementary(manuscript_dir, path)]
+    supplement = [path for path in sources if is_supplementary(manuscript_dir, path)]
+    for path in (
+        *printed_order(paper, supplementary=False),
+        *printed_order(supplement, supplementary=True),
+    ):
+        label, shown = blocks[path]
         parts.append(_block(label, shown))
-        sent.append(Sent(label, "numbers and tables as a reader sees them"))
+        sent.append(Sent(label, "as the build prints it"))
 
     return Material(
         user="\n\n".join(parts) + "\n",

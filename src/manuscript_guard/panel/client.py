@@ -24,15 +24,18 @@ The transport is an argument, so the tests answer from a list and never open a c
 
 from __future__ import annotations
 
+import http.client
 import json
+import math
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 from manuscript_guard import __version__
-from manuscript_guard.panel.providers import ANTHROPIC, OPENAI, Model
+from manuscript_guard.panel.providers import ANTHROPIC, LOOPBACK, OPENAI, Model, usable_key
 
 ANTHROPIC_VERSION = "2023-06-01"
 #: Anthropic's API requires a cap. This one leaves room for a long review and is within what
@@ -48,13 +51,17 @@ MAX_WAIT_SECONDS = 60.0
 BUSY = frozenset({429, 503, 529})
 MAX_BYTES = 8 * 1024 * 1024
 SHOWN = 300
+#: As few characters of a key in a row as are taken out of anything printed. A
+#: provider's message for a bad key can quote its first and last few.
+KEY_PART = 4
 
 
 @dataclass(frozen=True)
 class HttpRequest:
     url: str
-    headers: dict[str, str]
-    body: bytes
+    #: Holds the key, so it is left out of the request's printed form.
+    headers: dict[str, str] = field(repr=False)
+    body: bytes = field(repr=False, default=b"")
 
 
 @dataclass(frozen=True)
@@ -169,32 +176,80 @@ def _timed_out(exc: BaseException) -> bool:
 
 
 def default_transport(request: HttpRequest, timeout: float) -> HttpResponse:
-    """Send one request with `urllib`. A status that is not 2xx is an answer, not an error."""
-    opener = urllib.request.build_opener(NoRedirect)
-    outgoing = urllib.request.Request(
-        request.url, data=request.body, headers=request.headers, method="POST"
-    )
+    """Send one request with `urllib`. A status that is not 2xx is an answer, not an error.
+
+    A request to this machine goes to this machine: the proxy that `http_proxy` names in
+    the environment is not used for it. With one set, as on many institutional networks,
+    urllib handed a request for `http://localhost` to the proxy, body and all, while the
+    author had been told that nothing leaves the machine.
+    """
+    handlers: list = [NoRedirect]
+    if urlsplit(request.url).hostname in LOOPBACK:
+        handlers.append(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(outgoing, timeout=timeout) as response:
-            return HttpResponse(
-                response.status, dict(response.headers.items()), response.read(MAX_BYTES + 1)
-            )
-    except urllib.error.HTTPError as exc:
-        headers = dict(exc.headers.items()) if exc.headers else {}
-        return HttpResponse(exc.code, headers, exc.read(MAX_BYTES + 1))
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+        opener = urllib.request.build_opener(*handlers)
+        outgoing = urllib.request.Request(
+            request.url, data=request.body, headers=request.headers, method="POST"
+        )
+        try:
+            with opener.open(outgoing, timeout=timeout) as response:
+                body = response.read(MAX_BYTES + 1)
+                # Reading a set number of bytes returns what arrived and says nothing when
+                # the connection closed early, so the length the server declared is checked.
+                declared = response.headers.get("Content-Length", "")
+                if declared.isdigit() and len(body) < min(int(declared), MAX_BYTES + 1):
+                    raise TransportError("network", "the answer was cut off part way")
+                return HttpResponse(response.status, dict(response.headers.items()), body)
+        except urllib.error.HTTPError as exc:
+            headers = dict(exc.headers.items()) if exc.headers else {}
+            return HttpResponse(exc.code, headers, exc.read(MAX_BYTES + 1))
+    except http.client.HTTPException as exc:
+        # An answer cut off part way, or one that is not HTTP. Not an OSError.
+        raise TransportError(
+            "network", f"the answer could not be read ({type(exc).__name__})"
+        ) from None
+    except ValueError:
+        # Raised while the request is built, and its words quote what it was built from:
+        # for a header `http.client` will not send, the header, key and all. Never repeated.
+        raise TransportError("network", "the request could not be made as written") from None
+    except (urllib.error.URLError, OSError) as exc:
         if _timed_out(exc):
-            raise TransportError("timeout", f"no answer within {timeout:g} s") from exc
-        raise TransportError("network", str(getattr(exc, "reason", exc))) from exc
+            raise TransportError("timeout", f"no answer within {timeout:g} s") from None
+        raise TransportError("network", str(getattr(exc, "reason", exc))) from None
 
 
 # ------------------------------------------------------------------------------- the answer
 
 
+def without_key(text: str, key: str | None) -> str:
+    """`text` with the key taken out, whole or in part.
+
+    Any run of the key's characters, four or more in a row, becomes `[key]`: a provider's
+    message for a bad key can quote the first and last few. A word that happens to share
+    four characters with the key goes too, which costs a word of somebody else's message.
+    """
+    if not key:
+        return text
+    if len(key) < KEY_PART:
+        return text.replace(key, "[key]")
+    parts = {key[i : i + KEY_PART] for i in range(len(key) - KEY_PART + 1)}
+    hidden = [False] * len(text)
+    for start in range(len(text) - KEY_PART + 1):
+        if text[start : start + KEY_PART] in parts:
+            hidden[start : start + KEY_PART] = [True] * KEY_PART
+    out: list[str] = []
+    for index, char in enumerate(text):
+        if not hidden[index]:
+            out.append(char)
+        elif index == 0 or not hidden[index - 1]:
+            out.append("[key]")
+    return "".join(out)
+
+
 def _scrub(text: str, key: str | None) -> str:
-    """A provider's words, fit to print: without the key, and not at length."""
-    if key:
-        text = text.replace(key, "[key]")
+    """Somebody else's words, fit to print: without the key or any part of it, without
+    characters a terminal would act on, and not at length."""
+    text = "".join(char if char.isprintable() else " " for char in without_key(text, key))
     text = " ".join(text.split())
     return text if len(text) <= SHOWN else text[:SHOWN] + "..."
 
@@ -211,6 +266,8 @@ def _wait(response: HttpResponse) -> float:
         asked = float(_header(response, "Retry-After") or "")
     except ValueError:
         return DEFAULT_WAIT_SECONDS
+    if not math.isfinite(asked):
+        return DEFAULT_WAIT_SECONDS
     return min(max(asked, 0.0), MAX_WAIT_SECONDS)
 
 
@@ -219,7 +276,7 @@ def _said(response: HttpResponse) -> str:
     text = response.body[:4096].decode("utf-8", errors="replace")
     try:
         document = json.loads(response.body)
-    except ValueError:
+    except (ValueError, RecursionError):
         return text
     if isinstance(document, dict):
         error = document.get("error")
@@ -267,12 +324,8 @@ def _text_parts(content: object) -> str | None:
     """
     if isinstance(content, str):
         return content
-    if isinstance(content, list):
-        parts = [
-            part.get("text")
-            for part in content
-            if isinstance(part, dict) and part.get("type") == "text"
-        ]
+    if isinstance(content, list) and all(isinstance(part, dict) for part in content):
+        parts = [part.get("text") for part in content if part.get("type") == "text"]
         texts = [part for part in parts if isinstance(part, str)]
         if len(texts) == len(parts):
             return "".join(texts)
@@ -334,7 +387,7 @@ def read_reply(model: Model, response: HttpResponse, key: str | None = None) -> 
         raise _unreadable(model, f"more than {MAX_BYTES} bytes")
     try:
         document = json.loads(response.body)
-    except ValueError:
+    except (ValueError, RecursionError):
         raise _unreadable(model, "the body is not JSON") from None
     if not isinstance(document, dict):
         raise _unreadable(model, "the body is not an object")
@@ -388,6 +441,20 @@ def call(
     timeout: float = TIMEOUT_SECONDS,
 ) -> Reply:
     """Send one request and return its finished reply, or raise `CallFailed`."""
+    provider = model.provider
+    if provider.key_env and not key:
+        # The caller checks this before a run. Here it is the last place to stop a request
+        # that would disclose the manuscript and be refused.
+        raise CallFailed(
+            "auth", f"{provider.key_env} is not set, so {provider.name} was not asked"
+        )
+    if key and not usable_key(key):
+        held = f"the key in {provider.key_env}" if provider.key_env else "the key given"
+        raise CallFailed(
+            "auth",
+            f"{held} holds a space, a line break or a character outside ASCII, which no "
+            f"key has; {provider.name} was not asked",
+        )
     send = transport or default_transport
     request = build_request(model, body, key=key)
     for attempt in range(retries + 1):
@@ -437,4 +504,5 @@ __all__ = [
     "default_transport",
     "endpoint",
     "read_reply",
+    "without_key",
 ]

@@ -180,10 +180,11 @@ copy — see the note under "What an adversarial review found".
 installed, and several agent tools read that one file at a project's root on their own. It
 holds what the guarantee rests on, on one short page: machine-written files are not edited,
 `check` runs before a build, and nobody but `check` decides that the manuscript is clean. It
-says only what holds in any project at any time, because it is written once: a finding is
-never typed, though a convention or a pointer is; `check` decides for the stage the project
-declares; and for how to install the skills it points to the README without saying what the
-README holds for which tool. It names no agent tool. Like every file of the scaffold it is never written over an existing
+is worded to hold in any project at any time, because it is written once: a finding is never
+typed, though a convention, a pointer, a label or a name is; `check` decides for the stage
+the project declares; and for how to install the skills it points to the README without
+saying what the README holds for which tool. Where it does not hold, Known gaps says so. It
+names no agent tool. Like every file of the scaffold it is never written over an existing
 one; where a repository already has an `AGENTS.md` that does not mention the toolkit, `init`
 prints the rules to add, because an agent there would otherwise read rules that say nothing
 of `results/`. It is advice to the reader and enforces nothing: the gates do that.
@@ -796,6 +797,14 @@ labels are bold by journal requirement, so counting them flagged the journal's h
 they are exempt. And technical senses are exempt by pattern, so "robust standard errors"
 does not count towards the vocabulary rate.
 
+A finding's line is counted in the file as read. The phrase and attribution rules match in a
+copy with the comments, the listings and the front matter's machinery blanked, line ends
+included, and an offset is the same in both. Counted in the copy, the line fell short by
+every line blanked above it: a phrase under a four-line comment was reported three lines up,
+on the comment. And the line is the one the matched words begin on, not the match: the rule
+for a chat assistant's opening word reads from the start of a line through any blank lines,
+and its finding was put on the blank line above the paragraph.
+
 **Vague attribution gets the one check an encyclopedia cannot use.** "Studies have shown" is
 reported only when no citation sits within 240 characters, because in a manuscript the fix
 is a reference rather than a rewrite.
@@ -968,6 +977,92 @@ chose this over the alternatives: re-reading every round after every change (the
 guarantee, and the one most likely to be switched off), superseding only across a journal's
 revision round (which left copy-edits before the first submission at the same dead end), and
 no change.
+
+**A remit can be read by several readers.** One reviewer had one record a round, so a remit
+could be read once. A panel read by models from several providers has several readings of
+each remit, and a co-author may read a remit a model also read. Each reading is a record of
+its own, `review/round-N/<reviewer>.<reader>.yaml`, beside the plain `<reviewer>.yaml`; a
+reviewer's id cannot hold a dot, so the first dot ends it. The record says the same `reader`
+inside. Nothing is merged into one file, because a record several writers append to is a
+record that can be re-stamped.
+
+**The panel says who reads, and is held to it.** A reviewer's entry lists the `readers`
+asked to read the remit, and G11 wants a reading from every one of them: `reading-missing`
+leaves the round unfinished. With every model reading every remit, one provider failing
+must not leave a round that looks complete, and this is what lets the readings that did
+arrive be filed: the round is visibly incomplete until the missing reader reports or is
+taken out of the panel, which is a decision somebody made and the file records. The author
+chose this over two alternatives. Counting a remit as read once anybody had read it passes
+a round two of three models answered. Filing nothing unless every call succeeded throws
+away replies already paid for. A panel that names no readers needs one reading, the
+reviewer's plain record, which is how every round written before this is read; the
+example's two rounds give the same findings as they did, which is none. What is new for
+them is a count of readings in the report and the list of who read what in
+`manuscript-guard review`.
+
+**And only the readers the panel names are read.** A file `<reviewer>.<reader>.yaml` is a
+reading if the panel lists that reader for that reviewer, and nothing else beside a record
+is one. `review --record <reviewer> --reading <reader>` lists the reader when it files the
+reading, the way `--record` puts a reviewer on the panel. The first two versions of this
+decided from a file's contents whether it was a reading, and two review rounds each found
+one that dropped out of a round without a failure. A reading whose author answered a
+finding with `resolution: Fixed: it now says reporting`, which is not YAML, was taken for a
+note: a warning, and its other major finding stopped binding. With that fixed by looking
+for a `reader:` line, one saved again in UTF-16 was taken for a note, and so was one with
+the key quoted. In the other direction, a note in another code page that the gate had no
+business opening took it down. The author chose to stop guessing over two alternatives:
+patching each shape as it was found, and treating every such file as a reading, which
+would have failed a submission over a copy kept in the round. So:
+
+- A file under a name the panel asks for is that reader's reading, whatever it holds. It
+  must parse (`reading-unreadable` if not, a failure at every stage like any malformed
+  record), fit the schema, and say inside the reader, the reviewer and the round its place
+  says (`reading-misfiled`). Until it does, the round is unfinished.
+- Any other file beside a record is not opened. It is reported as `reading-unnamed`, a
+  warning at every stage, with how to make it count. `biostatistician.old.yaml`, a note in
+  UTF-16, a folder: none can fail a submission or take the gate down, as none could before
+  readings had names.
+- The reviewer's plain record is the reading nobody named, and answers for no named reader
+  whatever it says inside.
+
+The cost is the one case the warning is for: a reading put beside a record by hand, with
+its reader not in the panel, is not counted until somebody adds the reader.
+
+**A reader is known by the name that names its file.** A reader's name becomes part of a
+file name with its letters, digits and the marks that belong to them kept, in any script,
+lower-cased and composed, and every run of anything else as one hyphen. That form is how
+the gate recognises a reader, so the panel's `Dr. Tanaka` and a reading filed as
+`Dr Tanaka` are one reader; matched letter for letter, the gate asked for a file that
+existed and `review --record` refused to write it. The marks are kept because in scripts
+that write a vowel as a mark on its consonant two names can differ in nothing else, and
+with them dropped Reena and Raina were one file. The name is composed because some file
+systems store an accented letter as the letter and its mark, and the same reader has to be
+the same file wherever the project is checked out. Two readers of one remit whose names
+still make one file name are `duplicate-reader`: one file cannot hold two readings. A name
+with no letter or digit names no file, and is refused where it is typed and reported where
+a panel holds one.
+
+**Any reader can raise a finding, and nobody's reading answers another's.** Every reading
+is judged as a record always was: stale when a file it read changes, counted for coverage,
+and each unanswered major finding blocks a submission, with the reader who raised it named.
+The gate does not match similar findings across readers. Two models saying the same thing
+in different words are two findings to answer, and deciding they are one is a judgement the
+author makes in the resolution.
+
+**The strictest verdict is reported and decides nothing.** `manuscript-guard review` lists
+who read each remit, what each concluded and the round's strictest verdict. G11 has never
+decided anything on a verdict, and still does not: a record cannot be re-stamped, so a
+verdict could be cleared only by a further round, and what an author can act on is a
+finding.
+
+**What a model's reading may keep.** A record may carry `provenance`: the provider, the
+model as asked for and as the provider named it, the host, the SHA-256 of the request body,
+the provider's response identifier, how the reply ended, the token counts and the version
+of this tool. The schema refuses any other field there, so nothing has a place to put a
+key, a header or the prompt's text. What goes into the fields the provider words (its name
+for the model, its response identifier, its reason for stopping) is for whatever writes the
+record to clean. `rejection_tests` records what the reader decided would have to be true
+to reject, and what the manuscript showed. The gate reads neither.
 
 The worked example carries a real two-round panel. Round one found that the paper had no
 case definition, no mention of duplicate records, and no contingency table for a result that
@@ -1191,7 +1286,7 @@ Four hooks, chosen because each catches something at the only moment it is cheap
 - **After editing an analysis file**, say the results are stale and the Methods may no
   longer describe the code.
 - **Before a submission-shaped shell command**, run the submission check and block on
-  failure.
+  failure, or where the project cannot be read for the check to run.
 
 That last one carries a specific lesson. It matches the **whole command string**, with no
 permission-rule prefix filter, because `cd example && manuscript-guard submit` and
@@ -1204,6 +1299,17 @@ the no-op path against roughly 400 ms through the full CLI.
 **A hook never breaks the session.** Every handler swallows unexpected errors and exits 0.
 A guard that crashes on a half-configured project gets removed by the author, and the guards
 that were working go with it.
+
+One error is expected, and is passed on. Where a file of the project's own cannot be parsed,
+`check` stops before any gate, says which file in a sentence written for the author, and
+exits 2. A project that could not be checked has not passed, so the submission guard refuses
+with that sentence, and the session start says it where the status line would have been. The
+gates raise the same error where there is no `paper.yaml` above the folder at all, and there
+a hook has nothing to say: a guard that refused on it would refuse every command that names
+a `.docx` anywhere on the machine. So both look for the project first
+(`hooks._project_root`), stay silent where there is none, and pass on only an error raised
+once one was found. Anything else the gates raise is still a fault of the tool, and still
+ends in silence.
 
 **A hook reads its event as UTF-8.** The agent tool writes the event on the hook's standard
 input as UTF-8, and a name outside ASCII goes as its own bytes, with no `\u` escape. Python on
@@ -3046,6 +3152,78 @@ Three decisions worth recording:
   including embedded NULs, UTF-16 and the byte-exact `.txt` and `.sql`, are asserted
   byte-identical across the two languages.
 
+## The skills, for an agent tool with no plugin
+
+Claude Code and Codex install the skills as a plugin from this repository. Gemini CLI,
+Mistral Vibe and Kimi Code CLI have no such route here. What they share, with Codex too, is a
+folder: each reads skills from `.agents/skills` in a project and in the user's home. So
+`manuscript-guard install-skills` copies the skills there (`--project` for the project you
+are in, `--dir` for any other folder), and one command serves every such tool.
+
+**One source.** The skills live in `plugin/skills` and nowhere else in the repository. The
+wheel takes those files as `manuscript_guard/skills` when it is built (`force-include` in
+`pyproject.toml`), and in a checkout `skillcopy.shipped()` returns `plugin/skills` itself. A
+copy kept under `src/` would have been a second source. Three tests hold this: the package
+directory has no `skills/`, a wheel built in the test carries every file of `plugin/skills`
+byte for byte, and CI's wheel job compares the wheel's file list with what git tracks.
+
+**The copy is exact, and so are its names.** A skill is copied as it is, under its own name:
+the Agent Skills specification wants a skill's name to be its folder's, and the gates' hints
+name the skills. Prefixing them would have meant rewriting each file on the way out, and the
+copy would no longer be the source.
+
+**Nothing that is not this tool's is touched.** The folder in the user's home is shared with
+every other skill they have. Each copy leaves a stamp beside the skills,
+`.manuscript-guard.json`, with the release and a digest of every file. A later copy replaces
+a skill only if the stamp lists it and its files still have those digests, and removes one
+that a newer release dropped on the same condition. A folder the stamp does not list, one
+edited since, a link or a junction, or a file where a folder should be, is left as it is and
+named, with what can be done about it, and the command exits 1. This is the rule the round
+trip settled on: refuse rather than guess.
+
+The stamp says which folders may be removed, so it is believed whole or not at all. A name
+in it is used as a path: one that is not a single lower-case folder name (a path with `..`,
+an absolute one, an upper-case twin of a real skill, which on Windows is the same folder)
+makes the whole stamp unreadable, as do another schema, a missing field and broken JSON. And
+a stamp that is there and unreadable stops the command before it writes anything, the stamp
+included. It may be a later release's, and a new stamp over it would make every folder there
+someone else's for good.
+
+**A skill that is already there is not written again.** A folder that holds the text of the
+skill that is coming is left as it is and recorded, whatever the stamp says of it. Writing
+it again changed nothing in the text and did harm around it: a folder of the user's own with
+the same text was written over, a copy with the line endings git gave it showed every file
+as modified, and a folder in use was emptied. So a run with nothing to change writes
+nothing but the stamp.
+
+**A copy that stops half-way is finished by the next.** The stamp is written last. A skill
+that does have to change is copied into a folder made for the purpose beside it, what stood
+in its place is moved aside whole, and the copy is moved in; nothing is removed file by
+file, and nothing that was already there is touched to make room. A folder that cannot be
+moved, as one that is some program's working directory cannot be on Windows, stops the
+command with the skill whole. Where the copy cannot be moved in, what was moved aside is
+moved back. So after a copy that stopped, a file held open or an interrupt, each skill is
+either as the old stamp describes it or as this release has it, and the next run takes
+both. One skill can be missing instead: where the interrupt fell between the two moves, or
+where the move back failed as well. What is gone then is a copy this tool made, and the next
+run writes the skill.
+
+**The digests are of the text, not of the bytes.** CRLF is read as LF. A copy committed with
+a project and checked out by git on Windows comes back with the other line endings; with
+digests of the bytes all fourteen read as changed, and stayed so for good.
+
+**A copy goes stale, and the gates' own commands say so.** `pip install --upgrade` renews
+the tool and leaves the copy. A hook could say so, and these tools run none of ours. What
+every agent runs, under any tool, is `check` and `build`: after either, a stamp from another
+release gets one line on stderr with the command that renews it, or, where the copy is the
+newer, the command that upgrades the tool. It is printed after the command has finished and
+changes neither its output nor its exit code, and a stamp that cannot be read says nothing.
+The gates themselves do not look at it: a stale skill is not a finding about the manuscript.
+
+`MANUSCRIPT_GUARD_USER_SKILLS` names the user's folder where it is not `~/.agents/skills`.
+The test suite sets it to a folder that does not exist, so that a run never reads the copy
+of whoever is running it.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -3682,6 +3860,26 @@ Closed since, and why each mattered:
 - **G11 cannot tell a good review from a bad one.** A reviewer who writes "looks fine"
   satisfies every check. The gate verifies that a panel existed, reported, and answered its
   major findings; the quality of the reading is beyond it, and the skill says so.
+- **A plain record is not checked against where it is filed.** A named reading must say
+  the reader, the reviewer and the round its place says. `<reviewer>.yaml` is read as it
+  always was: its `reviewer` and `round` fields are not compared with its place, so a
+  record copied from round one into round two counts there if its digests still match.
+  Left alone so that no existing record starts failing. It answers for no named reader.
+- **A reading the panel does not name is not counted.** A file put beside a record by
+  hand, or one whose reader was taken out of the panel, is not opened: its findings, major
+  ones included, bind nobody, and the only sign is the `reading-unnamed` warning. Taking a
+  reader out of the panel is how a reader who will not report is released, and it is also
+  how a reading that did report can be set aside; the panel file's history shows which.
+  The alternative was to guess from a file's contents whether it is a reading, and two
+  review rounds each found a guess that let a reading drop out with no warning it could
+  be told from.
+- **Two readers of one remit whose names share their letters and digits cannot both be
+  asked.** `model.a` and `model-a` both file as `model-a`; a panel that lists both for one
+  reviewer is `duplicate-reader` until one is renamed. Names that differ only in case, or
+  in characters that are neither letters, digits nor their marks, are one reader.
+- **A reader's name is compared as it is composed, and not otherwise folded.** A full-width
+  letter and its ordinary form, a digit of another script and the same digit in ASCII, or
+  `ß` and `ss`, are different readers.
 - **A narrow later round can supersede a broad earlier one.** One reviewer whose remit is
   "the response letter" reads the revised text, the round is complete, and the
   biostatistician's stale reading of the Methods becomes history. The panel file's
@@ -3825,13 +4023,35 @@ Closed since, and why each mattered:
   none. A text in a code page that happens to be valid UTF-8 is read as UTF-8. And a name
   sent in one Unicode normal form and written in `paper.yaml` or on disk in another was not
   tried; macOS is where that would show.
-- **The submission guard says nothing about a project it cannot read.** Where
+- **The submission guard said nothing about a project it could not read.** Where
   `check --submission` stops on an error of the project's own, a results file that is not
-  JSON for one, the gates raise before there is a finding. The hook takes that for an
-  unexpected failure, exits 0 in silence, and the command goes through. The session start is
-  silent there for the same reason. It follows from "a hook never breaks the session", but
-  that error is worded for the author, and the guard could refuse with it. Found in the review
-  of #130 on 2026-10-02 and true before it. Not decided, and not changed.
+  JSON for one, the gates raise before there is a finding. The hook took that for an
+  unexpected failure, exited 0 in silence, and the command went through. The session start
+  was silent there for the same reason. Found in the review of #130 on 2026-10-02 and true
+  before it. Closed the same day, by the author's decision: the guard refuses with the
+  project's own sentence, which names the file, and the session start says that sentence in
+  place of the status line and blocks nothing (see "A hook never breaks the session"). The
+  files concerned are the ones read before any gate runs: `paper.yaml`, `authors.yaml`, the
+  results fragments and the two ledgers under `literature/`. A file that a gate reads was
+  never part of this, since a gate that raises is reported as `gate-errored`, which fails at
+  every stage. Where no project is found at the folder the event names, or above it, both
+  hooks stay silent, as before. That folder is the only place looked in: a command sent from
+  above a project that enters it, `cd paper && manuscript-guard submit`, is not checked, in
+  a project that fails as in one that cannot be read. True on `main` before this, found in
+  the review of #131, and not decided. The refusal ends by naming
+  `manuscript-guard check --stage submission` and not `check --submission`, whose flag is
+  one of the guard's own markers: an agent told to run that one is refused again. It says
+  to run it on its own, because the command ends in the word `submission`, which the guard
+  matches after `cp` or `git push` on the same line. The older refusal, for a failing check,
+  still names `check --submission` here, and #131 changes that one.
+  Still open: only that
+  one error is passed on. A file among those that is not UTF-8, or a `paper.yaml` that holds
+  a list, ends `check` itself in a traceback (`UnicodeDecodeError`, `AttributeError`) and
+  not in a sentence. There the guard is silent as it was, and the command goes through.
+  Refusing on any error at all would have covered both and was not chosen: a fault of the
+  tool would then stop every command that names a `.docx` in that project, with a message its
+  author can do nothing with. The remedy is in `check`, which should say those two in a
+  sentence, and then the guard refuses them with no change of its own.
 - **An installed plugin is a copy, and goes stale silently.** The repository is its own
   marketplace (`.claude-plugin/marketplace.json`), and `claude plugin install` copies the
   plugin into Claude Code's cache. A skill corrected in the repository reaches nobody until
@@ -3865,13 +4085,20 @@ Closed since, and why each mattered:
   desktop app on its own may not put on `PATH`.
 - **The package and the plugin are one release with one number.** `pyproject.toml`,
   `manuscript_guard.__version__`, `plugin.json` and the marketplace entry carry the same
-  version. The policy (Basile, 2026-09-30) is that every pull request that changes `src/` or
-  `plugin/` takes the next shared number and bumps all four, and the coordinating session
-  assigns the numbers, so that two open pull requests never take one. `tests/test_version.py`
-  fails when the four differ. It cannot tell that a pull request changed code and left them
-  alone, which is the case the policy is for: `pip install --upgrade` finds nothing newer for
-  a fix that did not bump, and the stale-tool notice below cannot fire either, because
-  `plugin.json` did not move. The README's `--force-reinstall` is the fallback. Before this
+  version. The policy (Basile, 2026-10-02) is that a pull request leaves the version line in
+  each of the four as `main` has it, and the coordinating session raises the number on `main`
+  after merges that change `src/` or `plugin/`. Its bump is the one pull request that changes
+  those lines, and it changes nothing else. From 2026-09-30 until then every pull request
+  that changed `src/` or `plugin/` took the next shared number and bumped all four, with the
+  numbers assigned so that two open pull requests never took one. With a dozen open at once
+  two branches carried the same number all the same, which git merges without a conflict and
+  which was caught before either merged, and `main` passed the number of a pull request that
+  was waiting for its review. `tests/test_version.py` fails when the four differ. It cannot
+  tell that code changed on `main` and the number was not raised after it, which is the case
+  the policy is for: `pip install --upgrade` finds nothing newer for a fix under the old
+  number, and the stale-tool notice below cannot fire either, because `plugin.json` did not
+  move. Between a merge and the bump that follows it, `main` is in that state. The README's
+  `--force-reinstall` is the fallback. Before the package and the plugin had one number,
   the package sat at 0.1.0 while the plugin moved, so `pip install --upgrade git+...` found
   nothing newer and left an older copy in place, and `--version` could not say which release
   anyone had. Verified 2026-09-30 with pip 26.2: an upgrade takes a newer commit when its
@@ -3922,6 +4149,47 @@ Closed since, and why each mattered:
   value correct in the abstract and wrong in the Results passes, as does a number matching
   a coincidental value in an unrelated output. It is triage for existing work, not a
   guarantee.
+- **A copy of the skills is found stale in two places only, and by two commands.**
+  `install-skills` leaves a stamp, and `check` and `build` name a copy whose stamp is from
+  another release, on stderr. They look in `.agents/skills` at the project's root and in the
+  user's folder. A copy made with `--dir`, or one in a directory between the working
+  directory and the project's root, is not found, and neither is a plugin, which its agent
+  tool keeps. An agent tool that does not show a command's stderr to the model, or to the
+  person, shows nobody the line, and a process started with its error stream closed is told
+  nothing. And a copy committed with the project reaches a co-author as old as it was
+  committed. The comparison is of the two version numbers and of nothing else, so it is as
+  fine as the numbers are: a copy made from a checkout whose skills later change under the
+  same number is not named. An install from `main` between a merge and the bump of the
+  version that follows it is in the same case.
+- **Two copies run at once into one folder can fail, and the next heals it.** Each stages a
+  skill in a folder of its own, but both move it into the same place, and one can find the
+  place taken or the old folder gone and stop with an error. Neither loses anything of the
+  user's (seen by the reviewer in eight trials), and a run on its own afterwards finishes
+  the copy. A process killed outright in the middle leaves its staging folder, named
+  `.<skill>.<random>.partial`, and so does an old copy that holds a file which cannot be
+  removed, a read-only one on Windows: the staging folder is removed without stopping at
+  what will not go. Nothing cleans either up. A digest that reads
+  CRLF as LF also calls two binary files the same when they differ only so; the skills hold
+  text. And a folder taken as holding a skill's text is recorded as this tool's even where
+  the user made it: a later release then replaces it.
+- **A copy shares its folder with every other skill the user has.** The skills are copied
+  under their own names, because a skill's name must be its folder's and the gates' hints
+  name them ("the review-panel skill"). Where the user already has a skill of the same name
+  it is left and ours is not copied, so a hint then leads to theirs. `install-skills` says so
+  and exits 1; `--project` copies into the project, where nothing else is. A Codex user who
+  installs the plugin and also has a copy has every skill in two places Codex reads; what
+  Codex then shows was not watched.
+- **Gemini CLI, Mistral Vibe and Kimi Code CLI get the skills and no hooks.** Each has a hook
+  system of its own, with other event names and another way to refuse (read from their
+  documentation on 2026-10-02), and none is wired here. Under those tools nothing is caught
+  at the moment of the mistake, and what `check`, `build` and `submit` catch is caught later.
+  Kimi's hooks could not carry it all in any case: by its documentation what a hook prints
+  after a tool call or at the start of a session never reaches the model, so only the two
+  guards that refuse could work there. How far each was seen: Gemini CLI 0.58.0 lists all
+  fourteen skills from a project's `.agents/skills` (`gemini skills list`, which calls no
+  model, and is a test where Gemini CLI is installed); that Mistral Vibe and Kimi Code CLI
+  read the folder is from their documentation. No skill has been activated in a session of
+  any of the three.
 - **A thousands separator written as a space is read as two numbers.** "41 200" becomes 41
   and 200, because atoms are split on whitespace. Non-breaking spaces are handled; ordinary
   ones are not distinguishable from a sentence break.

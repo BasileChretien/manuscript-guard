@@ -176,6 +176,16 @@ jobs:
           # (transcribe then fails on the missing document, which is after it found the
           # recipe). The schemas were read by `check` above.
           "$BIN/python" -c "from manuscript_guard.paths import SHIPPED_JOURNALS as J, SHIPPED_RECIPES as R; assert (J / 'TEMPLATE.yaml').is_file(); assert len(list(R.glob('*.recipe.yaml'))) >= 13"
+
+          # The skills, which are tracked outside the package and taken into the wheel when it
+          # is built. In a checkout `install-skills` reads them from plugin/skills, so only an
+          # installed copy shows whether the wheel has them.
+          "$BIN/manuscript-guard" install-skills --project
+          test -s .agents/skills/project-setup/SKILL.md
+          test -s .agents/skills/.manuscript-guard.json
+          # And they are the plugin's, file for file.
+          "$BIN/python" -c "import filecmp, os, sys; c = filecmp.dircmp(os.path.join(os.environ['GITHUB_WORKSPACE'], 'plugin', 'skills'), os.path.join('.agents', 'skills'), ignore=['.manuscript-guard.json']); bad = [c.left_only, c.right_only, c.diff_files] + [s.left_only + s.right_only + s.diff_files for s in c.subdirs.values()]; sys.exit(1 if any(bad) else 0)"
+          "$BIN/manuscript-guard" check
           out=$("$BIN/manuscript-guard" transcribe STROBE 2>&1 || true)
           [[ "$out" == *STROBE.recipe.yaml* ]] || { echo "$out"; exit 1; }
           hook=$(echo '{}' | "$BIN/manuscript-guard-hook" session-start)

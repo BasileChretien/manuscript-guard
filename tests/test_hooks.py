@@ -13,6 +13,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -499,6 +501,139 @@ def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> No
     assert "become due at 'drafting'" in text
 
 
+# ---------------------------------------------------------------- a project that cannot be read
+#
+# `check` stops on a file of the project's own that it cannot parse, before there is one
+# finding, and says which file in a sentence written for the author. The hooks took that for
+# an unexpected failure and ended in silence, so a submission from such a project went through
+# with nothing checked. They are started here as a tool starts them.
+
+SUBMIT = {"tool_name": "Bash", "tool_input": {"command": "manuscript-guard submit"}}
+
+#: One file of each kind that is read before any gate runs, left as an author can leave it: a
+#: results file made by hand and never filled, and YAML with a bracket still open.
+UNREADABLE = {
+    "results": ("results/hand.json", b""),
+    "paper": ("paper.yaml", b"title: [unclosed\n"),
+    "authors": ("authors.yaml", b"authors: [unclosed\n"),
+    "ledger": ("literature/ledger.yaml", b"entries: [unclosed\n"),
+}
+
+
+@pytest.fixture(params=list(UNREADABLE))
+def unreadable(request, project: Path) -> tuple[Path, str]:
+    """The example with one file `check` cannot parse, and the name of that file."""
+    relative, content = UNREADABLE[request.param]
+    (project / relative).write_bytes(content)
+    return project, Path(relative).name
+
+
+def test_a_submission_from_a_project_that_cannot_be_read_is_refused(
+    unreadable: tuple[Path, str],
+) -> None:
+    project, name = unreadable
+    event = as_sent({**SUBMIT, "cwd": str(project)})
+
+    result = run_installed("guard-submission", event, {})
+    assert decision(result) == "deny"
+    assert f"cannot check {project.name}" in reason(result)
+    assert f"{name}: cannot parse" in reason(result), "the project's own sentence, file named"
+    assert f"`{hooks.FULL_CHECK}`" in reason(result)
+
+
+def test_the_refusal_names_a_command_the_guard_lets_through(project: Path, capsys) -> None:
+    """`--submission` is one of the guard's own markers. A refusal that said to run
+    `check --submission` sent an agent back into the same refusal, in a project it had just
+    repaired as much as in the broken one.
+
+    The command it names instead ends in the word `submission`, which the guard matches
+    after `cp` or `git push` on the same line. So the refusal says to run it on its own.
+    """
+    (project / "results" / "hand.json").write_bytes(b"")
+    refused = run("guard-submission", {**SUBMIT, "cwd": str(project)}, capsys)
+    named = re.findall(r"`(manuscript-guard\s[^`]*)`", reason(refused))
+    assert named, "the refusal says what to run next"
+
+    (project / "results" / "hand.json").unlink()
+    shutil.rmtree(project / "review")  # readable again, and failing at submission
+    for command in named:
+        event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(project)}
+        assert run("guard-submission", event, capsys) is None, command
+        assert SUBMISSION_MARKERS.search(f"cd paper && {command}") is None, command
+        assert f"`{command}` on its own" in reason(refused)
+        assert SUBMISSION_MARKERS.search(f"git push && {command}"), "why it has to be alone"
+
+
+def test_it_is_refused_from_a_folder_inside_the_project_as_well(project: Path) -> None:
+    (project / "results" / "hand.json").write_bytes(b"")
+    event = as_sent({**SUBMIT, "cwd": str(project / "manuscript")})
+
+    result = run_installed("guard-submission", event, {})
+    assert decision(result) == "deny"
+    assert "hand.json: cannot parse" in reason(result)
+
+
+@READINGS
+def test_the_sentence_names_a_file_under_an_accented_folder_whole(
+    under_an_accent: Path, environment: dict[str, str]
+) -> None:
+    """The sentence carries the path of the file, and the path the name of the folder."""
+    (under_an_accent / "results" / "hand.json").write_bytes(b"")
+    event = as_sent({**SUBMIT, "cwd": str(under_an_accent)})
+
+    result = run_installed("guard-submission", event, environment)
+    assert decision(result) == "deny"
+    assert str(Path("thèse") / "paper" / "results" / "hand.json") in reason(result)
+
+
+@pytest.mark.parametrize("command", ["manuscript-guard submit", "cp ~/Downloads/letter.docx ."])
+def test_a_submission_shaped_command_outside_any_project_is_left_alone(
+    command: str, tmp_path: Path
+) -> None:
+    """No project is the same error as a project that cannot be read, and is not refused.
+
+    `find_root` raises it wherever there is no `paper.yaml` above. A guard that refused on it
+    would refuse every command naming a `.docx` on the whole machine.
+    """
+    bash = {"tool_name": "Bash", "tool_input": {"command": command}}
+    for cwd in (tmp_path, tmp_path / "removed-since"):
+        event = as_sent({**bash, "cwd": str(cwd)})
+        assert run_installed("guard-submission", event, {}) is None
+    # No `cwd` in the event: the folder the hook was started in.
+    assert run_installed("guard-submission", as_sent(bash), {}, cwd=tmp_path) is None
+
+
+def test_session_start_says_why_a_project_cannot_be_checked(
+    unreadable: tuple[Path, str],
+) -> None:
+    project, name = unreadable
+    started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(project)}
+
+    result = run_installed("session-start", as_sent(started), {})
+    assert f"manuscript-guard: {project.name} cannot be checked" in context(result)
+    assert f"{name}: cannot parse" in context(result)
+    assert "`manuscript-guard check`" in context(result)
+    assert decision(result) is None, "it is said, and nothing is blocked"
+    assert "systemMessage" not in result
+
+
+def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Only an error the project words for its author is passed on.
+
+    Anything else is a fault of the tool. Refusing on it would stop every command that names
+    a `.docx` in a project whose author can do nothing about it.
+    """
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("anything at all")
+
+    monkeypatch.setattr("manuscript_guard.cli._run_gates", broken)
+    assert run("guard-submission", {**SUBMIT, "cwd": str(project)}, capsys) is None
+    assert run("session-start", {"cwd": str(project), "source": "startup"}, capsys) is None
+
+
 # ---------------------------------------------------------------- a CLI older than its plugin
 
 UPGRADE_PIP = "pip install --upgrade git+https://github.com/BasileChretien/manuscript-guard"
@@ -537,6 +672,17 @@ def test_the_notice_comes_alongside_the_status_line_in_a_project(
     text = context(run("session-start", {"cwd": str(project), "source": "startup"}, capsys))
     assert "stage 'drafting'" in text
     assert "99.0.0" in text
+
+
+def test_the_notice_comes_alongside_the_reason_a_project_cannot_be_checked(
+    project: Path, monkeypatch, tmp_path: Path, capsys
+) -> None:
+    (project / "results" / "hand.json").write_bytes(b"")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_at(tmp_path / "cache", "99.0.0")))
+    result = run("session-start", {"cwd": str(project), "source": "startup"}, capsys)
+    assert "hand.json: cannot parse" in context(result)
+    assert "99.0.0" in context(result)
+    assert "cannot parse" not in result["systemMessage"], "the notice alone is shown"
 
 
 @pytest.mark.parametrize("version", ["0.0.1", None])

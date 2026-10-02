@@ -155,10 +155,10 @@ person reading the file at another paragraph. And a word-for-word copy of the pa
 elsewhere keeps it reading as unrevised.
 
 The letter is `build/response-to-reviewers.md`, regenerated every time and covering every
-round. Do not edit it; the wording lives in the round file, and the plugin refuses writes to
-`build/`. The `Changed:` lines print internal names such as `main.md`, so a good `note`
-matters. There is no Word version of the letter. Paste it into the journal's form or the
-author's letter template.
+round. Do not edit it; the wording lives in the round file, and where the hooks run the
+write guard refuses writes to `build/`. The `Changed:` lines print internal names such as
+`main.md`, so a good `note` matters. There is no Word version of the letter. Paste it into
+the journal's form or the author's letter template.
 
 ## 5. The rest of the resubmission
 
@@ -167,7 +167,7 @@ author's letter template.
   again and have the record updated, as the
   [review-panel](../review-panel/SKILL.md) skill describes. Recording a new panel round does
   not clear the staleness of an earlier one. Plan for this before promising a date.
-- **Under the plugin**, any shell command containing `--submission` is intercepted, the whole
+- **Where the hooks run**, any shell command containing `--submission` is intercepted, the whole
   submission check runs, and the command is refused if anything fails. `respond --submission`
   can therefore be refused because of another gate. The refusal shows the first eight
   failures; `manuscript-guard check --stage submission` lists them all without being

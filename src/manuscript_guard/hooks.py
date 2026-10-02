@@ -70,9 +70,10 @@ def _event_text() -> str:
     as `mÃ©thodes.md`, a file that does not exist, and a project kept under an accented
     folder was never found, so that no hook said or refused anything there.
 
-    Bytes that are not UTF-8 are read as they were before, in the encoding standard input was
-    opened with, and what that cannot read is replaced, not refused: the write guard knows a
-    generated file by its folder and its extension, and those survive a lost letter.
+    Bytes that are not UTF-8 are read in the encoding standard input was opened with, as they
+    were before, and a byte that encoding cannot read is replaced, so that the event is kept:
+    a letter lost from a file's own name leaves the folder and the extension by which the
+    write guard knows a generated file.
     """
     stream = sys.stdin
     if stream is None:  # started with no standard input at all

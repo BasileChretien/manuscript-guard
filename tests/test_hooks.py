@@ -133,6 +133,18 @@ def standard_input(raw: bytes, encoding: str) -> io.TextIOWrapper:
     return io.TextIOWrapper(io.BytesIO(raw), encoding=encoding)
 
 
+@pytest.fixture
+def under_an_accent(project: Path, tmp_path: Path) -> Path:
+    """The example under a folder named `thèse`: the commonest shape of a name outside ASCII.
+
+    Nothing in the project is accented, the folder it sits in is. A home folder named after
+    its owner is enough, and then every path and the `cwd` of every event carry the name.
+    """
+    home = tmp_path / "thèse"
+    home.mkdir()
+    return project.rename(home / "paper")
+
+
 @READINGS
 def test_a_results_file_with_an_accented_name_is_refused_under_its_name(
     project: Path, environment: dict[str, str]
@@ -184,24 +196,32 @@ def test_a_results_directory_relocated_to_an_accented_name_is_still_guarded(
 
 @READINGS
 def test_a_project_under_an_accented_folder_is_guarded_and_gets_its_status_line(
-    project: Path, tmp_path: Path, environment: dict[str, str]
+    under_an_accent: Path, environment: dict[str, str]
 ) -> None:
-    """The commonest shape: nothing in the project is accented, the folder it sits in is.
-
-    A home folder named after its owner is enough, and then every path and the `cwd` of every
-    event carry the name.
-    """
-    home = tmp_path / "thèse"
-    home.mkdir()
-    root = project.rename(home / "paper")
-    target = root / "results" / "01_disproportionality.json"
+    target = under_an_accent / "results" / "01_disproportionality.json"
     event = as_sent({"tool_name": "Write", "tool_input": {"file_path": str(target)}})
     assert decision(run_installed("guard-write", event, environment)) == "deny"
 
-    started = as_sent({"hook_event_name": "SessionStart", "source": "startup", "cwd": str(root)})
+    started = {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(under_an_accent)}
     assert "manuscript-guard: paper at stage" in context(
-        run_installed("session-start", started, environment)
+        run_installed("session-start", as_sent(started), environment)
     )
+
+
+@READINGS
+def test_a_submission_from_a_project_under_an_accented_folder_is_held(
+    under_an_accent: Path, environment: dict[str, str]
+) -> None:
+    """The submission guard reads `cwd` from the event too, and its miss costs the most."""
+    import shutil
+
+    shutil.rmtree(under_an_accent / "review")
+    command = {"command": "manuscript-guard submit"}
+    event = as_sent({"tool_name": "Bash", "tool_input": command, "cwd": str(under_an_accent)})
+
+    result = run_installed("guard-submission", event, environment)
+    assert decision(result) == "deny"
+    assert "submission check(s) failing in paper" in reason(result)
 
 
 def test_a_byte_order_mark_before_the_event_is_not_part_of_it(project: Path) -> None:

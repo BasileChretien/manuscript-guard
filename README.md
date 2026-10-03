@@ -552,7 +552,8 @@ on your own machine sends nothing anywhere. An Ollama cloud model, one whose nam
 in `-cloud` or `:cloud`, is not one of those: the Ollama server on your machine passes
 the request on to Ollama's own servers, and the same goes for any server on this machine
 that forwards what it receives. The address is `localhost` either way, so check the
-model's name, not the address, before you rely on it.
+model's name, and what any server at that address does with a request, before you rely
+on it.
 
 What each model receives is the paper's title, short title, keywords, journal, guideline
 and English variant, the journal profile and the reporting checklist where the project has

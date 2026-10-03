@@ -9,7 +9,9 @@ without its `3`.
 This is a model of that reading, for the text the build prints of `paper.yaml`, where
 there is no pandoc to ask: `check` runs without one. What it must never do is pass a line
 pandoc drops TeX from, and `tests/test_tex.py` holds it to pandoc for that, on tables and on
-random lines. Each part of it is there because a line was passed without it:
+random lines. Each part of it is there because a simpler reading passes a line that pandoc
+drops TeX from. The first two came from asking pandoc case by case, the third from the
+random lines:
 
 - A `$` opens maths only as pandoc opens it. Not before a space, and not where the `$`
   that would close it follows a space or stands before a digit: `x$ \\gamma $y` and

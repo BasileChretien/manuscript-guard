@@ -192,10 +192,10 @@ PLAIN = [piece for piece in PIECES if not set(piece) & set("`<[@")]
 @needs_pandoc
 @pytest.mark.parametrize("seed", [1, 2, 3, 4])
 def test_the_rule_never_passes_a_line_pandoc_drops_tex_from(seed: int) -> None:
-    """The rule is a model of pandoc's reading, and each part of it came from a line this
-    found: a `$` followed by a space opens nothing; a backtick, `<`, `[` or `@` can hold a
-    `$` that opens nothing; a subscript is read on its own, with its escapes read once
-    already, so that maths cannot run past its end and a doubled backslash in it is one."""
+    """The rule is a model of pandoc's reading, and its last part came from lines like
+    these: a subscript is read on its own, with its escapes read once already, so that
+    maths cannot run past its end and a doubled backslash in it is one. Three such lines
+    were passed before that, in the first 26,000 tried."""
     rng = random.Random(seed)
     lines = [
         "".join(

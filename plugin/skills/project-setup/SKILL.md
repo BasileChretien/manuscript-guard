@@ -88,7 +88,9 @@ Then fill in, in this order:
    author has any; a missing ORCID is left out without comment.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
-   not know is a failure at every stage.
+   not know is a failure at every stage. The title, the short title and the keywords are
+   read as Markdown, and TeX in them is kept only between dollar signs: write
+   `IFN-$\gamma$`, since `IFN-\gamma` would be printed `IFN-`, and `check` fails it.
 3. **`design/plan.md`**, before the analysis. The
    [analysis-plan](../analysis-plan/SKILL.md) skill covers it.
 

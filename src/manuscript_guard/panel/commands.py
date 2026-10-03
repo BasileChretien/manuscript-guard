@@ -53,6 +53,7 @@ def list_providers(start: Path, environ: Mapping[str, str] | None = None) -> int
 
     Works outside a project, where it shows the built-in providers only.
     """
+    from manuscript_guard.panel.plan import passed_on
     try:
         find_root(start)
     except ContractError:
@@ -96,6 +97,8 @@ def list_providers(start: Path, environ: Mapping[str, str] | None = None) -> int
                 read_key(model.provider, environ)
             except ConfigError:
                 state = f"{model.provider.key_env} is set, but to something that is not a key"
+        if passed_on(model):
+            state += "; leaves this machine through Ollama's servers"
         ready.append((f"  {model.reader}", state))
     print(_table(ready))
     return 0
@@ -208,7 +211,7 @@ def _agreed(plan, hosts: str) -> bool:
 
 
 def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
-    from manuscript_guard.panel.plan import unread
+    from manuscript_guard.panel.plan import passed_on_calls, unread
     from manuscript_guard.panel.run import (
         REFUSED_DIR,
         missing_keys,
@@ -248,7 +251,13 @@ def _send(plan, project, yes: bool, environ: Mapping[str, str] | None) -> int:
         )
         return 2
 
-    hosts = ", ".join(provider.host for provider in providers_of(plan))
+    # The line the author answers says where the manuscript goes, not only the address it
+    # is handed to: an Ollama cloud model is reached at localhost and sent on from there.
+    hosts = ", ".join(
+        provider.host
+        + (" and on to Ollama's servers" if passed_on_calls(plan, provider) else "")
+        for provider in providers_of(plan)
+    )
     if not yes:
         if not interactive():
             print(

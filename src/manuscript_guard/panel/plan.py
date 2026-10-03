@@ -47,6 +47,10 @@ DRY_RUN_DIR = ("review", "dry-run")
 AS_TEXT = "as-text.txt"
 RULE = "=" * 12
 CHARS_PER_TOKEN = 4
+#: How a model a server on this machine passes on is named. Ollama serves its cloud models
+#: through the same local API as the ones it runs, and sends their requests to its own
+#: servers; it names them with a `-cloud` suffix or a `cloud` tag.
+PASSED_ON = ("-cloud", ":cloud")
 
 #: Used when a round has no panel file, so that a first run needs nothing but the list of
 #: models. Written for any empirical paper: no field, design or journal is assumed, and each
@@ -316,6 +320,44 @@ def make_plan(
 # ------------------------------------------------------------------------- saying what it is
 
 
+def passed_on(model: Model) -> bool:
+    """Whether a model served on this machine is known to be sent on from there.
+
+    The address cannot say: an Ollama cloud model is reached at `localhost:11434` like a
+    model Ollama runs, and the statement said "this machine; nothing leaves it" of a
+    manuscript about to go to Ollama's servers. The name can, for Ollama's cloud models.
+    """
+    return model.provider.local and model.name.lower().endswith(PASSED_ON)
+
+
+def passed_on_calls(plan: Plan, provider) -> list[Call]:
+    """The calls of this plan to `provider` that are known to leave this machine from there.
+
+    Counted from the calls about to be made, not the models listed: a cloud model whose
+    readings are on file, or that `--one-each` dealt no reviewer, sends nothing.
+    """
+    return [
+        call for call in plan.calls if call.model.provider == provider and passed_on(call.model)
+    ]
+
+
+def _where(plan: Plan, provider) -> str:
+    """Where a provider's calls go, as far as this tool can know it."""
+    if not provider.local:
+        return "a third party"
+    calls = [call for call in plan.calls if call.model.provider == provider]
+    leaving = passed_on_calls(plan, provider)
+    if not leaving:
+        return "this machine; nothing leaves it unless the server there passes it on"
+    names = ", ".join(dict.fromkeys(call.model.name for call in leaving))
+    if len(leaving) == len(calls):
+        return f"all {len(calls)} leave this machine through Ollama's servers ({names})"
+    return (
+        f"{len(leaving)} of these {len(calls)} calls ({names}) leave this machine through "
+        "Ollama's servers; the rest stay unless the server here passes them on"
+    )
+
+
 def _plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
@@ -393,7 +435,7 @@ def describe(plan: Plan, project: Project, environ: Mapping[str, str] | None = N
             key = f"key in {provider.key_env}: set, but not a key"
         else:
             key = f"key in {provider.key_env}: {'set' if state else 'unset'}"
-        where = "this machine; nothing leaves it" if provider.local else "a third party"
+        where = _where(plan, provider)
         rows.append((provider.name, provider.host, _plural(count, "call"), key, where))
     lines += _columns(rows)
 

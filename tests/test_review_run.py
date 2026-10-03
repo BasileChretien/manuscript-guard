@@ -1205,3 +1205,44 @@ def test_a_person_the_panel_waits_for_is_told_how_a_person_files(
     out = capsys.readouterr().out
     assert "Filed 2 of 2" in out and "not complete" in out and "Dr. Tanaka" in out
     assert "--record" in out and "--reading" in out
+
+
+def test_the_question_names_ollama_s_servers_for_a_cloud_model(
+    project: Path, providers: Providers, monkeypatch
+) -> None:
+    """The line the author answers named only `localhost:11434`."""
+    shutil.rmtree(project / "review")
+    configure(project, "ollama/gpt-oss:120b-cloud")
+    asked: list[str] = []
+
+    def no(prompt: str = "") -> str:
+        asked.append(prompt)
+        return "no"
+
+    monkeypatch.setattr(commands, "interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", no)
+    assert run(project) == 2
+    assert len(asked) == 1 and "Ollama's servers" in asked[0] and "localhost:11434" in asked[0]
+    assert providers.requests == []
+
+
+def test_the_refusal_without_a_yes_names_ollama_s_servers_for_a_cloud_model(
+    project: Path, providers: Providers, capsys
+) -> None:
+    shutil.rmtree(project / "review")
+    configure(project, "ollama/gpt-oss:120b-cloud")
+    assert run(project) == 2
+    assert "Ollama's servers" in capsys.readouterr().err
+    assert providers.requests == []
+
+
+def test_the_question_for_a_model_ollama_runs_here_names_only_this_machine(
+    project: Path, providers: Providers, monkeypatch
+) -> None:
+    shutil.rmtree(project / "review")
+    configure(project, "ollama/model-l")
+    asked: list[str] = []
+    monkeypatch.setattr(commands, "interactive", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "no")
+    assert run(project) == 2
+    assert "localhost:11434" in asked[0] and "Ollama's servers" not in asked[0]

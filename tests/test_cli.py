@@ -456,6 +456,55 @@ def test_an_escape_that_makes_no_character_is_refused_by_check_and_the_build(
     assert not list((project / "build").glob("*.docx"))
 
 
+def test_an_escape_that_takes_a_letter_is_refused_by_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """`"The $\\nu$ frequency"`: YAML reads the escape as the end of a line, the build
+    folds it into a space, and the title was printed `The $ u$ frequency`, through `check`
+    and a checked build. The finding names the key and the escape, and the build refuses
+    it as well where the check is skipped."""
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(text.replace(old, 'title: "The $\\nu$ frequency"', 1), encoding="utf-8")
+
+    assert run("check", str(project)) == 1
+    assert "title: `\\nu` between double quotation marks" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert "`\\nu` between double quotation marks" in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "written",
+    ["title: 'The $\\nu$ frequency'", "title: The $\\nu$ frequency"],
+    ids=["single quotation marks", "no quotation marks"],
+)
+def test_the_same_title_where_a_backslash_is_a_backslash_builds_with_its_letter(
+    written: str, project: Path
+) -> None:
+    import re
+    import zipfile
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(text.replace(old, written, 1), encoding="utf-8")
+
+    assert run("check", str(project)) == 0
+    assert run("build", str(project), "--offline") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    title = re.search("<dc:title>(.*?)</dc:title>", properties, re.S)
+    assert title is not None
+    assert title[1] == "The \\nu frequency"
+
+
 @needs_pandoc
 def test_a_block_title_is_printed_without_a_space_after_it(project: Path) -> None:
     """A block ends with a line break, and folded into a space it stood after `al.`: pandoc

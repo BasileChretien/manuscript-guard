@@ -32,8 +32,10 @@ from pathlib import Path
 from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import (
+    KEEP_THE_LETTER,
     PAPER_FILE,
     advice,
+    lost_letters,
     named,
     one_line,
     unprintable_character,
@@ -283,6 +285,16 @@ def _front_matter(project, *, supplementary: bool = False, live: bool = False) -
     italics, and TeX outside `$` is dropped.
     """
     paper = project.paper
+    # What `check` reports and a build that skips the check would print: an escape in
+    # `paper.yaml` that takes the first letter of a word. What YAML made of it is a line
+    # break like any other, so it is looked for in the file.
+    lost = lost_letters(project.root / PAPER_FILE)
+    if lost:
+        first = lost[0]
+        raise BuildError(
+            f"{project.root / PAPER_FILE}: `{first.where}`, line {first.line}: {first.said}. "
+            f"To keep the letter, {KEEP_THE_LETTER}."
+        )
     title = str(paper.get("title", ""))
     if supplementary:
         title = f"Supplementary material for: {title}"

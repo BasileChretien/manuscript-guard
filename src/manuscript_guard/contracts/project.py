@@ -10,14 +10,17 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
+import yaml
 from jsonschema import Draft202012Validator
 
 from manuscript_guard.contracts._schema import (
     ContractError,
+    Unreadable,
     load_schema,
     read_structured,
+    read_text,
     validate,
 )
 from manuscript_guard.findings import Finding, Report, merge_all
@@ -222,6 +225,111 @@ def unprintable_character(text: str) -> str | None:
     return next((character for character in one_line(text) if named(character)), None)
 
 
+#: What YAML reads between double quotation marks as the end of a line or as a tab. Before a
+#: letter each begins a word of TeX, `\nu`, `\rho`, `\tau`, `\Nu`, `\Lambda`, `\Pi`, and takes
+#: its first letter. The other escapes that begin one are refused already: they make a
+#: control character (`\alpha`, `\beta`, `\epsilon`, `\varepsilon`, `\frac`), or YAML does not
+#: read them at all (`\delta`, `\xi`, `\upsilon`).
+_TAKES_A_LETTER = {
+    "n": "the end of a line",
+    "r": "the end of a line",
+    "N": "the end of a line",
+    "L": "the end of a line",
+    "P": "the end of a line",
+    "t": "a tab",
+}
+#: A backslash and what follows it, so that a doubled backslash is passed over as one.
+_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+_LETTERS = re.compile("[A-Za-z]+")
+
+
+class LostLetter(NamedTuple):
+    """An escape in `paper.yaml` that takes the first letter of a word the build prints."""
+
+    where: str
+    line: int
+    said: str
+
+
+def _printed_nodes(root: yaml.Node) -> list[tuple[str, yaml.Node]]:
+    """The values of `paper.yaml` that the build prints, as the file writes them, each with
+    the place a finding names: `_printed_settings`, before YAML has read them."""
+    out: list[tuple[str, yaml.Node]] = []
+    for key, value in root.value if isinstance(root, yaml.MappingNode) else ():
+        name = key.value if isinstance(key, yaml.ScalarNode) else None
+        if name not in ("title", "short_title", "keywords"):
+            continue
+        if isinstance(value, yaml.ScalarNode):
+            out.append((name, value))
+        elif name == "keywords" and isinstance(value, yaml.SequenceNode):
+            out += [(f"keywords/{index}", entry) for index, entry in enumerate(value.value)]
+        elif name == "keywords" and isinstance(value, yaml.MappingNode):
+            out += [("keywords", entry) for entry, _held in value.value]
+    return out
+
+
+def lost_letters(path: Path) -> list[LostLetter]:
+    """Each escape in `paper.yaml` that takes the first letter of a word in the title, the
+    short title or a keyword, where the value stands between double quotation marks.
+
+    `"The $\\nu$ frequency"` is `The $`, the end of a line, and `u$ frequency`. The build folds
+    the line, and the title was printed `The $ u$ frequency`, through `check` and a checked
+    build. What YAML made of it is a real line break, which a title may hold and which
+    cannot be refused, so this reads the file as it is written: the quotation marks a value
+    stands between, and the escape inside them. Nothing where the file cannot be read or is
+    not YAML, which is said elsewhere.
+    """
+    try:
+        text = read_text(path)
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+    except (Unreadable, yaml.YAMLError):
+        return []
+    found = []
+    for where, node in _printed_nodes(root):
+        if not isinstance(node, yaml.ScalarNode) or node.style != '"':
+            continue
+        start = node.start_mark.index
+        raw = text[start : node.end_mark.index]
+        for escape in _ESCAPE.finditer(raw):
+            reads_as = _TAKES_A_LETTER.get(escape[1])
+            rest = _LETTERS.match(raw, escape.end())
+            if reads_as is None or rest is None:
+                continue
+            found.append(
+                LostLetter(
+                    where,
+                    text.count("\n", 0, start + escape.start()) + 1,
+                    f"`{escape[0]}{rest[0]}` between double quotation marks is {reads_as} "
+                    f"and then `{rest[0]}`, so the document loses the `{escape[1]}`",
+                )
+            )
+    return found
+
+
+#: What to do about a `LostLetter`.
+KEEP_THE_LETTER = (
+    "write the value between single quotation marks, where a backslash is a backslash, or "
+    "double the backslash"
+)
+
+
+def _lost_letters(path: Path) -> Report:
+    """`lost_letters` as findings, under the schema's code, which fails at every stage."""
+    return Report(
+        tuple(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"{lost.where}: {lost.said}",
+                path=path,
+                line=lost.line,
+                hint=KEEP_THE_LETTER,
+            )
+            for lost in lost_letters(path)
+        )
+    )
+
+
 def _printed_settings(paper: dict) -> list[tuple[str, str]]:
     """What the build prints of `paper.yaml`, each with the place a finding names."""
     out = [(key, paper[key]) for key in ("title", "short_title") if isinstance(paper.get(key), str)]
@@ -395,6 +503,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     reports.append(validate(paper, "paper", paper_path))
     reports.append(_unusable_conventions(paper, paper_path))
     reports.append(_unprintable(paper, paper_path))
+    reports.append(_lost_letters(paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

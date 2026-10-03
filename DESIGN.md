@@ -1299,7 +1299,12 @@ is read and written. A writer waits up to thirty seconds for it and then refuses
 that name the file; a lock older than two minutes is taken for one its writer left behind.
 A folder that cannot be written to makes no lock and leaves none to wait for: that is
 refused after two seconds, where the first version tried again without a pause and
-without an end.
+without an end. `review --record` reads its own round's panel only while it holds that
+panel's lock. One version asked whether a reviewer was on the panel before asking for
+the lock, so that a refusal would leave no folder behind; a writer rewriting the panel
+empties the file first, and a reading for a reviewer who was on it was refused, about
+three times in a thousand calls made at once. That question is now asked early only
+where there was no `review/` when it looked, and so no panel for it to read.
 The record itself is written by exclusive create, so two calls for one reader cannot both
 succeed.
 
@@ -4192,6 +4197,16 @@ Closed since, and why each mattered:
   since a record has a field called `rejection_tests`, and at eight `sk-no-key-required`
   refused each review that said `required`. What a provider says of itself is held to
   four, and a printed message has every run of four taken out.
+- **Some readers of a panel do not hold its lock.** A writer rewriting a panel empties
+  the file before filling it, and a reader in that instant finds it empty. `review
+  --record` holds the lock of its own round's panel, but a reviewer called without a
+  remit has it looked up in the earlier rounds' panels, which are read without theirs:
+  with round one's panel being rewritten at that moment, the call is refused for want of
+  a remit, in words, and run again it files. `review --run` builds its plan from the
+  panel before it takes the lock, and a panel read empty there stops the run with "not a
+  valid panel, so nothing is sent". G11 and `check` read panels with no lock at all, and
+  can report an emptied one as malformed until the writer finishes. Each needs two writes
+  at the same instant, and none writes anything wrong.
 - **The panel's lock is a file, and a file can be left behind.** A writer that dies holding
   it stops the others for up to two minutes, after which the lock is taken as abandoned;
   the message names the file to delete sooner. Two writers that both find an abandoned lock

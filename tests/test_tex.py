@@ -88,23 +88,48 @@ PAST_A_SIGN = {
     "a doubled backslash in a subscript": (f"~a{B}{G}~", G, "~"),
     "a doubled backslash in a superscript": (f"x^{B}{G};^", G, "^"),
     "an escaped space in a subscript": (f"~a{B} {B}{G}~", G, "~"),
-    # Pandoc resolves a character reference in what a subscript or a superscript holds
-    # before it reads that as Markdown, so one that is a backslash, or the letter after
-    # one, makes TeX there. Outside one a reference is a character, and nothing is lost.
-    "a reference for the backslash in a superscript": (
-        "IFN-^&bsol;gamma^ release assays",
-        G,
+}
+
+#: A character reference in what a subscript or a superscript can hold. Pandoc resolves the
+#: references and escapes there and reads the result as Markdown, once more for each script
+#: around it, and leaves a carriage return out as it does: so a reference can make a
+#: backslash, the letter after one, the sign of another script, or nothing at all between
+#: a backslash and a letter. Resolving them once passed a script in a script, and a
+#: reference for a carriage return. The reference is the finding, and nothing is resolved.
+#: Each line, the reference named, and the sign of the script that holds it.
+REFERENCE = {
+    "for the backslash in a superscript": ("IFN-^&bsol;gamma^ release assays", "&bsol;", "^"),
+    "numbered, in a subscript": ("x~&#92;gamma~ y", "&#92;", "~"),
+    "in hexadecimal": ("x^&#x5c;gamma^ y", "&#x5c;", "^"),
+    "for the letter": (f"~{B}{B}&#103;amma~", "&#103;", "~"),
+    "for a Greek letter": (f"TNF~{B}{B}&alpha;~ signalling", "&alpha;", "~"),
+    "in a superscript past a bracket": ("[a] x^&bsol;gamma^ y", "&bsol;", "^"),
+    "a subscript in a superscript, the ampersand by reference": (
+        "^~&amp;bsol;gamma~^",
+        "&amp;",
         "^",
     ),
-    "a numbered reference for it in a subscript": ("x~&#92;gamma~ y", G, "~"),
-    "a hexadecimal one": ("x^&#x5c;gamma^ y", G, "^"),
-    "a reference for the letter": (f"~{B}{B}&#103;amma~", G, "~"),
-    "a reference for a Greek letter": (
-        f"TNF~{B}{B}&alpha;~ signalling",
-        B + chr(0x3B1),
-        "~",
+    "the ampersand numbered": ("~^&#x26;#x5c;gamma^~", "&#x26;", "~"),
+    "an escape inside the reference": (f"^~&{B}#92;gamma~^", f"&{B}#92;", "^"),
+    "an escaped semicolon": (f"^~&bsol{B};gamma~^", f"&bsol{B};", "^"),
+    "the letter by two references": (f"^~{B * 4}&amp;#103;amma~^", "&amp;", "^"),
+    "the inner signs escaped": (f"^{B}~&amp;bsol;gamma{B}~^", "&amp;", "^"),
+    "the inner signs by reference": ("^&#126;&amp;bsol;gamma&#126;^", "&#126;", "^"),
+    "two scripts past a bracket": ("[a] x^~&amp;bsol;gamma~^ y", "&amp;", "^"),
+    "two scripts after a subscript that holds a dollar sign": (
+        "~$~ x^~&amp;bsol;gamma~^",
+        "&amp;",
+        "^",
     ),
-    "a reference in a superscript past a bracket": ("[a] x^&bsol;gamma^ y", G, "["),
+    "three scripts": ("^~&Hat;&amp;amp;bsol;gamma&Hat;~^", "&Hat;", "^"),
+    "a carriage return between the backslash and the letter": (
+        "IFN-^&bsol;&#13;gamma^ release assays",
+        "&bsol;",
+        "^",
+    ),
+    "a carriage return after a doubled backslash": (f"~{B}{B}&#13;x~", "&#13;", "~"),
+    "a carriage return in hexadecimal": (f"x~{B}{B}&#xd;gamma~ y", "&#xd;", "~"),
+    "a carriage return past a bracket": (f"[a] x^{B}{B}&#13;gamma^", "&#13;", "^"),
 }
 
 #: Lines pandoc drops nothing from, and the rule reports nothing in.
@@ -132,7 +157,8 @@ INSIDE = {
     "an escaped bracket before maths": f"{B}[18F{B}]FDG and TGF-${B}beta$",
     "an escaped tilde before maths": f"{B}~$ and ${G}$",
     "a reference for a backslash outside a subscript": "x &bsol;gamma y",
-    "a reference for an ampersand in a superscript": "x^&amp;bsol;gamma^",
+    "one past a bracket and outside a subscript": "[a] &bsol;gamma and R&D; more",
+    "an ampersand and a semicolon in a superscript's stretch, the wrong way round": "x^a;b&c^",
     "a dollar amount escaped before maths": (
         f"Costs at {B}$50,000 per QALY of TNF-${B}alpha$ inhibitors"
     ),
@@ -169,8 +195,10 @@ OVER = {
         B + UNNAMED + "x",
         "",
     ),
-    "two references for backslashes in a superscript": ("^&bsol;&bsol;gamma^", G, "^"),
-    "a reference for a backslash past a bracket": ("[a] &bsol;gamma", G, "["),
+    # A reference in a subscript or a superscript is reported whatever it stands for.
+    "two references for backslashes in a superscript": ("^&bsol;&bsol;gamma^", "&bsol;", "^"),
+    "a reference for an ampersand in a superscript": ("x^&amp;bsol;gamma^", "&amp;", "^"),
+    "a reference for a Greek letter in a superscript": ("x^&alpha;^", "&alpha;", "^"),
 }
 
 
@@ -187,7 +215,15 @@ def test_tex_past_a_sign_that_can_hold_a_dollar_sign_is_named_with_the_sign(case
     line, command, sign = PAST_A_SIGN[case]
     found = tex_outside_maths(line)
     assert found is not None
-    assert (found.command, found.after) == (command, sign)
+    assert (found.command, found.after, found.reference) == (command, sign, False)
+
+
+@pytest.mark.parametrize("case", list(REFERENCE))
+def test_a_reference_in_a_subscript_or_a_superscript_is_the_finding(case: str) -> None:
+    line, reference, sign = REFERENCE[case]
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert (found.command, found.after, found.reference) == (reference, sign, True)
 
 
 @pytest.mark.parametrize("case", list(INSIDE))
@@ -203,6 +239,7 @@ def test_where_the_rule_reports_what_pandoc_keeps(case: str) -> None:
     found = tex_outside_maths(line)
     assert found is not None
     assert (found.command, found.after) == (command, sign)
+    assert found.reference is command.startswith("&")
 
 
 #: Why the dollar sign directly before a command opened no maths, which the finding says:
@@ -218,6 +255,17 @@ UNREAD = {
         "paired",
     ),
     "one in brackets pairs with it": (f"Costs ($) of TNF-${B}alpha$ inhibitors", "paired"),
+    # The reason holds for every command up to the dollar sign that would have closed the
+    # maths, and for none past it: only the one directly after the `$` was given it.
+    "second after the dollar sign, a digit after the next": (
+        f"Risk at $p {B}leq$0.05",
+        "digit",
+    ),
+    "after a digit, a digit after the next": (f"The $2{B}alpha$4 chain", "digit"),
+    "second, a space before the next": (f"Dose $x {B}pm $ y", "space"),
+    "after a letter, nothing closing": (f"IFN-$x{G} release assays", "open"),
+    "far after a dollar sign that nothing closes": (f"costs $5 and {G}", "open"),
+    "past the dollar sign that would have closed, and after maths": (f"$a $b$ x {G}", ""),
     # No dollar sign that was tried stands before these.
     "an escaped dollar sign before the command": (f"{B}${G}{B}$", ""),
     "a space after the opening dollar sign": (f"x$ {G} $y", ""),
@@ -286,6 +334,7 @@ def dropped(reading: object) -> list[str]:
 @needs_pandoc
 def test_the_tables_say_what_pandoc_does() -> None:
     lost = [row[0] for row in (*OUTSIDE.values(), *PAST_A_SIGN.values(), *UNREAD.values())]
+    lost += [row[0] for row in REFERENCE.values()]
     lost += [row[0] for row in BRACES.values()]
     for line, reading in zip(lost, readings(lost), strict=True):
         assert dropped(reading), f"pandoc keeps the TeX of {line!r}"
@@ -305,6 +354,7 @@ PIECES = (
     + list("`<>[]()@*_^~\"'-.&!#=:/|%;,+?")
     + ["$$", B + "$", B + B, "~", "^"]
     + ["&bsol;", "&#92;", "&#103;", "&alpha;", "&dollar;", NEW_LETTER, THIN_SPACE]
+    + ["&amp;", "&#13;", "&#126;", "&Hat;", "bsol;", "~", "^", B + "~", B + ";", B + "#"]
 )
 #: The same without the four signs after which the rule stops reading maths, so that most
 #: lines try its reading of maths.
@@ -341,8 +391,9 @@ LONG = {
     "text groups never closed, in maths": lambda n: "$" + (B + "text{") * n + "$",
     "tildes": lambda n: "~" * n,
     "circumflexes": lambda n: "^a" * n + " x",
-    "references in a superscript": lambda n: "^" + "&amp;" * n,
+    "ampersands in a superscript": lambda n: "^" + "a&b" * n,
     "references past a bracket": lambda n: "[" + "&bsol; " * n,
+    "superscripts past a bracket": lambda n: "[" + "^a& " * n,
 }
 
 

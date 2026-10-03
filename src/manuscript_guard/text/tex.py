@@ -23,24 +23,27 @@ two from the review of the change:
   already. So maths cannot run past its end, and a doubled backslash in it is one
   backslash: `~a\\\\gamma~` loses its `\\gamma`. From a `~` or a `^` to the next space,
   any backslash before a letter is reported, and a `$` there ends the reading of maths.
-- What one holds has its character references resolved as well before it is read:
-  `^&bsol;gamma^` is `\\gamma` there, and is left out. So from a `~` or a `^` to the next
-  space, and past a sign of the second kind, the references are resolved before a
-  backslash is looked for. Outside those a reference is a character, and nothing is lost.
+- What one holds has its character references resolved as well before it is read, once
+  more for each script around it, and a carriage return is left out as it is read:
+  `^&bsol;gamma^` is `\\gamma` there, so is `^~&amp;bsol;gamma~^`, and
+  `^&bsol;&#13;gamma^` too. Resolving them here as pandoc does was tried, and passed the
+  last two. So nothing is resolved: from a `~` or a `^` to the next space, a character
+  reference is itself reported, whatever it stands for. None exists without a typed `&`
+  and a `;` after it. Outside a script a reference is a character, and nothing is lost.
 - A letter is what pandoc calls one, and pandoc may know a newer Unicode than the Python
   in use: 622 letters of Unicode 15.1 were none to Python 3.12. So a code point this
   Python has no name for is taken for a letter after a backslash.
 
-So it reports TeX that pandoc keeps, in those places and in three more: a command pandoc
+So it reports what pandoc keeps, in those places and in four more: a command pandoc
 cannot read as TeX is printed as typed (a brace after it never closed, a `%` between its
 braces, an `\\end` with no `\\begin`); so is one in a value pandoc reads as code, `>` and
-a tab before it; and a backslash before a code point that is no letter in any Unicode yet
-is an escape to pandoc.
+a tab before it; a backslash before a code point that is no letter in any Unicode yet is
+an escape to pandoc; and so is one before a letter that Python's Unicode has and pandoc's
+has not yet.
 """
 
 from __future__ import annotations
 
-import html
 import unicodedata
 from typing import NamedTuple
 
@@ -54,24 +57,31 @@ _DIGITS = "0123456789"
 #: What pandoc takes for a space after the `$` that would open maths, with the spaces
 #: Unicode calls separators: a no-break space among them, which is why `$\xa0x$` is no maths.
 _SPACES = " " + "".join(chr(code) for code in (9, 10, 11, 12, 13, 0xA0))
+#: As much of a reference as a finding shows.
+_SHOWN = 16
 
 
 class Tex(NamedTuple):
-    """A TeX command the document would be printed without, and what a finding needs to
-    say of it truly.
+    """What the document would be printed without, and what a finding needs to say of it
+    truly.
 
     `command` is the backslash and the letters after it. `after` is the sign past which no
     maths was read, empty where there is none. `braces` says a `{` follows the command, so
-    that dollar signs around the command alone would be no remedy. `unread` says why the
-    `$` directly before the command opened no maths, where one stands there: a `digit`
-    after the `$` that would close it, a `space` before that one, an `open` one that
-    nothing closes, or one `paired` with an earlier `$` whose maths it closes. The command
-    then stands between dollar signs, and "outside" them would be false."""
+    that dollar signs around the command alone would be no remedy.
+
+    `unread` says why a `$` before the command opened no maths, where one did not: a
+    `digit` after the next `$`, a `space` before it, an `open` one that no `$` follows, or
+    one `paired` with an earlier `$` whose maths it closes. The command then stands
+    between dollar signs, or after one, and "outside dollar signs" would be false.
+
+    `reference` says `command` is no command but a character reference in a subscript or
+    a superscript, whose sign is `after`."""
 
     command: str
     after: str = ""
     braces: bool = False
     unread: str = ""
+    reference: bool = False
 
 
 def _is_space(character: str) -> bool:
@@ -94,18 +104,22 @@ def _command_at(line: str, at: int) -> tuple[str, bool]:
 
 def _first_command(stretch: str) -> tuple[str, bool] | None:
     """The first backslash of `stretch` that stands directly before a letter, with its
-    letters, once the character references in it are resolved. Whether the backslash before
-    it doubles it is not read.
-
-    Python resolves a reference with no `;` after it where the name is an old one, which
-    pandoc does not, so more is found here than pandoc reads, never less."""
-    text = html.unescape(stretch) if "&" in stretch else stretch
-    at = text.find(_BACKSLASH)
+    letters. Whether the backslash before it doubles it is not read."""
+    at = stretch.find(_BACKSLASH)
     while at != -1:
-        if at + 1 < len(text) and _is_letter(text[at + 1]):
-            return _command_at(text, at)
-        at = text.find(_BACKSLASH, at + 1)
+        if at + 1 < len(stretch) and _is_letter(stretch[at + 1]):
+            return _command_at(stretch, at)
+        at = stretch.find(_BACKSLASH, at + 1)
     return None
+
+
+def _reference(stretch: str) -> str | None:
+    """What may be a character reference in `stretch`: from its first `&` to the first `;`
+    after it, or None where there is not both. It is not read further: an escape or
+    another reference can stand inside one that pandoc resolves a script later."""
+    at = stretch.find("&")
+    end = -1 if at == -1 else stretch.find(";", at + 1)
+    return None if end == -1 else stretch[at : end + 1][:_SHOWN]
 
 
 def _brace_pairs(line: str) -> dict[int, int]:
@@ -148,47 +162,49 @@ class _Line:
         close = text.find("$$", at + 3)
         return None if close < 0 else close + 2
 
-    def _inline(self, at: int) -> tuple[int | None, str]:
-        """Past the `$` that closes inline maths opening at `at`; or None where pandoc
-        reads none, with why, as `Tex.unread` names it. It reads none where nothing, a
-        space or a `$` stands directly after the `$`, where a space stands directly before
-        the `$` that would close it or a digit directly after that one, and where there is
-        no such `$`. A backslash takes the character after it, a `$` among them, and
-        `\\text{...}` takes its braces whole."""
+    def _inline(self, at: int) -> tuple[int | None, str, int]:
+        """Past the `$` that closes inline maths opening at `at`. Or None where pandoc
+        reads none, with why, as `Tex.unread` names it, and how far the maths would have
+        run: to the next `$`, or to the end of the line where there is none.
+
+        It reads none where nothing, a space or a `$` stands directly after the `$`, where
+        a space stands directly before the next `$` or a digit directly after it, and
+        where there is no next `$`. A backslash takes the character after it, a `$` among
+        them, and `\\text{...}` takes its braces whole."""
         text, size = self.text, len(self.text)
         index = at + 1
         if index >= size:
-            return None, "open"
+            return None, "open", size
         if text[index] == "$" or _is_space(text[index]):
-            return None, ""
+            return None, "", at
         while index < size:
             character = text[index]
             if character == "$":
-                closed = index + 1
-                if closed < size and text[closed] in _DIGITS:
-                    return None, "digit"
-                return closed, ""
+                if index + 1 < size and text[index + 1] in _DIGITS:
+                    return None, "digit", index
+                return index + 1, "", index
             if character == _BACKSLASH:
                 group = (
                     self._group_end(index + 5) if text.startswith("text{", index + 1) else None
                 )
                 if group is None and index + 1 >= size:
-                    return None, "open"
+                    return None, "open", size
                 index = index + 2 if group is None else group
             elif character in _BLANK:
                 while index < size and text[index] in _BLANK:
                     index += 1
                 if index < size and text[index] == "$":
-                    return None, "space"
+                    return None, "space", index
             else:
                 index += 1
-        return None, "open"
+        return None, "open", size
 
-    def maths(self, at: int) -> tuple[int | None, str]:
+    def maths(self, at: int) -> tuple[int | None, str, int]:
         """Past the maths pandoc reads from the `$` at `at`, display maths first as pandoc
-        tries it; or None where it reads none, with why."""
+        tries it; or None where it reads none, with why and how far, as `_inline` gives
+        them."""
         end = self._display_end(at)
-        return self._inline(at) if end is None else (end, "")
+        return self._inline(at) if end is None else (end, "", end)
 
 
 def _script_end(line: str, at: int) -> int:
@@ -200,10 +216,25 @@ def _script_end(line: str, at: int) -> int:
     return index
 
 
+def _in_scripts(stretch: str) -> Tex | None:
+    """The first character reference that a subscript or a superscript in `stretch` can
+    hold, each read from its sign to the next space, and only once where they nest."""
+    read_to = 0
+    for at, character in enumerate(stretch):
+        if character not in _SCRIPT or at < read_to:
+            continue
+        read_to = _script_end(stretch, at)
+        reference = _reference(stretch[at + 1 : read_to])
+        if reference is not None:
+            return Tex(reference, character, reference=True)
+    return None
+
+
 def _past(stretch: str, sign: str) -> Tex | None:
-    """Any command in `stretch`, named with the sign past which no maths is read."""
+    """Any command in `stretch`, named with the sign past which no maths is read; or a
+    reference in a subscript or a superscript there."""
     found = _first_command(stretch)
-    return None if found is None else Tex(found[0], sign, found[1])
+    return _in_scripts(stretch) if found is None else Tex(found[0], sign, found[1])
 
 
 def tex_outside_maths(line: str) -> Tex | None:
@@ -214,22 +245,23 @@ def tex_outside_maths(line: str) -> Tex | None:
     See the module's account for what is reported that pandoc keeps."""
     reading = _Line(line)
     index, size, script_read_to = 0, len(line), 0
-    # Where the last maths ended, and the last `$` that opened none, with why: a command
-    # directly after either stands between dollar signs, and the finding says so.
-    closed, unopened, why = -1, -1, ""
+    # Where the last maths ended; and the last `$` that opened none, with why and how far
+    # its maths would have run. A command directly after the first, or between the last
+    # two, stands between dollar signs or after one, and the finding says so.
+    closed, unopened, why, reach = -1, -1, "", -1
     while index < size:
         character = line[index]
         if character == _BACKSLASH:
             if index + 1 < size and _is_letter(line[index + 1]):
                 command, braces = _command_at(line, index)
-                unread = "paired" if index == closed else why if index == unopened + 1 else ""
+                unread = "paired" if index == closed else why if unopened < index < reach else ""
                 return Tex(command, "", braces, unread)
             index += 2
             continue
         if character == "$":
-            end, reason = reading.maths(index)
+            end, reason, would_reach = reading.maths(index)
             if end is None:
-                unopened, why = index, reason
+                unopened, why, reach = index, reason, would_reach
                 index += 1
             else:
                 index = closed = end
@@ -239,9 +271,12 @@ def tex_outside_maths(line: str) -> Tex | None:
         if character in _SCRIPT and index >= script_read_to:
             script_read_to = _script_end(line, index)
             held = line[index + 1 : script_read_to]
-            found = _past(held, character)
-            if found is not None:
-                return found
+            command = _first_command(held)
+            if command is not None:
+                return Tex(command[0], character, command[1])
+            reference = _reference(held)
+            if reference is not None:
+                return Tex(reference, character, reference=True)
             if "$" in held:
                 return _past(line[script_read_to:], character)
         index += 1

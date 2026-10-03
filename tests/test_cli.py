@@ -588,8 +588,9 @@ def test_tex_outside_dollar_signs_is_refused_by_check_at_every_stage_and_by_the_
     # A keyword is printed in the document's properties only, where maths is written as
     # its TeX, so there the remedy is the character itself.
     remedy = (
-        "type the character it stands for" if where.startswith("keywords")
-        else f"write `${command}$`"
+        "write it as text and not as maths"
+        if where.startswith("keywords")
+        else f"if it is maths, write `${command}$`"
     )
     says = (
         f"`{command}` stands outside dollar signs, and the document is printed without it; "

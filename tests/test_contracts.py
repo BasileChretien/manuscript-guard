@@ -849,7 +849,7 @@ def test_the_finding_says_what_the_document_loses_and_what_to_write(tmp_path: Pa
     gamma = BACKSLASH + "gamma"
     assert finding.message == (
         f"short_title: `{gamma}` stands outside dollar signs, and the document is printed "
-        f"without it; write `${gamma}$`"
+        f"without it; if it is maths, write `${gamma}$`"
     )
     # A command takes what follows it as TeX would, a number for one; and not every
     # backslash was meant as TeX.
@@ -898,13 +898,26 @@ def test_a_command_with_braces_is_not_told_to_stand_between_dollar_signs(tmp_pat
 NO_MATHS = {
     "a digit after the closing dollar sign": (
         "TGF-$" + BACKSLASH + "beta$1 signalling in fibrosis",
-        "a digit follows the closing one",
+        "a digit follows the next `$`",
         "TGF-$" + BACKSLASH + "beta_1$ signalling in fibrosis",
     ),
     "a number after it, mended with a space": (
         "Adults aged $" + BACKSLASH + "geq$65 years",
-        "a digit follows the closing one",
+        "a digit follows the next `$`",
         "Adults aged $" + BACKSLASH + "geq$ 65 years",
+    ),
+    # The command is not the first thing after the dollar sign: it was told it stood
+    # outside dollar signs, and to write itself between them.
+    "a command second after the dollar sign": (
+        "Risk at $p " + BACKSLASH + "leq$0.05",
+        "a digit follows the next `$`",
+        "Risk at $p " + BACKSLASH + "leq 0.05$",
+    ),
+    # The next dollar sign is money, and no closing one: "take the space out" was no help.
+    "a dollar amount after the command": (
+        "IFN-$" + BACKSLASH + "gamma release and $5 a dose",
+        "a space stands before the next `$`",
+        "IFN-$" + BACKSLASH + "gamma$ release and " + BACKSLASH + "$5 a dose",
     ),
     "a dollar amount before it": (
         "Costs at $50,000 per QALY of TNF-$" + BACKSLASH + "alpha$ inhibitors",
@@ -913,12 +926,12 @@ NO_MATHS = {
     ),
     "a space before the closing dollar sign": (
         "IFN-$" + BACKSLASH + "gamma $ release",
-        "a space stands before the closing one",
+        "a space stands before the next `$`",
         "IFN-$" + BACKSLASH + "gamma$ release",
     ),
     "no closing dollar sign": (
         "IFN-$" + BACKSLASH + "gamma release",
-        "no `$` closes",
+        "no `$` follows to close it",
         "IFN-$" + BACKSLASH + "gamma$ release",
     ),
 }
@@ -953,9 +966,66 @@ def test_a_keyword_is_told_to_hold_the_character_and_not_maths(tmp_path: Path) -
     (finding,) = report.failures
     assert finding.message.startswith(
         f"keywords/0: `{BACKSLASH}alpha` stands outside dollar signs, and the document is "
-        "printed without it; type the character it stands for"
+        "printed without it; write it as text and not as maths, the character itself for a "
+        "letter or a sign"
     )
     assert "write `$" not in finding.message
+
+
+def test_a_keyword_that_is_no_character_is_not_told_to_type_one(tmp_path: Path) -> None:
+    """A keyword with braces after its command was told to "type the character it stands
+    for", where there is none: for `\\textit{in vivo}` what works is the hint's
+    `*in vivo*`, which the properties carry as `in vivo`."""
+    written = "keywords:" + LF + "  - 'studies " + BACKSLASH + "textit{in vivo}'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert "what its braces hold" in finding.message
+    assert "write it as text and not as maths" in finding.message
+    assert "`*in vivo*`" in finding.hint
+
+
+def test_past_a_sign_a_keyword_is_not_told_to_escape_the_sign(tmp_path: Path) -> None:
+    """With the sign escaped the maths is read, and a keyword's maths is printed as its
+    TeX: the one remedy for a keyword is the character."""
+    written = "keywords:" + LF + "  - '[18F]FDG and TGF-$" + BACKSLASH + "beta$'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert "may be printed without it" in finding.message
+    assert "type the character the command stands for" in finding.message
+    assert "put a backslash before" not in finding.message
+
+
+def test_past_a_sign_a_command_with_braces_is_not_told_to_type_a_character(
+    tmp_path: Path,
+) -> None:
+    written = "short_title: '[a] " + BACKSLASH + "textit{in vivo} study'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert "put a backslash before it" in finding.message
+    assert "type the character" not in finding.message
+
+
+def test_a_reference_in_a_superscript_is_a_finding_of_its_own(tmp_path: Path) -> None:
+    """`IFN-^&bsol;gamma^ release` was printed `IFN- release`: pandoc resolves the
+    references in what a superscript holds and reads the result again, once more for each
+    script around it. Two attempts to resolve them as pandoc does each passed a value it
+    drops TeX from, so the reference itself is the finding, whatever it stands for."""
+    written = "short_title: 'IFN-^&bsol;gamma^ release'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert finding.message == (
+        "short_title: `&bsol;` is a character reference in a subscript or a superscript, "
+        "where pandoc resolves it and reads the result again, so it can make TeX that the "
+        "document is printed without; type the character itself"
+    )
+
+    written = "short_title: 'IFN-^" + chr(0x3B3) + "^ release and R&D; more'" + LF
+    _project, report = load_project(a_project(tmp_path / "mended", PAPER + written))
+    assert report.failures == ()
 
 
 #: The same where nothing is lost, and so nothing is found: TeX between dollar signs, a

@@ -4603,7 +4603,8 @@ Closed since, and why each mattered:
   it as TeX would: `12 \pm 3 months` is printed without its `3`, and `\textit{in vivo}`
   without its words. In a title, a short title or a keyword that is a finding at the key
   that fails at every stage (Basile, 2026-10-03), in these words: `\gamma` stands outside
-  dollar signs, and the document is printed without it; write `$\gamma$`. A build that
+  dollar signs, and the document is printed without it; if it is maths, write
+  `$\gamma$`. A build that
   skips the check refuses it in the same words, `init` refuses such a title before it
   makes anything, and `import` builds a document that was sent without the refusal, as
   for a lost letter.
@@ -4617,35 +4618,46 @@ Closed since, and why each mattered:
   link's address or a citation key; pandoc reads a subscript or a superscript on its
   own, with its escapes read once already, so maths cannot run past its end and a
   doubled backslash in it is one, and `~a\\gamma~` loses its `\gamma`; it resolves
-  the character references in one as well before it reads it, so `^&bsol;gamma^` is
-  `\gamma` there and is left out; and a letter is any letter, `\étude` too, by
-  pandoc's Unicode, which may be newer than Python's: 622 letters of Unicode 15.1 were
-  none to Python 3.12, so a code point Python has no name for is taken for a letter
-  after a backslash. The third came from random lines tried against pandoc while the
-  rule was written, and the last two from the review of the change, which tried lines
-  of its own making, 22.7 million of them put to pandoc, and found no other.
-  Where it reports TeX that pandoc keeps: past a backtick, `<`, `[` or `@` no maths is
+  the character references in one as well, once more for each script around it, and
+  leaves a carriage return out as it reads, so `^&bsol;gamma^`, `^~&amp;bsol;gamma~^`
+  and `^&bsol;&#13;gamma^` each lose a `\gamma`; and a letter is any letter, `\étude`
+  too, by pandoc's Unicode, which may be newer than Python's: 622 letters of Unicode
+  15.1 were none to Python 3.12, so a code point Python has no name for is taken for a
+  letter after a backslash. The third came from random lines tried against pandoc
+  while the rule was written, and the last two from the review of the change, whose two
+  rounds put 52 million lines of their own making to pandoc. The references are not
+  resolved here. That was the fix for the first round, and the second found two values
+  it passed, a script in a script and the carriage return. So a character reference
+  in what a subscript or a superscript can hold, from a `~` or a `^` to the next space,
+  is itself the finding, whatever it stands for and however deep the scripts: none
+  exists without a typed `&` and a `;` after it.
+  Where it reports what pandoc keeps: past a backtick, `<`, `[` or `@` no maths is
   read, so every backslash before a letter is reported from there to the end of the
-  value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one), and so is
-  a reference for a backslash before a letter; from a `~` or a `^` to the next space
-  the same holds, and to the end of the value where that stretch holds a `$`; a
-  command pandoc cannot read as TeX is printed as typed and reported, a brace after it
-  never closed, a `%` between its braces, `\end` with no `\begin`; so is one in a value
-  pandoc reads as code, `>` and a tab before it; and so is a backslash before a code
-  point that is no letter in any Unicode yet. No title or keyword of the example or of
-  the one manuscript this was tried on holds a backslash, so neither says how often an
-  over-report occurs.
+  value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one); from a `~`
+  or a `^` to the next space the same holds, and to the end of the value where that
+  stretch holds a `$`; a character reference in such a stretch, `x^&alpha;^` for one,
+  which pandoc prints; a command pandoc cannot read as TeX, which it prints as typed, a
+  brace after it never closed, a `%` between its braces, `\end` with no `\begin`; one in
+  a value pandoc reads as code, `>` and a tab before it; a backslash before a code
+  point that is no letter in any Unicode yet; and one before a letter that Python's
+  Unicode has and pandoc's has not, 4,302 letters of Unicode 16.0 on Python 3.14 with
+  pandoc 3.9. No title or keyword of the example or of the one manuscript this was
+  tried on holds a backslash, so neither says how often an over-report occurs.
   The finding's sentence is held to being true of the value it is printed for, and its
-  remedy to working, which the review found it was not in three places. Past a sign it
-  does not say "outside dollar signs": it names the sign, says the document may be
-  printed without the command, and says to put a backslash before a sign that is only
-  itself, `\[18F\]FDG`, or to type the character, and with that the value passes.
-  Between dollar signs that pandoc reads no maths in, it says which: `TGF-$\beta$1` is
-  printed `TGF-$$1`, for the digit after the closing one, and a dollar amount earlier in
-  a title pairs with the opening one, which `\$` mends. Where braces follow the command
-  it does not say to write the command between dollar signs: `$\textit${in vivo}` is
-  printed as typed. And a keyword is told to hold the character itself: it is printed
-  in the document's properties only, where pandoc writes maths as its TeX.
+  remedy to working, which each round of the review found it was not somewhere. Past a
+  sign it does not say "outside dollar signs": it names the sign, says the document may
+  be printed without the command, and says to put a backslash before a sign that is
+  only itself, `\[18F\]FDG`, or to type the character, and with that the value passes.
+  After a `$` that opens no maths it says why, for every command up to the next `$`:
+  `TGF-$\beta$1` is printed `TGF-$$1` and `$p \leq$0.05` loses its `\leq`, for the
+  digit after that `$`; and after maths that a dollar amount earlier in the title opens,
+  it says so, and that `\$` is a dollar sign that is only one. Where braces follow the
+  command it does not say to write the command between dollar signs, since
+  `$\textit${in vivo}` is printed as typed. Where none follow it says "if it is
+  maths", since a path is none. A keyword is told to write it as text, the character
+  itself for a letter: it is printed in the document's properties only, where pandoc
+  writes maths as its TeX. And a reference in a subscript is told to be the character
+  it stands for.
   What the finding does not reach: the other text of a project that a document prints,
   the names in `authors.yaml` for one; the title page of a pack made with
   `submit --skip-checks --document`; a pandoc that reads a line otherwise than the one

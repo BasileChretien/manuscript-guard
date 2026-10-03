@@ -673,33 +673,16 @@ def figure_sheet(project, results) -> str:
 
 
 def styled_reference(pandoc: str, target: Path) -> Path:
-    """Pandoc's own reference document, plus the four highlight styles.
+    """The build's reference document, plus the four highlight styles.
 
-    Generated rather than committed: a reference `.docx` is a binary, this repository
-    ignores `*.docx` precisely so that build products cannot be mistaken for sources, and a
-    style sheet that can be regenerated from a command is one fewer thing to keep in sync.
+    The annotated copy is read beside the ordinary one, so it is built from the same
+    reference document (`build.styles.reference_with`, which carries the figure-caption
+    style) with the highlights added to it.
     """
-    target.parent.mkdir(parents=True, exist_ok=True)
-    default = subprocess.run(
-        [pandoc, "--print-default-data-file", "reference.docx"],
-        capture_output=True,
-        check=True,
-    ).stdout
-    scratch = target.with_suffix(".default.docx")
-    scratch.write_bytes(default)
+    from manuscript_guard.build.styles import reference_with
 
     extra = "".join(_STYLE.format(sid=sid, colour=colour) for sid, colour, _ in TIERS.values())
-    with zipfile.ZipFile(scratch) as zin, zipfile.ZipFile(
-        target, "w", zipfile.ZIP_DEFLATED
-    ) as zout:
-        for item in zin.infolist():
-            data = zin.read(item.filename)
-            if item.filename == "word/styles.xml":
-                xml = data.decode("utf-8").replace("</w:styles>", extra + "</w:styles>")
-                data = xml.encode("utf-8")
-            zout.writestr(item, data)
-    scratch.unlink(missing_ok=True)
-    return target
+    return reference_with(pandoc, target, extra)
 
 
 _HYPERLINK = re.compile(

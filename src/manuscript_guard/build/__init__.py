@@ -15,6 +15,7 @@ from manuscript_guard.build.document import (
     build_document,
     ensure_zotero_lua,
 )
+from manuscript_guard.build.styles import FIGURE_CAPTION, reference_with
 from manuscript_guard.build.submission import (
     Pack,
     SubmissionError,
@@ -25,6 +26,7 @@ from manuscript_guard.build.submission import (
 )
 
 __all__ = [
+    "FIGURE_CAPTION",
     "LIVE",
     "OFFLINE",
     "Assembled",
@@ -40,6 +42,7 @@ __all__ = [
     "declarations",
     "ensure_zotero_lua",
     "find_figure",
+    "reference_with",
     "render_table",
     "title_page",
 ]

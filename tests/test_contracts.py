@@ -493,6 +493,226 @@ def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: P
     assert project.extra_conventions == ()
 
 
+#: What the build folds into a space, and nothing else: the ends of a line as YAML reads
+#: them. No test held the last two: taken out of the fold, every test passed.
+FOLDED = {
+    "line feed": chr(0x0A),
+    "carriage return": chr(0x0D),
+    "carriage return and line feed": chr(0x0D) + chr(0x0A),
+    "next line": chr(0x85),
+    "line separator": chr(0x2028),
+    "paragraph separator": chr(0x2029),
+}
+
+
+@pytest.mark.parametrize("name", list(FOLDED))
+def test_each_end_of_a_line_is_folded_into_a_space_and_is_no_finding(name: str) -> None:
+    from manuscript_guard.contracts.project import one_line, unprintable_character
+
+    text = f"First{FOLDED[name]}second"
+    assert one_line(text) == "First second"
+    assert unprintable_character(text) is None
+
+
+def test_a_tab_is_kept_and_is_no_finding() -> None:
+    from manuscript_guard.contracts.project import one_line, unprintable_character
+
+    text = "a" + chr(9) + "b"
+    assert one_line(text) == text
+    assert unprintable_character(text) is None
+
+
+@pytest.mark.parametrize("name", list(FOLDED))
+@pytest.mark.parametrize("times", [1, 2])
+def test_the_break_that_closes_a_value_is_taken_off_and_not_made_a_space(
+    name: str, times: int
+) -> None:
+    """A block ends with one. Folded into a space it stood after `al.`, where pandoc reads a
+    space as a no-break space and printed one after the title, and after a closing
+    backslash, which made the space a no-break one."""
+    from manuscript_guard.contracts.project import one_line
+
+    assert one_line("Smith et al." + FOLDED[name] * times) == "Smith et al."
+    assert one_line(FOLDED[name] + "Smith et al.") == " Smith et al.", "only the closing one"
+
+
+#: A character that is not a control character and that no document can carry either: half
+#: of a pair, which two `\\u` escapes written as JSON writes them make, and the two code
+#: points that are no character. What `check` calls each.
+NOT_CARRIED = {
+    "half of a pair": (chr(0xD83D), "the surrogate U+D83D"),
+    "the other half": (chr(0xDE00), "the surrogate U+DE00"),
+    "U+FFFE": (chr(0xFFFE), "the non-character U+FFFE"),
+    "U+FFFF": (chr(0xFFFF), "the non-character U+FFFF"),
+    "a control character": (chr(7), "the control character U+0007"),
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_CARRIED))
+def test_a_character_no_document_can_carry_is_named_for_what_it_is(name: str) -> None:
+    from manuscript_guard.contracts.project import named, unprintable_character
+
+    character, called = NOT_CARRIED[name]
+    assert unprintable_character(f"a{character}b") == character
+    assert named(character) == called
+
+
+@pytest.mark.parametrize(
+    "character", [chr(0x1F600), chr(0xE000), chr(0xFFFD), chr(0xA0), chr(0xD7FF), "é", "中"]
+)
+def test_a_character_a_document_can_carry_is_no_finding(character: str) -> None:
+    from manuscript_guard.contracts.project import unprintable_character
+
+    assert unprintable_character(f"a{character}b") is None
+
+
+#: The same through `paper.yaml`, where an escape between double quotation marks makes each.
+#: The first passed `check`, and the build stopped in pandoc's words about a file the author
+#: never wrote; the second passed `check` too, and the build ended in a traceback.
+ESCAPED = {
+    "a non-character": ('title: "a\\uFFFFb"' + chr(10), "title", "the non-character U+FFFF"),
+    "a pair written as JSON writes it": (
+        'short_title: "\\ud83d\\ude00 smile"' + chr(10),
+        "short_title",
+        "the surrogate U+D83D",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(ESCAPED))
+def test_an_escape_that_makes_no_character_is_a_finding_at_the_key(
+    case: str, tmp_path: Path
+) -> None:
+    written, where, called = ESCAPED[case]
+    paper = PAPER if where != "title" else PAPER.replace('title: "A study"' + chr(10), "")
+    _project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    found = [f for f in report.failures if "no document can carry" in f.message]
+    assert [(f.code, f.message.split(",")[0]) for f in found] == [
+        ("schema-violation", f"{where}: holds {called}")
+    ]
+
+
+#: `paper.yaml` as raw text. Between double quotation marks YAML reads `\\n`, `\\r`,
+#: `\\t`, `\\N`, `\\L` and `\\P` as the end of a line or a tab, so TeX that begins with one
+#: loses its first letter in the document: `"$\\nu$"` was printed `$ u$`, through `check`
+#: and the build. A real line break or tab cannot be refused, so the escape is looked for
+#: in the file as written. Where the finding is, and the escape it names.
+LOST_LETTER = {
+    "nu in a title": ('title: "The $\\nu$ frequency"' + chr(10), "title", "\\nu"),
+    "rho in a short title": ('short_title: "$\\rho$ and more"' + chr(10), "short_title", "\\rho"),
+    "tau in a keyword": (
+        'keywords:' + chr(10) + '  - plain' + chr(10) + '  - "$\\tau$ protein"' + chr(10),
+        "keywords/1",
+        "\\tau",
+    ),
+    "Lambda": ('short_title: "$\\Lambda$"' + chr(10), "short_title", "\\Lambda"),
+    "Pi": ('short_title: "$\\Pi$"' + chr(10), "short_title", "\\Pi"),
+    "Nu": ('keywords: ["a", "$\\Nu$"]' + chr(10), "keywords/1", "\\Nu"),
+    "one keyword": ('keywords: "$\\nabla$ operator"' + chr(10), "keywords", "\\nabla"),
+}
+
+
+@pytest.mark.parametrize("case", list(LOST_LETTER))
+def test_an_escape_that_takes_the_first_letter_of_a_word_is_a_finding_at_the_key(
+    case: str, tmp_path: Path
+) -> None:
+    written, where, escape = LOST_LETTER[case]
+    paper = PAPER if where != "title" else PAPER.replace('title: "A study"' + chr(10), "")
+    _project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    found = [f for f in report.failures if "between double quotation marks" in f.message]
+    assert [f.code for f in found] == ["schema-violation"]
+    (finding,) = found
+    assert finding.gate == "G0"
+    assert finding.message.startswith(f"{where}: `{escape}` between double quotation marks")
+    text = paper + written
+    assert finding.line == text[: text.index(escape)].count(chr(10)) + 1
+    assert "single quotation marks" in finding.hint
+
+
+#: The same letters where nothing is lost, and so nothing is found: where a backslash is
+#: a backslash, and where the break is not before a letter or is a break in the file.
+KEPT_LETTER = {
+    "single quotation marks": "short_title: 'The $\\nu$ frequency'" + chr(10),
+    "no quotation marks": "short_title: The $\\nu$ frequency" + chr(10),
+    "a doubled backslash": 'short_title: "The $\\\\nu$ frequency"' + chr(10),
+    "a block": "short_title: |" + chr(10) + "  The $\\nu$ frequency" + chr(10),
+    "a break before a space": 'short_title: "First\\n second"' + chr(10),
+    "a break before a digit": 'short_title: "Table\\n2"' + chr(10),
+    "a break in the file": 'short_title: "First' + chr(10) + '  second"' + chr(10),
+    "a key the build does not print": 'target_journal: "the\\nu journal"' + chr(10),
+}
+
+
+@pytest.mark.parametrize("case", list(KEPT_LETTER))
+def test_a_backslash_that_is_a_backslash_and_a_break_that_takes_no_letter_are_no_finding(
+    case: str, tmp_path: Path
+) -> None:
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + KEPT_LETTER[case]))
+    assert report.failures == ()
+
+
+def test_the_hint_names_a_space_where_a_line_break_was_meant(tmp_path: Path) -> None:
+    """Followed where a break was meant, either way of keeping the letter loses the word:
+    between single quotation marks `First part:\\nsecond part` holds a backslash, and pandoc
+    reads `\\nsecond` as TeX and drops it. So the finding also says what to write then."""
+    written = 'short_title: "First part:\\nsecond part"' + chr(10)
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = [f for f in report.failures if "between double quotation marks" in f.message]
+    assert "single quotation marks" in finding.hint
+    assert "where a line break or a tab was meant, write a space" in finding.hint
+
+
+#: Text of the file that the value does not hold, and a value YAML does not keep. The
+#: place a value is read from began at its anchor or its tag, so a comment after one was
+#: read as the value; and a key written twice was read twice, where YAML keeps the last.
+NOT_THE_VALUE = {
+    "a comment after an anchor": (
+        'short_title: &t  # the anchor for \\nu' + chr(10) + '  "A plain title"' + chr(10)
+    ),
+    "a comment after a tag": (
+        'short_title: !!str  # see \\rho' + chr(10) + '  "A plain title"' + chr(10)
+    ),
+    "a comment after a keyword's anchor": (
+        'keywords:' + chr(10) + '  - &k # \\nabla' + chr(10) + '    "plain"' + chr(10)
+    ),
+    "a key written twice, the last kept": (
+        'short_title: "The $\\nu$ one"' + chr(10) + "short_title: 'The $\\nu$ one'" + chr(10)
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_THE_VALUE))
+def test_what_the_value_does_not_hold_is_not_read_for_a_lost_letter(
+    case: str, tmp_path: Path
+) -> None:
+    from manuscript_guard.contracts.project import lost_letters
+
+    root = a_project(tmp_path / "paper", PAPER + NOT_THE_VALUE[case])
+    assert lost_letters(root / "paper.yaml") == []
+
+
+def test_of_a_key_written_twice_the_one_yaml_keeps_is_read(tmp_path: Path) -> None:
+    from manuscript_guard.contracts.project import lost_letters
+
+    written = "short_title: 'The $\\nu$ one'" + chr(10) + 'short_title: "The $\\nu$ one"' + chr(10)
+    root = a_project(tmp_path / "paper", PAPER + written)
+    assert [(lost.where, lost.line) for lost in lost_letters(root / "paper.yaml")] == [
+        ("short_title", 5)
+    ]
+
+
+def test_folding_a_run_of_line_breaks_takes_time_in_proportion(assert_linear) -> None:
+    """The closing break was taken off with a pattern that tried every break of a run in
+    the middle as the start of the end: 16,000 breaks took four and a half seconds, in
+    `check` and in the hook at the start of a session."""
+    from manuscript_guard.contracts.project import one_line
+
+    assert_linear(lambda n: "a" + chr(10) * n + "b", one_line, 2000, "folding a run of breaks")
+
+
 #: Each written between double quotation marks, as YAML reads them: `\a` is U+0007, `\e`
 #: U+001B. The place `check` names and the character it names there.
 CONTROL = {
@@ -528,9 +748,11 @@ def test_a_control_character_in_what_the_document_prints_is_a_finding(
 
 def test_a_title_over_several_lines_is_no_finding(tmp_path: Path) -> None:
     """YAML's own line breaks are folded by the build, not refused: a line feed, YAML's
-    `\\N`, `\\L` and `\\P` (U+0085, U+2028, U+2029), and a tab is a tab."""
+    `\\N`, `\\L` and `\\P` (U+0085, U+2028, U+2029), and a tab is a tab. Each escape
+    stands before a space here: before a letter it takes the letter, which is a finding
+    of another kind (`LOST_LETTER`)."""
     written = (
-        'short_title: "First\nsecond\\Nthird\\Lfourth\\Pfifth"\n'
+        'short_title: "First\nsecond\\N third\\L fourth\\P fifth"\n'
         'keywords: ["a\tb"]\n'
     )
     _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))

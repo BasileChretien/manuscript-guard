@@ -250,3 +250,16 @@ def test_the_advice_names_an_emitter_that_exists(
         assert "Emitter(" in text and "mg_emitter(" in text, text
     assert callable(Emitter.write)
     assert re.search(r"^mg_emitter <- function", r_source, re.MULTILINE)
+
+
+def test_init_writes_a_title_that_is_read_as_it_was_typed(tmp_path: Path) -> None:
+    """`init --title` typed the title between double quotation marks itself. A backslash in
+    it began an escape, which `check` now refuses and the author did not type, and a
+    quotation mark ended the title, after which the project could not be read at all."""
+    title = "Effect of $" + chr(92) + 'nu$ on "survival"'
+    root = tmp_path / "paper"
+    init_project(root, title=title)
+
+    project, report = load_project(root)
+    assert project.paper["title"] == title
+    assert not [f for f in report.failures if f.message.startswith("title")]

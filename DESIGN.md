@@ -4536,8 +4536,43 @@ Closed since, and why each mattered:
   found that a line split also takes the vertical tab, the form feed and three
   separators for the end of a line, which YAML does not: `\v` and `\f` begin TeX's
   `\varepsilon` and `\frac`, and folded into a space they lost the letter after them
-  through `check` and the build. Only what YAML reads as the end of a line is folded, and
-  any other control character is refused.
+  through `check` and the build. Only what YAML reads as the end of a line is folded, the
+  tab is kept, and any other control character is refused. So are a surrogate, half of a
+  pair that two `\u` escapes make where they are written as JSON writes a character past
+  U+FFFF, and U+FFFE and U+FFFF, which are no character: `check` passed them, the build
+  ended in a traceback on a surrogate, which cannot be written as UTF-8, and in pandoc's
+  words on the other two. And the break a value closes with is taken off, not folded: a
+  block ends with one, and as a space it stood after `al.`, where pandoc reads a space as
+  a no-break space, so a title written as a block was printed with one after it. These
+  came from the last check of #153.
+  A fourth note from that check was a choice, which the author made (Basile, 2026-10-03).
+  Between double quotation marks YAML reads `\n`, `\r`, `\t`, `\N`, `\L` and `\P` as the end of
+  a line or a tab. No refusal of characters reaches those, since a title may hold a line
+  break: `"The $\nu$ frequency"` was printed `The $ u$ frequency`, and `\rho`, `\tau`,
+  `\Lambda` and `\Pi` lost a letter the same way, through `check` and the build. `check`
+  now reads `paper.yaml` as it is written. One of those six escapes directly before a
+  letter, in a title, a short title or a keyword that stands between double quotation
+  marks, is a finding at the key that fails at every stage, and a build that skips the
+  check refuses it in the same words. Between single quotation marks, with none, in a
+  block, or with the backslash doubled, the letter is kept and nothing is found. What the
+  finding does not reach: an escape before a space or a digit, which takes no letter; a
+  letter outside A to Z; the no-break space `\_`, and an escape written as a number,
+  `\x0a`; a title or a keyword that comes into the file by a merge key (`<<`); and the
+  other text of a project that a document prints, the names in `authors.yaml` for one.
+  Nor the title page of a pack made with `submit --skip-checks --document`: it is handed
+  a document built elsewhere, and prints the title as YAML read it. A line break meant as
+  one and written `"First\nsecond"` is a finding all the same. It costs a space in its
+  place, which is what the build printed for it, and the finding says to write a space
+  there: a backslash kept where no TeX was meant is TeX to pandoc, which drops the word
+  after it. `import` builds the source again to compare the returned document with, and
+  makes that build without the refusal, so that a document sent before it existed can
+  still come back; `check` and the next build refuse the title all the same. And `init`
+  types the title it is given into `paper.yaml` as a JSON string, where it typed
+  quotation marks around it as it stood: a backslash in it was an escape the author never
+  wrote, and a quotation mark in it left a project that could not be read. A value is
+  read from its own opening quotation mark, and of a key written twice the one YAML keeps
+  is read: a comment after an anchor was taken for the value, and both of two titles for
+  the title. These came from the review of the change.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

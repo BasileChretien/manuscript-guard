@@ -31,7 +31,15 @@ from pathlib import Path
 
 from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
-from manuscript_guard.contracts.project import PAPER_FILE, control_character, one_line
+from manuscript_guard.contracts.project import (
+    KEEP_THE_LETTER,
+    PAPER_FILE,
+    advice,
+    lost_letters,
+    named,
+    one_line,
+    unprintable_character,
+)
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -252,30 +260,46 @@ def _yaml_text(project, key: str, value: object) -> str:
 
     The lines are folded into one first, as YAML folded them between hand-written quotation
     marks: a title holding a blank line was two paragraphs to pandoc, and the Word writer
-    left it out. Only what YAML reads as the end of a line is folded (`one_line`). And any
-    other control character is refused, as pandoc refused it before: one comes
-    from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks, and
-    written as JSON's escape it reached the document. `check` reports it first.
+    left it out. Only what YAML reads as the end of a line is folded (`one_line`), and the
+    tab is kept. Any other control character is refused, as pandoc refused it before: one
+    comes from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks,
+    and written as JSON's escape it reached the document. So are a surrogate and the two
+    code points that are no character, which an escape makes too (`named`): a surrogate
+    cannot be written as UTF-8, and the build ended in a traceback. `check` reports each
+    first.
     """
     text = one_line(str(value))
-    character = control_character(text)
+    character = unprintable_character(text)
     if character is not None:
         raise BuildError(
-            f"{project.root / PAPER_FILE}: `{key}` holds the control character "
-            f"U+{ord(character):04X}, which no document can carry. Between double quotation "
-            "marks YAML reads a backslash as the start of an escape, `\\a` as U+0007; write "
-            "the value between single quotation marks, where a backslash is a backslash."
+            f"{project.root / PAPER_FILE}: `{key}` holds {named(character)}, which no "
+            f"document can carry: {advice(character)}."
         )
     return json.dumps(text, ensure_ascii=False)
 
 
-def _front_matter(project, *, supplementary: bool = False, live: bool = False) -> str:
+def _front_matter(
+    project, *, supplementary: bool = False, live: bool = False, sent: bool = False
+) -> str:
     """A YAML header carrying the title and the Zotero settings the filter reads.
 
     What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
     italics, and TeX outside `$` is dropped.
+
+    `sent` is for a document that was built already and is built again to be compared with:
+    see `build_document`.
     """
     paper = project.paper
+    # What `check` reports and a build that skips the check would print: an escape in
+    # `paper.yaml` that takes the first letter of a word. What YAML made of it is a line
+    # break like any other, so it is looked for in the file.
+    lost = [] if sent else lost_letters(project.root / PAPER_FILE)
+    if lost:
+        first = lost[0]
+        raise BuildError(
+            f"{project.root / PAPER_FILE}: `{first.where}`, line {first.line}: {first.said}. "
+            f"To keep the letter, {KEEP_THE_LETTER}."
+        )
     title = str(paper.get("title", ""))
     if supplementary:
         title = f"Supplementary material for: {title}"
@@ -317,8 +341,15 @@ def build_document(
     epilogue: str = "",
     supplementary: bool = False,
     verify_reading: bool = True,
+    sent: bool = False,
 ) -> BuildResult:
     """Make the document.
+
+    `sent` is for `import`, which builds again a document that was sent, to compare the one
+    that came back with it. A refusal newer than that document is not made: the header is
+    written as the sent one's was, an escape that takes a letter included, since refusing
+    there kept back a document a co-author was holding. `check` and the next build still
+    refuse it.
 
     `stamp` writes the record of which text the document was built from, and there must be
     exactly one document carrying it: the annotated copy passes `stamp=False`.
@@ -361,7 +392,9 @@ def build_document(
     # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
     # a `<!--` left open earlier in the file, and the rest of that file vanished.
     body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
-    header = _front_matter(project, supplementary=supplementary, live=mode == LIVE)
+    header = _front_matter(
+        project, supplementary=supplementary, live=mode == LIVE, sent=sent
+    )
     source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
 

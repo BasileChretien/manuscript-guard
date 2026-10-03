@@ -10,14 +10,17 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
+import yaml
 from jsonschema import Draft202012Validator
 
 from manuscript_guard.contracts._schema import (
     ContractError,
+    Unreadable,
     load_schema,
     read_structured,
+    read_text,
     validate,
 )
 from manuscript_guard.findings import Finding, Report, merge_all
@@ -164,19 +167,179 @@ def _not_a_pattern(pattern: str) -> str | None:
 LINE_BREAK = re.compile(r"\r\n|[\r\n\x85\u2028\u2029]")
 
 
+#: The characters `LINE_BREAK` folds, for taking the breaks off the end of a value.
+_BREAKS = "".join(chr(code) for code in (0x0A, 0x0D, 0x85, 0x2028, 0x2029))
+
+
 def one_line(text: str) -> str:
-    """`text` with its lines folded into one, as YAML folded them between quotation marks."""
-    return " ".join(LINE_BREAK.split(text))
+    """`text` with its lines folded into one, as YAML folded them between quotation marks.
+
+    The break a value closes with is taken off, not folded. A block ends with one, and as
+    a space it stood after `al.` and `vs.`, where pandoc reads a space as a no-break space:
+    a title written as a block was printed with one after it. After a closing backslash it
+    became one too. Stripped, not matched by a pattern: one anchored at the end tried every
+    break of a run in the middle as its start, and a run of 16,000 took seconds.
+    """
+    return " ".join(LINE_BREAK.split(text.rstrip(_BREAKS)))
 
 
-def control_character(text: str) -> str | None:
-    """The first character of `text` that no document can carry, once its lines are folded
-    into one as the build folds them (`one_line`): a control character other than a tab.
-    None where there is none."""
-    for character in one_line(text):
-        if character != "\t" and unicodedata.category(character) == "Cc":
-            return character
-    return None
+def named(character: str) -> str | None:
+    """What a finding calls a character no document can carry, or None where one can.
+
+    It is what YAML calls not printable and XML no character, so pandoc refuses a header
+    that holds one, or Word the document: a control character other than a tab; a
+    surrogate, half of a pair, which two escapes make where they are written as JSON writes
+    a character past U+FFFF; and U+FFFE and U+FFFF, which are no character.
+    """
+    code = ord(character)
+    if character != "\t" and unicodedata.category(character) == "Cc":
+        kind = "the control character"
+    elif 0xD800 <= code <= 0xDFFF:
+        kind = "the surrogate"
+    elif code in (0xFFFE, 0xFFFF):
+        kind = "the non-character"
+    else:
+        return None
+    return f"{kind} U+{code:04X}"
+
+
+def advice(character: str) -> str:
+    """How to write what was meant, for a character `named` names."""
+    code = ord(character)
+    if 0xD800 <= code <= 0xDFFF:
+        return (
+            "a character past U+FFFF is itself in YAML, or one `\\U` escape of eight digits; "
+            "two `\\u` escapes, as JSON writes it, are read as two halves"
+        )
+    if code in (0xFFFE, 0xFFFF):
+        return "it is no character; take the escape out"
+    return (
+        "between double quotation marks YAML reads a backslash as the start of an escape, "
+        "`\\a` as U+0007; write the value between single quotation marks, where a backslash "
+        "is a backslash"
+    )
+
+
+def unprintable_character(text: str) -> str | None:
+    """The first character of `text` that no document can carry (`named`), once its lines
+    are folded into one as the build folds them (`one_line`). None where there is none."""
+    return next((character for character in one_line(text) if named(character)), None)
+
+
+#: What YAML reads between double quotation marks as the end of a line or as a tab. Before a
+#: letter each begins a word of TeX, `\nu`, `\rho`, `\tau`, `\Nu`, `\Lambda`, `\Pi`, and takes
+#: its first letter. The other escapes that begin one are refused already: they make a
+#: control character (`\alpha`, `\beta`, `\epsilon`, `\varepsilon`, `\frac`), or YAML does not
+#: read them at all (`\delta`, `\xi`, `\upsilon`).
+_TAKES_A_LETTER = {
+    "n": "the end of a line",
+    "r": "the end of a line",
+    "N": "the end of a line",
+    "L": "the end of a line",
+    "P": "the end of a line",
+    "t": "a tab",
+}
+#: A backslash and what follows it, so that a doubled backslash is passed over as one.
+_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+_LETTERS = re.compile("[A-Za-z]+")
+
+
+class LostLetter(NamedTuple):
+    """An escape in `paper.yaml` that takes the first letter of a word the build prints."""
+
+    where: str
+    line: int
+    said: str
+
+
+def _printed_nodes(root: yaml.Node) -> list[tuple[str, yaml.Node]]:
+    """The values of `paper.yaml` that the build prints, as the file writes them, each with
+    the place a finding names: `_printed_settings`, before YAML has read them."""
+    # Of a key written twice YAML keeps the last, and so does this.
+    kept: dict[str, yaml.Node] = {}
+    for key, value in root.value if isinstance(root, yaml.MappingNode) else ():
+        if isinstance(key, yaml.ScalarNode) and key.value in ("title", "short_title", "keywords"):
+            kept[key.value] = value
+    out: list[tuple[str, yaml.Node]] = []
+    for name, value in kept.items():
+        if isinstance(value, yaml.ScalarNode):
+            out.append((name, value))
+        elif name == "keywords" and isinstance(value, yaml.SequenceNode):
+            out += [(f"keywords/{index}", entry) for index, entry in enumerate(value.value)]
+        elif name == "keywords" and isinstance(value, yaml.MappingNode):
+            out += [("keywords", entry) for entry, _held in value.value]
+    return out
+
+
+def lost_letters(path: Path) -> list[LostLetter]:
+    """Each escape in `paper.yaml` that takes the first letter of a word in the title, the
+    short title or a keyword, where the value stands between double quotation marks.
+
+    `"The $\\nu$ frequency"` is `The $`, the end of a line, and `u$ frequency`. The build folds
+    the line, and the title was printed `The $ u$ frequency`, through `check` and a checked
+    build. What YAML made of it is a real line break, which a title may hold and which
+    cannot be refused, so this reads the file as it is written: the quotation marks a value
+    stands between, and the escape inside them. Nothing where the file cannot be read or is
+    not YAML, which is said elsewhere.
+    """
+    try:
+        text = read_text(path)
+        root = yaml.compose(text, Loader=yaml.SafeLoader)
+        # Where each value opens, by where it closes. A node begins at its anchor or its
+        # tag, and a comment between that and the value was read as the value.
+        opens = {
+            token.end_mark.index: token.start_mark.index
+            for token in yaml.scan(text, Loader=yaml.SafeLoader)
+            if isinstance(token, yaml.ScalarToken)
+        }
+    except (Unreadable, yaml.YAMLError):
+        return []
+    found = []
+    for where, node in _printed_nodes(root):
+        if not isinstance(node, yaml.ScalarNode) or node.style != '"':
+            continue
+        start = opens.get(node.end_mark.index, node.start_mark.index)
+        raw = text[start : node.end_mark.index]
+        for escape in _ESCAPE.finditer(raw):
+            reads_as = _TAKES_A_LETTER.get(escape[1])
+            rest = _LETTERS.match(raw, escape.end())
+            if reads_as is None or rest is None:
+                continue
+            found.append(
+                LostLetter(
+                    where,
+                    text.count("\n", 0, start + escape.start()) + 1,
+                    f"`{escape[0]}{rest[0]}` between double quotation marks is {reads_as} "
+                    f"and then `{rest[0]}`, so the document loses the `{escape[1]}`",
+                )
+            )
+    return found
+
+
+#: What to do about a `LostLetter`.
+# The first two keep a backslash, which pandoc then reads as the start of TeX: where a
+# break was meant and not TeX, either one loses the word after it, so the third is named.
+KEEP_THE_LETTER = (
+    "write the value between single quotation marks, where a backslash is a backslash, or "
+    "double the backslash; where a line break or a tab was meant, write a space"
+)
+
+
+def _lost_letters(path: Path) -> Report:
+    """`lost_letters` as findings, under the schema's code, which fails at every stage."""
+    return Report(
+        tuple(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"{lost.where}: {lost.said}",
+                path=path,
+                line=lost.line,
+                hint=KEEP_THE_LETTER,
+            )
+            for lost in lost_letters(path)
+        )
+    )
 
 
 def _printed_settings(paper: dict) -> list[tuple[str, str]]:
@@ -198,23 +361,23 @@ def _unprintable(paper: dict, path: Path) -> Report:
     Between double quotation marks YAML reads a backslash as the start of an escape, so
     `"\\alpha-blockers"` is the control character U+0007 and then `lpha-blockers`. The build
     wrote it into the document's properties, and Word would not open the document; `check`
-    and a checked build had both passed it.
+    and a checked build had both passed it. An escape can also make a character that is no
+    control character and that no document can carry either (`named`): `check` passed those,
+    pandoc refused one in its own words about a file of the build's, and on a surrogate the
+    build ended in a traceback, since it cannot be written as UTF-8.
     """
     findings = []
     for where, text in _printed_settings(paper):
-        character = control_character(text)
+        character = unprintable_character(text)
         if character is None:
             continue
         findings.append(
             Finding(
                 gate="G0",
                 code="schema-violation",
-                message=f"{where}: holds the control character U+{ord(character):04X}, which "
-                "no document can carry",
+                message=f"{where}: holds {named(character)}, which no document can carry",
                 path=path,
-                hint="between double quotation marks YAML reads a backslash as the start of "
-                "an escape, `\\a` as U+0007; write the value between single quotation marks, "
-                "where a backslash is a backslash",
+                hint=advice(character),
             )
         )
     return Report(tuple(findings))
@@ -352,6 +515,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     reports.append(validate(paper, "paper", paper_path))
     reports.append(_unusable_conventions(paper, paper_path))
     reports.append(_unprintable(paper, paper_path))
+    reports.append(_lost_letters(paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

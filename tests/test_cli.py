@@ -423,6 +423,143 @@ def test_a_control_character_from_a_yaml_escape_is_refused_by_check_and_the_buil
     assert not list((project / "build").glob("*.docx"))
 
 
+#: An escape in `paper.yaml` that makes something no document can carry and that is not a
+#: control character. `check` passed each. The build stopped on the first in pandoc's words
+#: about `build/manuscript.md`, and ended in a traceback on the second (`UnicodeEncodeError`).
+NO_CHARACTER = {
+    "a non-character": ('title: "A\\uFFFFstudy"', "the non-character U+FFFF"),
+    "a pair written as JSON writes it": (
+        'title: "\\ud83d\\ude00 smile"',
+        "the surrogate U+D83D",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_CHARACTER))
+def test_an_escape_that_makes_no_character_is_refused_by_check_and_the_build(
+    case: str, project: Path, capsys
+) -> None:
+    written, called = NO_CHARACTER[case]
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(text.replace(old, written, 1), encoding="utf-8")
+
+    assert run("check", str(project)) == 1
+    assert f"title: holds {called}, which no document can carry" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert called in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+def test_an_escape_that_takes_a_letter_is_refused_by_check_and_the_build(
+    project: Path, capsys
+) -> None:
+    """`"The $\\nu$ frequency"`: YAML reads the escape as the end of a line, the build
+    folds it into a space, and the title was printed `The $ u$ frequency`, through `check`
+    and a checked build. The finding names the key and the escape, and the build refuses
+    it as well where the check is skipped."""
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(text.replace(old, 'title: "The $\\nu$ frequency"', 1), encoding="utf-8")
+
+    assert run("check", str(project)) == 1
+    assert "title: `\\nu` between double quotation marks" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert "`\\nu` between double quotation marks" in said
+    assert "where a line break or a tab was meant, write a space" in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "written",
+    ["title: 'The $\\nu$ frequency'", "title: The $\\nu$ frequency"],
+    ids=["single quotation marks", "no quotation marks"],
+)
+def test_the_same_title_where_a_backslash_is_a_backslash_builds_with_its_letter(
+    written: str, project: Path
+) -> None:
+    import re
+    import zipfile
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(text.replace(old, written, 1), encoding="utf-8")
+
+    assert run("check", str(project)) == 0
+    assert run("build", str(project), "--offline") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    title = re.search("<dc:title>(.*?)</dc:title>", properties, re.S)
+    assert title is not None
+    assert title[1] == "The \\nu frequency"
+
+
+@needs_pandoc
+def test_import_takes_back_a_document_built_before_the_lost_letter_was_refused(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """`import` rebuilds the source to compare the returned document with. A refusal newer
+    than the document is not import's to enforce: it blocked the return of a document a
+    co-author was holding, built when the title was printed with a space for the break."""
+    from manuscript_guard.build import document
+    from manuscript_guard.contracts import project as contract
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(
+        text.replace(old, 'title: "First part:\\nsecond part"', 1), encoding="utf-8"
+    )
+
+    with monkeypatch.context() as before:  # as the tool was before the refusal
+        before.setattr(document, "lost_letters", lambda path: [])
+        before.setattr(contract, "lost_letters", lambda path: [])
+        assert run("build", str(project), "--offline") == 0
+    sent = project / "build" / "manuscript.docx"
+    capsys.readouterr()
+
+    assert run("import", str(sent), str(project)) == 0
+    assert "nothing came back" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_block_title_is_printed_without_a_space_after_it(project: Path) -> None:
+    """A block ends with a line break, and folded into a space it stood after `al.`: pandoc
+    reads a space there as a no-break space, and the title was printed with one after it.
+    A keyword written as a block got one before the comma."""
+    import zipfile
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    text = text.replace(old, "title: |" + chr(10) + "  Outcomes reported by Smith et al.", 1)
+    assert text.count("  - pharmacovigilance" + chr(10)) == 1
+    text = text.replace(
+        "  - pharmacovigilance" + chr(10), "  - |" + chr(10) + "    drug A vs." + chr(10), 1
+    )
+    paper.write_text(text, encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    built = next((project / "build").glob("manuscript*.docx"))
+    with zipfile.ZipFile(built) as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    assert chr(0xA0) not in properties
+    assert "<dc:title>Outcomes reported by Smith et al.</dc:title>" in properties
+    assert "<cp:keywords>drug A vs., disproportionality, hepatotoxicity</cp:keywords>" in properties
+
+
 @needs_pandoc
 def test_a_title_with_a_blank_line_in_it_is_printed_on_one_line(project: Path) -> None:
     """Pandoc read a title holding a blank line as two paragraphs, and the Word writer left

@@ -20,6 +20,7 @@ from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
+from itertools import accumulate
 from pathlib import Path
 
 import yaml
@@ -389,10 +390,12 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
     printed, origin = _printed(text)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
+    ends: dict[str, list[int]] = {}
     blocks: tuple[frozenset[int], frozenset[int]] | None = None
     for rule in rules:
         at: list[int] = []
         upto: list[int] = []
+        until: list[int] = []
         furthest = -1
         # Text whose lines are blocks (a .docx, a figure) has no Markdown headings: Word's
         # carry a style, not a `#`, so a heading rule holds nowhere in it.
@@ -412,11 +415,25 @@ def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -
                 if start not in blocks[0 if rule.heading_only else 1]:
                     continue
             at.append(start)
+            until.append(end)
             furthest = max(furthest, end)
             upto.append(furthest)
-        if at:
-            starts[rule.id] = at
-            reach[rule.id] = upto
+        if not at:
+            continue
+        if rule.id in starts:
+            # A second rule under one name: two conventions a project gave one `id`, or two
+            # whose patterns begin with the same 24 characters. Its matches join the first
+            # rule's. They replaced them, and the number the first was written for failed
+            # as unbound. Sorted only here, so that a name held by one rule costs nothing.
+            spans = sorted(
+                [*zip(starts[rule.id], ends[rule.id], strict=True), *zip(at, until, strict=True)]
+            )
+            at = [start for start, _end in spans]
+            until = [end for _start, end in spans]
+            upto = list(accumulate(until, max))
+        starts[rule.id] = at
+        ends[rule.id] = until
+        reach[rule.id] = upto
     return Scan(starts, reach)
 
 

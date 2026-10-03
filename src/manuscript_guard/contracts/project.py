@@ -7,6 +7,7 @@ they work from anywhere inside the tree, the way git does.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,15 +71,20 @@ class Project:
     def keywords(self) -> tuple[str, ...]:
         """The keywords as the build prints them: each entry of the list as text. Of
         settings, their names, which is what colons typed where the dashes belong make of
-        a list. None where `keywords` is one value.
+        a list. One word typed where a list is expected is that one keyword. None where
+        `keywords` is a number, a yes or no, or nothing.
 
         Not through `setting`. A build under `--skip-checks` prints what the author typed,
         and `2019`, which YAML reads as a number, was printed before: it must not leave the
-        document without a word. Nor must three keywords written with colons. What changes
-        is what raised or was garbled: `keywords: 5` ended the build in `TypeError`, and
-        one word where a list is expected was printed letter by letter.
+        document without a word. Nor must three keywords written with colons, nor one word
+        written without a dash, which was printed letter by letter. What a number raised,
+        `TypeError` for `keywords: 5`, is not printed.
         """
         value = self.paper.get("keywords")
+        if isinstance(value, str):
+            # Text with nothing in it is no keyword: the title page printed "Keywords."
+            # with nothing after it.
+            return (value,) if value.strip() else ()
         return tuple(str(entry) for entry in value) if isinstance(value, (list, dict)) else ()
 
     @property
@@ -96,11 +102,13 @@ class Project:
     @property
     def extra_conventions(self) -> tuple[dict, ...]:
         """The conventions a classifier can be built from: those the schema accepts, less
-        any whose pattern does not compile, which `load_project` reports."""
+        any whose pattern does not compile or whose name names nothing, which
+        `load_project` reports."""
         return tuple(
             entry
             for entry in self.setting("conventions") or ()
             if _not_a_pattern(entry["pattern"]) is None
+            and ("id" not in entry or _not_a_name(entry["id"]) is None)
         )
 
     @property
@@ -148,32 +156,122 @@ def _not_a_pattern(pattern: str) -> str | None:
     return None
 
 
-def _patterns(paper: dict, path: Path) -> Report:
-    """A finding for each convention whose pattern is not a regular expression.
+#: What YAML and pandoc read as the end of a line, and nothing else: a line split takes
+#: the vertical tab, the form feed and three separators for one too. Those are control
+#: characters, which YAML makes of `\v` and `\f` between double quotation marks, the
+#: start of TeX's `\varepsilon` and `\frac`: folded into a space, the letter after
+#: each was lost from the document, and nothing was refused.
+LINE_BREAK = re.compile(r"\r\n|[\r\n\x85\u2028\u2029]")
 
-    The schema can only say that a pattern is text. One that does not compile raised where
-    the classifier was built, so it was "G2 could not run: error: unterminated character set
-    at position 0" with no entry named, and a traceback from `explain` and `bind`. Said
-    here, under the schema's code, which fails at every stage, and the entry is not read.
+
+def one_line(text: str) -> str:
+    """`text` with its lines folded into one, as YAML folded them between quotation marks."""
+    return " ".join(LINE_BREAK.split(text))
+
+
+def control_character(text: str) -> str | None:
+    """The first character of `text` that no document can carry, once its lines are folded
+    into one as the build folds them (`one_line`): a control character other than a tab.
+    None where there is none."""
+    for character in one_line(text):
+        if character != "\t" and unicodedata.category(character) == "Cc":
+            return character
+    return None
+
+
+def _printed_settings(paper: dict) -> list[tuple[str, str]]:
+    """What the build prints of `paper.yaml`, each with the place a finding names."""
+    out = [(key, paper[key]) for key in ("title", "short_title") if isinstance(paper.get(key), str)]
+    keywords = paper.get("keywords")
+    if isinstance(keywords, str):
+        out.append(("keywords", keywords))
+    elif isinstance(keywords, list):
+        out += [(f"keywords/{index}", str(entry)) for index, entry in enumerate(keywords)]
+    elif isinstance(keywords, dict):
+        out += [("keywords", str(entry)) for entry in keywords]
+    return out
+
+
+def _unprintable(paper: dict, path: Path) -> Report:
+    """A finding for each title or keyword holding a character no document can carry.
+
+    Between double quotation marks YAML reads a backslash as the start of an escape, so
+    `"\\alpha-blockers"` is the control character U+0007 and then `lpha-blockers`. The build
+    wrote it into the document's properties, and Word would not open the document; `check`
+    and a checked build had both passed it.
     """
-    conventions = paper.get("conventions")
     findings = []
-    for index, entry in enumerate(conventions if isinstance(conventions, list) else ()):
-        pattern = entry.get("pattern") if isinstance(entry, dict) else None
-        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
-        if why is None:  # it compiles, or it is not text, which is the schema's to report
+    for where, text in _printed_settings(paper):
+        character = control_character(text)
+        if character is None:
             continue
         findings.append(
             Finding(
                 gate="G0",
                 code="schema-violation",
-                message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
-                f"expression: {why}",
+                message=f"{where}: holds the control character U+{ord(character):04X}, which "
+                "no document can carry",
                 path=path,
-                hint="a pattern is a Python regular expression; a bracket meant as a "
-                "character is written with a backslash before it",
+                hint="between double quotation marks YAML reads a backslash as the start of "
+                "an escape, `\\a` as U+0007; write the value between single quotation marks, "
+                "where a backslash is a backslash",
             )
         )
+    return Report(tuple(findings))
+
+
+def _not_a_name(name: str) -> str | None:
+    """Why a convention's `id` names nothing a report can cite, or None where it does."""
+    if not name.strip():
+        return "it holds nothing but spaces"
+    if name.splitlines()[0] != name:
+        return "it runs over more than one line"
+    return None
+
+
+def _unusable_conventions(paper: dict, path: Path) -> Report:
+    """A finding for each convention whose pattern is not a regular expression, or whose
+    name names nothing.
+
+    The schema can only say that a pattern is text. One that does not compile raised where
+    the classifier was built, so it was "G2 could not run: error: unterminated character set
+    at position 0" with no entry named, and a traceback from `explain` and `bind`. And a
+    name of spaces was cited as `project:   `, one over two lines split the row `explain`
+    prints and the report's count. Said here, under the schema's code, which fails at every
+    stage, and the entry is not read.
+    """
+    conventions = paper.get("conventions")
+    findings = []
+    for index, entry in enumerate(conventions if isinstance(conventions, list) else ()):
+        if not isinstance(entry, dict):  # the schema's to report
+            continue
+        pattern, name = entry.get("pattern"), entry.get("id")
+        # Not text: the schema's to report.
+        why = _not_a_pattern(pattern) if isinstance(pattern, str) else None
+        if why is not None:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="schema-violation",
+                    message=f"conventions/{index}/pattern: {pattern!r} is not a regular "
+                    f"expression: {why}",
+                    path=path,
+                    hint="a pattern is a Python regular expression; a bracket meant as a "
+                    "character is written with a backslash before it",
+                )
+            )
+        why = _not_a_name(name) if isinstance(name, str) and name else None
+        if why is not None:
+            findings.append(
+                Finding(
+                    gate="G0",
+                    code="schema-violation",
+                    message=f"conventions/{index}/id: {name!r} is not a name: {why}",
+                    path=path,
+                    hint="the report and `explain` cite the convention by its name, as "
+                    "`project:<id>`; give it a word or two on one line, or leave it out",
+                )
+            )
     return Report(tuple(findings))
 
 
@@ -252,7 +350,8 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     paper_path = root / PAPER_FILE
     paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
-    reports.append(_patterns(paper, paper_path))
+    reports.append(_unusable_conventions(paper, paper_path))
+    reports.append(_unprintable(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

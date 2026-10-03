@@ -358,18 +358,27 @@ def test_a_display_edited_away_from_its_value_is_caught(project: Path) -> None:
     assert "no-display" in codes(gate_report(project))
 
 
-def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
+@pytest.mark.parametrize(
+    ("named", "cited"),
+    [("house-style", "project:house-style"), (None, r"project:\d+(?:[.,]\d+)*")],
+    ids=["named", "unnamed"],
+)
+def test_a_projects_own_allowlist_is_reported_not_silent(
+    project: Path, named: str | None, cited: str
+) -> None:
     """`conventions:` and `terms:` are self-service on purpose. Invisible is not on purpose.
 
     A pattern of `\\d+` with a `why` of "house style" is schema-legal and disables G2, and
     the run read exactly like one that had exempted nothing. Every run now says how many
-    numbers the project accounted for with its own rules, and which rules did it.
+    numbers the project accounted for with its own rules, and which rules did it: by the
+    name the author gave the rule (`id`), or by the start of its pattern.
     """
     paper = project / "paper.yaml"
     document = yaml.safe_load(paper.read_text(encoding="utf-8"))
-    # No `id`: the schema allows a pattern, a reason and a date, and an entry it refuses is
-    # not read. The rule is named for its pattern.
-    document["conventions"] = [{"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}]
+    convention = {"why": "house style", "pattern": r"\d+(?:[.,]\d+)*"}
+    if named:
+        convention["id"] = named
+    document["conventions"] = [convention]
     paper.write_text(
         yaml.safe_dump(document, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
@@ -382,7 +391,7 @@ def test_a_projects_own_allowlist_is_reported_not_silent(project: Path) -> None:
     assert "schema-violation" not in codes(report)
     assert report.counts["atoms_project_exempt"] == 3
     finding = next(f for f in report.findings if f.code == "project-exemption")
-    assert r"project:\d+(?:[.,]\d+)*" in finding.message
+    assert cited in finding.message
 
 
 @pytest.mark.parametrize(
@@ -414,6 +423,48 @@ def test_a_convention_the_schema_refuses_exempts_nothing(project: Path, conventi
     assert {"schema-violation", "unclassified-number"} <= codes(report)
     assert "gate-errored" not in codes(report)
     assert report.counts["atoms_project_exempt"] == 0
+
+
+@pytest.mark.parametrize(
+    "conventions",
+    [
+        pytest.param(
+            [
+                {"id": "house", "pattern": "7 spare kits", "why": "kept by every site"},
+                {"id": "house", "pattern": "13 spare forms", "why": "kept by every site"},
+            ],
+            id="named alike",
+        ),
+        pytest.param(
+            [
+                {"pattern": "(?i)(?:each site kept )?7 spare kits", "why": "kept by every site"},
+                {"pattern": "(?i)(?:each site kept )?13 spare forms", "why": "kept by every site"},
+            ],
+            id="patterns that begin alike",
+        ),
+    ],
+)
+def test_conventions_under_one_name_each_exempt_their_own_number(
+    project: Path, conventions
+) -> None:
+    """A rule's matches were kept under its name, so a second convention under the same
+    name, an `id` given twice or two patterns whose first 24 characters agree, replaced the
+    first one's: the number the first was written for failed as unbound."""
+    from manuscript_guard.cli import _run_gates
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["conventions"] = conventions
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    main_md(project).write_text(
+        main_md(project).read_text(encoding="utf-8")
+        + "\n\nEach site kept 7 spare kits and 13 spare forms.\n",
+        encoding="utf-8",
+    )
+
+    report, _project, _chosen, _deferred = _run_gates(project)
+    assert "unclassified-number" not in codes(report), report.render(project)
+    assert report.counts["atoms_project_exempt"] == 2
 
 
 def test_a_number_typed_into_a_file_that_is_not_utf8_is_not_a_pass(project: Path) -> None:

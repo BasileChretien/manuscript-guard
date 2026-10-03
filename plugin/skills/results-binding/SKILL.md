@@ -136,10 +136,14 @@ There are four ways out, and usually it is the first:
 
    ```yaml
    conventions:
-     - pattern: '(?i)minor allele frequency (?:below|<) 1%'
+     - id: maf-threshold
+       pattern: '(?i)minor allele frequency (?:below|<) 1%'
        why: Standard genotype quality-control threshold, stated in the Methods.
        added_on: 2026-09-24
    ```
+
+   `id` is optional. The report and `explain` cite the rule by it, as
+   `project:maf-threshold`, and without it by the start of the pattern.
 
    A name that contains digits, such as a gene or a product code, goes under `terms:`.
 

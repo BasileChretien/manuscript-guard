@@ -454,13 +454,101 @@ def test_rounds_required_is_read_beside_an_entry_the_schema_refuses(tmp_path: Pa
     assert rounds_required(project) == 5
 
 
+def test_a_convention_can_be_named_and_the_classifier_cites_that_name(tmp_path: Path) -> None:
+    """`id` names a convention. The classifier has always named the rule by it, and the
+    schema refused it, so a project that named one failed with nothing else wrong; from
+    #135 the entry was not read at all. The schema allows it now (Basile, 2026-10-03)."""
+    from manuscript_guard.classify import Classifier
+
+    written = (
+        "conventions:\n"
+        "  - id: half-normal\n"
+        "    pattern: half-normal\n"
+        "    why: a name\n"
+        "  - pattern: half-life\n"
+        "    why: a name\n"
+    )
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert report.failures == ()
+    assert project.extra_conventions[0] == {
+        "id": "half-normal",
+        "pattern": "half-normal",
+        "why": "a name",
+    }
+    named = Classifier.load(project.extra_conventions, project.extra_terms).conventions
+    ids = {rule.id for rule in named if rule.id.startswith("project:")}
+    assert ids == {"project:half-normal", "project:half-life"}, "without a name, its pattern"
+
+
+@pytest.mark.parametrize("name", ["5", "''", "[half-normal]", "'   '", '"first\\nsecond"'])
+def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: Path) -> None:
+    """A name the schema refuses is its finding, at the entry, and the entry is not read: a
+    convention with a name in the wrong shape exempts nothing until it is put right."""
+    written = f"conventions:\n  - id: {name}\n    pattern: half-normal\n    why: a name\n"
+    project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    assert [f.code for f in report.failures] == ["schema-violation"]
+    assert report.failures[0].message.startswith("conventions/0/id: ")
+    assert project.extra_conventions == ()
+
+
+#: Each written between double quotation marks, as YAML reads them: `\a` is U+0007, `\e`
+#: U+001B. The place `check` names and the character it names there.
+CONTROL = {
+    "title": ('title: "Effects of \\alpha-blockers"\n', "title", "U+0007"),
+    "short title": ('short_title: "\\alpha-blockers"\n', "short_title", "U+0007"),
+    "keyword": ('keywords:\n  - plain\n  - "\\escape"\n', "keywords/1", "U+001B"),
+    "one keyword": ('keywords: "\\alpha"\n', "keywords", "U+0007"),
+    # Control characters a line split takes for the end of a line, which YAML and pandoc
+    # do not: `\v` and `\f` begin TeX's `\varepsilon` and `\frac`.
+    "vertical tab": ('short_title: "The $\\varepsilon$ coefficient"\n', "short_title", "U+000B"),
+    "form feed": ('keywords: ["$\\frac{a}{b}$"]\n', "keywords/0", "U+000C"),
+    "file separator": ('keywords: ["before\\x1cafter"]\n', "keywords/0", "U+001C"),
+    "record separator": ('short_title: "before\\x1eafter"\n', "short_title", "U+001E"),
+}
+
+
+@pytest.mark.parametrize("case", list(CONTROL))
+def test_a_control_character_in_what_the_document_prints_is_a_finding(
+    case: str, tmp_path: Path
+) -> None:
+    """A document cannot carry it, and `check` passed it: the build wrote a .docx Word will
+    not open. A line break is not one: the build folds lines into one."""
+    written, where, character = CONTROL[case]
+    paper = PAPER if case != "title" else PAPER.replace('title: "A study"\n', "")
+    project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    # One keyword where a list is expected is also the schema's finding for its shape.
+    found = [f for f in report.failures if "control character" in f.message]
+    assert [(f.code, f.message.split(",")[0]) for f in found] == [
+        ("schema-violation", f"{where}: holds the control character {character}")
+    ]
+
+
+def test_a_title_over_several_lines_is_no_finding(tmp_path: Path) -> None:
+    """YAML's own line breaks are folded by the build, not refused: a line feed, YAML's
+    `\\N`, `\\L` and `\\P` (U+0085, U+2028, U+2029), and a tab is a tab."""
+    written = (
+        'short_title: "First\nsecond\\Nthird\\Lfourth\\Pfifth"\n'
+        'keywords: ["a\tb"]\n'
+    )
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+    assert report.failures == ()
+
+
 @pytest.mark.parametrize(
     ("keywords", "printed"),
     [
         (5, None),
         (2.5, None),
         (True, None),
-        ("pharmacovigilance", None),
+        # One word typed where a list is expected, which YAML reads as text.
+        ("pharmacovigilance", ["pharmacovigilance"]),
+        ("R", ["R"]),
+        # Text with nothing in it is no keyword: "**Keywords.**" with nothing after it.
+        ("", None),
+        ("   ", None),
         ([5, "signal"], ["5", "signal"]),
         (["pharmacovigilance", 2019], ["pharmacovigilance", "2019"]),
         ([False, "cGMP"], ["False", "cGMP"]),
@@ -475,8 +563,10 @@ def test_keywords_in_the_wrong_shape_do_not_stop_a_build_and_none_is_dropped_fro
     keywords: object, printed: list[str] | None, project: Path
 ) -> None:
     """`keywords: 5` ended a build with `--skip-checks`, and the title page of the pack, in
-    `TypeError: 'int' object is not iterable`: the one key the build reads as a list. One
-    word where a list is expected was printed letter by letter. Neither is printed now.
+    `TypeError: 'int' object is not iterable`: the one key the build reads as a list. A
+    number is not printed now. One word where a list is expected was printed letter by
+    letter, then for a while not at all, which lost it from the document; it is printed
+    whole, as the one keyword it is (Basile, 2026-10-03).
 
     An entry of a list that is not text is printed as it was: `2019`, which YAML reads as a
     number, reached an unchecked document and must not leave it without a word."""

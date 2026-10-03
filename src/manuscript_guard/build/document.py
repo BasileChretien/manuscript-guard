@@ -18,6 +18,7 @@ cannot go stale: nothing is ever carried across by hand, so there is nothing to 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import shutil
@@ -30,6 +31,7 @@ from pathlib import Path
 
 from manuscript_guard.build.styles import reference_with
 from manuscript_guard.contracts._schema import read_text
+from manuscript_guard.contracts.project import PAPER_FILE, control_character, one_line
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "BUILD"
@@ -238,23 +240,57 @@ def _word_lines(project) -> list[str]:
     return lines
 
 
+def _yaml_text(project, key: str, value: object) -> str:
+    """`value` on one line, as a double-quoted YAML string that pandoc reads back as the
+    same text.
+
+    The title, the short title and the keywords were written between double quotation marks
+    by hand. A `"` in one ended the string, and pandoc refused the header; a backslash began
+    an escape, so `$\\alpha$` became the control character 7 and the document carried it in
+    its properties, which Word will not open. A valid `paper.yaml` passed `check` and built
+    that document. JSON's escapes are YAML's.
+
+    The lines are folded into one first, as YAML folded them between hand-written quotation
+    marks: a title holding a blank line was two paragraphs to pandoc, and the Word writer
+    left it out. Only what YAML reads as the end of a line is folded (`one_line`). And any
+    other control character is refused, as pandoc refused it before: one comes
+    from an escape in `paper.yaml` itself, `"\\alpha"` between double quotation marks, and
+    written as JSON's escape it reached the document. `check` reports it first.
+    """
+    text = one_line(str(value))
+    character = control_character(text)
+    if character is not None:
+        raise BuildError(
+            f"{project.root / PAPER_FILE}: `{key}` holds the control character "
+            f"U+{ord(character):04X}, which no document can carry. Between double quotation "
+            "marks YAML reads a backslash as the start of an escape, `\\a` as U+0007; write "
+            "the value between single quotation marks, where a backslash is a backslash."
+        )
+    return json.dumps(text, ensure_ascii=False)
+
+
 def _front_matter(project, *, supplementary: bool = False, live: bool = False) -> str:
-    """A YAML header carrying the title and the Zotero settings the filter reads."""
+    """A YAML header carrying the title and the Zotero settings the filter reads.
+
+    What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
+    italics, and TeX outside `$` is dropped.
+    """
     paper = project.paper
-    title = str(paper.get("title", "")).replace(chr(34), chr(39))
+    title = str(paper.get("title", ""))
     if supplementary:
         title = f"Supplementary material for: {title}"
-    lines = ["---", f'title: "{title}"']
+    lines = ["---", f"title: {_yaml_text(project, 'title', title)}"]
     # The short title and keywords belong to the paper. A supplement carrying the paper's
     # running head reads, in a journal's system, as a second copy of the paper.
     short = None if supplementary else paper.get("short_title")
     if short:
-        lines.append(f'subtitle: "{short}"')
+        lines.append(f"subtitle: {_yaml_text(project, 'short_title', short)}")
     # `keywords: 5` raised here under `--skip-checks`, and one word where a list is expected
     # was printed letter by letter; see `Project.keywords`.
     keywords = None if supplementary else project.keywords
     if keywords:
-        lines.append("keywords: [" + ", ".join(f'"{k}"' for k in keywords) + "]")
+        printed = ", ".join(_yaml_text(project, "keywords", k) for k in keywords)
+        lines.append(f"keywords: [{printed}]")
     lines += [
         "lang: " + ("en-GB" if project.english_variant == "en-GB" else "en-US"),
         "zotero:",

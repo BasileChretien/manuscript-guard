@@ -249,9 +249,11 @@ And one for the manuscript itself: `manuscript-unreadable`, for a manuscript fil
 cannot be had, because it is not UTF-8 or the system will not open it. Each gate that reads
 the manuscript stops at such a file, so it is reported once for each file, at the file and
 the line, with the gates that did not run. The other gates report as usual. It fails at
-every stage too. Outside `check`, a command that reads the manuscript says the same sentence
-and exits 2. The dry run of a review panel is the one that does not: it decodes the files
-itself, names the file and exits 2, with neither the byte and the line nor the encoding.
+every stage too. Outside `check`, a command that reads the manuscript's text says the same
+sentence and exits 2. Of those, the dry run of a review panel is the one that does not: it
+decodes the files itself, names the file and exits 2, with neither the byte and the line nor
+the encoding. `review` reads only the bytes, for the digest, and the note after an edit reads
+the text with the bytes it cannot decode replaced; neither says anything of the encoding.
 
 **Tables and figures are generated from results, never hand-authored.** Tables are emitted
 by code from `results.json`; figure scripts may read `results.json` and nothing else. This
@@ -3551,7 +3553,14 @@ Added by the adversarial review, verified and **not** fixed:
   What has changed is that it is no longer *invisible*: every run reports how many numbers
   the project's own rules accounted for, and which rules did it, as `project-exemption`
   (a warning past a quarter of the numbers in the manuscript). Self-service and silent are
-  different things, and only the first was intended.
+  different things, and only the first was intended. A convention may be given a name,
+  `id`, by which that report and `explain` cite it, as `project:<id>`; without one it is
+  cited by the first 24 characters of its pattern (Basile, 2026-10-03). A name is text on
+  one line with something in it besides spaces; another is the schema's finding, and the
+  convention is not read. Two conventions given one name each exempt what they match and
+  are counted under it together, as two whose patterns begin alike are. Before the review
+  of #153 the second one's matches replaced the first's, under either kind of shared name,
+  and a number the first was written for failed as unbound.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -4492,14 +4501,39 @@ Closed since, and why each mattered:
   schema's code, and the entry is not read. It is made where the project is loaded, before
   any gate, so whatever the compiler raises is caught: the review found a pattern,
   `(?a)(?u)x`, whose error was not the compiler's own, and which ended every command in a
-  traceback and the hooks in silence. One entry that was read is no longer: a convention
-  with an `id`. The classifier names the rule by it and the schema has never allowed it, so
-  a project that wrote one failed already. A test here wrote one. The build reads
+  traceback and the hooks in silence. A convention with an `id`, by which the classifier
+  names the rule, was refused by the schema, so a project that wrote one failed already,
+  and with this change it was not read either. The schema allows `id` since (Basile,
+  2026-10-03), and a named convention is read and cited by its name. The build reads
   `keywords` with no gate in front of it under `--skip-checks`. It raised on `keywords: 5`,
-  and printed one word, where a list is expected, letter by letter; neither is printed now.
+  which is not printed now. One word where a list is expected was printed letter by letter,
+  then for a day not at all; it is printed whole, as the one keyword (Basile, 2026-10-03).
   An entry of the list that is not text is printed as it was, `2019` for one, which YAML
   reads as a number, and so are keywords typed with colons where the dashes belong, which
-  YAML reads as settings: a build that was asked not to check prints what was typed.
+  YAML reads as settings: a build that was asked not to check prints what was typed. What
+  it prints, pandoc reads as Markdown, as it reads the text: `*E. coli*` is set in italics
+  in a title and loses its asterisks in the document's properties, and
+  TeX outside `$`, `TNF\alpha`, is dropped. The review of #153 found that the title, the
+  short title and the keywords were written into the build's YAML header by hand, between
+  double quotation marks. A `"` in one ended the string and the build stopped, and a
+  backslash began an escape: `$\alpha$-synuclein` became the control character 7, which the
+  document carried in its properties and Word would not open. A keyword or a title the
+  schema accepts did this through `check` and a checked build, which made it a false pass,
+  older than #135. They are written as JSON strings now, whose escapes are YAML's, with
+  their lines folded into one first, as YAML folded them between hand-written quotation
+  marks: written as JSON, a blank line in a title made it two paragraphs, and the Word
+  writer left the title out. And a control character is refused, by `check` as a finding
+  at the key and by the build in a sentence. One comes from an escape in `paper.yaml`
+  itself: `"\alpha-blockers"` between double quotation marks is U+0007 and `lpha-blockers`.
+  Pandoc had refused it in the hand-written header, and written as JSON's escape it reached
+  the document. Both were found in the second round of the review. The check of that fix
+  found that a line split also takes the vertical tab, the form feed and three
+  separators for the end of a line, which YAML does not: `\v` and `\f` begin TeX's
+  `\varepsilon` and `\frac`, and folded into a space they lost the letter after them
+  through `check` and the build. Only what YAML reads as the end of a line is folded, and
+  any other control character is refused.
+  Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
+  than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name

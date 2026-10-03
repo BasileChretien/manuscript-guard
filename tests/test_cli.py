@@ -323,6 +323,155 @@ def test_build_refuses_while_a_gate_fails(project: Path) -> None:
     assert run("build", str(project), "--offline") == 1
 
 
+#: What `paper.yaml` can say that the front matter of the build must carry as text: a
+#: double quotation mark, a backslash, TeX. Each was written between double quotation marks
+#: into YAML by hand, so `"` ended the string and the build stopped, and `\a` became the
+#: control character 7, which made a .docx Word refuses to open. A word that survives
+#: pandoc's reading of each as Markdown, as it reads the text.
+FRONT_MATTER = {
+    "a keyword with quotation marks": ("keywords", 'say "hi" there', "hi"),
+    "a keyword with TeX in it": ("keywords", r"$\alpha$-synuclein", "synuclein"),
+    "a keyword with a backslash": ("keywords", r"TNF\alpha signalling", "signalling"),
+    "a list of keywords with TeX in it": ("keywords", [r"$\alpha$-synuclein", "signal"], "signal"),
+    "a title with both": ("title", r'The "weekend effect" in TNF\alpha signalling', "weekend"),
+    "a short title with both": ("short_title", r'"Weekend" and TNF\alpha', "Weekend"),
+}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("case", list(FRONT_MATTER))
+def test_the_front_matter_carries_quotes_and_backslashes_into_a_readable_document(
+    case: str, project: Path
+) -> None:
+    """A list of keywords, a title and a short title the schema accepts went through `check`
+    and a checked build with the document unreadable: a false pass. One keyword typed
+    without a dash took the same road in an unchecked build. The document must be one Word
+    can open: its XML parses."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    import yaml
+
+    key, value, survives = FRONT_MATTER[case]
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document[key] = value
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    built = next((project / "build").glob("manuscript*.docx"))
+    with zipfile.ZipFile(built) as docx:
+        for member in ("docProps/core.xml", "word/document.xml"):
+            ET.fromstring(docx.read(member))  # raises on a control character
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert survives in (properties if key == "keywords" else body)
+
+
+#: A title or a keyword written between double quotation marks in `paper.yaml`, where YAML
+#: reads a backslash as an escape: `\a` is the control character U+0007. Written into the
+#: document's properties, it made a .docx Word refuses to open, and `check` and a checked
+#: build both passed it. What replaces which lines of the example's `paper.yaml`, and the
+#: place `check` names.
+YAML_ESCAPES = {
+    "a title": (
+        'title: "Reporting of hepatic injury',
+        'title: "Effects of \\alpha-blockers on hepatic injury"\n'
+        'old_title: "Reporting of hepatic injury',
+        "title",
+        "U+0007",
+    ),
+    "a keyword": (
+        "  - pharmacovigilance\n",
+        '  - "$\\alpha$-synuclein"\n',
+        "keywords/0",
+        "U+0007",
+    ),
+    # `\v` is U+000B, which a line split took for the end of a line: folded into a
+    # space, the letter after it was lost and nothing was refused.
+    "a title with \\varepsilon": (
+        'title: "Reporting of hepatic injury',
+        'title: "The $\\varepsilon$ coefficient"\n'
+        'old_title: "Reporting of hepatic injury',
+        "title",
+        "U+000B",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(YAML_ESCAPES))
+def test_a_control_character_from_a_yaml_escape_is_refused_by_check_and_the_build(
+    case: str, project: Path, capsys
+) -> None:
+    old, new, where, character = YAML_ESCAPES[case]
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    text = text.replace(old, new, 1)
+    if new.startswith("title"):  # the old title moved under a name YAML ignores: drop it
+        text = "\n".join(line for line in text.splitlines() if not line.startswith("old_title"))
+    paper.write_text(text + "\n", encoding="utf-8")
+
+    assert run("check", str(project)) == 1
+    assert f"{where}: holds the control character {character}" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert character in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+@needs_pandoc
+def test_a_title_with_a_blank_line_in_it_is_printed_on_one_line(project: Path) -> None:
+    """Pandoc read a title holding a blank line as two paragraphs, and the Word writer left
+    the title out of the document. Written by hand between quotation marks, YAML had folded
+    the lines into one, which is what the document gets."""
+    import re
+    import zipfile
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(
+        text.replace(old, "title: |\n  First part\n\n  second part", 1), encoding="utf-8"
+    )
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    built = next((project / "build").glob("manuscript*.docx"))
+    with zipfile.ZipFile(built) as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert "<dc:title>First part second part</dc:title>" in properties
+    title = re.search(r'<w:pStyle w:val="Title"\s*/>.*?</w:p>', body, re.S)
+    assert title is not None, "no paragraph in the document carries the title"
+    assert "First part second part" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", title[0]))
+
+
+@needs_pandoc
+@pytest.mark.parametrize("word", ["pharmacovigilance", "R"])
+def test_an_unchecked_build_prints_one_keyword_typed_without_a_dash_whole(
+    word: str, project: Path
+) -> None:
+    """`keywords: pharmacovigilance`, one word where a list is expected, which the schema
+    refuses. A build that was asked not to check prints what was typed, and this word is
+    the one keyword: it was printed letter by letter, then not at all."""
+    import zipfile
+
+    import yaml
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["keywords"] = word
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.UNCHECKED.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+    assert f"<cp:keywords>{word}</cp:keywords>" in properties
+
+
 @needs_pandoc
 def test_build_skip_checks_builds_under_a_name_that_says_so(project: Path, capsys) -> None:
     """An unchecked build must not be able to pass for a checked one.

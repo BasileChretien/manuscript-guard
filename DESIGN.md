@@ -4507,7 +4507,14 @@ Closed since, and why each mattered:
   backslash began an escape: `$\alpha$-synuclein` became the control character 7, which the
   document carried in its properties and Word would not open. A keyword or a title the
   schema accepts did this through `check` and a checked build, which made it a false pass,
-  older than #135. They are written as JSON strings now, whose escapes are YAML's.
+  older than #135. They are written as JSON strings now, whose escapes are YAML's, with
+  their lines folded into one first, as YAML folded them between hand-written quotation
+  marks: written as JSON, a blank line in a title made it two paragraphs, and the Word
+  writer left the title out. And a control character is refused, by `check` as a finding
+  at the key and by the build in a sentence. One comes from an escape in `paper.yaml`
+  itself: `"\alpha-blockers"` between double quotation marks is U+0007 and `lpha-blockers`.
+  Pandoc had refused it in the hand-written header, and written as JSON's escape it reached
+  the document. Both were found in the second round of the review.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

@@ -368,6 +368,72 @@ def test_the_front_matter_carries_quotes_and_backslashes_into_a_readable_documen
     assert survives in (properties if key == "keywords" else body)
 
 
+#: A title or a keyword written between double quotation marks in `paper.yaml`, where YAML
+#: reads a backslash as an escape: `\a` is the control character U+0007. Written into the
+#: document's properties, it made a .docx Word refuses to open, and `check` and a checked
+#: build both passed it. What replaces which lines of the example's `paper.yaml`, and the
+#: place `check` names.
+YAML_ESCAPES = {
+    "a title": (
+        'title: "Reporting of hepatic injury',
+        'title: "Effects of \\alpha-blockers on hepatic injury"\n'
+        'old_title: "Reporting of hepatic injury',
+        "title",
+    ),
+    "a keyword": ("  - pharmacovigilance\n", '  - "$\\alpha$-synuclein"\n', "keywords/0"),
+}
+
+
+@pytest.mark.parametrize("case", list(YAML_ESCAPES))
+def test_a_control_character_from_a_yaml_escape_is_refused_by_check_and_the_build(
+    case: str, project: Path, capsys
+) -> None:
+    old, new, where = YAML_ESCAPES[case]
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    text = text.replace(old, new, 1)
+    if case == "a title":  # the old title moved under a name YAML ignores: drop it
+        text = "\n".join(line for line in text.splitlines() if not line.startswith("old_title"))
+    paper.write_text(text + "\n", encoding="utf-8")
+
+    assert run("check", str(project)) == 1
+    assert f"{where}: holds the control character U+0007" in capsys.readouterr().out
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 2
+    said = capsys.readouterr().err
+    assert "paper.yaml" in said
+    assert "U+0007" in said
+    assert "Traceback" not in said
+    assert not list((project / "build").glob("*.docx"))
+
+
+@needs_pandoc
+def test_a_title_with_a_blank_line_in_it_is_printed_on_one_line(project: Path) -> None:
+    """Pandoc read a title holding a blank line as two paragraphs, and the Word writer left
+    the title out of the document. Written by hand between quotation marks, YAML had folded
+    the lines into one, which is what the document gets."""
+    import re
+    import zipfile
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(
+        text.replace(old, "title: |\n  First part\n\n  second part", 1), encoding="utf-8"
+    )
+
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    built = next((project / "build").glob("manuscript*.docx"))
+    with zipfile.ZipFile(built) as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    assert "<dc:title>First part second part</dc:title>" in properties
+    title = re.search(r'<w:pStyle w:val="Title"\s*/>.*?</w:p>', body, re.S)
+    assert title is not None, "no paragraph in the document carries the title"
+    assert "First part second part" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", title[0]))
+
+
 @needs_pandoc
 @pytest.mark.parametrize("word", ["pharmacovigilance", "R"])
 def test_an_unchecked_build_prints_one_keyword_typed_without_a_dash_whole(

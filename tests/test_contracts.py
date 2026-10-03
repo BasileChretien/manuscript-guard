@@ -493,6 +493,39 @@ def test_a_name_that_is_not_text_is_the_schemas_to_report(name: str, tmp_path: P
     assert project.extra_conventions == ()
 
 
+#: Each written between double quotation marks, as YAML reads them: `\a` is U+0007, `\e`
+#: U+001B. The place `check` names and the character it names there.
+CONTROL = {
+    "title": ('title: "Effects of \\alpha-blockers"\n', "title", "U+0007"),
+    "short title": ('short_title: "\\alpha-blockers"\n', "short_title", "U+0007"),
+    "keyword": ('keywords:\n  - plain\n  - "\\escape"\n', "keywords/1", "U+001B"),
+    "one keyword": ('keywords: "\\alpha"\n', "keywords", "U+0007"),
+}
+
+
+@pytest.mark.parametrize("case", list(CONTROL))
+def test_a_control_character_in_what_the_document_prints_is_a_finding(
+    case: str, tmp_path: Path
+) -> None:
+    """A document cannot carry it, and `check` passed it: the build wrote a .docx Word will
+    not open. A line break is not one: the build folds lines into one."""
+    written, where, character = CONTROL[case]
+    paper = PAPER if case != "title" else PAPER.replace('title: "A study"\n', "")
+    project, report = load_project(a_project(tmp_path / "paper", paper + written))
+
+    # One keyword where a list is expected is also the schema's finding for its shape.
+    found = [f for f in report.failures if "control character" in f.message]
+    assert [(f.code, f.message.split(",")[0]) for f in found] == [
+        ("schema-violation", f"{where}: holds the control character {character}")
+    ]
+
+
+def test_a_title_over_several_lines_is_no_finding(tmp_path: Path) -> None:
+    written = 'short_title: "First\nsecond"\nkeywords: ["a\tb"]\n'
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+    assert report.failures == ()
+
+
 @pytest.mark.parametrize(
     ("keywords", "printed"),
     [

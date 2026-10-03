@@ -7,6 +7,7 @@ they work from anywhere inside the tree, the way git does.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -155,6 +156,57 @@ def _not_a_pattern(pattern: str) -> str | None:
     return None
 
 
+def control_character(text: str) -> str | None:
+    """The first character of `text` that no document can carry, once its lines are folded
+    into one as the build folds them: a control character other than a tab. None where
+    there is none."""
+    for character in " ".join(text.splitlines()):
+        if character != "\t" and unicodedata.category(character) == "Cc":
+            return character
+    return None
+
+
+def _printed_settings(paper: dict) -> list[tuple[str, str]]:
+    """What the build prints of `paper.yaml`, each with the place a finding names."""
+    out = [(key, paper[key]) for key in ("title", "short_title") if isinstance(paper.get(key), str)]
+    keywords = paper.get("keywords")
+    if isinstance(keywords, str):
+        out.append(("keywords", keywords))
+    elif isinstance(keywords, list):
+        out += [(f"keywords/{index}", str(entry)) for index, entry in enumerate(keywords)]
+    elif isinstance(keywords, dict):
+        out += [("keywords", str(entry)) for entry in keywords]
+    return out
+
+
+def _unprintable(paper: dict, path: Path) -> Report:
+    """A finding for each title or keyword holding a character no document can carry.
+
+    Between double quotation marks YAML reads a backslash as the start of an escape, so
+    `"\\alpha-blockers"` is the control character U+0007 and then `lpha-blockers`. The build
+    wrote it into the document's properties, and Word would not open the document; `check`
+    and a checked build had both passed it.
+    """
+    findings = []
+    for where, text in _printed_settings(paper):
+        character = control_character(text)
+        if character is None:
+            continue
+        findings.append(
+            Finding(
+                gate="G0",
+                code="schema-violation",
+                message=f"{where}: holds the control character U+{ord(character):04X}, which "
+                "no document can carry",
+                path=path,
+                hint="between double quotation marks YAML reads a backslash as the start of "
+                "an escape, `\\a` as U+0007; write the value between single quotation marks, "
+                "where a backslash is a backslash",
+            )
+        )
+    return Report(tuple(findings))
+
+
 def _not_a_name(name: str) -> str | None:
     """Why a convention's `id` names nothing a report can cite, or None where it does."""
     if not name.strip():
@@ -286,6 +338,7 @@ def load_project(start: Path | None = None) -> tuple[Project, Report]:
     paper = _settings(read_structured(paper_path), paper_path)
     reports.append(validate(paper, "paper", paper_path))
     reports.append(_unusable_conventions(paper, paper_path))
+    reports.append(_unprintable(paper, paper_path))
 
     authors_path = root / AUTHORS_FILE
     authors = read_structured(authors_path)

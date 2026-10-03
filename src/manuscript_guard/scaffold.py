@@ -15,6 +15,7 @@ import yaml
 
 from manuscript_guard.contracts._schema import ContractError
 from manuscript_guard.contracts.project import (
+    KEEP_THE_TEX,
     named,
     one_line,
     outside_maths,
@@ -308,12 +309,16 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
             f"the title holds {named(character)}, which no document can carry, so "
             "nothing was made; give the title again without it"
         )
-    # So is TeX the document would be printed without, in the words of the finding `check`
-    # would make of it: the title is typed into two files here, and a project made with it
-    # opened on that finding in both.
+    # So is TeX that `check` would fail the title for, in the finding's words and with its
+    # hint. `check` reports it once, at `paper.yaml`, but the title is typed into the
+    # manuscript's header here too, so a project made with it opened on a finding with the
+    # title to mend in two files. The refusal does not say the title cannot be printed
+    # whole, which past a sign it may be.
     said = outside_maths(title)
     if said is not None:
-        raise ContractError(f"the title cannot be printed whole, so nothing was made: {said}")
+        raise ContractError(
+            f"the title is not taken, so nothing was made: {said}. Note that {KEEP_THE_TEX}"
+        )
 
     for name in _DIRS:
         (root / name).mkdir(parents=True, exist_ok=True)

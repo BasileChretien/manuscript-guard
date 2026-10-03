@@ -585,9 +585,15 @@ def test_tex_outside_dollar_signs_is_refused_by_check_at_every_stage_and_by_the_
         paper.read_text(encoding="utf-8") + chr(10) + f"stage: {stage}" + chr(10),
         encoding="utf-8",
     )
+    # A keyword is printed in the document's properties only, where maths is written as
+    # its TeX, so there the remedy is the character itself.
+    remedy = (
+        "type the character it stands for" if where.startswith("keywords")
+        else f"write `${command}$`"
+    )
     says = (
         f"`{command}` stands outside dollar signs, and the document is printed without it; "
-        f"write `${command}$`"
+        f"{remedy}"
     )
 
     assert run("check", str(project)) == 1
@@ -618,6 +624,33 @@ def test_the_same_title_with_its_tex_between_dollar_signs_builds_with_the_letter
 
 
 @needs_pandoc
+def test_a_keyword_with_maths_is_printed_as_its_tex_and_one_with_the_character_as_typed(
+    project: Path,
+) -> None:
+    """Why the finding tells a keyword to hold the character: a keyword is printed in the
+    document's properties only, and pandoc writes maths there as its TeX."""
+    import re
+    import zipfile
+
+    alpha = chr(0x3B1)
+    _with_line(project, "  - pharmacovigilance", "  - TNF$" + chr(92) + "alpha$ signalling")
+    _with_line(project, "  - disproportionality", "  - TNF" + alpha + " inhibitors")
+
+    assert run("check", str(project)) == 0
+    assert run("build", str(project), "--offline") == 0
+    with zipfile.ZipFile(project / "build" / "manuscript.docx") as docx:
+        properties = docx.read("docProps/core.xml").decode("utf-8")
+        body = docx.read("word/document.xml").decode("utf-8")
+    keywords = re.search("<cp:keywords>(.*?)</cp:keywords>", properties, re.S)
+    assert keywords is not None
+    assert keywords[1].split(", ")[:2] == [
+        "TNF" + chr(92) + "alpha signalling",
+        "TNF" + alpha + " inhibitors",
+    ]
+    assert "signalling" not in body, "the text of the document prints no keyword"
+
+
+@needs_pandoc
 def test_import_takes_back_a_document_built_before_tex_outside_dollar_signs_was_refused(
     project: Path, monkeypatch, capsys
 ) -> None:
@@ -630,8 +663,8 @@ def test_import_takes_back_a_document_built_before_tex_outside_dollar_signs_was_
     _with_line(project, "title: ", "title: 'IFN-" + chr(92) + "gamma release assays'")
 
     with monkeypatch.context() as before:  # as the tool was before the refusal
-        before.setattr(document, "outside_maths", lambda text: None)
-        before.setattr(contract, "outside_maths", lambda text: None)
+        before.setattr(document, "outside_maths", lambda text, **how: None)
+        before.setattr(contract, "outside_maths", lambda text, **how: None)
         assert run("build", str(project), "--offline") == 0
     sent = project / "build" / "manuscript.docx"
     capsys.readouterr()

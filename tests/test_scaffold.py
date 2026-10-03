@@ -408,14 +408,16 @@ TEX_IN_A_TITLE = {
 
 
 @pytest.mark.parametrize("case", list(TEX_IN_A_TITLE))
-def test_init_refuses_a_title_the_document_would_be_printed_without_part_of(
+def test_init_refuses_a_title_whose_tex_check_would_fail(
     case: str, tmp_path: Path, capsys
 ) -> None:
     """`init --title "IFN-\\gamma release assays"` made a project whose title `check`
-    passed and the build printed `IFN-release assays`. `check` fails that title now, in
-    `paper.yaml` and in the header `init` types into the manuscript, so a project made
-    with it would open on a finding in two files for one slip. The title is refused
-    before anything is made, in the finding's words."""
+    passed and the build printed `IFN-release assays`. `check` fails that title now. It
+    reports it once, at `paper.yaml`, but `init` types the title into the manuscript's
+    header too, so a project made with it would open on a finding with the title to mend
+    in two files. The title is refused before anything is made, in the finding's words and
+    with its hint. The refusal does not say the title cannot be printed whole: past a sign
+    pandoc may well print it whole, and the finding says "may"."""
     from manuscript_guard.cli import main
 
     title, says = TEX_IN_A_TITLE[case]
@@ -425,6 +427,8 @@ def test_init_refuses_a_title_the_document_would_be_printed_without_part_of(
     assert "Traceback" not in said
     assert says in said
     assert "nothing was made" in said
+    assert "cannot be printed whole" not in said
+    assert "for italics write `*in vivo*`" in said, "the hint, which has the other remedies"
     assert not root.exists()
 
 

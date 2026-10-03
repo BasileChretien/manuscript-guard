@@ -282,7 +282,7 @@ def _yaml_text(project, key: str, value: object, *, sent: bool = False) -> str:
             f"{project.root / PAPER_FILE}: `{key}` holds {named(character)}, which no "
             f"document can carry: {advice(character)}."
         )
-    said = None if sent else outside_maths(text)
+    said = None if sent else outside_maths(text, keyword=key == "keywords")
     if said is not None:
         raise BuildError(f"{project.root / PAPER_FILE}: `{key}`: {said}. Note that {KEEP_THE_TEX}.")
     return json.dumps(text, ensure_ascii=False)

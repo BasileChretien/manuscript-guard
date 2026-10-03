@@ -30,7 +30,13 @@ needs_pandoc = pytest.mark.skipif(PANDOC is None, reason="pandoc is not installe
 B = chr(92)
 G = B + "gamma"
 NBSP = chr(0xA0)
+THIN_SPACE = chr(0x2009)
+TAB = chr(9)
 E_ACUTE = chr(0xE9)
+#: A letter since Unicode 15.1, which pandoc 3.9 knows and Python before 3.13 does not, and
+#: a code point no Unicode has named.
+NEW_LETTER = chr(0x2EBF0)
+UNNAMED = chr(0x50000)
 
 #: Lines pandoc drops TeX from, each with the command the rule names.
 OUTSIDE = {
@@ -50,6 +56,23 @@ OUTSIDE = {
     "maths never closed": (f"${B}alpha{B}", B + "alpha"),
     "two dollar signs never closed": (f"$${G}", G),
     "emphasis": (f"*{G}*", G),
+    "a digit after maths in a name": (f"TGF-${B}beta$1 signalling", B + "beta"),
+    "a dollar amount that pairs with the opening dollar sign": (
+        f"Costs at $50,000 per QALY of TNF-${B}alpha$ inhibitors",
+        B + "alpha",
+    ),
+    "a letter this Python may not know": (
+        f"Outcomes {B}{NEW_LETTER}x and after",
+        B + NEW_LETTER + "x",
+    ),
+    # Each of these five was passed by the rule with one line of it changed, and by every
+    # test then: a space that is no ASCII space after the opening dollar sign, a tab before
+    # the closing one, a brace after a backslash in a text group, and four dollar signs
+    # where display maths would open.
+    "a thin space after the opening dollar sign": (f"${THIN_SPACE}{G}$", G),
+    "a tab before the closing dollar sign": (f"${G}{TAB}$", G),
+    "a brace after a backslash in a text group": (f"${B}text{{${B}}}{G}$ x", G),
+    "four dollar signs where display maths would open": (f"$$$$$$ $${B}g$$", B + "g"),
 }
 
 #: Lines pandoc drops TeX from where a simpler reading of dollar signs sees maths: the
@@ -64,6 +87,24 @@ PAST_A_SIGN = {
     "a superscript holding one": (f"^a${G}^ x$", G, "^"),
     "a doubled backslash in a subscript": (f"~a{B}{G}~", G, "~"),
     "a doubled backslash in a superscript": (f"x^{B}{G};^", G, "^"),
+    "an escaped space in a subscript": (f"~a{B} {B}{G}~", G, "~"),
+    # Pandoc resolves a character reference in what a subscript or a superscript holds
+    # before it reads that as Markdown, so one that is a backslash, or the letter after
+    # one, makes TeX there. Outside one a reference is a character, and nothing is lost.
+    "a reference for the backslash in a superscript": (
+        "IFN-^&bsol;gamma^ release assays",
+        G,
+        "^",
+    ),
+    "a numbered reference for it in a subscript": ("x~&#92;gamma~ y", G, "~"),
+    "a hexadecimal one": ("x^&#x5c;gamma^ y", G, "^"),
+    "a reference for the letter": (f"~{B}{B}&#103;amma~", G, "~"),
+    "a reference for a Greek letter": (
+        f"TNF~{B}{B}&alpha;~ signalling",
+        B + chr(0x3B1),
+        "~",
+    ),
+    "a reference in a superscript past a bracket": ("[a] x^&bsol;gamma^ y", G, "["),
 }
 
 #: Lines pandoc drops nothing from, and the rule reports nothing in.
@@ -90,6 +131,15 @@ INSIDE = {
     "quotation marks around maths": f'"a ${G}" x$',
     "an escaped bracket before maths": f"{B}[18F{B}]FDG and TGF-${B}beta$",
     "an escaped tilde before maths": f"{B}~$ and ${G}$",
+    "a reference for a backslash outside a subscript": "x &bsol;gamma y",
+    "a reference for an ampersand in a superscript": "x^&amp;bsol;gamma^",
+    "a dollar amount escaped before maths": (
+        f"Costs at {B}$50,000 per QALY of TNF-${B}alpha$ inhibitors"
+    ),
+    "a digit inside the dollar signs, after a space and as a subscript": (
+        f"TGF-${B}beta_1$ and ${B}geq$ 65 and ${B}beta$~1~"
+    ),
+    "two dollar amounts": "Costs of $5 and $10 per dose",
     "no backslash": "A plain title",
     "nothing": "",
 }
@@ -108,19 +158,36 @@ OVER = {
     "maths in a superscript": (f"x^${G}$^", G, "^"),
     "maths after a subscript that holds a dollar sign": (f"~$~ ${G}$", G, "~"),
     "a brace never closed": (f"a {B}textbf{{unclosed study", B + "textbf", ""),
+    "a comment sign in a command's braces": (
+        f"A {B}textbf{{50% reduction}} in LDL",
+        B + "textbf",
+        "",
+    ),
+    "an end with no beginning": (f"The {B}end of the trial", B + "end", ""),
+    "a code point no Unicode has named": (
+        f"Outcomes {B}{UNNAMED}x and after",
+        B + UNNAMED + "x",
+        "",
+    ),
+    "two references for backslashes in a superscript": ("^&bsol;&bsol;gamma^", G, "^"),
+    "a reference for a backslash past a bracket": ("[a] &bsol;gamma", G, "["),
 }
 
 
 @pytest.mark.parametrize("case", list(OUTSIDE))
 def test_tex_outside_maths_is_named(case: str) -> None:
     line, command = OUTSIDE[case]
-    assert tex_outside_maths(line) == Tex(command, "")
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert (found.command, found.after) == (command, "")
 
 
 @pytest.mark.parametrize("case", list(PAST_A_SIGN))
 def test_tex_past_a_sign_that_can_hold_a_dollar_sign_is_named_with_the_sign(case: str) -> None:
     line, command, sign = PAST_A_SIGN[case]
-    assert tex_outside_maths(line) == Tex(command, sign)
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert (found.command, found.after) == (command, sign)
 
 
 @pytest.mark.parametrize("case", list(INSIDE))
@@ -133,7 +200,60 @@ def test_where_the_rule_reports_what_pandoc_keeps(case: str) -> None:
     """Pinned so that a change in what the rule over-reports is seen, and DESIGN.md's
     account of it kept true."""
     line, command, sign = OVER[case]
-    assert tex_outside_maths(line) == Tex(command, sign)
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert (found.command, found.after) == (command, sign)
+
+
+#: Why the dollar sign directly before a command opened no maths, which the finding says:
+#: the command stands between dollar signs, and "outside dollar signs" would be false.
+UNREAD = {
+    "a digit after the closing one": (f"TGF-${B}beta$1 signalling", "digit"),
+    "a digit after it, the command first in the line": (f"${B}alpha$1-antitrypsin", "digit"),
+    "a space before the closing one": (f"${G} $ after", "space"),
+    "a tab before it": (f"${G}{TAB}$", "space"),
+    "nothing closes it": (f"${B}alpha{B}", "open"),
+    "an earlier dollar sign pairs with it": (
+        f"Costs at $50,000 per QALY of TNF-${B}alpha$ inhibitors",
+        "paired",
+    ),
+    "one in brackets pairs with it": (f"Costs ($) of TNF-${B}alpha$ inhibitors", "paired"),
+    # No dollar sign that was tried stands before these.
+    "an escaped dollar sign before the command": (f"{B}${G}{B}$", ""),
+    "a space after the opening dollar sign": (f"x$ {G} $y", ""),
+    "no dollar sign": (f"IFN-{G} release", ""),
+}
+
+
+@pytest.mark.parametrize("case", list(UNREAD))
+def test_a_command_between_dollar_signs_that_are_no_maths_says_why(case: str) -> None:
+    line, why = UNREAD[case]
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert found.unread == why
+
+
+#: Whether a brace follows the command, where `$...$` around the command alone would be
+#: no remedy: `$\textit${in vivo}` is printed as typed.
+BRACES = {
+    "a text command": (f"A {B}textit{{in vivo}} study", True),
+    "an accent": (f"Beh{B}c{{c}}et disease", True),
+    "a superscript as TeX writes it": (f"{B}textsuperscript{{18}}F-FDG PET", True),
+    "a Greek letter": (f"IFN-{G} release", False),
+    "a sign before a number": (f"12 {B}pm 3 months", False),
+}
+
+
+@pytest.mark.parametrize("case", list(BRACES))
+def test_a_command_with_braces_after_it_is_known(case: str) -> None:
+    line, braces = BRACES[case]
+    found = tex_outside_maths(line)
+    assert found is not None
+    assert found.braces is braces
+
+
+def test_a_finding_is_the_command_alone_where_nothing_else_is_known() -> None:
+    assert tex_outside_maths(f"IFN-{G} release") == Tex(G)
 
 
 def readings(lines: list[str]) -> list[dict]:
@@ -165,7 +285,8 @@ def dropped(reading: object) -> list[str]:
 
 @needs_pandoc
 def test_the_tables_say_what_pandoc_does() -> None:
-    lost = [row[0] for row in (*OUTSIDE.values(), *PAST_A_SIGN.values())]
+    lost = [row[0] for row in (*OUTSIDE.values(), *PAST_A_SIGN.values(), *UNREAD.values())]
+    lost += [row[0] for row in BRACES.values()]
     for line, reading in zip(lost, readings(lost), strict=True):
         assert dropped(reading), f"pandoc keeps the TeX of {line!r}"
     kept = [*INSIDE.values(), *(row[0] for row in OVER.values())]
@@ -183,6 +304,7 @@ PIECES = (
     + [NBSP, chr(9), E_ACUTE, chr(0x3B1), chr(0x301), chr(0xB2)]
     + list("`<>[]()@*_^~\"'-.&!#=:/|%;,+?")
     + ["$$", B + "$", B + B, "~", "^"]
+    + ["&bsol;", "&#92;", "&#103;", "&alpha;", "&dollar;", NEW_LETTER, THIN_SPACE]
 )
 #: The same without the four signs after which the rule stops reading maths, so that most
 #: lines try its reading of maths.
@@ -219,6 +341,8 @@ LONG = {
     "text groups never closed, in maths": lambda n: "$" + (B + "text{") * n + "$",
     "tildes": lambda n: "~" * n,
     "circumflexes": lambda n: "^a" * n + " x",
+    "references in a superscript": lambda n: "^" + "&amp;" * n,
+    "references past a bracket": lambda n: "[" + "&bsol; " * n,
 }
 
 

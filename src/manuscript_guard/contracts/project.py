@@ -395,43 +395,94 @@ _SIGN = {
 }
 
 #: What to know about TeX in a title or a keyword, for a finding's hint and the build's
-#: refusal. Not every backslash before a letter was meant as TeX: the last three are for
-#: italics, a character and a path.
+#: refusal. Not every backslash before a letter was meant as TeX, and not every dollar sign
+#: as maths: the rest is for italics, a superscript, a character, money and a path.
 KEEP_THE_TEX = (
     "pandoc keeps TeX only as maths, between dollar signs, and outside them it leaves out "
     "the command with the number or the braces that follow it; for italics write "
-    "`*in vivo*`, a character can be typed as itself, and a backslash meant as one is "
-    "written twice, between single quotation marks"
+    "`*in vivo*`, for a superscript `^18^`, a character can be typed as itself, write "
+    "`\\$` for a dollar sign that is only one, and a backslash meant as one is written "
+    "twice, between single quotation marks"
+)
+
+#: Why the `$` directly before a command opened no maths (`Tex.unread`): what a finding
+#: says of the command, and what to do about it.
+_UNREAD = {
+    "digit": (
+        "stands between dollar signs that pandoc reads no maths in, since a digit follows "
+        "the closing one",
+        "put the digit inside the dollar signs, or a space before it",
+    ),
+    "space": (
+        "stands between dollar signs that pandoc reads no maths in, since a space stands "
+        "before the closing one",
+        "take the space out",
+    ),
+    "open": (
+        "stands after a `$` that no `$` closes, so pandoc reads no maths there",
+        "close the maths with a `$`",
+    ),
+    "paired": (
+        "stands after a `$` that closes maths an earlier `$` opens, so it is outside that "
+        "maths",
+        "write `\\$` for a dollar sign that is only one, or open maths for the command",
+    ),
+}
+#: The remedy for a keyword, whatever stands around the command.
+_TYPE_IT = (
+    "type the character it stands for, since a keyword is printed in the document's "
+    "properties only, where maths is written as its TeX"
 )
 
 
-def outside_maths(text: str) -> str | None:
+def outside_maths(text: str, *, keyword: bool = False) -> str | None:
     """What a finding says of TeX in `text` that the document would be printed without, or
     None where there is none, once its lines are folded into one as the build folds them.
+    `keyword` is for a keyword, whose remedy is another.
 
     Pandoc reads a title, a short title and a keyword as Markdown, and the Word writer
     keeps TeX only as maths: `IFN-\\gamma release assays` passed `check` and a checked build
     and was printed `IFN-release assays`. A command takes what follows it as TeX would, so
     `12 \\pm 3 months` is printed without its `3`.
 
-    Past a sign that can hold a dollar sign which opens no maths, the rule reads none
-    (`text.tex`), and reports TeX that pandoc may well keep. The sentence then says so, and
-    how to have the maths read: "outside dollar signs" would be false of `[18F]FDG and
-    TGF-$\\beta$`.
+    The sentence has to be true of the value it is printed for, and its remedy has to work
+    (the review of the change found three ways neither held):
+
+    - Past a sign that can hold a dollar sign which opens no maths, the rule reads none
+      (`text.tex`), and reports TeX that pandoc may well keep: "outside dollar signs" would
+      be false of `[18F]FDG and TGF-$\\beta$`. It names the sign and says "may".
+    - A command can stand between dollar signs that pandoc reads no maths in:
+      `TGF-$\\beta$1` is printed `TGF-$$1`, for the digit after the closing one. It says
+      which, since "write `$\\beta$`" is what the author wrote.
+    - Where braces follow the command, dollar signs around the command alone are no
+      remedy: `$\\textit${in vivo}` is printed as typed. It gives none, and the hint has
+      the ones that work.
     """
     found = tex_outside_maths(one_line(text))
     if found is None:
         return None
-    if not found.after:
+    command = f"`{found.command}`"
+    if found.after:
+        escape = "" if keyword else "where the sign is only itself put a backslash before it, or "
         return (
-            f"`{found.command}` stands outside dollar signs, and the document is printed "
-            f"without it; write `${found.command}$`"
+            f"{command} stands after {_SIGN[found.after]}, past which this check reads no "
+            f"maths, so the document may be printed without it; {escape}type the character "
+            "the command stands for"
         )
-    return (
-        f"`{found.command}` stands after {_SIGN[found.after]}, past which this check reads "
-        "no maths, so the document may be printed without it; where the sign is only itself "
-        "put a backslash before it, or type the character the command stands for"
-    )
+    if found.unread:
+        how, remedy = _UNREAD[found.unread]
+        said = f"{command} {how}, and the document is printed without it"
+    elif found.braces:
+        said = (
+            f"{command} stands outside dollar signs, and the document is printed without it "
+            "and what its braces hold"
+        )
+        remedy = ""
+    else:
+        said = f"{command} stands outside dollar signs, and the document is printed without it"
+        remedy = f"write `${found.command}$`"
+    remedy = _TYPE_IT if keyword else remedy
+    return f"{said}; {remedy}" if remedy else said
 
 
 def _tex_outside_maths(paper: dict, path: Path) -> Report:
@@ -439,7 +490,7 @@ def _tex_outside_maths(paper: dict, path: Path) -> Report:
     without (`outside_maths`), under the schema's code, which fails at every stage."""
     findings = []
     for where, text in _printed_settings(paper):
-        said = outside_maths(text)
+        said = outside_maths(text, keyword=where.startswith("keywords"))
         if said is None:
             continue
         findings.append(

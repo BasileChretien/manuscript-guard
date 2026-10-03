@@ -8351,7 +8351,7 @@ def test_tex_outside_dollar_signs_in_a_title_or_a_keyword_is_caught(
     paper.write_text(chr(10).join(lines), encoding="utf-8")
 
     with monkeypatch.context() as before:  # as the tool was before the rule: a pass
-        before.setattr(contract, "outside_maths", lambda text: None)
+        before.setattr(contract, "outside_maths", lambda text, **how: None)
         assert gate_report(project).ok
 
     report = gate_report(project)

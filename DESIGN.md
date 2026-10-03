@@ -4580,7 +4580,7 @@ Closed since, and why each mattered:
   `paper.yaml`'s is the only title. That is a title holding both kinds, and one that
   begins or ends with a quotation mark of either kind, `the patients'` for one, since the
   build's reading strips every one of them at either end; for one that begins or ends
-  with an apostrophe the header had read as another title, and the build warned of two.
+  with an apostrophe the header had read as another title.
   Before that, a title with TeX or a
   quotation in it left a new project that failed `check` on a header the author had not
   typed. TeX that stands outside `$` was the next thing found: `IFN-\gamma release
@@ -4606,33 +4606,54 @@ Closed since, and why each mattered:
   dollar signs, and the document is printed without it; write `$\gamma$`. A build that
   skips the check refuses it in the same words, `init` refuses such a title before it
   makes anything, and `import` builds a document that was sent without the refusal, as
-  for a lost letter. A letter is any letter: pandoc drops `\étude` too.
+  for a lost letter.
   `check` runs without pandoc, so the rule is a model of pandoc's reading of one line
-  (`text/tex.py`), and it may only over-report. `tests/test_tex.py` holds it to the
-  pandoc CI pins, on tables and on 4,000 random lines. Random lines tried against pandoc
-  while it was written found two things it had passed, both in a subscript or a
-  superscript, and with those in, 360,000 more found none.
-  A `$` opens maths only as pandoc opens it: `x$ \gamma $y` and `$\gamma$5` hold
-  none. A backtick, `<`, `[` or `@` can hold a `$` that opens nothing, in code, a tag, a
-  link's address or a citation key. And pandoc reads a subscript or a superscript on its
+  (`text/tex.py`). It is meant never to pass a value that pandoc drops TeX from, and to
+  report one that pandoc keeps only in the places listed below. `tests/test_tex.py`
+  holds it to the pandoc CI pins, on tables and on 4,000 random lines. Each part of it
+  came from a line it would otherwise pass:
+  a `$` opens maths only as pandoc opens it, so `x$ \gamma $y` and `$\gamma$5` hold
+  none; a backtick, `<`, `[` or `@` can hold a `$` that opens nothing, in code, a tag, a
+  link's address or a citation key; pandoc reads a subscript or a superscript on its
   own, with its escapes read once already, so maths cannot run past its end and a
-  doubled backslash in it is one: `~a\\gamma~` loses its `\gamma`.
+  doubled backslash in it is one, and `~a\\gamma~` loses its `\gamma`; it resolves
+  the character references in one as well before it reads it, so `^&bsol;gamma^` is
+  `\gamma` there and is left out; and a letter is any letter, `\étude` too, by
+  pandoc's Unicode, which may be newer than Python's: 622 letters of Unicode 15.1 were
+  none to Python 3.12, so a code point Python has no name for is taken for a letter
+  after a backslash. The third came from random lines tried against pandoc while the
+  rule was written, and the last two from the review of the change, which tried lines
+  of its own making, 22.7 million of them put to pandoc, and found no other.
   Where it reports TeX that pandoc keeps: past a backtick, `<`, `[` or `@` no maths is
   read, so every backslash before a letter is reported from there to the end of the
-  value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one); from a `~`
-  or a `^` to the next space the same holds, and to the end of the value where that
-  stretch holds a `$`; a command pandoc cannot read as TeX, a brace after it never
-  closed, is printed as typed and reported; and so is one in a value pandoc reads as
-  code, `>` and a tab before it. For the first two the finding does not say "outside
-  dollar signs", which would be false: it names the sign, and says to put a backslash
-  before a sign that is only itself, `\[18F\]FDG`, or to type the character. With
-  that the maths is read and the value passes. No title or keyword of the example or of
+  value, in maths, in code, or doubled (`[18F]FDG and TGF-$\beta$` is one), and so is
+  a reference for a backslash before a letter; from a `~` or a `^` to the next space
+  the same holds, and to the end of the value where that stretch holds a `$`; a
+  command pandoc cannot read as TeX is printed as typed and reported, a brace after it
+  never closed, a `%` between its braces, `\end` with no `\begin`; so is one in a value
+  pandoc reads as code, `>` and a tab before it; and so is a backslash before a code
+  point that is no letter in any Unicode yet. No title or keyword of the example or of
   the one manuscript this was tried on holds a backslash, so neither says how often an
   over-report occurs.
+  The finding's sentence is held to being true of the value it is printed for, and its
+  remedy to working, which the review found it was not in three places. Past a sign it
+  does not say "outside dollar signs": it names the sign, says the document may be
+  printed without the command, and says to put a backslash before a sign that is only
+  itself, `\[18F\]FDG`, or to type the character, and with that the value passes.
+  Between dollar signs that pandoc reads no maths in, it says which: `TGF-$\beta$1` is
+  printed `TGF-$$1`, for the digit after the closing one, and a dollar amount earlier in
+  a title pairs with the opening one, which `\$` mends. Where braces follow the command
+  it does not say to write the command between dollar signs: `$\textit${in vivo}` is
+  printed as typed. And a keyword is told to hold the character itself: it is printed
+  in the document's properties only, where pandoc writes maths as its TeX.
   What the finding does not reach: the other text of a project that a document prints,
   the names in `authors.yaml` for one; the title page of a pack made with
   `submit --skip-checks --document`; a pandoc that reads a line otherwise than the one
-  CI pins; and a backslash before a sign, which is the sign: `10\,mg` is printed `10,mg`
+  CI pins; maths in a title or a keyword as the document's properties carry it, which
+  is as its TeX, `IFN-\gamma release assays` for a title whose page shows the letter;
+  a code span the author marks `{=latex}`, which that mark leaves out of the document,
+  and which is reported only where it holds a backslash before a letter; and a
+  backslash before a sign, which is the sign: `10\,mg` is printed `10,mg`
   where TeX's thin space was meant, in a title and in the text alike.
   Nor the manuscript's text, which is still open and is a false pass: `\approx
   {{results.cohort.n_reports}}` in the example's Results passes `check` and the build,

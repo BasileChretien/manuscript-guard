@@ -875,6 +875,89 @@ def test_past_a_sign_the_finding_says_how_to_have_the_maths_read(tmp_path: Path)
     assert report.failures == ()
 
 
+def test_a_command_with_braces_is_not_told_to_stand_between_dollar_signs(tmp_path: Path) -> None:
+    """The finding said to write the command between dollar signs whatever followed it.
+    Followed for `Injury \\textit{in vivo} and after`, that is `$\\textit${in vivo}`, which
+    passes `check` and is printed as typed, dollar signs and all. Where braces follow the
+    command the finding gives no such remedy, and the hint has the ones that work."""
+    written = "short_title: 'Injury " + BACKSLASH + "textit{in vivo} and after'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert finding.message == (
+        f"short_title: `{BACKSLASH}textit` stands outside dollar signs, and the document is "
+        "printed without it and what its braces hold"
+    )
+    assert "`*in vivo*`" in finding.hint and "`^18^`" in finding.hint
+
+
+#: Titles whose TeX stands between dollar signs that pandoc reads no maths in, so "outside
+#: dollar signs" would be false of them and "write `$...$`" would tell the author to write
+#: what is there. `TGF-$\beta$1 signalling` is printed `TGF-$$1 signalling`. What the
+#: finding says of each, and the title mended as it says, which passes.
+NO_MATHS = {
+    "a digit after the closing dollar sign": (
+        "TGF-$" + BACKSLASH + "beta$1 signalling in fibrosis",
+        "a digit follows the closing one",
+        "TGF-$" + BACKSLASH + "beta_1$ signalling in fibrosis",
+    ),
+    "a number after it, mended with a space": (
+        "Adults aged $" + BACKSLASH + "geq$65 years",
+        "a digit follows the closing one",
+        "Adults aged $" + BACKSLASH + "geq$ 65 years",
+    ),
+    "a dollar amount before it": (
+        "Costs at $50,000 per QALY of TNF-$" + BACKSLASH + "alpha$ inhibitors",
+        "an earlier `$`",
+        "Costs at " + BACKSLASH + "$50,000 per QALY of TNF-$" + BACKSLASH + "alpha$ inhibitors",
+    ),
+    "a space before the closing dollar sign": (
+        "IFN-$" + BACKSLASH + "gamma $ release",
+        "a space stands before the closing one",
+        "IFN-$" + BACKSLASH + "gamma$ release",
+    ),
+    "no closing dollar sign": (
+        "IFN-$" + BACKSLASH + "gamma release",
+        "no `$` closes",
+        "IFN-$" + BACKSLASH + "gamma$ release",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NO_MATHS))
+def test_tex_between_dollar_signs_that_are_no_maths_is_said_to_be_so(
+    case: str, tmp_path: Path
+) -> None:
+    title, says, mended = NO_MATHS[case]
+    written = "short_title: '" + title + "'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert says in finding.message
+    assert "outside dollar signs" not in finding.message
+    assert "the document is printed without it" in finding.message
+    assert BACKSLASH + "$` for a dollar sign" in finding.hint
+
+    written = "short_title: '" + mended + "'" + LF
+    _project, report = load_project(a_project(tmp_path / "mended", PAPER + written))
+    assert report.failures == ()
+
+
+def test_a_keyword_is_told_to_hold_the_character_and_not_maths(tmp_path: Path) -> None:
+    """A keyword is printed in the document's properties and nowhere else, and maths is
+    written there as its TeX: `TNF$\\alpha$ signalling` gives the keyword `TNF\\alpha
+    signalling`. So for a keyword the finding says to type the character."""
+    written = "keywords:" + LF + "  - 'TNF" + BACKSLASH + "alpha signalling'" + LF
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = report.failures
+    assert finding.message.startswith(
+        f"keywords/0: `{BACKSLASH}alpha` stands outside dollar signs, and the document is "
+        "printed without it; type the character it stands for"
+    )
+    assert "write `$" not in finding.message
+
+
 #: The same where nothing is lost, and so nothing is found: TeX between dollar signs, a
 #: backslash that is no TeX, and a backslash in what the build does not print.
 TEX_KEPT = {

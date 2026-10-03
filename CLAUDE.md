@@ -11,7 +11,9 @@ This repository builds **tools for writing papers**. It is not itself a paper.
 Two layers:
 
 - `src/manuscript_guard/` — pip package. The deterministic gates, the build pipeline and
-  the Zotero client. Must run in CI with no LLM involved.
+  the Zotero client. Must run in CI with no LLM involved. `panel/` is the one part that
+  calls a model: it sends a review panel's remits to the providers an author lists and
+  files the replies as review records. No gate imports it, and a test holds that.
 - `plugin/` — Claude Code plugin. Skills and hooks that help set up, draft, verify and
   review.
 
@@ -74,7 +76,13 @@ live Zotero fields by default, `--offline` for citeproc), `sync-bib` (rewrite
 `render` (substitute bindings only), `init` (scaffold a project),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
-record: a second reading is a second round. `install-skills` copies the skills into
+record: a second reading by the same reader is a further round. `--reading <reader>`
+files one of several readers' readings of a remit and names its reader in the panel. `review --providers` lists the
+model providers a panel can be read by and whether each key is set; `review --run` has
+the round's panel read by the models in `paper.yaml`'s `review.models` and files each
+reading (`--dry-run` shows what would be sent and sends nothing; `--one-each` deals one
+model per reviewer; `--yes` is for a script, never an agent's to add).
+`install-skills` copies the skills into
 `.agents/skills` (the user's, or `--project`, or `--dir`) for an agent tool that has no
 plugin; it never writes over a folder it did not write.
 
@@ -105,6 +113,9 @@ re-run, so the profile stays a function of the published checklist.
 - Gates are deterministic and testable. A gate without a test that proves it catches the
   failure it claims to catch is not finished. Add the failure to
   `tests/test_corruption.py`, not just a happy-path test.
+- Tests never open a connection to a provider. The client takes its transport as an
+  argument; `tests/test_review_transport.py` runs the real one against a server it
+  starts on a loopback port.
 - Known limits go in DESIGN.md under "Known gaps". A gate whose limits are undocumented
   gets trusted beyond them.
 - Prose in this repository, including documentation, must pass the project's own

@@ -636,6 +636,7 @@ def cmd_import(args: argparse.Namespace) -> int:
                     output=output,
                     supplementary=supplementary,
                     verify_reading=False,
+                    sent=True,
                 )
             abbreviated = abbreviations()
         except BuildError as exc:

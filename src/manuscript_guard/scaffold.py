@@ -8,11 +8,14 @@ real work rather than placeholder noise.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+from manuscript_guard.contracts.project import one_line
 
 PAPER = """\
 schema: manuscript-guard/paper/1
-title: "{title}"
+title: {quoted}
 english_variant: en-GB
 
 # Where the work has got to. Move it along as you go; `manuscript-guard stages` lists what
@@ -265,7 +268,15 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
         if path.exists():
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(template.format(title=title), encoding="utf-8", newline="\n")
+        # The title is typed into `paper.yaml` as a JSON string, whose escapes are YAML's:
+        # between quotation marks typed around it as it stood, a backslash in it began an
+        # escape, which `check` refuses and the author never wrote, and a quotation mark
+        # ended it. The manuscript's own header keeps the title as typed, since its title
+        # is read by a plain split of the line and compared with this one.
+        quoted = json.dumps(one_line(title), ensure_ascii=False)
+        path.write_text(
+            template.format(title=title, quoted=quoted), encoding="utf-8", newline="\n"
+        )
         created.append(path)
 
     keep = root / "results" / ".gitkeep"

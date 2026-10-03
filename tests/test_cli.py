@@ -475,6 +475,7 @@ def test_an_escape_that_takes_a_letter_is_refused_by_check_and_the_build(
     said = capsys.readouterr().err
     assert "paper.yaml" in said
     assert "`\\nu` between double quotation marks" in said
+    assert "where a line break or a tab was meant, write a space" in said
     assert "Traceback" not in said
     assert not list((project / "build").glob("*.docx"))
 
@@ -503,6 +504,34 @@ def test_the_same_title_where_a_backslash_is_a_backslash_builds_with_its_letter(
     title = re.search("<dc:title>(.*?)</dc:title>", properties, re.S)
     assert title is not None
     assert title[1] == "The \\nu frequency"
+
+
+@needs_pandoc
+def test_import_takes_back_a_document_built_before_the_lost_letter_was_refused(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """`import` rebuilds the source to compare the returned document with. A refusal newer
+    than the document is not import's to enforce: it blocked the return of a document a
+    co-author was holding, built when the title was printed with a space for the break."""
+    from manuscript_guard.build import document
+    from manuscript_guard.contracts import project as contract
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    old = next(line for line in text.splitlines() if line.startswith("title: "))
+    paper.write_text(
+        text.replace(old, 'title: "First part:\\nsecond part"', 1), encoding="utf-8"
+    )
+
+    with monkeypatch.context() as before:  # as the tool was before the refusal
+        before.setattr(document, "lost_letters", lambda path: [])
+        before.setattr(contract, "lost_letters", lambda path: [])
+        assert run("build", str(project), "--offline") == 0
+    sent = project / "build" / "manuscript.docx"
+    capsys.readouterr()
+
+    assert run("import", str(sent), str(project)) == 0
+    assert "nothing came back" in capsys.readouterr().out
 
 
 @needs_pandoc

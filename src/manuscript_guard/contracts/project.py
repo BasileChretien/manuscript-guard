@@ -167,8 +167,8 @@ def _not_a_pattern(pattern: str) -> str | None:
 LINE_BREAK = re.compile(r"\r\n|[\r\n\x85\u2028\u2029]")
 
 
-#: The break, or breaks, a value closes with: a block always has one.
-_CLOSING_BREAK = re.compile("(?:" + LINE_BREAK.pattern + r")+\Z")
+#: The characters `LINE_BREAK` folds, for taking the breaks off the end of a value.
+_BREAKS = "".join(chr(code) for code in (0x0A, 0x0D, 0x85, 0x2028, 0x2029))
 
 
 def one_line(text: str) -> str:
@@ -177,9 +177,10 @@ def one_line(text: str) -> str:
     The break a value closes with is taken off, not folded. A block ends with one, and as
     a space it stood after `al.` and `vs.`, where pandoc reads a space as a no-break space:
     a title written as a block was printed with one after it. After a closing backslash it
-    became one too.
+    became one too. Stripped, not matched by a pattern: one anchored at the end tried every
+    break of a run in the middle as its start, and a run of 16,000 took seconds.
     """
-    return " ".join(LINE_BREAK.split(_CLOSING_BREAK.sub("", text)))
+    return " ".join(LINE_BREAK.split(text.rstrip(_BREAKS)))
 
 
 def named(character: str) -> str | None:
@@ -254,11 +255,13 @@ class LostLetter(NamedTuple):
 def _printed_nodes(root: yaml.Node) -> list[tuple[str, yaml.Node]]:
     """The values of `paper.yaml` that the build prints, as the file writes them, each with
     the place a finding names: `_printed_settings`, before YAML has read them."""
-    out: list[tuple[str, yaml.Node]] = []
+    # Of a key written twice YAML keeps the last, and so does this.
+    kept: dict[str, yaml.Node] = {}
     for key, value in root.value if isinstance(root, yaml.MappingNode) else ():
-        name = key.value if isinstance(key, yaml.ScalarNode) else None
-        if name not in ("title", "short_title", "keywords"):
-            continue
+        if isinstance(key, yaml.ScalarNode) and key.value in ("title", "short_title", "keywords"):
+            kept[key.value] = value
+    out: list[tuple[str, yaml.Node]] = []
+    for name, value in kept.items():
         if isinstance(value, yaml.ScalarNode):
             out.append((name, value))
         elif name == "keywords" and isinstance(value, yaml.SequenceNode):
@@ -282,13 +285,20 @@ def lost_letters(path: Path) -> list[LostLetter]:
     try:
         text = read_text(path)
         root = yaml.compose(text, Loader=yaml.SafeLoader)
+        # Where each value opens, by where it closes. A node begins at its anchor or its
+        # tag, and a comment between that and the value was read as the value.
+        opens = {
+            token.end_mark.index: token.start_mark.index
+            for token in yaml.scan(text, Loader=yaml.SafeLoader)
+            if isinstance(token, yaml.ScalarToken)
+        }
     except (Unreadable, yaml.YAMLError):
         return []
     found = []
     for where, node in _printed_nodes(root):
         if not isinstance(node, yaml.ScalarNode) or node.style != '"':
             continue
-        start = node.start_mark.index
+        start = opens.get(node.end_mark.index, node.start_mark.index)
         raw = text[start : node.end_mark.index]
         for escape in _ESCAPE.finditer(raw):
             reads_as = _TAKES_A_LETTER.get(escape[1])
@@ -307,9 +317,11 @@ def lost_letters(path: Path) -> list[LostLetter]:
 
 
 #: What to do about a `LostLetter`.
+# The first two keep a backslash, which pandoc then reads as the start of TeX: where a
+# break was meant and not TeX, either one loses the word after it, so the third is named.
 KEEP_THE_LETTER = (
     "write the value between single quotation marks, where a backslash is a backslash, or "
-    "double the backslash"
+    "double the backslash; where a line break or a tab was meant, write a space"
 )
 
 

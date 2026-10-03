@@ -653,6 +653,66 @@ def test_a_backslash_that_is_a_backslash_and_a_break_that_takes_no_letter_are_no
     assert report.failures == ()
 
 
+def test_the_hint_names_a_space_where_a_line_break_was_meant(tmp_path: Path) -> None:
+    """Followed where a break was meant, either way of keeping the letter loses the word:
+    between single quotation marks `First part:\\nsecond part` holds a backslash, and pandoc
+    reads `\\nsecond` as TeX and drops it. So the finding also says what to write then."""
+    written = 'short_title: "First part:\\nsecond part"' + chr(10)
+    _project, report = load_project(a_project(tmp_path / "paper", PAPER + written))
+
+    (finding,) = [f for f in report.failures if "between double quotation marks" in f.message]
+    assert "single quotation marks" in finding.hint
+    assert "where a line break or a tab was meant, write a space" in finding.hint
+
+
+#: Text of the file that the value does not hold, and a value YAML does not keep. The
+#: place a value is read from began at its anchor or its tag, so a comment after one was
+#: read as the value; and a key written twice was read twice, where YAML keeps the last.
+NOT_THE_VALUE = {
+    "a comment after an anchor": (
+        'short_title: &t  # the anchor for \\nu' + chr(10) + '  "A plain title"' + chr(10)
+    ),
+    "a comment after a tag": (
+        'short_title: !!str  # see \\rho' + chr(10) + '  "A plain title"' + chr(10)
+    ),
+    "a comment after a keyword's anchor": (
+        'keywords:' + chr(10) + '  - &k # \\nabla' + chr(10) + '    "plain"' + chr(10)
+    ),
+    "a key written twice, the last kept": (
+        'short_title: "The $\\nu$ one"' + chr(10) + "short_title: 'The $\\nu$ one'" + chr(10)
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(NOT_THE_VALUE))
+def test_what_the_value_does_not_hold_is_not_read_for_a_lost_letter(
+    case: str, tmp_path: Path
+) -> None:
+    from manuscript_guard.contracts.project import lost_letters
+
+    root = a_project(tmp_path / "paper", PAPER + NOT_THE_VALUE[case])
+    assert lost_letters(root / "paper.yaml") == []
+
+
+def test_of_a_key_written_twice_the_one_yaml_keeps_is_read(tmp_path: Path) -> None:
+    from manuscript_guard.contracts.project import lost_letters
+
+    written = "short_title: 'The $\\nu$ one'" + chr(10) + 'short_title: "The $\\nu$ one"' + chr(10)
+    root = a_project(tmp_path / "paper", PAPER + written)
+    assert [(lost.where, lost.line) for lost in lost_letters(root / "paper.yaml")] == [
+        ("short_title", 5)
+    ]
+
+
+def test_folding_a_run_of_line_breaks_takes_time_in_proportion(assert_linear) -> None:
+    """The closing break was taken off with a pattern that tried every break of a run in
+    the middle as the start of the end: 16,000 breaks took four and a half seconds, in
+    `check` and in the hook at the start of a session."""
+    from manuscript_guard.contracts.project import one_line
+
+    assert_linear(lambda n: "a" + chr(10) * n + "b", one_line, 2000, "folding a run of breaks")
+
+
 #: Each written between double quotation marks, as YAML reads them: `\a` is U+0007, `\e`
 #: U+001B. The place `check` names and the character it names there.
 CONTROL = {

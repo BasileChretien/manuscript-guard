@@ -4552,9 +4552,21 @@ Closed since, and why each mattered:
   finding does not reach: an escape before a space or a digit, which takes no letter; a
   letter outside A to Z; the no-break space `\_`, and an escape written as a number,
   `\x0a`; a title or a keyword that comes into the file by a merge key (`<<`); and the
-  other text of a project that a document prints, the names in `authors.yaml` for one. A
-  line break meant as one and written `"First\nsecond"` is a finding all the same. It
-  costs a space in its place, which is what the build printed for it.
+  other text of a project that a document prints, the names in `authors.yaml` for one.
+  Nor the title page of a pack made with `submit --skip-checks --document`: it is handed
+  a document built elsewhere, and prints the title as YAML read it. A line break meant as
+  one and written `"First\nsecond"` is a finding all the same. It costs a space in its
+  place, which is what the build printed for it, and the finding says to write a space
+  there: a backslash kept where no TeX was meant is TeX to pandoc, which drops the word
+  after it. `import` builds the source again to compare the returned document with, and
+  makes that build without the refusal, so that a document sent before it existed can
+  still come back; `check` and the next build refuse the title all the same. And `init`
+  types the title it is given into `paper.yaml` as a JSON string, where it typed
+  quotation marks around it as it stood: a backslash in it was an escape the author never
+  wrote, and a quotation mark in it left a project that could not be read. A value is
+  read from its own opening quotation mark, and of a key written twice the one YAML keeps
+  is read: a comment after an anchor was taken for the value, and both of two titles for
+  the title. These came from the review of the change.
   Whether a keyword should be printed as typed, with its asterisks and backslashes, rather
   than read as Markdown, is not decided; it would differ only in the document's properties.
   Still open, and each fails at every stage, so none is a pass. A file a gate reads by

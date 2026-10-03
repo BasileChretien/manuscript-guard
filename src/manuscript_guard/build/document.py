@@ -278,17 +278,22 @@ def _yaml_text(project, key: str, value: object) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def _front_matter(project, *, supplementary: bool = False, live: bool = False) -> str:
+def _front_matter(
+    project, *, supplementary: bool = False, live: bool = False, sent: bool = False
+) -> str:
     """A YAML header carrying the title and the Zotero settings the filter reads.
 
     What the author wrote is read by pandoc as Markdown, as the text is: `*E. coli*` is in
     italics, and TeX outside `$` is dropped.
+
+    `sent` is for a document that was built already and is built again to be compared with:
+    see `build_document`.
     """
     paper = project.paper
     # What `check` reports and a build that skips the check would print: an escape in
     # `paper.yaml` that takes the first letter of a word. What YAML made of it is a line
     # break like any other, so it is looked for in the file.
-    lost = lost_letters(project.root / PAPER_FILE)
+    lost = [] if sent else lost_letters(project.root / PAPER_FILE)
     if lost:
         first = lost[0]
         raise BuildError(
@@ -336,8 +341,15 @@ def build_document(
     epilogue: str = "",
     supplementary: bool = False,
     verify_reading: bool = True,
+    sent: bool = False,
 ) -> BuildResult:
     """Make the document.
+
+    `sent` is for `import`, which builds again a document that was sent, to compare the one
+    that came back with it. A refusal newer than that document is not made: the header is
+    written as the sent one's was, an escape that takes a letter included, since refusing
+    there kept back a document a co-author was holding. `check` and the next build still
+    refuse it.
 
     `stamp` writes the record of which text the document was built from, and there must be
     exactly one document carrying it: the annotated copy passes `stamp=False`.
@@ -380,7 +392,9 @@ def build_document(
     # note by the end of its own file, where nothing follows. Not a comment: its `-->` closed
     # a `<!--` left open earlier in the file, and the rest of that file vanished.
     body = prologue + "\n\n::: {}\n:::\n\n".join(a.text for a in ordered) + epilogue
-    header = _front_matter(project, supplementary=supplementary, live=mode == LIVE)
+    header = _front_matter(
+        project, supplementary=supplementary, live=mode == LIVE, sent=sent
+    )
     source.write_text(header + body, encoding="utf-8", newline="\n")
     from manuscript_guard.zotero import find_citations
 

@@ -1421,7 +1421,9 @@ documentation has no Bash tool at all where Git Bash is absent, so there the gua
 Seen in a session with both tools (Claude Code 2.1.286): in a copy of the example with its
 reviews deleted, `echo 'cp build/manuscript.docx elsewhere'` through the Bash tool was
 refused, and `Write-Output 'Copy-Item build\manuscript.docx elsewhere'` through the
-PowerShell tool was not. `tests/test_plugin.py` holds the matcher to the three names. The
+PowerShell tool was not. With the three names registered it is refused too, as a session
+started after the plugin's update showed on 2026-10-03 (Known gaps has what was seen).
+`tests/test_plugin.py` holds the matcher to the three names. The
 markers took the PowerShell and Windows spellings of the verbs they already had at the same
 time: `Compress-Archive`, `Send-MailMessage`, `Invoke-WebRequest` and its alias `iwr`,
 `Invoke-RestMethod`, `Start-BitsTransfer`, `robocopy` and `xcopy`. `Copy-Item` and
@@ -4285,10 +4287,14 @@ Closed since, and why each mattered:
   only the verbs it knows.** Those tools are `Bash`, `PowerShell` and `Monitor`. A command
   that an MCP server runs, a terminal tool for one, never reaches it, and neither does a copy
   made inside a script the agent runs. That the PowerShell tool sends its command in
-  `tool_input.command` is taken from Claude Code's hooks reference, and for `Monitor` from
-  the tool's own input, which that reference does not describe; no event from either was
-  captured, for want of a login in a headless session. What was seen in a session is that a
-  matcher of `Bash` does not fire for the PowerShell tool. Not held, in PowerShell: the
+  `tool_input.command` is taken from Claude Code's hooks reference, and it was then seen to
+  hold. On 2026-10-03, in a session started after the plugin was updated, and in a copy of
+  the example with its reviews deleted, `Write-Output 'Copy-Item build\manuscript.docx
+  elsewhere'` through the PowerShell tool was refused, under `PreToolUse:PowerShell` and in
+  the words the Bash tool's `echo 'cp build/manuscript.docx elsewhere'` was refused in. The
+  event itself was not captured. For `Monitor` the field is taken from the tool's own input,
+  which that reference does not describe, and no `Monitor` command was seen held or let
+  through. Not held, in PowerShell: the
   aliases `cpi`, `mi` and `irm`, left out because so short a word before a `.docx` would be a
   false alarm more often than a submission (`irm`, the short name of `Invoke-RestMethod`, is
   also the French for MRI, and as a verb it had the guard refuse
